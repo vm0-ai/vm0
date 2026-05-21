@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const REDDIT_AUTHORIZATION_URL = "https://www.reddit.com/api/v1/authorize";
 
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
 const REDDIT_USER_AGENT = "web:vm0-reddit-connector:v1.0";
@@ -49,7 +48,7 @@ export function buildRedditAuthorizationUrl(
     scope: oauthConfig.scopes.join(" "),
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("reddit")}?${params.toString()}`;
+  return `${REDDIT_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

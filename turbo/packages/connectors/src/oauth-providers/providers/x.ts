@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const X_AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize";
 
 const X_USERS_ME_URL =
   "https://api.twitter.com/2/users/me?user.fields=id,username,name";
@@ -83,7 +82,7 @@ export async function buildXAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("x")}?${params.toString()}`;
+  return `${X_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

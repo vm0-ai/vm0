@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const CLOSE_AUTHORIZATION_URL = "https://app.close.com/oauth2/authorize/";
 
 interface CloseUserInfo {
   id: string;
@@ -40,7 +39,7 @@ export function buildCloseAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("close")}?${params.toString()}`;
+  return `${CLOSE_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

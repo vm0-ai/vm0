@@ -26,10 +26,6 @@ export const github = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://github.com/login/oauth/authorize",
-      },
       tokenUrl: "https://github.com/login/oauth/access_token",
       client: {
         clientRegistration: "static",

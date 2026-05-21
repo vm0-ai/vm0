@@ -28,10 +28,6 @@ export const strava = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://www.strava.com/oauth/authorize",
-      },
       tokenUrl: "https://www.strava.com/oauth/token",
       client: {
         clientRegistration: "static",

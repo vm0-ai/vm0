@@ -28,10 +28,6 @@ export const asana = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://app.asana.com/-/oauth_authorize",
-      },
       tokenUrl: "https://app.asana.com/-/oauth_token",
       client: {
         clientRegistration: "static",

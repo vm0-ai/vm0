@@ -1,9 +1,9 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const META_ADS_AUTHORIZATION_URL =
+  "https://www.facebook.com/v22.0/dialog/oauth";
 
 const META_USER_URL = "https://graph.facebook.com/v22.0/me";
 
@@ -39,7 +39,7 @@ export function buildMetaAdsAuthorizationUrl(
     scope: oauthConfig.scopes.join(","),
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("meta-ads")}?${params.toString()}`;
+  return `${META_ADS_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

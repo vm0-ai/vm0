@@ -30,10 +30,6 @@ export const canva = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://www.canva.com/api/oauth/authorize",
-      },
       tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
       client: {
         clientRegistration: "static",

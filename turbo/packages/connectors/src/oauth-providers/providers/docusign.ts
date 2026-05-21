@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const DOCUSIGN_AUTHORIZATION_URL = "https://account-d.docusign.com/oauth/auth";
 
 const DOCUSIGN_USERINFO_URL = "https://account-d.docusign.com/oauth/userinfo";
 
@@ -82,7 +81,7 @@ export async function buildDocuSignAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("docusign")}?${params.toString()}`;
+  return `${DOCUSIGN_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const FIGMA_AUTHORIZATION_URL = "https://www.figma.com/oauth";
 
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
 
@@ -44,7 +43,7 @@ export function buildFigmaAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("figma")}?${params.toString()}`;
+  return `${FIGMA_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

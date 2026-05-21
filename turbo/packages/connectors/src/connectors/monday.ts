@@ -28,10 +28,6 @@ export const monday = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://auth.monday.com/oauth2/authorize",
-      },
       tokenUrl: "https://auth.monday.com/oauth2/token",
       client: {
         clientRegistration: "static",

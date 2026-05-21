@@ -42,10 +42,6 @@ export const neon = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://oauth2.neon.tech/oauth2/auth",
-      },
       tokenUrl: "https://oauth2.neon.tech/oauth2/token",
       client: {
         clientRegistration: "static",

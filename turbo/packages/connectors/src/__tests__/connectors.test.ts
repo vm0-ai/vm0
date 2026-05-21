@@ -14,7 +14,6 @@ import {
   getConnectorAuthMethods,
   getConnectorOAuthClientConfig,
   getConnectorOAuthCredentials,
-  getConnectorOAuthAuthorizationEndpoint,
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
   getConnectorOAuthFlow,
@@ -30,6 +29,7 @@ import {
   CONNECTOR_OAUTH_PROVIDERS,
 } from "../oauth-providers/provider-registry";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
+import { buildGoogleAuthorizationUrl } from "../oauth-providers/providers/google-oauth";
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
@@ -666,38 +666,22 @@ describe("connector OAuth authorization-code config", () => {
     }
   });
 
-  it("marks Vercel authorization endpoint construction as provider-managed", () => {
-    expect(
-      getConnectorOAuthConfig("vercel").authorizationEndpoint,
-    ).toStrictEqual({
-      type: "provider",
-    });
-  });
-
-  it("keeps all non-Vercel OAuth authorization endpoints in connector config", () => {
+  it("keeps provider authorization URLs out of connector OAuth config", () => {
     for (const type of connectorTypeSchema.options) {
       const oauthConfig = getConnectorOAuthConfigIfSupported(type);
-      if (!oauthConfig || type === "vercel") {
+      if (!oauthConfig) {
         continue;
       }
 
       expect(
-        oauthConfig.authorizationEndpoint.type,
-        `${type}: authorization endpoint source`,
-      ).toBe("config");
-      if (oauthConfig.authorizationEndpoint.type === "config") {
-        expect(
-          oauthConfig.authorizationEndpoint.url,
-          `${type}: authorization endpoint URL`,
-        ).toBeTruthy();
-      }
+        "authorizationEndpoint" in oauthConfig,
+        `${type}: authorization endpoint should be provider-owned`,
+      ).toBe(false);
+      expect(
+        "authorizationUrl" in oauthConfig,
+        `${type}: authorization URL should be provider-owned`,
+      ).toBe(false);
     }
-  });
-
-  it("keeps the synthetic test OAuth connector on a relative configured endpoint", () => {
-    expect(getConnectorOAuthAuthorizationEndpoint("test-oauth")).toBe(
-      "/api/test/oauth-provider/authorize",
-    );
   });
 });
 
@@ -760,34 +744,25 @@ describe("isGoogleOAuthConnector", () => {
     );
   });
 
-  it("keeps Google OAuth connector configs on the Google authorization endpoint", () => {
+  it("builds Google OAuth authorization URLs at the provider boundary", () => {
     for (const type of GOOGLE_OAUTH_CONNECTOR_TYPES) {
+      const authorizationUrl = new URL(
+        buildGoogleAuthorizationUrl(
+          type,
+          "client-id",
+          "https://app.test/callback",
+          "state-123",
+        ),
+      );
+
       expect(
-        new URL(getConnectorOAuthAuthorizationEndpoint(type)).hostname,
+        authorizationUrl.hostname,
         `${type}: Google connector authorization endpoint must use accounts.google.com`,
       ).toBe("accounts.google.com");
-    }
-  });
-
-  it("includes every connector configured with the Google authorization endpoint", () => {
-    for (const type of connectorTypeSchema.options) {
-      const oauthConfig = getConnectorOAuthConfigIfSupported(type);
-      if (oauthConfig?.authorizationEndpoint.type !== "config") {
-        continue;
-      }
-      if (!oauthConfig.authorizationEndpoint.url.startsWith("https://")) {
-        continue;
-      }
-
-      const hostname = new URL(oauthConfig.authorizationEndpoint.url).hostname;
-      if (hostname !== "accounts.google.com") {
-        continue;
-      }
-
-      expect(
-        GOOGLE_OAUTH_CONNECTOR_TYPES,
-        `${type} uses Google OAuth and must be listed in GOOGLE_OAUTH_CONNECTOR_TYPES`,
-      ).toContain(type);
+      expect(authorizationUrl.searchParams.get("client_id")).toBe("client-id");
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        "https://app.test/callback",
+      );
     }
   });
 });

@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const AHREFS_AUTHORIZATION_URL = "https://app.ahrefs.com/api/auth";
 
 const AHREFS_SUBSCRIPTION_URL =
   "https://api.ahrefs.com/v3/subscription-info/limits-and-usage";
@@ -45,7 +44,7 @@ export function buildAhrefsAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("ahrefs")}?${params.toString()}`;
+  return `${AHREFS_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

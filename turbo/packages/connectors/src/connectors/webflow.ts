@@ -37,10 +37,6 @@ export const webflow = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://webflow.com/oauth/authorize",
-      },
       tokenUrl: "https://api.webflow.com/oauth/access_token",
       client: {
         clientRegistration: "static",

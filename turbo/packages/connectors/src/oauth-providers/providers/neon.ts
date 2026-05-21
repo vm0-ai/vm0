@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const NEON_AUTHORIZATION_URL = "https://oauth2.neon.tech/oauth2/auth";
 
 const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
 
@@ -45,7 +44,7 @@ export function buildNeonAuthorizationUrl(
     scope: oauthConfig.scopes.join(" "),
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("neon")}?${params.toString()}`;
+  return `${NEON_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

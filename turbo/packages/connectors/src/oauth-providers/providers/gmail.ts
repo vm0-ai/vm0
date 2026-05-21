@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const GMAIL_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
@@ -42,7 +41,7 @@ export function buildGmailAuthorizationUrl(
     prompt: "consent",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("gmail")}?${params.toString()}`;
+  return `${GMAIL_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

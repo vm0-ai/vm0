@@ -15,7 +15,6 @@ import {
   type StaticConfidentialConnectorOAuthClientConfig,
   type StaticPublicConnectorOAuthClientConfig,
   type ConnectorType,
-  type OAuthConfigManagedAuthorizationCodeConnectorType,
   type OAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
@@ -474,12 +473,6 @@ export function getConnectorOAuthFlow(
   type: OAuthConnectorType,
 ): ConnectorOAuthConfig["flow"] {
   return getConnectorOAuthConfig(type).flow;
-}
-
-export function getConnectorOAuthAuthorizationEndpoint<
-  T extends OAuthConfigManagedAuthorizationCodeConnectorType,
->(type: T): string {
-  return CONNECTOR_TYPES[type].oauth.authorizationEndpoint.url;
 }
 
 /**

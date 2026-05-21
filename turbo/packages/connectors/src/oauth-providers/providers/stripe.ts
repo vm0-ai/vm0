@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const STRIPE_AUTHORIZATION_URL = "https://connect.stripe.com/oauth/authorize";
 
 const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 
@@ -44,7 +43,7 @@ export function buildStripeAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("stripe")}?${params.toString()}`;
+  return `${STRIPE_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

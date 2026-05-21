@@ -1,9 +1,9 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const XERO_AUTHORIZATION_URL =
+  "https://login.xero.com/identity/connect/authorize";
 
 const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 
@@ -44,7 +44,7 @@ export function buildXeroAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("xero")}?${params.toString()}`;
+  return `${XERO_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

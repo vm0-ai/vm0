@@ -32,10 +32,6 @@ export const googleAds = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://accounts.google.com/o/oauth2/v2/auth",
-      },
       tokenUrl: "https://oauth2.googleapis.com/token",
       client: {
         clientRegistration: "static",

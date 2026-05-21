@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const LINEAR_AUTHORIZATION_URL = "https://linear.app/oauth/authorize";
 
 // User info URL is not part of ConnectorOAuthConfig since it uses GraphQL (POST), not a standard
 // REST GET endpoint. Same pattern as GMAIL_PROFILE_URL in gmail.ts.
@@ -48,7 +47,7 @@ export function buildLinearAuthorizationUrl(
     prompt: "consent",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("linear")}?${params.toString()}`;
+  return `${LINEAR_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

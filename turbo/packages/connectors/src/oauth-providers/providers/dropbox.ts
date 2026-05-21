@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const DROPBOX_AUTHORIZATION_URL = "https://www.dropbox.com/oauth2/authorize";
 
 const DROPBOX_CURRENT_ACCOUNT_URL =
   "https://api.dropboxapi.com/2/users/get_current_account";
@@ -48,7 +47,7 @@ export function buildDropboxAuthorizationUrl(
     force_reapprove: "true",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("dropbox")}?${params.toString()}`;
+  return `${DROPBOX_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

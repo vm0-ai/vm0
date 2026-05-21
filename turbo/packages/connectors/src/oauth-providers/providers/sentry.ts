@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const SENTRY_AUTHORIZATION_URL = "https://sentry.io/oauth/authorize/";
 
 interface SentryUserInfo {
   id: string;
@@ -42,7 +41,7 @@ export function buildSentryAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("sentry")}?${params.toString()}`;
+  return `${SENTRY_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

@@ -28,10 +28,6 @@ export const notion = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://api.notion.com/v1/oauth/authorize",
-      },
       tokenUrl: "https://api.notion.com/v1/oauth/token",
       client: {
         clientRegistration: "static",

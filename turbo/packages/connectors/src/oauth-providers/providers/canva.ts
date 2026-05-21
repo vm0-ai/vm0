@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize";
 
 const CANVA_ME_URL = "https://api.canva.com/rest/v1/users/me";
 const CANVA_PROFILE_URL = "https://api.canva.com/rest/v1/users/me/profile";
@@ -83,7 +82,7 @@ export async function buildCanvaAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("canva")}?${params.toString()}`;
+  return `${CANVA_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

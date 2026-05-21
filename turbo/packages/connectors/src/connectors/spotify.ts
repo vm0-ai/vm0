@@ -30,10 +30,6 @@ export const spotify = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://accounts.spotify.com/authorize",
-      },
       tokenUrl: "https://accounts.spotify.com/api/token",
       client: {
         clientRegistration: "static",

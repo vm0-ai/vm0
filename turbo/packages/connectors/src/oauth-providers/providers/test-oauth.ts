@@ -9,10 +9,7 @@
  * the provider routes themselves 404 in production via isTestEndpointAllowed().
  */
 
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 export {
@@ -21,6 +18,8 @@ export {
   TEST_OAUTH_ACCESS_SECRET_NAME,
   TEST_OAUTH_REFRESH_SECRET_NAME,
 } from "./test-oauth-constants";
+
+const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 
 interface TokenResponse {
   accessToken: string;
@@ -35,11 +34,9 @@ interface UserInfo {
   email: string | null;
 }
 
-function resolveUrl(field: string, path: string | undefined): string {
+function resolveUrl(field: string, path: string): string {
   if (!path) {
-    throw new Error(
-      `Test OAuth URL missing: CONNECTOR_TYPES_DEF["test-oauth"].oauth.${field} is not set`,
-    );
+    throw new Error(`Test OAuth URL missing: ${field} is not set`);
   }
   if (URL.canParse(path)) {
     return path;
@@ -130,10 +127,7 @@ function previewBypassHeaders(): Record<string, string> {
 }
 
 function getAuthorizationUrl(): string {
-  return resolveUrl(
-    "authorizationEndpoint",
-    getConnectorOAuthAuthorizationEndpoint("test-oauth"),
-  );
+  return resolveUrl("authorizationUrl", TEST_OAUTH_AUTHORIZATION_URL);
 }
 
 function getTokenUrl(): string {

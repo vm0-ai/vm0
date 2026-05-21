@@ -28,10 +28,6 @@ export const hubspot = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://app.hubspot.com/oauth/authorize",
-      },
       tokenUrl: "https://api.hubapi.com/oauth/v1/token",
       client: {
         clientRegistration: "static",

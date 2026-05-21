@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const NOTION_AUTHORIZATION_URL = "https://api.notion.com/v1/oauth/authorize";
 
 interface NotionUserInfo {
   id: string;
@@ -48,7 +47,7 @@ export function buildNotionAuthorizationUrl(
     owner: "user",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("notion")}?${params.toString()}`;
+  return `${NOTION_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

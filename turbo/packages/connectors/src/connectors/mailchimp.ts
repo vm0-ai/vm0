@@ -38,10 +38,6 @@ export const mailchimp = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://login.mailchimp.com/oauth2/authorize",
-      },
       tokenUrl: "https://login.mailchimp.com/oauth2/token",
       client: {
         clientRegistration: "static",

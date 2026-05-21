@@ -1,9 +1,9 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const SUPABASE_AUTHORIZATION_URL =
+  "https://api.supabase.com/v1/oauth/authorize";
 
 const SUPABASE_ORGANIZATIONS_URL = "https://api.supabase.com/v1/organizations";
 
@@ -82,7 +82,7 @@ export async function buildSupabaseAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("supabase")}?${params.toString()}`;
+  return `${SUPABASE_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

@@ -1,10 +1,10 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import type { GoogleOAuthConnectorType } from "../google-oauth-connectors";
 import { throwOAuthError } from "./oauth-error";
+
+const GOOGLE_OAUTH_AUTHORIZATION_URL =
+  "https://accounts.google.com/o/oauth2/v2/auth";
 
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
@@ -49,7 +49,7 @@ export function buildGoogleAuthorizationUrl(
     prompt: "consent",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint(connectorType)}?${params.toString()}`;
+  return `${GOOGLE_OAUTH_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

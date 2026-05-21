@@ -1,9 +1,9 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const MAILCHIMP_AUTHORIZATION_URL =
+  "https://login.mailchimp.com/oauth2/authorize";
 
 const MAILCHIMP_METADATA_URL = "https://login.mailchimp.com/oauth2/metadata";
 
@@ -34,7 +34,7 @@ export function buildMailchimpAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("mailchimp")}?${params.toString()}`;
+  return `${MAILCHIMP_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

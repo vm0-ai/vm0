@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const AIRTABLE_AUTHORIZATION_URL = "https://airtable.com/oauth2/v1/authorize";
 
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
 
@@ -76,7 +75,7 @@ export async function buildAirtableAuthorizationUrl(
   });
 
   return {
-    url: `${getConnectorOAuthAuthorizationEndpoint("airtable")}?${params.toString()}`,
+    url: `${AIRTABLE_AUTHORIZATION_URL}?${params.toString()}`,
     codeVerifier,
   };
 }

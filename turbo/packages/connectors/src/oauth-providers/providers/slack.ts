@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const SLACK_AUTHORIZATION_URL = "https://slack.com/oauth/v2/authorize";
 
 interface SlackTokenResult {
   accessToken: string;
@@ -34,7 +33,7 @@ export function buildSlackAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("slack")}?${params.toString()}`;
+  return `${SLACK_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

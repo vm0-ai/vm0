@@ -24,7 +24,6 @@ export const vercel = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: { type: "provider" },
       tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
       client: {
         clientRegistration: "static",

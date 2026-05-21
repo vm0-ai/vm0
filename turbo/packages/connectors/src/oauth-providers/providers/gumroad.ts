@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const GUMROAD_AUTHORIZATION_URL = "https://gumroad.com/oauth/authorize";
 
 const GUMROAD_USER_URL = "https://api.gumroad.com/v2/user";
 
@@ -41,7 +40,7 @@ export function buildGumroadAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("gumroad")}?${params.toString()}`;
+  return `${GUMROAD_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 export async function exchangeGumroadCode(

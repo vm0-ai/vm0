@@ -1,9 +1,9 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const GARMIN_CONNECT_AUTHORIZATION_URL =
+  "https://connect.garmin.com/oauth2Confirm";
 
 const GARMIN_USER_ID_URL = "https://apis.garmin.com/wellness-api/rest/user/id";
 
@@ -82,7 +82,7 @@ export async function buildGarminConnectAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("garmin-connect")}?${params.toString()}`;
+  return `${GARMIN_CONNECT_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

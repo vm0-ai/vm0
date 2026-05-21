@@ -37,10 +37,6 @@ export const gumroad = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://gumroad.com/oauth/authorize",
-      },
       tokenUrl: "https://gumroad.com/oauth/token",
       client: {
         clientRegistration: "static",

@@ -29,10 +29,6 @@ export const outlookMail = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "authorization-code",
-      authorizationEndpoint: {
-        type: "config",
-        url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-      },
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       client: {
         clientRegistration: "static",

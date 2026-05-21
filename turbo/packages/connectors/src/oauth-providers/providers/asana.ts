@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const ASANA_AUTHORIZATION_URL = "https://app.asana.com/-/oauth_authorize";
 
 const ASANA_USER_URL = "https://app.asana.com/api/1.0/users/me";
 
@@ -40,7 +39,7 @@ export function buildAsanaAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("asana")}?${params.toString()}`;
+  return `${ASANA_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**

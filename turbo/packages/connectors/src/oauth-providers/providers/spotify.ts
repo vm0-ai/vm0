@@ -1,9 +1,8 @@
-import {
-  getConnectorOAuthAuthorizationEndpoint,
-  getConnectorOAuthConfig,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
+
+const SPOTIFY_AUTHORIZATION_URL = "https://accounts.spotify.com/authorize";
 
 const SPOTIFY_ME_URL = "https://api.spotify.com/v1/me";
 
@@ -44,7 +43,7 @@ export function buildSpotifyAuthorizationUrl(
     state,
   });
 
-  return `${getConnectorOAuthAuthorizationEndpoint("spotify")}?${params.toString()}`;
+  return `${SPOTIFY_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**
