@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.381.5](https://github.com/vm0-ai/vm0/compare/web-v12.381.4...web-v12.381.5) (2026-05-21)
+
+
+### Refactoring
+
+* rename oauth provider implementations ([#14339](https://github.com/vm0-ai/vm0/issues/14339)) ([b1940a7](https://github.com/vm0-ai/vm0/commit/b1940a70d46c62b929b621349a9cbc6372282f91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.4
+    * @vm0/connectors bumped to 1.25.1
+    * @vm0/core bumped to 8.286.4
+    * @vm0/db bumped to 1.17.4
+
 ## [12.381.4](https://github.com/vm0-ai/vm0/compare/web-v12.381.3...web-v12.381.4) (2026-05-20)
 
 
