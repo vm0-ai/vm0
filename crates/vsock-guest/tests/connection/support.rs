@@ -1,5 +1,9 @@
+use std::ffi::CString;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use vsock_guest::handle_connection;
 use vsock_proto::{
@@ -369,22 +373,39 @@ pub(crate) fn read_retry_eintr(
 }
 
 fn read_pid_file(path: &str) -> u32 {
-    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let path = Path::new(path);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let watcher = DirectoryWatcher::new(
+        path.parent()
+            .unwrap_or_else(|| panic!("pid path has no parent: {}", path.display())),
+    )
+    .unwrap_or_else(|e| panic!("failed to watch pid path parent {}: {e}", path.display()));
+
     loop {
-        match std::fs::read_to_string(path) {
-            Ok(contents) => {
-                if let Ok(pid) = contents.trim().parse() {
-                    return pid;
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => panic!("failed to read pid file {path}: {e}"),
+        match try_read_pid_file(path) {
+            Ok(Some(pid)) => return pid,
+            Ok(None) => {}
+            Err(e) => panic!("failed to read pid file {}: {e}", path.display()),
         }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
         assert!(
-            std::time::Instant::now() < deadline,
-            "pid file {path} was not created",
+            !remaining.is_zero(),
+            "pid file {} was not created",
+            path.display()
         );
-        thread::sleep(Duration::from_millis(50));
+        let changed = watcher
+            .wait(remaining)
+            .unwrap_or_else(|e| panic!("failed waiting for pid file {}: {e}", path.display()));
+        assert!(changed, "pid file {} was not created", path.display());
+    }
+}
+
+fn try_read_pid_file(path: &Path) -> std::io::Result<Option<u32>> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Ok(contents.trim().parse().ok()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
@@ -441,13 +462,19 @@ impl Drop for ProcessGroupFileGuard<'_> {
 }
 
 pub(crate) fn wait_for_pid_exit(pid: u32, context: &str) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(5);
     while pid_alive(pid) {
-        if std::time::Instant::now() >= deadline {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
             kill_pid_group(pid);
             panic!("pid {pid} did not terminate within 5s after {context}");
         }
-        thread::sleep(Duration::from_millis(50));
+        let changed = wait_for_pid_set_change(pid, remaining)
+            .unwrap_or_else(|e| panic!("failed waiting for pid {pid} after {context}: {e}"));
+        if !changed {
+            kill_pid_group(pid);
+            panic!("pid {pid} did not terminate within 5s after {context}");
+        }
     }
 }
 
@@ -472,29 +499,30 @@ fn proc_stat(pid: u32) -> Option<ProcStat> {
 }
 
 fn process_group_has_live_member(pgid: u32) -> bool {
+    !process_group_live_members(pgid).is_empty()
+}
+
+fn process_group_live_members(pgid: u32) -> Vec<u32> {
     if pgid == 0 {
-        return false;
+        return Vec::new();
     }
     let Ok(entries) = std::fs::read_dir("/proc") else {
-        return true;
+        return vec![pgid];
     };
-    entries.filter_map(Result::ok).any(|entry| {
-        let file_name = entry.file_name();
-        let Some(pid_text) = file_name.to_str() else {
-            return false;
-        };
-        let Ok(pid) = pid_text.parse::<u32>() else {
-            return false;
-        };
-        let Some(stat) = proc_stat(pid) else {
-            return false;
-        };
-        if stat.pgid != pgid || stat.state == 'Z' {
-            return false;
-        }
-        // SAFETY: `kill` with sig=0 is a no-op existence check.
-        unsafe { libc::kill(pid as i32, 0) == 0 }
-    })
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.file_name().to_str()?.parse::<u32>().ok())
+        .filter(|pid| {
+            let Some(stat) = proc_stat(*pid) else {
+                return false;
+            };
+            if stat.pgid != pgid || stat.state == 'Z' {
+                return false;
+            }
+            // SAFETY: `kill` with sig=0 is a no-op existence check.
+            unsafe { libc::kill(*pid as i32, 0) == 0 }
+        })
+        .collect()
 }
 
 /// Returns true iff `pid` is still running and signalable by the test owner.
@@ -511,6 +539,154 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
         Some(stat) if stat.state == 'Z' => process_group_has_live_member(stat.pgid),
         Some(_) => true,
         None => true,
+    }
+}
+
+struct DirectoryWatcher {
+    fd: OwnedFd,
+}
+
+impl DirectoryWatcher {
+    fn new(dir: &Path) -> std::io::Result<Self> {
+        // SAFETY: `inotify_init1` does not dereference user pointers and
+        // returns a fresh file descriptor on success.
+        let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // SAFETY: `fd` is a fresh descriptor returned by `inotify_init1`.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let dir = CString::new(dir.as_os_str().as_bytes()).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "watch directory contains a NUL byte",
+            )
+        })?;
+        let mask = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_CLOSE_WRITE;
+        // SAFETY: `fd` is a valid inotify descriptor and `dir` is a
+        // NUL-terminated directory path.
+        let wd = unsafe { libc::inotify_add_watch(fd.as_raw_fd(), dir.as_ptr(), mask) };
+        if wd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(Self { fd })
+    }
+
+    fn wait(&self, timeout: Duration) -> std::io::Result<bool> {
+        let pollfd = libc::pollfd {
+            fd: self.fd.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        match poll_until(&mut [pollfd], timeout)? {
+            true => {
+                drain_fd(self.fd.as_raw_fd());
+                Ok(true)
+            }
+            false => Ok(false),
+        }
+    }
+}
+
+fn wait_for_pid_set_change(pid: u32, timeout: Duration) -> std::io::Result<bool> {
+    let pids = live_pids_for_wait(pid);
+    if pids.is_empty() {
+        return Ok(true);
+    }
+    let pidfds = pids
+        .into_iter()
+        .filter_map(open_pidfd_if_live)
+        .collect::<std::io::Result<Vec<_>>>()?;
+    if pidfds.is_empty() {
+        return Ok(true);
+    }
+
+    let mut pollfds = pidfds
+        .iter()
+        .map(|pidfd| libc::pollfd {
+            fd: pidfd.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        })
+        .collect::<Vec<_>>();
+
+    poll_until(&mut pollfds, timeout)
+}
+
+fn live_pids_for_wait(pid: u32) -> Vec<u32> {
+    let mut pids = Vec::new();
+    match proc_stat(pid) {
+        Some(stat) if stat.state == 'Z' => pids.extend(process_group_live_members(stat.pgid)),
+        Some(stat) => {
+            pids.push(pid);
+            pids.extend(process_group_live_members(stat.pgid));
+        }
+        None => {
+            // SAFETY: `kill` with sig=0 is a no-op existence check.
+            if unsafe { libc::kill(pid as i32, 0) == 0 } {
+                pids.push(pid);
+            }
+            pids.extend(process_group_live_members(pid));
+        }
+    }
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
+fn open_pidfd_if_live(pid: u32) -> Option<std::io::Result<OwnedFd>> {
+    // SAFETY: `pidfd_open` does not dereference user pointers and returns a
+    // new file descriptor for the requested PID on success.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    if fd < 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return None;
+        }
+        return Some(Err(err));
+    }
+
+    // SAFETY: `fd` is a fresh descriptor returned by `pidfd_open`.
+    Some(Ok(unsafe {
+        OwnedFd::from_raw_fd(fd as std::os::fd::RawFd)
+    }))
+}
+
+fn poll_until(pollfds: &mut [libc::pollfd], timeout: Duration) -> std::io::Result<bool> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        let timeout_ms = remaining.as_millis().clamp(1, i32::MAX as u128) as i32;
+        // SAFETY: `pollfds` points to initialized pollfd entries and the len
+        // argument matches the slice length.
+        let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as _, timeout_ms) };
+        if result > 0 {
+            return Ok(true);
+        }
+        if result == 0 {
+            return Ok(false);
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(err);
+        }
+    }
+}
+
+fn drain_fd(fd: std::os::fd::RawFd) {
+    let mut buf = [0u8; 4096];
+    loop {
+        // SAFETY: `fd` is a valid non-blocking descriptor owned by the caller;
+        // `buf` is valid writable memory for the requested length.
+        let result = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+        if result <= 0 {
+            break;
+        }
     }
 }
 
@@ -552,14 +728,7 @@ mod tests {
             "live process group should remain visible after leader is reaped"
         );
         kill_pid_group(pid);
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
-        while process_group_has_live_member(pid) {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "cleanup should kill remaining process group members"
-            );
-            thread::sleep(Duration::from_millis(10));
-        }
+        wait_for_pid_exit(pid, "test cleanup for reaped leader live group");
         group_guard.disarm();
     }
 }

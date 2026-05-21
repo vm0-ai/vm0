@@ -290,7 +290,6 @@ mod tests {
         let child = command.spawn().unwrap();
 
         let cancel_thread = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(100));
             cancel_for_thread.store(true, Ordering::Release);
         });
 
