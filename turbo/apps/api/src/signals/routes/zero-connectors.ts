@@ -15,20 +15,8 @@ import {
   zeroLocalBrowserConnectorContract,
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import {
-  getConnectorAuthMethod,
-  getConnectorOAuthCredentials,
-} from "@vm0/connectors/connector-utils";
-import {
-  connectorTypeSchema,
-  type OAuthConnectorType,
-} from "@vm0/connectors/connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  buildConnectorOAuthAuthUrl,
-  isOAuthConnectorType,
-  type AuthUrlResult,
-} from "@vm0/connectors/oauth-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -44,7 +32,7 @@ import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
@@ -64,13 +52,20 @@ import {
   getConnectorOAuthCanonicalRedirectUrl,
   getConnectorOAuthOrigin,
 } from "./connector-oauth-origin";
+import {
+  buildConnectorOAuthCookieHeader,
+  CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+  CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+  CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
+  CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
+  CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+  connectorOAuthRedirectResponse,
+} from "./connector-oauth-route-state";
+import {
+  prepareConnectorOAuthStart,
+  resolveConnectorOAuthStartType,
+} from "./connector-oauth-start";
 
-const STATE_COOKIE_NAME = "connector_oauth_state";
-const SESSION_COOKIE_NAME = "connector_oauth_session";
-const PKCE_COOKIE_NAME = "connector_oauth_pkce";
-const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
-const COOKIE_MAX_AGE = 15 * 60;
-const REDIRECT_STATUS = 307;
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
 const CONNECTOR_SESSION_POLL_INTERVAL_SECONDS = 5;
 const CONNECTOR_SESSION_CODE_LENGTH = 8;
@@ -114,14 +109,6 @@ function isLocalBrowserEnabled(params: {
   });
 }
 
-function generateState(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return Array.from(array, (byte) => {
-    return byte.toString(16).padStart(2, "0");
-  }).join("");
-}
-
 function generateConnectorSessionCode(
   length: number = CONNECTOR_SESSION_CODE_LENGTH,
 ): string {
@@ -138,40 +125,11 @@ function generateConnectorSessionCode(
   return code;
 }
 
-function buildCookieHeader(
-  name: string,
-  value: string,
-  maxAge: number,
-): string {
-  const parts = [
-    `${name}=${encodeURIComponent(value)}`,
-    `Max-Age=${maxAge}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-  ];
-  if (env("ENV") === "production") {
-    parts.push("Secure");
-  }
-  return parts.join("; ");
-}
-
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-function redirectResponse(url: string): Response {
-  return new Response(null, {
-    status: REDIRECT_STATUS,
-    headers: { location: url },
-  });
-}
-
-function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
-  return typeof result === "string" ? { url: result } : result;
 }
 
 function connectorDoesNotUseOAuthResponse(type: string) {
@@ -180,24 +138,6 @@ function connectorDoesNotUseOAuthResponse(type: string) {
 
 function missingOAuthProviderResponse(type: string) {
   return jsonResponse({ error: `${type} OAuth provider not configured` }, 500);
-}
-
-async function buildProviderAuthorizeUrl(args: {
-  readonly type: OAuthConnectorType;
-  readonly credentials: NonNullable<
-    ReturnType<typeof getConnectorOAuthCredentials>
-  >;
-  readonly redirectUri: string;
-  readonly state: string;
-}): Promise<AuthUrlResult> {
-  return normalizeAuthUrlResult(
-    await buildConnectorOAuthAuthUrl({
-      type: args.type,
-      credentials: args.credentials,
-      redirectUri: args.redirectUri,
-      state: args.state,
-    }),
-  );
 }
 
 function internalServerError(message: string) {
@@ -408,7 +348,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     const request = get(request$).raw;
     const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(request);
     if (canonicalRedirectUrl) {
-      return redirectResponse(canonicalRedirectUrl);
+      return connectorOAuthRedirectResponse(canonicalRedirectUrl);
     }
     const origin = getConnectorOAuthOrigin(request);
     const requestUrl = new URL(request.url);
@@ -436,7 +376,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
           origin,
         );
         loginUrl.searchParams.set("redirect_url", authorizeUrl.toString());
-        return redirectResponse(loginUrl.toString());
+        return connectorOAuthRedirectResponse(loginUrl.toString());
       }
       return jsonResponse(auth.body, auth.status);
     }
@@ -448,10 +388,11 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    if (!getConnectorAuthMethod(type, "oauth")) {
-      return connectorDoesNotUseOAuthResponse(type);
-    }
-    if (!isOAuthConnectorType(type)) {
+    const startType = resolveConnectorOAuthStartType(type);
+    if (!startType.ok) {
+      if (startType.reason === "connector_does_not_use_oauth") {
+        return connectorDoesNotUseOAuthResponse(type);
+      }
       return missingOAuthProviderResponse(type);
     }
 
@@ -468,20 +409,15 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    const state = generateState();
-    const redirectUri = `${origin}/api/connectors/${type}/callback`;
-    const credentials = getConnectorOAuthCredentials(type, optionalEnv);
-    if (!credentials?.configured) {
-      return jsonResponse({ error: `${type} OAuth not configured` }, 500);
-    }
-
-    const authResult = await buildProviderAuthorizeUrl({
-      type,
-      credentials,
-      redirectUri,
-      state,
+    const prepared = await prepareConnectorOAuthStart({
+      type: startType.type,
+      origin,
+      readEnv: optionalEnv,
     });
     signal.throwIfAborted();
+    if (!prepared.ok) {
+      return jsonResponse({ error: `${type} OAuth not configured` }, 500);
+    }
 
     await set(
       deleteZeroConnectorLocalState$,
@@ -490,35 +426,43 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     );
     signal.throwIfAborted();
 
-    const response = redirectResponse(authResult.url);
+    const response = connectorOAuthRedirectResponse(prepared.authResult.url);
     response.headers.append(
       "Set-Cookie",
-      buildCookieHeader(STATE_COOKIE_NAME, state, COOKIE_MAX_AGE),
+      buildConnectorOAuthCookieHeader(
+        CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+        prepared.state,
+        CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+      ),
     );
-    if (authResult.codeVerifier) {
+    if (prepared.authResult.codeVerifier) {
       response.headers.append(
         "Set-Cookie",
-        buildCookieHeader(
-          PKCE_COOKIE_NAME,
-          authResult.codeVerifier,
-          COOKIE_MAX_AGE,
+        buildConnectorOAuthCookieHeader(
+          CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
+          prepared.authResult.codeVerifier,
+          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
         ),
       );
     }
-    if (authResult.oauthContext) {
+    if (prepared.authResult.oauthContext) {
       response.headers.append(
         "Set-Cookie",
-        buildCookieHeader(
-          OAUTH_CONTEXT_COOKIE_NAME,
-          authResult.oauthContext,
-          COOKIE_MAX_AGE,
+        buildConnectorOAuthCookieHeader(
+          CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+          prepared.authResult.oauthContext,
+          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
         ),
       );
     }
     if (query.session) {
       response.headers.append(
         "Set-Cookie",
-        buildCookieHeader(SESSION_COOKIE_NAME, query.session, COOKIE_MAX_AGE),
+        buildConnectorOAuthCookieHeader(
+          CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
+          query.session,
+          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+        ),
       );
     }
     return response;
@@ -540,10 +484,11 @@ const startConnectorOauthInner$ = command(
       return badRequestMessage("Computer connector does not use OAuth");
     }
 
-    if (!getConnectorAuthMethod(type, "oauth")) {
-      return badRequestMessage(`${type} connector does not use OAuth`);
-    }
-    if (!isOAuthConnectorType(type)) {
+    const startType = resolveConnectorOAuthStartType(type);
+    if (!startType.ok) {
+      if (startType.reason === "connector_does_not_use_oauth") {
+        return badRequestMessage(`${type} connector does not use OAuth`);
+      }
       return internalServerError(`${type} OAuth provider not configured`);
     }
 
@@ -553,21 +498,16 @@ const startConnectorOauthInner$ = command(
       );
     }
 
-    const state = generateState();
     const origin = getConnectorOAuthOrigin(request);
-    const redirectUri = `${origin}/api/connectors/${type}/callback`;
-    const credentials = getConnectorOAuthCredentials(type, optionalEnv);
-    if (!credentials?.configured) {
-      return internalServerError(`${type} OAuth not configured`);
-    }
-
-    const authResult = await buildProviderAuthorizeUrl({
-      type,
-      credentials,
-      redirectUri,
-      state,
+    const prepared = await prepareConnectorOAuthStart({
+      type: startType.type,
+      origin,
+      readEnv: optionalEnv,
     });
     signal.throwIfAborted();
+    if (!prepared.ok) {
+      return internalServerError(`${type} OAuth not configured`);
+    }
 
     await set(
       deleteZeroConnectorLocalState$,
@@ -578,21 +518,23 @@ const startConnectorOauthInner$ = command(
 
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
-      state,
-      type,
+      state: prepared.state,
+      type: startType.type,
       userId: auth.userId,
       orgId: auth.orgId,
-      redirectUri,
-      codeVerifier: authResult.codeVerifier,
-      oauthContext: authResult.oauthContext,
-      expiresAt: new Date(nowDate().getTime() + COOKIE_MAX_AGE * 1000),
+      redirectUri: prepared.redirectUri,
+      codeVerifier: prepared.authResult.codeVerifier,
+      oauthContext: prepared.authResult.oauthContext,
+      expiresAt: new Date(
+        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
+      ),
     });
     signal.throwIfAborted();
 
     return {
       status: 200 as const,
       body: {
-        authorizationUrl: authResult.url,
+        authorizationUrl: prepared.authResult.url,
       },
     };
   },

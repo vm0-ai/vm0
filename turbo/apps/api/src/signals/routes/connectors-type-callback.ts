@@ -37,12 +37,14 @@ import {
   getConnectorOAuthCanonicalRedirectUrl,
   getConnectorOAuthOrigin,
 } from "./connector-oauth-origin";
-
-const STATE_COOKIE_NAME = "connector_oauth_state";
-const SESSION_COOKIE_NAME = "connector_oauth_session";
-const PKCE_COOKIE_NAME = "connector_oauth_pkce";
-const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
-const REDIRECT_STATUS = 307;
+import {
+  clearConnectorOAuthCookies,
+  CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+  CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
+  CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
+  CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+  connectorOAuthRedirectResponse,
+} from "./connector-oauth-route-state";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -124,36 +126,6 @@ function getCookie(request: Request, name: string): string | undefined {
   return undefined;
 }
 
-function buildDeleteCookieHeader(name: string): string {
-  return `${name}=; Max-Age=0; Path=/`;
-}
-
-function redirectResponse(url: string): Response {
-  return new Response(null, {
-    status: REDIRECT_STATUS,
-    headers: { location: url },
-  });
-}
-
-function clearOAuthCookies(response: Response): void {
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(STATE_COOKIE_NAME),
-  );
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(SESSION_COOKIE_NAME),
-  );
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(PKCE_COOKIE_NAME),
-  );
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(OAUTH_CONTEXT_COOKIE_NAME),
-  );
-}
-
 function redirectWithError(
   origin: string,
   type: string,
@@ -164,9 +136,9 @@ function redirectWithError(
   errorUrl.searchParams.set("type", type);
   errorUrl.searchParams.set("message", message);
 
-  const response = redirectResponse(errorUrl.toString());
+  const response = connectorOAuthRedirectResponse(errorUrl.toString());
   if (clearCookies) {
-    clearOAuthCookies(response);
+    clearConnectorOAuthCookies(response);
   }
   return response;
 }
@@ -356,8 +328,8 @@ function successRedirectResponse(args: {
   successUrl.searchParams.set("type", args.type);
   successUrl.searchParams.set("username", args.username ?? "");
 
-  const response = redirectResponse(successUrl.toString());
-  clearOAuthCookies(response);
+  const response = connectorOAuthRedirectResponse(successUrl.toString());
+  clearConnectorOAuthCookies(response);
   return response;
 }
 
@@ -485,7 +457,7 @@ const callbackConnectorInner$ = command(
     const request = get(request$).raw;
     const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(request);
     if (canonicalRedirectUrl) {
-      return redirectResponse(canonicalRedirectUrl);
+      return connectorOAuthRedirectResponse(canonicalRedirectUrl);
     }
     const origin = getConnectorOAuthOrigin(request);
 
@@ -496,10 +468,13 @@ const callbackConnectorInner$ = command(
     const { connectorType } = connectorTypeResult;
 
     const writeDb = set(writeDb$);
-    const savedState = getCookie(request, STATE_COOKIE_NAME);
-    const sessionId = getCookie(request, SESSION_COOKIE_NAME);
-    const codeVerifier = getCookie(request, PKCE_COOKIE_NAME);
-    const oauthContext = getCookie(request, OAUTH_CONTEXT_COOKIE_NAME);
+    const savedState = getCookie(request, CONNECTOR_OAUTH_STATE_COOKIE_NAME);
+    const sessionId = getCookie(request, CONNECTOR_OAUTH_SESSION_COOKIE_NAME);
+    const codeVerifier = getCookie(request, CONNECTOR_OAUTH_PKCE_COOKIE_NAME);
+    const oauthContext = getCookie(
+      request,
+      CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+    );
     const state = query.state;
     const storedStateCallbackArgs = {
       db: writeDb,
