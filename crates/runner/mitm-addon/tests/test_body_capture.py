@@ -620,6 +620,14 @@ class TestDecompression:
         monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
         return stats
 
+    def _pseudo_random_ascii(self, size: int) -> bytes:
+        state = 0x12345678
+        body = bytearray()
+        for _ in range(size):
+            state = (1103515245 * state + 12345) & 0x7FFFFFFF
+            body.append(32 + (state % 95))
+        return bytes(body)
+
     def test_no_encoding_captures_plain_text(self, real_flow):
         flow = self._make_flow_with_compressed_buffer(real_flow, b'{"ok": true}', "")
         entry = {}
@@ -676,12 +684,7 @@ class TestDecompression:
         assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_brotli_large_text_uses_adaptive_chunks(self, real_flow, monkeypatch):
-        state = 0x12345678
-        body = bytearray()
-        for _ in range(STREAM_BUFFER_LIMIT // 2):
-            state = (1103515245 * state + 12345) & 0x7FFFFFFF
-            body.append(32 + (state % 95))
-        original = bytes(body)
+        original = self._pseudo_random_ascii(STREAM_BUFFER_LIMIT // 2)
         compressed = brotli.compress(original)
         old_call_count = (len(compressed) + 15) // 16
         assert len(compressed) < STREAM_BUFFER_LIMIT
@@ -698,6 +701,21 @@ class TestDecompression:
         assert stats["calls"] <= 80
         assert stats["calls"] < old_call_count // 8
         assert stats["max_input"] <= 1024
+
+    def test_brotli_very_large_input_caps_adaptive_chunk_size(self, real_flow, monkeypatch):
+        original = self._pseudo_random_ascii(STREAM_BUFFER_LIMIT * 3)
+        compressed = brotli.compress(original)
+        assert len(compressed) > 64 * 1024
+
+        stats = self._track_brotli_decompressor(monkeypatch)
+
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert stats["max_input"] == 1024
 
     def test_brotli_zip_bomb_capped_without_full_decode(self, real_flow, monkeypatch):
         original = b"\x00" * (10 * 1024 * 1024)
