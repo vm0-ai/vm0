@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.160.8](https://github.com/vm0-ai/vm0/compare/cli-v9.160.7...cli-v9.160.8) (2026-05-21)
+
+
+### Bug Fixes
+
+* **desktop:** map computer use screenshot clicks ([#14469](https://github.com/vm0-ai/vm0/issues/14469)) ([d3f697a](https://github.com/vm0-ai/vm0/commit/d3f697a92a1a26dbf87fa6e9c3edbda96e4348e2))
+* target computer-use input dispatch ([#14471](https://github.com/vm0-ai/vm0/issues/14471)) ([d3471a6](https://github.com/vm0-ai/vm0/commit/d3471a6b2b147da00cff315e254c0b78d65e8d73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.36.2
+    * @vm0/connectors bumped to 1.27.0
+    * @vm0/core bumped to 8.288.1
+
 ## [9.160.7](https://github.com/vm0-ai/vm0/compare/cli-v9.160.6...cli-v9.160.7) (2026-05-21)
 
 

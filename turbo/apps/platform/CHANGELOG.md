@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.374.0](https://github.com/vm0-ai/vm0/compare/app-v0.373.1...app-v0.374.0) (2026-05-21)
+
+
+### Features
+
+* add OAuth device authorization provider capability ([#14465](https://github.com/vm0-ai/vm0/issues/14465)) ([0d721f9](https://github.com/vm0-ai/vm0/commit/0d721f93ddc06f4c20a7e60f622f35868b81df63))
+
+
+### Bug Fixes
+
+* target computer-use input dispatch ([#14471](https://github.com/vm0-ai/vm0/issues/14471)) ([d3471a6](https://github.com/vm0-ai/vm0/commit/d3471a6b2b147da00cff315e254c0b78d65e8d73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.2
+    * @vm0/connectors bumped to 1.27.0
+    * @vm0/core bumped to 8.288.1
+
 ## [0.373.1](https://github.com/vm0-ai/vm0/compare/app-v0.373.0...app-v0.373.1) (2026-05-21)
 
 

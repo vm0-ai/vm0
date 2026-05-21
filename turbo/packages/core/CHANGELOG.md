@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.288.1](https://github.com/vm0-ai/vm0/compare/core-v8.288.0...core-v8.288.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* tolerate legacy runner contexts in kms backfill ([#14364](https://github.com/vm0-ai/vm0/issues/14364)) ([334fa60](https://github.com/vm0-ai/vm0/commit/334fa602b6a62c2592bbe76ae7e1811bb31c3620))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.2
+    * @vm0/connectors bumped to 1.27.0
+
 ## [8.288.0](https://github.com/vm0-ai/vm0/compare/core-v8.287.0...core-v8.288.0) (2026-05-21)
 
 

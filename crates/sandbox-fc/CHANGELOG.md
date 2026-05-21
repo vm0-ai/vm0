@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.5...sandbox-fc-v0.35.6) (2026-05-21)
+
+
+### Bug Fixes
+
+* prevent workspace leak during create rename ([#14461](https://github.com/vm0-ai/vm0/issues/14461)) ([a07062e](https://github.com/vm0-ai/vm0/commit/a07062ef3eca84864e7885334df6668ec89dbfc7))
+
 ## [0.35.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.4...sandbox-fc-v0.35.5) (2026-05-21)
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.65.0](https://github.com/vm0-ai/vm0/compare/api-v1.64.0...api-v1.65.0) (2026-05-21)
+
+
+### Features
+
+* add OAuth device authorization provider capability ([#14465](https://github.com/vm0-ai/vm0/issues/14465)) ([0d721f9](https://github.com/vm0-ai/vm0/commit/0d721f93ddc06f4c20a7e60f622f35868b81df63))
+
+
+### Bug Fixes
+
+* **api:** validate checkout redirect origin against APP_URL ([#14473](https://github.com/vm0-ai/vm0/issues/14473)) ([61db180](https://github.com/vm0-ai/vm0/commit/61db180144ac055977a8b78cce8c66976876611f))
+* **desktop:** map computer use screenshot clicks ([#14469](https://github.com/vm0-ai/vm0/issues/14469)) ([d3f697a](https://github.com/vm0-ai/vm0/commit/d3f697a92a1a26dbf87fa6e9c3edbda96e4348e2))
+* target computer-use input dispatch ([#14471](https://github.com/vm0-ai/vm0/issues/14471)) ([d3471a6](https://github.com/vm0-ai/vm0/commit/d3471a6b2b147da00cff315e254c0b78d65e8d73))
+* tolerate legacy runner contexts in kms backfill ([#14364](https://github.com/vm0-ai/vm0/issues/14364)) ([334fa60](https://github.com/vm0-ai/vm0/commit/334fa602b6a62c2592bbe76ae7e1811bb31c3620))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.2
+    * @vm0/connectors bumped to 1.27.0
+    * @vm0/core bumped to 8.288.1
+    * @vm0/db bumped to 1.17.8
+
 ## [1.64.0](https://github.com/vm0-ai/vm0/compare/api-v1.63.0...api-v1.64.0) (2026-05-21)
 
 
