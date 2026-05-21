@@ -17,6 +17,7 @@ import { logger } from "../../lib/log";
 import {
   isTwilioApiError,
   sendTwilioWhatsAppMessage,
+  sendTwilioWhatsAppTypingIndicator,
 } from "../external/twilio-client";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route";
@@ -84,6 +85,35 @@ function errorResponse(
 function parsePayload(payload: unknown): TwilioCallbackPayload | null {
   const result = twilioCallbackPayloadSchema.safeParse(payload);
   return result.success ? result.data : null;
+}
+
+async function refreshTypingIfSupported(args: {
+  readonly payload: TwilioCallbackPayload;
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const config = getTwilioWhatsAppConfig();
+  if (!config.configured || !config.accountSid || !config.authToken) {
+    return;
+  }
+
+  const result = await settle(
+    sendTwilioWhatsAppTypingIndicator(
+      {
+        accountSid: config.accountSid,
+        authToken: config.authToken,
+        messageSid: args.payload.messageSid,
+      },
+      args.signal,
+    ),
+  );
+  if (!result.ok) {
+    log.debug("Failed to refresh WhatsApp typing indicator", {
+      runId: args.runId,
+      messageSid: args.payload.messageSid,
+      error: result.error,
+    });
+  }
 }
 
 async function loadRunContext(args: {
@@ -326,8 +356,7 @@ async function handleCompletion(args: {
     ? await resolveAgentPhoneReplyFooterText({
         db: args.db,
         orgId: run.orgId,
-        runId: args.runId,
-        agentId: args.payload.agentId,
+        composeId: args.payload.agentId,
       })
     : undefined;
   args.signal.throwIfAborted();
@@ -369,6 +398,12 @@ const handleTwilioCallback$ = command(
     }
 
     if (callback.status === "progress") {
+      await refreshTypingIfSupported({
+        payload,
+        runId: callback.runId,
+        signal,
+      });
+      signal.throwIfAborted();
       return successResponse();
     }
 

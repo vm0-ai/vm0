@@ -2,11 +2,19 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { command, type Getter, type Setter } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+import {
+  getCanonicalModelDisplayName,
+  getVm0VisibleModels,
+  isSupportedRunModel,
+  normalizeRunModelId,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { whatsappMessages } from "@vm0/db/schema/whatsapp-message";
 import { whatsappThreadSessions } from "@vm0/db/schema/whatsapp-thread-session";
+import { whatsappUserAgentPreferences } from "@vm0/db/schema/whatsapp-user-agent-preference";
 import { whatsappUserLinks } from "@vm0/db/schema/whatsapp-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq } from "drizzle-orm";
@@ -15,16 +23,24 @@ import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../external/time";
 import { publishUserSignal } from "../external/realtime";
-import { sendTwilioWhatsAppMessage } from "../external/twilio-client";
+import {
+  sendTwilioWhatsAppMessage,
+  sendTwilioWhatsAppTypingIndicator,
+} from "../external/twilio-client";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { settle } from "../utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import {
+  updateUserModelPreference$,
+  userModelPreference,
+} from "./zero-user-data.service";
 import {
   formatAgentPhoneAuditLink,
   markdownToImessagePlain,
@@ -383,6 +399,50 @@ async function resolveOrgDefaultComposeId(
   return metadata?.defaultAgentId ?? null;
 }
 
+async function getWhatsAppUserAgentPreference(
+  db: ReadonlyDb,
+  vm0UserId: string,
+  orgId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({
+      selectedComposeId: whatsappUserAgentPreferences.selectedComposeId,
+    })
+    .from(whatsappUserAgentPreferences)
+    .where(
+      and(
+        eq(whatsappUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(whatsappUserAgentPreferences.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  return row?.selectedComposeId ?? null;
+}
+
+async function resolveEffectiveWhatsAppComposeId(
+  db: ReadonlyDb,
+  vm0UserId: string,
+  orgId: string,
+): Promise<string | null> {
+  const preference = await getWhatsAppUserAgentPreference(db, vm0UserId, orgId);
+  if (preference) {
+    const [compose] = await db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(
+        and(eq(agentComposes.id, preference), eq(agentComposes.orgId, orgId)),
+      )
+      .limit(1);
+
+    if (compose?.id) {
+      return preference;
+    }
+  }
+
+  return resolveOrgDefaultComposeId(db, orgId);
+}
+
 async function getWorkspaceAgent(
   db: ReadonlyDb,
   composeId: string,
@@ -414,7 +474,11 @@ async function resolveWhatsAppAgent(
   db: ReadonlyDb,
   userLink: WhatsAppUserLink,
 ): Promise<WorkspaceAgent | undefined> {
-  const composeId = await resolveOrgDefaultComposeId(db, userLink.orgId);
+  const composeId = await resolveEffectiveWhatsAppComposeId(
+    db,
+    userLink.vm0UserId,
+    userLink.orgId,
+  );
   if (!composeId) {
     return undefined;
   }
@@ -745,6 +809,38 @@ async function sendWhatsAppText(
   );
 }
 
+async function refreshTypingIfSupported(
+  event: WhatsAppMessageEvent,
+  signal: AbortSignal,
+): Promise<void> {
+  const config = getTwilioWhatsAppConfig();
+  if (
+    !config.configured ||
+    !config.accountSid ||
+    !config.authToken ||
+    !event.messageSid
+  ) {
+    return;
+  }
+
+  const result = await settle(
+    sendTwilioWhatsAppTypingIndicator(
+      {
+        accountSid: config.accountSid,
+        authToken: config.authToken,
+        messageSid: event.messageSid,
+      },
+      signal,
+    ),
+  );
+  if (!result.ok) {
+    log.debug("Failed to send WhatsApp typing indicator", {
+      messageSid: event.messageSid,
+      error: result.error,
+    });
+  }
+}
+
 function formatConnectPrompt(event: WhatsAppMessageEvent): string {
   const connectUrl = buildWhatsAppConnectUrl({
     phoneHandle: event.fromNumber,
@@ -763,6 +859,7 @@ function formatHelpMessage(): string {
     "",
     "/connect - Connect this WhatsApp number to VM0",
     "/new_session - Start a new conversation",
+    "/model - Choose your model",
     "/disconnect - Disconnect this WhatsApp number from VM0",
     "/help - Show these commands",
     "",
@@ -851,7 +948,182 @@ async function handleNewSessionCommand(args: {
   );
 }
 
+function commandArgument(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const firstWhitespaceIndex = trimmed.search(/\s/u);
+  if (firstWhitespaceIndex === -1) {
+    return "";
+  }
+  return trimmed.slice(firstWhitespaceIndex).trim();
+}
+
+function lookupKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/gu, "-");
+}
+
+function compactLookupKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/gu, "");
+}
+
+function findModelOption(
+  options: readonly {
+    readonly model: SupportedRunModel;
+    readonly label: string;
+    readonly isDefault: boolean;
+  }[],
+  input: string,
+) {
+  const normalizedInput = normalizeRunModelId(input.trim());
+  const inputKeys = new Set([
+    lookupKey(input),
+    lookupKey(normalizedInput),
+    compactLookupKey(input),
+    compactLookupKey(normalizedInput),
+  ]);
+  return options.find((option) => {
+    return [
+      option.model,
+      normalizeRunModelId(option.model),
+      option.label,
+      getCanonicalModelDisplayName(option.model),
+    ].some((value) => {
+      return (
+        inputKeys.has(lookupKey(value)) ||
+        inputKeys.has(compactLookupKey(value))
+      );
+    });
+  });
+}
+
+function formatWhatsAppModelOptionsMessage(
+  options: readonly {
+    readonly model: SupportedRunModel;
+    readonly label: string;
+    readonly isDefault: boolean;
+  }[],
+  currentSelectedModel: string | null,
+): string {
+  const optionLines = options.map((option) => {
+    const markers = [
+      option.model === currentSelectedModel ? "current" : null,
+      option.isDefault ? "workspace default" : null,
+    ].filter((marker): marker is string => {
+      return marker !== null;
+    });
+    const suffix = markers.length > 0 ? ` (${markers.join(", ")})` : "";
+    return `/model ${option.model} - ${option.label}${suffix}`;
+  });
+
+  const current = currentSelectedModel
+    ? getCanonicalModelDisplayName(currentSelectedModel)
+    : "workspace default";
+  return [
+    "Available models",
+    "",
+    `Current: ${current}`,
+    "",
+    "Send one of these commands to switch:",
+    ...optionLines,
+  ].join("\n");
+}
+
+async function handleModelCommand(args: {
+  readonly get: ComputedGetter;
+  readonly set: ComputedSetter;
+  readonly event: WhatsAppMessageEvent;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const visibleModels = new Set(getVm0VisibleModels());
+  const [policies, preference] = await Promise.all([
+    args.set(
+      listOrgModelPolicies$,
+      { orgId: args.orgId, userId: args.userId },
+      args.signal,
+    ),
+    args.get(userModelPreference({ orgId: args.orgId, userId: args.userId })),
+  ]);
+  args.signal.throwIfAborted();
+
+  const options = policies.policies.flatMap((policy) => {
+    if (
+      !isSupportedRunModel(policy.model) ||
+      !visibleModels.has(policy.model) ||
+      policy.routeStatus !== "valid"
+    ) {
+      return [];
+    }
+    return {
+      model: policy.model,
+      label: policy.modelLabel,
+      isDefault: policy.isDefault,
+    };
+  });
+
+  if (options.length === 0) {
+    await sendWhatsAppText(
+      args.event.fromNumber,
+      "Error: No models are configured for this workspace.",
+      args.signal,
+    );
+    return;
+  }
+
+  const input = commandArgument(args.event.body);
+  if (!input) {
+    await sendWhatsAppText(
+      args.event.fromNumber,
+      formatWhatsAppModelOptionsMessage(options, preference.selectedModel),
+      args.signal,
+    );
+    return;
+  }
+
+  const option = findModelOption(options, input);
+  if (!option) {
+    await sendWhatsAppText(
+      args.event.fromNumber,
+      [
+        `Error: Unknown model "${input}".`,
+        "",
+        formatWhatsAppModelOptionsMessage(options, preference.selectedModel),
+      ].join("\n"),
+      args.signal,
+    );
+    return;
+  }
+
+  await args.set(
+    updateUserModelPreference$,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      preference: { selectedModel: option.model },
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+
+  await sendWhatsAppText(
+    args.event.fromNumber,
+    `Switched to ${option.label}.`,
+    args.signal,
+  );
+}
+
 async function dispatchWhatsAppCommand(args: {
+  readonly get: ComputedGetter;
+  readonly set: ComputedSetter;
   readonly db: Db;
   readonly command: string;
   readonly event: WhatsAppMessageEvent;
@@ -879,6 +1151,21 @@ async function dispatchWhatsAppCommand(args: {
       );
       return true;
     }
+    case "model": {
+      if (!args.userLink) {
+        await sendConnectPrompt(args.event, args.signal);
+        return true;
+      }
+      await handleModelCommand({
+        get: args.get,
+        set: args.set,
+        event: args.event,
+        orgId: args.userLink.orgId,
+        userId: args.userLink.vm0UserId,
+        signal: args.signal,
+      });
+      return true;
+    }
     default: {
       return false;
     }
@@ -886,6 +1173,8 @@ async function dispatchWhatsAppCommand(args: {
 }
 
 function handleWhatsAppCommandIfPresent(args: {
+  readonly get: ComputedGetter;
+  readonly set: ComputedSetter;
   readonly db: Db;
   readonly event: WhatsAppMessageEvent;
   readonly userLink: WhatsAppUserLink | null;
@@ -897,6 +1186,8 @@ function handleWhatsAppCommandIfPresent(args: {
   }
 
   return dispatchWhatsAppCommand({
+    get: args.get,
+    set: args.set,
     db: args.db,
     command: commandText,
     event: args.event,
@@ -1050,6 +1341,8 @@ export const handleWhatsAppMessage$ = command(
 
     if (
       await handleWhatsAppCommandIfPresent({
+        get,
+        set,
         db,
         event: params.event,
         userLink: params.userLink,
@@ -1075,13 +1368,17 @@ export const handleWhatsAppMessage$ = command(
       return;
     }
 
-    const modelRoute = await resolveIntegrationModelRouteForUser({
-      get,
-      set,
-      orgId: params.userLink.orgId,
-      userId: params.userLink.vm0UserId,
+    await refreshTypingIfSupported(params.event, signal);
+    signal.throwIfAborted();
+
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: params.userLink.orgId,
+        userId: params.userLink.vm0UserId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const rootMessageId = WHATSAPP_DM_ROOT_MESSAGE_ID;

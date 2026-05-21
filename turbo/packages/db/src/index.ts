@@ -46,6 +46,7 @@ import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-sessi
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
 import * as whatsappUserLinkSchema from "./schema/whatsapp-user-link";
+import * as whatsappUserAgentPreferenceSchema from "./schema/whatsapp-user-agent-preference";
 import * as whatsappThreadSessionSchema from "./schema/whatsapp-thread-session";
 import * as whatsappMessageSchema from "./schema/whatsapp-message";
 import * as whatsappVerificationSendCooldownSchema from "./schema/whatsapp-verification-send-cooldown";
@@ -135,6 +136,7 @@ export const schema = {
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,
   ...whatsappUserLinkSchema,
+  ...whatsappUserAgentPreferenceSchema,
   ...whatsappThreadSessionSchema,
   ...whatsappMessageSchema,
   ...whatsappVerificationSendCooldownSchema,

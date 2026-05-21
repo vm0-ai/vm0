@@ -11,6 +11,10 @@ interface TwilioSentMessage {
   readonly body: string | null;
 }
 
+interface TwilioTypingIndicator {
+  readonly success: boolean;
+}
+
 interface TwilioApiError extends Error {
   readonly name: "TwilioApiError";
   readonly status: number;
@@ -19,6 +23,13 @@ interface TwilioApiError extends Error {
 
 function twilioApiBase(): string {
   return optionalEnv("TWILIO_API_BASE_URL") ?? "https://api.twilio.com";
+}
+
+function twilioMessagingApiBase(): string {
+  return (
+    optionalEnv("TWILIO_MESSAGING_API_BASE_URL") ??
+    "https://messaging.twilio.com"
+  );
 }
 
 function twilioAccountSid(): string {
@@ -120,4 +131,47 @@ export async function sendTwilioWhatsAppMessage(
     toNumber: stripWhatsAppAddress(result.to) ?? opts.toNumber,
     body: typeof result.body === "string" ? result.body : opts.body,
   };
+}
+
+export async function sendTwilioWhatsAppTypingIndicator(
+  opts: {
+    readonly accountSid?: string;
+    readonly authToken?: string;
+    readonly messageSid: string;
+  },
+  signal?: AbortSignal,
+): Promise<TwilioTypingIndicator> {
+  const accountSid = opts.accountSid ?? twilioAccountSid();
+  const authToken = opts.authToken ?? twilioAuthToken();
+  const form = new URLSearchParams({
+    messageId: opts.messageSid,
+    channel: "whatsapp",
+  });
+
+  const response = await fetch(
+    `${twilioMessagingApiBase()}/v2/Indicators/Typing.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(
+          `${accountSid}:${authToken}`,
+        ).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    log.debug("Twilio WhatsApp typing indicator failed", {
+      status: response.status,
+      body: text,
+    });
+    throw makeTwilioApiError(response.status, text);
+  }
+
+  const result = (await response.json()) as Record<string, unknown>;
+  return { success: result.success === true };
 }

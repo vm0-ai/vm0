@@ -1,21 +1,39 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroIntegrationsWhatsAppContract } from "@vm0/api-contracts/contracts/zero-integrations-whatsapp";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { whatsappMessages } from "@vm0/db/schema/whatsapp-message";
 import { whatsappUserLinks } from "@vm0/db/schema/whatsapp-user-link";
+import { whatsappThreadSessions } from "@vm0/db/schema/whatsapp-thread-session";
+import { whatsappUserAgentPreferences } from "@vm0/db/schema/whatsapp-user-agent-preference";
 import { whatsappVerificationSendCooldowns } from "@vm0/db/schema/whatsapp-verification-send-cooldown";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { clearAllDetached } from "../../utils";
 import { signWhatsAppConnectParams } from "../../services/zero-whatsapp.service";
+import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -28,8 +46,19 @@ interface TwilioSendCall {
   readonly body: string | null;
 }
 
+interface TwilioTypingCall {
+  readonly messageId: string | null;
+  readonly channel: string | null;
+}
+
+interface WhatsAppRunFixture {
+  readonly userId: string;
+  readonly orgId: string;
+}
+
 const WEBHOOK_URL = "http://api.test/api/integrations/twilio/webhook";
 const TWILIO_AUTH_TOKEN = "twilio-test-token";
+const CALLBACK_SECRET = "test-whatsapp-callback-secret";
 const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
@@ -56,6 +85,86 @@ const trackVerificationSendCooldown = createFixtureTracker(
           eq(whatsappVerificationSendCooldowns.scopeKey, fixture.scopeKey),
         ),
       );
+  },
+);
+
+const trackWhatsAppRunFixture = createFixtureTracker(
+  async (fixture: WhatsAppRunFixture) => {
+    const runRows = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, fixture.orgId),
+          eq(agentRuns.userId, fixture.userId),
+        ),
+      );
+    const runIds = runRows.map((row) => {
+      return row.id;
+    });
+    if (runIds.length > 0) {
+      await writeDb
+        .delete(runnerJobQueue)
+        .where(inArray(runnerJobQueue.runId, runIds));
+      await writeDb
+        .delete(agentRunCallbacks)
+        .where(inArray(agentRunCallbacks.runId, runIds));
+      await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+      await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+    }
+
+    await writeDb
+      .delete(whatsappThreadSessions)
+      .where(
+        inArray(
+          whatsappThreadSessions.whatsappUserLinkId,
+          writeDb
+            .select({ id: whatsappUserLinks.id })
+            .from(whatsappUserLinks)
+            .where(eq(whatsappUserLinks.orgId, fixture.orgId)),
+        ),
+      );
+    await writeDb
+      .delete(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.orgId, fixture.orgId),
+          eq(agentSessions.userId, fixture.userId),
+        ),
+      );
+    await writeDb
+      .delete(whatsappUserAgentPreferences)
+      .where(eq(whatsappUserAgentPreferences.orgId, fixture.orgId));
+
+    const composeRows = await writeDb
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(eq(agentComposes.orgId, fixture.orgId));
+    const composeIds = composeRows.map((row) => {
+      return row.id;
+    });
+    if (composeIds.length > 0) {
+      await writeDb
+        .delete(zeroAgents)
+        .where(inArray(zeroAgents.id, composeIds));
+      await writeDb
+        .delete(agentComposeVersions)
+        .where(inArray(agentComposeVersions.composeId, composeIds));
+      await writeDb
+        .delete(agentComposes)
+        .where(inArray(agentComposes.id, composeIds));
+    }
+
+    await writeDb
+      .delete(orgModelPolicies)
+      .where(eq(orgModelPolicies.orgId, fixture.orgId));
+    await writeDb.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.orgId));
+    await writeDb
+      .delete(orgMembersMetadata)
+      .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+    await writeDb
+      .delete(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
   },
 );
 
@@ -156,6 +265,240 @@ function twilioSendMessage() {
     },
   );
   return { handler, calls };
+}
+
+function twilioTypingIndicator() {
+  const calls: TwilioTypingCall[] = [];
+  const handler = http.post(
+    "https://messaging.twilio.com/v2/Indicators/Typing.json",
+    async ({ request }) => {
+      const text = await request.text();
+      const body = new URLSearchParams(text);
+      calls.push({
+        messageId: body.get("messageId"),
+        channel: body.get("channel"),
+      });
+      return HttpResponse.json({ success: true });
+    },
+  );
+  return { handler, calls };
+}
+
+function twilioCallbackSink() {
+  return http.post(
+    "http://localhost:3000/api/internal/callbacks/twilio",
+    () => {
+      return HttpResponse.json({ ok: true });
+    },
+  );
+}
+
+async function seedWhatsAppAgent(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly name: string;
+  readonly displayName: string;
+}): Promise<string> {
+  const composeId = randomUUID();
+  const versionId = randomUUID();
+  await writeDb.insert(agentComposes).values({
+    id: composeId,
+    userId: args.userId,
+    orgId: args.orgId,
+    name: args.name,
+    headVersionId: versionId,
+  });
+  await writeDb.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId,
+    createdBy: args.userId,
+    content: {
+      version: "1.0",
+      agents: {
+        [args.name]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "test-key" },
+        },
+      },
+    },
+  });
+  await writeDb.insert(zeroAgents).values({
+    id: composeId,
+    orgId: args.orgId,
+    owner: args.userId,
+    name: args.name,
+    displayName: args.displayName,
+    visibility: "public",
+    customSkills: [],
+  });
+  return composeId;
+}
+
+async function seedWhatsAppRunFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly phoneHandle: string;
+  readonly selectedComposeId?: string | null;
+}): Promise<{
+  readonly defaultComposeId: string;
+  readonly preferredComposeId: string;
+  readonly userLinkId: string;
+}> {
+  const defaultComposeId = await seedWhatsAppAgent({
+    userId: args.userId,
+    orgId: args.orgId,
+    name: "whatsapp-default-agent",
+    displayName: "WhatsApp Default Agent",
+  });
+  const preferredComposeId = await seedWhatsAppAgent({
+    userId: args.userId,
+    orgId: args.orgId,
+    name: "whatsapp-preferred-agent",
+    displayName: "WhatsApp Preferred Agent",
+  });
+  await writeDb.insert(orgMetadata).values({
+    orgId: args.orgId,
+    defaultAgentId: defaultComposeId,
+    tier: "free",
+    credits: 100_000,
+  });
+  await writeDb.insert(orgMembersMetadata).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    timezone: "UTC",
+  });
+  await writeDb.insert(vm0ApiKeys).values([
+    {
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: `vm0-key-anthropic-${args.orgId}`,
+      label: args.orgId,
+    },
+    {
+      vendor: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: `vm0-key-deepseek-${args.orgId}`,
+      label: args.orgId,
+    },
+  ]);
+  await writeDb.insert(whatsappUserLinks).values({
+    phoneHandle: args.phoneHandle,
+    vm0UserId: args.userId,
+    orgId: args.orgId,
+  });
+  const [link] = await writeDb
+    .select({ id: whatsappUserLinks.id })
+    .from(whatsappUserLinks)
+    .where(eq(whatsappUserLinks.phoneHandle, args.phoneHandle))
+    .limit(1);
+  if (!link) {
+    throw new Error("seedWhatsAppRunFixture did not create a user link");
+  }
+
+  if (args.selectedComposeId !== undefined) {
+    await writeDb.insert(whatsappUserAgentPreferences).values({
+      vm0UserId: args.userId,
+      orgId: args.orgId,
+      selectedComposeId: args.selectedComposeId,
+    });
+  }
+
+  await trackPhone(Promise.resolve({ phoneHandle: args.phoneHandle }));
+  await trackWhatsAppRunFixture(
+    Promise.resolve({ userId: args.userId, orgId: args.orgId }),
+  );
+
+  return { defaultComposeId, preferredComposeId, userLinkId: link.id };
+}
+
+async function readRunAgentComposeId(prompt: string): Promise<string | null> {
+  const [run] = await writeDb
+    .select({ agentComposeId: agentSessions.agentComposeId })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .where(eq(agentRuns.prompt, prompt))
+    .limit(1);
+  return run?.agentComposeId ?? null;
+}
+
+async function readSelectedModel(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<string | null> {
+  const [row] = await writeDb
+    .select({ selectedModel: orgMembersMetadata.selectedModel })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.userId, args.userId),
+        eq(orgMembersMetadata.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  return row?.selectedModel ?? null;
+}
+
+async function seedCallbackRun(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<{ readonly runId: string; readonly callbackId: string }> {
+  const composeId = await seedWhatsAppAgent({
+    userId: args.userId,
+    orgId: args.orgId,
+    name: "whatsapp-callback-agent",
+    displayName: "WhatsApp Callback Agent",
+  });
+  const [session] = await writeDb
+    .insert(agentSessions)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      agentComposeId: composeId,
+    })
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("seedCallbackRun did not create a session");
+  }
+  const [run] = await writeDb
+    .insert(agentRuns)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      sessionId: session.id,
+      status: "running",
+      prompt: "whatsapp callback progress",
+    })
+    .returning({ id: agentRuns.id });
+  if (!run) {
+    throw new Error("seedCallbackRun did not create a run");
+  }
+  const { callbackId } = await store.set(
+    seedAgentRunCallback$,
+    {
+      runId: run.id,
+      url: "http://api.test/api/internal/callbacks/twilio",
+      secret: CALLBACK_SECRET,
+      payload: {},
+    },
+    context.signal,
+  );
+  await trackWhatsAppRunFixture(
+    Promise.resolve({ userId: args.userId, orgId: args.orgId }),
+  );
+  return { runId: run.id, callbackId };
+}
+
+function callbackHeaders(rawBody: string) {
+  const timestamp = currentSecond();
+  return {
+    "Content-Type": "application/json",
+    "X-VM0-Timestamp": String(timestamp),
+    "X-VM0-Signature": computeHmacSignature(
+      rawBody,
+      CALLBACK_SECRET,
+      timestamp,
+    ),
+  };
 }
 
 function signTwilioWebhook(form: URLSearchParams): string {
@@ -329,5 +672,106 @@ describe("WhatsApp integration routes", () => {
       body: "/connect",
     });
     expect(sendMessage.calls.at(-1)?.body).toContain("/whatsapp/connect?");
+  });
+
+  it("uses the selected WhatsApp agent preference when creating runs", async () => {
+    const user = setupWhatsAppUser();
+    const phoneHandle = uniquePhone();
+    const fixture = await seedWhatsAppRunFixture({
+      ...user,
+      phoneHandle,
+      selectedComposeId: null,
+    });
+    await writeDb
+      .update(whatsappUserAgentPreferences)
+      .set({ selectedComposeId: fixture.preferredComposeId })
+      .where(
+        and(
+          eq(whatsappUserAgentPreferences.vm0UserId, user.userId),
+          eq(whatsappUserAgentPreferences.orgId, user.orgId),
+        ),
+      );
+    const typing = twilioTypingIndicator();
+    server.use(typing.handler, twilioCallbackSink());
+    const prompt = "run with preferred WhatsApp agent";
+    const messageSid = uniqueId("SM");
+    const form = new URLSearchParams({
+      MessageSid: messageSid,
+      From: `whatsapp:${phoneHandle}`,
+      To: "whatsapp:+19039853128",
+      Body: prompt,
+      NumMedia: "0",
+    });
+
+    const response = await postTwilioWebhook(form);
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+
+    await expect(readRunAgentComposeId(prompt)).resolves.toBe(
+      fixture.preferredComposeId,
+    );
+    expect(typing.calls).toContainEqual({
+      messageId: messageSid,
+      channel: "whatsapp",
+    });
+  });
+
+  it("switches the user model from WhatsApp /model commands", async () => {
+    const user = setupWhatsAppUser();
+    const phoneHandle = uniquePhone();
+    await seedWhatsAppRunFixture({ ...user, phoneHandle });
+    const sendMessage = twilioSendMessage();
+    server.use(sendMessage.handler);
+    const form = new URLSearchParams({
+      MessageSid: uniqueId("SM"),
+      From: `whatsapp:${phoneHandle}`,
+      To: "whatsapp:+19039853128",
+      Body: "/model claude-sonnet-4-6",
+      NumMedia: "0",
+    });
+
+    const response = await postTwilioWebhook(form);
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+
+    await expect(readSelectedModel(user)).resolves.toBe("claude-sonnet-4-6");
+    expect(sendMessage.calls.at(-1)?.body).toContain("Switched to");
+  });
+
+  it("refreshes Twilio WhatsApp typing indicators for progress callbacks", async () => {
+    const user = setupWhatsAppUser();
+    const typing = twilioTypingIndicator();
+    server.use(typing.handler);
+    const { runId, callbackId } = await seedCallbackRun(user);
+    const messageSid = uniqueId("SM");
+    const body = JSON.stringify({
+      callbackId,
+      runId,
+      status: "progress",
+      payload: {
+        messageSid,
+        rootMessageId: "dm",
+        phoneHandle: "+15555551212",
+        fromNumber: "+15555551212",
+        toNumber: "+19039853128",
+        userLinkId: randomUUID(),
+        agentId: randomUUID(),
+        existingSessionId: null,
+      },
+    });
+
+    const response = await createApp({ signal: context.signal }).request(
+      "/api/internal/callbacks/twilio",
+      {
+        method: "POST",
+        headers: callbackHeaders(body),
+        body,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(typing.calls).toStrictEqual([
+      { messageId: messageSid, channel: "whatsapp" },
+    ]);
   });
 });
