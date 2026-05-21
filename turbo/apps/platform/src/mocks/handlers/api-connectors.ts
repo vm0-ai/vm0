@@ -8,8 +8,6 @@ import {
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import { mockApi } from "../msw-contract.ts";
 
-const ALL_CONNECTOR_TYPES = CONNECTOR_TYPE_KEYS;
-
 let mockConnectors: ConnectorResponse[] = [];
 
 type MockStripeCliAuthStartResponse = {
@@ -104,7 +102,7 @@ export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,
-      configuredTypes: ALL_CONNECTOR_TYPES,
+      configuredTypes: [...CONNECTOR_TYPE_KEYS],
       connectorProvidedSecretNames: [],
     });
   }),

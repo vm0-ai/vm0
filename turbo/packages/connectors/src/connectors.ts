@@ -762,8 +762,7 @@ export type ConnectorBrowserVerificationCliAuthConnectorType = {
 }[ConnectorCliAuthConnectorType];
 
 export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
-export const CONNECTOR_TYPE_KEYS = Object.keys(CONNECTOR_TYPES_DEF) as [
-  ConnectorType,
-  ...ConnectorType[],
-];
+export const CONNECTOR_TYPE_KEYS = Object.freeze(
+  Object.keys(CONNECTOR_TYPES_DEF),
+) as readonly [ConnectorType, ...ConnectorType[]];
 export const connectorTypeSchema = z.enum(CONNECTOR_TYPE_KEYS);
