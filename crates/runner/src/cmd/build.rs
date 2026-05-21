@@ -1732,6 +1732,32 @@ mod tests {
         ]
     }
 
+    fn shell_quoted_var<'a>(script: &'a str, name: &str) -> Option<&'a str> {
+        let prefix = format!("{name}=\"");
+        script.lines().find_map(|line| {
+            let value = line.strip_prefix(&prefix)?;
+            value.strip_suffix('"')
+        })
+    }
+
+    fn is_numeric_semver(version: &str) -> bool {
+        let mut parts = version.split('.');
+        let Some(major) = parts.next() else {
+            return false;
+        };
+        let Some(minor) = parts.next() else {
+            return false;
+        };
+        let Some(patch) = parts.next() else {
+            return false;
+        };
+
+        parts.next().is_none()
+            && [major, minor, patch]
+                .iter()
+                .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+    }
+
     fn rootfs_input<'a>(
         home: &'a HomePaths,
         rootfs: &'a RootfsPaths,
@@ -4032,9 +4058,12 @@ exit 1
 
     #[test]
     fn template_installs_and_verifies_pnpm() {
+        let pnpm_version = shell_quoted_var(TEMPLATE_BUILD_SCRIPT, "PNPM_VERSION")
+            .expect("build-template.sh should declare PNPM_VERSION");
         assert!(
-            TEMPLATE_BUILD_SCRIPT.contains("PNPM_VERSION=\"10.33.4\""),
-            "build-template.sh should pin the pnpm version so template cache inputs are deterministic"
+            is_numeric_semver(pnpm_version),
+            "build-template.sh should pin PNPM_VERSION to an exact numeric semver so template \
+             cache inputs are deterministic"
         );
         assert!(
             TEMPLATE_BUILD_SCRIPT.contains("pnpm@${PNPM_VERSION}"),
