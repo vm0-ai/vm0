@@ -1,20 +1,9 @@
-import type { OAuthConnectorType } from "@vm0/connectors/connectors";
 import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+import type { GoogleOAuthConnectorType } from "../google-oauth-connectors";
 import { throwOAuthError } from "./oauth-error";
 
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
-
-type GoogleOAuthConnectorType = Extract<
-  OAuthConnectorType,
-  | "gmail"
-  | "google-ads"
-  | "google-calendar"
-  | "google-docs"
-  | "google-drive"
-  | "google-meet"
-  | "google-sheets"
->;
 
 interface GoogleUserInfo {
   id: string;

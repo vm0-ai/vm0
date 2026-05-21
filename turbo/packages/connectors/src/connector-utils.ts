@@ -18,6 +18,7 @@ import {
   type OAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
+import { isGoogleOAuthConnectorType } from "./oauth-providers/google-oauth-connectors";
 
 /**
  * Connector utility vocabulary:
@@ -469,18 +470,10 @@ export function getConnectorOAuthConfig(
 }
 
 /**
- * Check if a connector type uses Google OAuth (accounts.google.com).
+ * Check if a connector type uses the shared Google OAuth provider.
  */
 export function isGoogleOAuthConnector(type: ConnectorType): boolean {
-  const oauthConfig = getConnectorOAuthConfigIfSupported(type);
-  if (!oauthConfig?.authorizationUrl) return false;
-  try {
-    return (
-      new URL(oauthConfig.authorizationUrl).hostname === "accounts.google.com"
-    );
-  } catch {
-    return false;
-  }
+  return isGoogleOAuthConnectorType(type);
 }
 
 /**
