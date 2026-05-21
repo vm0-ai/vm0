@@ -6,6 +6,7 @@ use tracing::warn;
 
 use nbd_cow::PooledNbdCowDevice;
 
+use crate::cow_pool::PrewarmedSlot;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::leaked_resources::LeakedResources;
@@ -17,7 +18,7 @@ pub(super) trait CreateRollbackCleanup {
     async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool;
     async fn release_network(&self, network: &mut Option<NetnsLease>);
     async fn remove_dir(&self, kind: &'static str, path: PathBuf);
-    async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
+    async fn destroy_slot(&self, slot: PrewarmedSlot);
 }
 
 pub(super) struct FactoryCreateRollbackCleanup {
@@ -54,7 +55,7 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
         }
     }
 
-    async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+    async fn destroy_slot(&self, slot: PrewarmedSlot) {
         crate::cow_pool::destroy_slot_async(slot).await;
     }
 }
@@ -73,10 +74,36 @@ pub(super) struct SandboxCreateResourcesWithoutCow {
     network: NetnsLease,
 }
 
+#[derive(Default)]
+enum WorkspaceOwnership {
+    #[default]
+    None,
+    Slot(PrewarmedSlot),
+    RenameInProgress {
+        slot: PrewarmedSlot,
+        target_workspace: PathBuf,
+    },
+    Workspace(PathBuf),
+}
+
+impl WorkspaceOwnership {
+    fn state_name(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Slot(_) => "slot",
+            Self::RenameInProgress { .. } => "rename_in_progress",
+            Self::Workspace(_) => "workspace",
+        }
+    }
+
+    fn has_resources(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
 pub(super) struct SandboxCreateTransaction {
     id: String,
-    slot: Option<crate::cow_pool::PrewarmedSlot>,
-    workspace: Option<PathBuf>,
+    workspace: WorkspaceOwnership,
     sock_dir: Option<PathBuf>,
     network: Option<NetnsLease>,
     cow_device: Option<PooledNbdCowDevice>,
@@ -96,8 +123,7 @@ impl SandboxCreateTransaction {
     ) -> Self {
         Self {
             id,
-            slot: None,
-            workspace: None,
+            workspace: WorkspaceOwnership::None,
             sock_dir: None,
             network: None,
             cow_device: None,
@@ -106,22 +132,72 @@ impl SandboxCreateTransaction {
         }
     }
 
-    pub(super) fn track_slot(&mut self, slot: crate::cow_pool::PrewarmedSlot) {
-        self.slot = Some(slot);
-    }
-
-    pub(super) fn slot_workspace(&self) -> sandbox::Result<PathBuf> {
-        self.slot
-            .as_ref()
-            .map(|slot| slot.workspace().to_owned())
-            .ok_or_else(|| create_transaction_invalid_state("missing COW slot before rename"))
-    }
-
-    pub(super) fn slot_renamed_to(&mut self, workspace: PathBuf) {
-        if let Some(slot) = self.slot.take() {
-            slot.disarm_after_workspace_rename();
+    pub(super) fn track_slot(&mut self, slot: PrewarmedSlot) -> sandbox::Result<()> {
+        if !matches!(self.workspace, WorkspaceOwnership::None) {
+            return Err(create_transaction_invalid_state(&format!(
+                "cannot track COW slot while workspace state is {}",
+                self.workspace.state_name()
+            )));
         }
-        self.workspace = Some(workspace);
+        self.workspace = WorkspaceOwnership::Slot(slot);
+        Ok(())
+    }
+
+    pub(super) fn begin_workspace_rename(
+        &mut self,
+        target_workspace: PathBuf,
+    ) -> sandbox::Result<PathBuf> {
+        let current = std::mem::take(&mut self.workspace);
+        match current {
+            WorkspaceOwnership::Slot(slot) => {
+                let slot_workspace = slot.workspace().to_owned();
+                self.workspace = WorkspaceOwnership::RenameInProgress {
+                    slot,
+                    target_workspace,
+                };
+                Ok(slot_workspace)
+            }
+            other => {
+                self.workspace = other;
+                Err(create_transaction_invalid_state(&format!(
+                    "cannot start workspace rename while workspace state is {}",
+                    self.workspace.state_name()
+                )))
+            }
+        }
+    }
+
+    pub(super) fn finish_workspace_rename(&mut self) -> sandbox::Result<()> {
+        let current = std::mem::take(&mut self.workspace);
+        match current {
+            WorkspaceOwnership::RenameInProgress {
+                slot,
+                target_workspace,
+            } => {
+                slot.disarm_after_workspace_rename();
+                self.workspace = WorkspaceOwnership::Workspace(target_workspace);
+                Ok(())
+            }
+            other => {
+                self.workspace = other;
+                Err(create_transaction_invalid_state(&format!(
+                    "cannot finish workspace rename while workspace state is {}",
+                    self.workspace.state_name()
+                )))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn track_workspace_for_test(&mut self, workspace: PathBuf) -> sandbox::Result<()> {
+        if !matches!(self.workspace, WorkspaceOwnership::None) {
+            return Err(create_transaction_invalid_state(&format!(
+                "cannot track workspace while workspace state is {}",
+                self.workspace.state_name()
+            )));
+        }
+        self.workspace = WorkspaceOwnership::Workspace(workspace);
+        Ok(())
     }
 
     pub(super) fn track_sock_dir(&mut self, sock_dir: PathBuf) {
@@ -149,7 +225,6 @@ impl SandboxCreateTransaction {
             .cow_device
             .take()
             .ok_or_else(|| create_transaction_invalid_state("missing COW device at commit"))?;
-        self.slot.take();
 
         Ok(SandboxCreateResources {
             sandbox_paths: SandboxPaths::new(workspace),
@@ -163,7 +238,6 @@ impl SandboxCreateTransaction {
     fn commit_without_cow_for_test(&mut self) -> sandbox::Result<SandboxCreateResourcesWithoutCow> {
         self.validate_base_resources("test commit")?;
         let (workspace, sock_dir, network) = self.take_base_resources_after_validation()?;
-        self.slot.take();
 
         Ok(SandboxCreateResourcesWithoutCow {
             sandbox_paths: SandboxPaths::new(workspace),
@@ -173,9 +247,10 @@ impl SandboxCreateTransaction {
     }
 
     fn validate_base_resources(&self, context: &str) -> sandbox::Result<()> {
-        if self.workspace.is_none() {
+        if !matches!(self.workspace, WorkspaceOwnership::Workspace(_)) {
             return Err(create_transaction_invalid_state(&format!(
-                "missing workspace at {context}"
+                "missing stable workspace at {context}; workspace state is {}",
+                self.workspace.state_name()
             )));
         }
         if self.sock_dir.is_none() {
@@ -194,8 +269,8 @@ impl SandboxCreateTransaction {
     fn take_base_resources_after_validation(
         &mut self,
     ) -> sandbox::Result<(PathBuf, PathBuf, NetnsLease)> {
-        let workspace = self.workspace.take().ok_or_else(|| {
-            create_transaction_invalid_state("missing workspace after validation")
+        let workspace = self.take_stable_workspace().ok_or_else(|| {
+            create_transaction_invalid_state("missing stable workspace after validation")
         })?;
         let sock_dir = self
             .sock_dir
@@ -236,28 +311,81 @@ impl SandboxCreateTransaction {
         if let Some(sock_dir) = self.sock_dir.take() {
             cleanup.remove_dir("sock", sock_dir).await;
         }
-        if let Some(workspace) = self.workspace.take() {
-            if keep_workspace {
-                warn!(
-                    id = %self.id,
-                    path = %workspace.display(),
-                    "keeping workspace after failed COW rollback"
-                );
-            } else {
-                cleanup.remove_dir("workspace", workspace).await;
-            }
-        }
-        if let Some(slot) = self.slot.take() {
-            cleanup.destroy_slot(slot).await;
-        }
+        self.cleanup_workspace_on_rollback(cleanup, keep_workspace)
+            .await;
     }
 
     fn has_resources(&self) -> bool {
-        self.slot.is_some()
-            || self.workspace.is_some()
+        self.workspace.has_resources()
             || self.sock_dir.is_some()
             || self.network.is_some()
             || self.cow_device.is_some()
+    }
+
+    async fn cleanup_workspace_on_rollback<C>(&mut self, cleanup: &C, keep_workspace: bool)
+    where
+        C: CreateRollbackCleanup + Sync,
+    {
+        match std::mem::take(&mut self.workspace) {
+            WorkspaceOwnership::None => {}
+            WorkspaceOwnership::Slot(slot) => cleanup.destroy_slot(slot).await,
+            WorkspaceOwnership::RenameInProgress {
+                slot,
+                target_workspace,
+            } => {
+                cleanup.destroy_slot(slot).await;
+                cleanup.remove_dir("workspace", target_workspace).await;
+            }
+            WorkspaceOwnership::Workspace(workspace) => {
+                if keep_workspace {
+                    warn!(
+                        id = %self.id,
+                        path = %workspace.display(),
+                        "keeping workspace after failed COW rollback"
+                    );
+                } else {
+                    cleanup.remove_dir("workspace", workspace).await;
+                }
+            }
+        }
+    }
+
+    fn cleanup_workspace_on_drop(&mut self) {
+        match std::mem::take(&mut self.workspace) {
+            WorkspaceOwnership::None => {}
+            WorkspaceOwnership::Slot(slot) => {
+                crate::cow_pool::destroy_slot_sync(slot);
+            }
+            WorkspaceOwnership::RenameInProgress {
+                slot,
+                target_workspace,
+            } => {
+                crate::cow_pool::destroy_slot_sync(slot);
+                let _ = std::fs::remove_dir_all(target_workspace);
+            }
+            WorkspaceOwnership::Workspace(workspace) => {
+                if self.delete_workspace_on_leak_cleanup {
+                    let _ = std::fs::remove_dir_all(workspace);
+                } else {
+                    warn!(
+                        id = %self.id,
+                        path = %workspace.display(),
+                        "preserving workspace after failed COW cleanup"
+                    );
+                }
+            }
+        }
+    }
+
+    fn take_stable_workspace(&mut self) -> Option<PathBuf> {
+        let current = std::mem::take(&mut self.workspace);
+        match current {
+            WorkspaceOwnership::Workspace(workspace) => Some(workspace),
+            other => {
+                self.workspace = other;
+                None
+            }
+        }
     }
 
     fn send_async_leaked_resources(&mut self) -> bool {
@@ -265,13 +393,13 @@ impl SandboxCreateTransaction {
             return false;
         }
 
-        let Some(leak_tx) = self.leak_tx.as_ref() else {
+        let Some(leak_tx) = self.leak_tx.clone() else {
             return false;
         };
         let Some(sock_dir) = self.sock_dir.take() else {
             return false;
         };
-        let Some(workspace) = self.workspace.take() else {
+        let Some(workspace) = self.take_stable_workspace() else {
             self.sock_dir = Some(sock_dir);
             return false;
         };
@@ -291,7 +419,7 @@ impl SandboxCreateTransaction {
                 self.cow_device = leaked.cow_device.take();
                 self.network = leaked.network.take();
                 self.sock_dir = Some(leaked.sock_dir);
-                self.workspace = Some(leaked.workspace);
+                self.workspace = WorkspaceOwnership::Workspace(leaked.workspace);
                 false
             }
         }
@@ -306,34 +434,20 @@ impl Drop for SandboxCreateTransaction {
 
         warn!(
             id = %self.id,
-            has_slot = self.slot.is_some(),
-            has_workspace = self.workspace.is_some(),
+            workspace_state = self.workspace.state_name(),
             has_sock_dir = self.sock_dir.is_some(),
             has_network = self.network.is_some(),
             has_cow_device = self.cow_device.is_some(),
             "sandbox create transaction dropped without explicit commit or rollback"
         );
 
-        if let Some(slot) = self.slot.take() {
-            crate::cow_pool::destroy_slot_sync(slot);
-        }
         if self.send_async_leaked_resources() {
             return;
         }
         if let Some(sock_dir) = self.sock_dir.take() {
             let _ = std::fs::remove_dir_all(sock_dir);
         }
-        if let Some(workspace) = self.workspace.take() {
-            if self.delete_workspace_on_leak_cleanup {
-                let _ = std::fs::remove_dir_all(workspace);
-            } else {
-                warn!(
-                    id = %self.id,
-                    path = %workspace.display(),
-                    "preserving workspace after failed COW cleanup"
-                );
-            }
-        }
+        self.cleanup_workspace_on_drop();
         if self.cow_device.is_some() {
             warn!(
                 id = %self.id,
@@ -596,7 +710,8 @@ mod tests {
             .unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
         let cleanup = RecordingCreateRollbackCleanup::default();
 
         tx.rollback(&cleanup).await;
@@ -615,7 +730,8 @@ mod tests {
             .unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
         let cleanup = BlockingRemoveDirCleanup::default();
         let rollback_cleanup = cleanup.clone();
         let rollback = tokio::spawn(async move {
@@ -638,6 +754,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_rollback_during_rename_removes_slot_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+        assert_eq!(tracked_slot_workspace, slot_workspace);
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!slot_workspace.exists());
+        assert!(!target_workspace.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec![
+                "destroy_slot:slot",
+                "remove_dir:workspace:sandbox-workspace"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_during_rename_removes_target_after_move() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+        tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
+            .await
+            .unwrap();
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!slot_workspace.exists());
+        assert!(!target_workspace.exists());
+        assert_eq!(
+            cleanup.events(),
+            vec![
+                "destroy_slot:slot",
+                "remove_dir:workspace:sandbox-workspace"
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn create_transaction_rollback_after_rename_removes_target_workspace() {
         let tmp = tempfile::tempdir().unwrap();
         let slot_workspace = tmp.path().join("slot-workspace");
@@ -648,12 +826,13 @@ mod tests {
             .unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.track_slot(test_slot("slot", slot_workspace.clone()));
-        let tracked_slot_workspace = tx.slot_workspace().unwrap();
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
         tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
             .await
             .unwrap();
-        tx.slot_renamed_to(target_workspace.clone());
+        tx.finish_workspace_rename().unwrap();
         let cleanup = RecordingCreateRollbackCleanup::default();
 
         tx.rollback(&cleanup).await;
@@ -677,7 +856,7 @@ mod tests {
             .unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         let cleanup = RecordingCreateRollbackCleanup::default();
 
@@ -700,7 +879,7 @@ mod tests {
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
         let cleanup = RecordingCreateRollbackCleanup::default();
@@ -729,7 +908,7 @@ mod tests {
 
         let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
         let cleanup = FailingNetworkReleaseCleanup::default();
@@ -758,7 +937,7 @@ mod tests {
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
 
@@ -784,11 +963,77 @@ mod tests {
             .unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
 
         drop(tx);
 
         assert!(!slot_workspace.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_drop_during_rename_removes_slot_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+        assert_eq!(tracked_slot_workspace, slot_workspace);
+
+        drop(tx);
+
+        assert!(!slot_workspace.exists());
+        assert!(!target_workspace.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_drop_during_rename_removes_target_after_move() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        let tracked_slot_workspace = tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+        tokio::fs::rename(&tracked_slot_workspace, &target_workspace)
+            .await
+            .unwrap();
+
+        drop(tx);
+
+        assert!(!slot_workspace.exists());
+        assert!(!target_workspace.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_commit_rejects_pending_workspace_rename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+
+        assert!(tx.commit_without_cow_for_test().is_err());
+
+        drop(tx);
+        assert!(!slot_workspace.exists());
+        assert!(!target_workspace.exists());
     }
 
     #[tokio::test]
@@ -800,7 +1045,7 @@ mod tests {
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
 
         drop(tx);
@@ -820,7 +1065,7 @@ mod tests {
         drop(leak_rx);
 
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
 
@@ -844,7 +1089,7 @@ mod tests {
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.delete_workspace_on_leak_cleanup = false;
 
@@ -865,7 +1110,7 @@ mod tests {
         leak_tx.send(test_leaked_resource("queued")).unwrap();
 
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
 
@@ -893,7 +1138,7 @@ mod tests {
         let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
 
@@ -918,7 +1163,7 @@ mod tests {
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
 
         let mut tx = SandboxCreateTransaction::new("sandbox".into());
-        tx.slot_renamed_to(workspace.clone());
+        tx.track_workspace_for_test(workspace.clone()).unwrap();
         tx.track_sock_dir(sock_dir.clone());
 
         let cleanup = BlockingRemoveDirCleanup::default();

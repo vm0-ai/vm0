@@ -4,7 +4,7 @@ mod create_transaction;
 mod invariant;
 mod leak_cleaner;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use sandbox::{
@@ -240,24 +240,20 @@ impl SandboxFactory for FirecrackerFactory {
                         message: format!("acquire COW slot: {e}"),
                     }
                 })?;
-                tx.track_slot(slot);
+                tx.track_slot(slot)?;
 
                 // The slot workspace is {workspaces_dir}/{slot_uuid}/.
                 // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
                 let target_workspace = self.factory_paths.workspace(&id);
-                if target_workspace.exists()
-                    && let Err(e) = tokio::fs::remove_dir_all(&target_workspace).await
-                {
-                    warn!(id = %id, error = %e, "failed to clean stale workspace dir");
-                }
-                let slot_workspace = tx.slot_workspace()?;
+                clean_stale_workspace_dir(&id, &target_workspace).await?;
+                let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
                 if let Err(e) = tokio::fs::rename(&slot_workspace, &target_workspace).await {
                     return Err(SandboxError::Initialization {
                         phase: SandboxInitializationPhase::SandboxAllocation,
                         message: format!("rename workspace: {e}"),
                     });
                 }
-                tx.slot_renamed_to(target_workspace.clone());
+                tx.finish_workspace_rename()?;
 
                 // Recompute cow_file path after rename (the slot path no longer exists).
                 let cow_file = target_workspace.join("cow.img");
@@ -405,6 +401,20 @@ fn convert_device_rate_limits(
         .map_err(|message| SandboxError::Configuration {
             message: format!("device_rate_limits: {message}"),
         })
+}
+
+async fn clean_stale_workspace_dir(id: &str, target_workspace: &Path) -> sandbox::Result<()> {
+    match tokio::fs::remove_dir_all(target_workspace).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!(
+                "clean stale target workspace {} for {id}: {e}",
+                target_workspace.display()
+            ),
+        }),
+    }
 }
 
 async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool: NetnsPoolHandle) {
@@ -615,6 +625,36 @@ mod tests {
             }
             other => panic!("expected factory invalid-state error, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn clean_stale_workspace_dir_allows_absent_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("sandbox-workspace");
+
+        clean_stale_workspace_dir("sandbox", &target).await.unwrap();
+
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn clean_stale_workspace_dir_errors_for_unclaimed_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("sandbox-workspace");
+        tokio::fs::write(&target, b"not a directory").await.unwrap();
+
+        let err = clean_stale_workspace_dir("sandbox", &target)
+            .await
+            .unwrap_err();
+
+        match err {
+            SandboxError::Initialization { phase, message } => {
+                assert_eq!(phase, SandboxInitializationPhase::SandboxAllocation);
+                assert!(message.contains("clean stale target workspace"));
+            }
+            other => panic!("expected initialization error, got {other:?}"),
+        }
+        assert!(target.exists());
     }
 
     #[tokio::test]
