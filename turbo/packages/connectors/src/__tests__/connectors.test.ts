@@ -639,6 +639,18 @@ describe("getConnectorOAuthConfig - google-meet scopes", () => {
   });
 });
 
+describe("getConnectorOAuthConfigIfSupported", () => {
+  it("returns OAuth config for OAuth connectors", () => {
+    expect(getConnectorOAuthConfigIfSupported("github")).toEqual(
+      getConnectorOAuthConfig("github"),
+    );
+  });
+
+  it("returns undefined for connectors without OAuth", () => {
+    expect(getConnectorOAuthConfigIfSupported("axiom")).toBeUndefined();
+  });
+});
+
 describe("getConnectorTypeForSecretName", () => {
   it("finds connector type for OAuth env mapping key", () => {
     expect(getConnectorTypeForSecretName("GH_TOKEN")).toBe("github");
@@ -690,12 +702,12 @@ describe("isGoogleOAuthConnector", () => {
     }
   });
 
-  it("returns false for api-token-only connectors", () => {
-    const apiTokenOnly = ["axiom", "atlassian", "ahrefs"] as const;
-    for (const type of apiTokenOnly) {
+  it("returns false for connectors without Google OAuth", () => {
+    const nonGoogleOAuth = ["axiom", "atlassian", "ahrefs"] as const;
+    for (const type of nonGoogleOAuth) {
       expect(
         isGoogleOAuthConnector(type),
-        `${type} has no OAuth config and should return false`,
+        `${type} should not be classified as Google OAuth`,
       ).toBe(false);
     }
   });
