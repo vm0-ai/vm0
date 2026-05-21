@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Command } from "commander";
 import type {
   ComputerUseAuditEvent,
@@ -67,6 +69,9 @@ interface AuditListOptions {
   readonly hostId?: string;
   readonly runId?: string;
 }
+
+const COMPUTER_USE_SCREENSHOT_DIR = "/tmp/vm0/computer-use";
+const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -141,25 +146,82 @@ function parseLimit(value: string | undefined): number {
   return parsed;
 }
 
-function summarizeScreenshotValue(value: string): string {
-  return `[omitted ${value.length.toString()} character screenshot data URL]`;
+function sanitizeFilenamePart(value: unknown, fallback: string): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const sanitized = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return sanitized.length > 0 ? sanitized : fallback;
 }
 
-export function formatComputerUseResultForConsole(
+function extensionForMimeType(mimeType: string): string {
+  if (mimeType === "image/png") {
+    return "png";
+  }
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+  const suffix = mimeType.startsWith("image/") ? mimeType.slice(6) : "bin";
+  return sanitizeFilenamePart(suffix, "bin").toLowerCase();
+}
+
+async function writeScreenshotDataUrl(
   result: Record<string, unknown>,
-): string {
+  dataUrl: string,
+): Promise<string | null> {
+  const match = DATA_URL_PATTERN.exec(dataUrl);
+  if (!match) {
+    return null;
+  }
+
+  const mimeType = match[1] ?? "";
+  if (!mimeType.startsWith("image/")) {
+    throw new Error(`Unsupported screenshot MIME type: ${mimeType}`);
+  }
+
+  const base64Data = match[2] ?? "";
+  const appName = sanitizeFilenamePart(result.app, "app");
+  const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
+  const outputPath = join(
+    COMPUTER_USE_SCREENSHOT_DIR,
+    `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
+  );
+
+  await mkdir(COMPUTER_USE_SCREENSHOT_DIR, { recursive: true });
+  await writeFile(outputPath, Buffer.from(base64Data, "base64"));
+  return outputPath;
+}
+
+export async function formatComputerUseResultForConsole(
+  result: Record<string, unknown>,
+): Promise<string> {
   const printable: Record<string, unknown> = { ...result };
   if (typeof printable.screenshot === "string") {
-    printable.screenshot = summarizeScreenshotValue(printable.screenshot);
+    const screenshotPath = await writeScreenshotDataUrl(
+      printable,
+      printable.screenshot,
+    );
+    if (screenshotPath) {
+      printable.screenshot = screenshotPath;
+    }
   }
   return JSON.stringify(printable, null, 2);
 }
 
-function resultText(command: ComputerUseCommandResponse): string {
+async function resultText(
+  command: ComputerUseCommandResponse,
+): Promise<string> {
   if (!command.result) {
     return "";
   }
-  return formatComputerUseResultForConsole(command.result);
+  return await formatComputerUseResultForConsole(command.result);
 }
 
 async function waitForCommand(
@@ -193,7 +255,7 @@ async function waitForCommand(
       );
     }
 
-    const text = resultText(command);
+    const text = await resultText(command);
     if (text) {
       console.log(text);
     }

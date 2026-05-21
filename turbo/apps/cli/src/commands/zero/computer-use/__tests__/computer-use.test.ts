@@ -6,10 +6,19 @@
  * Real (internal): Command registration, capability checking
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFile, rm } from "node:fs/promises";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { formatComputerUseResultForConsole } from "../index";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
+import {
+  formatComputerUseResultForConsole,
+  zeroComputerUseCommand,
+} from "../index";
 import { registerZeroCommands } from "../../../../zero";
+
+const TEST_SCREENSHOT_PATH =
+  "/tmp/vm0/computer-use/Slack-Test-App-desktop_test_snapshot.png";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -43,8 +52,16 @@ function hiddenCommandNames(prog: Command): string[] {
 }
 
 describe("computer-use command visibility", () => {
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
   beforeEach(() => {
+    mockConsoleLog.mockClear();
     vi.stubEnv("ZERO_TOKEN", "");
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(TEST_SCREENSHOT_PATH, { force: true });
   });
 
   it("should be visible when no ZERO_TOKEN is set", () => {
@@ -119,17 +136,93 @@ describe("computer-use command visibility", () => {
     expect(subNames).toContain("audit");
   });
 
-  it("should omit screenshot data URLs from command result console output", () => {
-    const text = formatComputerUseResultForConsole({
-      app: "Safari",
+  it("should write screenshot data URLs to a local file in command result console output", async () => {
+    const screenshotBytes = Buffer.from("test-png-data");
+    const screenshotBase64 = screenshotBytes.toString("base64");
+    const text = await formatComputerUseResultForConsole({
+      app: "Slack/Test App",
+      snapshotId: "desktop_test_snapshot",
       text: "snapshot_id=snap_1\nw0 AXWindow",
-      screenshot: "data:image/png;base64,abcdefghijklmnopqrstuvwxyz",
+      screenshot: `data:image/png;base64,${screenshotBase64}`,
       screenshotSource: "window",
     });
 
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
     expect(text).toContain("snapshot_id=snap_1");
     expect(text).toContain("screenshotSource");
-    expect(text).toContain("[omitted 48 character screenshot data URL]");
-    expect(text).not.toContain("abcdefghijklmnopqrstuvwxyz");
+    expect(text).not.toContain(screenshotBase64);
+    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+      screenshotBytes,
+    );
+  });
+
+  it("should print a screenshot file path for get-app-state", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    const screenshotBytes = Buffer.from("test-png-data");
+    const screenshotBase64 = screenshotBytes.toString("base64");
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/commands",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          expect(body.kind).toBe("app.state");
+          expect(body.app).toBe("Slack/Test App");
+          return HttpResponse.json({
+            commandId: "cmd_1",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_1",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_1",
+            kind: "app.state",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { app: "Slack/Test App" },
+            result: {
+              app: "Slack/Test App",
+              snapshotId: "desktop_test_snapshot",
+              text: "snapshot_id=desktop_test_snapshot\nw0 AXWindow",
+              screenshot: `data:image/png;base64,${screenshotBase64}`,
+              screenshotMimeType: "image/png",
+              screenshotWidth: 1363,
+              screenshotHeight: 1200,
+            },
+            timeoutMs: 10_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "get-app-state",
+      "--app",
+      "Slack/Test App",
+      "--timeout",
+      "10",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
+    expect(parsed.text).toBe("snapshot_id=desktop_test_snapshot\nw0 AXWindow");
+    expect(parsed.screenshotWidth).toBe(1363);
+    expect(parsed.screenshotHeight).toBe(1200);
+    expect(output).not.toContain(screenshotBase64);
+    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+      screenshotBytes,
+    );
   });
 });
