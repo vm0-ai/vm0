@@ -103,6 +103,24 @@ def test_returns_none_for_usage_event_without_usage_quantities():
     assert extract_openai_responses_usage_from_event_json(body) is None
 
 
+def test_returns_none_for_invalid_usage_quantities():
+    body = json.dumps(
+        {
+            "type": "response.completed",
+            "response": {
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": -1,
+                    "output_tokens": True,
+                    "input_tokens_details": {"cached_tokens": "25"},
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) is None
+
+
 def test_clamps_cached_tokens_to_total_input_tokens():
     body = json.dumps(
         {
