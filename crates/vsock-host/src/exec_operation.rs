@@ -1486,7 +1486,7 @@ pub(crate) fn dispatch_incoming_frame(shared: &Arc<Shared>, msg: &RawMessage) ->
     }
 }
 
-pub(crate) fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     let mut first_output_slow = None;
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1528,7 +1528,7 @@ pub(crate) fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
     Ok(())
 }
 
-pub(crate) fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     let start = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1576,7 +1576,7 @@ pub(crate) fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Re
     Ok(())
 }
 
-pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     let Some((diagnostic, result_tx, start_tx, stream_overflowed, decoded)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1632,7 +1632,7 @@ pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
     Ok(())
 }
 
-pub(crate) fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     let Some(pending) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1682,7 +1682,7 @@ pub(crate) fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) ->
     Ok(())
 }
 
-pub(crate) fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
     let Some((diagnostic, result_tx, start_tx, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
