@@ -1,6 +1,6 @@
 import { unescape as decodeCookieComponent } from "node:querystring";
 
-import { command } from "ccstate";
+import { command, type Setter } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
   getConnectorOAuthCredentials,
@@ -136,6 +136,14 @@ type StoredStateCallbackInput = {
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
+};
+
+type ProviderErrorCallbackInput = StoredStateCallbackInput & {
+  readonly set: Setter;
+  readonly state: string | undefined;
+  readonly storedStateValue: string | undefined;
+  readonly callbackCookies: CallbackCookies;
+  readonly errorMessage: string;
 };
 
 function getCookie(request: Request, name: string): string | undefined {
@@ -599,6 +607,85 @@ const resolveCallbackState$ = command(
   },
 );
 
+async function markProviderErrorSessionIfPresent(args: {
+  readonly db: Db;
+  readonly set: Setter;
+  readonly connectorType: OAuthConnectorType;
+  readonly origin: string;
+  readonly type: string;
+  readonly state: string | undefined;
+  readonly callbackCookies: CallbackCookies;
+  readonly storedState: StoredOAuthState | undefined;
+  readonly errorMessage: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (!args.state) {
+    return;
+  }
+
+  const resolvedState = await args.set(
+    resolveCallbackState$,
+    {
+      origin: args.origin,
+      type: args.type,
+      savedState: args.callbackCookies.savedState,
+      state: args.state,
+      sessionId: args.callbackCookies.sessionId,
+      codeVerifier: args.callbackCookies.codeVerifier,
+      oauthContext: args.callbackCookies.oauthContext,
+      storedState: args.storedState,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  if (!resolvedState.ok || !resolvedState.sessionId) {
+    return;
+  }
+
+  await markConnectorSessionError(
+    args.db,
+    {
+      sessionId: resolvedState.sessionId,
+      connectorType: args.connectorType,
+      userId: resolvedState.identity.userId,
+    },
+    args.errorMessage,
+    args.signal,
+  );
+}
+
+async function handleProviderErrorCallback(
+  args: ProviderErrorCallbackInput,
+): Promise<Response> {
+  const claimedState = await claimStoredOAuthStateForCallbackIfPresent({
+    db: args.db,
+    connectorType: args.connectorType,
+    origin: args.origin,
+    type: args.type,
+    signal: args.signal,
+    state: args.storedStateValue,
+  });
+  args.signal.throwIfAborted();
+  if (!claimedState.ok) {
+    return claimedState.response;
+  }
+
+  await markProviderErrorSessionIfPresent({
+    db: args.db,
+    set: args.set,
+    connectorType: args.connectorType,
+    origin: args.origin,
+    type: args.type,
+    state: args.state,
+    callbackCookies: args.callbackCookies,
+    storedState: claimedState.storedState,
+    errorMessage: args.errorMessage,
+    signal: args.signal,
+  });
+
+  return redirectWithError(args.origin, args.type, args.errorMessage, true);
+}
+
 const callbackConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParamsOf(connectorsTypeCallbackContract.callback));
@@ -630,20 +717,17 @@ const callbackConnectorInner$ = command(
     } satisfies StoredStateCallbackInput;
 
     if (query.error) {
-      const claimedState = await claimStoredOAuthStateForCallbackIfPresent({
+      return await handleProviderErrorCallback({
         ...storedStateCallbackArgs,
-        state: storedStateValue,
+        set,
+        state,
+        storedStateValue,
+        callbackCookies,
+        errorMessage:
+          query.error_description ||
+          query.error ||
+          "OAuth authorization failed",
       });
-      signal.throwIfAborted();
-      if (!claimedState.ok) {
-        return claimedState.response;
-      }
-      return redirectWithError(
-        origin,
-        params.type,
-        query.error_description || query.error || "OAuth authorization failed",
-        true,
-      );
     }
 
     const code = query.code;

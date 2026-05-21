@@ -1288,6 +1288,43 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
+  it("marks connector sessions as error when the provider returns an error", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession({ userId });
+    sessionIds.push(sessionId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: {
+        error: "access_denied",
+        error_description: "The user denied access",
+        state: "state-123",
+      },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "The user denied access",
+    });
+
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .select({
+        status: connectorSessions.status,
+        errorMessage: connectorSessions.errorMessage,
+      })
+      .from(connectorSessions)
+      .where(eq(connectorSessions.id, sessionId));
+    expect(session).toStrictEqual({
+      status: "error",
+      errorMessage: "The user denied access",
+    });
+  });
+
   it("redirects missing authorization codes and clears OAuth cookies", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
