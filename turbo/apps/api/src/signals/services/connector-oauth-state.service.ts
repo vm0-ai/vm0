@@ -12,6 +12,45 @@ type ConnectorOAuthStateClaimResult =
   | { readonly kind: "invalid" }
   | { readonly kind: "usable"; readonly state: StoredOAuthState };
 
+type ConnectorOAuthStateStatus =
+  | { readonly kind: "missing" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "usable" };
+
+export async function getConnectorOAuthStateStatus(
+  db: Db,
+  args: {
+    readonly state: string;
+    readonly connectorType: OAuthConnectorType;
+  },
+  signal: AbortSignal,
+): Promise<ConnectorOAuthStateStatus> {
+  const [storedState] = await db
+    .select({
+      type: connectorOauthStates.type,
+      consumedAt: connectorOauthStates.consumedAt,
+      expiresAt: connectorOauthStates.expiresAt,
+    })
+    .from(connectorOauthStates)
+    .where(eq(connectorOauthStates.state, args.state))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!storedState) {
+    return { kind: "missing" };
+  }
+
+  if (
+    storedState.type !== args.connectorType ||
+    storedState.consumedAt ||
+    storedState.expiresAt <= nowDate()
+  ) {
+    return { kind: "invalid" };
+  }
+
+  return { kind: "usable" };
+}
+
 export async function claimConnectorOAuthState(
   db: Db,
   args: {

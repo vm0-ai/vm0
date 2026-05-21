@@ -29,6 +29,7 @@ import { nowDate } from "../../lib/time";
 import { optionalEnv } from "../../lib/env";
 import {
   claimConnectorOAuthState,
+  getConnectorOAuthStateStatus,
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
 import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
@@ -188,6 +189,26 @@ function getProviderCredentialArgs(credentials: ConnectorOAuthCredentials): {
   return { clientId: credentials.clientId };
 }
 
+function invalidStateRedirectResponse(origin: string, type: string): Response {
+  return redirectWithError(
+    origin,
+    type,
+    "Invalid state - please try again",
+    true,
+  );
+}
+
+function missingAuthorizationCodeRedirectResponse(
+  origin: string,
+  type: string,
+): Response {
+  return redirectWithError(origin, type, "Missing authorization code", true);
+}
+
+function missingStateRedirectResponse(origin: string, type: string): Response {
+  return redirectWithError(origin, type, "Missing state parameter", true);
+}
+
 async function exchangeTokenForConnector(args: {
   readonly connectorType: OAuthConnectorType;
   readonly code: string;
@@ -274,12 +295,7 @@ async function claimStoredOAuthStateForCallback(args: {
   if (storedStateResolution.kind === "invalid") {
     return {
       ok: false,
-      response: redirectWithError(
-        args.origin,
-        args.type,
-        "Invalid state - please try again",
-        true,
-      ),
+      response: invalidStateRedirectResponse(args.origin, args.type),
     };
   }
 
@@ -290,6 +306,26 @@ async function claimStoredOAuthStateForCallback(args: {
         ? storedStateResolution.state
         : undefined,
   };
+}
+
+async function rejectInvalidStoredOAuthStateForCallback(args: {
+  readonly db: Db;
+  readonly state: string;
+  readonly connectorType: OAuthConnectorType;
+  readonly origin: string;
+  readonly type: string;
+  readonly signal: AbortSignal;
+}): Promise<Response | undefined> {
+  const status = await getConnectorOAuthStateStatus(
+    args.db,
+    { state: args.state, connectorType: args.connectorType },
+    args.signal,
+  );
+  if (status.kind !== "invalid") {
+    return undefined;
+  }
+
+  return invalidStateRedirectResponse(args.origin, args.type);
 }
 
 async function completeConnectorSession(
@@ -483,17 +519,21 @@ const callbackConnectorInner$ = command(
     const codeVerifier = getCookie(request, PKCE_COOKIE_NAME);
     const oauthContext = getCookie(request, OAUTH_CONTEXT_COOKIE_NAME);
     const state = query.state;
+    const storedStateCallbackArgs = {
+      db: writeDb,
+      connectorType,
+      origin,
+      type: params.type,
+      signal,
+    };
 
     if (query.error) {
       if (state) {
         const claimedState = await claimStoredOAuthStateForCallback({
-          db: writeDb,
+          ...storedStateCallbackArgs,
           state,
-          connectorType,
-          origin,
-          type: params.type,
-          signal,
         });
+        signal.throwIfAborted();
         if (!claimedState.ok) {
           return claimedState.response;
         }
@@ -508,31 +548,29 @@ const callbackConnectorInner$ = command(
 
     const code = query.code;
     if (!code) {
-      return redirectWithError(
-        origin,
-        params.type,
-        "Missing authorization code",
-        true,
-      );
+      if (state) {
+        const invalidStateResponse =
+          await rejectInvalidStoredOAuthStateForCallback({
+            ...storedStateCallbackArgs,
+            state,
+          });
+        signal.throwIfAborted();
+        if (invalidStateResponse) {
+          return invalidStateResponse;
+        }
+      }
+      return missingAuthorizationCodeRedirectResponse(origin, params.type);
     }
 
     if (!state) {
-      return redirectWithError(
-        origin,
-        params.type,
-        "Missing state parameter",
-        true,
-      );
+      return missingStateRedirectResponse(origin, params.type);
     }
 
     const claimedState = await claimStoredOAuthStateForCallback({
-      db: writeDb,
+      ...storedStateCallbackArgs,
       state,
-      connectorType,
-      origin,
-      type: params.type,
-      signal,
     });
+    signal.throwIfAborted();
     if (!claimedState.ok) {
       return claimedState.response;
     }

@@ -1628,6 +1628,44 @@ describe("GET /api/connectors/:type/callback", () => {
     });
   });
 
+  it("consumes server-side OAuth handoff state when the provider returns an error", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const state = `state-${randomUUID()}`;
+    orgIds.push(orgId);
+    const oauthStateId = await seedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state,
+    });
+    oauthStateIds.push(oauthStateId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: {
+        error: "access_denied",
+        error_description: "The user denied access",
+        state,
+      },
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "The user denied access",
+    });
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, oauthStateId));
+    expect(storedState?.consumedAt).toBeInstanceOf(Date);
+  });
+
   it("rejects an already consumed server-side OAuth handoff state", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -1743,6 +1781,34 @@ describe("GET /api/connectors/:type/callback", () => {
       .from(connectorOauthStates)
       .where(eq(connectorOauthStates.id, oauthStateId));
     expect(storedState?.consumedAt).toBeNull();
+  });
+
+  it("rejects an invalid server-side OAuth handoff state before missing code", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const state = `state-${randomUUID()}`;
+    orgIds.push(orgId);
+    const oauthStateId = await seedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state,
+      consumedAt: new Date(now()),
+    });
+    oauthStateIds.push(oauthStateId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: { state },
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid state - please try again",
+    });
   });
 
   it("uses cookie-backed direct callback state when no stored handoff state exists", async () => {
