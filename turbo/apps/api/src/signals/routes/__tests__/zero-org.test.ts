@@ -908,7 +908,7 @@ describe("GET /api/zero/org — org resolution", () => {
       slug,
       name: "Clerk Fresh Org",
       tier: "free",
-      role: "member",
+      role: "admin",
       createdBy: userId,
     });
     expect(

@@ -5,6 +5,7 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -295,6 +296,27 @@ async function upsertSetupMemberMetadata(
     });
 }
 
+async function upsertSetupMemberRole(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<void> {
+  await db
+    .insert(orgMembersCache)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      role: "admin",
+      cachedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role: "admin", cachedAt: nowDate() },
+    });
+}
+
 async function replaceSelectedConnectors(
   db: Db,
   args: {
@@ -522,6 +544,12 @@ export const setupOnboarding$ = command(
       orgId: args.orgId,
       userId: args.userId,
       timezone: args.timezone,
+    });
+    signal.throwIfAborted();
+
+    await upsertSetupMemberRole(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
     });
     signal.throwIfAborted();
 

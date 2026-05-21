@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages } from "@vm0/db/schema/storage";
@@ -96,6 +97,10 @@ const deleteOnboardingSetupFixture$ = command(
       .where(eq(userConnectors.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db
+      .delete(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db
       .delete(orgMembersMetadata)
       .where(eq(orgMembersMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
@@ -168,6 +173,19 @@ async function readMemberMetadata(orgId: string, userId: string) {
         eq(orgMembersMetadata.orgId, orgId),
         eq(orgMembersMetadata.userId, userId),
       ),
+    );
+  return row;
+}
+
+async function readMemberRole(orgId: string, userId: string) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({
+      role: orgMembersCache.role,
+    })
+    .from(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
     );
   return row;
 }
@@ -335,6 +353,11 @@ describe("POST /api/zero/onboarding/setup", () => {
       readMemberMetadata(fixture.orgId, fixture.userId),
     ).resolves.toStrictEqual({
       timezone: "America/Los_Angeles",
+    });
+    await expect(
+      readMemberRole(fixture.orgId, fixture.userId),
+    ).resolves.toStrictEqual({
+      role: "admin",
     });
     await expect(readVm0Provider(fixture.orgId)).resolves.toMatchObject({
       userId: "__org__",

@@ -299,6 +299,7 @@ async function getOrgIdentityForDelete(args: {
 interface ZeroOrgDetailArgs {
   readonly orgId: string;
   readonly userId: string;
+  readonly orgRole?: OrgRole;
 }
 
 export const zeroOrgDetail$ = command(
@@ -394,7 +395,7 @@ export const zeroOrgDetail$ = command(
       slug: identity.slug,
       name: identity.name,
       tier: meta[0]?.tier ?? "free",
-      role: (membership[0]?.role as OrgRole) ?? "member",
+      role: args.orgRole ?? (membership[0]?.role as OrgRole) ?? "member",
       createdBy: identity.createdBy ?? undefined,
     };
   },

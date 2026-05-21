@@ -39,7 +39,7 @@ const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const org = await set(
     zeroOrgDetail$,
-    { orgId: auth.orgId, userId: auth.userId },
+    { orgId: auth.orgId, userId: auth.userId, orgRole: auth.orgRole },
     signal,
   );
   signal.throwIfAborted();
