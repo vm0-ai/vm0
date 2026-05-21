@@ -45,7 +45,7 @@ type UploadStorageServerSideParams = {
  * Handles the full flow: tar.gz creation, storage upsert,
  * dedup check, S3 upload, and version+HEAD transaction.
  *
- * Used by both instruction-upload and volume-upload.
+ * Used by instruction-upload.
  */
 export async function uploadStorageServerSide(
   params: UploadStorageServerSideParams,
