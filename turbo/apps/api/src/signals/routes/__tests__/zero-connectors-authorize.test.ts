@@ -14,7 +14,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { encryptSecretValue } from "../../services/crypto.utils";
@@ -257,6 +257,19 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
         return cookie.startsWith("connector_oauth_state=");
       }),
     ).toBeTruthy();
+  });
+
+  it("sets Secure on OAuth cookies in production", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestAuthorize("github", { authenticated: true });
+
+    const cookies = response.headers.getSetCookie();
+    const stateCookie = cookies.find((cookie) => {
+      return cookie.startsWith("connector_oauth_state=");
+    });
+    expect(stateCookie).toBeDefined();
+    expect(stateCookie).toContain("Secure");
   });
 
   it("uses the web rewrite origin for OAuth callback URLs", async () => {
@@ -733,5 +746,46 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
         code: "UNAUTHORIZED",
       },
     });
+  });
+
+  it("returns 400 when starting OAuth for a non-OAuth connector", async () => {
+    const response = await requestOauthStart("serpapi", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "serpapi connector does not use OAuth",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("does not create server-side handoff state when OAuth is not configured", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("github", {
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "github OAuth not configured",
+        code: "INTERNAL_SERVER_ERROR",
+      },
+    });
+
+    const db = store.set(writeDb$);
+    const states = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.userId, userId));
+    expect(states).toHaveLength(0);
   });
 });
