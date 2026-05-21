@@ -278,6 +278,37 @@ async fn write_file_connection_close_after_request_marks_tracker_not_parkable() 
 }
 
 #[tokio::test]
+async fn write_file_after_connection_close_returns_immediately_without_not_parkable() {
+    let (host_stream, mut guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_file("/tmp/closed.txt", b"hello", false),
+    )
+    .await
+    .expect("write_file should return when the connection is already closed")
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+    guest_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn test_write_file_failure() {
     let (host_stream, mut guest) = make_pair();
 
