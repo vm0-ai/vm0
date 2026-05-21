@@ -19,6 +19,7 @@ import {
   createTestOrgModelProvider,
   insertOrgModelPolicy,
   insertUserModelPreference,
+  seedUserFeatureSwitches,
 } from "../../../__tests__/api-test-helpers";
 import {
   clearComposeHeadVersion,
@@ -41,8 +42,6 @@ import {
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { updateUserFeatureSwitches } from "../user/feature-switches-service";
 
 // ---------------------------------------------------------------------------
 // Tests for createZeroRun parameters NOT exposed by the POST /api/zero/runs
@@ -138,7 +137,7 @@ describe("createZeroRun() — service-only parameters", () => {
 
   describe("parameter forwarding", () => {
     it("should propagate user feature switch overrides into runner feature flags", async () => {
-      await updateUserFeatureSwitches(user.orgId, user.userId, {
+      await seedUserFeatureSwitches(user.orgId, user.userId, {
         [FeatureSwitchKey.ComputerUse]: true,
       });
 

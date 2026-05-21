@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { initServices } from "../../init-services";
 
@@ -29,7 +29,7 @@ async function getUserFeatureSwitches(
     )
     .limit(1);
 
-  return row ? (row.switches as Record<string, boolean>) : {};
+  return row?.switches ?? {};
 }
 
 /**
@@ -42,41 +42,5 @@ export async function loadFeatureSwitchOverrides(
 ): Promise<Partial<Record<FeatureSwitchKey, boolean>> | undefined> {
   if (!orgId || !userId) return undefined;
   const switches = await getUserFeatureSwitches(orgId, userId);
-  return Object.keys(switches).length > 0
-    ? (switches as Partial<Record<FeatureSwitchKey, boolean>>)
-    : undefined;
-}
-
-/**
- * Update user feature switch overrides with merge strategy.
- * Merges the provided switches with existing ones (shallow merge).
- */
-export async function updateUserFeatureSwitches(
-  orgId: string,
-  userId: string,
-  switches: Record<string, boolean>,
-): Promise<Record<string, boolean>> {
-  const db = getDb();
-
-  const existing = await getUserFeatureSwitches(orgId, userId);
-  const merged = { ...existing, ...switches };
-  const now = new Date();
-
-  await db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: merged,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: merged,
-        updatedAt: now,
-      },
-    });
-
-  return merged;
+  return Object.keys(switches).length > 0 ? switches : undefined;
 }

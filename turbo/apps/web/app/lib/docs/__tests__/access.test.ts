@@ -32,6 +32,18 @@ describe("docs access", () => {
     expect(loadFeatureSwitchOverridesMock).not.toHaveBeenCalled();
   });
 
+  it("does not query feature switch overrides for users without an org", async () => {
+    const canViewDocsForUser = createCanViewDocsForUser(
+      loadFeatureSwitchOverridesMock,
+    );
+
+    await expect(canViewDocsForUser("user-without-org", null)).resolves.toBe(
+      false,
+    );
+
+    expect(loadFeatureSwitchOverridesMock).not.toHaveBeenCalled();
+  });
+
   it("allows docs when the per-user docsSite override is enabled", async () => {
     loadFeatureSwitchOverridesMock.mockResolvedValue({
       [FeatureSwitchKey.DocsSite]: true,

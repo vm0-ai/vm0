@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../../__tests__/test-helpers";
+import { seedUserFeatureSwitches } from "../../../../__tests__/db-test-seeders/feature-switches";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { loadRunUserContext } from "../user-context-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { updateUserFeatureSwitches } from "../feature-switches-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { updateUserPreferences } from "../user-preferences-service";
 
@@ -19,7 +18,7 @@ describe("loadRunUserContext", () => {
       timezone: "Asia/Shanghai",
       captureNetworkBodiesRemaining: 5,
     });
-    await updateUserFeatureSwitches(orgId, userId, {
+    await seedUserFeatureSwitches(orgId, userId, {
       [FeatureSwitchKey.ComputerUse]: true,
     });
 
@@ -36,7 +35,7 @@ describe("loadRunUserContext", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    await updateUserFeatureSwitches(orgId, userId, {
+    await seedUserFeatureSwitches(orgId, userId, {
       [FeatureSwitchKey.ComputerUse]: true,
     });
 

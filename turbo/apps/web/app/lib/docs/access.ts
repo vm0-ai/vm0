@@ -2,11 +2,11 @@ import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { loadFeatureSwitchOverrides } from "../../../src/lib/zero/user/feature-switches-service";
+import { loadDocsFeatureSwitchOverrides } from "./feature-switch-overrides";
 
 type FeatureSwitchOverridesLoader = (
-  orgId: string | undefined,
-  userId: string | undefined,
+  orgId: string,
+  userId: string,
 ) => Promise<Partial<Record<FeatureSwitchKey, boolean>> | undefined>;
 
 function evaluateDocsSiteStatic(
@@ -49,7 +49,7 @@ export function createCanViewDocsForUser(
 }
 
 export const canViewDocsForUser = createCanViewDocsForUser(
-  loadFeatureSwitchOverrides,
+  loadDocsFeatureSwitchOverrides,
 );
 
 export async function canViewDocs(): Promise<boolean> {
