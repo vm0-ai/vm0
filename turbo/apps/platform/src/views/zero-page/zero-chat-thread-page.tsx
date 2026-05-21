@@ -159,6 +159,7 @@ import {
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { createZipBlob } from "../../lib/zip.ts";
 import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
+import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
@@ -2091,6 +2092,7 @@ function ChatThreadComposer({
             onRemoveQueuedItem={onRemoveQueuedItem}
           />
           <PersonalProviderDialog />
+          <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </div>
       </div>

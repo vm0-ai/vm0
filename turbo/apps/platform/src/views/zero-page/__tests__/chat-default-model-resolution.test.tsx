@@ -376,8 +376,11 @@ describe("chat composer — default model resolution", () => {
     await expectComposerShowsModel("Claude Opus 4.7");
   });
 
-  it("blocks agent chat submit and opens Claude Code OAuth token input from the model warning", async () => {
+  it("blocks agent chat submit and opens Claude Code device login from the model warning", async () => {
     const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
     let sendRequests = 0;
     setMockFeatureSwitches({});
     setMockOrgModelPolicies([buildMemberOauthPolicy()]);
@@ -424,14 +427,10 @@ describe("chat composer — default model resolution", () => {
 
     await user.click(warning);
     await expect(
-      screen.findByText("Configure Claude Code OAuth"),
+      screen.findByTestId("claude-code-device-auth-start"),
     ).resolves.toBeInTheDocument();
-    await fill(screen.getByPlaceholderText("sk-ant-XXXXXXX"), "oauth-token");
-    await user.click(screen.getByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Send")).not.toBeDisabled();
-    });
+    expect(screen.getByText("Connect Claude Code")).toBeInTheDocument();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   it("blocks agent chat submit and opens ChatGPT device login from the model warning", async () => {

@@ -713,6 +713,18 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/model-providers", "/api/zero/model-providers"],
   [
+    "/api/zero/model-providers/claude-code/device-auth/sessions",
+    "/api/zero/model-providers/claude-code/device-auth/sessions",
+  ],
+  [
+    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+  ],
+  [
+    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+    "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+  ],
+  [
     "/api/zero/model-providers/codex/device-auth/sessions",
     "/api/zero/model-providers/codex/device-auth/sessions",
   ],

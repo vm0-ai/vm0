@@ -7,11 +7,16 @@ import {
   setOrgAddProviderDialogOpen$,
   orgConfiguredProviders$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { setClaudeCodeDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
 import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.tsx";
+import {
+  ClaudeCodeDeviceAuthDialog,
+  PersonalClaudeCodeDeviceAuthDialog,
+} from "../settings/claude-code-device-auth-dialog.tsx";
 import {
   CodexDeviceAuthDialog,
   PersonalCodexDeviceAuthDialog,
@@ -38,10 +43,12 @@ export function OrgProvidersTab() {
       )}
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
+      <ClaudeCodeDeviceAuthDialog />
       <CodexDeviceAuthDialog />
       {isAdmin && (
         <>
           <PersonalProviderDialog />
+          <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </>
       )}
@@ -68,13 +75,19 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
+  const setClaudeCodeDeviceDialog = useSet(setClaudeCodeDeviceAuthDialogState$);
   const setDeviceDialog = useSet(setCodexDeviceAuthDialogState$);
   const stale = providers.find((p) => {
-    return p.type === "codex-oauth-token" && p.needsReconnect;
+    return (
+      (p.type === "claude-code-oauth-token" ||
+        p.type === "codex-oauth-token") &&
+      p.needsReconnect
+    );
   });
   if (!stale) {
     return null;
   }
+  const isClaudeCode = stale.type === "claude-code-oauth-token";
   return (
     <section
       className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
@@ -82,15 +95,20 @@ function StaleProviderBanner({
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
-          ChatGPT session needs reconnection
+          {isClaudeCode
+            ? "Claude Code session needs reconnection"
+            : "ChatGPT session needs reconnection"}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {staleMessage(stale.lastRefreshErrorCode)}
+          {staleMessage(stale)}
         </p>
       </div>
       <button
         type="button"
         onClick={() => {
+          if (isClaudeCode) {
+            return setClaudeCodeDeviceDialog({ open: true, mode: "reconnect" });
+          }
           return setDeviceDialog({ open: true, mode: "reconnect" });
         }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
@@ -101,10 +119,12 @@ function StaleProviderBanner({
   );
 }
 
-function staleMessage(code: string | null): string {
-  switch (code) {
+function staleMessage(provider: ModelProviderResponse): string {
+  switch (provider.lastRefreshErrorCode) {
     case "refresh_token_expired": {
-      return "Your ChatGPT session expired. Re-connect to continue.";
+      return provider.type === "claude-code-oauth-token"
+        ? "Your Claude Code session expired. Re-connect to continue."
+        : "Your ChatGPT session expired. Re-connect to continue.";
     }
     case "refresh_token_reused": {
       return "Your ChatGPT session was used elsewhere. Re-connect.";
@@ -113,7 +133,9 @@ function staleMessage(code: string | null): string {
       return "Your ChatGPT session was revoked. Re-connect.";
     }
     default: {
-      return "ChatGPT refresh failed. Re-connect to retry.";
+      return provider.type === "claude-code-oauth-token"
+        ? "Claude Code refresh failed. Re-connect to retry."
+        : "ChatGPT refresh failed. Re-connect to retry.";
     }
   }
 }

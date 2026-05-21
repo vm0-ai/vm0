@@ -10,9 +10,14 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
+import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  fill,
+} from "../../../__tests__/page-helper.ts";
 import { setOrgAddProviderDialogOpen$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { resetMockOrgModelProviders } from "../../../mocks/handlers/api-org-model-providers.ts";
@@ -45,6 +50,116 @@ describe("connect ChatGPT card", () => {
       expect(
         screen.getByTestId("org-provider-card-codex-oauth-token"),
       ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("connect Claude Code card — click handler", () => {
+  beforeEach(() => {
+    setMockFeatureSwitches({});
+    resetMockOrgModelProviders();
+  });
+
+  it("opens the Claude Code device login dialog when the card is clicked", async () => {
+    await openProvidersPage();
+    context.store.set(setOrgAddProviderDialogOpen$, true);
+
+    click(
+      await screen.findByTestId("org-provider-card-claude-code-oauth-token"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: /Connect Claude Code/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("claude-code-device-auth-start"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Sign in with Claude")).toBeInTheDocument();
+  });
+
+  it("starts Claude Code auth, opens approval, and submits the callback code", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue({} as Window);
+    const completeBodies: unknown[] = [];
+    server.use(
+      mockApi(zeroClaudeCodeDeviceAuthContract.start, ({ body, respond }) => {
+        expect(body).toStrictEqual({ scope: "org" });
+        return respond(200, {
+          sessionToken: "mock-claude-code-device-session",
+          type: "claude-code",
+          status: "pending",
+          scope: "org",
+          browserUrl: "https://claude.com/cai/oauth/authorize?code=true",
+          expiresIn: 30,
+        });
+      }),
+      mockApi(
+        zeroClaudeCodeDeviceAuthContract.complete,
+        ({ body, respond }) => {
+          completeBodies.push(body);
+          return respond(200, {
+            status: "complete",
+            created: true,
+            provider: {
+              id: "00000000-0000-4000-a000-000000000140",
+              type: "claude-code-oauth-token",
+              framework: "claude-code",
+              secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+              authMethod: null,
+              secretNames: null,
+              isDefault: false,
+              selectedModel: null,
+              workspaceName: null,
+              planType: null,
+              needsReconnect: false,
+              lastRefreshErrorCode: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        },
+      ),
+    );
+
+    await openProvidersPage();
+    context.store.set(setOrgAddProviderDialogOpen$, true);
+
+    click(
+      await screen.findByTestId("org-provider-card-claude-code-oauth-token"),
+    );
+    click(await screen.findByTestId("claude-code-device-auth-start"));
+    await expect(
+      screen.findByTestId("claude-code-device-auth-code"),
+    ).resolves.toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+
+    click(screen.getByTestId("claude-code-device-auth-open"));
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        "https://claude.com/cai/oauth/authorize?code=true",
+        "_blank",
+      );
+    });
+    await fill(
+      screen.getByTestId("claude-code-device-auth-code"),
+      "auth_code#state",
+    );
+    click(screen.getByTestId("claude-code-device-auth-submit"));
+
+    await waitFor(() => {
+      expect(completeBodies).toStrictEqual([
+        {
+          sessionToken: "mock-claude-code-device-session",
+          authorizationCode: "auth_code#state",
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Connect Claude Code/i }),
+      ).not.toBeInTheDocument();
     });
   });
 });

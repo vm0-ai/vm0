@@ -939,6 +939,12 @@ export {
   type ZeroCodexDeviceAuthContract,
 } from "./zero-codex-device-auth";
 export {
+  claudeCodeDeviceAuthScopeSchema,
+  zeroClaudeCodeDeviceAuthContract,
+  type ClaudeCodeDeviceAuthScope,
+  type ZeroClaudeCodeDeviceAuthContract,
+} from "./zero-claude-code-device-auth";
+export {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,

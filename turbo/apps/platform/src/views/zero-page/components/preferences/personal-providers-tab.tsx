@@ -15,13 +15,14 @@ import {
   disconnectPersonalOAuthCredential$,
   personalActionPromise$,
   personalConfiguredProviders$,
-  personalOpenOAuthCredentialDialog$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
+import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
+import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 
 type OAuthStatus = "connected" | "stale" | "missing";
@@ -31,6 +32,7 @@ export function PersonalProvidersTab() {
     <div className="flex flex-col gap-8">
       <OAuthCredentialsSection />
       <PersonalProviderDialog />
+      <PersonalClaudeCodeDeviceAuthDialog />
       <PersonalCodexDeviceAuthDialog />
     </div>
   );
@@ -38,7 +40,9 @@ export function PersonalProvidersTab() {
 
 function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
-  const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
+  const openClaudeCodeDeviceAuthDialog = useSet(
+    setClaudeCodeDeviceAuthDialogStatePersonal$,
+  );
   const openCodexDeviceAuthDialog = useSet(
     setCodexDeviceAuthDialogStatePersonal$,
   );
@@ -53,6 +57,13 @@ function OAuthCredentialsSection() {
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
   const disconnecting = actionLoadable.state === "loading";
+  const connectClaudeCode = () => {
+    const next = {
+      open: true,
+      mode: claudeCode?.needsReconnect ? "reconnect" : "connect",
+    } as const;
+    openClaudeCodeDeviceAuthDialog(next);
+  };
   const connectOpenAI = () => {
     const next = {
       open: true,
@@ -84,16 +95,14 @@ function OAuthCredentialsSection() {
             <OAuthCredentialCard
               type="claude-code-oauth-token"
               title="Claude Code OAuth"
-              description="Paste the Claude Code OAuth token used by workspace model routes."
-              status={claudeCode ? "connected" : "missing"}
+              description="Connect with Claude Code login for Claude-backed model routes."
+              status={getOpenAIStatus(claudeCode)}
               menuItems={
                 claudeCode
                   ? [
                       {
                         label: "Replace",
-                        onSelect: () => {
-                          openCredentialDialog("claude-code-oauth-token");
-                        },
+                        onSelect: connectClaudeCode,
                       },
                       {
                         label: "Disconnect",
@@ -111,9 +120,7 @@ function OAuthCredentialsSection() {
                     ]
                   : []
               }
-              onAction={() => {
-                openCredentialDialog("claude-code-oauth-token");
-              }}
+              onAction={connectClaudeCode}
               testId="oauth-card-claude-code-oauth-token"
             />
             <OAuthCredentialCard

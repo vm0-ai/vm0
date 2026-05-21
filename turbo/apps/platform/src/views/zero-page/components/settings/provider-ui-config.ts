@@ -50,7 +50,7 @@ const PROVIDER_UI_OVERRIDES = Object.freeze<
   "claude-code-oauth-token": {
     label: "Claude Code (OAuth token)",
     description:
-      "Leverage Claude Code's exceptional intelligence to build and run agents.",
+      "Sign in with your Claude subscription for Claude Code-backed agents.",
   },
   "codex-oauth-token": {
     description:

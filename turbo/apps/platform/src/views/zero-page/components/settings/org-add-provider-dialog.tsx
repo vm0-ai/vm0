@@ -15,6 +15,7 @@ import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { setClaudeCodeDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
@@ -72,6 +73,7 @@ export function OrgAddProviderDialog({
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
   const openAdd = useSet(orgOpenAddDialog$);
+  const openClaudeCodeDeviceAuth = useSet(setClaudeCodeDeviceAuthDialogState$);
   const openCodexDeviceAuth = useSet(setCodexDeviceAuthDialogState$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
@@ -80,6 +82,11 @@ export function OrgAddProviderDialog({
   );
 
   const handleAdd = (type: ModelProviderType) => {
+    if (type === "claude-code-oauth-token") {
+      openClaudeCodeDeviceAuth({ open: true, mode: "connect" });
+      onOpenChange(false);
+      return;
+    }
     if (type === "codex-oauth-token") {
       openCodexDeviceAuth({ open: true, mode: "connect" });
       onOpenChange(false);

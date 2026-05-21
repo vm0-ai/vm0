@@ -135,6 +135,11 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(
       screen.getByText(
+        "Connect with Claude Code login for Claude-backed model routes.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
         "Connect with Codex device login for Codex-backed model routes.",
       ),
     ).toBeInTheDocument();
@@ -146,7 +151,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens the Claude Code OAuth write dialog without a model selector", async () => {
+  it("opens the Claude Code device login dialog", async () => {
     setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
@@ -155,12 +160,11 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     await openModelConfiguration();
     click(await screen.findByLabelText("Connect Claude Code OAuth"));
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Configure Claude Code OAuth"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Claude OAuth token")).toBeInTheDocument();
+    await expect(
+      screen.findByTestId("claude-code-device-auth-start"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Connect Claude Code")).toBeInTheDocument();
+    expect(screen.getByText("Sign in with Claude")).toBeInTheDocument();
     expect(screen.queryByText("Select model")).not.toBeInTheDocument();
   });
 

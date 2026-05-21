@@ -4,7 +4,7 @@ import type {
   OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { useSet } from "ccstate-react";
-import { personalOpenOAuthCredentialDialog$ } from "../../signals/zero-page/settings/personal-model-providers.ts";
+import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../signals/zero-page/settings/codex-device-auth.ts";
 import type { ModelFirstPersonalOauthState } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
@@ -126,18 +126,26 @@ export function resolveChatComposerSubmitBlocker(params: {
 }
 
 export function usePersonalOauthConfigurationAction() {
+  const openClaudeCodeDeviceAuthDialog = useSet(
+    setClaudeCodeDeviceAuthDialogStatePersonal$,
+  );
   const openCodexDeviceAuthDialog = useSet(
     setCodexDeviceAuthDialogStatePersonal$,
   );
-  const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
   return (
     providerType: MemberOauthProviderType,
     codexDeviceAuthMode: CodexDeviceAuthDialogMode,
   ) => {
+    if (providerType === "claude-code-oauth-token") {
+      openClaudeCodeDeviceAuthDialog({
+        open: true,
+        mode: codexDeviceAuthMode,
+      });
+      return;
+    }
     if (providerType === "codex-oauth-token") {
       openCodexDeviceAuthDialog({ open: true, mode: codexDeviceAuthMode });
       return;
     }
-    openCredentialDialog(providerType);
   };
 }
