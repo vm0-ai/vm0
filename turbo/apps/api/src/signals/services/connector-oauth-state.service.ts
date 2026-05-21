@@ -1,0 +1,50 @@
+import type { OAuthConnectorType } from "@vm0/connectors/connectors";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { and, eq, gt, isNull } from "drizzle-orm";
+
+import { nowDate } from "../../lib/time";
+import type { Db } from "../external/db";
+
+export type StoredOAuthState = typeof connectorOauthStates.$inferSelect;
+
+type ConnectorOAuthStateClaimResult =
+  | { readonly kind: "missing" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "usable"; readonly state: StoredOAuthState };
+
+export async function claimConnectorOAuthState(
+  db: Db,
+  args: {
+    readonly state: string;
+    readonly connectorType: OAuthConnectorType;
+  },
+  signal: AbortSignal,
+): Promise<ConnectorOAuthStateClaimResult> {
+  const consumedAt = nowDate();
+  const [claimedState] = await db
+    .update(connectorOauthStates)
+    .set({ consumedAt })
+    .where(
+      and(
+        eq(connectorOauthStates.state, args.state),
+        eq(connectorOauthStates.type, args.connectorType),
+        isNull(connectorOauthStates.consumedAt),
+        gt(connectorOauthStates.expiresAt, consumedAt),
+      ),
+    )
+    .returning();
+  signal.throwIfAborted();
+
+  if (claimedState) {
+    return { kind: "usable", state: claimedState };
+  }
+
+  const [existingState] = await db
+    .select({ id: connectorOauthStates.id })
+    .from(connectorOauthStates)
+    .where(eq(connectorOauthStates.state, args.state))
+    .limit(1);
+  signal.throwIfAborted();
+
+  return existingState ? { kind: "invalid" } : { kind: "missing" };
+}
