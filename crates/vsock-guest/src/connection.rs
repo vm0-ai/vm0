@@ -36,6 +36,11 @@ enum ConnectionEnd {
     Shutdown,
 }
 
+enum ReconnectFailure {
+    Closed,
+    Error(io::Error),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DispatchOutcome {
     Continue,
@@ -426,6 +431,60 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 50;
 /// Delay between reconnection attempts (10ms for fast reconnect after snapshot restore)
 const RECONNECT_DELAY_MS: u64 = 10;
 
+fn retry_or_fail(failure: ReconnectFailure, attempts: u32) -> io::Result<()> {
+    if attempts >= MAX_RECONNECT_ATTEMPTS {
+        return match failure {
+            ReconnectFailure::Closed => {
+                log(
+                    "ERROR",
+                    &format!(
+                        "Max reconnect attempts ({}) reached",
+                        MAX_RECONNECT_ATTEMPTS
+                    ),
+                );
+                Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "Max reconnect attempts reached",
+                ))
+            }
+            ReconnectFailure::Error(error) => {
+                log(
+                    "ERROR",
+                    &format!(
+                        "Max reconnect attempts ({}) reached: {}",
+                        MAX_RECONNECT_ATTEMPTS, error
+                    ),
+                );
+                Err(error)
+            }
+        };
+    }
+
+    match failure {
+        ReconnectFailure::Closed => {
+            log(
+                "INFO",
+                &format!(
+                    "Connection closed, reconnecting ({}/{})...",
+                    attempts, MAX_RECONNECT_ATTEMPTS
+                ),
+            );
+        }
+        ReconnectFailure::Error(error) => {
+            log(
+                "WARN",
+                &format!(
+                    "Connection error: {}, reconnecting ({}/{})...",
+                    error, attempts, MAX_RECONNECT_ATTEMPTS
+                ),
+            );
+        }
+    }
+
+    thread::sleep(Duration::from_millis(RECONNECT_DELAY_MS));
+    Ok(())
+}
+
 /// Run the vsock guest agent with the given options.
 /// Includes reconnection logic for snapshot restore scenarios where
 /// the connection is lost when VM is paused and resumed.
@@ -457,51 +516,41 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
 
         match result {
             Ok(ConnectionEnd::Shutdown) => return Ok(()),
-            Ok(ConnectionEnd::Closed) => {
-                // Connection closed gracefully, try to reconnect
-                if attempts >= MAX_RECONNECT_ATTEMPTS {
-                    log(
-                        "ERROR",
-                        &format!(
-                            "Max reconnect attempts ({}) reached",
-                            MAX_RECONNECT_ATTEMPTS
-                        ),
-                    );
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "Max reconnect attempts reached",
-                    ));
-                }
-                log(
-                    "INFO",
-                    &format!(
-                        "Connection closed, reconnecting ({}/{})...",
-                        attempts, MAX_RECONNECT_ATTEMPTS
-                    ),
-                );
-                thread::sleep(Duration::from_millis(RECONNECT_DELAY_MS));
-            }
-            Err(e) => {
-                // Connection error, try to reconnect
-                if attempts >= MAX_RECONNECT_ATTEMPTS {
-                    log(
-                        "ERROR",
-                        &format!(
-                            "Max reconnect attempts ({}) reached: {}",
-                            MAX_RECONNECT_ATTEMPTS, e
-                        ),
-                    );
-                    return Err(e);
-                }
-                log(
-                    "WARN",
-                    &format!(
-                        "Connection error: {}, reconnecting ({}/{})...",
-                        e, attempts, MAX_RECONNECT_ATTEMPTS
-                    ),
-                );
-                thread::sleep(Duration::from_millis(RECONNECT_DELAY_MS));
-            }
+            Ok(ConnectionEnd::Closed) => retry_or_fail(ReconnectFailure::Closed, attempts)?,
+            Err(error) => retry_or_fail(ReconnectFailure::Error(error), attempts)?,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_closed_failure_returns_connection_reset_when_exhausted() {
+        let result = retry_or_fail(ReconnectFailure::Closed, MAX_RECONNECT_ATTEMPTS);
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
+            assert_eq!(error.to_string(), "Max reconnect attempts reached");
+        }
+    }
+
+    #[test]
+    fn retry_error_failure_returns_original_error_when_exhausted() {
+        let result = retry_or_fail(
+            ReconnectFailure::Error(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "connection timed out",
+            )),
+            MAX_RECONNECT_ATTEMPTS,
+        );
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+            assert_eq!(error.to_string(), "connection timed out");
         }
     }
 }
