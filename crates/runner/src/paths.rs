@@ -673,6 +673,29 @@ mod tests {
     }
 
     #[test]
+    fn is_gc_eligible_log_temp_matching() {
+        let lp = LogPaths::new(PathBuf::from("/test/logs"));
+        let id = RunId::nil();
+        let paths = [
+            lp.network_log(id),
+            lp.system_log(id),
+            lp.metrics_log(id),
+            lp.sandbox_ops_log(id),
+            lp.proxy_log(id),
+        ];
+
+        for path in paths {
+            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap();
+            let temp_name = format!(".{file_name}.vm0tmp-101-7-1");
+            assert!(LogPaths::is_gc_eligible_log(&temp_name));
+        }
+
+        assert!(LogPaths::is_gc_eligible_log(
+            ".runner-default.2026-04-01.log.vm0tmp-101-7-6"
+        ));
+    }
+
+    #[test]
     fn is_gc_eligible_log_non_matching() {
         assert!(!LogPaths::is_gc_eligible_log("config.yaml"));
         assert!(!LogPaths::is_gc_eligible_log("status.json"));
