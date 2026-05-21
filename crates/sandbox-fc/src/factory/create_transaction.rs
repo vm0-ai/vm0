@@ -40,7 +40,9 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
     }
 
     async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
-        match tokio::fs::remove_dir_all(&path).await {
+        // Keep rollback deletion cancellation-safe. tokio::fs deletion can
+        // continue on the blocking pool after the rollback task is aborted.
+        match std::fs::remove_dir_all(&path) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
@@ -350,8 +352,8 @@ impl SandboxCreateTransaction {
                 slot,
                 target_workspace,
             } => {
-                cleanup.destroy_slot(slot).await;
                 cleanup.remove_dir("workspace", target_workspace).await;
+                cleanup.destroy_slot(slot).await;
             }
             WorkspaceOwnership::Workspace(workspace) => {
                 if keep_workspace {
@@ -794,8 +796,8 @@ mod tests {
         assert_eq!(
             cleanup.events(),
             vec![
-                "destroy_slot:slot",
-                "remove_dir:workspace:sandbox-workspace"
+                "remove_dir:workspace:sandbox-workspace",
+                "destroy_slot:slot"
             ]
         );
     }
@@ -826,8 +828,8 @@ mod tests {
         assert_eq!(
             cleanup.events(),
             vec![
-                "destroy_slot:slot",
-                "remove_dir:workspace:sandbox-workspace"
+                "remove_dir:workspace:sandbox-workspace",
+                "destroy_slot:slot"
             ]
         );
     }

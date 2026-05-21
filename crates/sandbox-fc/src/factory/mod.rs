@@ -245,7 +245,7 @@ impl SandboxFactory for FirecrackerFactory {
                 // The slot workspace is {workspaces_dir}/{slot_uuid}/.
                 // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
                 let target_workspace = self.factory_paths.workspace(&id);
-                clean_stale_workspace_dir(&id, &target_workspace).await?;
+                clean_stale_workspace_dir(&id, &target_workspace)?;
                 let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
                 // Keep rename cancellation-safe: tokio::fs::rename may keep
                 // running on the blocking pool after its future is dropped.
@@ -263,11 +263,7 @@ impl SandboxFactory for FirecrackerFactory {
 
                 // Clean stale sock dir and create vsock directory.
                 let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
-                if sock_paths.dir().exists()
-                    && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
-                {
-                    warn!(id = %id, error = %e, "failed to clean stale sock dir");
-                }
+                clean_stale_sock_dir(&id, sock_paths.dir())?;
                 tx.track_sock_dir(sock_paths.dir().to_owned());
                 if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
                     return Err(SandboxError::Initialization {
@@ -406,16 +402,23 @@ fn convert_device_rate_limits(
         })
 }
 
-async fn clean_stale_workspace_dir(id: &str, target_workspace: &Path) -> sandbox::Result<()> {
-    match tokio::fs::remove_dir_all(target_workspace).await {
+fn clean_stale_workspace_dir(id: &str, target_workspace: &Path) -> sandbox::Result<()> {
+    clean_stale_create_dir(id, "target workspace", target_workspace)
+}
+
+fn clean_stale_sock_dir(id: &str, sock_dir: &Path) -> sandbox::Result<()> {
+    clean_stale_create_dir(id, "sock dir", sock_dir)
+}
+
+fn clean_stale_create_dir(id: &str, kind: &'static str, path: &Path) -> sandbox::Result<()> {
+    // Keep cleanup cancellation-safe for same-id retries. tokio::fs deletion
+    // can keep running on the blocking pool after its future is dropped.
+    match std::fs::remove_dir_all(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(SandboxError::Initialization {
             phase: SandboxInitializationPhase::SandboxAllocation,
-            message: format!(
-                "clean stale target workspace {} for {id}: {e}",
-                target_workspace.display()
-            ),
+            message: format!("clean stale {kind} {} for {id}: {e}", path.display()),
         }),
     }
 }
@@ -635,7 +638,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("sandbox-workspace");
 
-        clean_stale_workspace_dir("sandbox", &target).await.unwrap();
+        clean_stale_workspace_dir("sandbox", &target).unwrap();
 
         assert!(!target.exists());
     }
@@ -651,7 +654,7 @@ mod tests {
             .await
             .unwrap();
 
-        clean_stale_workspace_dir("sandbox", &target).await.unwrap();
+        clean_stale_workspace_dir("sandbox", &target).unwrap();
 
         assert!(!target.exists());
     }
@@ -662,9 +665,7 @@ mod tests {
         let target = tmp.path().join("sandbox-workspace");
         tokio::fs::write(&target, b"not a directory").await.unwrap();
 
-        let err = clean_stale_workspace_dir("sandbox", &target)
-            .await
-            .unwrap_err();
+        let err = clean_stale_workspace_dir("sandbox", &target).unwrap_err();
 
         match err {
             SandboxError::Initialization { phase, message } => {
@@ -674,6 +675,22 @@ mod tests {
             other => panic!("expected initialization error, got {other:?}"),
         }
         assert!(target.exists());
+    }
+
+    #[tokio::test]
+    async fn clean_stale_sock_dir_removes_existing_target_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("sandbox-sock");
+        tokio::fs::create_dir_all(target.join("vsock"))
+            .await
+            .unwrap();
+        tokio::fs::write(target.join("vsock").join("stale.sock"), b"stale")
+            .await
+            .unwrap();
+
+        clean_stale_sock_dir("sandbox", &target).unwrap();
+
+        assert!(!target.exists());
     }
 
     #[tokio::test]
