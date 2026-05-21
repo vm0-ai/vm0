@@ -57,6 +57,8 @@ def _format_url_host(host: str) -> str:
     candidate = host
     if candidate.startswith("[") and candidate.endswith("]"):
         candidate = candidate[1:-1]
+    if ":" not in candidate:
+        return host
     try:
         parsed = ipaddress.ip_address(candidate)
     except ValueError:

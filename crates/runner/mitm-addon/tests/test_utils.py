@@ -92,6 +92,16 @@ class TestGetOriginalUrl:
         )
         assert get_original_url(flow) == "http://[2001:db8::1]:8080/v1/data"
 
+    def test_https_brackets_ipv6_sni(self, real_flow, headers):
+        flow = real_flow(
+            host="2001:db8::1",
+            port=8443,
+            sni="2001:db8::1",
+            path="/v1/data",
+            request_headers=headers(("Host", "[2001:db8::1]")),
+        )
+        assert get_original_url(flow) == "https://[2001:db8::1]:8443/v1/data"
+
 
 class TestLogProxyEntry:
     def test_writes_jsonl(self, tmp_path):
