@@ -570,6 +570,41 @@ async fn supervised_exec_cancel_and_wait_sends_cancel_and_waits_for_cancelled_re
 }
 
 #[tokio::test]
+async fn supervised_exec_cancel_after_terminal_result_returns_result_without_cancel_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("already-done"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+
+    let result = handle.cancel_and_wait(Duration::ZERO).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn supervised_exec_cancel_non_cancelled_terminal_result_cleans_without_poisoning() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
