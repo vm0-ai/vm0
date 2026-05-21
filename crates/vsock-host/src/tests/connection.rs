@@ -411,6 +411,37 @@ async fn test_request_after_close_returns_immediately() {
 }
 
 #[tokio::test]
+async fn lifecycle_request_after_connection_close_returns_immediately() {
+    let (host_stream, mut guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.quiesce_operations(Duration::from_secs(60)),
+    )
+    .await
+    .expect("lifecycle request should return when the connection is already closed")
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+    guest_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn connection_close_marks_normal_operations_closed() {
     let (host_stream, mut guest) = make_pair();
 

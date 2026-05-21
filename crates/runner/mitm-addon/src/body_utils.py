@@ -14,6 +14,7 @@ import base64
 import contextlib
 import zlib
 from collections.abc import Callable
+from typing import Literal
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
@@ -278,6 +279,30 @@ def _redact_headers(headers) -> dict:
     return result
 
 
+def _set_body_fields(
+    log_entry: dict,
+    side: Literal["request", "response"],
+    body: bytes,
+    content_type: str,
+    *,
+    already_truncated: bool = False,
+) -> None:
+    if not body:
+        return
+
+    truncated = already_truncated or len(body) > STREAM_BUFFER_LIMIT
+    if truncated:
+        body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
+    encoded, encoding = _encode_body(body, content_type)
+    if encoded is not None:
+        log_entry[f"{side}_body"] = encoded
+        log_entry[f"{side}_body_encoding"] = encoding
+        if truncated:
+            log_entry[f"{side}_body_truncated"] = True
+    else:
+        log_entry[f"{side}_body_encoding"] = "binary"
+
+
 def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Add request/response headers and bodies to a log entry.
 
@@ -299,17 +324,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             # when Content-Encoding doesn't match the body bytes.
             log_entry["request_body_encoding"] = "binary"
         else:
-            truncated = len(body) > STREAM_BUFFER_LIMIT
-            if truncated:
-                body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
-            encoded, encoding = _encode_body(body, req_ct)
-            if encoded is not None:
-                log_entry["request_body"] = encoded
-                log_entry["request_body_encoding"] = encoding
-                if truncated:
-                    log_entry["request_body_truncated"] = True
-            else:
-                log_entry["request_body_encoding"] = "binary"
+            _set_body_fields(log_entry, "request", body, req_ct)
 
     # Response headers
     if flow.response:
@@ -332,20 +347,14 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 # ZlibError (decompression failure) or ValueError from mitmproxy
                 log_entry["response_body_encoding"] = "binary"
                 return
-        if not body:
-            return
         stream_state = flow.metadata.get("stream_buffer_state")
         res_ct = flow.response.headers.get("content-type", "")
         # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
         # Also check decompressed size in case it expanded beyond the limit.
-        truncated = (stream_state and stream_state["truncated"]) or len(body) > STREAM_BUFFER_LIMIT
-        if truncated:
-            body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
-        encoded, encoding = _encode_body(body, res_ct)
-        if encoded is not None:
-            log_entry["response_body"] = encoded
-            log_entry["response_body_encoding"] = encoding
-            if truncated:
-                log_entry["response_body_truncated"] = True
-        else:
-            log_entry["response_body_encoding"] = "binary"
+        _set_body_fields(
+            log_entry,
+            "response",
+            body,
+            res_ct,
+            already_truncated=bool(body and stream_state and stream_state["truncated"]),
+        )
