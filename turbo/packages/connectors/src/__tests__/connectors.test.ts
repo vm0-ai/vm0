@@ -15,6 +15,7 @@ import {
   getConnectorOAuthClientConfig,
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
+  getConnectorOAuthConfigIfSupported,
   getRuntimeAvailableConnectorTypes,
   isStaticConfidentialConnectorOAuthCredentials,
   isStaticConnectorOAuthCredentials,
@@ -257,7 +258,7 @@ describe("getConnectorEnvironmentMapping", () => {
     //   environmentMapping: all values -> $secrets.XXX_ACCESS_TOKEN
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
-      if (!getConnectorOAuthConfig(type)) continue;
+      if (!getConnectorOAuthConfigIfSupported(type)) continue;
       const authMethods = getConnectorAuthMethods(type);
       if (!authMethods["oauth"]) continue;
 
@@ -311,7 +312,7 @@ describe("getConnectorEnvironmentMapping", () => {
     for (const type of connectorTypeSchema.options) {
       const authMethods = getConnectorAuthMethods(type);
       if (authMethods["oauth"] || !authMethods["api-token"]) continue;
-      if (getConnectorOAuthConfig(type)) continue;
+      if (getConnectorOAuthConfigIfSupported(type)) continue;
 
       const secrets = Object.keys(authMethods["api-token"].secrets);
       const mapping = getConnectorEnvironmentMapping(type);
@@ -556,7 +557,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
-      return getConnectorOAuthConfig(type);
+      return getConnectorOAuthConfigIfSupported(type);
     });
 
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
@@ -702,7 +703,7 @@ describe("isGoogleOAuthConnector", () => {
   it("returns true only for connectors whose OAuth authorizationUrl hostname is accounts.google.com", () => {
     for (const type of connectorTypeSchema.options) {
       const result = isGoogleOAuthConnector(type);
-      const oauthConfig = getConnectorOAuthConfig(type);
+      const oauthConfig = getConnectorOAuthConfigIfSupported(type);
 
       if (result) {
         // If classified as Google, the OAuth URL must point to accounts.google.com

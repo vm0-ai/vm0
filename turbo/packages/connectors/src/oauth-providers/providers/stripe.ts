@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,7 +32,7 @@ export function buildStripeAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("stripe");
+  const oauthConfig = getConnectorOAuthConfig("stripe");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -53,7 +53,7 @@ export async function exchangeStripeCode(
   clientSecret: string,
   code: string,
 ): Promise<StripeTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("stripe");
+  const oauthConfig = getConnectorOAuthConfig("stripe");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -114,7 +114,7 @@ export async function refreshStripeToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<StripeRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("stripe");
+  const oauthConfig = getConnectorOAuthConfig("stripe");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

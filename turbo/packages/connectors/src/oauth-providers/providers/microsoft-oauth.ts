@@ -1,5 +1,5 @@
 import type { OAuthConnectorType } from "@vm0/connectors/connectors";
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -40,7 +40,7 @@ export function buildMicrosoftAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -64,7 +64,7 @@ export async function exchangeMicrosoftOAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<MicrosoftTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -125,7 +125,7 @@ export async function refreshMicrosoftToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<MicrosoftRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

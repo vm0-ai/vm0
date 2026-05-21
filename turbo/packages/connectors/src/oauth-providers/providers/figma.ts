@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,7 +32,7 @@ export function buildFigmaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("figma");
+  const oauthConfig = getConnectorOAuthConfig("figma");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -54,7 +54,7 @@ export async function exchangeFigmaCode(
   code: string,
   redirectUri: string,
 ): Promise<FigmaTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("figma");
+  const oauthConfig = getConnectorOAuthConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -116,7 +116,7 @@ export async function refreshFigmaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<FigmaRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("figma");
+  const oauthConfig = getConnectorOAuthConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );

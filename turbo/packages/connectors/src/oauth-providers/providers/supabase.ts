@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -65,7 +65,7 @@ export async function buildSupabaseAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getOAuthConnectorConfig("supabase");
+  const oauthConfig = getConnectorOAuthConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -92,7 +92,7 @@ export async function refreshSupabaseToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<SupabaseRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("supabase");
+  const oauthConfig = getConnectorOAuthConfig("supabase");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -149,7 +149,7 @@ export async function exchangeSupabaseCode(
   redirectUri: string,
   state: string,
 ): Promise<SupabaseTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("supabase");
+  const oauthConfig = getConnectorOAuthConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

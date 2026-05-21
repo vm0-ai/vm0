@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -67,7 +67,7 @@ export async function buildGarminConnectAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getOAuthConnectorConfig("garmin-connect");
+  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -92,7 +92,7 @@ export async function exchangeGarminConnectCode(
   code: string,
   state: string,
 ): Promise<GarminConnectTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("garmin-connect");
+  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
 
   const response = await fetch(oauthConfig.tokenUrl, {
@@ -154,7 +154,7 @@ export async function refreshGarminConnectToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GarminConnectRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("garmin-connect");
+  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

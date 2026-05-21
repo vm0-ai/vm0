@@ -1,5 +1,5 @@
 import type { OAuthConnectorType } from "@vm0/connectors/connectors";
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -46,7 +46,7 @@ export function buildGoogleAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -71,7 +71,7 @@ export async function exchangeGoogleOAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<GoogleTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -132,7 +132,7 @@ export async function refreshGoogleToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GoogleRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,7 +32,7 @@ export function buildZoomAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("zoom");
+  const oauthConfig = getConnectorOAuthConfig("zoom");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -56,7 +56,7 @@ export async function exchangeZoomCode(
   code: string,
   redirectUri: string,
 ): Promise<ZoomTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("zoom");
+  const oauthConfig = getConnectorOAuthConfig("zoom");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -118,7 +118,7 @@ export async function refreshZoomToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<ZoomRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("zoom");
+  const oauthConfig = getConnectorOAuthConfig("zoom");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );

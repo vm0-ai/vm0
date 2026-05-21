@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -65,7 +65,7 @@ export async function buildDeelAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getOAuthConnectorConfig("deel");
+  const oauthConfig = getConnectorOAuthConfig("deel");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -93,7 +93,7 @@ export async function refreshDeelToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<DeelRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("deel");
+  const oauthConfig = getConnectorOAuthConfig("deel");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -149,7 +149,7 @@ export async function exchangeDeelCode(
   redirectUri: string,
   state: string,
 ): Promise<DeelTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("deel");
+  const oauthConfig = getConnectorOAuthConfig("deel");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

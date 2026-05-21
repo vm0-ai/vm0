@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -23,7 +23,7 @@ export function buildTodoistAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("todoist");
+  const oauthConfig = getConnectorOAuthConfig("todoist");
   const params = new URLSearchParams({
     client_id: clientId,
     scope: oauthConfig.scopes.join(","),
@@ -45,7 +45,7 @@ export async function exchangeTodoistCode(
   code: string,
   redirectUri: string,
 ): Promise<TodoistTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("todoist");
+  const oauthConfig = getConnectorOAuthConfig("todoist");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

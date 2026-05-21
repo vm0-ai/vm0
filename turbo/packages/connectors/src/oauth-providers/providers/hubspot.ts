@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,7 +32,7 @@ export function buildHubSpotAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("hubspot");
+  const oauthConfig = getConnectorOAuthConfig("hubspot");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,7 +52,7 @@ export async function exchangeHubSpotCode(
   code: string,
   redirectUri: string,
 ): Promise<HubSpotTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("hubspot");
+  const oauthConfig = getConnectorOAuthConfig("hubspot");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -109,7 +109,7 @@ export async function refreshHubSpotToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<HubSpotRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("hubspot");
+  const oauthConfig = getConnectorOAuthConfig("hubspot");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

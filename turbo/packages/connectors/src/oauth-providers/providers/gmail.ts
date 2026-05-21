@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -28,7 +28,7 @@ export function buildGmailAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("gmail");
+  const oauthConfig = getConnectorOAuthConfig("gmail");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,7 +52,7 @@ export async function exchangeGmailCode(
   code: string,
   redirectUri: string,
 ): Promise<GmailTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("gmail");
+  const oauthConfig = getConnectorOAuthConfig("gmail");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

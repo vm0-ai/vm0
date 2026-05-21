@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -37,7 +37,7 @@ export function buildNotionAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("notion");
+  const oauthConfig = getConnectorOAuthConfig("notion");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -60,7 +60,7 @@ export async function exchangeNotionCode(
   code: string,
   redirectUri: string,
 ): Promise<NotionTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("notion");
+  const oauthConfig = getConnectorOAuthConfig("notion");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -130,7 +130,7 @@ export async function refreshNotionToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<NotionRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("notion");
+  const oauthConfig = getConnectorOAuthConfig("notion");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

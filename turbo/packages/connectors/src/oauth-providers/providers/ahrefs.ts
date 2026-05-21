@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -33,7 +33,7 @@ export function buildAhrefsAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("ahrefs");
+  const oauthConfig = getConnectorOAuthConfig("ahrefs");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -54,7 +54,7 @@ export async function exchangeAhrefsCode(
   code: string,
   redirectUri: string,
 ): Promise<AhrefsTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("ahrefs");
+  const oauthConfig = getConnectorOAuthConfig("ahrefs");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -113,7 +113,7 @@ export async function refreshAhrefsToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AhrefsRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("ahrefs");
+  const oauthConfig = getConnectorOAuthConfig("ahrefs");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

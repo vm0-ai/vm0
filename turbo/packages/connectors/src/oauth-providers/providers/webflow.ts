@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -20,7 +20,7 @@ export function buildWebflowAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("webflow");
+  const oauthConfig = getConnectorOAuthConfig("webflow");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -42,7 +42,7 @@ export async function exchangeWebflowCode(
   code: string,
   redirectUri: string,
 ): Promise<WebflowTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("webflow");
+  const oauthConfig = getConnectorOAuthConfig("webflow");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

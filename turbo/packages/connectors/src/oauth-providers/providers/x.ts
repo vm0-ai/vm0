@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -66,7 +66,7 @@ export async function buildXAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getOAuthConnectorConfig("x");
+  const oauthConfig = getConnectorOAuthConfig("x");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -93,7 +93,7 @@ export async function refreshXToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<XRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("x");
+  const oauthConfig = getConnectorOAuthConfig("x");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -149,7 +149,7 @@ export async function exchangeXCode(
   redirectUri: string,
   state: string,
 ): Promise<XTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("x");
+  const oauthConfig = getConnectorOAuthConfig("x");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

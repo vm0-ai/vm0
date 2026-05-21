@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,7 +32,7 @@ export function buildXeroAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("xero");
+  const oauthConfig = getConnectorOAuthConfig("xero");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -54,7 +54,7 @@ export async function exchangeXeroCode(
   code: string,
   redirectUri: string,
 ): Promise<XeroTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("xero");
+  const oauthConfig = getConnectorOAuthConfig("xero");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -114,7 +114,7 @@ export async function refreshXeroToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<XeroRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("xero");
+  const oauthConfig = getConnectorOAuthConfig("xero");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

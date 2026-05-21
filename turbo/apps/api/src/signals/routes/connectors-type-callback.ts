@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
   getConnectorOAuthCredentials,
-  getOAuthConnectorConfig,
+  getConnectorOAuthConfig,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -221,7 +221,7 @@ async function exchangeTokenForConnector(args: {
 function getRequestedScopes(
   connectorType: OAuthConnectorType,
 ): readonly string[] {
-  return getOAuthConnectorConfig(connectorType).scopes;
+  return getConnectorOAuthConfig(connectorType).scopes;
 }
 
 function resolveOAuthConnectorType(

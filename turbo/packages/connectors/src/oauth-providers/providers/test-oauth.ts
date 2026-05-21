@@ -9,7 +9,7 @@
  * the provider routes themselves 404 in production via isTestEndpointAllowed().
  */
 
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 export {
@@ -129,12 +129,12 @@ function previewBypassHeaders(): Record<string, string> {
 function getAuthorizationUrl(): string {
   return resolveUrl(
     "authorizationUrl",
-    getOAuthConnectorConfig("test-oauth").authorizationUrl,
+    getConnectorOAuthConfig("test-oauth").authorizationUrl,
   );
 }
 
 function getTokenUrl(): string {
-  return resolveUrl("tokenUrl", getOAuthConnectorConfig("test-oauth").tokenUrl);
+  return resolveUrl("tokenUrl", getConnectorOAuthConfig("test-oauth").tokenUrl);
 }
 
 export function buildTestOAuthAuthorizationUrl(

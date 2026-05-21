@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -23,7 +23,7 @@ export function buildSlackAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("slack");
+  const oauthConfig = getConnectorOAuthConfig("slack");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -44,7 +44,7 @@ export async function exchangeSlackCode(
   code: string,
   redirectUri: string,
 ): Promise<SlackTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("slack");
+  const oauthConfig = getConnectorOAuthConfig("slack");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

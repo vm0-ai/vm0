@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -27,7 +27,7 @@ export function buildMetaAdsAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("meta-ads");
+  const oauthConfig = getConnectorOAuthConfig("meta-ads");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -49,7 +49,7 @@ export async function exchangeMetaAdsCode(
   code: string,
   redirectUri: string,
 ): Promise<MetaAdsTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("meta-ads");
+  const oauthConfig = getConnectorOAuthConfig("meta-ads");
   // Step 1: Exchange code for short-lived token
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",

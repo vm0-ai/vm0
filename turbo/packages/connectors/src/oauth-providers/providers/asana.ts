@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -30,7 +30,7 @@ export function buildAsanaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("asana");
+  const oauthConfig = getConnectorOAuthConfig("asana");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -51,7 +51,7 @@ export async function exchangeAsanaCode(
   code: string,
   redirectUri: string,
 ): Promise<AsanaTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("asana");
+  const oauthConfig = getConnectorOAuthConfig("asana");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -158,7 +158,7 @@ export async function refreshAsanaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AsanaRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("asana");
+  const oauthConfig = getConnectorOAuthConfig("asana");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

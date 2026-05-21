@@ -2,7 +2,7 @@ import type {
   ConnectorType,
   OAuthConnectorType,
 } from "@vm0/connectors/connectors";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfigIfSupported } from "@vm0/connectors/connector-utils";
 import { createTestOAuthConnectorRecord } from "../db-test-seeders/connectors";
 import { createTestSecret } from "./secrets";
 import { getTestAuthContext } from "./core";
@@ -74,7 +74,9 @@ async function createTestOAuthConnector(options?: {
     externalUsername: options?.externalUsername ?? "testuser",
     externalEmail: options?.externalEmail ?? "test@example.com",
     oauthScopes:
-      options?.oauthScopes ?? getConnectorOAuthConfig(type)?.scopes ?? [],
+      options?.oauthScopes ??
+      getConnectorOAuthConfigIfSupported(type)?.scopes ??
+      [],
   });
 }
 

@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,7 +32,7 @@ export function buildSpotifyAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("spotify");
+  const oauthConfig = getConnectorOAuthConfig("spotify");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -54,7 +54,7 @@ export async function exchangeSpotifyCode(
   code: string,
   redirectUri: string,
 ): Promise<SpotifyTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("spotify");
+  const oauthConfig = getConnectorOAuthConfig("spotify");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -115,7 +115,7 @@ export async function refreshSpotifyToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<SpotifyRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("spotify");
+  const oauthConfig = getConnectorOAuthConfig("spotify");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );

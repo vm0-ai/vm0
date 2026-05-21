@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -29,7 +29,7 @@ export function buildGumroadAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("gumroad");
+  const oauthConfig = getConnectorOAuthConfig("gumroad");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -47,7 +47,7 @@ export async function exchangeGumroadCode(
   code: string,
   redirectUri: string,
 ): Promise<GumroadTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("gumroad");
+  const oauthConfig = getConnectorOAuthConfig("gumroad");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -101,7 +101,7 @@ export async function refreshGumroadToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GumroadRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("gumroad");
+  const oauthConfig = getConnectorOAuthConfig("gumroad");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

@@ -231,7 +231,7 @@ function hasEnvValue(readEnv: ConnectorEnvReader, name: string): boolean {
 export function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
-  return getConnectorOAuthConfig(type)?.client;
+  return getConnectorOAuthConfigIfSupported(type)?.client;
 }
 
 export function resolveConnectorOAuthClientCredentials(
@@ -450,16 +450,19 @@ export function getConnectorProvidedSecretNames(
 }
 
 /**
- * Get OAuth configuration for a connector type
+ * Get OAuth configuration for a connector type if it supports OAuth.
  */
-export function getConnectorOAuthConfig(
+export function getConnectorOAuthConfigIfSupported(
   type: ConnectorType,
 ): ConnectorOAuthConfig | undefined {
   const config = CONNECTOR_TYPES[type];
   return "oauth" in config ? config.oauth : undefined;
 }
 
-export function getOAuthConnectorConfig(
+/**
+ * Get OAuth configuration for a connector type known to support OAuth.
+ */
+export function getConnectorOAuthConfig(
   type: OAuthConnectorType,
 ): ConnectorOAuthConfig {
   return CONNECTOR_TYPES[type].oauth;
@@ -469,7 +472,7 @@ export function getOAuthConnectorConfig(
  * Check if a connector type uses Google OAuth (accounts.google.com).
  */
 export function isGoogleOAuthConnector(type: ConnectorType): boolean {
-  const oauthConfig = getConnectorOAuthConfig(type);
+  const oauthConfig = getConnectorOAuthConfigIfSupported(type);
   if (!oauthConfig?.authorizationUrl) return false;
   try {
     return (
@@ -489,7 +492,7 @@ export function hasRequiredScopes(
   connectorType: ConnectorType,
   storedScopes: string[] | null,
 ): boolean {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfigIfSupported(connectorType);
   if (!oauthConfig) return true;
   if (oauthConfig.scopes.length === 0) return true;
   if (!storedScopes) return false;
@@ -513,7 +516,7 @@ export function getScopeDiff(
   connectorType: ConnectorType,
   storedScopes: string[] | null,
 ): ScopeDiff {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  const oauthConfig = getConnectorOAuthConfigIfSupported(connectorType);
   const currentScopes = oauthConfig?.scopes ?? [];
   const stored = storedScopes ?? [];
   const storedSet = new Set(stored);

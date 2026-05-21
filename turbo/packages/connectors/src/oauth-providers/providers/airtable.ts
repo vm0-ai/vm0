@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -58,7 +58,7 @@ export async function buildAirtableAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<{ url: string; codeVerifier: string }> {
-  const oauthConfig = getOAuthConnectorConfig("airtable");
+  const oauthConfig = getConnectorOAuthConfig("airtable");
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -89,7 +89,7 @@ export async function exchangeAirtableCode(
   redirectUri: string,
   codeVerifier?: string,
 ): Promise<AirtableTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("airtable");
+  const oauthConfig = getConnectorOAuthConfig("airtable");
   if (!codeVerifier) {
     throw new Error("Airtable requires PKCE code_verifier for token exchange");
   }
@@ -154,7 +154,7 @@ export async function refreshAirtableToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AirtableRefreshResult> {
-  const oauthConfig = getOAuthConnectorConfig("airtable");
+  const oauthConfig = getConnectorOAuthConfig("airtable");
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
   const response = await fetch(oauthConfig.tokenUrl, {

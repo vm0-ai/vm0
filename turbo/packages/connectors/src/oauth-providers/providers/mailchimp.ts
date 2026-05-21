@@ -1,4 +1,4 @@
-import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -24,7 +24,7 @@ export function buildMailchimpAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getOAuthConnectorConfig("mailchimp");
+  const oauthConfig = getConnectorOAuthConfig("mailchimp");
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
@@ -45,7 +45,7 @@ export async function exchangeMailchimpCode(
   code: string,
   redirectUri: string,
 ): Promise<MailchimpTokenResult> {
-  const oauthConfig = getOAuthConnectorConfig("mailchimp");
+  const oauthConfig = getConnectorOAuthConfig("mailchimp");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
