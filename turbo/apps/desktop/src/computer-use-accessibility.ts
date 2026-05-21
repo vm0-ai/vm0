@@ -28,6 +28,7 @@ export interface ComputerUseCommand {
 interface AccessibilityElementSnapshot {
   readonly id: string;
   readonly role?: string;
+  readonly roleDescription?: string;
   readonly name?: string;
   readonly value?: string;
   readonly description?: string;
@@ -47,7 +48,33 @@ interface AccessibilityAppStateSnapshot {
   readonly app: string;
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
+  readonly nodeCount?: number;
+  readonly truncated?: boolean;
+  readonly truncationReasons?: readonly string[];
 }
+
+interface AccessibilitySnapshotOutputLimits {
+  readonly maxDepth: number;
+  readonly maxNodes: number;
+  readonly maxChildrenPerNode: number;
+}
+
+const ACCESSIBILITY_JXA_SNAPSHOT_LIMITS = Object.freeze({
+  maxDepth: 32,
+  maxNodes: 2_000,
+  maxChildrenPerSource: 160,
+  maxWindows: 8,
+  maxActions: 12,
+});
+
+export const ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS =
+  Object.freeze<AccessibilitySnapshotOutputLimits>({
+    maxDepth: 24,
+    maxNodes: 700,
+    maxChildrenPerNode: 120,
+  });
+
+const GENERIC_WRAPPER_ROLES = new Set(["AXGroup", "AXUnknown"]);
 
 export interface ComputerUseScreenshotCaptureRequest {
   readonly app: string;
@@ -153,6 +180,133 @@ function jxaString(value: string): string {
   return JSON.stringify(value);
 }
 
+function stringHasValue(value: string | undefined): boolean {
+  return value !== undefined && value.trim().length > 0;
+}
+
+function elementIsWebArea(element: AccessibilityElementSnapshot): boolean {
+  return (
+    element.role === "AXWebArea" ||
+    element.roleDescription?.toLowerCase().includes("html") === true
+  );
+}
+
+function elementHasMeaningfulContent(
+  element: AccessibilityElementSnapshot,
+): boolean {
+  return (
+    stringHasValue(element.name) ||
+    stringHasValue(element.value) ||
+    stringHasValue(element.description) ||
+    element.focused === true ||
+    element.enabled === false ||
+    (element.actions !== undefined && element.actions.length > 0)
+  );
+}
+
+function shouldElideElement(
+  element: AccessibilityElementSnapshot,
+  childCount: number,
+  inWebArea: boolean,
+): boolean {
+  if (!element.role || !GENERIC_WRAPPER_ROLES.has(element.role)) {
+    return false;
+  }
+  if (elementHasMeaningfulContent(element)) {
+    return false;
+  }
+  if (inWebArea && childCount > 1) {
+    return false;
+  }
+  return true;
+}
+
+function pushUniqueReason(reasons: string[], reason: string): void {
+  if (!reasons.includes(reason)) {
+    reasons.push(reason);
+  }
+}
+
+export function normalizeAccessibilitySnapshot(
+  snapshot: AccessibilityAppStateSnapshot,
+  limits: AccessibilitySnapshotOutputLimits = ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
+): AccessibilityAppStateSnapshot {
+  let nodeCount = 0;
+  const truncationReasons: string[] = [];
+
+  const normalizeElement = (
+    element: AccessibilityElementSnapshot,
+    depth: number,
+    inWebArea: boolean,
+  ): AccessibilityElementSnapshot[] => {
+    if (depth > limits.maxDepth) {
+      pushUniqueReason(truncationReasons, "max_depth");
+      return [];
+    }
+
+    const nextInWebArea = inWebArea || elementIsWebArea(element);
+    const rawChildren = element.children ?? [];
+    const childEntries = rawChildren.slice(0, limits.maxChildrenPerNode);
+    if (rawChildren.length > childEntries.length) {
+      pushUniqueReason(truncationReasons, "max_children_per_node");
+    }
+
+    const elide = shouldElideElement(element, rawChildren.length, inWebArea);
+    if (!elide) {
+      if (nodeCount >= limits.maxNodes) {
+        pushUniqueReason(truncationReasons, "max_nodes");
+        return [];
+      }
+      nodeCount += 1;
+    }
+
+    const children: AccessibilityElementSnapshot[] = [];
+    for (const child of childEntries) {
+      if (nodeCount >= limits.maxNodes) {
+        pushUniqueReason(truncationReasons, "max_nodes");
+        break;
+      }
+      children.push(...normalizeElement(child, depth + 1, nextInWebArea));
+    }
+
+    if (elide) {
+      return children;
+    }
+
+    return [
+      {
+        ...element,
+        children: children.length > 0 ? children : undefined,
+      },
+    ];
+  };
+
+  const elements = snapshot.elements.flatMap((element) => {
+    return normalizeElement(element, 0, false);
+  });
+
+  const combinedReasons = [
+    ...(snapshot.truncationReasons ?? []),
+    ...truncationReasons,
+  ];
+
+  return {
+    ...snapshot,
+    elements,
+    nodeCount,
+    truncated:
+      snapshot.truncated === true ||
+      combinedReasons.length > 0 ||
+      snapshot.nodeCount !== undefined
+        ? snapshot.truncated === true || combinedReasons.length > 0
+        : undefined,
+    truncationReasons:
+      combinedReasons.length > 0
+        ? [...new Set(combinedReasons)]
+        : snapshot.truncationReasons,
+  };
+}
+
 async function runJxa(script: string): Promise<string> {
   const { stdout } = await execFileAsync("osascript", [
     "-l",
@@ -230,15 +384,39 @@ function appStateScript(app: string, id: string): string {
   return `
 const appName = ${jxaString(app)};
 const snapshotId = ${jxaString(id)};
+const limits = ${JSON.stringify(ACCESSIBILITY_JXA_SNAPSHOT_LIMITS)};
 const systemEvents = Application("System Events");
+let nodeCount = 0;
+let truncated = false;
+let truncationReasons = [];
+function markTruncated(reason) {
+  truncated = true;
+  if (!truncationReasons.includes(reason)) {
+    truncationReasons.push(reason);
+  }
+}
 function safeString(read) {
   try {
     const value = read();
     if (value === undefined || value === null) return undefined;
-    return String(value);
+    const text = String(value).trim();
+    return text.length > 0 ? text : undefined;
   } catch (_error) {
     return undefined;
   }
+}
+function safeAttributeValue(element, name) {
+  try {
+    return element.attributes.byName(name).value();
+  } catch (_error) {
+    return undefined;
+  }
+}
+function safeAttributeString(element, name) {
+  const value = safeAttributeValue(element, name);
+  if (value === undefined || value === null) return undefined;
+  const text = String(value).trim();
+  return text.length > 0 ? text : undefined;
 }
 function safeBool(read) {
   try {
@@ -259,15 +437,96 @@ function safeBounds(element) {
 }
 function safeActions(element) {
   try {
-    return element.actions().slice(0, 12).map((action) => String(action.name()));
+    return element.actions().slice(0, limits.maxActions).map((action) => String(action.name()));
   } catch (_error) {
     return [];
   }
 }
+function asArray(value) {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    if (typeof value.length === "number") {
+      return Array.prototype.slice.call(value);
+    }
+  } catch (_error) {
+    return [];
+  }
+  return [value];
+}
+function collectionChildren(read, prefix) {
+  try {
+    return read().slice(0, limits.maxChildrenPerSource).map((child, index) => ({
+      child,
+      segment: prefix + index,
+    }));
+  } catch (_error) {
+    return [];
+  }
+}
+function attributeChildren(element, attributeName, prefix) {
+  return asArray(safeAttributeValue(element, attributeName))
+    .slice(0, limits.maxChildrenPerSource)
+    .map((child, index) => ({
+      child,
+      segment: prefix + index,
+    }));
+}
+function childFingerprint(element) {
+  const bounds = safeBounds(element);
+  if (!bounds) return "";
+  return [
+    safeString(() => element.role()) || "",
+    safeString(() => element.name()) || "",
+    safeString(() => element.value()) || "",
+    [bounds.x, bounds.y, bounds.width, bounds.height].join(","),
+  ].join("|");
+}
+function collectChildren(element) {
+  const candidates = [
+    ...collectionChildren(() => element.uiElements(), "e"),
+    ...collectionChildren(() => element.rows(), "r"),
+    ...attributeChildren(element, "AXContents", "c"),
+    ...attributeChildren(element, "AXVisibleChildren", "v"),
+  ];
+  const seen = {};
+  const children = [];
+  for (const candidate of candidates) {
+    const fingerprint = childFingerprint(candidate.child);
+    if (fingerprint.length > 0 && seen[fingerprint]) {
+      continue;
+    }
+    if (fingerprint.length > 0) {
+      seen[fingerprint] = true;
+    }
+    children.push(candidate);
+  }
+  return children;
+}
+function setAttributeValue(element, name, value) {
+  try {
+    element.attributes.byName(name).value = value;
+  } catch (_error) {
+  }
+}
+function enableBestEffortAccessibilityModes(process) {
+  setAttributeValue(process, "AXManualAccessibility", true);
+  setAttributeValue(process, "AXEnhancedUserInterface", true);
+}
 function describe(element, id, depth) {
+  if (nodeCount >= limits.maxNodes) {
+    markTruncated("max_nodes");
+    return undefined;
+  }
+  if (depth > limits.maxDepth) {
+    markTruncated("max_depth");
+    return undefined;
+  }
+  nodeCount += 1;
   const node = {
     id,
     role: safeString(() => element.role()),
+    roleDescription: safeAttributeString(element, "AXRoleDescription"),
     name: safeString(() => element.name()),
     value: safeString(() => element.value()),
     description: safeString(() => element.description()),
@@ -277,14 +536,17 @@ function describe(element, id, depth) {
     bounds: safeBounds(element),
     children: [],
   };
-  if (depth <= 0) return node;
-  let children = [];
-  try {
-    children = element.uiElements().slice(0, 80);
-  } catch (_error) {
-    children = [];
+  if (depth >= limits.maxDepth) {
+    markTruncated("max_depth");
+    return node;
   }
-  node.children = children.map((child, index) => describe(child, id + ".e" + index, depth - 1));
+  const childEntries = collectChildren(element);
+  for (const childEntry of childEntries) {
+    const child = describe(childEntry.child, id + "." + childEntry.segment, depth + 1);
+    if (child !== undefined) {
+      node.children.push(child);
+    }
+  }
   return node;
 }
 const processes = systemEvents.processes.whose({ name: appName })();
@@ -293,11 +555,17 @@ if (processes.length === 0) {
 } else {
   const process = processes[0];
   process.frontmost = true;
-  const windows = process.windows().slice(0, 8);
+  enableBestEffortAccessibilityModes(process);
+  const windows = process.windows().slice(0, limits.maxWindows);
   JSON.stringify({
     app: appName,
     snapshotId,
-    elements: windows.map((window, index) => describe(window, "w" + index, 2)),
+    elements: windows
+      .map((window, index) => describe(window, "w" + index, 0))
+      .filter((element) => element !== undefined),
+    nodeCount,
+    truncated,
+    truncationReasons,
   });
 }
 `;
@@ -308,6 +576,44 @@ function resolveElementScript(app: string, elementId: string): string {
 const appName = ${jxaString(app)};
 const elementId = ${jxaString(elementId)};
 const systemEvents = Application("System Events");
+function asArray(value) {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    if (typeof value.length === "number") {
+      return Array.prototype.slice.call(value);
+    }
+  } catch (_error) {
+    return [];
+  }
+  return [value];
+}
+function attributeChildren(element, attributeName) {
+  try {
+    return asArray(element.attributes.byName(attributeName).value());
+  } catch (_error) {
+    return [];
+  }
+}
+function childForSegment(element, part) {
+  const index = Number(part.slice(1));
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error("Invalid element id segment: " + part);
+  }
+  if (part.startsWith("e")) {
+    return element.uiElements()[index];
+  }
+  if (part.startsWith("r")) {
+    return element.rows()[index];
+  }
+  if (part.startsWith("c")) {
+    return attributeChildren(element, "AXContents")[index];
+  }
+  if (part.startsWith("v")) {
+    return attributeChildren(element, "AXVisibleChildren")[index];
+  }
+  throw new Error("Invalid element id segment: " + part);
+}
 function resolve(process, id) {
   const parts = id.split(".");
   let current = null;
@@ -316,10 +622,13 @@ function resolve(process, id) {
     if (part.startsWith("w")) {
       current = process.windows()[index];
     } else if (part.startsWith("e") && current) {
-      current = current.uiElements()[index];
+      current = childForSegment(current, part);
+    } else if ((part.startsWith("r") || part.startsWith("c") || part.startsWith("v")) && current) {
+      current = childForSegment(current, part);
     } else {
       throw new Error("Invalid element id: " + id);
     }
+    if (!current) throw new Error("Element not found: " + id);
   }
   if (!current) throw new Error("Element not found: " + id);
   return current;
@@ -330,8 +639,10 @@ const element = resolve(processes[0], elementId);
 `;
 }
 
-async function listApps(): Promise<ComputerUseCommandSuccess> {
-  const output = await runJxa(`
+async function listApps(
+  runJxaCommand: RunJxa,
+): Promise<ComputerUseCommandSuccess> {
+  const output = await runJxaCommand(`
 const systemEvents = Application("System Events");
 const apps = systemEvents.applicationProcesses.whose({ backgroundOnly: false })()
   .map((app) => String(app.name()))
@@ -349,7 +660,9 @@ async function getAppState(
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
   const output = await runJxaCommand(appStateScript(app, id));
-  const snapshot = JSON.parse(output) as AccessibilityAppStateSnapshot;
+  const snapshot = normalizeAccessibilitySnapshot(
+    JSON.parse(output) as AccessibilityAppStateSnapshot,
+  );
   let screenshot: ComputerUseScreenshotCaptureResult;
   try {
     screenshot = await captureScreenshot({
@@ -371,8 +684,11 @@ async function getAppState(
   };
 }
 
-async function openApp(app: string): Promise<ComputerUseCommandSuccess> {
-  await runJxa(`Application(${jxaString(app)}).activate();`);
+async function openApp(
+  app: string,
+  runJxaCommand: RunJxa,
+): Promise<ComputerUseCommandSuccess> {
+  await runJxaCommand(`Application(${jxaString(app)}).activate();`);
   return { status: "succeeded", result: { app, text: `Opened ${app}` } };
 }
 
@@ -381,9 +697,10 @@ async function clickElement(
   elementId: string | null,
   x: number | null,
   y: number | null,
+  runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandExecutionResult> {
   if (elementId) {
-    await runJxa(`
+    await runJxaCommand(`
 ${resolveElementScript(app, elementId)}
 element.click();
 `);
@@ -393,7 +710,7 @@ element.click();
     };
   }
   if (x !== null && y !== null) {
-    await runJxa(`
+    await runJxaCommand(`
 const systemEvents = Application("System Events");
 systemEvents.click({ at: [${x}, ${y}] });
 `);
@@ -415,8 +732,9 @@ async function setElementValue(
   app: string,
   elementId: string,
   value: string,
+  runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxa(`
+  await runJxaCommand(`
 ${resolveElementScript(app, elementId)}
 element.value = ${jxaString(value)};
 `);
@@ -430,8 +748,9 @@ async function performElementAction(
   app: string,
   elementId: string,
   action: string,
+  runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxa(`
+  await runJxaCommand(`
 ${resolveElementScript(app, elementId)}
 element.actions.byName(${jxaString(action)}).perform();
 `);
@@ -444,8 +763,9 @@ element.actions.byName(${jxaString(action)}).perform();
 async function typeText(
   app: string,
   text: string,
+  runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxa(`
+  await runJxaCommand(`
 Application(${jxaString(app)}).activate();
 Application("System Events").keystroke(${jxaString(text)});
 `);
@@ -455,8 +775,9 @@ Application("System Events").keystroke(${jxaString(text)});
 async function pressKey(
   app: string,
   key: string,
+  runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxa(`
+  await runJxaCommand(`
 Application(${jxaString(app)}).activate();
 Application("System Events").keystroke(${jxaString(key)});
 `);
@@ -468,13 +789,14 @@ async function scrollElement(
   elementId: string,
   direction: string,
   pages: number,
+  runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
   const axis =
     direction === "left" || direction === "right"
       ? "AXHorizontalScrollBar"
       : "AXVerticalScrollBar";
   const sign = direction === "up" || direction === "left" ? -1 : 1;
-  await runJxa(`
+  await runJxaCommand(`
 ${resolveElementScript(app, elementId)}
 const scrollBars = element.uiElements.whose({ role: ${jxaString(axis)} })();
 if (scrollBars.length > 0) {
@@ -520,9 +842,10 @@ export async function executeComputerUseCommand(
   }
 
   try {
+    const runJxaCommand = dependencies.runJxa ?? runJxa;
     const app = payloadString(command.payload, "app");
     if (command.kind === "apps.list") {
-      return await listApps();
+      return await listApps(runJxaCommand);
     }
     if (!app) {
       return missingField("app");
@@ -539,7 +862,7 @@ export async function executeComputerUseCommand(
       );
     }
     if (command.kind === "app.open") {
-      return await openApp(app);
+      return await openApp(app, runJxaCommand);
     }
     if (command.kind === "element.click") {
       return await clickElement(
@@ -547,6 +870,7 @@ export async function executeComputerUseCommand(
         payloadString(command.payload, "elementId"),
         payloadNumber(command.payload, "x"),
         payloadNumber(command.payload, "y"),
+        runJxaCommand,
       );
     }
     if (command.kind === "element.scroll") {
@@ -563,6 +887,7 @@ export async function executeComputerUseCommand(
         elementId,
         direction,
         payloadNumber(command.payload, "pages") ?? 1,
+        runJxaCommand,
       );
     }
     if (command.kind === "element.set_value") {
@@ -574,7 +899,7 @@ export async function executeComputerUseCommand(
       if (!value) {
         return missingField("value");
       }
-      return await setElementValue(app, elementId, value);
+      return await setElementValue(app, elementId, value, runJxaCommand);
     }
     if (command.kind === "element.perform_action") {
       const elementId = payloadString(command.payload, "elementId");
@@ -585,15 +910,19 @@ export async function executeComputerUseCommand(
       if (!action) {
         return missingField("action");
       }
-      return await performElementAction(app, elementId, action);
+      return await performElementAction(app, elementId, action, runJxaCommand);
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");
-      return text ? await typeText(app, text) : missingField("text");
+      return text
+        ? await typeText(app, text, runJxaCommand)
+        : missingField("text");
     }
     if (command.kind === "keyboard.press_key") {
       const key = payloadString(command.payload, "key");
-      return key ? await pressKey(app, key) : missingField("key");
+      return key
+        ? await pressKey(app, key, runJxaCommand)
+        : missingField("key");
     }
   } catch (error) {
     return {

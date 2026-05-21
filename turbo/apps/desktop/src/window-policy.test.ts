@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
   executeComputerUseCommand,
+  normalizeAccessibilitySnapshot,
   renderAccessibilityTree,
 } from "./computer-use-accessibility";
 import {
@@ -411,6 +413,107 @@ describe("computer use desktop runtime", () => {
     expect(text).toContain('w0.e0 AXButton "Open" actions=AXPress');
   });
 
+  it("compacts generic wrappers while preserving WebArea branching context", () => {
+    const snapshot = {
+      app: "Slack",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "release-notify (Channel) - VM0 - Slack",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXGroup",
+              children: [
+                {
+                  id: "w0.e0.e0",
+                  role: "AXWebArea",
+                  roleDescription: "HTML content",
+                  children: [
+                    {
+                      id: "w0.e0.e0.e0",
+                      role: "AXGroup",
+                      children: [
+                        {
+                          id: "w0.e0.e0.e0.e0",
+                          role: "AXGroup",
+                          children: [
+                            {
+                              id: "w0.e0.e0.e0.e0.e0",
+                              role: "AXButton",
+                              name: "Send message",
+                              actions: ["AXPress"],
+                            },
+                          ],
+                        },
+                        {
+                          id: "w0.e0.e0.e0.e1",
+                          role: "AXStaticText",
+                          value: "release-notify",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const text = renderAccessibilityTree(
+      normalizeAccessibilitySnapshot(snapshot),
+    );
+
+    expect(text).not.toContain("w0.e0 AXGroup");
+    expect(text).toContain("w0.e0.e0 AXWebArea");
+    expect(text).toContain("w0.e0.e0.e0 AXGroup");
+    expect(text).not.toContain("w0.e0.e0.e0.e0 AXGroup");
+    expect(text).toContain(
+      'w0.e0.e0.e0.e0.e0 AXButton "Send message" actions=AXPress',
+    );
+    expect(text).toContain(
+      'w0.e0.e0.e0.e1 AXStaticText value="release-notify"',
+    );
+  });
+
+  it("marks accessibility snapshots truncated at the output node budget", () => {
+    const snapshot = {
+      app: "Slack",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Slack",
+          children: Array.from({ length: 5 }, (_value, index) => {
+            return {
+              id: `w0.e${index}`,
+              role: "AXButton",
+              name: `Button ${index}`,
+            };
+          }),
+        },
+      ],
+    };
+
+    const normalized = normalizeAccessibilitySnapshot(snapshot, {
+      ...ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
+      maxNodes: 3,
+    });
+    const text = renderAccessibilityTree(normalized);
+
+    expect(normalized.truncated).toBe(true);
+    expect(normalized.truncationReasons).toContain("max_nodes");
+    expect(normalized.nodeCount).toBe(3);
+    expect(text).toContain('w0.e0 AXButton "Button 0"');
+    expect(text).toContain('w0.e1 AXButton "Button 1"');
+    expect(text).not.toContain("w0.e2");
+  });
+
   it("returns screenshot metadata with model-readable app state", async () => {
     const result = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
@@ -463,6 +566,121 @@ describe("computer use desktop runtime", () => {
       },
     });
     expect(result.result.text).toContain('w0 AXWindow "Example"');
+  });
+
+  it("requests bounded deep accessibility state from JXA", async () => {
+    let capturedScript = "";
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Slack" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        runJxa: async (script) => {
+          capturedScript = script;
+          return JSON.stringify({
+            app: "Slack",
+            snapshotId: "snap_1",
+            nodeCount: 7,
+            truncated: false,
+            truncationReasons: [],
+            elements: [
+              {
+                id: "w0",
+                role: "AXWindow",
+                name: "release-notify (Channel) - VM0 - Slack",
+                children: [
+                  {
+                    id: "w0.e0",
+                    role: "AXGroup",
+                    children: [
+                      {
+                        id: "w0.e0.e0",
+                        role: "AXGroup",
+                        children: [
+                          {
+                            id: "w0.e0.e0.c0",
+                            role: "AXWebArea",
+                            roleDescription: "HTML content",
+                            children: [
+                              {
+                                id: "w0.e0.e0.c0.v0",
+                                role: "AXStaticText",
+                                value: "Release notes posted",
+                              },
+                              {
+                                id: "w0.e0.e0.c0.v1",
+                                role: "AXTextArea",
+                                name: "Message composer",
+                                actions: ["AXConfirm"],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        captureScreenshot: async () => {
+          return {
+            dataUrl: "data:image/png;base64,abc123",
+            source: "window",
+            sourceName: "Slack",
+            width: 800,
+            height: 600,
+          };
+        },
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    if (result.status !== "succeeded") {
+      throw new Error("expected app.state to succeed");
+    }
+    expect(capturedScript).toContain('"maxDepth":32');
+    expect(capturedScript).toContain("AXManualAccessibility");
+    expect(capturedScript).toContain("AXEnhancedUserInterface");
+    expect(capturedScript).toContain("AXContents");
+    expect(capturedScript).toContain("AXVisibleChildren");
+    expect(result.result.text).toContain("Release notes posted");
+    expect(result.result.text).toContain(
+      'w0.e0.e0.c0.v1 AXTextArea "Message composer"',
+    );
+    expect(result.result.truncated).toBe(false);
+  });
+
+  it("resolves action element ids from non-uiElement child sources", async () => {
+    let capturedScript = "";
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: { app: "Slack", elementId: "w0.c0.v2" },
+      },
+      { accessibility: true, screenRecording: false },
+      {
+        platform: "darwin",
+        runJxa: async (script) => {
+          capturedScript = script;
+          return "";
+        },
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(capturedScript).toContain(
+      'attributeChildren(element, "AXContents")',
+    );
+    expect(capturedScript).toContain(
+      'attributeChildren(element, "AXVisibleChildren")',
+    );
+    expect(capturedScript).toContain("element.click()");
   });
 
   it("requires screen recording permission for app state screenshots", async () => {
