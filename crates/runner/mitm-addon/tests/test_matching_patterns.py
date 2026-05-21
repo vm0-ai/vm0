@@ -3,10 +3,6 @@
 import matching
 from matching import match_base_url, match_host, match_path_prefix
 
-# Mixed {param}{literal} segments - #10078
-# Mirrored against turbo/packages/connectors/src/__tests__/
-#   firewall-mixed-segments.test.ts. Any change must land in both.
-
 
 class TestMatchPath:
     def test_exact_path(self):
