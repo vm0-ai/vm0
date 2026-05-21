@@ -26,6 +26,34 @@ from usage import (
 )
 
 
+def _track_brotli_decompressor(monkeypatch):
+    real_decompressor = brotli.Decompressor
+    stats = {"calls": 0, "max_input": 0, "max_output": 0}
+
+    class CountingDecompressor:
+        def __init__(self):
+            self._inner = real_decompressor()
+
+        def process(self, chunk: bytes) -> bytes:
+            out = self._inner.process(chunk)
+            stats["calls"] += 1
+            stats["max_input"] = max(stats["max_input"], len(chunk))
+            stats["max_output"] = max(stats["max_output"], len(out))
+            return out
+
+    monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
+    return stats
+
+
+def _pseudo_random_ascii(size: int) -> bytes:
+    state = 0x12345678
+    body = bytearray()
+    for _ in range(size):
+        state = (1103515245 * state + 12345) & 0x7FFFFFFF
+        body.append(32 + (state % 95))
+    return bytes(body)
+
+
 class TestIsTextContent:
     def test_json(self):
         assert _is_text_content("application/json") is True
@@ -602,32 +630,6 @@ class TestDecompression:
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         return flow
 
-    def _track_brotli_decompressor(self, monkeypatch):
-        real_decompressor = brotli.Decompressor
-        stats = {"calls": 0, "max_input": 0, "max_output": 0}
-
-        class CountingDecompressor:
-            def __init__(self):
-                self._inner = real_decompressor()
-
-            def process(self, chunk: bytes) -> bytes:
-                out = self._inner.process(chunk)
-                stats["calls"] += 1
-                stats["max_input"] = max(stats["max_input"], len(chunk))
-                stats["max_output"] = max(stats["max_output"], len(out))
-                return out
-
-        monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
-        return stats
-
-    def _pseudo_random_ascii(self, size: int) -> bytes:
-        state = 0x12345678
-        body = bytearray()
-        for _ in range(size):
-            state = (1103515245 * state + 12345) & 0x7FFFFFFF
-            body.append(32 + (state % 95))
-        return bytes(body)
-
     def test_no_encoding_captures_plain_text(self, real_flow):
         flow = self._make_flow_with_compressed_buffer(real_flow, b'{"ok": true}', "")
         entry = {}
@@ -684,13 +686,13 @@ class TestDecompression:
         assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_brotli_large_text_uses_adaptive_chunks(self, real_flow, monkeypatch):
-        original = self._pseudo_random_ascii(STREAM_BUFFER_LIMIT // 2)
+        original = _pseudo_random_ascii(STREAM_BUFFER_LIMIT // 2)
         compressed = brotli.compress(original)
         old_call_count = (len(compressed) + 15) // 16
         assert len(compressed) < STREAM_BUFFER_LIMIT
         assert old_call_count > 1000
 
-        stats = self._track_brotli_decompressor(monkeypatch)
+        stats = _track_brotli_decompressor(monkeypatch)
 
         flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
         entry = {}
@@ -702,27 +704,12 @@ class TestDecompression:
         assert stats["calls"] < old_call_count // 8
         assert stats["max_input"] <= 1024
 
-    def test_brotli_very_large_input_caps_adaptive_chunk_size(self, real_flow, monkeypatch):
-        original = self._pseudo_random_ascii(STREAM_BUFFER_LIMIT * 3)
-        compressed = brotli.compress(original)
-        assert len(compressed) > 64 * 1024
-
-        stats = self._track_brotli_decompressor(monkeypatch)
-
-        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
-        entry = {}
-        add_capture_fields(flow, entry)
-
-        assert entry["response_body_truncated"] is True
-        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
-        assert stats["max_input"] == 1024
-
     def test_brotli_zip_bomb_capped_without_full_decode(self, real_flow, monkeypatch):
         original = b"\x00" * (10 * 1024 * 1024)
         compressed = brotli.compress(original)
         assert len(compressed) < STREAM_BUFFER_LIMIT
 
-        stats = self._track_brotli_decompressor(monkeypatch)
+        stats = _track_brotli_decompressor(monkeypatch)
 
         flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
         entry = {}
@@ -1181,6 +1168,19 @@ class TestDecompressBody:
         hdrs = headers(("Content-Encoding", "zstd"))
         result = decompress_body(compressed, hdrs, max_output=64 * 1024)
         assert result == plaintext
+
+    def test_brotli_large_input_caps_adaptive_chunk_size(self, headers, monkeypatch):
+        plaintext = _pseudo_random_ascii(STREAM_BUFFER_LIMIT * 3)
+        compressed = brotli.compress(plaintext)
+        assert len(compressed) > 64 * 1024
+
+        stats = _track_brotli_decompressor(monkeypatch)
+
+        hdrs = headers(("Content-Encoding", "br"))
+        result = decompress_body(compressed, hdrs, max_output=STREAM_BUFFER_LIMIT)
+
+        assert result == plaintext[:STREAM_BUFFER_LIMIT]
+        assert stats["max_input"] == 1024
 
     def test_zstd_corrupted_returns_original_data(self, headers, mitm_ctx):
         # Malformed payload should fall through to the outer
