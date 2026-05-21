@@ -463,8 +463,12 @@ class TestLogNetworkEntry:
         assert len(lines) == 2
 
     def test_no_path_is_noop(self):
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
-            logging_utils.log_network_entry("", {"action": "ALLOW"})
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_network_entry("", {"payload": b"binary"})
+
+        log.warn.assert_not_called()
 
     def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
         log_path = tmp_path / "missing" / "net.jsonl"

@@ -63,7 +63,14 @@ class TestLogProxyEntry:
         assert json.loads(lines[1])["message"] == "second"
 
     def test_empty_path_no_op(self, tmp_path):
-        logging_utils.log_proxy_entry("", "warn", "should not write")
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(
+                "", "warn", "should not write", payload={"body": b"binary"}
+            )
+
+        log.warn.assert_not_called()
         assert not list(tmp_path.iterdir())
 
     def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
@@ -102,6 +109,7 @@ class TestLogProxyEntry:
     def test_extra_cannot_override_reserved_fields(self, tmp_path):
         proxy_path = tmp_path / "proxy-test.jsonl"
         extra = {
+            "proxy_log_path": "caller-proxy-log-path",
             "timestamp": "caller-timestamp",
             "level": "caller-level",
             "message": "caller-message",
@@ -116,6 +124,7 @@ class TestLogProxyEntry:
         assert entry["timestamp"] != "caller-timestamp"
         assert entry["level"] == "warn"
         assert entry["message"] == "logger-message"
+        assert entry["proxy_log_path"] == "caller-proxy-log-path"
         assert entry["log_level"] == "caller-log-level"
         assert entry["log_message"] == "caller-log-message"
         assert entry["extra_field"] == "value"
