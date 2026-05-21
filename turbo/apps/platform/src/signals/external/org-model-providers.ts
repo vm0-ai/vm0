@@ -56,9 +56,8 @@ export const createOrgModelProvider$ = command(
 
 /**
  * Force a refetch of `orgModelProviders$`. Used by higher-level commands
- * that mutate provider state through a different code path (e.g. the codex
- * auth.json paste flow in #11980, which lives in settings/ to share dialog
- * state with the paste dialog).
+ * that mutate provider state through a different code path, such as Codex
+ * device login.
  */
 export const reloadOrgModelProviders$ = command(({ set }) => {
   set(internalReloadOrgModelProviders$, (x) => {

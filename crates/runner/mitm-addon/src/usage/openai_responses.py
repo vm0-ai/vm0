@@ -1,4 +1,20 @@
-"""OpenAI Responses API usage parsing primitives."""
+"""OpenAI Responses API usage parsing primitives.
+
+This module handles the OpenAI Responses entry points that feed
+model-provider usage billing:
+
+- SSE streams via ``create_openai_responses_sse_usage_extractor``, consumed by
+  ``response_streaming.py`` for ``text/event-stream`` responses.
+- Non-streaming JSON bodies via ``create_openai_responses_json_usage_extractor``
+  for incremental parsing in ``response_streaming.py`` and
+  ``extract_openai_responses_usage_from_json`` for the ``mitm_addon.py``
+  fallback used by legacy/test flows without response-streaming parser state.
+- Single-frame WebSocket event JSON via
+  ``extract_openai_responses_usage_from_event_json``, consumed by
+  ``response_streaming.py`` for Responses events received over upgrades.
+"""
+
+from mitmproxy import http
 
 import body_utils
 
@@ -174,10 +190,29 @@ class OpenAIResponsesJsonUsageExtractor:
 
 
 def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageExtractor:
+    """Create an incremental parser for non-SSE OpenAI Responses JSON chunks."""
+
     return OpenAIResponsesJsonUsageExtractor()
 
 
-def extract_openai_responses_usage_from_json(body: bytes, headers) -> dict | None:
+def extract_openai_responses_usage_from_json(
+    body: bytes, headers: http.Headers | None
+) -> dict | None:
+    """Extract usage from a complete non-streaming Responses JSON body.
+
+    ``headers`` may be mitmproxy response headers or ``None``. When headers are
+    provided, their content encoding controls one-shot decompression before
+    parsing; ``None`` skips decompression.
+
+    Returns ``None`` when no platform usage categories can be extracted,
+    including invalid JSON and valid JSON without usage. Otherwise returns a
+    dict keyed by platform model usage categories such as
+    ``MODEL_USAGE_CATEGORY_INPUT``, ``MODEL_USAGE_CATEGORY_OUTPUT``, and
+    ``MODEL_USAGE_CATEGORY_CACHE_READ``. OpenAI ``input_tokens`` include cached
+    tokens, so this extractor splits them into uncached input and cache-read
+    categories before reporting.
+    """
+
     if headers:
         body = body_utils.decompress_body(
             body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT

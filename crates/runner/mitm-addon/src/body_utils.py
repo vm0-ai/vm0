@@ -36,10 +36,13 @@ _UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
 # calls while still bounding decompression bombs.
 LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
 
-# Python's brotli binding has no max-output API. Feed compressed data in small
-# chunks and stop once the caller's cap is accumulated; process() can still
-# transiently emit a multi-MB chunk from a tiny input.
-_BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE = 16
+# Python's brotli binding has no max-output API, and one process() call can
+# still transiently emit multi-MB output. Keep small compressed inputs on tiny
+# chunks to preserve the best-effort high-compression guard, but scale up for
+# larger inputs to avoid thousands of Python-to-C calls.
+_BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
+_BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
+_BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
 
 
 # ---------------------------------------------------------------------------
@@ -181,10 +184,19 @@ def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
     if max_output <= 0:
         return b""
 
+    chunk_size = min(
+        _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE,
+        max(
+            _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE,
+            (len(data) + _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS - 1)
+            // _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS,
+        ),
+    )
+
     dec = brotli.Decompressor()
     out = bytearray()
-    for offset in range(0, len(data), _BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE):
-        chunk = data[offset : offset + _BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE]
+    for offset in range(0, len(data), chunk_size):
+        chunk = data[offset : offset + chunk_size]
         decoded = dec.process(chunk)
         if not decoded:
             continue

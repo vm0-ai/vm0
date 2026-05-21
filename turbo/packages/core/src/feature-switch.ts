@@ -146,6 +146,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CodexDeviceAuth]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Gate Codex device-auth UI and API surfaces.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the PostHog analytics connector",

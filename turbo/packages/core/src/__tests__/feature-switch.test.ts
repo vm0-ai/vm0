@@ -117,6 +117,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.CodexDeviceAuth]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
@@ -127,6 +128,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.CodexDeviceAuth]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
   });
 

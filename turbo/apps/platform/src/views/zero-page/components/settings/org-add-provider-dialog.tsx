@@ -14,8 +14,8 @@ import {
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
-  setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
@@ -72,7 +72,7 @@ export function OrgAddProviderDialog({
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
   const openAdd = useSet(orgOpenAddDialog$);
-  const openCodexPaste = useSet(setCodexPasteDialogState$);
+  const openCodexDeviceAuth = useSet(setCodexDeviceAuthDialogState$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
       return p.type;
@@ -81,10 +81,7 @@ export function OrgAddProviderDialog({
 
   const handleAdd = (type: ModelProviderType) => {
     if (type === "codex-oauth-token") {
-      // Open the auth.json paste dialog (#11980 replaces the broken
-      // cross-origin OAuth redirect). Close the picker so only the paste
-      // dialog is visible — stacking two dialogs is confusing.
-      openCodexPaste({ open: true, mode: "connect" });
+      openCodexDeviceAuth({ open: true, mode: "connect" });
       onOpenChange(false);
       return;
     }

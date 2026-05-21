@@ -6,16 +6,16 @@ import {
   orgAddProviderDialogOpen$,
   setOrgAddProviderDialogOpen$,
   orgConfiguredProviders$,
-  setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
 import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.tsx";
 import {
-  CodexAuthPasteDialog,
-  PersonalCodexAuthPasteDialog,
-} from "../settings/codex-auth-paste-dialog.tsx";
+  CodexDeviceAuthDialog,
+  PersonalCodexDeviceAuthDialog,
+} from "../settings/codex-device-auth-dialog.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
 
@@ -38,11 +38,11 @@ export function OrgProvidersTab() {
       )}
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
-      <CodexAuthPasteDialog />
+      <CodexDeviceAuthDialog />
       {isAdmin && (
         <>
           <PersonalProviderDialog />
-          <PersonalCodexAuthPasteDialog />
+          <PersonalCodexDeviceAuthDialog />
         </>
       )}
     </div>
@@ -68,7 +68,7 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
-  const setPasteDialog = useSet(setCodexPasteDialogState$);
+  const setDeviceDialog = useSet(setCodexDeviceAuthDialogState$);
   const stale = providers.find((p) => {
     return p.type === "codex-oauth-token" && p.needsReconnect;
   });
@@ -91,11 +91,11 @@ function StaleProviderBanner({
       <button
         type="button"
         onClick={() => {
-          return setPasteDialog({ open: true, mode: "reconnect" });
+          return setDeviceDialog({ open: true, mode: "reconnect" });
         }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
       >
-        Re-paste auth.json
+        Reconnect
       </button>
     </section>
   );
