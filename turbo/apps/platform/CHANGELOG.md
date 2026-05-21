@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.372.2](https://github.com/vm0-ai/vm0/compare/app-v0.372.1...app-v0.372.2) (2026-05-21)
+
+
+### Bug Fixes
+
+* restore desktop traffic lights after expanding sidebar ([#14354](https://github.com/vm0-ai/vm0/issues/14354)) ([914c0e7](https://github.com/vm0-ai/vm0/commit/914c0e7a3677938ce83d6a0b5bbe82f921e59706))
+* restore desktop workspace drag region ([#14363](https://github.com/vm0-ai/vm0/issues/14363)) ([ad4a9f7](https://github.com/vm0-ai/vm0/commit/ad4a9f7a9115a23152037094ab8ffb68e7d99134))
+* surface web chat upload failures ([#14361](https://github.com/vm0-ai/vm0/issues/14361)) ([6b1c055](https://github.com/vm0-ai/vm0/commit/6b1c055ac1dc223f2b804e2913271ed2d72c6704))
+
+
+### Refactoring
+
+* require oauth config for oauth connectors ([#14365](https://github.com/vm0-ai/vm0/issues/14365)) ([e094dc4](https://github.com/vm0-ai/vm0/commit/e094dc416f33254749cbd618e4a06ca2de17b035))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.5
+    * @vm0/connectors bumped to 1.25.2
+    * @vm0/core bumped to 8.286.5
+
 ## [0.372.1](https://github.com/vm0-ai/vm0/compare/app-v0.372.0...app-v0.372.1) (2026-05-21)
 
 

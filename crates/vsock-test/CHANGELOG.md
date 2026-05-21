@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.51](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.50...vsock-test-v0.9.51) (2026-05-21)
+
+
+### Refactoring
+
+* remove legacy spawn process protocol ([#14315](https://github.com/vm0-ai/vm0/issues/14315)) ([eecb69f](https://github.com/vm0-ai/vm0/commit/eecb69fbba0b5a16b0cd804698613303655dcb7e))
+
 ## [0.9.50](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.49...vsock-test-v0.9.50) (2026-05-20)
 
 ## [0.9.49](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.48...vsock-test-v0.9.49) (2026-05-20)

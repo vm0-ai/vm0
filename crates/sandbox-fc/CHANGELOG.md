@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.35.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.2...sandbox-fc-v0.35.3) (2026-05-21)
+
+
+### Documentation
+
+* document sandbox-fc rate limiter fields ([#14396](https://github.com/vm0-ai/vm0/issues/14396)) ([4bbf327](https://github.com/vm0-ai/vm0/commit/4bbf327fba386bb586f8fe3262ff384d40c019f6))
+
+
+### Refactoring
+
+* remove legacy spawn process protocol ([#14315](https://github.com/vm0-ai/vm0/issues/14315)) ([eecb69f](https://github.com/vm0-ai/vm0/commit/eecb69fbba0b5a16b0cd804698613303655dcb7e))
+* share snapshot cleanup result handling ([#14398](https://github.com/vm0-ai/vm0/issues/14398)) ([8bdd8f8](https://github.com/vm0-ai/vm0/commit/8bdd8f8ad0bed994d61044934867d6652c7137e4))
+
 ## [0.35.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.1...sandbox-fc-v0.35.2) (2026-05-20)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.7](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.6...vsock-host-v0.17.7) (2026-05-21)
+
+
+### Refactoring
+
+* remove legacy spawn process protocol ([#14315](https://github.com/vm0-ai/vm0/issues/14315)) ([eecb69f](https://github.com/vm0-ai/vm0/commit/eecb69fbba0b5a16b0cd804698613303655dcb7e))
+
 ## [0.17.6](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.5...vsock-host-v0.17.6) (2026-05-20)
 
 

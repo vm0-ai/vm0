@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.160.5](https://github.com/vm0-ai/vm0/compare/cli-v9.160.4...cli-v9.160.5) (2026-05-21)
+
+
+### Refactoring
+
+* require oauth config for oauth connectors ([#14365](https://github.com/vm0-ai/vm0/issues/14365)) ([e094dc4](https://github.com/vm0-ai/vm0/commit/e094dc416f33254749cbd618e4a06ca2de17b035))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.35.5
+    * @vm0/connectors bumped to 1.25.2
+    * @vm0/core bumped to 8.286.5
+
 ## [9.160.4](https://github.com/vm0-ai/vm0/compare/cli-v9.160.3...cli-v9.160.4) (2026-05-21)
 
 

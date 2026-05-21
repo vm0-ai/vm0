@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.381.6](https://github.com/vm0-ai/vm0/compare/web-v12.381.5...web-v12.381.6) (2026-05-21)
+
+
+### Refactoring
+
+* cut over zero feature switches web route ([#14353](https://github.com/vm0-ai/vm0/issues/14353)) ([5934e64](https://github.com/vm0-ai/vm0/commit/5934e641c4e81ab5eff56e632c38e3dce50e246a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.5
+    * @vm0/connectors bumped to 1.25.2
+    * @vm0/core bumped to 8.286.5
+    * @vm0/db bumped to 1.17.5
+
 ## [12.381.5](https://github.com/vm0-ai/vm0/compare/web-v12.381.4...web-v12.381.5) (2026-05-21)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.103.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.2...runner-rs-v0.103.3) (2026-05-21)
+
+
+### Bug Fixes
+
+* avoid stale firewall auth cache writes ([#14336](https://github.com/vm0-ai/vm0/issues/14336)) ([f69c8ce](https://github.com/vm0-ai/vm0/commit/f69c8ceef246ff11747129cff1100a67aebc34e3))
+* **mitm-addon:** expose firewall block reasons ([#14379](https://github.com/vm0-ai/vm0/issues/14379)) ([21eb63c](https://github.com/vm0-ai/vm0/commit/21eb63ceded10532642a9ba23c4a3b263439b6bc))
+* **mitm-addon:** harden logging writes ([#14388](https://github.com/vm0-ai/vm0/issues/14388)) ([a0958d5](https://github.com/vm0-ai/vm0/commit/a0958d57a43c5564c7bcb368942547c2804a2f67))
+* prevent webhook log payload collisions ([#14378](https://github.com/vm0-ai/vm0/issues/14378)) ([6a84ac8](https://github.com/vm0-ai/vm0/commit/6a84ac8f800dc371b800af4b4db59f270a37bc8f))
+* show runner stdout stream loss in system log ([#14384](https://github.com/vm0-ai/vm0/issues/14384)) ([bf52cbc](https://github.com/vm0-ai/vm0/commit/bf52cbc10bd7de14a09d32d099b53df64d03fc28))
+
+
+### Refactoring
+
+* **mitm-addon:** split openai response input tokens directly ([#14376](https://github.com/vm0-ai/vm0/issues/14376)) ([9243f08](https://github.com/vm0-ai/vm0/commit/9243f08abb17f4288a16bae260e75b9cf2ace203)), closes [#14367](https://github.com/vm0-ai/vm0/issues/14367)
+
 ## [0.103.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.1...runner-rs-v0.103.2) (2026-05-20)
 
 

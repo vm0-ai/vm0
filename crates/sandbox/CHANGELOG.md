@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.1...sandbox-v0.17.2) (2026-05-21)
+
+
+### Refactoring
+
+* remove legacy spawn process protocol ([#14315](https://github.com/vm0-ai/vm0/issues/14315)) ([eecb69f](https://github.com/vm0-ai/vm0/commit/eecb69fbba0b5a16b0cd804698613303655dcb7e))
+
 ## [0.17.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.0...sandbox-v0.17.1) (2026-05-20)
 
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.62.5](https://github.com/vm0-ai/vm0/compare/api-v1.62.4...api-v1.62.5) (2026-05-21)
+
+
+### Bug Fixes
+
+* **api:** re-throw non-abort errors in clearAllDetached ([#14360](https://github.com/vm0-ai/vm0/issues/14360)) ([c6db49b](https://github.com/vm0-ai/vm0/commit/c6db49be151ab7d292ffeec0a477c91a1971bdc5))
+
+
+### Refactoring
+
+* require oauth config for oauth connectors ([#14365](https://github.com/vm0-ai/vm0/issues/14365)) ([e094dc4](https://github.com/vm0-ai/vm0/commit/e094dc416f33254749cbd618e4a06ca2de17b035))
+* route connector oauth authorize through providers ([#14359](https://github.com/vm0-ai/vm0/issues/14359)) ([77886f8](https://github.com/vm0-ai/vm0/commit/77886f842141a5892f1c1435ab061bef9d1a04bd))
+* type connector oauth credential results ([#14394](https://github.com/vm0-ai/vm0/issues/14394)) ([65fdd65](https://github.com/vm0-ai/vm0/commit/65fdd652ea45d11e9595a886134a5e6fbe30411e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.5
+    * @vm0/connectors bumped to 1.25.2
+    * @vm0/core bumped to 8.286.5
+    * @vm0/db bumped to 1.17.5
+
 ## [1.62.4](https://github.com/vm0-ai/vm0/compare/api-v1.62.3...api-v1.62.4) (2026-05-21)
 
 

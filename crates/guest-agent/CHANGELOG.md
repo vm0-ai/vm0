@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.7...guest-agent-v0.32.8) (2026-05-21)
+
+
+### Refactoring
+
+* remove legacy spawn process protocol ([#14315](https://github.com/vm0-ai/vm0/issues/14315)) ([eecb69f](https://github.com/vm0-ai/vm0/commit/eecb69fbba0b5a16b0cd804698613303655dcb7e))
+
 ## [0.32.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.6...guest-agent-v0.32.7) (2026-05-20)
 
 ## [0.32.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.5...guest-agent-v0.32.6) (2026-05-20)

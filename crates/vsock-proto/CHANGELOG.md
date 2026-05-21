@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.4](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.3...vsock-proto-v0.18.4) (2026-05-21)
+
+
+### Refactoring
+
+* remove legacy spawn process protocol ([#14315](https://github.com/vm0-ai/vm0/issues/14315)) ([eecb69f](https://github.com/vm0-ai/vm0/commit/eecb69fbba0b5a16b0cd804698613303655dcb7e))
+
 ## [0.18.3](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.2...vsock-proto-v0.18.3) (2026-05-19)
 
 
