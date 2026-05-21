@@ -12,7 +12,7 @@ function getDb() {
  * Get user feature switch overrides for the given org + user.
  * Returns empty object if no record exists.
  */
-export async function getUserFeatureSwitches(
+async function getUserFeatureSwitches(
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean>> {
@@ -45,27 +45,6 @@ export async function loadFeatureSwitchOverrides(
   return Object.keys(switches).length > 0
     ? (switches as Partial<Record<FeatureSwitchKey, boolean>>)
     : undefined;
-}
-
-/**
- * Delete all feature switch overrides for the given org + user.
- * After deletion, evaluations fall back to the static registry values
- * computed from userId/orgId.
- */
-export async function deleteUserFeatureSwitches(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  const db = getDb();
-
-  await db
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, orgId),
-        eq(userFeatureSwitches.userId, userId),
-      ),
-    );
 }
 
 /**

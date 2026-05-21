@@ -6,9 +6,7 @@
  * the same change. Do not add new entries; the no-new-api-routes rule checks
  * that this baseline only shrinks relative to the branch's git base.
  */
-export const WEB_API_ROUTE_BASELINE = [
-  "app/api/zero/feature-switches/route.ts",
-] as const;
+export const WEB_API_ROUTE_BASELINE = [] as const;
 
 export const WEB_API_ROUTE_BASELINE_SET = new Set<string>(
   WEB_API_ROUTE_BASELINE,

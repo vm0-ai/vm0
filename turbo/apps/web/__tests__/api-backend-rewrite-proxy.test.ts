@@ -1609,6 +1609,21 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero feature-switches rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/feature-switches")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/feature-switches/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/feature-switch")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/feature-switches-disabled"),
+    ).toBe(false);
+  });
+
   it("matches the GitHub integration rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/integrations/github")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/integrations/github/extra")).toBe(

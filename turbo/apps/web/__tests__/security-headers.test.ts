@@ -995,6 +995,14 @@ const ZERO_DEFAULT_AGENT_NEXT_NEGATIVE_PATHS = [
   "/api/zero/default-agents",
   "/api/zero",
 ] as const;
+const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
+const ZERO_FEATURE_SWITCHES_PATH = "/api/zero/feature-switches";
+const ZERO_FEATURE_SWITCHES_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/feature-switches/extra",
+  "/api/zero/feature-switch",
+  "/api/zero/feature-switches-disabled",
+  "/api/zero",
+] as const;
 const ZERO_DEVELOPER_SUPPORT_REWRITE_SOURCE = "/api/zero/developer-support";
 const ZERO_DEVELOPER_SUPPORT_PATH = "/api/zero/developer-support";
 const ZERO_DEVELOPER_SUPPORT_NEXT_NEGATIVE_PATHS = [
@@ -2432,6 +2440,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_DEFAULT_AGENT_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/default-agent",
+        },
+        {
+          source: ZERO_FEATURE_SWITCHES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/feature-switches",
         },
         {
           source: ZERO_CONNECTORS_LIST_REWRITE_SOURCE,
@@ -6696,6 +6708,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero feature-switches rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_FEATURE_SWITCHES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_FEATURE_SWITCHES_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/feature-switches",
+    });
+
+    const matcher = getPathMatch(ZERO_FEATURE_SWITCHES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_FEATURE_SWITCHES_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_FEATURE_SWITCHES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact permission policies rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -8825,6 +8860,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero default-agent path", () => {
     expect(matchesApiBackendRewritePath(ZERO_DEFAULT_AGENT_PATH)).toBe(true);
     for (const pathname of ZERO_DEFAULT_AGENT_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero feature-switches path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_FEATURE_SWITCHES_PATH)).toBe(true);
+    for (const pathname of ZERO_FEATURE_SWITCHES_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

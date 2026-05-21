@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { WEB_API_ROUTE_BASELINE } from "../baselines/web-api-routes.ts";
 import {
   expandedBaselineRoutes,
   expandedBaselineRoutesSinceReference,
@@ -26,10 +25,6 @@ const webRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 ruleTester.run("no-new-api-routes", noNewApiRoutes, {
   valid: [
-    {
-      code: "export async function GET() {}",
-      filename: path.join(webRoot, WEB_API_ROUTE_BASELINE[0]),
-    },
     {
       code: "export async function GET() {}",
       filename: path.join(webRoot, "src/not-api-route.ts"),
@@ -72,13 +67,12 @@ describe("missingBaselineRoutes", () => {
     }
   });
 
-  it("returns stale baseline entries when allowlisted routes are deleted", () => {
+  it("returns no stale baseline entries after the web route baseline is empty", () => {
     tempDir = mkdtempSync(path.join(os.tmpdir(), "web-api-routes-"));
-    const deletedRoute = WEB_API_ROUTE_BASELINE[0];
 
     const missing = missingBaselineRoutes(tempDir);
 
-    expect(missing).toContain(deletedRoute);
+    expect(missing).toEqual([]);
   });
 });
 
@@ -125,7 +119,7 @@ describe("web API route baseline expansion", () => {
     ).toEqual(["app/api/new-backend-only-route/route.ts"]);
   });
 
-  it("reports routes added since the configured git reference", () => {
+  it("does not report additions since the configured git reference when the current baseline is empty", () => {
     tempGitDir = mkdtempSync(path.join(os.tmpdir(), "web-api-routes-git-"));
     const baselinePath = path.join(
       tempGitDir,
@@ -157,6 +151,6 @@ describe("web API route baseline expansion", () => {
 
     const expanded = expandedBaselineRoutesSinceReference(tempGitDir);
 
-    expect(expanded).toContain(WEB_API_ROUTE_BASELINE[0]);
+    expect(expanded).toEqual([]);
   });
 });
