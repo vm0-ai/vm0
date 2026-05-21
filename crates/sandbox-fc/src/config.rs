@@ -43,27 +43,55 @@ pub struct SnapshotConfig {
     pub vsock_bind_dir: PathBuf,
 }
 
-/// Firecracker token bucket configuration.
+/// Firecracker-specific token bucket configuration used in API payloads.
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct TokenBucketConfig {
+    /// Token bucket capacity over `refill_time`.
+    ///
+    /// The token unit depends on the containing rate limiter dimension: bytes
+    /// for bandwidth buckets, operations for ops buckets.
     pub size: u64,
+    /// Time, in milliseconds, for Firecracker to refill the bucket to `size`.
     pub refill_time: u64,
 }
 
-/// Firecracker rate limiter configuration.
+/// Firecracker-specific rate limiter configuration used in API payloads.
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct RateLimiterConfig {
+    /// Byte-rate token bucket for bandwidth limiting.
+    ///
+    /// When `None`, this dimension is omitted from the Firecracker payload and
+    /// is not applied to the device.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bandwidth: Option<TokenBucketConfig>,
+    /// Operation-rate token bucket for operation-count limiting.
+    ///
+    /// When `None`, this dimension is omitted from the Firecracker payload and
+    /// is not applied to the device.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ops: Option<TokenBucketConfig>,
 }
 
 /// Firecracker device rate limiters.
+///
+/// This is the Firecracker-specific representation. Provider-neutral sandbox
+/// creation should use `sandbox::DeviceRateLimits`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirecrackerDeviceRateLimits {
+    /// Rate limiter applied to the Firecracker root block device.
+    ///
+    /// The provider-neutral conversion populates both bandwidth and ops
+    /// dimensions for this device.
     pub drive: RateLimiterConfig,
+    /// Receive-side rate limiter applied to the Firecracker network interface.
+    ///
+    /// The provider-neutral conversion populates bandwidth only and leaves ops
+    /// unset for network receive traffic.
     pub net_rx: RateLimiterConfig,
+    /// Transmit-side rate limiter applied to the Firecracker network interface.
+    ///
+    /// The provider-neutral conversion populates bandwidth only and leaves ops
+    /// unset for network transmit traffic.
     pub net_tx: RateLimiterConfig,
 }
 
