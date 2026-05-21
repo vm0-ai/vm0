@@ -724,4 +724,26 @@ describe("isGoogleOAuthConnector", () => {
       ).toBe("accounts.google.com");
     }
   });
+
+  it("includes every connector configured with the Google authorization endpoint", () => {
+    for (const type of connectorTypeSchema.options) {
+      const oauthConfig = getConnectorOAuthConfigIfSupported(type);
+      if (!oauthConfig?.authorizationUrl) {
+        continue;
+      }
+      if (!oauthConfig.authorizationUrl.startsWith("https://")) {
+        continue;
+      }
+
+      const hostname = new URL(oauthConfig.authorizationUrl).hostname;
+      if (hostname !== "accounts.google.com") {
+        continue;
+      }
+
+      expect(
+        GOOGLE_OAUTH_CONNECTOR_TYPES,
+        `${type} uses Google OAuth and must be listed in GOOGLE_OAUTH_CONNECTOR_TYPES`,
+      ).toContain(type);
+    }
+  });
 });
