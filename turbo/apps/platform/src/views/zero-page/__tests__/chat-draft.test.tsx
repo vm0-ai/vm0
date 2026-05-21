@@ -210,7 +210,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
   });
 
-  it("should toast and keep the chip when prepare returns an error", async () => {
+  it("should toast and remove the chip when prepare returns an error", async () => {
     const user = userEvent.setup();
     mockThreads();
     server.use(
@@ -243,11 +243,13 @@ describe("chat draft persistence across thread navigation", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining("File too large"),
-      );
+      expect(toast.error).toHaveBeenCalledWith("Failed to upload huge.png");
     });
-    expect(screen.getByLabelText("Remove huge.png")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Remove huge.png"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("should infer office content type when the browser file type is empty", async () => {
@@ -375,7 +377,7 @@ describe("chat draft persistence across thread navigation", () => {
     },
   );
 
-  it("should keep the chip when the R2 put fails", async () => {
+  it("should toast and remove the chip when the R2 put fails", async () => {
     const user = userEvent.setup();
     mockThreads();
     server.use(
@@ -409,8 +411,12 @@ describe("chat draft persistence across thread navigation", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Remove fail.png")).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith("Failed to upload fail.png");
     });
-    expect(toast.error).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Remove fail.png"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
