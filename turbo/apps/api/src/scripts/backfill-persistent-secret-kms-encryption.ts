@@ -165,6 +165,27 @@ function needsMigration(
   return format !== "kms";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseStoredExecutionContext(value: unknown): StoredExecutionContext {
+  if (isRecord(value) && isRecord(value.storageManifest)) {
+    const storageManifest = value.storageManifest;
+    if (!("artifacts" in storageManifest)) {
+      return storedExecutionContextSchema.parse({
+        ...value,
+        storageManifest: {
+          ...storageManifest,
+          artifacts: [],
+        },
+      });
+    }
+  }
+
+  return storedExecutionContextSchema.parse(value);
+}
+
 async function reencryptCiphertext(
   encrypted: string,
   mode: Exclude<StoredSecretWriteMode, "legacy">,
@@ -537,9 +558,7 @@ async function countRunnerJobExecutionContexts(): Promise<CiphertextCounts> {
     .select({ executionContext: runnerJobQueue.executionContext })
     .from(runnerJobQueue);
   const encryptedRows = rows.map((row) => {
-    const executionContext = storedExecutionContextSchema.parse(
-      row.executionContext,
-    );
+    const executionContext = parseStoredExecutionContext(row.executionContext);
     return { encrypted: executionContext.encryptedSecrets };
   });
   return countCiphertexts(encryptedRows);
@@ -574,7 +593,7 @@ async function migrateRunnerJobExecutionContexts(
     cursor = rows[rows.length - 1]?.key;
 
     for (const row of rows) {
-      const executionContext = storedExecutionContextSchema.parse(
+      const executionContext = parseStoredExecutionContext(
         row.executionContext,
       );
       const updatedContext = await reencryptExecutionContextSecrets(
