@@ -12,6 +12,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
@@ -816,6 +817,16 @@ const deleteClerkFixture$ = command(
     _signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
+    await db
+      .delete(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        eq(connectorOauthDeviceAuthorizationSessions.userId, fixture.userId),
+      );
+    await db
+      .delete(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        eq(connectorOauthDeviceAuthorizationSessions.orgId, fixture.orgId),
+      );
     await db.delete(storages).where(eq(storages.userId, fixture.userId));
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     await db
@@ -861,6 +872,25 @@ const seedClerkFixture$ = command(
     return { orgId, userId };
   },
 );
+
+async function seedClerkOauthDeviceAuthorizationSession(
+  fixture: ClerkFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(connectorOauthDeviceAuthorizationSessions)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorType: "test-oauth-device",
+      sessionTokenHash: `test-session-token-${randomUUID()}`,
+      encryptedProviderState: "encrypted-provider-state",
+      userCode: "TEST-DEVICE",
+      verificationUri: "https://oauth-device.test/device",
+      intervalSeconds: 5,
+      expiresAt: new Date(nowDate().getTime() + 600_000),
+    });
+}
 
 const trackGitHub = createFixtureTracker<GitHubWebhookFixture>((fixture) => {
   return store.set(deleteGitHubFixture$, fixture, context.signal);
@@ -2301,6 +2331,7 @@ describe("POST /api/webhooks/clerk", () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
     );
+    await seedClerkOauthDeviceAuthorizationSession(fixture);
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "organization.deleted",
       data: { id: fixture.orgId },
@@ -2329,9 +2360,16 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ orgId: orgMembersCache.orgId })
       .from(orgMembersCache)
       .where(eq(orgMembersCache.orgId, fixture.orgId));
+    const deviceSessionRows = await db
+      .select({ id: connectorOauthDeviceAuthorizationSessions.id })
+      .from(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        eq(connectorOauthDeviceAuthorizationSessions.orgId, fixture.orgId),
+      );
     expect(cacheRows).toHaveLength(0);
     expect(metadataRows).toHaveLength(0);
     expect(membershipRows).toHaveLength(0);
+    expect(deviceSessionRows).toHaveLength(0);
   });
 
   it("does not schedule organization deletion cleanup without an org ID", async () => {
@@ -2394,6 +2432,7 @@ describe("POST /api/webhooks/clerk", () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
     );
+    await seedClerkOauthDeviceAuthorizationSession(fixture);
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "user.deleted",
       data: { id: fixture.userId },
@@ -2422,9 +2461,16 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ orgId: orgCache.orgId })
       .from(orgCache)
       .where(eq(orgCache.orgId, fixture.orgId));
+    const deviceSessionRows = await db
+      .select({ id: connectorOauthDeviceAuthorizationSessions.id })
+      .from(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        eq(connectorOauthDeviceAuthorizationSessions.userId, fixture.userId),
+      );
     expect(cacheRows).toHaveLength(0);
     expect(userRows).toHaveLength(0);
     expect(orgRows).toHaveLength(1);
+    expect(deviceSessionRows).toHaveLength(0);
   });
 
   it("does not schedule user deletion cleanup without a user ID", async () => {

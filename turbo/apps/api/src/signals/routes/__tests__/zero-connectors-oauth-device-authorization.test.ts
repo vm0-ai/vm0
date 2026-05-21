@@ -77,7 +77,6 @@ function encryptedProviderState(deviceCode: string): string {
     JSON.stringify({
       connectorType: "test-oauth-device",
       deviceCode,
-      scopes: ["read"],
     }),
   );
 }
@@ -216,6 +215,124 @@ describe("OAuth device authorization connector routes", () => {
     expect(decryptSecretValue(session.encryptedProviderState)).toContain(
       "test-device:test-oauth-device-client:read",
     );
+    expect(decryptSecretValue(session.encryptedProviderState)).not.toContain(
+      "scopes",
+    );
+  });
+
+  it("marks the previous active session as superseded when a new session starts", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
+    );
+
+    const first = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(onlySession(first.body.sessionId)).resolves.toMatchObject({
+      orgId,
+      userId,
+      status: "error",
+      errorCode: "session_superseded",
+      errorMessage: "OAuth device authorization session was superseded",
+    });
+    await expect(onlySession(second.body.sessionId)).resolves.toMatchObject({
+      orgId,
+      userId,
+      status: "awaiting_user_authorization",
+    });
+
+    const stalePoll = await accept(
+      client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: first.body.sessionId,
+        },
+        body: { sessionToken: first.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(stalePoll.body).toStrictEqual({
+      status: "error",
+      errorCode: "session_superseded",
+      errorMessage: "OAuth device authorization session was superseded",
+    });
+  });
+
+  it("does not persist a superseded session that completes after a new session starts", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
+    );
+    const first = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(first.body.sessionId);
+
+    let releaseProviderPoll: (() => void) | undefined;
+    const providerPollStarted = new Promise<void>((resolve) => {
+      testOauthDeviceProvider.pollDeviceAuthorization = async (args) => {
+        resolve();
+        await new Promise<void>((resolve) => {
+          releaseProviderPoll = resolve;
+        });
+        return await originalPollDeviceAuthorization(args);
+      };
+    });
+    const firstPoll = client.poll({
+      params: {
+        type: "test-oauth-device",
+        sessionId: first.body.sessionId,
+      },
+      body: { sessionToken: first.body.sessionToken },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    await providerPollStarted;
+
+    const second = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    releaseProviderPoll?.();
+
+    const stalePoll = await accept(firstPoll, [200]);
+    expect(stalePoll.body).toStrictEqual({
+      status: "error",
+      errorCode: "session_superseded",
+      errorMessage: "OAuth device authorization session was superseded",
+    });
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+    await expect(onlySession(first.body.sessionId)).resolves.toMatchObject({
+      status: "error",
+      errorCode: "session_superseded",
+    });
+    await expect(onlySession(second.body.sessionId)).resolves.toMatchObject({
+      status: "awaiting_user_authorization",
+    });
   });
 
   it("rejects authorization-code OAuth connectors", async () => {
