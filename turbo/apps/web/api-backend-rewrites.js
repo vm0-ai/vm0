@@ -136,6 +136,8 @@ const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
 const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
 const AGENTPHONE_WEBHOOK_REWRITE_SOURCE = "/api/agentphone/webhook";
+const WHATSAPP_CONNECT_REWRITE_SOURCE = "/api/whatsapp/connect";
+const TWILIO_WEBHOOK_REWRITE_SOURCE = "/api/integrations/twilio/webhook";
 const RUNNERS_JOB_CLAIM_REWRITE_SOURCE = "/api/runners/jobs/:id/claim";
 const RUNNERS_JOB_CLAIM_PATH_RE = /^\/api\/runners\/jobs\/[^/]+\/claim$/;
 const GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE =
@@ -469,6 +471,8 @@ export const API_BACKEND_REWRITES = [
   ["/api/device-token/poll", "/api/device-token/poll"],
   [AGENTPHONE_CONNECT_REWRITE_SOURCE, "/api/agentphone/connect"],
   [AGENTPHONE_WEBHOOK_REWRITE_SOURCE, "/api/agentphone/webhook"],
+  [WHATSAPP_CONNECT_REWRITE_SOURCE, "/api/whatsapp/connect"],
+  [TWILIO_WEBHOOK_REWRITE_SOURCE, "/api/integrations/twilio/webhook"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
   ["/api/runners/heartbeat", "/api/runners/heartbeat"],
   [
@@ -563,6 +567,7 @@ export const API_BACKEND_REWRITES = [
     BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH_RE,
   ],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
+  ["/api/integrations/whatsapp/link", "/api/integrations/whatsapp/link"],
   ["/api/internal/callbacks/agent", "/api/internal/callbacks/agent"],
   ["/api/internal/callbacks/chat", "/api/internal/callbacks/chat"],
   [
@@ -579,6 +584,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/internal/callbacks/slack/org", "/api/internal/callbacks/slack/org"],
   ["/api/internal/callbacks/telegram", "/api/internal/callbacks/telegram"],
+  ["/api/internal/callbacks/twilio", "/api/internal/callbacks/twilio"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
     "/api/internal/cron/aggregate-model-stats",

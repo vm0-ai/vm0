@@ -202,6 +202,12 @@ export {
   type AgentPhoneCallbackPayload,
 } from "./internal-callbacks-agentphone";
 export {
+  internalCallbacksTwilioContract,
+  twilioCallbackPayloadSchema,
+  type InternalCallbacksTwilioContract,
+  type TwilioCallbackPayload,
+} from "./internal-callbacks-twilio";
+export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
@@ -1530,3 +1536,10 @@ export {
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
 } from "./zero-integrations-agentphone";
+export {
+  zeroIntegrationsWhatsAppContract,
+  type ZeroIntegrationsWhatsAppContract,
+  type WhatsAppConnectResponse,
+  type WhatsAppLinkStatusResponse,
+  type WhatsAppStartLinkResponse,
+} from "./zero-integrations-whatsapp";

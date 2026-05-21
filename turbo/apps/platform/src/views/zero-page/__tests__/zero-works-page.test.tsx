@@ -36,6 +36,7 @@ import {
   getMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
+import { setMockWhatsAppIntegration } from "../../../mocks/handlers/api-integrations-whatsapp.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
@@ -651,6 +652,11 @@ describe("works page - WhatsApp transport card", () => {
 
   it("shows the WhatsApp entry when the transport switch is on", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockWhatsAppIntegration({
+      linked: false,
+      whatsAppNumber: "+19039853128",
+      configured: true,
+    });
     renderWorksPage({
       featureSwitches: { [FeatureSwitchKey.WhatsAppTransport]: true },
     });
@@ -658,12 +664,93 @@ describe("works page - WhatsApp transport card", () => {
     await waitFor(() => {
       expect(screen.getByText("WhatsApp")).toBeInTheDocument();
       expect(screen.getByLabelText("Connect WhatsApp")).toBeInTheDocument();
+      expect(screen.getByText("Message Zero at")).toBeInTheDocument();
+      expect(screen.getAllByText("+1 (903) 985-3128").length).toBeGreaterThan(
+        0,
+      );
+    });
+  });
+
+  it("starts WhatsApp verification and refreshes when the sender connects", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockWhatsAppIntegration({
+      linked: false,
+      whatsAppNumber: "+19039853128",
+      configured: true,
+    });
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.WhatsAppTransport]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect WhatsApp")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Connect WhatsApp"));
-    await expect(screen.findByRole("dialog")).resolves.toHaveTextContent(
-      "Connect WhatsApp",
-    );
+    const input = await screen.findByTestId("whatsapp-phone-input");
+    await fill(input, "+1 (555) 555-1212");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("whatsapp-normalized-phone")).toHaveTextContent(
+        "+15555551212",
+      );
+    });
+
+    click(screen.getByText("Send verification"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Verification message sent to \+15555551212/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Connecting...")).toBeDisabled();
+    });
+    await waitFor(() => {
+      expect(hasSubscription("whatsapp:changed")).toBeTruthy();
+    });
+
+    setMockWhatsAppIntegration({
+      linked: true,
+      phoneHandle: "+15555551212",
+      whatsAppNumber: "+19039853128",
+      configured: true,
+    });
+    triggerAblyEvent("whatsapp:changed");
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("whatsapp-connected-indicator"),
+      ).toHaveTextContent("+15555551212");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("disconnects a linked WhatsApp account from the list page", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockWhatsAppIntegration({
+      linked: true,
+      phoneHandle: "+15555551212",
+      whatsAppNumber: "+19039853128",
+      configured: true,
+    });
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.WhatsAppTransport]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("whatsapp-connected-indicator"),
+      ).toHaveTextContent("+15555551212");
+    });
+
+    click(screen.getByLabelText("WhatsApp options"));
+    click(await screen.findByLabelText("Disconnect WhatsApp"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect WhatsApp")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("whatsapp-connected-indicator"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

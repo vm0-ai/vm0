@@ -2836,6 +2836,13 @@
       "when": 1779898259264,
       "tag": "0404_rename_model_provider_auth_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 405,
+      "version": "7",
+      "when": 1779934591902,
+      "tag": "0405_noisy_smasher",
+      "breakpoints": true
     }
   ]
 }

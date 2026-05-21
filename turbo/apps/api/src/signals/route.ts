@@ -42,6 +42,7 @@ import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks
 import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
+import { internalCallbacksTwilioRoutes } from "./routes/internal-callbacks-twilio";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
@@ -122,6 +123,7 @@ import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsChatMessageRoutes } from "./routes/zero-integrations-chat-message";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
+import { zeroIntegrationsWhatsAppRoutes } from "./routes/zero-integrations-whatsapp";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
 import { zeroIntegrationsPhoneMessageRoutes } from "./routes/zero-integrations-phone-message";
 import { zeroIntegrationsPhoneUploadCompleteRoutes } from "./routes/zero-integrations-phone-upload-complete";
@@ -199,6 +201,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksScheduleRoutes,
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
+  ...internalCallbacksTwilioRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
@@ -314,6 +317,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
+  ...zeroIntegrationsWhatsAppRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,
   ...zeroIntegrationsPhoneUploadCompleteRoutes,

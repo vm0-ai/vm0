@@ -88,6 +88,7 @@ interface UserInfo {
   readonly telegramUserId?: string;
   readonly telegramLanguage?: string;
   readonly agentphoneHandle?: string;
+  readonly whatsappHandle?: string;
 }
 
 interface ZeroAgentConfig {
@@ -272,6 +273,9 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
   }
   if (userInfo.agentphoneHandle) {
     lines.push(`Text message handle: ${userInfo.agentphoneHandle}`);
+  }
+  if (userInfo.whatsappHandle) {
+    lines.push(`WhatsApp handle: ${userInfo.whatsappHandle}`);
   }
   return lines.join("\n");
 }
@@ -596,6 +600,7 @@ export const createZeroIntegrationRun$ = command(
         | "telegramUserId"
         | "telegramLanguage"
         | "agentphoneHandle"
+        | "whatsappHandle"
       >;
     },
     signal: AbortSignal,
@@ -694,6 +699,7 @@ export const createZeroRun$ = command(
         | "telegramUserId"
         | "telegramLanguage"
         | "agentphoneHandle"
+        | "whatsappHandle"
       >;
       readonly callbacks?: readonly RunCallback[];
       readonly chatThreadId?: string;

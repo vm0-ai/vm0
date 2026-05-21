@@ -45,6 +45,10 @@ import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-a
 import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-session";
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
+import * as whatsappUserLinkSchema from "./schema/whatsapp-user-link";
+import * as whatsappThreadSessionSchema from "./schema/whatsapp-thread-session";
+import * as whatsappMessageSchema from "./schema/whatsapp-message";
+import * as whatsappVerificationSendCooldownSchema from "./schema/whatsapp-verification-send-cooldown";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
 import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
@@ -130,6 +134,10 @@ export const schema = {
   ...agentphoneThreadSessionSchema,
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,
+  ...whatsappUserLinkSchema,
+  ...whatsappThreadSessionSchema,
+  ...whatsappMessageSchema,
+  ...whatsappVerificationSendCooldownSchema,
   ...orgSchema,
   ...orgCacheSchema,
   ...orgMembersSchema,

@@ -52,6 +52,10 @@ import {
   resetMockGithubIntegration,
 } from "./api-integrations-github.ts";
 import {
+  apiIntegrationsWhatsAppHandlers,
+  resetMockWhatsAppIntegration,
+} from "./api-integrations-whatsapp.ts";
+import {
   apiAgentsHandlers,
   resetMockComposesList,
   resetMockTeam,
@@ -112,6 +116,7 @@ export const handlers = [
   ...apiIntegrationsTelegramHandlers,
   ...apiIntegrationsAgentPhoneHandlers,
   ...apiIntegrationsGithubHandlers,
+  ...apiIntegrationsWhatsAppHandlers,
   ...apiAgentsHandlers,
   ...apiRunsHandlers,
   ...apiUserPreferencesHandlers,
@@ -139,6 +144,7 @@ export function resetAllMockHandlers(): void {
   resetMockTelegramIntegration();
   resetMockAgentPhoneIntegration();
   resetMockGithubIntegration();
+  resetMockWhatsAppIntegration();
   resetMockUserPreferences();
   resetMockUserModelPreference();
   resetMockOrgModelProviders();
