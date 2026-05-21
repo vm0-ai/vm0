@@ -10,6 +10,7 @@ import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
@@ -18,6 +19,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
@@ -970,20 +972,105 @@ const dispatchGithubAgentRun$ = command(
   },
 );
 
+async function loadGithubChangedUserIds(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+}): Promise<readonly string[]> {
+  const links = await args.db
+    .select({ userId: githubUserLinks.vm0UserId })
+    .from(githubUserLinks)
+    .where(eq(githubUserLinks.installationId, args.installationId));
+  args.signal.throwIfAborted();
+
+  const admins = await args.db
+    .select({ userId: orgMembersCache.userId })
+    .from(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.orgId, args.orgId),
+        eq(orgMembersCache.role, "admin"),
+      ),
+    );
+  args.signal.throwIfAborted();
+
+  return Array.from(
+    new Set(
+      [...links, ...admins].map((row) => {
+        return row.userId;
+      }),
+    ),
+  );
+}
+
+async function cleanupDeletedGithubInstallation(args: {
+  readonly db: Db;
+  readonly ghInstallationId: string;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const [installation] = await args.db
+    .select({ id: githubInstallations.id, orgId: githubInstallations.orgId })
+    .from(githubInstallations)
+    .where(eq(githubInstallations.installationId, args.ghInstallationId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!installation) {
+    L.debug("No GitHub installation found for deleted event", {
+      installationId: args.ghInstallationId,
+    });
+    return false;
+  }
+
+  const userIds = await loadGithubChangedUserIds({
+    db: args.db,
+    installationId: installation.id,
+    orgId: installation.orgId,
+    signal: args.signal,
+  });
+
+  await args.db
+    .delete(githubInstallations)
+    .where(eq(githubInstallations.id, installation.id));
+  args.signal.throwIfAborted();
+
+  if (userIds.length > 0) {
+    await publishUserSignal(userIds, "github:changed");
+    args.signal.throwIfAborted();
+  }
+
+  L.debug("Cleaned up deleted GitHub installation", {
+    installationId: args.ghInstallationId,
+    recordId: installation.id,
+  });
+  return true;
+}
+
 export const handleGithubInstallationEvent$ = command(
   async (
     { set },
     payload: GitHubInstallationEvent,
     signal: AbortSignal,
   ): Promise<void> => {
+    const db = set(writeDb$);
+    const ghInstallationId = String(payload.installation.id);
+
+    if (payload.action === "deleted") {
+      await cleanupDeletedGithubInstallation({
+        db,
+        ghInstallationId,
+        signal,
+      });
+      return;
+    }
+
     if (payload.action !== "created") {
       L.debug("Ignoring installation event", { action: payload.action });
       return;
     }
 
-    const db = set(writeDb$);
     const targetId = String(payload.installation.account.id);
-    const ghInstallationId = String(payload.installation.id);
 
     const [pending] = await db
       .select()

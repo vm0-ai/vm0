@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, beforeEach } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -40,6 +40,7 @@ async function requestAuthorize(
 
 describe("GET /api/connectors/:type/authorize", () => {
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", BASE_URL);
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
     mockOptionalEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");

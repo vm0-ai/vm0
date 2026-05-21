@@ -1132,10 +1132,10 @@ export {
   type IntegrationsGithubContract,
 } from "./integrations-github";
 export {
+  githubAppSetupCallbackQuerySchema,
   githubOauthContract,
-  githubOauthCallbackQuerySchema,
   githubOauthInstallQuerySchema,
-  type GithubOauthCallbackQuery,
+  type GithubAppSetupCallbackQuery,
   type GithubOauthContract,
   type GithubOauthInstallQuery,
 } from "./github-oauth";

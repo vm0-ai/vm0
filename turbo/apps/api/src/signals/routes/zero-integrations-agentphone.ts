@@ -453,6 +453,9 @@ const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("No linked AgentPhone account");
   }
 
+  await publishAgentPhoneUserChanged(auth.userId);
+  signal.throwIfAborted();
+
   return { status: 204 as const, body: undefined };
 });
 

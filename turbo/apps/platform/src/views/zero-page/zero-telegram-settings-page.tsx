@@ -208,25 +208,7 @@ function TelegramSettingsSkeleton() {
 }
 
 function AddTelegramBotButtonSkeleton() {
-  return <Skeleton className="h-10 w-[105px] shrink-0 rounded-md" />;
-}
-
-function telegramBotCountLabel(count: number): string {
-  if (count === 0) {
-    return "This organization has no Telegram bots";
-  }
-  return `This organization has ${String(count)} Telegram ${count === 1 ? "bot" : "bots"}`;
-}
-
-function TelegramBotCount({ count }: { count: number }) {
-  return (
-    <div
-      data-testid="telegram-bot-count"
-      className="text-sm text-muted-foreground"
-    >
-      {telegramBotCountLabel(count)}
-    </div>
-  );
+  return <Skeleton className="h-8 w-[105px] shrink-0 rounded-md" />;
 }
 
 function telegramConnectedUserLabel(bot: TelegramBot): string | null {
@@ -911,18 +893,17 @@ function AddTelegramBotDialogFrame({
 }: AddTelegramBotDialogFrameProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <div className="flex shrink-0 justify-end">
-        <DialogTrigger asChild>
-          <Button
-            type="button"
-            disabled={disabled}
-            className="h-10 shrink-0 gap-2"
-          >
-            <IconPlus size={16} />
-            Add bot
-          </Button>
-        </DialogTrigger>
-      </div>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className="h-8 gap-2 rounded-lg px-3 text-sm"
+        >
+          <IconPlus size={14} stroke={1.8} />
+          Add bot
+        </Button>
+      </DialogTrigger>
       <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>Add Telegram bot</DialogTitle>
@@ -1828,7 +1809,7 @@ function TelegramBotList({
 }) {
   if (bots.length === 0) {
     return (
-      <div className="zero-card px-6 py-12 text-center">
+      <div className="px-6 py-12 text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-[#2AABEE]/10">
           <img src={telegramIconImg} alt="" className="h-8 w-8" />
         </div>
@@ -1843,7 +1824,7 @@ function TelegramBotList({
   }
 
   return (
-    <div className="zero-card overflow-hidden">
+    <div>
       {bots.map((bot, index) => {
         const isOfficial = isOfficialTelegramBot(bot);
         return (
@@ -1862,6 +1843,48 @@ function TelegramBotList({
         );
       })}
     </div>
+  );
+}
+
+function TelegramBotsCard({
+  bots,
+  agents,
+  defaultAgent,
+  isAdmin,
+  agentsLoading,
+  loading,
+  hasError,
+}: {
+  bots: TelegramBot[];
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  isAdmin: boolean;
+  agentsLoading: boolean;
+  loading: boolean;
+  hasError: boolean;
+}) {
+  return (
+    <section className="zero-card overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+        <h2 className="text-sm font-medium text-foreground">Telegram bots</h2>
+        {!hasError && loading ? (
+          <AddTelegramBotButtonSkeleton />
+        ) : !hasError ? (
+          <AddTelegramBotDialog
+            agents={agents}
+            defaultAgent={defaultAgent}
+            disabled={agentsLoading}
+          />
+        ) : null}
+      </div>
+      <TelegramBotList
+        bots={bots}
+        agents={agents}
+        defaultAgent={defaultAgent}
+        isAdmin={isAdmin}
+        agentsLoading={agentsLoading}
+      />
+    </section>
   );
 }
 
@@ -1904,6 +1927,20 @@ export function ZeroTelegramSettingsPage() {
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-3 sm:px-6">
         <div className="mx-auto max-w-[900px]">
+          <div className="mb-4">
+            <Button
+              asChild
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2 px-2 text-muted-foreground hover:text-foreground"
+            >
+              <Link pathname={ROUTES.works} title="Back to integrations">
+                <IconArrowLeft size={17} stroke={1.8} />
+                Back to integrations
+              </Link>
+            </Button>
+          </div>
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#2AABEE]/10">
@@ -1920,15 +1957,6 @@ export function ZeroTelegramSettingsPage() {
                 </p>
               </div>
             </div>
-            {!hasError && loading ? (
-              <AddTelegramBotButtonSkeleton />
-            ) : !hasError ? (
-              <AddTelegramBotDialog
-                agents={agents}
-                defaultAgent={defaultAgent}
-                disabled={agentsLoading}
-              />
-            ) : null}
           </div>
         </div>
       </header>
@@ -1943,13 +1971,14 @@ export function ZeroTelegramSettingsPage() {
             <TelegramSettingsSkeleton />
           ) : (
             <>
-              <TelegramBotCount count={bots.length} />
-              <TelegramBotList
+              <TelegramBotsCard
                 bots={bots}
                 agents={agents}
                 defaultAgent={defaultAgent}
                 isAdmin={isAdmin}
                 agentsLoading={agentsLoading}
+                loading={loading}
+                hasError={hasError}
               />
               <TelegramUninstallDialog bot={uninstallBot} />
               <TelegramReinstallDialog bot={reinstallBot} />

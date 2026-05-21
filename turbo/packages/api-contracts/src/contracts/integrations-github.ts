@@ -46,6 +46,7 @@ export const githubInstallationResponseSchema = z.object({
   }),
   isConnected: z.boolean(),
   connectedGithubUserId: z.string().nullable(),
+  connectedGithubUsername: z.string().nullable(),
   installUrl: z.string().nullable(),
   connectUrl: z.string(),
   agent: z

@@ -8,7 +8,7 @@ import { mockApi } from "../msw-contract.ts";
 
 const defaultMissingGithubIntegration: GithubInstallationNotFoundResponse = {
   error: { message: "GitHub installation not found", code: "NOT_FOUND" },
-  installUrl: "/api/github/oauth/install?orgId=org_123",
+  installUrl: "https://github.com/apps/vm0-test/installations/new?state=abc",
 };
 
 const defaultGithubInstallation: GithubInstallationResponse = {
@@ -22,8 +22,10 @@ const defaultGithubInstallation: GithubInstallationResponse = {
   },
   isConnected: true,
   connectedGithubUserId: "98765",
-  installUrl: "/api/github/oauth/install?orgId=org_123",
-  connectUrl: "/connectors/github/connect",
+  connectedGithubUsername: "octocat",
+  installUrl: "https://github.com/apps/vm0-test/installations/new?state=abc",
+  connectUrl:
+    "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id",
   agent: {
     id: "c0000000-0000-4000-a000-000000000001",
     name: "zero",
@@ -126,6 +128,8 @@ export const apiIntegrationsGithubHandlers = [
       isConnected: true,
       connectedGithubUserId:
         mockGithubIntegration.connectedGithubUserId ?? "98765",
+      connectedGithubUsername:
+        mockGithubIntegration.connectedGithubUsername ?? "octocat",
     };
     return respond(200, { ok: true });
   }),
@@ -140,6 +144,7 @@ export const apiIntegrationsGithubHandlers = [
       ...mockGithubIntegration,
       isConnected: false,
       connectedGithubUserId: null,
+      connectedGithubUsername: null,
     };
     return respond(200, { ok: true });
   }),

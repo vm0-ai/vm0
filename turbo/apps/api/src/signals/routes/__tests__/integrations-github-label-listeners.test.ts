@@ -204,6 +204,50 @@ describe("GitHub label listener integration routes", () => {
     await expect(listenerRows(fixture)).resolves.toHaveLength(0);
   });
 
+  it("allows another org member to update and delete a label listener", async () => {
+    const fixture = await seedFixture();
+    fixtures.push(fixture);
+    const db = store.set(writeDb$);
+    const [listener] = await db
+      .insert(githubLabelListeners)
+      .values({
+        installationId: fixture.installationId,
+        orgId: fixture.orgId,
+        createdByUserId: fixture.userId,
+        labelName: "Ready",
+        labelNameNormalized: "ready",
+        triggerMode: "created_by_me",
+        prompt: "Handle it",
+        composeId: fixture.composeId,
+      })
+      .returning({ id: githubLabelListeners.id });
+    if (!listener) {
+      throw new Error("Expected label listener insert to return a row");
+    }
+    const otherUserId = `user_${randomUUID()}`;
+    mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
+    const app = createApp({ signal: context.signal });
+
+    const updateResponse = await app.request(`${ROUTE_PATH}/${listener.id}`, {
+      method: "PATCH",
+      headers: { ...authHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+
+    expect(updateResponse.status).toBe(200);
+    await expect(listenerRows(fixture)).resolves.toMatchObject([
+      { enabled: false },
+    ]);
+
+    const deleteResponse = await app.request(`${ROUTE_PATH}/${listener.id}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    expect(deleteResponse.status).toBe(200);
+    await expect(listenerRows(fixture)).resolves.toHaveLength(0);
+  });
+
   it("rejects duplicate labels for one installation", async () => {
     const fixture = await seedFixture();
     fixtures.push(fixture);

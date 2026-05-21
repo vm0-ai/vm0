@@ -16,13 +16,16 @@ import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 
 const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
 const WEB_ORIGIN = "https://www.vm0.ai";
+const GH_OAUTH_CLIENT_ID = "github-oauth-client-id";
+const GH_OAUTH_CLIENT_SECRET = "github-oauth-client-secret";
+const SECRETS_ENCRYPTION_KEY = "a".repeat(64);
 
 interface GithubFixture {
   readonly orgId: string;
@@ -41,10 +44,41 @@ interface SeedGithubFixtureOptions {
   readonly admin?: "matching" | "none" | "other";
   readonly composeName?: string;
   readonly content?: Record<string, unknown>;
+  readonly link?: boolean;
 }
 
 function authHeaders(): Record<string, string> {
   return { authorization: "Bearer clerk-session" };
+}
+
+function expectGithubInstallUrl(
+  installUrl: string | null,
+  fixture: DefaultAgentFixture,
+): void {
+  if (installUrl === null) {
+    throw new Error("Expected GitHub install URL");
+  }
+  const url = new URL(installUrl);
+  expect(url.origin).toBe("https://github.com");
+  expect(url.pathname).toBe("/apps/vm0-test/installations/new");
+  expect(url.searchParams.get("redirect_uri")).toBe(
+    `${WEB_ORIGIN}/api/github/app/setup/callback`,
+  );
+  expect(JSON.parse(url.searchParams.get("state") ?? "")).toMatchObject({
+    vm0UserId: fixture.userId,
+    orgId: fixture.orgId,
+    composeId: fixture.composeId,
+    sig: expect.any(String),
+  });
+}
+
+function expectGithubConnectUrl(
+  connectUrl: string,
+  _fixture: GithubFixture,
+): void {
+  const url = new URL(connectUrl);
+  expect(url.origin).toBe(WEB_ORIGIN);
+  expect(url.pathname).toBe("/api/zero/connectors/github/authorize");
 }
 
 function mockSession(
@@ -130,11 +164,13 @@ async function seedGithubFixture(
     throw new Error("Expected GitHub installation insert to return a row");
   }
 
-  await writeDb.insert(githubUserLinks).values({
-    githubUserId: linkedGithubUserId,
-    installationId: installation.id,
-    vm0UserId: userId,
-  });
+  if (options.link !== false) {
+    await writeDb.insert(githubUserLinks).values({
+      githubUserId: linkedGithubUserId,
+      installationId: installation.id,
+      vm0UserId: userId,
+    });
+  }
 
   return {
     orgId,
@@ -254,6 +290,11 @@ describe("GET /api/integrations/github", () => {
   const defaultAgentFixtures: DefaultAgentFixture[] = [];
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("SECRETS_ENCRYPTION_KEY", SECRETS_ENCRYPTION_KEY);
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", GH_OAUTH_CLIENT_ID);
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", GH_OAUTH_CLIENT_SECRET);
+    mockOptionalEnv("GITHUB_APP_SLUG", undefined);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -301,18 +342,29 @@ describe("GET /api/integrations/github", () => {
 
     const response = await accept(client.getInstallation({ headers }), [404]);
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "No GitHub installation found",
-        code: "NOT_FOUND",
-      },
-      installUrl: `${WEB_ORIGIN}/api/github/oauth/install?vm0UserId=${encodeURIComponent(
-        fixture.userId,
-      )}&orgId=${encodeURIComponent(fixture.orgId)}&composeId=${fixture.composeId}`,
+    expect(response.body.error).toStrictEqual({
+      message: "No GitHub installation found",
+      code: "NOT_FOUND",
     });
+    expectGithubInstallUrl(response.body.installUrl, fixture);
   });
 
-  it("ignores untrusted web origins when building installUrl", async () => {
+  it("does not return an installUrl for org members", async () => {
+    const fixture = await seedDefaultAgentFixture();
+    defaultAgentFixtures.push(fixture);
+    mockSession(fixture.userId, fixture.orgId, "org:member");
+    mockOptionalEnv("GITHUB_APP_SLUG", "vm0-test");
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.getInstallation({ headers: authHeaders() }),
+      [404],
+    );
+
+    expect(response.body.installUrl).toBeNull();
+  });
+
+  it("uses the configured web origin when building installUrl", async () => {
     const fixture = await seedDefaultAgentFixture();
     defaultAgentFixtures.push(fixture);
     mockSession(fixture.userId, fixture.orgId);
@@ -325,11 +377,7 @@ describe("GET /api/integrations/github", () => {
 
     const response = await accept(client.getInstallation({ headers }), [404]);
 
-    expect(response.body.installUrl).toBe(
-      `http://api.test/api/github/oauth/install?vm0UserId=${encodeURIComponent(
-        fixture.userId,
-      )}&orgId=${encodeURIComponent(fixture.orgId)}&composeId=${fixture.composeId}`,
-    );
+    expectGithubInstallUrl(response.body.installUrl, fixture);
   });
 
   it("returns linked installation data and agent data", async () => {
@@ -337,6 +385,10 @@ describe("GET /api/integrations/github", () => {
       composeName: "github-support-agent",
     });
     fixtures.push(fixture);
+    await seedGithubConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    });
     mockSession(fixture.userId, fixture.orgId);
     const client = setupApp({ context })(integrationsGithubContract);
 
@@ -354,7 +406,8 @@ describe("GET /api/integrations/github", () => {
     });
     expect(response.body.installation.installationId).toBeTruthy();
     expect(response.body.isConnected).toBeTruthy();
-    expect(response.body.connectUrl).toBe("/connectors/github/connect");
+    expect(response.body.connectedGithubUsername).toBe("octocat");
+    expectGithubConnectUrl(response.body.connectUrl, fixture);
     expect(response.body.labelListeners).toStrictEqual([]);
     expect(response.body.agent).toStrictEqual({
       id: fixture.composeId,
@@ -368,10 +421,48 @@ describe("GET /api/integrations/github", () => {
     });
   });
 
-  it("returns isAdmin false when the linked GitHub user is not the installation admin", async () => {
+  it("disconnects the GitHub integration without deleting the GitHub connector", async () => {
+    const fixture = await seedGithubFixture();
+    fixtures.push(fixture);
+    await seedGithubConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    });
+    mockSession(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.disconnectUser({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ ok: true });
+    const links = await writeDb
+      .select()
+      .from(githubUserLinks)
+      .where(eq(githubUserLinks.vm0UserId, fixture.userId));
+    expect(links).toStrictEqual([]);
+    const connectorRows = await writeDb
+      .select()
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, fixture.orgId),
+          eq(connectors.userId, fixture.userId),
+          eq(connectors.type, "github"),
+        ),
+      );
+    expect(connectorRows).toHaveLength(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "github:changed",
+      null,
+    );
+  });
+
+  it("returns isAdmin false for an org member when the linked GitHub user is not the installation admin", async () => {
     const fixture = await seedGithubFixture({ admin: "other" });
     fixtures.push(fixture);
-    mockSession(fixture.userId, fixture.orgId);
+    mockSession(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(integrationsGithubContract);
 
     const response = await accept(
@@ -382,10 +473,41 @@ describe("GET /api/integrations/github", () => {
     expect(response.body.installation.isAdmin).toBeFalsy();
   });
 
-  it("returns isAdmin false when the installation has no admin GitHub user", async () => {
-    const fixture = await seedGithubFixture({ admin: "none" });
+  it("returns isAdmin false for an org member even when the linked GitHub user installed the app", async () => {
+    const fixture = await seedGithubFixture();
+    fixtures.push(fixture);
+    mockSession(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.getInstallation({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.installation.isAdmin).toBeFalsy();
+  });
+
+  it("allows an org admin to manage an installation before connecting GitHub", async () => {
+    const fixture = await seedGithubFixture({ link: false });
     fixtures.push(fixture);
     mockSession(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.getInstallation({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.isConnected).toBeFalsy();
+    expect(response.body.connectedGithubUserId).toBeNull();
+    expect(response.body.connectedGithubUsername).toBeNull();
+    expect(response.body.installation.isAdmin).toBeTruthy();
+  });
+
+  it("returns isAdmin false for an org member when the installation has no admin GitHub user", async () => {
+    const fixture = await seedGithubFixture({ admin: "none" });
+    fixtures.push(fixture);
+    mockSession(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(integrationsGithubContract);
 
     const response = await accept(

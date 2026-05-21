@@ -24,6 +24,7 @@ import { requiredAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { optionalEnv } from "../../lib/env";
 import {
@@ -32,6 +33,10 @@ import {
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
 import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
+import {
+  linkGithubVm0User,
+  loadActiveGithubInstallationForOrg,
+} from "../services/github-oauth.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 import {
@@ -330,6 +335,40 @@ async function markConnectorSessionError(
   signal.throwIfAborted();
 }
 
+async function linkGithubIntegrationAfterConnectorConnect(args: {
+  readonly db: Db;
+  readonly connectorType: OAuthConnectorType;
+  readonly identity: CallbackIdentity;
+  readonly token: OAuthTokenResult;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.connectorType !== "github") {
+    return;
+  }
+
+  const installation = await loadActiveGithubInstallationForOrg({
+    db: args.db,
+    orgId: args.identity.orgId,
+    signal: args.signal,
+  });
+  if (!installation) {
+    return;
+  }
+
+  const githubUserId = await linkGithubVm0User({
+    db: args.db,
+    installRecordId: installation.id,
+    vm0UserId: args.identity.userId,
+    knownGithubUserId: args.token.userInfo.id,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  if (githubUserId) {
+    await publishUserSignal([args.identity.userId], "github:changed");
+  }
+}
+
 function successRedirectResponse(args: {
   readonly origin: string;
   readonly type: string;
@@ -382,7 +421,17 @@ const completeOAuthCallback$ = command(
     );
     signal.throwIfAborted();
 
-    await completeConnectorSession(set(writeDb$), args.sessionId, signal);
+    const db = set(writeDb$);
+    await linkGithubIntegrationAfterConnectorConnect({
+      db,
+      connectorType: args.connectorType,
+      identity: args.identity,
+      token,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    await completeConnectorSession(db, args.sessionId, signal);
     return successRedirectResponse({
       origin: args.origin,
       type: args.type,

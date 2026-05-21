@@ -44,6 +44,7 @@ async function seedGithubInstallation(args: {
   readonly linkedGithubUserId?: string;
   readonly adminGithubUserId?: string | null;
   readonly defaultComposeName?: string;
+  readonly link?: boolean;
 }): Promise<GithubInstallationFixture> {
   const orgId = `org_${randomUUID()}`;
   const userId = args.userId ?? `user_${randomUUID()}`;
@@ -74,11 +75,13 @@ async function seedGithubInstallation(args: {
     throw new Error("Expected GitHub installation insert to return a row");
   }
 
-  await db.insert(githubUserLinks).values({
-    githubUserId,
-    installationId: installation.id,
-    vm0UserId: userId,
-  });
+  if (args.link !== false) {
+    await db.insert(githubUserLinks).values({
+      githubUserId,
+      installationId: installation.id,
+      vm0UserId: userId,
+    });
+  }
 
   return {
     orgId,
@@ -225,10 +228,10 @@ describe("PATCH /api/integrations/github", () => {
     });
   });
 
-  it("returns 403 when adminGithubUserId is null", async () => {
+  it("returns 403 for an org member when adminGithubUserId is null", async () => {
     const fixture = await seedGithubInstallation({ adminGithubUserId: null });
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await patchGithub(
       JSON.stringify({ agentName: "test-agent" }),
@@ -238,7 +241,7 @@ describe("PATCH /api/integrations/github", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Only the installation admin can change the default agent",
+        message: "Only organization admins can change the default agent",
         code: "FORBIDDEN",
       },
     });
@@ -247,13 +250,13 @@ describe("PATCH /api/integrations/github", () => {
     );
   });
 
-  it("returns 403 when a non-admin user updates the installation", async () => {
+  it("returns 403 when a non-admin org member updates the installation", async () => {
     const fixture = await seedGithubInstallation({
       adminGithubUserId: newGithubUserId(),
       linkedGithubUserId: newGithubUserId(),
     });
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await patchGithub(
       JSON.stringify({ agentName: "test-agent" }),
@@ -263,10 +266,26 @@ describe("PATCH /api/integrations/github", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Only the installation admin can change the default agent",
+        message: "Only organization admins can change the default agent",
         code: "FORBIDDEN",
       },
     });
+    await expect(defaultComposeId(fixture.installationRowId)).resolves.toBe(
+      fixture.defaultComposeId,
+    );
+  });
+
+  it("returns 403 when the GitHub installation admin is not an org admin", async () => {
+    const fixture = await seedGithubInstallation({});
+    fixtures.push(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await patchGithub(
+      JSON.stringify({ agentName: "test-agent" }),
+      authHeaders(),
+    );
+
+    expect(response.status).toBe(403);
     await expect(defaultComposeId(fixture.installationRowId)).resolves.toBe(
       fixture.defaultComposeId,
     );
@@ -312,6 +331,29 @@ describe("PATCH /api/integrations/github", () => {
 
   it("updates the default agent", async () => {
     const fixture = await seedGithubInstallation({});
+    fixtures.push(fixture);
+    const targetName = `github-target-${randomUUID()}`;
+    const target = await seedAgent({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: targetName,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await patchGithub(
+      JSON.stringify({ agentName: targetName }),
+      authHeaders(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ ok: true });
+    await expect(defaultComposeId(fixture.installationRowId)).resolves.toBe(
+      target.composeId,
+    );
+  });
+
+  it("updates the default agent for an org admin before GitHub is connected", async () => {
+    const fixture = await seedGithubInstallation({ link: false });
     fixtures.push(fixture);
     const targetName = `github-target-${randomUUID()}`;
     const target = await seedAgent({

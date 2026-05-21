@@ -25,12 +25,16 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
 import { tapError } from "../utils";
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
-import { linkGithubVm0User } from "./github-oauth.service";
+import {
+  buildGithubOauthState,
+  linkGithubVm0User,
+} from "./github-oauth.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -45,23 +49,57 @@ function errorResponse(
   return { status, body: { error: { message, code } } };
 }
 
-function githubInstallUrl(
-  userId: string,
-  orgId: string,
-  composeId: string | null,
-  origin: string,
-): string | null {
-  if (!optionalEnv("GITHUB_APP_SLUG")) {
+function githubAppSetupCallbackRedirectUri(origin: string): string {
+  return `${origin}/api/github/app/setup/callback`;
+}
+
+async function githubInstallUrl(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly composeId: string | null;
+  readonly origin: string;
+}): Promise<string | null> {
+  const appSlug = optionalEnv("GITHUB_APP_SLUG");
+  if (!appSlug) {
     return null;
   }
 
-  const url = new URL("/api/github/oauth/install", origin);
-  url.searchParams.set("vm0UserId", userId);
-  url.searchParams.set("orgId", orgId);
-  if (composeId) {
-    url.searchParams.set("composeId", composeId);
+  const state = await buildGithubOauthState({
+    vm0UserId: args.userId,
+    orgId: args.orgId,
+    composeId: args.composeId ?? undefined,
+    secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+  });
+  const url = new URL(`https://github.com/apps/${appSlug}/installations/new`);
+  if (state) {
+    url.searchParams.set("state", state);
   }
+  url.searchParams.set(
+    "redirect_uri",
+    githubAppSetupCallbackRedirectUri(args.origin),
+  );
   return url.toString();
+}
+
+function githubConnectUrl(origin: string): string {
+  return `${origin}/api/zero/connectors/github/authorize`;
+}
+
+async function publishGithubChanged(userIds: readonly string[]): Promise<void> {
+  const uniqueUserIds = Array.from(new Set(userIds));
+  if (uniqueUserIds.length === 0) {
+    return;
+  }
+
+  await tapError(
+    publishUserSignal(uniqueUserIds, "github:changed"),
+    (error) => {
+      L.warn("Failed to publish GitHub integration changed signal", {
+        userIds: uniqueUserIds,
+        error,
+      });
+    },
+  );
 }
 
 function emptyEnvironment(): GithubInstallationResponse["environment"] {
@@ -215,24 +253,10 @@ function normalizeLabelName(labelName: string): string {
   return labelName.trim().toLowerCase();
 }
 
-function isInstallationAdmin(
-  installation: GitHubInstallationRecord,
-  link: GitHubUserLinkRecord | null,
-): boolean {
-  return (
-    installation.adminGithubUserId !== null &&
-    link?.githubUserId === installation.adminGithubUserId
-  );
-}
-
-function canManageListener(args: {
-  readonly createdByUserId: string;
-  readonly currentUserId: string;
+function canManageInstallation(args: {
   readonly orgRole: string | undefined;
 }): boolean {
-  return (
-    args.createdByUserId === args.currentUserId || args.orgRole === "org:admin"
-  );
+  return args.orgRole === "admin";
 }
 
 function serializeListener(row: ListenerRow): GithubLabelListener {
@@ -529,6 +553,9 @@ export const connectGithubUser$ = command(
       );
     }
 
+    await publishGithubChanged([auth.userId]);
+    signal.throwIfAborted();
+
     return { status: 200 as const, body: { ok: true as const } };
   },
 );
@@ -554,6 +581,9 @@ export const disconnectGithubUser$ = command(
       );
     signal.throwIfAborted();
 
+    await publishGithubChanged([auth.userId]);
+    signal.throwIfAborted();
+
     return { status: 200 as const, body: { ok: true as const } };
   },
 );
@@ -569,20 +599,19 @@ export const deleteGithubInstallation$ = command(
       return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
     }
 
-    const link = await loadUserGithubLink({
-      db,
-      installationId: installation.id,
-      userId: auth.userId,
-    });
-    signal.throwIfAborted();
-
-    if (!isInstallationAdmin(installation, link)) {
+    if (!canManageInstallation({ orgRole: auth.orgRole })) {
       return errorResponse(
         403,
-        "Only the installation admin can uninstall",
+        "Only organization admins can uninstall GitHub",
         "FORBIDDEN",
       );
     }
+
+    const linkedUsers = await db
+      .select({ vm0UserId: githubUserLinks.vm0UserId })
+      .from(githubUserLinks)
+      .where(eq(githubUserLinks.installationId, installation.id));
+    signal.throwIfAborted();
 
     await deleteRemoteGithubInstallationIfConfigured({
       installationId: installation.installationId,
@@ -592,6 +621,14 @@ export const deleteGithubInstallation$ = command(
     await db
       .delete(githubInstallations)
       .where(eq(githubInstallations.id, installation.id));
+    signal.throwIfAborted();
+
+    await publishGithubChanged([
+      auth.userId,
+      ...linkedUsers.map((link) => {
+        return link.vm0UserId;
+      }),
+    ]);
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true as const } };
@@ -613,17 +650,10 @@ export const updateGithubInstallation$ = command(
       return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
     }
 
-    const link = await loadUserGithubLink({
-      db,
-      installationId: installation.id,
-      userId: auth.userId,
-    });
-    signal.throwIfAborted();
-
-    if (!isInstallationAdmin(installation, link)) {
+    if (!canManageInstallation({ orgRole: auth.orgRole })) {
       return errorResponse(
         403,
-        "Only the installation admin can change the default agent",
+        "Only organization admins can change the default agent",
         "FORBIDDEN",
       );
     }
@@ -772,20 +802,6 @@ export const updateGithubLabelListener$ = command(
       return errorResponse(404, "GitHub label listener not found", "NOT_FOUND");
     }
 
-    if (
-      !canManageListener({
-        createdByUserId: existing.createdByUserId,
-        currentUserId: auth.userId,
-        orgRole: auth.orgRole,
-      })
-    ) {
-      return errorResponse(
-        403,
-        "Only the listener creator or an org admin can update this listener",
-        "FORBIDDEN",
-      );
-    }
-
     const values: Partial<typeof githubLabelListeners.$inferInsert> = {
       updatedAt: nowDate(),
     };
@@ -894,20 +910,6 @@ export const deleteGithubLabelListener$ = command(
       return errorResponse(404, "GitHub label listener not found", "NOT_FOUND");
     }
 
-    if (
-      !canManageListener({
-        createdByUserId: existing.createdByUserId,
-        currentUserId: auth.userId,
-        orgRole: auth.orgRole,
-      })
-    ) {
-      return errorResponse(
-        403,
-        "Only the listener creator or an org admin can delete this listener",
-        "FORBIDDEN",
-      );
-    }
-
     await db
       .delete(githubLabelListeners)
       .where(eq(githubLabelListeners.id, existing.id));
@@ -923,6 +925,15 @@ export const getGithubInstallation$ = computed(async (get) => {
   const db = get(db$);
   const installation = await loadOrgGithubInstallation(db, auth.orgId);
   const defaultComposeId = await loadOrgDefaultComposeId(db, auth.orgId);
+  const installUrl =
+    auth.orgRole === "admin"
+      ? await githubInstallUrl({
+          userId: auth.userId,
+          orgId: auth.orgId,
+          composeId: defaultComposeId,
+          origin,
+        })
+      : null;
 
   if (!installation) {
     return {
@@ -932,12 +943,7 @@ export const getGithubInstallation$ = computed(async (get) => {
           message: "No GitHub installation found",
           code: "NOT_FOUND",
         },
-        installUrl: githubInstallUrl(
-          auth.userId,
-          auth.orgId,
-          defaultComposeId,
-          origin,
-        ),
+        installUrl,
       },
     };
   }
@@ -947,7 +953,7 @@ export const getGithubInstallation$ = computed(async (get) => {
     installationId: installation.id,
     userId: auth.userId,
   });
-  const isAdmin = isInstallationAdmin(installation, link);
+  const isAdmin = canManageInstallation({ orgRole: auth.orgRole });
   const compose = await loadComposeSummary({
     db,
     orgId: auth.orgId,
@@ -979,6 +985,11 @@ export const getGithubInstallation$ = computed(async (get) => {
       return variable.name;
     }),
   );
+  const githubConnector =
+    connectorList.connectors.find((connector) => {
+      return connector.type === "github";
+    }) ?? null;
+  const connectUrl = githubConnectUrl(origin);
 
   const body: GithubInstallationResponse = {
     installation: {
@@ -991,13 +1002,11 @@ export const getGithubInstallation$ = computed(async (get) => {
     },
     isConnected: link !== null,
     connectedGithubUserId: link?.githubUserId ?? null,
-    installUrl: githubInstallUrl(
-      auth.userId,
-      auth.orgId,
-      defaultComposeId,
-      origin,
-    ),
-    connectUrl: "/connectors/github/connect",
+    connectedGithubUsername: link
+      ? (githubConnector?.externalUsername ?? null)
+      : null,
+    installUrl,
+    connectUrl,
     agent: compose ? { id: compose.id, name: compose.name } : null,
     environment: {
       ...environment,

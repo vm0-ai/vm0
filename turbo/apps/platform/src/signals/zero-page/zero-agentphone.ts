@@ -14,6 +14,9 @@ const internalPhoneForm$ = state("");
 const internalConnectDialogOpen$ = state(false);
 const internalVerificationPhone$ = state<string | null>(null);
 const internalShowPhoneError$ = state(false);
+const internalAgentPhoneStatus$ = state<AgentPhoneLinkStatusResponse | null>(
+  null,
+);
 
 function normalizeAgentPhoneHandle(value: string): string {
   return value.trim().replace(/[^\d+]/gu, "");
@@ -100,6 +103,60 @@ const reloadAgentPhoneLinkStatus$ = command(({ set }) => {
   });
 });
 
+function hasAgentPhoneStatusChanged(
+  previous: AgentPhoneLinkStatusResponse | null,
+  next: AgentPhoneLinkStatusResponse,
+): previous is AgentPhoneLinkStatusResponse {
+  return previous !== null && previous.linked !== next.linked;
+}
+
+function toastAgentPhoneStatusChange(
+  previous: AgentPhoneLinkStatusResponse,
+  next: AgentPhoneLinkStatusResponse,
+): void {
+  if (next.linked && !previous.linked) {
+    toast.success("AgentPhone connected");
+    return;
+  }
+  if (!next.linked && previous.linked) {
+    toast.success("AgentPhone disconnected");
+  }
+}
+
+const refreshAgentPhoneFromChange$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const previous = get(internalAgentPhoneStatus$);
+    set(reloadAgentPhoneLinkStatus$);
+    const data = await get(agentPhoneLinkStatus$);
+    signal.throwIfAborted();
+    set(internalAgentPhoneStatus$, data);
+
+    if (hasAgentPhoneStatusChanged(previous, data)) {
+      toastAgentPhoneStatusChange(previous, data);
+      if (data.linked) {
+        set(internalConnectDialogOpen$, false);
+        set(resetAgentPhoneConnectUi$);
+      }
+    }
+
+    return false;
+  },
+);
+
+export const watchAgentPhoneConnection$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const current = await get(agentPhoneLinkStatus$);
+    signal.throwIfAborted();
+    set(internalAgentPhoneStatus$, current);
+    await set(
+      setAblyLoop$,
+      "agentphone:changed",
+      refreshAgentPhoneFromChange$,
+      signal,
+    );
+  },
+);
+
 export const startAgentPhoneLink$ = command(
   async (
     { get, set },
@@ -130,37 +187,6 @@ export const startAgentPhoneLink$ = command(
   },
 );
 
-export const waitForAgentPhoneConnection$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const current = await get(agentPhoneLinkStatus$);
-    signal.throwIfAborted();
-    if (current.linked) {
-      return;
-    }
-
-    const onAgentPhoneChanged$ = command(
-      async ({ get, set }, sig: AbortSignal) => {
-        set(reloadAgentPhoneLinkStatus$);
-        const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
-          apiBase: "api",
-        });
-        const result = await accept(
-          client.getLinkStatus({
-            headers: {},
-            fetchOptions: { signal: sig },
-          }),
-          [200],
-          { toast: false },
-        );
-        return result.body.linked;
-      },
-    );
-
-    await set(setAblyLoop$, "agentphone:changed", onAgentPhoneChanged$, signal);
-    toast.success("AgentPhone connected");
-  },
-);
-
 export const disconnectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
@@ -175,6 +201,5 @@ export const disconnectAgentPhone$ = command(
     );
     signal.throwIfAborted();
     set(reloadAgentPhoneLinkStatus$);
-    toast.success("AgentPhone disconnected");
   },
 );

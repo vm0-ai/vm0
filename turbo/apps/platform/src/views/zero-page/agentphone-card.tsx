@@ -50,7 +50,6 @@ import {
   setAgentPhoneShowPhoneError$,
   setAgentPhoneVerificationPhone$,
   startAgentPhoneLink$,
-  waitForAgentPhoneConnection$,
 } from "../../signals/zero-page/zero-agentphone.ts";
 import { AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE } from "../../signals/zero-page/agentphone-connect-params.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
@@ -185,11 +184,9 @@ function AgentPhoneConnectDialog() {
   const resetConnectUi = useSet(resetAgentPhoneConnectUi$);
   const pageSignal = useGet(pageSignal$);
   const [startLoadable, startLink] = useLoadableSet(startAgentPhoneLink$);
-  const [connectLoadable, waitForConnection] = useLoadableSet(
-    waitForAgentPhoneConnection$,
-  );
+  const status = useLastResolved(agentPhoneLinkStatus$);
   const starting = startLoadable.state === "loading";
-  const connecting = connectLoadable.state === "loading";
+  const connecting = verificationPhone !== null && status?.linked !== true;
   const busy = starting || connecting;
   const visiblePhoneError = showPhoneError ? phoneError : null;
 
@@ -215,10 +212,6 @@ function AgentPhoneConnectDialog() {
       (async () => {
         const result = await startLink(pageSignal);
         setVerificationPhone(result.phoneHandle);
-        await waitForConnection(pageSignal);
-        if (!pageSignal.aborted) {
-          close(false);
-        }
       })(),
       Reason.DomCallback,
     );

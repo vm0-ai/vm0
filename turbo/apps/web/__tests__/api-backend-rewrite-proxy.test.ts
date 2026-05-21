@@ -1533,16 +1533,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/generate")).toBe(false);
   });
 
-  it("matches the GitHub OAuth callback rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/github/oauth/callback")).toBe(
+  it("matches the GitHub App setup callback rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/github/app/setup/callback")).toBe(
       true,
     );
     expect(
-      matchesApiBackendRewritePath("/api/github/oauth/callback/extra"),
+      matchesApiBackendRewritePath("/api/github/app/setup/callback/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/github/oauth/callbacks")).toBe(
-      false,
-    );
+    expect(matchesApiBackendRewritePath("/api/github/app/setup")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/github/oauth")).toBe(false);
   });
 
@@ -1556,22 +1554,44 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/github/oauth")).toBe(false);
   });
 
-  it("matches GitHub OAuth web-origin rewrite paths exactly", () => {
-    expect(matchesGithubOAuthRewritePath("/api/github/oauth/callback")).toBe(
+  it("matches the zero GitHub OAuth connect rewrite paths exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/github/oauth/connect")).toBe(
       true,
     );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/github/oauth/connect/callback"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/github/oauth/connect/callback/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/github/oauth")).toBe(false);
+  });
+
+  it("matches GitHub OAuth web-origin rewrite paths exactly", () => {
+    expect(
+      matchesGithubOAuthRewritePath("/api/github/app/setup/callback"),
+    ).toBe(true);
     expect(matchesGithubOAuthRewritePath("/api/github/oauth/install")).toBe(
       true,
     );
+    expect(
+      matchesGithubOAuthRewritePath("/api/zero/github/oauth/connect"),
+    ).toBe(true);
+    expect(
+      matchesGithubOAuthRewritePath("/api/zero/github/oauth/connect/callback"),
+    ).toBe(true);
     expect(matchesGithubOAuthRewritePath("/api/integrations/github")).toBe(
       true,
     );
     expect(
-      matchesGithubOAuthRewritePath("/api/github/oauth/callback/extra"),
+      matchesGithubOAuthRewritePath("/api/github/app/setup/callback/extra"),
     ).toBe(false);
     expect(
       matchesGithubOAuthRewritePath("/api/integrations/github/extra"),
     ).toBe(false);
+    expect(matchesGithubOAuthRewritePath("/api/zero/github/oauth")).toBe(false);
   });
 
   it("matches the logs search rewrite path exactly", () => {

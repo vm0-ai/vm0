@@ -29,6 +29,8 @@ const mocks = createZeroRouteMocks(context);
 const BASE_URL = "https://app.vm0.test";
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
+const LOCAL_ORIGIN = "http://localhost:3000";
+const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
 
 function authorizeUrl(
   type: string,
@@ -168,6 +170,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   let restoreDynamicTestOAuthAuthorize: (() => void) | undefined;
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
 
@@ -202,7 +205,9 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(location).not.toBeNull();
     const url = new URL(location!);
     expect(url.pathname).toBe("/sign-in");
-    expect(url.searchParams.get("redirect_url")).toBe(authorizeUrl("github"));
+    expect(url.searchParams.get("redirect_url")).toBe(
+      authorizeUrl("github", undefined, WEB_ORIGIN),
+    );
   });
 
   it("redirects unauthenticated users to sign-in on the web rewrite origin", async () => {
@@ -246,7 +251,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     );
     expect(url.searchParams.get("client_id")).toBe("test-client-id");
     expect(url.searchParams.get("redirect_uri")).toBe(
-      `${BASE_URL}/api/connectors/github/callback`,
+      `${WEB_ORIGIN}/api/connectors/github/callback`,
     );
     expect(url.searchParams.get("scope")).toBe("repo project workflow");
     expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
@@ -315,7 +320,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     );
     expect(url.searchParams.get("client_id")).toBe("google-test-client-id");
     expect(url.searchParams.get("redirect_uri")).toBe(
-      `${BASE_URL}/api/connectors/google-drive/callback`,
+      `${WEB_ORIGIN}/api/connectors/google-drive/callback`,
     );
     const scopes = new Set(url.searchParams.get("scope")?.split(" ") ?? []);
     expect(scopes.has("https://www.googleapis.com/auth/drive")).toBeTruthy();
@@ -627,6 +632,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   const stateIds: string[] = [];
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
 
@@ -693,6 +699,41 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       consumedAt: null,
     });
     expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+  });
+
+  it("uses the configured web origin for local OAuth callback URLs", async () => {
+    mockEnv("VM0_WEB_URL", LOCAL_WEB_ORIGIN);
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("github", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: LOCAL_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${LOCAL_WEB_ORIGIN}/api/connectors/github/callback`,
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState!.redirectUri).toBe(
+      `${LOCAL_WEB_ORIGIN}/api/connectors/github/callback`,
+    );
   });
 
   it("stores provider PKCE context for server-side OAuth handoff", async () => {

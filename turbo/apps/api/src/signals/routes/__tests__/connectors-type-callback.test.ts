@@ -6,9 +6,12 @@ import {
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -17,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
@@ -1170,6 +1173,7 @@ describe("GET /api/connectors/:type/callback", () => {
   let restoreDynamicTestOAuthExchange: (() => void) | undefined;
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", BASE_URL);
     mockOAuthEnv();
   });
 
@@ -1183,8 +1187,12 @@ describe("GET /api/connectors/:type/callback", () => {
     while (orgIds.length > 0) {
       const orgId = orgIds.pop();
       if (orgId) {
+        await db
+          .delete(githubInstallations)
+          .where(eq(githubInstallations.orgId, orgId));
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
+        await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
       }
     }
     while (sessionIds.length > 0) {
@@ -1410,7 +1418,7 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
-  it("uses the web rewrite origin for callback error redirects", async () => {
+  it("uses VM0_WEB_URL for callback error redirects", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -1430,7 +1438,7 @@ describe("GET /api/connectors/:type/callback", () => {
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
     const url = new URL(location!);
-    expect(url.origin).toBe(WEB_ORIGIN);
+    expect(url.origin).toBe(BASE_URL);
     expect(url.pathname).toBe("/connector/error");
     expect(url.searchParams.get("type")).toBe("github");
     expect(url.searchParams.get("message")).toBe(
@@ -1554,6 +1562,60 @@ describe("GET /api/connectors/:type/callback", () => {
       .where(eq(connectorSessions.id, sessionId));
     expect(session?.status).toBe("complete");
     expect(session?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("links a GitHub integration after GitHub connector OAuth completes", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const db = store.set(writeDb$);
+    const composeId = randomUUID();
+    await db.insert(agentComposes).values({
+      id: composeId,
+      orgId,
+      userId,
+      name: `github-callback-${composeId}`,
+    });
+    const [installation] = await db
+      .insert(githubInstallations)
+      .values({
+        installationId: "123456789",
+        status: "active",
+        orgId,
+        targetType: "Organization",
+        targetId: "98765",
+        targetName: "vm0-test",
+        defaultComposeId: composeId,
+      })
+      .returning({ id: githubInstallations.id });
+    if (!installation) {
+      throw new Error("Expected GitHub installation insert to return a row");
+    }
+    mockGitHubOAuth({
+      accessToken: "github-token",
+      userId: 98_765,
+      username: "octocat",
+      email: "octocat@example.com",
+    });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    const links = await db
+      .select()
+      .from(githubUserLinks)
+      .where(
+        and(
+          eq(githubUserLinks.installationId, installation.id),
+          eq(githubUserLinks.vm0UserId, userId),
+        ),
+      );
+    expect(links).toMatchObject([{ githubUserId: "98765" }]);
   });
 
   it("stores a connector from a server-side OAuth handoff without Clerk cookies", async () => {
@@ -1958,7 +2020,7 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
-  it("uses the web rewrite origin for token exchange and success redirects", async () => {
+  it("uses VM0_WEB_URL for token exchange and success redirects", async () => {
     const dynamicOAuth = useDynamicTestOAuthExchange();
     restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
     const { exchanges } = dynamicOAuth;
@@ -1982,12 +2044,12 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(response.status).toBe(307);
     expect(exchanges).toHaveLength(1);
     expect(exchanges[0]?.redirectUri).toBe(
-      `${WEB_ORIGIN}/api/connectors/test-oauth/callback`,
+      `${BASE_URL}/api/connectors/test-oauth/callback`,
     );
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
     const url = new URL(location!);
-    expect(url.origin).toBe(WEB_ORIGIN);
+    expect(url.origin).toBe(BASE_URL);
     expect(url.pathname).toBe("/connector/success");
     expect(url.searchParams.get("type")).toBe("test-oauth");
     expect(url.searchParams.get("username")).toBe("dynamic-user");

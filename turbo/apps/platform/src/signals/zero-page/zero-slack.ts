@@ -1,11 +1,15 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import {
+  zeroIntegrationsSlackContract,
+  type SlackOrgStatus,
+} from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 
 const internalReload$ = state(0);
+const internalSlackStatus$ = state<SlackOrgStatus | null>(null);
 
 export const slackOrgData$ = computed(async (get) => {
   get(internalReload$);
@@ -19,6 +23,40 @@ const reloadSlackOrg$ = command(({ set }) => {
     return prev + 1;
   });
 });
+
+function hasSlackStatusChanged(
+  previous: SlackOrgStatus | null,
+  next: SlackOrgStatus,
+): previous is SlackOrgStatus {
+  return (
+    previous !== null &&
+    (previous.isInstalled !== next.isInstalled ||
+      previous.isConnected !== next.isConnected)
+  );
+}
+
+function toastSlackStatusChange(
+  previous: SlackOrgStatus,
+  next: SlackOrgStatus,
+): void {
+  if (next.isConnected && !previous.isConnected) {
+    toast.success("Slack connected successfully");
+    return;
+  }
+  if (next.isInstalled && !previous.isInstalled) {
+    toast.success("Slack installed successfully");
+    return;
+  }
+  if (!next.isInstalled && previous.isInstalled) {
+    toast.success("Slack workspace uninstalled");
+    return;
+  }
+  if (!next.isConnected && previous.isConnected) {
+    toast.success("Disconnected from Slack");
+    return;
+  }
+  toast.success("Slack updated");
+}
 
 /** True when the org-scoped Slack installation has outdated bot scopes (admin-only). */
 export const slackOrgScopeMismatch$ = computed(async (get) => {
@@ -47,13 +85,7 @@ export const disconnectSlackOrg$ = command(
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
     await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
-    toast.success("Disconnected from Slack");
-    // Re-start the Ably subscription so the card picks up when the user
-    // re-connects via the OAuth tab.
-    await Promise.all([
-      set(reloadSlackOrg$),
-      set(pollSlackConnection$, signal),
-    ]);
+    set(reloadSlackOrg$);
   },
 );
 
@@ -62,40 +94,34 @@ export const uninstallSlackOrg$ = command(
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
     await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
-    toast.success("Slack workspace uninstalled");
     set(reloadSlackOrg$);
   },
 );
 
 /**
- * Subscribe to Slack connection changes until connected or aborted.
- * Used on the works page so that after the user completes OAuth in another
- * tab, the UI updates automatically without a manual refresh. Reconnect
- * signals are fanned out only to org admins (connect/disconnect is an
- * admin-only action).
+ * Subscribe to Slack connection changes for the /works route lifetime.
  */
-export const pollSlackConnection$ = command(
+export const watchSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    // Already connected — nothing to wait for.
     const current = await get(slackOrgData$);
     signal.throwIfAborted();
-    if (current.isConnected) {
-      return;
-    }
+    set(internalSlackStatus$, current);
 
     const onSlackChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+      const previous = get(internalSlackStatus$);
       set(reloadSlackOrg$);
-      const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-      const result = await accept(
-        client.getStatus({ fetchOptions: { signal: sig } }),
-        [200],
-      );
-      return result.body.isConnected;
+      const next = await get(slackOrgData$);
+      sig.throwIfAborted();
+      set(internalSlackStatus$, next);
+
+      if (hasSlackStatusChanged(previous, next)) {
+        toastSlackStatusChange(previous, next);
+      }
+
+      return false;
     });
 
     await set(setAblyLoop$, "slack:changed", onSlackChanged$, signal);
-
-    toast.success("Slack connected successfully");
   },
 );
 
@@ -110,10 +136,6 @@ export const initSlackOrg$ = command((_ctx) => {
   }
   if (params.get("connected") === "1") {
     toast.success("Slack connected successfully");
-    window.history.replaceState({}, "", window.location.pathname);
-  }
-  if (params.get("error")) {
-    toast.error(params.get("error")!);
     window.history.replaceState({}, "", window.location.pathname);
   }
 });

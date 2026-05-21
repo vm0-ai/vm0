@@ -383,6 +383,10 @@ describe("/api/integrations/agentphone/link", () => {
 
     expect(response.body).toBeUndefined();
     await expect(findAgentPhoneUserLink(phone)).resolves.toBeUndefined();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "agentphone:changed",
+      null,
+    );
   });
 
   it("requires authentication", async () => {

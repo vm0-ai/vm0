@@ -154,9 +154,17 @@ const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
 const AGENTPHONE_WEBHOOK_REWRITE_SOURCE = "/api/agentphone/webhook";
 const RUNNERS_JOB_CLAIM_REWRITE_SOURCE = "/api/runners/jobs/:id/claim";
 const RUNNERS_JOB_CLAIM_PATH_RE = /^\/api\/runners\/jobs\/[^/]+\/claim$/;
-const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
+const GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE =
+  "/api/github/app/setup/callback";
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
-const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
+const GITHUB_OAUTH_PATH_RE =
+  /^\/api\/github\/(?:app\/setup\/callback|oauth\/install)$/;
+const ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE =
+  "/api/zero/github/oauth/connect";
+const ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE =
+  "/api/zero/github/oauth/connect/callback";
+const ZERO_GITHUB_OAUTH_PATH_RE =
+  /^\/api\/zero\/github\/oauth\/connect(?:\/callback)?$/;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
 const INTEGRATIONS_GITHUB_LINK_REWRITE_SOURCE = "/api/integrations/github/link";
 const INTEGRATIONS_GITHUB_LABEL_LISTENERS_REWRITE_SOURCE =
@@ -481,8 +489,13 @@ export const API_BACKEND_REWRITES = [
   ],
   [ZERO_EMAIL_INBOUND_REWRITE_SOURCE, "/api/zero/email/inbound"],
   ["/api/generate-image", "/api/generate-image"],
-  [GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/github/oauth/callback"],
+  [GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE, "/api/github/app/setup/callback"],
   [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],
+  [ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE, "/api/zero/github/oauth/connect"],
+  [
+    ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE,
+    "/api/zero/github/oauth/connect/callback",
+  ],
   [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
   [INTEGRATIONS_GITHUB_LINK_REWRITE_SOURCE, "/api/integrations/github/link"],
   [
@@ -1141,6 +1154,7 @@ export function matchesConnectorOAuthRewritePath(pathname) {
 export function matchesGithubOAuthRewritePath(pathname) {
   return (
     GITHUB_OAUTH_PATH_RE.test(pathname) ||
+    ZERO_GITHUB_OAUTH_PATH_RE.test(pathname) ||
     pathname === INTEGRATIONS_GITHUB_REWRITE_SOURCE
   );
 }

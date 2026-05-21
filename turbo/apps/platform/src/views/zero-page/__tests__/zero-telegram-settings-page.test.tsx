@@ -82,6 +82,19 @@ describe("telegram settings page", () => {
     resetMockOrg();
   });
 
+  it("returns to the integrations list from the header", async () => {
+    setMockTelegramIntegration({
+      statuses: [telegramStatus("alpha", { username: "alpha_bot" })],
+    });
+    setupTelegramPage();
+
+    click(await screen.findByText("Back to integrations"));
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/works");
+    });
+  });
+
   it("lists multiple Telegram bots", async () => {
     const alphaAvatarPath = `/${[
       "api",
@@ -118,9 +131,8 @@ describe("telegram settings page", () => {
       expect(
         screen.getByTestId("telegram-bot-avatar-fallback-beta"),
       ).toBeInTheDocument();
-      expect(screen.getByTestId("telegram-bot-count")).toHaveTextContent(
-        "This organization has 2 Telegram bots",
-      );
+      expect(screen.getByText("Telegram bots")).toBeInTheDocument();
+      expect(screen.queryByText(/This organization has/u)).toBeNull();
     });
 
     const alphaAvatar = screen.getByTestId("telegram-bot-avatar-alpha");
@@ -184,9 +196,7 @@ describe("telegram settings page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("No Telegram bots yet")).toBeInTheDocument();
-      expect(screen.getByTestId("telegram-bot-count")).toHaveTextContent(
-        "This organization has no Telegram bots",
-      );
+      expect(screen.queryByText(/This organization has/u)).toBeNull();
     });
 
     click(screen.getByText("Add bot"));

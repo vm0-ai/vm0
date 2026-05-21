@@ -53,6 +53,7 @@ async function seedGithubInstallation(args: {
   readonly linkedGithubUserId?: string;
   readonly adminGithubUserId?: string | null;
   readonly remoteInstallationId?: string | null;
+  readonly link?: boolean;
 }): Promise<GithubInstallationFixture> {
   const orgId = `org_${randomUUID()}`;
   const userId = args.userId ?? `user_${randomUUID()}`;
@@ -79,11 +80,13 @@ async function seedGithubInstallation(args: {
     throw new Error("Expected GitHub installation insert to return a row");
   }
 
-  await db.insert(githubUserLinks).values({
-    githubUserId,
-    installationId: installation.id,
-    vm0UserId: userId,
-  });
+  if (args.link !== false) {
+    await db.insert(githubUserLinks).values({
+      githubUserId,
+      installationId: installation.id,
+      vm0UserId: userId,
+    });
+  }
 
   return { orgId, userId, installationRowId: installation.id };
 }
@@ -178,12 +181,34 @@ describe("DELETE /api/integrations/github", () => {
     await expect(
       installationExists(fixture.installationRowId),
     ).resolves.toBeFalsy();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "github:changed",
+      null,
+    );
   });
 
-  it("returns 403 and keeps the installation when adminGithubUserId is null", async () => {
-    const fixture = await seedGithubInstallation({ adminGithubUserId: null });
+  it("deletes the installation for an org admin before GitHub is connected", async () => {
+    const fixture = await seedGithubInstallation({ link: false });
     fixtures.push(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request(ROUTE_PATH, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ ok: true });
+    await expect(
+      installationExists(fixture.installationRowId),
+    ).resolves.toBeFalsy();
+  });
+
+  it("returns 403 and keeps the installation for an org member when adminGithubUserId is null", async () => {
+    const fixture = await seedGithubInstallation({ adminGithubUserId: null });
+    fixtures.push(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(ROUTE_PATH, {
@@ -194,7 +219,7 @@ describe("DELETE /api/integrations/github", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Only the installation admin can uninstall",
+        message: "Only organization admins can uninstall GitHub",
         code: "FORBIDDEN",
       },
     });
@@ -203,13 +228,30 @@ describe("DELETE /api/integrations/github", () => {
     ).resolves.toBeTruthy();
   });
 
-  it("returns 403 and keeps the installation when a non-admin user deletes", async () => {
+  it("returns 403 and keeps the installation when a non-admin org member deletes", async () => {
     const fixture = await seedGithubInstallation({
       adminGithubUserId: newGithubUserId(),
       linkedGithubUserId: newGithubUserId(),
     });
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request(ROUTE_PATH, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(
+      installationExists(fixture.installationRowId),
+    ).resolves.toBeTruthy();
+  });
+
+  it("returns 403 when the GitHub installation admin is not an org admin", async () => {
+    const fixture = await seedGithubInstallation({});
+    fixtures.push(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(ROUTE_PATH, {

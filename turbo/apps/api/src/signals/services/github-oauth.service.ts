@@ -374,16 +374,47 @@ export async function linkGithubVm0User(args: {
   }
 
   await args.db
+    .delete(githubUserLinks)
+    .where(
+      and(
+        eq(githubUserLinks.installationId, args.installRecordId),
+        eq(githubUserLinks.vm0UserId, args.vm0UserId),
+      ),
+    );
+  args.signal.throwIfAborted();
+
+  const [link] = await args.db
     .insert(githubUserLinks)
     .values({
       githubUserId,
       installationId: args.installRecordId,
       vm0UserId: args.vm0UserId,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ githubUserId: githubUserLinks.githubUserId });
   args.signal.throwIfAborted();
 
-  return githubUserId;
+  return link?.githubUserId ?? null;
+}
+
+export async function loadActiveGithubInstallationForOrg(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly id: string } | null> {
+  const [installation] = await args.db
+    .select({ id: githubInstallations.id })
+    .from(githubInstallations)
+    .where(
+      and(
+        eq(githubInstallations.orgId, args.orgId),
+        eq(githubInstallations.status, "active"),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return installation ?? null;
 }
 
 export async function tryLinkGithubFromLocalRecord(args: {

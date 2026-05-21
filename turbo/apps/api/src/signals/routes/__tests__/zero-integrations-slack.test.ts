@@ -534,6 +534,10 @@ describe("DELETE /api/zero/integrations/slack", () => {
         }),
       }),
     );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "slack:changed",
+      null,
+    );
   });
 });
 

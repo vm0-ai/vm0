@@ -109,6 +109,7 @@ describe("Slack OAuth API routes", () => {
   });
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockSlackEnv();
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
@@ -136,7 +137,7 @@ describe("Slack OAuth API routes", () => {
         "test-slack-client-id",
       );
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        "http://api.test/api/zero/slack/oauth/callback",
+        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
       );
       const scopes = redirectUrl.searchParams.get("scope")?.split(",") ?? [];
       expect(scopes).toContain("app_mentions:read");
@@ -283,7 +284,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        "http://api.test/api/zero/slack/oauth/callback",
+        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
       );
       expect(redirectUrl.searchParams.get("user_scope")).toBe("identity.basic");
       expect(redirectUrl.searchParams.get("team")).toBe(
@@ -497,7 +498,7 @@ describe("Slack OAuth API routes", () => {
       );
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: "http://api.test/api/zero/slack/oauth/callback",
+          redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
         }),
       );
 
@@ -1050,7 +1051,7 @@ describe("Slack OAuth API routes", () => {
       );
       expect(slackError.status).toBe(307);
       expect(slackError.headers.get("location")).toBe(
-        "http://localhost:3001/slack/failed?error=access_denied",
+        `${WEB_ORIGIN}/slack/failed?error=access_denied`,
       );
     });
   });

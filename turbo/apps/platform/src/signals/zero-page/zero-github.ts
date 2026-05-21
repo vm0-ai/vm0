@@ -7,15 +7,18 @@ import {
   type GithubLabelTriggerMode,
   type UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 interface GithubIntegrationMissingData extends GithubInstallationNotFoundResponse {
   readonly isInstalled: false;
   readonly installation: null;
   readonly isConnected: false;
   readonly connectedGithubUserId: null;
+  readonly connectedGithubUsername: null;
   readonly connectUrl: string;
   readonly agent: null;
   readonly environment: GithubInstallationResponse["environment"];
@@ -38,14 +41,24 @@ interface UpdateGithubLabelListenerInput {
   readonly body: UpdateGithubLabelListenerBody;
 }
 
+interface GithubIntegrationStatus {
+  readonly isInstalled: boolean;
+  readonly isConnected: boolean;
+}
+
 const internalReload$ = state(0);
-const internalManageDialogOpen$ = state(false);
+const internalAddListenerDialogOpen$ = state(false);
+const internalGithubIntegrationStatus$ = state<GithubIntegrationStatus | null>(
+  null,
+);
 const internalLabelListenerForm$ = state<GithubLabelListenerForm>({
   labelName: "",
   agentId: "",
   triggerMode: "created_by_me",
   prompt: "",
 });
+
+const GITHUB_CHANGED_TOPIC = "github:changed";
 
 function emptyEnvironment(): GithubInstallationResponse["environment"] {
   return {
@@ -75,7 +88,8 @@ export const githubIntegrationData$ = computed(
         installation: null,
         isConnected: false,
         connectedGithubUserId: null,
-        connectUrl: "/connectors/github/connect",
+        connectedGithubUsername: null,
+        connectUrl: "https://github.com/login/oauth/authorize",
         agent: null,
         environment: emptyEnvironment(),
         labelListeners: [],
@@ -92,17 +106,62 @@ const reloadGithubIntegration$ = command(({ set }) => {
   });
 });
 
-export const githubManageDialogOpen$ = computed((get) => {
-  return get(internalManageDialogOpen$);
-});
+function githubIntegrationStatus(
+  data: GithubIntegrationData,
+): GithubIntegrationStatus {
+  return {
+    isInstalled: data.isInstalled,
+    isConnected: data.isConnected,
+  };
+}
+
+function hasGithubIntegrationStatusChanged(
+  previous: GithubIntegrationStatus | null,
+  next: GithubIntegrationStatus,
+): previous is GithubIntegrationStatus {
+  return (
+    previous !== null &&
+    (previous.isInstalled !== next.isInstalled ||
+      previous.isConnected !== next.isConnected)
+  );
+}
+
+function toastGithubIntegrationChange(
+  previous: GithubIntegrationStatus,
+  next: GithubIntegrationStatus,
+): void {
+  if (next.isConnected && !previous.isConnected) {
+    toast.success("GitHub connected successfully");
+    return;
+  }
+  if (next.isInstalled && !previous.isInstalled) {
+    toast.success("GitHub installed successfully");
+    return;
+  }
+  if (!next.isInstalled && previous.isInstalled) {
+    toast.success("GitHub installation removed");
+    return;
+  }
+  if (!next.isConnected && previous.isConnected) {
+    toast.success("GitHub disconnected");
+    return;
+  }
+  toast.success("GitHub updated");
+}
 
 export const githubLabelListenerForm$ = computed((get) => {
   return get(internalLabelListenerForm$);
 });
 
-export const setGithubManageDialogOpen$ = command(({ set }, value: boolean) => {
-  set(internalManageDialogOpen$, value);
+export const githubAddListenerDialogOpen$ = computed((get) => {
+  return get(internalAddListenerDialogOpen$);
 });
+
+export const setGithubAddListenerDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalAddListenerDialogOpen$, open);
+  },
+);
 
 export const setGithubLabelListenerForm$ = command(
   ({ set }, patch: Partial<GithubLabelListenerForm>) => {
@@ -121,18 +180,77 @@ export const resetGithubLabelListenerForm$ = command(({ set }) => {
   });
 });
 
-export const connectGithubInstallation$ = command(
+function isStandaloneMode(): boolean {
+  return window.matchMedia?.("(display-mode: standalone)").matches ?? false;
+}
+
+function openGithubOAuthWindow(): Pick<Window, "closed" | "location"> {
+  const standalone = isStandaloneMode();
+  const popupFeatures = standalone ? undefined : "width=600,height=700";
+  const authWindow = window.open("about:blank", "_blank", popupFeatures);
+
+  if (!authWindow && !standalone) {
+    throw new Error("Failed to open authorization window");
+  }
+
+  if (authWindow) {
+    return authWindow;
+  }
+
+  return window;
+}
+
+const refreshGithubIntegrationFromChange$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const previous = get(internalGithubIntegrationStatus$);
+    set(reloadGithubIntegration$);
+    const data = await get(githubIntegrationData$);
+    signal.throwIfAborted();
+    const next = githubIntegrationStatus(data);
+    set(internalGithubIntegrationStatus$, next);
+
+    if (hasGithubIntegrationStatusChanged(previous, next)) {
+      toastGithubIntegrationChange(previous, next);
+    }
+
+    return false;
+  },
+);
+
+export const watchGithubIntegration$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(integrationsGithubContract, {
-      apiBase: "api",
+    const current = await get(githubIntegrationData$);
+    signal.throwIfAborted();
+    set(internalGithubIntegrationStatus$, githubIntegrationStatus(current));
+
+    await set(
+      setAblyLoop$,
+      GITHUB_CHANGED_TOPIC,
+      refreshGithubIntegrationFromChange$,
+      signal,
+    );
+  },
+);
+
+export const connectGithubInstallation$ = command(
+  async ({ get }, _connectUrl: string, signal: AbortSignal): Promise<void> => {
+    const authWindow = openGithubOAuthWindow();
+    const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
+      apiBase: "www",
     });
-    await accept(
-      client.connectUser({ headers: {}, fetchOptions: { signal } }),
+    const startResult = await accept(
+      startClient.start({
+        params: { type: "github" },
+        body: {},
+        fetchOptions: { signal },
+      }),
       [200],
     );
     signal.throwIfAborted();
-    set(reloadGithubIntegration$);
-    toast.success("GitHub connected");
+
+    const fresh = new URL(startResult.body.authorizationUrl);
+    fresh.searchParams.set("_t", String(Date.now()));
+    authWindow.location.href = fresh.toString();
   },
 );
 
@@ -147,7 +265,6 @@ export const disconnectGithubInstallation$ = command(
     );
     signal.throwIfAborted();
     set(reloadGithubIntegration$);
-    toast.success("GitHub disconnected");
   },
 );
 
@@ -162,7 +279,6 @@ export const uninstallGithubInstallation$ = command(
     );
     signal.throwIfAborted();
     set(reloadGithubIntegration$);
-    toast.success("GitHub installation removed");
   },
 );
 

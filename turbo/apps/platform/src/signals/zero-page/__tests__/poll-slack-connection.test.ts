@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { pollSlackConnection$ } from "../zero-slack.ts";
+import { watchSlackConnection$ } from "../zero-slack.ts";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
@@ -56,25 +56,38 @@ function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
   return counter;
 }
 
-describe("pollSlackConnection$", () => {
-  it("should return immediately when already connected", async () => {
+describe("watchSlackConnection$", () => {
+  it("should subscribe even when already connected", async () => {
+    const abortController = new AbortController();
     const counter = mockSlackEndpoint(alwaysConnected);
 
     await setup();
 
-    await context.store.set(pollSlackConnection$, context.signal);
+    const watchPromise = context.store.set(
+      watchSlackConnection$,
+      abortController.signal,
+    );
 
-    // Initial slackOrgData$ read sees isConnected=true and returns without
-    // subscribing. Total: 1 fetch.
+    await vi.waitFor(() => {
+      expect(hasSubscription("slack:changed")).toBeTruthy();
+    });
     expect(counter.count).toBe(1);
+
+    abortController.abort();
+    await expect(watchPromise).rejects.toThrow();
+    expect(hasSubscription("slack:changed")).toBeFalsy();
   });
 
-  it("should subscribe and re-check on slack:changed events until connected", async () => {
+  it("should subscribe and re-check on slack:changed events", async () => {
+    const abortController = new AbortController();
     const counter = mockSlackEndpoint(connectedOnThirdCall);
 
     await setup();
 
-    const pollPromise = context.store.set(pollSlackConnection$, context.signal);
+    const watchPromise = context.store.set(
+      watchSlackConnection$,
+      abortController.signal,
+    );
 
     // Initial slackOrgData$ read is call #1. setAblyLoop$ does not prime the
     // body on subscribe; it waits for Ably events to re-check status.
@@ -91,9 +104,14 @@ describe("pollSlackConnection$", () => {
     // Second event re-runs as call #3 and sees connected.
     triggerAblyEvent("slack:changed");
 
-    await pollPromise;
+    await vi.waitFor(() => {
+      expect(counter.count).toBeGreaterThanOrEqual(3);
+    });
+    expect(hasSubscription("slack:changed")).toBeTruthy();
 
-    expect(counter.count).toBeGreaterThanOrEqual(3);
+    abortController.abort();
+    await expect(watchPromise).rejects.toThrow();
+    expect(hasSubscription("slack:changed")).toBeFalsy();
   });
 
   it("should stop subscribing when signal is aborted", async () => {
@@ -102,8 +120,8 @@ describe("pollSlackConnection$", () => {
 
     await setup();
 
-    const pollPromise = context.store.set(
-      pollSlackConnection$,
+    const watchPromise = context.store.set(
+      watchSlackConnection$,
       abortController.signal,
     );
 
@@ -114,7 +132,7 @@ describe("pollSlackConnection$", () => {
 
     abortController.abort();
 
-    await expect(pollPromise).rejects.toThrow();
+    await expect(watchPromise).rejects.toThrow();
     expect(counter.count).toBe(1);
     expect(hasSubscription("slack:changed")).toBeFalsy();
   });

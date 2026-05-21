@@ -23,9 +23,13 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { pathname$ } from "../../../signals/route.ts";
+import { pathname$, searchParams$ } from "../../../signals/route.ts";
 import { setMockAgentPhoneIntegration } from "../../../mocks/handlers/api-integrations-agentphone.ts";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import {
   createDefaultMockGithubIntegration,
   getMockGithubIntegration,
@@ -35,6 +39,10 @@ import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const GITHUB_CONNECT_URL =
+  "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id";
+const GITHUB_START_AUTHORIZATION_URL =
+  "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id&redirect_uri=https%3A%2F%2Fwww.vm0.ai%2Fapi%2Fconnectors%2Fgithub%2Fcallback";
 
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   const defaults: SlackOrgStatus = {
@@ -61,6 +69,17 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   );
 }
 
+function mockGithubConnectorOauthStart(): void {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      expect(params.type).toBe("github");
+      return respond(200, {
+        authorizationUrl: GITHUB_START_AUTHORIZATION_URL,
+      });
+    }),
+  );
+}
+
 function renderWorksPage(options?: {
   readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
 }) {
@@ -77,6 +96,25 @@ function getGithubCard(): HTMLElement {
     throw new Error("GitHub card not found");
   }
   return card;
+}
+
+function createMockAuthWindow() {
+  return { closed: false, close: vi.fn(), location: { href: "" } };
+}
+
+function createGithubConnector(): ConnectorResponse {
+  return {
+    id: "d0000000-0000-4000-a000-000000000001",
+    type: "github",
+    authMethod: "oauth",
+    externalId: "98765",
+    externalUsername: "testuser",
+    externalEmail: "test@example.com",
+    oauthScopes: ["repo", "project", "workflow"],
+    needsReconnect: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
 }
 
 describe("works page - slack integration status display", () => {
@@ -127,6 +165,27 @@ describe("works page - slack integration status display", () => {
 });
 
 describe("works page - GitHub integration card", () => {
+  it("shows an error toast from the redirect query and clears it", async () => {
+    const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+      return "" as ReturnType<typeof toast.error>;
+    });
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    detachedSetupPage({
+      context,
+      path: "/works?error=The+code+passed+is+incorrect+or+expired.",
+    });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "The code passed is incorrect or expired.",
+      );
+    });
+    expect(context.store.get(searchParams$).has("error")).toBeFalsy();
+
+    errorSpy.mockRestore();
+  });
+
   it("hides the GitHub card when the feature switch is off", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     renderWorksPage();
@@ -147,73 +206,178 @@ describe("works page - GitHub integration card", () => {
       expect(
         within(getGithubCard()).getByText("Install GitHub"),
       ).toBeInTheDocument();
-    });
-  });
-
-  it("creates a GitHub label listener with the any-label trigger mode", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    setMockGithubIntegration(
-      createDefaultMockGithubIntegration({
-        labelListeners: [],
-      }),
-    );
-    renderWorksPage({
-      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
-    });
-
-    await waitFor(() => {
-      expect(within(getGithubCard()).getByText("Manage")).toBeInTheDocument();
-    });
-    click(within(getGithubCard()).getByText("Manage"));
-
-    const dialog = await screen.findByRole("dialog");
-    await fill(within(dialog).getByLabelText("Label"), "ready-for-zero");
-    await fill(
-      within(dialog).getByLabelText("Prompt"),
-      "Review the labeled issue or pull request.",
-    );
-
-    const triggerModeSelect = within(dialog).getAllByRole("combobox")[1];
-    click(triggerModeSelect);
-    await waitFor(() => {
       expect(
-        screen.getByRole("option", { name: "Any issue/PR with this label" }),
+        within(getGithubCard()).getByText(
+          "Run agents from GitHub issue and PR labels",
+        ),
       ).toBeInTheDocument();
     });
-    click(screen.getByRole("option", { name: "Any issue/PR with this label" }));
-
-    click(within(dialog).getByText("Add listener"));
-
-    await waitFor(() => {
-      const integration = getMockGithubIntegration();
-      expect(integration?.labelListeners).toHaveLength(1);
-      expect(integration?.labelListeners[0]?.triggerMode).toBe("anyone");
-    });
-    expect(screen.getByText("ready-for-zero")).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Any issue\/PR with this label/u).length,
-    ).toBeGreaterThan(0);
   });
 
-  it("toggles a GitHub label listener from the manage dialog", async () => {
+  it("refreshes the GitHub card from the page-level realtime subscription", async () => {
+    const successSpy = vi.spyOn(toast, "success").mockImplementation(() => {
+      return "" as ReturnType<typeof toast.success>;
+    });
+    const integration = createDefaultMockGithubIntegration({
+      isConnected: false,
+      connectedGithubUserId: null,
+      connectedGithubUsername: null,
+      connectUrl: GITHUB_CONNECT_URL,
+    });
+    setMockGithubIntegration(integration);
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
+
+    await waitFor(() => {
+      expect(within(getGithubCard()).getByText("Connect")).toBeInTheDocument();
+      expect(hasSubscription("github:changed")).toBeTruthy();
+    });
+
+    setMockGithubIntegration({
+      ...integration,
+      isConnected: true,
+      connectedGithubUserId: "98765",
+      connectedGithubUsername: "octocat",
+    });
+    triggerAblyEvent("github:changed");
+
+    await waitFor(() => {
+      expect(
+        within(getGithubCard()).getByTestId("github-connected-indicator"),
+      ).toHaveTextContent("Connected (@octocat)");
+    });
+    await waitFor(() => {
+      expect(successSpy).toHaveBeenCalledWith("GitHub connected successfully");
+      expect(hasSubscription("github:changed")).toBeTruthy();
+    });
+    successSpy.mockRestore();
+  });
+
+  it("connects the GitHub integration through the integration OAuth flow", async () => {
+    const integration = createDefaultMockGithubIntegration({
+      isConnected: false,
+      connectedGithubUserId: null,
+      connectUrl: GITHUB_CONNECT_URL,
+    });
+    setMockGithubIntegration(integration);
+    setMockConnectors([]);
+    mockGithubConnectorOauthStart();
+    const mockWindow = createMockAuthWindow();
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
+
+    await waitFor(() => {
+      expect(within(getGithubCard()).getByText("Connect")).toBeInTheDocument();
+    });
+    click(within(getGithubCard()).getByText("Connect"));
+
+    await waitFor(() => {
+      const openedUrl = new URL(mockWindow.location.href);
+      expect(openedUrl.origin).toBe("https://github.com");
+      expect(openedUrl.pathname).toBe("/login/oauth/authorize");
+      expect(hasSubscription("github:changed")).toBeTruthy();
+    });
+
+    setMockGithubIntegration({
+      ...integration,
+      isConnected: true,
+      connectedGithubUserId: "98765",
+    });
+    triggerAblyEvent("github:changed");
+
+    await waitFor(() => {
+      expect(getMockGithubIntegration()?.isConnected).toBeTruthy();
+      expect(
+        within(getGithubCard()).getByTestId("github-connected-indicator"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("reconnects GitHub OAuth when the GitHub connector already exists", async () => {
+    const integration = createDefaultMockGithubIntegration({
+      isConnected: false,
+      connectedGithubUserId: null,
+      connectUrl: GITHUB_CONNECT_URL,
+    });
+    setMockGithubIntegration(integration);
+    setMockConnectors([createGithubConnector()]);
+    mockGithubConnectorOauthStart();
+    const mockWindow = createMockAuthWindow();
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
+
+    await waitFor(() => {
+      expect(within(getGithubCard()).getByText("Connect")).toBeInTheDocument();
+    });
+    click(within(getGithubCard()).getByText("Connect"));
+
+    await waitFor(() => {
+      const openedUrl = new URL(mockWindow.location.href);
+      expect(openedUrl.origin).toBe("https://github.com");
+      expect(openedUrl.pathname).toBe("/login/oauth/authorize");
+      expect(hasSubscription("github:changed")).toBeTruthy();
+    });
+
+    setMockGithubIntegration({
+      ...integration,
+      isConnected: true,
+      connectedGithubUserId: "98765",
+    });
+    triggerAblyEvent("github:changed");
+
+    await waitFor(() => {
+      expect(getMockGithubIntegration()?.isConnected).toBeTruthy();
+      expect(
+        within(getGithubCard()).getByTestId("github-connected-indicator"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows GitHub uninstall when the installation is not connected", async () => {
+    const integration = createDefaultMockGithubIntegration({
+      isConnected: false,
+      connectedGithubUserId: null,
+    });
+    setMockGithubIntegration({
+      ...integration,
+      installation: { ...integration.installation, isAdmin: true },
+    });
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(getGithubCard()).getByLabelText("GitHub options"),
+      ).toBeInTheDocument();
+    });
+    click(within(getGithubCard()).getByLabelText("GitHub options"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+      expect(screen.queryByText("Disconnect")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows the connected GitHub username", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockGithubIntegration(
       createDefaultMockGithubIntegration({
-        labelListeners: [
-          {
-            id: "b0000000-0000-4000-a000-000000000001",
-            labelName: "ready-for-zero",
-            triggerMode: "created_by_me",
-            prompt: "Review the labeled issue or pull request.",
-            enabled: true,
-            agent: {
-              id: "c0000000-0000-4000-a000-000000000001",
-              name: "zero",
-            },
-            createdAt: new Date(0).toISOString(),
-            updatedAt: new Date(0).toISOString(),
-          },
-        ],
+        isConnected: true,
+        connectedGithubUsername: "octocat",
       }),
     );
     renderWorksPage({
@@ -221,21 +385,33 @@ describe("works page - GitHub integration card", () => {
     });
 
     await waitFor(() => {
-      expect(within(getGithubCard()).getByText("Manage")).toBeInTheDocument();
+      expect(
+        within(getGithubCard()).getByText("Connected (@octocat)"),
+      ).toBeInTheDocument();
     });
-    click(within(getGithubCard()).getByText("Manage"));
+  });
 
-    const dialog = await screen.findByRole("dialog");
-    const toggle = within(dialog).getByRole("switch", {
-      name: "Toggle ready-for-zero listener",
+  it("opens GitHub settings from the options menu", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({
+        isConnected: true,
+      }),
+    );
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
     });
-    expect(toggle).toBeChecked();
-    click(toggle);
 
     await waitFor(() => {
-      const integration = getMockGithubIntegration();
-      expect(integration?.labelListeners[0]?.enabled).toBeFalsy();
-      expect(within(dialog).getByText("Disabled")).toBeInTheDocument();
+      expect(
+        within(getGithubCard()).getByLabelText("GitHub options"),
+      ).toBeInTheDocument();
+    });
+    click(within(getGithubCard()).getByLabelText("GitHub options"));
+    click(await screen.findByLabelText("Manage GitHub"));
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/settings/github");
     });
   });
 });
@@ -248,6 +424,9 @@ describe("works page - telegram integration card", () => {
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
+      expect(
+        screen.getByText("Route Telegram messages to agents"),
+      ).toBeInTheDocument();
       expect(screen.queryByTestId("telegram-beta-badge")).toBeNull();
     });
   });

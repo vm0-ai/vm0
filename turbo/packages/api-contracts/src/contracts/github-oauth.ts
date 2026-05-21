@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
@@ -12,7 +13,17 @@ export const githubOauthInstallQuerySchema = z.object({
   composeId: z.string().optional(),
 });
 
-export const githubOauthCallbackQuerySchema = z.object({
+export const githubOauthConnectCallbackQuerySchema = z.object({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+});
+
+export const githubAppSetupCallbackQuerySchema = z.object({
+  code: z.string().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
   installation_id: z.string().optional(),
   setup_action: z.string().optional(),
   state: z.string().optional(),
@@ -31,14 +42,33 @@ export const githubOauthContract = c.router({
     },
     summary: "Start GitHub App OAuth install",
   },
-  callback: {
+  connect: {
     method: "GET",
-    path: "/api/github/oauth/callback",
-    query: githubOauthCallbackQuerySchema,
+    path: "/api/zero/github/oauth/connect",
+    responses: {
+      307: c.noBody(),
+      401: apiErrorSchema,
+      503: jsonErrorSchema,
+    },
+    summary: "Start GitHub user OAuth for the GitHub integration",
+  },
+  connectCallback: {
+    method: "GET",
+    path: "/api/zero/github/oauth/connect/callback",
+    query: githubOauthConnectCallbackQuerySchema,
     responses: {
       307: c.noBody(),
     },
-    summary: "Handle GitHub App OAuth callback",
+    summary: "Handle GitHub user OAuth for the GitHub integration",
+  },
+  setupCallback: {
+    method: "GET",
+    path: "/api/github/app/setup/callback",
+    query: githubAppSetupCallbackQuerySchema,
+    responses: {
+      307: c.noBody(),
+    },
+    summary: "Handle GitHub App setup callback",
   },
 });
 
@@ -46,6 +76,9 @@ export type GithubOauthContract = typeof githubOauthContract;
 export type GithubOauthInstallQuery = z.infer<
   typeof githubOauthInstallQuerySchema
 >;
-export type GithubOauthCallbackQuery = z.infer<
-  typeof githubOauthCallbackQuerySchema
+export type GithubOauthConnectCallbackQuery = z.infer<
+  typeof githubOauthConnectCallbackQuerySchema
+>;
+export type GithubAppSetupCallbackQuery = z.infer<
+  typeof githubAppSetupCallbackQuerySchema
 >;

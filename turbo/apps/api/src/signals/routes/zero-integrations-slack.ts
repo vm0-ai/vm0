@@ -35,6 +35,7 @@ import {
 } from "../external/slack-file-fetcher";
 import { createSlackClient } from "../external/slack-message-client";
 import { db$, writeDb$, type Db } from "../external/db";
+import { publishUserSignal } from "../external/realtime";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
 import { userSecrets, userVariables } from "../services/zero-user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
@@ -342,7 +343,10 @@ async function uninstallSlackIntegration(args: {
   }
 
   const connections = await args.db
-    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .select({
+      slackUserId: slackOrgConnections.slackUserId,
+      vm0UserId: slackOrgConnections.vm0UserId,
+    })
     .from(slackOrgConnections)
     .where(
       eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
@@ -382,6 +386,22 @@ async function uninstallSlackIntegration(args: {
   args.signal.throwIfAborted();
 
   await args.publishChanged();
+  args.signal.throwIfAborted();
+
+  await bestEffort(
+    publishUserSignal(
+      Array.from(
+        new Set([
+          args.userId,
+          ...connections.map((connection) => {
+            return connection.vm0UserId;
+          }),
+        ]),
+      ),
+      "slack:changed",
+    ),
+    args.signal,
+  );
   args.signal.throwIfAborted();
 
   return { status: 200 as const, body: { ok: true } };
@@ -446,6 +466,12 @@ async function disconnectSlackIntegration(args: {
         slackUserId: connection.slackUserId,
       }),
     ),
+  );
+  args.signal.throwIfAborted();
+
+  await bestEffort(
+    publishUserSignal([args.userId], "slack:changed"),
+    args.signal,
   );
   args.signal.throwIfAborted();
 

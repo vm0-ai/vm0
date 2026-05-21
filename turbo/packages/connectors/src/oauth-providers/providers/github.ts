@@ -38,21 +38,25 @@ export async function exchangeGitHubCode(
   clientId: string,
   clientSecret: string,
   code: string,
-  redirectUri: string,
+  redirectUri?: string,
 ): Promise<{ accessToken: string; scopes: string[] }> {
   const oauthConfig = getConnectorOAuthConfig("github");
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+  });
+  if (redirectUri) {
+    body.set("redirect_uri", redirectUri);
+  }
+
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-    }),
+    body,
   });
 
   if (!response.ok) {

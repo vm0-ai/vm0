@@ -1401,13 +1401,52 @@ describe("POST /api/webhooks/github", () => {
     expect(response.body).toBe("OK");
   });
 
-  it("ignores non-created installation events", async () => {
+  it("cleans up installations after deleted installation events", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
     mockGitHubWebhookEnv();
 
     const response = await postGitHubWebhook({
       event: "installation",
       payload: buildGitHubInstallationPayload({
         action: "deleted",
+        installationId: fixture.remoteInstallationId,
+        targetId: remoteGitHubId(),
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const db = store.set(writeDb$);
+    const installations = await db
+      .select({ id: githubInstallations.id })
+      .from(githubInstallations)
+      .where(eq(githubInstallations.id, fixture.installationDbId));
+    expect(installations).toHaveLength(0);
+
+    const links = await db
+      .select({ id: githubUserLinks.id })
+      .from(githubUserLinks)
+      .where(eq(githubUserLinks.installationId, fixture.installationDbId));
+    expect(links).toHaveLength(0);
+
+    const listeners = await db
+      .select({ id: githubLabelListeners.id })
+      .from(githubLabelListeners)
+      .where(eq(githubLabelListeners.installationId, fixture.installationDbId));
+    expect(listeners).toHaveLength(0);
+  });
+
+  it("ignores unhandled installation events", async () => {
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "installation",
+      payload: buildGitHubInstallationPayload({
+        action: "suspend",
         installationId: remoteGitHubId(),
         targetId: remoteGitHubId(),
       }),

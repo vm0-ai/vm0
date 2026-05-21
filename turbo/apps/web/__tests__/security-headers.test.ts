@@ -637,18 +637,34 @@ const GENERATE_IMAGE_NEXT_NEGATIVE_PATHS = [
   "/api/generate-image/extra",
   "/api/generate",
 ] as const;
-const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
-const GITHUB_OAUTH_CALLBACK_PATH = "/api/github/oauth/callback";
-const GITHUB_OAUTH_CALLBACK_NEXT_NEGATIVE_PATHS = [
-  "/api/github/oauth/callback/extra",
-  "/api/github/oauth/install",
-  "/api/github/oauth",
+const GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE =
+  "/api/github/app/setup/callback";
+const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
+const GITHUB_APP_SETUP_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/github/app/setup/callback/extra",
+  "/api/github/app/setup",
+  "/api/github/app",
 ] as const;
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_INSTALL_PATH = "/api/github/oauth/install";
 const GITHUB_OAUTH_INSTALL_NEXT_NEGATIVE_PATHS = [
   "/api/github/oauth/install/extra",
   "/api/github/oauth",
+] as const;
+const ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE =
+  "/api/zero/github/oauth/connect";
+const ZERO_GITHUB_OAUTH_CONNECT_PATH = "/api/zero/github/oauth/connect";
+const ZERO_GITHUB_OAUTH_CONNECT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/github/oauth/connect/extra",
+  "/api/zero/github/oauth",
+] as const;
+const ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE =
+  "/api/zero/github/oauth/connect/callback";
+const ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_PATH =
+  "/api/zero/github/oauth/connect/callback";
+const ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/github/oauth/connect/callback/extra",
+  "/api/zero/github/oauth/connect/callbacks",
 ] as const;
 const LOGS_SEARCH_REWRITE_SOURCE = "/api/logs/search";
 const LOGS_SEARCH_PATH = "/api/logs/search";
@@ -2178,12 +2194,21 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/generate-image",
         },
         {
-          source: GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/github/oauth/callback",
+          source: GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/github/app/setup/callback",
         },
         {
           source: GITHUB_OAUTH_INSTALL_REWRITE_SOURCE,
           destination: "https://api.example.test/api/github/oauth/install",
+        },
+        {
+          source: ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/github/oauth/connect",
+        },
+        {
+          source: ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/github/oauth/connect/callback",
         },
         {
           source: LOGS_SEARCH_REWRITE_SOURCE,
@@ -4820,25 +4845,75 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the exact GitHub OAuth callback rewrite", async () => {
+  it("should match only the exact zero GitHub OAuth connect rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const connectRewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE;
+    });
+    expect(connectRewrite).toStrictEqual({
+      source: ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/github/oauth/connect",
+    });
+
+    const connectMatcher = getPathMatch(
+      ZERO_GITHUB_OAUTH_CONNECT_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(connectMatcher(ZERO_GITHUB_OAUTH_CONNECT_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_GITHUB_OAUTH_CONNECT_NEXT_NEGATIVE_PATHS) {
+      expect(connectMatcher(pathname)).toBe(false);
+    }
+
+    const callbackRewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE;
+    });
+    expect(callbackRewrite).toStrictEqual({
+      source: ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/github/oauth/connect/callback",
+    });
+
+    const callbackMatcher = getPathMatch(
+      ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(
+      callbackMatcher(ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_PATH),
+    ).toStrictEqual({});
+    for (const pathname of ZERO_GITHUB_OAUTH_CONNECT_CALLBACK_NEXT_NEGATIVE_PATHS) {
+      expect(callbackMatcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact GitHub App setup callback rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE;
+      return entry.source === GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/github/oauth/callback",
+      source: GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/github/app/setup/callback",
     });
 
-    const matcher = getPathMatch(GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, {
+    const matcher = getPathMatch(GITHUB_APP_SETUP_CALLBACK_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(GITHUB_OAUTH_CALLBACK_PATH)).toStrictEqual({});
-    for (const pathname of GITHUB_OAUTH_CALLBACK_NEXT_NEGATIVE_PATHS) {
+    expect(matcher(GITHUB_APP_SETUP_CALLBACK_PATH)).toStrictEqual({});
+    for (const pathname of GITHUB_APP_SETUP_CALLBACK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

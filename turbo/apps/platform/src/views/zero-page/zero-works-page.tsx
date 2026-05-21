@@ -32,7 +32,6 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -280,16 +279,6 @@ function SlackCard({ displayName }: { displayName: string }) {
 }
 
 function TelegramCard() {
-  const botsLoadable = useLastLoadable(telegramBots$);
-  const bots = botsLoadable.state === "hasData" ? botsLoadable.data : [];
-  const connectedCount = bots.filter((bot) => {
-    return bot.isConnected;
-  }).length;
-  const summary =
-    botsLoadable.state === "hasData"
-      ? `${bots.length} ${bots.length === 1 ? "bot" : "bots"} - ${connectedCount} connected`
-      : "Manage Telegram bots and agent routing";
-
   return (
     <Link
       pathname={ROUTES.settingsTelegram}
@@ -307,7 +296,7 @@ function TelegramCard() {
             </div>
           </div>
           <div className="truncate text-sm text-muted-foreground">
-            {summary}
+            Route Telegram messages to agents
           </div>
         </div>
         <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">

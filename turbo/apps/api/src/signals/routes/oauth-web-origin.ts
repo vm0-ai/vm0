@@ -1,8 +1,6 @@
-const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
+import { env } from "../../lib/env";
 
-function isLocalhost(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1";
-}
+const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
 function isVm0WebHost(hostname: string): boolean {
   return (
@@ -24,7 +22,7 @@ function isTrustedWebOrigin(origin: string): boolean {
     return false;
   }
 
-  if (isLocalhost(url.hostname)) {
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
     return url.protocol === "http:" || url.protocol === "https:";
   }
 
@@ -52,14 +50,8 @@ function canonicalWebOriginForApiHost(url: URL): string | null {
   return webUrl.origin;
 }
 
-export function getOAuthWebOrigin(request: Request): string {
-  const webOrigin = request.headers.get(WEB_ORIGIN_HEADER);
-  if (webOrigin && isTrustedWebOrigin(webOrigin)) {
-    return new URL(webOrigin).origin;
-  }
-
-  const requestUrl = new URL(request.url);
-  return canonicalWebOriginForApiHost(requestUrl) ?? requestUrl.origin;
+export function getOAuthWebOrigin(_request: Request): string {
+  return new URL(env("VM0_WEB_URL")).origin;
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
