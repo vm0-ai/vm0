@@ -474,7 +474,7 @@ export const zeroComputerUseWriteCommandContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Create an approved-write desktop computer-use command",
+    summary: "Create a desktop computer-use write command",
   },
 });
 

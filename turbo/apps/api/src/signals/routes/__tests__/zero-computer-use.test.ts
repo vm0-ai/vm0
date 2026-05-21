@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
-  zeroComputerUseCommandApprovalContract,
   zeroComputerUseCommandContract,
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
@@ -286,18 +285,19 @@ describe("desktop computer-use runtime", () => {
     });
   });
 
-  it("requires approval for write commands and audits the decision", async () => {
+  it("queues write commands without approval and audits completion", async () => {
     const fixture = await createOrgFixture();
-    await seedComputerUseHost({
+    const hostToken = "host-token";
+    const hostId = await seedComputerUseHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
-      hostToken: "host-token",
+      hostToken,
     });
     const writeClient = setupApp({ context })(
       zeroComputerUseWriteCommandContract,
     );
-    const approvalClient = setupApp({ context })(
-      zeroComputerUseCommandApprovalContract,
+    const hostClient = setupApp({ context })(
+      zeroComputerUseHostCommandsContract,
     );
     const token = mintZeroToken({
       orgId: fixture.orgId,
@@ -317,29 +317,38 @@ describe("desktop computer-use runtime", () => {
       }),
       [200],
     );
-    expect(created.body.status).toBe("pending_approval");
+    expect(created.body.status).toBe("queued");
 
-    const agentApproval = await accept(
-      approvalClient.decide({
-        params: { commandId: created.body.commandId },
-        body: { decision: "approve" },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-    expect(agentApproval.body.error.message).toBe(
-      "This endpoint is not available for sandbox tokens",
-    );
-
-    const approved = await accept(
-      approvalClient.decide({
-        params: { commandId: created.body.commandId },
-        body: { decision: "approve" },
-        headers: { authorization: "Bearer clerk-session" },
+    const next = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
       }),
       [200],
     );
-    expect(approved.body.status).toBe("queued");
+    expect(next.body.status).toBe("command");
+    if (next.body.status !== "command") {
+      throw new Error("expected command");
+    }
+    expect(next.body.command).toMatchObject({
+      id: created.body.commandId,
+      hostId,
+      kind: "element.click",
+      status: "running",
+      payload: { app: "Safari", elementId: "42" },
+    });
+
+    await accept(
+      hostClient.complete({
+        params: { commandId: created.body.commandId },
+        body: {
+          status: "succeeded",
+          result: { text: "clicked" },
+        },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
 
     const writeDb = store.set(writeDb$);
     const auditEvents = await writeDb
@@ -352,6 +361,6 @@ describe("desktop computer-use runtime", () => {
           return event.event;
         })
         .sort(),
-    ).toStrictEqual(["approved", "created"]);
+    ).toStrictEqual(["completed"]);
   });
 });

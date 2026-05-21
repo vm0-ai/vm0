@@ -273,7 +273,7 @@ const writeCommandCreateInner$ = command(
         kind: bodyResult.data.kind,
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
-        requiresApproval: true,
+        requiresApproval: false,
         ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
         ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
         ...(bodyResult.data.hostName
