@@ -40,6 +40,16 @@ function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
 }
 
+// The /works page renders multiple integration cards that each have a
+// "Connect" button, so card-level assertions must be scoped to the Slack card.
+function getSlackCard(): HTMLElement {
+  const card = screen.getByText("Slack").closest(".zero-card");
+  if (!(card instanceof HTMLElement)) {
+    throw new Error("Slack card not found");
+  }
+  return card;
+}
+
 describe("zero works page - header", () => {
   it("should render page title with agent name", async () => {
     mockSlackAPI();
@@ -135,7 +145,9 @@ describe("zero works page - slack card connected state", () => {
     });
 
     expect(screen.queryByText("Install to Slack")).not.toBeInTheDocument();
-    expect(screen.queryByText("Connect")).not.toBeInTheDocument();
+    expect(
+      within(getSlackCard()).queryByText("Connect"),
+    ).not.toBeInTheDocument();
   });
 
   it("should show default description when installed", async () => {
@@ -200,7 +212,7 @@ describe("zero works page - slack installed but not connected", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(within(getSlackCard()).getByText("Connect")).toBeInTheDocument();
     });
   });
 
@@ -209,7 +221,7 @@ describe("zero works page - slack installed but not connected", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(within(getSlackCard()).getByText("Connect")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Connected")).not.toBeInTheDocument();
@@ -330,7 +342,7 @@ describe("zero works page - admin vs non-admin permissions", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(within(getSlackCard()).getByText("Connect")).toBeInTheDocument();
     });
 
     expect(screen.queryByLabelText("More options")).not.toBeInTheDocument();
