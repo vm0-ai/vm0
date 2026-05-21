@@ -202,9 +202,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       "section",
     );
     expect(defaultSection).toBeDefined();
-    expect(
-      within(defaultSection!).getByText("Claude Sonnet 4.6"),
-    ).toBeDefined();
+    expect(within(defaultSection!).getByText("DeepSeek V4 Pro")).toBeDefined();
 
     click(within(defaultSection!).getByRole("combobox"));
     const listbox = await screen.findByRole("listbox");
