@@ -275,11 +275,18 @@ class JsonSelectiveExtractor:
 
     def _consume_object(self, frame: _Frame, chunk: bytes, i: int) -> int:
         b = chunk[i]
-        if frame.state == "key_or_end":
+        if frame.state in ("key_or_end", "key"):
             if b == ord("}"):
-                return self._end_container(i)
+                if frame.state == "key_or_end":
+                    return self._end_container(i)
+                self._error = "expected object key"
+                return i + 1
             if b != ord('"'):
-                self._error = "expected object key or end"
+                self._error = (
+                    "expected object key or end"
+                    if frame.state == "key_or_end"
+                    else "expected object key"
+                )
                 return i + 1
             collect_key = _matches_any_path_pattern(self.key_collection_paths, frame.path)
             self._string = _StringState(
@@ -308,7 +315,7 @@ class JsonSelectiveExtractor:
         if frame.state == "comma_or_end":
             if b == ord(","):
                 frame.pending_key = None
-                frame.state = "key_or_end"
+                frame.state = "key"
             elif b == ord("}"):
                 return self._end_container(i)
             else:
@@ -320,15 +327,21 @@ class JsonSelectiveExtractor:
 
     def _consume_array(self, frame: _Frame, chunk: bytes, i: int) -> int:
         b = chunk[i]
-        if frame.state == "value_or_end":
+        if frame.state in ("value_or_end", "value"):
             if b == ord("]"):
-                return self._end_container(i)
+                if frame.state == "value_or_end":
+                    return self._end_container(i)
+                self._error = "expected json value"
+                return i + 1
+            if not _is_json_value_start(b):
+                self._error = "expected json value"
+                return i + 1
             self._count_array_element(frame)
             return self._start_value((*frame.path, _ARRAY_ELEMENT), chunk, i, from_array=True)
 
         if frame.state == "comma_or_end":
             if b == ord(","):
-                frame.state = "value_or_end"
+                frame.state = "value"
             elif b == ord("]"):
                 return self._end_container(i)
             else:
@@ -492,7 +505,7 @@ class JsonSelectiveExtractor:
             return
         parent = self._stack[-1]
         if (parent.kind == "object" and parent.state == "value") or (
-            parent.kind == "array" and parent.state == "value_or_end"
+            parent.kind == "array" and parent.state in ("value_or_end", "value")
         ):
             parent.state = "comma_or_end"
         else:
@@ -765,6 +778,10 @@ class JsonSelectiveExtractor:
 
 def _is_hex_byte(b: int) -> bool:
     return ord("0") <= b <= ord("9") or ord("a") <= b <= ord("f") or ord("A") <= b <= ord("F")
+
+
+def _is_json_value_start(b: int) -> bool:
+    return b in b'{["tfn-' or ord("0") <= b <= ord("9")
 
 
 def _validate_extractor_config(

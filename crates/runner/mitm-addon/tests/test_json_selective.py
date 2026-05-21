@@ -920,6 +920,70 @@ def test_rejects_missing_separators(payload, error):
     assert result.error == error
 
 
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        [b"[1,]"],
+        [b"[1,2,]"],
+        [b"[1, ]"],
+        [b"[1,", b"]"],
+    ],
+)
+def test_rejects_trailing_commas_in_arrays(chunks):
+    extractor = JsonSelectiveExtractor(array_count_paths={()})
+
+    for chunk in chunks:
+        extractor.feed(chunk)
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.values == {}
+    assert result.array_counts == {}
+    assert result.wildcard_array_counts == {}
+    assert result.object_present == set()
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        [b'{"a":1,}'],
+        [b'{"a":1,"b":2,}'],
+        [b'{"a":1, }'],
+        [b'{"a":1,', b"}"],
+    ],
+)
+def test_rejects_trailing_commas_in_objects(chunks):
+    extractor = JsonSelectiveExtractor(scalar_fields={("a",): ScalarField("int")})
+
+    for chunk in chunks:
+        extractor.feed(chunk)
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.values == {}
+    assert result.array_counts == {}
+    assert result.wildcard_array_counts == {}
+    assert result.object_present == set()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"[]",
+        b"{}",
+        b"[1, 2]",
+        b'{"a":1, "b":2}',
+    ],
+)
+def test_accepts_valid_empty_containers_and_commas(payload):
+    extractor = JsonSelectiveExtractor(scalar_fields={("a",): ScalarField("int")})
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is True
+
+
 def test_rejects_trailing_data():
     extractor = JsonSelectiveExtractor()
 
