@@ -18,12 +18,9 @@ import {
 import {
   getConnectorAuthMethod,
   getConnectorOAuthCredentials,
-  getConnectorOAuthConfig,
-  isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type ConnectorType,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -171,146 +168,6 @@ function redirectResponse(url: string): Response {
     status: REDIRECT_STATUS,
     headers: { location: url },
   });
-}
-
-async function base64UrlSha256(value: string): Promise<string> {
-  const data = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Buffer.from(hash).toString("base64url");
-}
-
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return Buffer.from(array).toString("base64url");
-}
-
-function codeChallenge(codeVerifier: string): Promise<string> {
-  return base64UrlSha256(codeVerifier);
-}
-
-function deterministicPkceSuffix(type: ConnectorType): string | undefined {
-  switch (type) {
-    case "canva": {
-      return "canva-pkce-verifier";
-    }
-    case "deel": {
-      return "deel-pkce-verifier";
-    }
-    case "docusign": {
-      return "docusign-pkce-verifier";
-    }
-    case "garmin-connect": {
-      return "garmin-pkce-verifier";
-    }
-    case "supabase": {
-      return "supabase-pkce-verifier";
-    }
-    case "x": {
-      return "x-pkce-verifier";
-    }
-    default: {
-      return undefined;
-    }
-  }
-}
-
-async function buildAuthorizeUrl(args: {
-  readonly type: ConnectorType;
-  readonly clientId: string;
-  readonly redirectUri: string;
-  readonly state: string;
-}): Promise<AuthUrlResult | null> {
-  const oauthConfig = getConnectorOAuthConfig(args.type);
-  if (!oauthConfig?.authorizationUrl) {
-    return null;
-  }
-
-  if (args.type === "github") {
-    return {
-      url: `${oauthConfig.authorizationUrl}?${new URLSearchParams({
-        client_id: args.clientId,
-        redirect_uri: args.redirectUri,
-        scope: oauthConfig.scopes.join(" "),
-        state: args.state,
-      }).toString()}`,
-    };
-  }
-
-  if (args.type === "slack") {
-    return {
-      url: `${oauthConfig.authorizationUrl}?${new URLSearchParams({
-        client_id: args.clientId,
-        redirect_uri: args.redirectUri,
-        user_scope: oauthConfig.scopes.join(","),
-        state: args.state,
-      }).toString()}`,
-    };
-  }
-
-  if (args.type === "notion") {
-    return {
-      url: `${oauthConfig.authorizationUrl}?${new URLSearchParams({
-        client_id: args.clientId,
-        redirect_uri: args.redirectUri,
-        state: args.state,
-        response_type: "code",
-        owner: "user",
-      }).toString()}`,
-    };
-  }
-
-  const params = new URLSearchParams({
-    client_id: args.clientId,
-    redirect_uri: args.redirectUri,
-    response_type: "code",
-    state: args.state,
-  });
-  if (oauthConfig.scopes.length > 0 && args.type !== "garmin-connect") {
-    const scopeSeparator =
-      args.type === "linear" || args.type === "strava" ? "," : " ";
-    params.set("scope", oauthConfig.scopes.join(scopeSeparator));
-  }
-  if (isGoogleOAuthConnector(args.type)) {
-    params.set("access_type", "offline");
-    params.set("prompt", "consent");
-  }
-  if (args.type === "outlook-calendar" || args.type === "outlook-mail") {
-    params.set("prompt", "consent");
-  }
-  if (args.type === "reddit") {
-    params.set("duration", "permanent");
-  }
-  if (args.type === "dropbox") {
-    params.set("token_access_type", "offline");
-    params.set("force_reapprove", "true");
-  }
-  if (args.type === "strava") {
-    params.set("approval_prompt", "force");
-  }
-  if (args.type === "linear") {
-    params.set("actor", "user");
-    params.set("prompt", "consent");
-  }
-
-  const pkceSuffix = deterministicPkceSuffix(args.type);
-  if (pkceSuffix) {
-    const verifier = await base64UrlSha256(`${args.state}:${pkceSuffix}`);
-    params.set("code_challenge", await codeChallenge(verifier));
-    params.set("code_challenge_method", "S256");
-  }
-
-  if (args.type === "airtable") {
-    const verifier = generateCodeVerifier();
-    params.set("code_challenge", await codeChallenge(verifier));
-    params.set("code_challenge_method", "S256");
-    return {
-      url: `${oauthConfig.authorizationUrl}?${params.toString()}`,
-      codeVerifier: verifier,
-    };
-  }
-
-  return { url: `${oauthConfig.authorizationUrl}?${params.toString()}` };
 }
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
@@ -616,22 +473,13 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
 
-    const authResult = credentials.clientId
-      ? await buildAuthorizeUrl({
-          type,
-          clientId: credentials.clientId,
-          redirectUri,
-          state,
-        })
-      : await buildProviderAuthorizeUrl({
-          type,
-          redirectUri,
-          state,
-        });
+    const authResult = await buildProviderAuthorizeUrl({
+      type,
+      clientId: credentials.clientId,
+      redirectUri,
+      state,
+    });
     signal.throwIfAborted();
-    if (!authResult) {
-      return jsonResponse({ error: `${type} OAuth not configured` }, 500);
-    }
 
     await set(
       deleteZeroConnectorLocalState$,
@@ -711,22 +559,13 @@ const startConnectorOauthInner$ = command(
       return internalServerError(`${type} OAuth not configured`);
     }
 
-    const authResult = credentials.clientId
-      ? await buildAuthorizeUrl({
-          type,
-          clientId: credentials.clientId,
-          redirectUri,
-          state,
-        })
-      : await buildProviderAuthorizeUrl({
-          type,
-          redirectUri,
-          state,
-        });
+    const authResult = await buildProviderAuthorizeUrl({
+      type,
+      clientId: credentials.clientId,
+      redirectUri,
+      state,
+    });
     signal.throwIfAborted();
-    if (!authResult) {
-      return internalServerError(`${type} OAuth not configured`);
-    }
 
     await set(
       deleteZeroConnectorLocalState$,

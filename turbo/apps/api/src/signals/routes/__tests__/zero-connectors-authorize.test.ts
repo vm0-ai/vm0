@@ -65,6 +65,8 @@ function mockOAuthEnv(): void {
   );
   mockOptionalEnv("DROPBOX_OAUTH_CLIENT_ID", "dropbox-test-client-id");
   mockOptionalEnv("DROPBOX_OAUTH_CLIENT_SECRET", "dropbox-test-client-secret");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
   mockOptionalEnv("LINEAR_OAUTH_CLIENT_ID", "linear-test-client-id");
   mockOptionalEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
   mockOptionalEnv("MERCURY_OAUTH_CLIENT_ID", "mercury-test-client-id");
@@ -273,6 +275,30 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(url.searchParams.get("redirect_uri")).toBe(
       `${WEB_ORIGIN}/api/connectors/github/callback`,
     );
+  });
+
+  it("requests offline Google OAuth access", async () => {
+    const response = await requestAuthorize("google-drive", {
+      authenticated: true,
+    });
+
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(url.searchParams.get("client_id")).toBe("google-test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/google-drive/callback`,
+    );
+    const scopes = new Set(url.searchParams.get("scope")?.split(" ") ?? []);
+    expect(scopes.has("https://www.googleapis.com/auth/drive")).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/userinfo.email"),
+    ).toBeTruthy();
+    expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("prompt")).toBe("consent");
   });
 
   it("stores the connector session id when provided", async () => {
@@ -641,6 +667,59 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       redirectUri: `${WEB_ORIGIN}/api/connectors/github/callback`,
       consumedAt: null,
     });
+    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+  });
+
+  it("stores provider PKCE context for server-side OAuth handoff", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("airtable", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://airtable.com/oauth2/v1/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "airtable-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/connectors/airtable/callback`,
+    );
+    expect(authorizationUrl.searchParams.get("code_challenge")).toMatch(
+      /^[A-Za-z0-9_-]+$/,
+    );
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
+      "S256",
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "airtable",
+      userId,
+      orgId,
+      redirectUri: `${WEB_ORIGIN}/api/connectors/airtable/callback`,
+      consumedAt: null,
+    });
+    expect(storedState!.codeVerifier).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
   });
 
