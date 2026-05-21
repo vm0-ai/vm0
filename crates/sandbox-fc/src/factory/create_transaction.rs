@@ -861,6 +861,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_drop_after_rename_error_preserves_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(&target_workspace).await.unwrap();
+        tokio::fs::write(target_workspace.join("owner.txt"), b"other")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+        tx.abort_workspace_rename_after_error().unwrap();
+
+        drop(tx);
+
+        assert!(!slot_workspace.exists());
+        assert!(target_workspace.join("owner.txt").exists());
+    }
+
+    #[tokio::test]
     async fn create_transaction_rollback_after_rename_removes_target_workspace() {
         let tmp = tempfile::tempdir().unwrap();
         let slot_workspace = tmp.path().join("slot-workspace");

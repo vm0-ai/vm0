@@ -641,6 +641,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn clean_stale_workspace_dir_removes_existing_target_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(target.join("nested"))
+            .await
+            .unwrap();
+        tokio::fs::write(target.join("nested").join("stale.txt"), b"stale")
+            .await
+            .unwrap();
+
+        clean_stale_workspace_dir("sandbox", &target).await.unwrap();
+
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
     async fn clean_stale_workspace_dir_errors_for_unclaimed_target() {
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("sandbox-workspace");
