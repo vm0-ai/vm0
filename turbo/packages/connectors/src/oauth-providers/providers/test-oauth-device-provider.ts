@@ -26,7 +26,7 @@ export const testOauthDeviceProvider = defineConnectorOAuthProvider(
           return { status: "pending" };
         }
         case "slow-down": {
-          return { status: "pending", interval: 10 };
+          return { status: "slow_down" };
         }
         case "denied": {
           return {

@@ -115,6 +115,10 @@ export interface OAuthDeviceAuthorizationPendingResult {
   readonly interval?: number;
 }
 
+export interface OAuthDeviceAuthorizationSlowDownResult {
+  readonly status: "slow_down";
+}
+
 export interface OAuthDeviceAuthorizationCompleteResult {
   readonly status: "complete";
   readonly token: OAuthTokenResult;
@@ -140,6 +144,7 @@ export interface OAuthDeviceAuthorizationErrorResult {
 
 export type OAuthDeviceAuthorizationPollResult =
   | OAuthDeviceAuthorizationPendingResult
+  | OAuthDeviceAuthorizationSlowDownResult
   | OAuthDeviceAuthorizationCompleteResult
   | OAuthDeviceAuthorizationDeniedResult
   | OAuthDeviceAuthorizationExpiredResult

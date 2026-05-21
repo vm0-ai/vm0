@@ -95,6 +95,61 @@ export type ConnectorOauthStartResponse = z.infer<
   typeof connectorOauthStartResponseSchema
 >;
 
+export const connectorOauthDeviceSessionStartResponseSchema = z.object({
+  sessionId: z.uuid(),
+  sessionToken: z.string(),
+  type: connectorTypeSchema,
+  status: z.literal("pending"),
+  userCode: z.string(),
+  verificationUri: z.string(),
+  verificationUriComplete: z.string().optional(),
+  expiresIn: z.number(),
+  interval: z.number(),
+});
+
+export type ConnectorOauthDeviceSessionStartResponse = z.infer<
+  typeof connectorOauthDeviceSessionStartResponseSchema
+>;
+
+export const connectorOauthDeviceSessionPollRequestSchema = z.object({
+  sessionToken: z.string(),
+});
+
+export type ConnectorOauthDeviceSessionPollRequest = z.infer<
+  typeof connectorOauthDeviceSessionPollRequestSchema
+>;
+
+export const connectorOauthDeviceSessionPollResponseSchema =
+  z.discriminatedUnion("status", [
+    z.object({
+      status: z.literal("pending"),
+      interval: z.number(),
+    }),
+    z.object({
+      status: z.literal("complete"),
+      connector: connectorResponseSchema,
+    }),
+    z.object({
+      status: z.literal("denied"),
+      errorCode: z.string().optional(),
+      errorMessage: z.string().optional(),
+    }),
+    z.object({
+      status: z.literal("expired"),
+      errorCode: z.string().optional(),
+      errorMessage: z.string().optional(),
+    }),
+    z.object({
+      status: z.literal("error"),
+      errorCode: z.string().optional(),
+      errorMessage: z.string().optional(),
+    }),
+  ]);
+
+export type ConnectorOauthDeviceSessionPollResponse = z.infer<
+  typeof connectorOauthDeviceSessionPollResponseSchema
+>;
+
 /**
  * Computer connector create response
  */

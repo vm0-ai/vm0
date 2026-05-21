@@ -291,7 +291,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         credentials,
         deviceCode: "slow-down",
       }),
-    ).resolves.toStrictEqual({ status: "pending", interval: 10 });
+    ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
       pollConnectorOAuthDeviceAuthorization({
         type: "test-oauth-device",

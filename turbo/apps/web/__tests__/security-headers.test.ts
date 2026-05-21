@@ -1679,6 +1679,24 @@ const ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS = [
   `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}/extra`,
   `/api/zero/connectors/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
 ] as const;
+const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/oauth/device/sessions";
+const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_PATH =
+  "/api/zero/connectors/base44/oauth/device/sessions";
+const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_NEXT_NEGATIVE_PATHS = [
+  `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`,
+  "/api/zero/connectors/base44/oauth/device/session",
+  "/api/zero/connectors/oauth/device/sessions",
+] as const;
+const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/oauth/device/sessions/:sessionId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/poll";
+const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_PATH = `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`;
+const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/base44/oauth/device/sessions/not-a-uuid/poll",
+  `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
+  `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/complete`,
+  `/api/zero/connectors/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`,
+] as const;
 const ZERO_SLACK_CHANNELS_REWRITE_SOURCE = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_PATH = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_NEXT_NEGATIVE_PATHS = [
@@ -4446,6 +4464,72 @@ describe("API backend rewrites", () => {
       sessionId: ZERO_CONNECTOR_SESSION_ID,
     });
     for (const pathname of ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the zero connector OAuth device session rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return (
+        entry.source === ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE
+      );
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/:type/oauth/device/sessions",
+    });
+
+    const matcher = getPathMatch(
+      ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_PATH)).toStrictEqual({
+      type: "base44",
+    });
+    for (const pathname of ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped zero connector OAuth device session poll rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return (
+        entry.source ===
+        ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE
+      );
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/:type/oauth/device/sessions/:sessionId/poll",
+    });
+
+    const matcher = getPathMatch(
+      ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(
+      matcher(ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_PATH),
+    ).toStrictEqual({
+      type: "base44",
+      sessionId: ZERO_CONNECTOR_SESSION_ID,
+    });
+    for (const pathname of ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

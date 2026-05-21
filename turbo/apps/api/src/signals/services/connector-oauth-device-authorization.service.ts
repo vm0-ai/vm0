@@ -1,0 +1,727 @@
+import { createHash, randomBytes } from "node:crypto";
+
+import type {
+  ConnectorResponse,
+  ConnectorOauthDeviceSessionPollResponse,
+  ConnectorOauthDeviceSessionStartResponse,
+} from "@vm0/api-contracts/contracts/connector-schemas";
+import type {
+  ConnectorType,
+  OAuthDeviceAuthorizationConnectorType,
+} from "@vm0/connectors/connectors";
+import {
+  getConnectorAuthMethod,
+  getConnectorOAuthCredentials,
+  getConnectorOAuthDeviceAuthorizationConfig,
+  isConnectorAuthMethodAvailable,
+  isOAuthDeviceAuthorizationConnectorType,
+} from "@vm0/connectors/connector-utils";
+import {
+  CONNECTOR_OAUTH_PROVIDERS,
+  isOAuthConnectorType,
+  pollConnectorOAuthDeviceAuthorization,
+  startConnectorOAuthDeviceAuthorization,
+} from "@vm0/connectors/oauth-providers";
+import type {
+  OAuthDeviceAuthorizationCompleteResult,
+  OAuthDeviceAuthorizationPollResult,
+} from "@vm0/connectors/oauth-providers/provider-types";
+import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
+import { command } from "ccstate";
+import { and, eq, lt, or } from "drizzle-orm";
+import { z } from "zod";
+
+import { badRequestMessage, notFound } from "../../lib/error";
+import { optionalEnv } from "../../lib/env";
+import { nowDate } from "../../lib/time";
+import { writeDb$, type Db } from "../external/db";
+import { settle } from "../utils";
+import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import {
+  upsertOAuthConnector$,
+  zeroConnectorByType,
+} from "./zero-connector-data.service";
+
+const DEFAULT_POLL_INTERVAL_SECONDS = 5;
+const SLOW_DOWN_INCREMENT_SECONDS = 5;
+const POLLING_STALE_MS = 30_000;
+
+type ConfiguredConnectorOAuthCredentials = Extract<
+  NonNullable<ReturnType<typeof getConnectorOAuthCredentials>>,
+  { readonly configured: true }
+>;
+
+type DeviceSessionRow =
+  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
+
+type PendingPollBody = Extract<
+  ConnectorOauthDeviceSessionPollResponse,
+  { status: "pending" }
+>;
+
+type PendingSuccess = {
+  readonly status: 200;
+  readonly body: PendingPollBody;
+};
+
+type PollSuccess = {
+  readonly status: 200;
+  readonly body: ConnectorOauthDeviceSessionPollResponse;
+};
+
+const encryptedProviderStateSchema = z.object({
+  connectorType: z.string(),
+  deviceCode: z.string(),
+  scopes: z.array(z.string()),
+});
+
+type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
+
+type PollClaimedSessionArgs = {
+  readonly writeDb: Db;
+  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly credentials: ConfiguredConnectorOAuthCredentials;
+  readonly session: DeviceSessionRow;
+  readonly claimStartedAt: Date;
+  readonly signal: AbortSignal;
+  readonly persistConnector: (args: {
+    readonly result: OAuthDeviceAuthorizationCompleteResult;
+    readonly providerState: EncryptedProviderState;
+  }) => Promise<ConnectorResponse>;
+};
+
+const connectorOauthDeviceAuthorizationDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "OAuth device authorization is not enabled for this connector",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+function sessionTokenHash(sessionToken: string): string {
+  return createHash("sha256").update(sessionToken).digest("hex");
+}
+
+function generateSessionToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+function terminalErrorBody(
+  session: DeviceSessionRow,
+): ConnectorOauthDeviceSessionPollResponse {
+  if (
+    session.status !== "denied" &&
+    session.status !== "expired" &&
+    session.status !== "error"
+  ) {
+    throw new Error(
+      `Unsupported terminal OAuth device status ${session.status}`,
+    );
+  }
+  return {
+    status: session.status,
+    errorCode: session.errorCode ?? undefined,
+    errorMessage: session.errorMessage ?? undefined,
+  };
+}
+
+function pendingBody(
+  session: Pick<DeviceSessionRow, "intervalSeconds">,
+): PendingPollBody {
+  return { status: "pending", interval: session.intervalSeconds };
+}
+
+function pendingResponse(
+  session: Pick<DeviceSessionRow, "intervalSeconds">,
+): PendingSuccess {
+  return { status: 200, body: pendingBody(session) };
+}
+
+function shouldWaitBeforeProviderPoll(
+  session: DeviceSessionRow,
+  now: Date,
+): boolean {
+  return (
+    session.status === "awaiting_user_authorization" &&
+    session.updatedAt.getTime() > now.getTime() - session.intervalSeconds * 1000
+  );
+}
+
+function resolveDeviceAuthorizationType(
+  type: ConnectorType,
+):
+  | OAuthDeviceAuthorizationConnectorType
+  | ReturnType<typeof badRequestMessage> {
+  if (!getConnectorAuthMethod(type, "oauth")) {
+    return badRequestMessage(`${type} connector does not use OAuth`);
+  }
+  if (!isOAuthConnectorType(type)) {
+    return badRequestMessage(`${type} OAuth provider is not configured`);
+  }
+  if (!isOAuthDeviceAuthorizationConnectorType(type)) {
+    return badRequestMessage(
+      `${type} connector does not support OAuth device authorization`,
+    );
+  }
+  return type;
+}
+
+function resolveConfiguredCredentials(
+  type: OAuthDeviceAuthorizationConnectorType,
+): ConfiguredConnectorOAuthCredentials | ReturnType<typeof badRequestMessage> {
+  const credentials = getConnectorOAuthCredentials(type, optionalEnv);
+  if (!credentials?.configured) {
+    return badRequestMessage(`${type} OAuth is not configured`);
+  }
+  return credentials;
+}
+
+async function markClaimAwaiting(args: {
+  readonly writeDb: Db;
+  readonly sessionId: string;
+  readonly claimStartedAt: Date;
+  readonly intervalSeconds: number;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await args.writeDb
+    .update(connectorOauthDeviceAuthorizationSessions)
+    .set({
+      status: "awaiting_user_authorization",
+      intervalSeconds: args.intervalSeconds,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(connectorOauthDeviceAuthorizationSessions.id, args.sessionId),
+        eq(connectorOauthDeviceAuthorizationSessions.status, "polling"),
+        eq(
+          connectorOauthDeviceAuthorizationSessions.updatedAt,
+          args.claimStartedAt,
+        ),
+      ),
+    );
+  args.signal.throwIfAborted();
+}
+
+async function loadOwnedSession(args: {
+  readonly writeDb: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly sessionId: string;
+  readonly sessionToken: string;
+  readonly signal: AbortSignal;
+}): Promise<DeviceSessionRow | null> {
+  const [session] = await args.writeDb
+    .select()
+    .from(connectorOauthDeviceAuthorizationSessions)
+    .where(
+      and(
+        eq(connectorOauthDeviceAuthorizationSessions.id, args.sessionId),
+        eq(connectorOauthDeviceAuthorizationSessions.orgId, args.orgId),
+        eq(connectorOauthDeviceAuthorizationSessions.userId, args.userId),
+        eq(connectorOauthDeviceAuthorizationSessions.connectorType, args.type),
+        eq(
+          connectorOauthDeviceAuthorizationSessions.sessionTokenHash,
+          sessionTokenHash(args.sessionToken),
+        ),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  return session ?? null;
+}
+
+async function expireSession(args: {
+  readonly writeDb: Db;
+  readonly session: DeviceSessionRow;
+  readonly now: Date;
+  readonly signal: AbortSignal;
+}): Promise<PollSuccess> {
+  const [expiredSession] = await args.writeDb
+    .update(connectorOauthDeviceAuthorizationSessions)
+    .set({
+      status: "expired",
+      errorCode: "expired_token",
+      errorMessage: "OAuth device authorization session expired",
+      updatedAt: args.now,
+      completedAt: args.now,
+    })
+    .where(
+      and(
+        eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id),
+        or(
+          eq(
+            connectorOauthDeviceAuthorizationSessions.status,
+            "awaiting_user_authorization",
+          ),
+          eq(connectorOauthDeviceAuthorizationSessions.status, "polling"),
+        ),
+      ),
+    )
+    .returning();
+  args.signal.throwIfAborted();
+
+  if (!expiredSession) {
+    return pendingResponse(args.session);
+  }
+  return { status: 200, body: terminalErrorBody(expiredSession) };
+}
+
+async function claimSession(args: {
+  readonly writeDb: Db;
+  readonly session: DeviceSessionRow;
+  readonly claimStartedAt: Date;
+  readonly signal: AbortSignal;
+}): Promise<DeviceSessionRow | null> {
+  const staleBefore = new Date(
+    args.claimStartedAt.getTime() - POLLING_STALE_MS,
+  );
+  const [claimedSession] = await args.writeDb
+    .update(connectorOauthDeviceAuthorizationSessions)
+    .set({ status: "polling", updatedAt: args.claimStartedAt })
+    .where(
+      and(
+        eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id),
+        or(
+          eq(
+            connectorOauthDeviceAuthorizationSessions.status,
+            "awaiting_user_authorization",
+          ),
+          and(
+            eq(connectorOauthDeviceAuthorizationSessions.status, "polling"),
+            lt(
+              connectorOauthDeviceAuthorizationSessions.updatedAt,
+              staleBefore,
+            ),
+          ),
+        ),
+      ),
+    )
+    .returning();
+  args.signal.throwIfAborted();
+  return claimedSession ?? null;
+}
+
+function parseEncryptedProviderState(args: {
+  readonly session: DeviceSessionRow;
+  readonly type: OAuthDeviceAuthorizationConnectorType;
+}): EncryptedProviderState {
+  const providerState = encryptedProviderStateSchema.parse(
+    JSON.parse(decryptSecretValue(args.session.encryptedProviderState)),
+  );
+  if (providerState.connectorType !== args.type) {
+    throw new Error("OAuth device provider state connector type mismatch");
+  }
+  return providerState;
+}
+
+async function claimStillCurrent(args: {
+  readonly writeDb: Db;
+  readonly sessionId: string;
+  readonly claimStartedAt: Date;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const [currentClaim] = await args.writeDb
+    .select({
+      status: connectorOauthDeviceAuthorizationSessions.status,
+      updatedAt: connectorOauthDeviceAuthorizationSessions.updatedAt,
+    })
+    .from(connectorOauthDeviceAuthorizationSessions)
+    .where(eq(connectorOauthDeviceAuthorizationSessions.id, args.sessionId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return (
+    currentClaim?.status === "polling" &&
+    currentClaim.updatedAt.getTime() === args.claimStartedAt.getTime()
+  );
+}
+
+async function markClaimTerminal(args: {
+  readonly writeDb: Db;
+  readonly session: DeviceSessionRow;
+  readonly claimStartedAt: Date;
+  readonly result: Extract<
+    OAuthDeviceAuthorizationPollResult,
+    { readonly status: "denied" | "expired" | "error" }
+  >;
+  readonly signal: AbortSignal;
+}): Promise<PollSuccess> {
+  const completedAt = nowDate();
+  const [terminalSession] = await args.writeDb
+    .update(connectorOauthDeviceAuthorizationSessions)
+    .set({
+      status: args.result.status,
+      errorCode: args.result.error,
+      errorMessage: args.result.errorDescription,
+      updatedAt: completedAt,
+      completedAt,
+    })
+    .where(
+      and(
+        eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id),
+        eq(connectorOauthDeviceAuthorizationSessions.status, "polling"),
+        eq(
+          connectorOauthDeviceAuthorizationSessions.updatedAt,
+          args.claimStartedAt,
+        ),
+      ),
+    )
+    .returning();
+  args.signal.throwIfAborted();
+
+  if (!terminalSession) {
+    return pendingResponse(args.session);
+  }
+  return { status: 200, body: terminalErrorBody(terminalSession) };
+}
+
+async function markClaimComplete(args: {
+  readonly writeDb: Db;
+  readonly session: DeviceSessionRow;
+  readonly claimStartedAt: Date;
+  readonly connector: ConnectorResponse;
+  readonly signal: AbortSignal;
+}): Promise<PollSuccess> {
+  const completedAt = nowDate();
+  const [completedSession] = await args.writeDb
+    .update(connectorOauthDeviceAuthorizationSessions)
+    .set({ status: "complete", updatedAt: completedAt, completedAt })
+    .where(
+      and(
+        eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id),
+        eq(connectorOauthDeviceAuthorizationSessions.status, "polling"),
+        eq(
+          connectorOauthDeviceAuthorizationSessions.updatedAt,
+          args.claimStartedAt,
+        ),
+      ),
+    )
+    .returning();
+  args.signal.throwIfAborted();
+
+  if (!completedSession) {
+    return pendingResponse(args.session);
+  }
+  return {
+    status: 200,
+    body: { status: "complete", connector: args.connector },
+  };
+}
+
+async function completeSessionResponse(args: {
+  readonly connectorLoader: () => Promise<ConnectorResponse | null>;
+  readonly signal: AbortSignal;
+}): Promise<PollSuccess> {
+  const connector = await args.connectorLoader();
+  args.signal.throwIfAborted();
+  if (!connector) {
+    throw new Error("Completed OAuth connector not found");
+  }
+  return { status: 200, body: { status: "complete", connector } };
+}
+
+async function runClaimedSession(
+  args: PollClaimedSessionArgs,
+): Promise<PollSuccess> {
+  const providerState = parseEncryptedProviderState({
+    session: args.session,
+    type: args.type,
+  });
+  const pollResult = await pollConnectorOAuthDeviceAuthorization({
+    type: args.type,
+    credentials: args.credentials,
+    deviceCode: providerState.deviceCode,
+  });
+  args.signal.throwIfAborted();
+
+  if (pollResult.status === "pending" || pollResult.status === "slow_down") {
+    const intervalSeconds =
+      pollResult.status === "pending"
+        ? (pollResult.interval ?? args.session.intervalSeconds)
+        : args.session.intervalSeconds + SLOW_DOWN_INCREMENT_SECONDS;
+    await markClaimAwaiting({
+      writeDb: args.writeDb,
+      sessionId: args.session.id,
+      claimStartedAt: args.claimStartedAt,
+      intervalSeconds,
+      signal: args.signal,
+    });
+    return {
+      status: 200,
+      body: { status: "pending", interval: intervalSeconds },
+    };
+  }
+
+  if (pollResult.status !== "complete") {
+    return await markClaimTerminal({
+      writeDb: args.writeDb,
+      session: args.session,
+      claimStartedAt: args.claimStartedAt,
+      result: pollResult,
+      signal: args.signal,
+    });
+  }
+
+  if (
+    !(await claimStillCurrent({
+      writeDb: args.writeDb,
+      sessionId: args.session.id,
+      claimStartedAt: args.claimStartedAt,
+      signal: args.signal,
+    }))
+  ) {
+    return pendingResponse(args.session);
+  }
+
+  const connector = await args.persistConnector({
+    result: pollResult,
+    providerState,
+  });
+  args.signal.throwIfAborted();
+
+  return await markClaimComplete({
+    writeDb: args.writeDb,
+    session: args.session,
+    claimStartedAt: args.claimStartedAt,
+    connector,
+    signal: args.signal,
+  });
+}
+
+async function pollClaimedSession(
+  args: PollClaimedSessionArgs,
+): Promise<PollSuccess> {
+  const result = await settle(runClaimedSession(args), args.signal);
+  if (result.ok) {
+    return result.value;
+  }
+
+  await markClaimAwaiting({
+    writeDb: args.writeDb,
+    sessionId: args.session.id,
+    claimStartedAt: args.claimStartedAt,
+    intervalSeconds: args.session.intervalSeconds,
+    signal: args.signal,
+  });
+  throw result.error;
+}
+
+export const startConnectorOauthDeviceSession$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ConnectorType;
+    },
+    signal: AbortSignal,
+  ) => {
+    const resolvedType = resolveDeviceAuthorizationType(args.type);
+    if (typeof resolvedType !== "string") {
+      return resolvedType;
+    }
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    if (!isConnectorAuthMethodAvailable(resolvedType, "oauth", overrides)) {
+      return connectorOauthDeviceAuthorizationDisabled;
+    }
+
+    const credentials = resolveConfiguredCredentials(resolvedType);
+    if ("status" in credentials) {
+      return credentials;
+    }
+
+    const startResult = await startConnectorOAuthDeviceAuthorization({
+      type: resolvedType,
+      credentials,
+    });
+    signal.throwIfAborted();
+
+    const oauthConfig =
+      getConnectorOAuthDeviceAuthorizationConfig(resolvedType);
+    const sessionToken = generateSessionToken();
+    const intervalSeconds =
+      startResult.interval ?? DEFAULT_POLL_INTERVAL_SECONDS;
+    const now = nowDate();
+    const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
+    const encryptedProviderState = encryptSecretValue(
+      JSON.stringify({
+        connectorType: resolvedType,
+        deviceCode: startResult.deviceCode,
+        scopes: [...oauthConfig.scopes],
+      }),
+    );
+
+    const [session] = await set(writeDb$)
+      .insert(connectorOauthDeviceAuthorizationSessions)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorType: resolvedType,
+        status: "awaiting_user_authorization",
+        sessionTokenHash: sessionTokenHash(sessionToken),
+        encryptedProviderState,
+        userCode: startResult.userCode,
+        verificationUri: startResult.verificationUri,
+        verificationUriComplete: startResult.verificationUriComplete,
+        intervalSeconds,
+        expiresAt,
+      })
+      .returning({
+        id: connectorOauthDeviceAuthorizationSessions.id,
+      });
+    signal.throwIfAborted();
+
+    if (!session) {
+      throw new Error("Failed to create OAuth device authorization session");
+    }
+
+    const body: ConnectorOauthDeviceSessionStartResponse = {
+      sessionId: session.id,
+      sessionToken,
+      type: resolvedType,
+      status: "pending",
+      userCode: startResult.userCode,
+      verificationUri: startResult.verificationUri,
+      verificationUriComplete: startResult.verificationUriComplete,
+      expiresIn: startResult.expiresIn,
+      interval: intervalSeconds,
+    };
+    return { status: 200 as const, body };
+  },
+);
+
+export const pollConnectorOauthDeviceSession$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ConnectorType;
+      readonly sessionId: string;
+      readonly sessionToken: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const resolvedType = resolveDeviceAuthorizationType(args.type);
+    if (typeof resolvedType !== "string") {
+      return resolvedType;
+    }
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    if (!isConnectorAuthMethodAvailable(resolvedType, "oauth", overrides)) {
+      return connectorOauthDeviceAuthorizationDisabled;
+    }
+
+    const credentials = resolveConfiguredCredentials(resolvedType);
+    if ("status" in credentials) {
+      return credentials;
+    }
+
+    const writeDb = set(writeDb$);
+    const session = await loadOwnedSession({
+      writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      type: resolvedType,
+      sessionId: args.sessionId,
+      sessionToken: args.sessionToken,
+      signal,
+    });
+    if (!session) {
+      return notFound("OAuth device authorization session not found");
+    }
+
+    if (session.status === "complete") {
+      return await completeSessionResponse({
+        connectorLoader: () => {
+          return get(
+            zeroConnectorByType({
+              orgId: args.orgId,
+              userId: args.userId,
+              type: resolvedType,
+              includeHiddenStoredConnector: true,
+            }),
+          );
+        },
+        signal,
+      });
+    }
+
+    if (
+      session.status === "denied" ||
+      session.status === "expired" ||
+      session.status === "error"
+    ) {
+      return { status: 200 as const, body: terminalErrorBody(session) };
+    }
+
+    const now = nowDate();
+    if (now > session.expiresAt) {
+      return await expireSession({ writeDb, session, now, signal });
+    }
+
+    if (shouldWaitBeforeProviderPoll(session, now)) {
+      return pendingResponse(session);
+    }
+
+    if (
+      session.status === "polling" &&
+      session.updatedAt.getTime() > now.getTime() - POLLING_STALE_MS
+    ) {
+      return pendingResponse(session);
+    }
+
+    const claimStartedAt = nowDate();
+    const claimedSession = await claimSession({
+      writeDb,
+      session,
+      claimStartedAt,
+      signal,
+    });
+    if (!claimedSession) {
+      return pendingResponse(session);
+    }
+
+    return await pollClaimedSession({
+      writeDb,
+      type: resolvedType,
+      credentials,
+      session: claimedSession,
+      claimStartedAt,
+      signal,
+      persistConnector: async ({ result, providerState }) => {
+        const provider = CONNECTOR_OAUTH_PROVIDERS[resolvedType];
+        const connectorResult = await set(
+          upsertOAuthConnector$,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            type: resolvedType,
+            accessToken: result.token.accessToken,
+            userInfo: result.token.userInfo,
+            oauthScopes: providerState.scopes,
+            refreshToken: result.token.refreshToken,
+            refreshSecretName: provider.getRefreshSecretName?.(),
+            expiresIn: result.token.expiresIn,
+          },
+          signal,
+        );
+        return connectorResult.connector;
+      },
+    });
+  },
+);
