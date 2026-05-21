@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -60,8 +61,14 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   );
 }
 
-function renderWorksPage() {
-  detachedSetupPage({ context, path: "/works" });
+function renderWorksPage(options?: {
+  readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+}) {
+  detachedSetupPage({
+    context,
+    path: "/works",
+    featureSwitches: options?.featureSwitches,
+  });
 }
 
 function getGithubCard(): HTMLElement {
@@ -120,9 +127,21 @@ describe("works page - slack integration status display", () => {
 });
 
 describe("works page - GitHub integration card", () => {
-  it("shows the GitHub install action when no installation exists", async () => {
+  it("hides the GitHub card when the feature switch is off", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows the GitHub install action when no installation exists", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
 
     await waitFor(() => {
       expect(
@@ -138,7 +157,9 @@ describe("works page - GitHub integration card", () => {
         labelListeners: [],
       }),
     );
-    renderWorksPage();
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
 
     await waitFor(() => {
       expect(within(getGithubCard()).getByText("Manage")).toBeInTheDocument();
@@ -195,7 +216,9 @@ describe("works page - GitHub integration card", () => {
         ],
       }),
     );
-    renderWorksPage();
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
 
     await waitFor(() => {
       expect(within(getGithubCard()).getByText("Manage")).toBeInTheDocument();

@@ -1,5 +1,6 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertTriangle,
@@ -30,6 +31,7 @@ import {
   showUninstallDialog$,
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -323,6 +325,8 @@ export function ZeroWorksPage() {
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
       : "Zero";
+  const features = useGet(featureSwitch$);
+  const showGithubCard = features[FeatureSwitchKey.GitHubIntegration] ?? false;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -340,7 +344,7 @@ export function ZeroWorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
-          <GithubCard />
+          {showGithubCard ? <GithubCard /> : null}
           <TelegramCard />
           <AgentPhoneCard />
         </div>

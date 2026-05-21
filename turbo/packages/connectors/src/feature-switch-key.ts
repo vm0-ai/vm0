@@ -33,6 +33,7 @@ export enum FeatureSwitchKey {
   ResendConnector = "resendConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
+  GitHubIntegration = "githubIntegration",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   LocalBrowserUse = "localBrowserUse",
