@@ -1631,6 +1631,54 @@ class TestGetFirewallHeaders:
         assert last_force_refresh_at(cache_key) >= before_forced
         assert cached_headers(cache_key).headers == forced_headers
 
+    async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
+        """A same-key waiter must not reuse headers from the stale-prone leader fetch."""
+        cache_key = ("run-1", "api-1")
+        first_fetch_entered = asyncio.Event()
+        allow_first_fetch_return = asyncio.Event()
+        force_refresh_values = []
+
+        async def fetch_with_blocked_leader(*args, force_refresh=False):
+            force_refresh_values.append(force_refresh)
+            if not force_refresh:
+                first_fetch_entered.set()
+                await allow_first_fetch_return.wait()
+                return {
+                    "headers": {"Authorization": "Bearer maybe-stale"},
+                    "expiresAt": time.time() + 3600,
+                }
+            return {
+                "headers": {"Authorization": "Bearer refreshed"},
+                "expiresAt": time.time() + 3600,
+            }
+
+        with patch.object(auth, "fetch_firewall_headers", side_effect=fetch_with_blocked_leader):
+            leader = asyncio.create_task(
+                auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            )
+            waiter = None
+            try:
+                await asyncio.wait_for(first_fetch_entered.wait(), timeout=5)
+                waiter = asyncio.create_task(
+                    auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+                )
+                auth.request_force_refresh(cache_key)
+                allow_first_fetch_return.set()
+                leader_result, waiter_result = await asyncio.gather(leader, waiter)
+            finally:
+                allow_first_fetch_return.set()
+                for task in (leader, waiter):
+                    if task is not None and not task.done():
+                        task.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await task
+
+        assert force_refresh_values == [False, True]
+        assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
+        assert waiter_result["headers"] == {"Authorization": "Bearer refreshed"}
+        assert cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
+        assert not force_refresh_pending(cache_key)
+
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
         mock_fetch = AsyncMock(return_value={"headers": {}})
