@@ -29,7 +29,11 @@ export const reddit = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://www.reddit.com/api/v1/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://www.reddit.com/api/v1/authorize",
+      },
       tokenUrl: "https://www.reddit.com/api/v1/access_token",
       client: {
         clientRegistration: "static",

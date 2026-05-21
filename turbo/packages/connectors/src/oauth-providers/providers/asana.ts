@@ -1,4 +1,7 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthAuthorizationEndpoint,
+  getConnectorOAuthConfig,
+} from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -30,7 +33,6 @@ export function buildAsanaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("asana");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -38,7 +40,7 @@ export function buildAsanaAuthorizationUrl(
     state,
   });
 
-  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+  return `${getConnectorOAuthAuthorizationEndpoint("asana")}?${params.toString()}`;
 }
 
 /**

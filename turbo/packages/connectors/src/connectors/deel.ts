@@ -40,7 +40,11 @@ export const deel = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://app.deel.com/oauth2/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://app.deel.com/oauth2/authorize",
+      },
       tokenUrl: "https://app.deel.com/oauth2/tokens",
       client: {
         clientRegistration: "static",

@@ -1,4 +1,7 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthAuthorizationEndpoint,
+  getConnectorOAuthConfig,
+} from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import type { GoogleOAuthConnectorType } from "../google-oauth-connectors";
 import { throwOAuthError } from "./oauth-error";
@@ -46,7 +49,7 @@ export function buildGoogleAuthorizationUrl(
     prompt: "consent",
   });
 
-  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+  return `${getConnectorOAuthAuthorizationEndpoint(connectorType)}?${params.toString()}`;
 }
 
 /**

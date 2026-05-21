@@ -23,7 +23,11 @@ export const intervalsIcu = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://intervals.icu/oauth/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://intervals.icu/oauth/authorize",
+      },
       tokenUrl: "https://intervals.icu/api/oauth/token",
       client: {
         clientRegistration: "static",

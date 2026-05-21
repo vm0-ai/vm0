@@ -1,4 +1,7 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthAuthorizationEndpoint,
+  getConnectorOAuthConfig,
+} from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -31,7 +34,7 @@ export function buildTodoistAuthorizationUrl(
     redirect_uri: redirectUri,
   });
 
-  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+  return `${getConnectorOAuthAuthorizationEndpoint("todoist")}?${params.toString()}`;
 }
 
 /**

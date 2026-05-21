@@ -14,8 +14,10 @@ import {
   getConnectorAuthMethods,
   getConnectorOAuthClientConfig,
   getConnectorOAuthCredentials,
+  getConnectorOAuthAuthorizationEndpoint,
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
+  getConnectorOAuthFlow,
   getRuntimeAvailableConnectorTypes,
   isStaticConfidentialConnectorOAuthCredentials,
   isStaticConnectorOAuthCredentials,
@@ -651,6 +653,54 @@ describe("getConnectorOAuthConfigIfSupported", () => {
   });
 });
 
+describe("connector OAuth authorization-code config", () => {
+  it("declares the current OAuth connectors as authorization-code flows", () => {
+    for (const type of connectorTypeSchema.options) {
+      if (!isOAuthConnectorType(type)) {
+        continue;
+      }
+
+      expect(getConnectorOAuthFlow(type), `${type}: OAuth flow`).toBe(
+        "authorization-code",
+      );
+    }
+  });
+
+  it("marks Vercel authorization endpoint construction as provider-managed", () => {
+    expect(
+      getConnectorOAuthConfig("vercel").authorizationEndpoint,
+    ).toStrictEqual({
+      type: "provider",
+    });
+  });
+
+  it("keeps all non-Vercel OAuth authorization endpoints in connector config", () => {
+    for (const type of connectorTypeSchema.options) {
+      const oauthConfig = getConnectorOAuthConfigIfSupported(type);
+      if (!oauthConfig || type === "vercel") {
+        continue;
+      }
+
+      expect(
+        oauthConfig.authorizationEndpoint.type,
+        `${type}: authorization endpoint source`,
+      ).toBe("config");
+      if (oauthConfig.authorizationEndpoint.type === "config") {
+        expect(
+          oauthConfig.authorizationEndpoint.url,
+          `${type}: authorization endpoint URL`,
+        ).toBeTruthy();
+      }
+    }
+  });
+
+  it("keeps the synthetic test OAuth connector on a relative configured endpoint", () => {
+    expect(getConnectorOAuthAuthorizationEndpoint("test-oauth")).toBe(
+      "/api/test/oauth-provider/authorize",
+    );
+  });
+});
+
 describe("getConnectorTypeForSecretName", () => {
   it("finds connector type for OAuth env mapping key", () => {
     expect(getConnectorTypeForSecretName("GH_TOKEN")).toBe("github");
@@ -712,20 +762,9 @@ describe("isGoogleOAuthConnector", () => {
 
   it("keeps Google OAuth connector configs on the Google authorization endpoint", () => {
     for (const type of GOOGLE_OAUTH_CONNECTOR_TYPES) {
-      const oauthConfig = getConnectorOAuthConfig(type);
-      const authorizationUrl = oauthConfig.authorizationUrl;
-      if (!authorizationUrl) {
-        throw new Error(`${type}: Google connector must have authorizationUrl`);
-      }
-      const parsedAuthorizationUrl = new URL(authorizationUrl);
-
       expect(
-        parsedAuthorizationUrl.protocol,
-        `${type}: Google connector authorizationUrl must use https`,
-      ).toBe("https:");
-      expect(
-        parsedAuthorizationUrl.hostname,
-        `${type}: Google connector authorizationUrl must use accounts.google.com`,
+        new URL(getConnectorOAuthAuthorizationEndpoint(type)).hostname,
+        `${type}: Google connector authorization endpoint must use accounts.google.com`,
       ).toBe("accounts.google.com");
     }
   });
@@ -733,17 +772,14 @@ describe("isGoogleOAuthConnector", () => {
   it("includes every connector configured with the Google authorization endpoint", () => {
     for (const type of connectorTypeSchema.options) {
       const oauthConfig = getConnectorOAuthConfigIfSupported(type);
-      if (!oauthConfig?.authorizationUrl) {
+      if (oauthConfig?.authorizationEndpoint.type !== "config") {
         continue;
       }
-      if (
-        oauthConfig.authorizationUrl.startsWith("/") &&
-        !oauthConfig.authorizationUrl.startsWith("//")
-      ) {
+      if (!oauthConfig.authorizationEndpoint.url.startsWith("https://")) {
         continue;
       }
 
-      const hostname = new URL(oauthConfig.authorizationUrl).hostname;
+      const hostname = new URL(oauthConfig.authorizationEndpoint.url).hostname;
       if (hostname !== "accounts.google.com") {
         continue;
       }

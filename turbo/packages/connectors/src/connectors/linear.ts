@@ -27,7 +27,11 @@ export const linear = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://linear.app/oauth/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://linear.app/oauth/authorize",
+      },
       tokenUrl: "https://api.linear.app/oauth/token",
       client: {
         clientRegistration: "static",

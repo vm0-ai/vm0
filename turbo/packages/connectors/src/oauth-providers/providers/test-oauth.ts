@@ -9,7 +9,10 @@
  * the provider routes themselves 404 in production via isTestEndpointAllowed().
  */
 
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthAuthorizationEndpoint,
+  getConnectorOAuthConfig,
+} from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 export {
@@ -128,8 +131,8 @@ function previewBypassHeaders(): Record<string, string> {
 
 function getAuthorizationUrl(): string {
   return resolveUrl(
-    "authorizationUrl",
-    getConnectorOAuthConfig("test-oauth").authorizationUrl,
+    "authorizationEndpoint",
+    getConnectorOAuthAuthorizationEndpoint("test-oauth"),
   );
 }
 
@@ -224,8 +227,8 @@ export async function refreshTestOAuthToken(
 export async function fetchTestOAuthUserInfo(
   accessToken: string,
 ): Promise<UserInfo> {
-  // userinfo is not part of the OAuth 2 spec's tokenUrl/authorizationUrl
-  // pair so ConnectorOAuthConfig doesn't carry it. Derive from the same app.
+  // userinfo is not part of the OAuth 2 spec's token and authorization
+  // endpoints, so ConnectorOAuthConfig doesn't carry it. Derive from the same app.
   const response = await fetch(
     `${runtimeBaseUrl()}/api/test/oauth-provider/userinfo`,
     {

@@ -27,7 +27,11 @@ export const sentry = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://sentry.io/oauth/authorize/",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://sentry.io/oauth/authorize/",
+      },
       tokenUrl: "https://sentry.io/oauth/token/",
       client: {
         clientRegistration: "static",

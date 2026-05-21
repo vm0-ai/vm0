@@ -41,7 +41,11 @@ export const mercury = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://oauth2.mercury.com/oauth2/auth",
+      },
       tokenUrl: "https://oauth2.mercury.com/oauth2/token",
       client: {
         clientRegistration: "static",

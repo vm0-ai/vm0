@@ -27,7 +27,11 @@ export const airtable = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://airtable.com/oauth2/v1/authorize",
+      },
       tokenUrl: "https://airtable.com/oauth2/v1/token",
       client: {
         clientRegistration: "static",

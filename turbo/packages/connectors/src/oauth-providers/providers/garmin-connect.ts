@@ -1,4 +1,7 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthAuthorizationEndpoint,
+  getConnectorOAuthConfig,
+} from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -67,7 +70,6 @@ export async function buildGarminConnectAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -80,7 +82,7 @@ export async function buildGarminConnectAuthorizationUrl(
     code_challenge_method: "S256",
   });
 
-  return `${oauthConfig.authorizationUrl}?${params.toString()}`;
+  return `${getConnectorOAuthAuthorizationEndpoint("garmin-connect")}?${params.toString()}`;
 }
 
 /**

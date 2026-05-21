@@ -1,4 +1,7 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthAuthorizationEndpoint,
+  getConnectorOAuthConfig,
+} from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -73,7 +76,7 @@ export async function buildAirtableAuthorizationUrl(
   });
 
   return {
-    url: `${oauthConfig.authorizationUrl}?${params.toString()}`,
+    url: `${getConnectorOAuthAuthorizationEndpoint("airtable")}?${params.toString()}`,
     codeVerifier,
   };
 }

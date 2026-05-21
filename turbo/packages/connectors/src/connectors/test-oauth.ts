@@ -29,10 +29,14 @@ export const testOauth = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
+      flow: "authorization-code",
       // Relative paths — the handler resolves them against NEXT_PUBLIC_APP_URL
       // at call time because the fake provider lives inside this same app and
       // the preview-URL host changes per deploy.
-      authorizationUrl: "/api/test/oauth-provider/authorize",
+      authorizationEndpoint: {
+        type: "config",
+        url: "/api/test/oauth-provider/authorize",
+      },
       tokenUrl: "/api/test/oauth-provider/token",
       client: {
         clientRegistration: "static",

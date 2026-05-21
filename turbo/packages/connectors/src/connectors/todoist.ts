@@ -23,7 +23,11 @@ export const todoist = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://todoist.com/oauth/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://todoist.com/oauth/authorize",
+      },
       tokenUrl: "https://todoist.com/oauth/access_token",
       client: {
         clientRegistration: "static",

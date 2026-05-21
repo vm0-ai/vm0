@@ -29,7 +29,11 @@ export const zoom = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://zoom.us/oauth/authorize",
+      flow: "authorization-code",
+      authorizationEndpoint: {
+        type: "config",
+        url: "https://zoom.us/oauth/authorize",
+      },
       tokenUrl: "https://zoom.us/oauth/token",
       client: {
         clientRegistration: "static",

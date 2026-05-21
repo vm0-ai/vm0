@@ -315,12 +315,24 @@ export type DynamicPublicConnectorOAuthClientConfig = Extract<
   }
 >;
 
-export interface ConnectorOAuthConfig {
-  authorizationUrl?: string;
-  tokenUrl: string;
-  client: ConnectorOAuthClientConfig;
-  scopes: string[];
+export type ConnectorOAuthAuthorizationEndpointConfig =
+  | {
+      readonly type: "config";
+      readonly url: string;
+    }
+  | {
+      readonly type: "provider";
+    };
+
+export interface ConnectorOAuthAuthorizationCodeConfig {
+  readonly flow: "authorization-code";
+  readonly authorizationEndpoint: ConnectorOAuthAuthorizationEndpointConfig;
+  readonly tokenUrl: string;
+  readonly client: ConnectorOAuthClientConfig;
+  readonly scopes: string[];
 }
+
+export type ConnectorOAuthConfig = ConnectorOAuthAuthorizationCodeConfig;
 
 /**
  * CLI auth configuration for connectors that can import credentials through a
@@ -772,6 +784,21 @@ export type OAuthConnectorType = {
     ? Type
     : never;
 }[ConnectorType];
+export type OAuthAuthorizationCodeConnectorType = {
+  [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "authorization-code"
+    ? Type
+    : never;
+}[OAuthConnectorType];
+export type OAuthConfigManagedAuthorizationCodeConnectorType = {
+  [Type in OAuthAuthorizationCodeConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["authorizationEndpoint"]["type"] extends "config"
+    ? Type
+    : never;
+}[OAuthAuthorizationCodeConnectorType];
+export type OAuthProviderManagedAuthorizationCodeConnectorType = {
+  [Type in OAuthAuthorizationCodeConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["authorizationEndpoint"]["type"] extends "provider"
+    ? Type
+    : never;
+}[OAuthAuthorizationCodeConnectorType];
 export type ConnectorCliAuthConnectorType = {
   [Type in ConnectorType]: "cli-auth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
     ? Type
