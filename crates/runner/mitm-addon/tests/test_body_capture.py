@@ -513,6 +513,25 @@ class TestAddCaptureFields:
         assert entry["response_body"] == '{"a": "result"}'
         assert entry["request_headers"]["Host"] == "api.example.com"
 
+    def test_non_utf8_text_bodies_capture_base64(self, real_flow):
+        request_body = b"\xff\xfe request"
+        response_body = b"\xff\xfe response"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_body=request_body,
+            request_content_type="text/plain",
+            response_body=response_body,
+            response_content_type="text/plain",
+            include_request_id=True,
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == request_body
+        assert entry["response_body_encoding"] == "base64"
+        assert base64.b64decode(entry["response_body"]) == response_body
+
     def test_captures_response_body_from_stream_buffer(self, real_flow):
         """When stream_buffer is present, response body should be read from it."""
         flow = real_flow(
