@@ -52,6 +52,22 @@ Summary: [Ready to commit / Issues need attention]
 
 ## Troubleshooting
 
+If local Rust checks fail with `Cannot allocate memory`, `os error 12`, or `ENOMEM`
+during `cargo test`, `cargo clippy`, `cargo doc`, `rustc`, or linker output:
+
+1. Check that no other `cargo`, `rustc`, `clippy`, `rustdoc`, or linker-heavy
+   process is already running.
+2. Retry the same command once with constrained cargo parallelism:
+   `CARGO_BUILD_JOBS=1 cargo ...`.
+3. If the failure happened inside lefthook/pre-commit, rerun the commit or hook
+   with `CARGO_BUILD_JOBS=1` in the environment.
+4. Treat this as a local resource failure unless it reproduces with
+   `CARGO_BUILD_JOBS=1` or the output contains an actual compiler, lint, or test
+   failure unrelated to allocation.
+
+Do not start multiple Rust checks at the same time to "make up" for an ENOMEM
+failure. That usually makes the next run less reliable.
+
 If hooks are slow or lint times out:
 
 ```bash
