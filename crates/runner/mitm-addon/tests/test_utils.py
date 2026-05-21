@@ -63,6 +63,15 @@ class TestGetOriginalUrl:
 
         assert exc_info.value.reason == "authority_mismatch"
 
+    def test_https_accepts_trailing_dot_authority_equivalence(self, real_flow, headers):
+        flow = real_flow(
+            host="203.0.113.10",
+            sni="api.example.com.",
+            path="/v1/data",
+            request_headers=headers(("Host", "API.EXAMPLE.COM.")),
+        )
+        assert get_original_url(flow) == "https://api.example.com/v1/data"
+
     def test_http_uses_request_host_not_host_header(self, real_flow, headers):
         flow = real_flow(
             scheme="http",
@@ -72,6 +81,16 @@ class TestGetOriginalUrl:
             request_headers=headers(("Host", "api.example.com")),
         )
         assert get_original_url(flow) == "http://203.0.113.10/v1/data"
+
+    def test_http_brackets_ipv6_request_host(self, real_flow, headers):
+        flow = real_flow(
+            scheme="http",
+            host="2001:db8::1",
+            port=8080,
+            path="/v1/data",
+            request_headers=headers(("Host", "api.example.com")),
+        )
+        assert get_original_url(flow) == "http://[2001:db8::1]:8080/v1/data"
 
 
 class TestLogProxyEntry:

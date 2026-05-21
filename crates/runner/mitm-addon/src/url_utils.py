@@ -3,6 +3,7 @@
 Pure functions with no module-level state or I/O.
 """
 
+import ipaddress
 import urllib.parse
 from dataclasses import dataclass
 
@@ -13,6 +14,7 @@ from mitmproxy.net.http import url as mitm_url
 # default port for its scheme we omit ``:port`` from the reconstructed URL.
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
+_IPV6_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -51,12 +53,26 @@ def _normalize_hostname(host: str) -> str:
     return normalized.encode("idna").decode("ascii").lower()
 
 
+def _format_url_host(host: str) -> str:
+    candidate = host
+    if candidate.startswith("[") and candidate.endswith("]"):
+        candidate = candidate[1:-1]
+    try:
+        parsed = ipaddress.ip_address(candidate)
+    except ValueError:
+        return host
+    if parsed.version == _IPV6_VERSION:
+        return f"[{candidate}]"
+    return candidate
+
+
 def _host_with_port(scheme: str, host: str, port: int) -> str:
+    url_host = _format_url_host(host)
     if (scheme == "https" and port != _HTTPS_DEFAULT_PORT) or (
         scheme == "http" and port != _HTTP_DEFAULT_PORT
     ):
-        return f"{host}:{port}"
-    return host
+        return f"{url_host}:{port}"
+    return url_host
 
 
 def _build_url(scheme: str, host: str, port: int, path: str) -> str:
