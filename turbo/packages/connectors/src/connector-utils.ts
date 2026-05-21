@@ -493,12 +493,6 @@ export function isOAuthDeviceAuthorizationConnectorType(
   );
 }
 
-export function getConnectorOAuthAuthorizationCodeConfig(
-  type: OAuthAuthorizationCodeConnectorType,
-): Extract<ConnectorOAuthConfig, { readonly flow: "authorization-code" }> {
-  return CONNECTOR_TYPES[type].oauth;
-}
-
 export function getConnectorOAuthDeviceAuthorizationConfig(
   type: OAuthDeviceAuthorizationConnectorType,
 ): Extract<ConnectorOAuthConfig, { readonly flow: "device-authorization" }> {

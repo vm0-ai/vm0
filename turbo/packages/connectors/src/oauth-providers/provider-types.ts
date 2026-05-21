@@ -338,31 +338,3 @@ export function isOAuthRefreshProvider(
     typeof provider.refreshToken === "function"
   );
 }
-
-export function isOAuthAuthorizationCodeProvider(
-  provider: OAuthProviderMetadata,
-): provider is OAuthProviderMetadata & {
-  buildAuthUrl: BuildAuthUrlFn;
-  exchangeCode: ExchangeCodeFn;
-} {
-  return (
-    "buildAuthUrl" in provider &&
-    typeof provider.buildAuthUrl === "function" &&
-    "exchangeCode" in provider &&
-    typeof provider.exchangeCode === "function"
-  );
-}
-
-export function isOAuthDeviceAuthorizationProvider(
-  provider: OAuthProviderMetadata,
-): provider is OAuthProviderMetadata & {
-  startDeviceAuthorization: StartDeviceAuthorizationFn;
-  pollDeviceAuthorization: PollDeviceAuthorizationFn;
-} {
-  return (
-    "startDeviceAuthorization" in provider &&
-    typeof provider.startDeviceAuthorization === "function" &&
-    "pollDeviceAuthorization" in provider &&
-    typeof provider.pollDeviceAuthorization === "function"
-  );
-}
