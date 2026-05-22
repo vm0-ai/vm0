@@ -457,7 +457,6 @@ async fn execute_new_sandbox(
         },
         telemetry,
         cancel.clone(),
-        PROCESS_CANCEL_TIMEOUTS,
     )
     .await;
 
@@ -546,7 +545,6 @@ async fn execute_reused_sandbox(
         },
         telemetry,
         cancel.clone(),
-        PROCESS_CANCEL_TIMEOUTS,
     )
     .await;
 
@@ -672,6 +670,26 @@ struct RunStart<'a> {
 }
 
 async fn run_in_sandbox(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    cancel: CancellationToken,
+) -> RunnerResult<AgentExecutionResult> {
+    run_in_sandbox_with_process_cancel_timeouts(
+        sandbox,
+        context,
+        config,
+        start,
+        telemetry,
+        cancel,
+        PROCESS_CANCEL_TIMEOUTS,
+    )
+    .await
+}
+
+async fn run_in_sandbox_with_process_cancel_timeouts(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
@@ -3890,7 +3908,7 @@ mod tests {
     ) -> tokio::task::JoinHandle<RunnerResult<AgentExecutionResult>> {
         tokio::spawn(async move {
             let mut telemetry = test_telemetry(&config, &ctx);
-            run_in_sandbox(
+            run_in_sandbox_with_process_cancel_timeouts(
                 &*sandbox,
                 &ctx,
                 &config,
@@ -3946,7 +3964,6 @@ mod tests {
             },
             &mut telemetry,
             cancel.clone(),
-            PROCESS_CANCEL_TIMEOUTS,
         )
         .await
         .unwrap();
