@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use agent_diagnostics::{FailureDiagnostic, FailureReason};
+use agent_diagnostics::{FailureClass, FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
 use sandbox::SandboxId;
 use tokio::task::JoinSet;
@@ -373,10 +373,11 @@ fn log_job_execution_failed(
 }
 
 fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
-    matches!(
-        diagnostic.failure_reason,
-        Some(FailureReason::InsufficientCredits | FailureReason::UsageLimit)
-    )
+    diagnostic.failure_class == FailureClass::CliNonzero
+        && matches!(
+            diagnostic.failure_reason,
+            Some(FailureReason::InsufficientCredits | FailureReason::UsageLimit)
+        )
 }
 
 pub(super) async fn cleanup_panicked_job(
@@ -549,15 +550,12 @@ mod tests {
         events[0].clone()
     }
 
-    fn assert_field_contains(event: &CapturedEvent, field: &str, expected: &str) {
+    fn assert_field_eq(event: &CapturedEvent, field: &str, expected: &str) {
         let value = event
             .fields
             .get(field)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
-        assert!(
-            value.contains(expected),
-            "field {field}={value:?} did not contain {expected:?}"
-        );
+        assert_eq!(value, expected, "field {field} mismatch; event={event:#?}");
     }
 
     #[test]
@@ -580,10 +578,35 @@ mod tests {
                 event.fields.get("message").map(String::as_str),
                 Some("job execution failed")
             );
-            assert_field_contains(&event, "failure_reason", reason.as_str());
-            assert_field_contains(&event, "failure_class", "cli_nonzero");
-            assert_field_contains(&event, "failure_detail_source", "codex_jsonl");
+            assert_field_eq(&event, "failure_reason", reason.as_str());
+            assert_field_eq(&event, "failure_class", "cli_nonzero");
+            assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
         }
+    }
+
+    #[test]
+    fn quota_reason_on_non_cli_failure_logs_job_execution_failed_at_error() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CheckpointFailed,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_failure_reason(FailureReason::UsageLimit);
+        let failure = executor::ExecutionFailure::new(
+            1,
+            "checkpoint upload failed after usage limit event",
+            Some(diagnostic),
+        );
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "failure_reason", "usage_limit");
+        assert_field_eq(&event, "failure_class", "checkpoint_failed");
     }
 
     #[test]
