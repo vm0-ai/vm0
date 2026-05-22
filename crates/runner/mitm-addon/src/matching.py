@@ -933,7 +933,6 @@ def match_firewall_request(
     if network_policies is None:
         network_policies = {}
 
-    # Track the first base URL that matched for block/unknown responses.
     # Track the first matched base URL and api_entry for unknown endpoint auth.
     blocked_match: tuple[str, str, str, dict, dict] | None = None
 
