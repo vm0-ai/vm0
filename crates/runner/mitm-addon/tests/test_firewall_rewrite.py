@@ -833,6 +833,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
                 ("X-Repeat", "one"),
                 ("X-Repeat", "two"),
                 ("Authorization", "Bearer agent"),
+                ("authorization", "Bearer lower-agent"),
+                ("AUTHORIZATION", "Bearer upper-agent"),
                 ("Authorization", "Bearer stale"),
             ),
         )
@@ -849,6 +851,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert req_headers.count(("X-Repeat", "one")) == 1
         assert req_headers.count(("X-Repeat", "two")) == 1
         assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("authorization", "Bearer lower-agent") not in req_headers
+        assert ("AUTHORIZATION", "Bearer upper-agent") not in req_headers
         assert ("Authorization", "Bearer stale") not in req_headers
         assert req_headers.count(("Authorization", "Bearer real")) == 1
 

@@ -20,6 +20,10 @@ class TestAuthBaseForwarderSecurity:
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             forwarder._forward_request_sync("//no-scheme.com/path", "GET", [], None)
 
+    def test_rejects_invalid_port(self):
+        with pytest.raises(ValueError, match="Invalid upstream URL: invalid port"):
+            forwarder._forward_request_sync("https://example.com:bad/path", "GET", [], None)
+
     def test_filters_hop_by_hop_from_response(self):
         filtered = forwarder._filter_response_headers(
             [
@@ -111,6 +115,50 @@ class TestAuthBaseForwarderSecurity:
                 call("X-Repeat", "two"),
             ]
         )
+
+    def test_root_request_target_preserves_query(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn):
+            forwarder._forward_request_sync(
+                "https://example.com?wait=true",
+                "GET",
+                [],
+                None,
+            )
+
+        conn.putrequest.assert_called_once_with(
+            "GET",
+            "/?wait=true",
+            skip_host=True,
+            skip_accept_encoding=True,
+        )
+
+    def test_https_scheme_uses_https_connection_and_default_port_host(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(
+            forwarder.http_client, "HTTPSConnection", return_value=conn
+        ) as https_conn:
+            forwarder._forward_request_sync(
+                "https://example.com:443/path",
+                "GET",
+                [],
+                None,
+            )
+
+        https_conn.assert_called_once_with("example.com", port=443, timeout=30)
+        assert call("Host", "example.com") in conn.putheader.call_args_list
 
     def test_http_scheme_uses_http_connection_and_default_port_host(self):
         resp = MagicMock()
