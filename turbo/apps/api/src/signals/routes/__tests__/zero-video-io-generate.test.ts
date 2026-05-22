@@ -823,6 +823,102 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
+  it("submits a single Dreamina first-frame image without a frame role", async () => {
+    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "dreamina-video-task",
+          status: "queued",
+        });
+      }),
+      http.get(BYTEPLUS_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "animate the photo with natural motion",
+        model: "dreamina-seedance-2.0",
+        duration: "6s",
+        resolution: "720p",
+        aspectRatio: "4:3",
+        firstFrameImageUrl: "https://example.com/first.png",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const callbackUrl = readCallbackUrl(observedBody);
+
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "dreamina-video-task",
+      status: "succeeded",
+      content: {
+        video_url: {
+          url: BYTEPLUS_VIDEO_URL,
+          content_type: "video/mp4",
+        },
+      },
+      usage: {
+        completion_tokens: 100_000,
+      },
+    });
+    await clearAllDetached();
+
+    expect(observedBody).toMatchObject({
+      model: "dreamina-seedance-2-0-260128",
+      resolution: "720p",
+      ratio: "4:3",
+      duration: 6,
+      generate_audio: true,
+      content: [
+        {
+          type: "text",
+          text: "animate the photo with natural motion",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/first.png" },
+        },
+      ],
+    });
+    const content = asRecord(observedBody).content;
+    expect(Array.isArray(content)).toBeTruthy();
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expect(asRecord(content[1]).role).toBeUndefined();
+  });
+
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await track(seedVideoFixture({ credits: 10_000 }));
     await upsertDefaultVideoPricingRows();

@@ -444,7 +444,7 @@ type BytePlusContent =
   | {
       readonly type: "image_url";
       readonly image_url: { readonly url: string };
-      readonly role: "first_frame" | "last_frame" | "reference_image";
+      readonly role?: "first_frame" | "last_frame" | "reference_image";
     }
   | {
       readonly type: "video_url";
@@ -1084,11 +1084,13 @@ function bytePlusVideoContent(
       text: options.prompt,
     },
   ];
+  const hasFirstAndLastFrame =
+    Boolean(options.firstFrameImageUrl) && Boolean(options.lastFrameImageUrl);
   if (options.firstFrameImageUrl) {
     content.push({
       type: "image_url",
       image_url: { url: options.firstFrameImageUrl },
-      role: "first_frame",
+      ...(hasFirstAndLastFrame ? { role: "first_frame" } : {}),
     });
   }
   if (options.lastFrameImageUrl) {
