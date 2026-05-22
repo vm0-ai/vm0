@@ -33,8 +33,6 @@
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@tabler/icons-react": "^3.36.1",
-    "@ts-rest/core": "3.53.0-rc.1",
-    "@ts-rest/serverless": "3.53.0-rc.1",
     "@vercel/functions": "^3.4.4",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/api-services": "workspace:*",

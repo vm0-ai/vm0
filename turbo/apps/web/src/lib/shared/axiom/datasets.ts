@@ -21,7 +21,6 @@ export const DATASETS = {
   SANDBOX_TELEMETRY_NETWORK: "sandbox-telemetry-network",
   AGENT_RUN_EVENTS: "agent-run-events",
   WEB_LOGS: "web-logs",
-  REQUEST_LOG: "request-log",
   SANDBOX_OP_LOG: "sandbox-op-log",
   RUN_CONTEXT: "run-context",
   TRACES: "traces",

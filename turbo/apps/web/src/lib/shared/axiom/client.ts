@@ -48,9 +48,8 @@ function extractDatasetFromApl(apl: string): string | null {
 /**
  * Buffer events for Axiom ingestion.
  *
- * Events are queued in the Axiom SDK's internal batch and flushed at the
- * response boundary via {@link flushAxiom} (called from ts-rest-handler).
- * This avoids per-call HTTP requests and keeps API usage within org limits.
+ * Events are queued in the Axiom SDK's internal batch and flushed at request
+ * boundaries by callers that need durable ingestion.
  */
 export function ingestToAxiom(
   dataset: string,
@@ -315,37 +314,6 @@ function emptyQueryResult(dataset: string | null): QueryResult {
       minCursor: "",
     },
   };
-}
-
-interface RequestLogEntry {
-  remote_addr: string;
-  user_agent: string;
-  method: string;
-  path_template: string;
-  host: string;
-  status: number;
-  body_bytes_sent: number;
-  request_time_ms: number;
-}
-
-/**
- * Ingest request log to Axiom (nginx-style).
- * Fire-and-forget - doesn't block the response.
- */
-export function ingestRequestLog(entry: RequestLogEntry): void {
-  const client = getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
-  if (!client) {
-    return;
-  }
-
-  const dataset = getDatasetName(DATASETS.REQUEST_LOG);
-  client.ingest(dataset, [
-    {
-      _time: new Date().toISOString(),
-      ...entry,
-    },
-  ]);
-  // Don't await flush - let it batch automatically
 }
 
 // ── Run context snapshot ────────────────────────────────────────────────

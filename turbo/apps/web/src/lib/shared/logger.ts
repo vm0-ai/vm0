@@ -180,21 +180,3 @@ export function logger(name: string): Logger {
   loggerCache.set(name, newLogger);
   return newLogger;
 }
-
-/**
- * Flush all pending logs to Axiom.
- * MUST be called before serverless function terminates to ensure log delivery.
- *
- * Usage in API routes:
- *   await flushLogs();
- *   return Response.json(data);
- */
-export async function flushLogs(): Promise<void> {
-  try {
-    await axiomLogger?.flush();
-  } catch (e) {
-    // Log to console as fallback if Axiom flush fails
-    // Don't throw - we don't want flush failures to break the response
-    console.error("[logger] Failed to flush logs to Axiom:", e);
-  }
-}
