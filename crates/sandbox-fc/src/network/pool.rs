@@ -380,8 +380,23 @@ impl CreationNotifier {
 }
 
 #[derive(Clone)]
+struct NetnsPoolInner {
+    state: Arc<tokio::sync::Mutex<NetnsPoolState>>,
+}
+
+/// Pre-warmed pool of network namespaces for Firecracker VMs.
+///
+/// Maintains a buffer of `BUFFER_SIZE` ready namespaces per queue. After each
+/// [`acquire`](Self::acquire), the pool spawns a background task to replenish
+/// the buffer. Namespaces returned via [`release`](Self::release) are recycled
+/// back into the queue.
+pub struct NetnsPool {
+    inner: NetnsPoolInner,
+}
+
+#[derive(Clone)]
 pub(crate) struct NetnsPoolHandle {
-    inner: Arc<tokio::sync::Mutex<NetnsPool>>,
+    inner: NetnsPoolInner,
 }
 
 enum AcquirePlan {
@@ -1019,13 +1034,8 @@ fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
 // NetnsPool
 // ---------------------------------------------------------------------------
 
-/// Pre-warmed pool of network namespaces for Firecracker VMs.
-///
-/// Maintains a buffer of `BUFFER_SIZE` ready namespaces per queue.
-/// After each [`acquire`](Self::acquire), the pool spawns a background
-/// task to replenish the buffer. Namespaces returned via
-/// [`release`](Self::release) are recycled back into the queue.
-pub struct NetnsPool {
+/// Mutable state behind the namespace pool lifecycle.
+struct NetnsPoolState {
     active: bool,
     plain_queue: VecDeque<NetnsInfo>,
     proxy_queue: VecDeque<NetnsInfo>,
@@ -1055,7 +1065,7 @@ pub struct NetnsPool {
     _lock: Flock<File>,
 }
 
-impl NetnsPool {
+impl NetnsPoolState {
     fn completion_state() -> (
         mpsc::UnboundedSender<CreationCompletion>,
         mpsc::UnboundedReceiver<CreationCompletion>,
@@ -1121,24 +1131,7 @@ impl NetnsPool {
         )
     }
 
-    /// Create a new pool with a small pre-warmed buffer.
-    ///
-    /// Pre-warms `BUFFER_SIZE` namespaces per queue at startup.
-    /// After each [`acquire`](Self::acquire), the pool replenishes to
-    /// maintain the buffer level. Namespaces returned via
-    /// [`release`](Self::release) are recycled back into the queue.
-    ///
-    /// Automatically acquires a unique pool index (0–63) via flock. Enables
-    /// host IP forwarding and reconciles orphaned resources from any idle
-    /// pool index before creating new namespaces.
-    pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
-        let config = config
-            .into_checked()
-            .map_err(|e| NetworkError::Prerequisite(e.to_string()))?;
-        Self::create_checked(config).await
-    }
-
-    pub(crate) async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
+    async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
         let config = config.inner;
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
@@ -1206,29 +1199,6 @@ impl NetnsPool {
             "namespace pool initialized"
         );
         Ok(pool)
-    }
-
-    /// Acquire a namespace from the pool, or create one on-demand if empty.
-    ///
-    /// The direct API is kept for one-shot local users. Runtime-managed shared
-    /// pools use an internal handle that releases the pool lock before waiting
-    /// for namespace creation.
-    pub async fn acquire(&mut self) -> Result<NetnsLease> {
-        loop {
-            match self.prepare_acquire()? {
-                AcquirePlan::Ready(lease) => return Ok(lease),
-                AcquirePlan::Delete(namespaces, ops) => {
-                    delete_namespaces_with_ops(ops, namespaces).await;
-                }
-                AcquirePlan::Wait(mut waiter) => {
-                    if waiter.changed().await.is_err() {
-                        return Err(NetworkError::Prerequisite(
-                            "namespace creation notifier closed".into(),
-                        ));
-                    }
-                }
-            }
-        }
     }
 
     fn reserve_ns_index(&mut self) -> Result<u32> {
@@ -1517,49 +1487,6 @@ impl NetnsPool {
         }
     }
 
-    /// Return a namespace to the pool, or delete it if the pool is inactive.
-    ///
-    /// When `proxy_port` is configured, the namespace is returned to
-    /// the proxy queue so its REDIRECT rules are reused.
-    ///
-    /// The caller keeps the lease in `Some` while this future awaits. Release
-    /// only takes and disarms the lease at the final no-await commit point, so
-    /// cancelling this future before success leaves cleanup ownership with the
-    /// caller.
-    pub async fn release(&mut self, lease: &mut Option<NetnsLease>) -> Result<()> {
-        match self.release_outcome(lease).await {
-            NetnsReleaseOutcome::Released
-            | NetnsReleaseOutcome::Deleted
-            | NetnsReleaseOutcome::Abandoned => Ok(()),
-            NetnsReleaseOutcome::InvalidLease(message) => Err(NetworkError::InvalidLease(message)),
-        }
-    }
-
-    async fn release_outcome(&mut self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
-        let plan = match self.prepare_release(lease) {
-            Ok(plan) => plan,
-            Err(message) => return NetnsReleaseOutcome::InvalidLease(message),
-        };
-        if plan.active_at_prepare {
-            self.mark_non_reusable(&plan);
-        }
-
-        let can_requeue = if plan.active_at_prepare {
-            (plan.ops.flush_conntrack)(plan.info.peer_ip.clone())
-                .await
-                .is_trusted()
-        } else {
-            false
-        };
-
-        if can_requeue && self.active {
-            return self.commit_release_requeue(lease, &plan);
-        }
-
-        let delete = (plan.ops.delete_namespace)(plan.info.clone()).await;
-        self.commit_release_delete(lease, &plan, delete)
-    }
-
     fn prepare_release(
         &self,
         lease: &Option<NetnsLease>,
@@ -1706,34 +1633,6 @@ impl NetnsPool {
         }
     }
 
-    /// Delete all namespaces currently in the pool queue and wait for
-    /// in-flight background creation tasks so their resources can be deleted.
-    ///
-    /// Namespaces that have been acquired but not yet released are **not**
-    /// cleaned up here — they will be caught by orphan cleanup on the next
-    /// [`NetnsPool::create`] call with the same index.
-    pub async fn cleanup(&mut self) -> Result<()> {
-        loop {
-            let plan = self.prepare_cleanup();
-            if plan.done {
-                info!("namespace pool cleanup complete");
-                return Ok(());
-            }
-
-            let names = cleanup_namespace_names(&plan.namespaces);
-            delete_namespaces_with_ops(plan.ops, plan.namespaces).await;
-            self.remove_queued_namespaces(&names);
-
-            if let Some(mut waiter) = plan.wait_for_pending
-                && waiter.changed().await.is_err()
-            {
-                return Err(NetworkError::Prerequisite(
-                    "namespace creation notifier closed".into(),
-                ));
-            }
-        }
-    }
-
     fn prepare_cleanup(&mut self) -> CleanupPlan {
         self.active = false;
         if !self.in_flight.is_empty() {
@@ -1787,7 +1686,7 @@ impl NetnsPool {
     }
 }
 
-impl Drop for NetnsPool {
+impl Drop for NetnsPoolState {
     fn drop(&mut self) {
         let queued = self.plain_queue.len() + self.proxy_queue.len();
         let pending = self.pending_plain.len() + self.pending_proxy.len();
@@ -1803,27 +1702,18 @@ impl Drop for NetnsPool {
     }
 }
 
-impl NetnsPoolHandle {
-    pub(crate) async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
-        Ok(Self::new(NetnsPool::create_checked(config).await?))
-    }
-
-    pub(crate) fn new(pool: NetnsPool) -> Self {
+impl NetnsPoolInner {
+    fn new(state: NetnsPoolState) -> Self {
         Self {
-            inner: Arc::new(tokio::sync::Mutex::new(pool)),
+            state: Arc::new(tokio::sync::Mutex::new(state)),
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_for_test(pool: NetnsPool) -> Self {
-        Self::new(pool)
-    }
-
-    pub(crate) async fn acquire(&self) -> Result<NetnsLease> {
+    async fn acquire(&self) -> Result<NetnsLease> {
         loop {
             let plan = {
-                let mut pool = self.inner.lock().await;
-                pool.prepare_acquire()?
+                let mut state = self.state.lock().await;
+                state.prepare_acquire()?
             };
             match plan {
                 AcquirePlan::Ready(lease) => return Ok(lease),
@@ -1841,15 +1731,15 @@ impl NetnsPoolHandle {
         }
     }
 
-    pub(crate) async fn release(&self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
+    async fn release_outcome(&self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
         let plan = {
-            let mut pool = self.inner.lock().await;
-            let plan = match pool.prepare_release(lease) {
+            let mut state = self.state.lock().await;
+            let plan = match state.prepare_release(lease) {
                 Ok(plan) => plan,
                 Err(message) => return NetnsReleaseOutcome::InvalidLease(message),
             };
             if plan.active_at_prepare {
-                pool.mark_non_reusable(&plan);
+                state.mark_non_reusable(&plan);
             }
             plan
         };
@@ -1864,23 +1754,23 @@ impl NetnsPoolHandle {
 
         if can_requeue {
             {
-                let mut pool = self.inner.lock().await;
-                if pool.active {
-                    return pool.commit_release_requeue(lease, &plan);
+                let mut state = self.state.lock().await;
+                if state.active {
+                    return state.commit_release_requeue(lease, &plan);
                 }
             }
         }
 
         let delete = (plan.ops.delete_namespace)(plan.info.clone()).await;
-        let mut pool = self.inner.lock().await;
-        pool.commit_release_delete(lease, &plan, delete)
+        let mut state = self.state.lock().await;
+        state.commit_release_delete(lease, &plan, delete)
     }
 
-    pub(crate) async fn cleanup(&self) -> Result<()> {
+    async fn cleanup(&self) -> Result<()> {
         loop {
             let plan = {
-                let mut pool = self.inner.lock().await;
-                pool.prepare_cleanup()
+                let mut state = self.state.lock().await;
+                state.prepare_cleanup()
             };
             if plan.done {
                 info!("namespace pool cleanup complete");
@@ -1890,8 +1780,8 @@ impl NetnsPoolHandle {
             let names = cleanup_namespace_names(&plan.namespaces);
             delete_namespaces_with_ops(plan.ops, plan.namespaces).await;
             {
-                let mut pool = self.inner.lock().await;
-                pool.remove_queued_namespaces(&names);
+                let mut state = self.state.lock().await;
+                state.remove_queued_namespaces(&names);
             }
 
             if let Some(mut waiter) = plan.wait_for_pending
@@ -1902,6 +1792,128 @@ impl NetnsPoolHandle {
                 ));
             }
         }
+    }
+
+    #[cfg(test)]
+    fn with_state_for_test<R>(&self, f: impl FnOnce(&mut NetnsPoolState) -> R) -> R {
+        let mut state = self
+            .state
+            .try_lock()
+            .expect("netns pool state lock should be available in test setup");
+        f(&mut state)
+    }
+}
+
+impl NetnsPool {
+    /// Create a new pool with a small pre-warmed buffer.
+    ///
+    /// Pre-warms `BUFFER_SIZE` namespaces per queue at startup.
+    /// After each [`acquire`](Self::acquire), the pool replenishes to
+    /// maintain the buffer level. Namespaces returned via
+    /// [`release`](Self::release) are recycled back into the queue.
+    ///
+    /// Automatically acquires a unique pool index (0–63) via flock. Enables
+    /// host IP forwarding and reconciles orphaned resources from any idle
+    /// pool index before creating new namespaces.
+    pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
+        let config = config
+            .into_checked()
+            .map_err(|e| NetworkError::Prerequisite(e.to_string()))?;
+        Self::create_checked(config).await
+    }
+
+    pub(crate) async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
+        Ok(Self {
+            inner: NetnsPoolInner::new(NetnsPoolState::create_checked(config).await?),
+        })
+    }
+
+    /// Acquire a namespace from the pool, or create one on-demand if empty.
+    pub async fn acquire(&mut self) -> Result<NetnsLease> {
+        self.inner.acquire().await
+    }
+
+    /// Return a namespace to the pool, or delete it if the pool is inactive.
+    ///
+    /// The caller keeps the lease in `Some` while this future awaits. Release
+    /// only takes and disarms the lease at the final no-await commit point, so
+    /// cancelling this future before success leaves cleanup ownership with the
+    /// caller.
+    pub async fn release(&mut self, lease: &mut Option<NetnsLease>) -> Result<()> {
+        match self.inner.release_outcome(lease).await {
+            NetnsReleaseOutcome::Released
+            | NetnsReleaseOutcome::Deleted
+            | NetnsReleaseOutcome::Abandoned => Ok(()),
+            NetnsReleaseOutcome::InvalidLease(message) => Err(NetworkError::InvalidLease(message)),
+        }
+    }
+
+    /// Delete all namespaces currently in the pool queue and wait for
+    /// in-flight background creation tasks so their resources can be deleted.
+    ///
+    /// Namespaces that have been acquired but not yet released are **not**
+    /// cleaned up here — they will be caught by orphan cleanup on the next
+    /// [`NetnsPool::create`] call with the same index.
+    pub async fn cleanup(&mut self) -> Result<()> {
+        self.inner.cleanup().await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inactive_for_test() -> Self {
+        Self::from_state_for_test(NetnsPoolState::inactive_for_test())
+    }
+
+    #[cfg(test)]
+    fn from_state_for_test(state: NetnsPoolState) -> Self {
+        Self {
+            inner: NetnsPoolInner::new(state),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn track_lease_for_test(&mut self, lease: &NetnsLease) {
+        self.inner
+            .with_state_for_test(|state| state.track_lease_for_test(lease));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lease_for_test(&self, name: &str) -> NetnsLease {
+        self.inner
+            .with_state_for_test(|state| state.lease_for_test(name))
+    }
+}
+
+impl NetnsPoolHandle {
+    pub(crate) async fn create_checked(config: CheckedNetnsPoolConfig) -> Result<Self> {
+        Ok(Self::new(NetnsPool::create_checked(config).await?))
+    }
+
+    pub(crate) fn new(pool: NetnsPool) -> Self {
+        Self { inner: pool.inner }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(pool: NetnsPool) -> Self {
+        Self::new(pool)
+    }
+
+    #[cfg(test)]
+    fn from_state_for_test(state: NetnsPoolState) -> Self {
+        Self {
+            inner: NetnsPoolInner::new(state),
+        }
+    }
+
+    pub(crate) async fn acquire(&self) -> Result<NetnsLease> {
+        self.inner.acquire().await
+    }
+
+    pub(crate) async fn release(&self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
+        self.inner.release_outcome(lease).await
+    }
+
+    pub(crate) async fn cleanup(&self) -> Result<()> {
+        self.inner.cleanup().await
     }
 }
 
@@ -2450,7 +2462,7 @@ mod tests {
         let waiting = Arc::new(tokio::sync::Notify::new());
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.next_ns_index = MAX_NAMESPACES;
         pool.acquire_waiting_notify = Some(Arc::clone(&waiting));
@@ -2459,7 +2471,7 @@ mod tests {
             Arc::clone(&entered),
             Arc::clone(&release),
         ));
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let acquire = tokio::spawn({
             let handle = handle.clone();
@@ -2470,6 +2482,7 @@ mod tests {
 
         let guard = handle
             .inner
+            .state
             .try_lock()
             .expect("shared acquire must not hold netns pool mutex while waiting");
         drop(guard);
@@ -2487,7 +2500,7 @@ mod tests {
         let waiting = Arc::new(tokio::sync::Notify::new());
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.next_ns_index = MAX_NAMESPACES;
         pool.acquire_waiting_notify = Some(Arc::clone(&waiting));
@@ -2496,7 +2509,7 @@ mod tests {
             Arc::clone(&entered),
             Arc::clone(&release),
         ));
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let acquire = tokio::spawn({
             let handle = handle.clone();
@@ -2518,18 +2531,18 @@ mod tests {
 
     #[tokio::test]
     async fn creation_worker_panic_clears_pending_during_cleanup() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.spawn_plain_creation_for_test(async {
             panic!("creation panic for test");
             #[allow(unreachable_code)]
             Ok(test_info("never"))
         });
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         handle.cleanup().await.unwrap();
 
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.pending_plain.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
@@ -2537,7 +2550,7 @@ mod tests {
     #[tokio::test]
     async fn completion_send_failure_deletes_created_namespace() {
         let deleted = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         let deleted_for_ops = Arc::clone(&deleted);
         pool.ops = NetnsLifecycleOps {
             flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
@@ -2566,7 +2579,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_deletes_unknown_completed_namespace() {
         let deleted = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let deleted_for_ops = Arc::clone(&deleted);
         pool.ops = NetnsLifecycleOps {
@@ -2587,9 +2600,11 @@ mod tests {
             })
             .unwrap();
 
+        let mut pool = NetnsPool::from_state_for_test(pool);
         pool.cleanup().await.unwrap();
 
         assert_eq!(deleted.load(Ordering::SeqCst), 1);
+        let pool = pool.inner.state.lock().await;
         assert!(pool.plain_queue.is_empty());
         assert!(pool.proxy_queue.is_empty());
     }
@@ -2598,7 +2613,7 @@ mod tests {
     async fn dropped_pool_deletes_late_pending_creation() {
         let release = Arc::new(tokio::sync::Notify::new());
         let deleted = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         let deleted_for_ops = Arc::clone(&deleted);
         pool.ops = NetnsLifecycleOps {
             flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
@@ -2634,7 +2649,7 @@ mod tests {
     async fn cleanup_rejects_acquire_and_deletes_late_completion() {
         let release = Arc::new(tokio::sync::Notify::new());
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let delete_count_for_ops = Arc::clone(&delete_count);
         pool.ops = NetnsLifecycleOps {
@@ -2654,14 +2669,14 @@ mod tests {
                 Ok(test_info("late-ns"))
             }
         });
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let cleanup = tokio::spawn({
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
         loop {
-            if !handle.inner.lock().await.active {
+            if !handle.inner.state.lock().await.active {
                 break;
             }
             tokio::task::yield_now().await;
@@ -2672,7 +2687,7 @@ mod tests {
 
         release.notify_one();
         cleanup.await.unwrap().unwrap();
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.pending_plain.is_empty());
         assert!(pool.plain_queue.is_empty());
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
@@ -2682,7 +2697,7 @@ mod tests {
     async fn shared_release_does_not_hold_mutex_while_flush_blocks() {
         let flush_entered = Arc::new(tokio::sync::Notify::new());
         let flush_release = Arc::new(tokio::sync::Notify::new());
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_entered_for_ops = Arc::clone(&flush_entered);
         let flush_release_for_ops = Arc::clone(&flush_release);
@@ -2699,7 +2714,7 @@ mod tests {
             delete_namespace: Arc::new(|_| Box::pin(async { NamespaceDeleteOutcome::Deleted })),
         };
         let lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let release_task = tokio::spawn({
             let handle = handle.clone();
@@ -2713,6 +2728,7 @@ mod tests {
 
         let guard = handle
             .inner
+            .state
             .try_lock()
             .expect("shared release must not hold netns pool mutex while flushing conntrack");
         drop(guard);
@@ -2729,7 +2745,7 @@ mod tests {
         let flush_entered = Arc::new(tokio::sync::Notify::new());
         let flush_release = Arc::new(tokio::sync::Notify::new());
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_entered_for_ops = Arc::clone(&flush_entered);
         let flush_release_for_ops = Arc::clone(&flush_release);
@@ -2753,7 +2769,7 @@ mod tests {
             }),
         };
         let lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let release_task = tokio::spawn({
             let handle = handle.clone();
@@ -2772,7 +2788,7 @@ mod tests {
         assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
         assert!(lease.is_none());
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(!pool.active);
         assert!(pool.in_flight.is_empty());
         assert!(pool.plain_queue.is_empty());
@@ -2784,7 +2800,7 @@ mod tests {
         let first_flush_release = Arc::new(tokio::sync::Notify::new());
         let flush_count = Arc::new(AtomicUsize::new(0));
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_entered_for_ops = Arc::clone(&flush_entered);
         let first_flush_release_for_ops = Arc::clone(&first_flush_release);
@@ -2813,7 +2829,7 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         {
             let release = handle.release(&mut lease);
@@ -2827,7 +2843,7 @@ mod tests {
         assert!(lease.is_some());
         assert_eq!(flush_count.load(Ordering::SeqCst), 1);
         {
-            let pool = handle.inner.lock().await;
+            let pool = handle.inner.state.lock().await;
             assert!(pool.non_reusable.contains("test-ns"));
         }
 
@@ -2842,7 +2858,7 @@ mod tests {
             "cancelled flush must taint the namespace before retry"
         );
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.non_reusable.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
@@ -2853,7 +2869,7 @@ mod tests {
         let first_flush_release = Arc::new(tokio::sync::Notify::new());
         let flush_count = Arc::new(AtomicUsize::new(0));
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_entered_for_ops = Arc::clone(&flush_entered);
         let first_flush_release_for_ops = Arc::clone(&first_flush_release);
@@ -2882,14 +2898,14 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let mut release = Box::pin(handle.release(&mut lease));
         tokio::select! {
             outcome = &mut release => panic!("release completed before flush finished: {outcome:?}"),
             _ = flush_entered.notified() => {}
         }
-        let guard = handle.inner.lock().await;
+        let guard = handle.inner.state.lock().await;
         first_flush_release.notify_one();
         tokio::select! {
             outcome = &mut release => panic!("release completed while pool lock was held: {outcome:?}"),
@@ -2912,7 +2928,7 @@ mod tests {
             "cancelled post-flush commit must not flush/requeue on retry"
         );
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.non_reusable.is_empty());
         assert!(pool.in_flight.is_empty());
         assert!(pool.plain_queue.is_empty());
@@ -2924,7 +2940,7 @@ mod tests {
         let first_flush_release = Arc::new(tokio::sync::Notify::new());
         let flush_count = Arc::new(AtomicUsize::new(0));
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_entered_for_ops = Arc::clone(&flush_entered);
         let first_flush_release_for_ops = Arc::clone(&first_flush_release);
@@ -2953,6 +2969,7 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         {
             let release = pool.release(&mut lease);
@@ -2965,7 +2982,10 @@ mod tests {
 
         assert!(lease.is_some());
         assert_eq!(flush_count.load(Ordering::SeqCst), 1);
-        assert!(pool.non_reusable.contains("test-ns"));
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(pool.non_reusable.contains("test-ns"));
+        }
 
         first_flush_release.notify_one();
         pool.release(&mut lease).await.unwrap();
@@ -2977,6 +2997,7 @@ mod tests {
             "direct cancelled flush must taint the namespace before retry"
         );
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = pool.inner.state.lock().await;
         assert!(pool.non_reusable.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
@@ -2984,7 +3005,7 @@ mod tests {
     #[tokio::test]
     async fn untrusted_conntrack_flush_deletes_without_requeue() {
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let delete_count_for_ops = Arc::clone(&delete_count);
         pool.ops = NetnsLifecycleOps {
@@ -2998,14 +3019,14 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let outcome = handle.release(&mut lease).await;
 
         assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
         assert!(lease.is_none());
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.in_flight.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
@@ -3016,7 +3037,7 @@ mod tests {
         let first_delete_release = Arc::new(tokio::sync::Notify::new());
         let flush_count = Arc::new(AtomicUsize::new(0));
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_count_for_ops = Arc::clone(&flush_count);
         let delete_count_for_ops = Arc::clone(&delete_count);
@@ -3045,7 +3066,7 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         {
             let release = handle.release(&mut lease);
@@ -3060,7 +3081,7 @@ mod tests {
         assert_eq!(flush_count.load(Ordering::SeqCst), 1);
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
         {
-            let pool = handle.inner.lock().await;
+            let pool = handle.inner.state.lock().await;
             assert!(pool.non_reusable.contains("test-ns"));
         }
 
@@ -3075,7 +3096,7 @@ mod tests {
             "tainted retry must not flush and requeue"
         );
         assert_eq!(delete_count.load(Ordering::SeqCst), 2);
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.non_reusable.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
@@ -3086,7 +3107,7 @@ mod tests {
         let first_delete_release = Arc::new(tokio::sync::Notify::new());
         let flush_count = Arc::new(AtomicUsize::new(0));
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let flush_count_for_ops = Arc::clone(&flush_count);
         let delete_count_for_ops = Arc::clone(&delete_count);
@@ -3115,14 +3136,14 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let mut release = Box::pin(handle.release(&mut lease));
         tokio::select! {
             outcome = &mut release => panic!("release completed before delete finished: {outcome:?}"),
             _ = delete_entered.notified() => {}
         }
-        let guard = handle.inner.lock().await;
+        let guard = handle.inner.state.lock().await;
         first_delete_release.notify_one();
         tokio::select! {
             outcome = &mut release => panic!("release completed while pool lock was held: {outcome:?}"),
@@ -3146,7 +3167,7 @@ mod tests {
             "tainted post-delete retry must not flush/requeue"
         );
         assert_eq!(delete_count.load(Ordering::SeqCst), 2);
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.non_reusable.is_empty());
         assert!(pool.in_flight.is_empty());
         assert!(pool.plain_queue.is_empty());
@@ -3156,7 +3177,7 @@ mod tests {
     async fn shared_cleanup_does_not_hold_mutex_while_delete_blocks() {
         let delete_entered = Arc::new(tokio::sync::Notify::new());
         let delete_release = Arc::new(tokio::sync::Notify::new());
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.plain_queue.push_back(test_info("test-ns"));
         let delete_entered_for_ops = Arc::clone(&delete_entered);
@@ -3173,7 +3194,7 @@ mod tests {
                 })
             }),
         };
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let cleanup = tokio::spawn({
             let handle = handle.clone();
@@ -3183,13 +3204,14 @@ mod tests {
 
         let guard = handle
             .inner
+            .state
             .try_lock()
             .expect("shared cleanup must not hold netns pool mutex while deleting namespace");
         drop(guard);
 
         delete_release.notify_one();
         cleanup.await.unwrap().unwrap();
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.plain_queue.is_empty());
     }
 
@@ -3198,7 +3220,7 @@ mod tests {
         let delete_entered = Arc::new(tokio::sync::Notify::new());
         let delete_release = Arc::new(tokio::sync::Notify::new());
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.plain_queue.push_back(test_info("test-ns"));
         let delete_entered_for_ops = Arc::clone(&delete_entered);
@@ -3220,7 +3242,7 @@ mod tests {
                 })
             }),
         };
-        let handle = NetnsPoolHandle::new_for_test(pool);
+        let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         let cleanup = tokio::spawn({
             let handle = handle.clone();
@@ -3231,7 +3253,7 @@ mod tests {
         let _ = cleanup.await;
 
         {
-            let pool = handle.inner.lock().await;
+            let pool = handle.inner.state.lock().await;
             assert!(!pool.active);
             assert_eq!(pool.plain_queue.len(), 1);
             assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
@@ -3239,24 +3261,28 @@ mod tests {
 
         delete_release.notify_one();
         handle.cleanup().await.unwrap();
-        let pool = handle.inner.lock().await;
+        let pool = handle.inner.state.lock().await;
         assert!(pool.plain_queue.is_empty());
         assert_eq!(delete_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
     async fn release_disarms_lease_and_returns_info_to_queue() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let info = test_info("test-ns");
         let mut lease = Some(pool.checkout(info).unwrap());
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         pool.release(&mut lease).await.unwrap();
 
         assert!(lease.is_none());
-        assert!(pool.in_flight.is_empty());
-        assert_eq!(pool.plain_queue.len(), 1);
-        assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(pool.in_flight.is_empty());
+            assert_eq!(pool.plain_queue.len(), 1);
+            assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+        }
 
         pool.cleanup().await.unwrap();
     }
@@ -3282,30 +3308,37 @@ mod tests {
 
     #[tokio::test]
     async fn release_after_cleanup_deletes_outstanding_lease_without_requeueing() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let info = test_info("test-ns");
         let mut lease = Some(pool.checkout(info).unwrap());
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         pool.cleanup().await.unwrap();
 
-        assert!(!pool.active);
         assert!(lease.is_some());
-        assert!(pool.in_flight.contains("test-ns"));
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(!pool.active);
+            assert!(pool.in_flight.contains("test-ns"));
+        }
 
         pool.release(&mut lease).await.unwrap();
 
         assert!(lease.is_none());
-        assert!(pool.in_flight.is_empty());
-        assert!(pool.plain_queue.is_empty());
-        assert!(pool.proxy_queue.is_empty());
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(pool.in_flight.is_empty());
+            assert!(pool.plain_queue.is_empty());
+            assert!(pool.proxy_queue.is_empty());
+        }
         pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]
     async fn release_abandoned_delete_consumes_lease_and_clears_tracking() {
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let delete_count_for_ops = Arc::clone(&delete_count);
         pool.ops = NetnsLifecycleOps {
@@ -3319,12 +3352,14 @@ mod tests {
             }),
         };
         let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+        let pool = NetnsPool::from_state_for_test(pool);
 
-        let outcome = pool.release_outcome(&mut lease).await;
+        let outcome = pool.inner.release_outcome(&mut lease).await;
 
         assert!(matches!(outcome, NetnsReleaseOutcome::Abandoned));
         assert!(lease.is_none());
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = pool.inner.state.lock().await;
         assert!(pool.in_flight.is_empty());
         assert!(pool.non_reusable.is_empty());
         assert!(pool.plain_queue.is_empty());
@@ -3332,7 +3367,7 @@ mod tests {
 
     #[tokio::test]
     async fn cleanup_retry_drains_pending_creation_after_cancel() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let entered = std::sync::Arc::new(tokio::sync::Notify::new());
         let release = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -3343,6 +3378,7 @@ mod tests {
             release_task.notified().await;
             Ok(test_info("test-ns"))
         });
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         {
             let cleanup = pool.cleanup();
@@ -3353,12 +3389,16 @@ mod tests {
             }
         }
 
-        assert!(!pool.active);
-        assert_eq!(pool.pending_plain.len(), 1);
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(!pool.active);
+            assert_eq!(pool.pending_plain.len(), 1);
+        }
 
         release.notify_one();
         pool.cleanup().await.unwrap();
 
+        let pool = pool.inner.state.lock().await;
         assert!(!pool.active);
         assert!(pool.pending_plain.is_empty());
         assert!(pool.plain_queue.is_empty());
@@ -3366,7 +3406,7 @@ mod tests {
 
     #[tokio::test]
     async fn acquire_cancellation_keeps_pending_creation_for_cleanup() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let entered = std::sync::Arc::new(tokio::sync::Notify::new());
         let release = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -3377,6 +3417,7 @@ mod tests {
             release_task.notified().await;
             Ok(test_info("test-ns"))
         });
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         {
             let acquire = pool.acquire();
@@ -3387,12 +3428,16 @@ mod tests {
             }
         }
 
-        assert!(pool.in_flight.is_empty());
-        assert_eq!(pool.pending_plain.len(), 1);
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(pool.in_flight.is_empty());
+            assert_eq!(pool.pending_plain.len(), 1);
+        }
 
         release.notify_one();
         pool.cleanup().await.unwrap();
 
+        let pool = pool.inner.state.lock().await;
         assert!(!pool.active);
         assert!(pool.pending_plain.is_empty());
         assert!(pool.plain_queue.is_empty());
@@ -3418,7 +3463,7 @@ mod tests {
             }
         };
         {
-            let deletion = NetnsPool::delete_queued_namespaces_with(&mut queue, delete);
+            let deletion = NetnsPoolState::delete_queued_namespaces_with(&mut queue, delete);
             tokio::pin!(deletion);
             tokio::select! {
                 _ = &mut deletion => panic!("delete completed before test released it"),
@@ -3430,17 +3475,19 @@ mod tests {
         assert_eq!(queue.front().unwrap().name(), "test-ns");
 
         release.notify_one();
-        NetnsPool::delete_queued_namespaces_with(&mut queue, |_| async {}).await;
+        NetnsPoolState::delete_queued_namespaces_with(&mut queue, |_| async {}).await;
         assert!(queue.is_empty());
     }
 
     #[tokio::test]
     async fn cleanup_retries_when_pool_is_inactive_but_not_drained() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.plain_queue.push_back(test_info("test-ns"));
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         pool.cleanup().await.unwrap();
 
+        let pool = pool.inner.state.lock().await;
         assert!(!pool.active);
         assert!(pool.plain_queue.is_empty());
     }
@@ -3448,7 +3495,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_removes_queued_namespace_after_abandoned_delete() {
         let delete_count = Arc::new(AtomicUsize::new(0));
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.plain_queue.push_back(test_info("test-ns"));
         let delete_count_for_ops = Arc::clone(&delete_count);
@@ -3462,86 +3509,107 @@ mod tests {
                 })
             }),
         };
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         pool.cleanup().await.unwrap();
 
         assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = pool.inner.state.lock().await;
         assert!(!pool.active);
         assert!(pool.plain_queue.is_empty());
     }
 
     #[tokio::test]
     async fn acquire_rejects_inactive_pool() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.plain_queue.push_back(test_info("test-ns"));
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.acquire().await.unwrap_err();
 
         assert!(matches!(err, NetworkError::PoolNotActive));
-        assert_eq!(pool.plain_queue.len(), 1);
-        assert!(pool.in_flight.is_empty());
+        {
+            let pool = pool.inner.state.lock().await;
+            assert_eq!(pool.plain_queue.len(), 1);
+            assert!(pool.in_flight.is_empty());
+        }
         pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]
     async fn acquire_requeues_namespace_when_checkout_detects_in_flight_duplicate() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.in_flight.insert("test-ns".into());
         pool.plain_queue.push_back(test_info("test-ns"));
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.acquire().await.unwrap_err();
 
         assert!(matches!(err, NetworkError::InvalidLease(_)));
-        assert_eq!(pool.plain_queue.len(), 1);
-        assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
-        assert!(pool.pending_plain.is_empty());
-        assert_eq!(pool.next_ns_index, 0);
+        {
+            let mut pool = pool.inner.state.lock().await;
+            assert_eq!(pool.plain_queue.len(), 1);
+            assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+            assert!(pool.pending_plain.is_empty());
+            assert_eq!(pool.next_ns_index, 0);
 
-        pool.in_flight.clear();
+            pool.in_flight.clear();
+        }
         pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]
     async fn proxy_acquire_requeues_namespace_when_checkout_detects_in_flight_duplicate() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.proxy_port = Some(8080);
         pool.in_flight.insert("test-ns".into());
         pool.proxy_queue.push_back(test_info("test-ns"));
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.acquire().await.unwrap_err();
 
         assert!(matches!(err, NetworkError::InvalidLease(_)));
-        assert!(pool.plain_queue.is_empty());
-        assert_eq!(pool.proxy_queue.len(), 1);
-        assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
-        assert!(pool.pending_proxy.is_empty());
-        assert_eq!(pool.next_ns_index, 0);
+        {
+            let mut pool = pool.inner.state.lock().await;
+            assert!(pool.plain_queue.is_empty());
+            assert_eq!(pool.proxy_queue.len(), 1);
+            assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+            assert!(pool.pending_proxy.is_empty());
+            assert_eq!(pool.next_ns_index, 0);
 
-        pool.in_flight.clear();
-        pool.proxy_queue.clear();
+            pool.in_flight.clear();
+            pool.proxy_queue.clear();
+        }
         pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]
     async fn release_keeps_lease_when_namespace_already_queued() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let info = test_info("test-ns");
         let mut lease = Some(pool.checkout(info.clone()).unwrap());
         pool.plain_queue.push_back(info);
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.release(&mut lease).await.unwrap_err();
 
         assert!(matches!(err, NetworkError::InvalidLease(_)));
         assert!(lease.is_some());
-        assert_eq!(pool.plain_queue.len(), 1);
-        assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+        {
+            let pool = pool.inner.state.lock().await;
+            assert_eq!(pool.plain_queue.len(), 1);
+            assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+        }
 
         let _ = lease.take().unwrap().into_info_for_test();
-        pool.in_flight.clear();
-        pool.plain_queue.clear();
+        {
+            let mut pool = pool.inner.state.lock().await;
+            pool.in_flight.clear();
+            pool.plain_queue.clear();
+        }
         pool.cleanup().await.unwrap();
     }
 
@@ -3570,10 +3638,11 @@ mod tests {
 
     #[tokio::test]
     async fn release_keeps_lease_on_wrong_pool_instance() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let info = test_info("test-ns");
         let mut lease = Some(NetnsLease::new(info, pool.instance_id + 1));
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.release(&mut lease).await.unwrap_err();
 
@@ -3586,10 +3655,11 @@ mod tests {
 
     #[tokio::test]
     async fn release_keeps_lease_when_not_in_flight() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         let info = test_info("test-ns");
         let mut lease = Some(NetnsLease::new(info, pool.instance_id));
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.release(&mut lease).await.unwrap_err();
 
