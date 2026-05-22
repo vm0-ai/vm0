@@ -451,6 +451,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?to%6ben=secret&wait=true"
 
+    def test_original_plus_encoded_duplicate_query_key_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?api+key=secret",
+            {"rel_path": "/"},
+            "api%20key=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?api+key=secret&wait=true"
+
     def test_original_semicolon_duplicate_query_key_dropped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",
@@ -533,6 +541,15 @@ class TestBuildRewriteUrl:
             {"api_key": "trusted key"},
         )
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
+
+    def test_auth_query_overrides_plus_encoded_lower_priority_keys(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?api+key=base&region=us",
+            {"rel_path": "/"},
+            "api%20key=agent&q=test",
+            {"api key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&api+key=trusted+key"
 
     def test_auth_query_overrides_semicolon_base_without_prefixing_kept_pair(self):
         url = url_utils.build_rewrite_url(
