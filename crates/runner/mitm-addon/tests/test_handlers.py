@@ -5682,7 +5682,11 @@ class TestUsageWebhookDelivery:
                 return
 
         target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
-        target_thread = threading.Thread(target=target_server.serve_forever, daemon=True)
+        target_thread = threading.Thread(
+            target=target_server.serve_forever,
+            kwargs={"poll_interval": 0.01},
+            daemon=True,
+        )
         target_thread.start()
 
         class RedirectHandler(BaseHTTPRequestHandler):
@@ -5696,7 +5700,11 @@ class TestUsageWebhookDelivery:
                 return
 
         redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
-        redirect_thread = threading.Thread(target=redirect_server.serve_forever, daemon=True)
+        redirect_thread = threading.Thread(
+            target=redirect_server.serve_forever,
+            kwargs={"poll_interval": 0.01},
+            daemon=True,
+        )
         redirect_thread.start()
         try:
             host, port = server_host_port(redirect_server)
