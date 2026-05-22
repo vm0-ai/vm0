@@ -915,7 +915,7 @@ const seedClerkFixture$ = command(
   },
 );
 
-async function seedClerkOauthDeviceAuthorizationSession(
+async function seedClerkOauthDeviceAuthSession(
   fixture: ClerkFixture,
 ): Promise<void> {
   await store
@@ -2471,7 +2471,7 @@ describe("POST /api/webhooks/clerk", () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
     );
-    await seedClerkOauthDeviceAuthorizationSession(fixture);
+    await seedClerkOauthDeviceAuthSession(fixture);
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "organization.deleted",
       data: { id: fixture.orgId },
@@ -2572,7 +2572,7 @@ describe("POST /api/webhooks/clerk", () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
     );
-    await seedClerkOauthDeviceAuthorizationSession(fixture);
+    await seedClerkOauthDeviceAuthSession(fixture);
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "user.deleted",
       data: { id: fixture.userId },

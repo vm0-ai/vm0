@@ -320,11 +320,11 @@ export {
   type TestOAuthProviderTokenResponse,
 } from "./test-oauth-provider-token";
 export {
-  testOAuthProviderDeviceAuthorizationContract,
-  testOAuthProviderDeviceAuthorizationErrorSchema,
-  testOAuthProviderDeviceAuthorizationResponseSchema,
-  type TestOAuthProviderDeviceAuthorizationContract,
-  type TestOAuthProviderDeviceAuthorizationResponse,
+  testOAuthProviderDeviceAuthContract,
+  testOAuthProviderDeviceAuthErrorSchema,
+  testOAuthProviderDeviceAuthResponseSchema,
+  type TestOAuthProviderDeviceAuthContract,
+  type TestOAuthProviderDeviceAuthResponse,
 } from "./test-oauth-provider-device-authorization";
 export {
   testOAuthProviderUserinfoContract,
@@ -922,7 +922,7 @@ export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
-  zeroConnectorOauthDeviceAuthorizationSessionContract,
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
@@ -933,7 +933,7 @@ export {
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
-  type ZeroConnectorOauthDeviceAuthorizationSessionContract,
+  type ZeroConnectorOauthDeviceAuthSessionContract,
   type ZeroConnectorsSearchContract,
   type ZeroConnectorSessionsContract,
   type ZeroConnectorSessionByIdContract,

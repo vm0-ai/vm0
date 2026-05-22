@@ -1,4 +1,4 @@
-import { zeroConnectorOauthDeviceAuthorizationSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -6,8 +6,8 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route";
 import {
-  pollConnectorOauthDeviceAuthorizationSession$,
-  startConnectorOauthDeviceAuthorizationSession$,
+  pollConnectorOauthDeviceAuthSession$,
+  startConnectorOauthDeviceAuthSession$,
 } from "../services/connector-oauth-device-authorization.service";
 
 const connectorWriteAuth = {
@@ -15,15 +15,15 @@ const connectorWriteAuth = {
   missingOrganizationStatus: 401,
 } as const;
 
-const startConnectorOauthDeviceAuthorizationSessionInner$ = command(
+const startConnectorOauthDeviceAuthSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroConnectorOauthDeviceAuthorizationSessionContract.create),
+      pathParamsOf(zeroConnectorOauthDeviceAuthSessionContract.create),
     );
 
     return await set(
-      startConnectorOauthDeviceAuthorizationSession$,
+      startConnectorOauthDeviceAuthSession$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -34,14 +34,14 @@ const startConnectorOauthDeviceAuthorizationSessionInner$ = command(
   },
 );
 
-const pollConnectorOauthDeviceAuthorizationSessionInner$ = command(
+const pollConnectorOauthDeviceAuthSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroConnectorOauthDeviceAuthorizationSessionContract.poll),
+      pathParamsOf(zeroConnectorOauthDeviceAuthSessionContract.poll),
     );
     const body = await get(
-      bodyResultOf(zeroConnectorOauthDeviceAuthorizationSessionContract.poll),
+      bodyResultOf(zeroConnectorOauthDeviceAuthSessionContract.poll),
     );
     signal.throwIfAborted();
     if (!body.ok) {
@@ -49,7 +49,7 @@ const pollConnectorOauthDeviceAuthorizationSessionInner$ = command(
     }
 
     return await set(
-      pollConnectorOauthDeviceAuthorizationSession$,
+      pollConnectorOauthDeviceAuthSession$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -62,20 +62,19 @@ const pollConnectorOauthDeviceAuthorizationSessionInner$ = command(
   },
 );
 
-export const zeroConnectorsOauthDeviceAuthorizationRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: zeroConnectorOauthDeviceAuthorizationSessionContract.create,
-      handler: authRoute(
-        connectorWriteAuth,
-        startConnectorOauthDeviceAuthorizationSessionInner$,
-      ),
-    },
-    {
-      route: zeroConnectorOauthDeviceAuthorizationSessionContract.poll,
-      handler: authRoute(
-        connectorWriteAuth,
-        pollConnectorOauthDeviceAuthorizationSessionInner$,
-      ),
-    },
-  ];
+export const zeroConnectorsOauthDeviceAuthRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroConnectorOauthDeviceAuthSessionContract.create,
+    handler: authRoute(
+      connectorWriteAuth,
+      startConnectorOauthDeviceAuthSessionInner$,
+    ),
+  },
+  {
+    route: zeroConnectorOauthDeviceAuthSessionContract.poll,
+    handler: authRoute(
+      connectorWriteAuth,
+      pollConnectorOauthDeviceAuthSessionInner$,
+    ),
+  },
+];

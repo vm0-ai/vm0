@@ -40,7 +40,7 @@ interface TokenBody {
   readonly scope: string;
 }
 
-interface DeviceAuthorizationBody {
+interface DeviceAuthBody {
   readonly device_code: string;
   readonly user_code: string;
   readonly verification_uri: string;
@@ -252,9 +252,7 @@ describe("/api/test/oauth-provider/*", () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(
-        readJson<DeviceAuthorizationBody>(response),
-      ).resolves.toStrictEqual({
+      await expect(readJson<DeviceAuthBody>(response)).resolves.toStrictEqual({
         device_code: "test-device:test-oauth-device-client:read",
         user_code: "TEST-DEVICE",
         verification_uri: "https://oauth-device.test/device",
@@ -673,7 +671,7 @@ describe("/api/test/oauth-provider/*", () => {
           scope: "read",
         }),
       );
-      const deviceBody = await readJson<DeviceAuthorizationBody>(device);
+      const deviceBody = await readJson<DeviceAuthBody>(device);
       const response = await requestApp(
         TOKEN_ROUTE,
         tokenRequest({

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
-  type OAuthAuthorizationCodeConnectorType,
+  type OAuthAuthCodeConnectorType,
 } from "../connectors";
 import {
   getApiTokenFieldStorageType,
@@ -17,14 +17,14 @@ import {
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
   getConnectorOAuthClientConfig,
-  getConnectorOAuthDeviceAuthorizationConfig,
+  getConnectorOAuthDeviceAuthConfig,
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
   getConnectorOAuthFlow,
   getRuntimeAvailableConnectorTypes,
-  isOAuthAuthorizationCodeConnectorType,
-  isOAuthDeviceAuthorizationConnectorType,
+  isOAuthAuthCodeConnectorType,
+  isOAuthDeviceAuthConnectorType,
   isStaticConfidentialConnectorOAuthCredentials,
   isStaticConnectorOAuthCredentials,
   isGoogleOAuthConnector,
@@ -35,8 +35,8 @@ import {
   buildConnectorOAuthAuthUrl,
   isOAuthConnectorType,
   CONNECTOR_OAUTH_PROVIDERS,
-  pollConnectorOAuthDeviceAuthorization,
-  startConnectorOAuthDeviceAuthorization,
+  pollConnectorOAuthDeviceAuth,
+  startConnectorOAuthDeviceAuth,
 } from "../oauth-providers/provider-registry";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
 import { buildGoogleAuthorizationUrl } from "../oauth-providers/providers/google-oauth";
@@ -89,7 +89,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   x: "https://twitter.com/i/oauth2/authorize",
   xero: "https://login.xero.com/identity/connect/authorize",
   zoom: "https://zoom.us/oauth/authorize",
-} as const satisfies Record<OAuthAuthorizationCodeConnectorType, string>;
+} as const satisfies Record<OAuthAuthCodeConnectorType, string>;
 
 function authorizationBaseUrl(url: string): string {
   const parsed = new URL(url);
@@ -222,7 +222,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
 
     try {
       const providerTypes = connectorTypeSchema.options.filter(
-        isOAuthAuthorizationCodeConnectorType,
+        isOAuthAuthCodeConnectorType,
       );
 
       for (const type of providerTypes) {
@@ -346,7 +346,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         throw new Error("Expected test-oauth-device OAuth credentials");
       }
 
-      const startResult = await startConnectorOAuthDeviceAuthorization({
+      const startResult = await startConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
         credentials,
       });
@@ -361,21 +361,21 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
       });
 
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: "pending",
         }),
       ).resolves.toStrictEqual({ status: "pending" });
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: "slow-down",
         }),
       ).resolves.toStrictEqual({ status: "slow_down" });
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: "denied",
@@ -386,7 +386,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         errorDescription: "User denied the device authorization request",
       });
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: "expired",
@@ -397,7 +397,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         errorDescription: "Device authorization expired",
       });
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: "error",
@@ -408,7 +408,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         errorDescription: "Synthetic device authorization error",
       });
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: "invalid-grant",
@@ -419,7 +419,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         errorDescription: "Unknown device authorization code",
       });
       await expect(
-        pollConnectorOAuthDeviceAuthorization({
+        pollConnectorOAuthDeviceAuth({
           type: "test-oauth-device",
           credentials,
           deviceCode: startResult.deviceCode,
@@ -965,7 +965,7 @@ describe("getConnectorOAuthConfigIfSupported", () => {
 describe("connector OAuth authorization-code config", () => {
   it("declares the current OAuth connectors as authorization-code flows", () => {
     for (const type of connectorTypeSchema.options) {
-      if (!isOAuthAuthorizationCodeConnectorType(type)) {
+      if (!isOAuthAuthCodeConnectorType(type)) {
         continue;
       }
 
@@ -996,17 +996,15 @@ describe("connector OAuth authorization-code config", () => {
 
 describe("connector OAuth device authorization config", () => {
   it("declares the test OAuth device connector as a device authorization flow", () => {
-    expect(isOAuthDeviceAuthorizationConnectorType("test-oauth-device")).toBe(
-      true,
-    );
+    expect(isOAuthDeviceAuthConnectorType("test-oauth-device")).toBe(true);
     expect(getConnectorOAuthFlow("test-oauth-device")).toBe(
       "device-authorization",
     );
     expect(
-      getConnectorOAuthDeviceAuthorizationConfig("test-oauth-device"),
+      getConnectorOAuthDeviceAuthConfig("test-oauth-device"),
     ).toMatchObject({
       flow: "device-authorization",
-      deviceAuthorizationUrl: "/api/test/oauth-provider/device/code",
+      deviceAuthUrl: "/api/test/oauth-provider/device/code",
       tokenUrl: "/api/test/oauth-provider/token",
       client: {
         clientRegistration: "static",

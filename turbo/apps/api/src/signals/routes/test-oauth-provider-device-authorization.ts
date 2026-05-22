@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { testOAuthProviderDeviceAuthorizationContract } from "@vm0/api-contracts/contracts/test-oauth-provider-device-authorization";
+import { testOAuthProviderDeviceAuthContract } from "@vm0/api-contracts/contracts/test-oauth-provider-device-authorization";
 
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route";
@@ -27,7 +27,7 @@ function errorResponse(
   };
 }
 
-const deviceAuthorization$ = command(async ({ get }, signal: AbortSignal) => {
+const deviceAuth$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
     return testEndpointNotFoundResponse();
@@ -62,10 +62,9 @@ const deviceAuthorization$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
-export const testOAuthProviderDeviceAuthorizationRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: testOAuthProviderDeviceAuthorizationContract.deviceAuthorization,
-      handler: deviceAuthorization$,
-    },
-  ];
+export const testOAuthProviderDeviceAuthRoutes: readonly RouteEntry[] = [
+  {
+    route: testOAuthProviderDeviceAuthContract.deviceAuth,
+    handler: deviceAuth$,
+  },
+];

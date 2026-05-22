@@ -1,9 +1,9 @@
-import { getConnectorOAuthDeviceAuthorizationConfig } from "@vm0/connectors/connector-utils";
+import { getConnectorOAuthDeviceAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 
 import type {
-  OAuthDeviceAuthorizationPollResult,
-  OAuthDeviceAuthorizationStartResult,
+  OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthStartResult,
 } from "../provider-types";
 import { throwOAuthError } from "./oauth-error";
 import {
@@ -20,7 +20,7 @@ export const TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME =
 
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
-const deviceAuthorizationResponseSchema = z.object({
+const deviceAuthResponseSchema = z.object({
   device_code: z.string(),
   user_code: z.string(),
   verification_uri: z.string(),
@@ -42,26 +42,25 @@ const tokenErrorResponseSchema = z.object({
   error_description: z.string().optional(),
 });
 
-function getDeviceAuthorizationUrl(): string {
+function getDeviceAuthUrl(): string {
   return resolveTestOAuthProviderUrl(
-    "deviceAuthorizationUrl",
-    getConnectorOAuthDeviceAuthorizationConfig("test-oauth-device")
-      .deviceAuthorizationUrl,
+    "deviceAuthUrl",
+    getConnectorOAuthDeviceAuthConfig("test-oauth-device").deviceAuthUrl,
   );
 }
 
 function getDeviceTokenUrl(): string {
   return resolveTestOAuthProviderUrl(
     "tokenUrl",
-    getConnectorOAuthDeviceAuthorizationConfig("test-oauth-device").tokenUrl,
+    getConnectorOAuthDeviceAuthConfig("test-oauth-device").tokenUrl,
   );
 }
 
-export async function startTestOAuthDeviceAuthorization(args: {
+export async function startTestOAuthDeviceAuth(args: {
   readonly clientId: string;
   readonly scopes: readonly string[];
-}): Promise<OAuthDeviceAuthorizationStartResult> {
-  const response = await fetch(getDeviceAuthorizationUrl(), {
+}): Promise<OAuthDeviceAuthStartResult> {
+  const response = await fetch(getDeviceAuthUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -77,7 +76,7 @@ export async function startTestOAuthDeviceAuthorization(args: {
     await throwOAuthError("TestOAuthDevice", "start", response);
   }
 
-  const data = deviceAuthorizationResponseSchema.parse(await response.json());
+  const data = deviceAuthResponseSchema.parse(await response.json());
   return {
     deviceCode: data.device_code,
     userCode: data.user_code,
@@ -91,7 +90,7 @@ export async function startTestOAuthDeviceAuthorization(args: {
 function devicePollErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthorizationPollResult | null {
+}): OAuthDeviceAuthPollResult | null {
   if (args.error === "authorization_pending") {
     return { status: "pending" };
   }
@@ -122,10 +121,10 @@ function devicePollErrorResult(args: {
   return null;
 }
 
-export async function pollTestOAuthDeviceAuthorization(args: {
+export async function pollTestOAuthDeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthorizationPollResult> {
+}): Promise<OAuthDeviceAuthPollResult> {
   const response = await fetch(getDeviceTokenUrl(), {
     method: "POST",
     headers: {

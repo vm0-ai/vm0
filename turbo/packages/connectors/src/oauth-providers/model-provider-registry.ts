@@ -1,5 +1,5 @@
 import type {
-  OAuthAuthorizationCodeProvider,
+  OAuthAuthCodeProvider,
   OAuthRefreshProvider,
 } from "./provider-types";
 import { codexOauthProvider } from "./providers/codex-oauth-provider";
@@ -8,7 +8,7 @@ export const MODEL_PROVIDER_OAUTH_PROVIDERS = {
   "codex-oauth-token": codexOauthProvider,
 } as const satisfies Record<
   string,
-  OAuthAuthorizationCodeProvider | OAuthRefreshProvider
+  OAuthAuthCodeProvider | OAuthRefreshProvider
 >;
 
 export type ModelProviderOAuthProviderKey =

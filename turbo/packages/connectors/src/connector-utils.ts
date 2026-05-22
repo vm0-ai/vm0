@@ -15,9 +15,9 @@ import {
   type StaticConfidentialConnectorOAuthClientConfig,
   type StaticPublicConnectorOAuthClientConfig,
   type ConnectorType,
-  type OAuthAuthorizationCodeConnectorType,
+  type OAuthAuthCodeConnectorType,
   type OAuthConnectorType,
-  type OAuthDeviceAuthorizationConnectorType,
+  type OAuthDeviceAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./oauth-providers/google-oauth-connectors";
@@ -477,24 +477,24 @@ export function getConnectorOAuthFlow(
   return getConnectorOAuthConfig(type).flow;
 }
 
-export function isOAuthAuthorizationCodeConnectorType(
+export function isOAuthAuthCodeConnectorType(
   type: ConnectorType,
-): type is OAuthAuthorizationCodeConnectorType {
+): type is OAuthAuthCodeConnectorType {
   return (
     getConnectorOAuthConfigIfSupported(type)?.flow === "authorization-code"
   );
 }
 
-export function isOAuthDeviceAuthorizationConnectorType(
+export function isOAuthDeviceAuthConnectorType(
   type: ConnectorType,
-): type is OAuthDeviceAuthorizationConnectorType {
+): type is OAuthDeviceAuthConnectorType {
   return (
     getConnectorOAuthConfigIfSupported(type)?.flow === "device-authorization"
   );
 }
 
-export function getConnectorOAuthDeviceAuthorizationConfig(
-  type: OAuthDeviceAuthorizationConnectorType,
+export function getConnectorOAuthDeviceAuthConfig(
+  type: OAuthDeviceAuthConnectorType,
 ): Extract<ConnectorOAuthConfig, { readonly flow: "device-authorization" }> {
   return CONNECTOR_TYPES[type].oauth;
 }

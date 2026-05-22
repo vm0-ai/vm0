@@ -95,33 +95,31 @@ export type ConnectorOauthStartResponse = z.infer<
   typeof connectorOauthStartResponseSchema
 >;
 
-export const connectorOauthDeviceAuthorizationSessionStartResponseSchema =
-  z.object({
-    sessionId: z.uuid(),
-    sessionToken: z.string(),
-    type: connectorTypeSchema,
-    status: z.literal("pending"),
-    userCode: z.string(),
-    verificationUri: z.string(),
-    verificationUriComplete: z.string().optional(),
-    expiresIn: z.number(),
-    interval: z.number(),
-  });
+export const connectorOauthDeviceAuthSessionStartResponseSchema = z.object({
+  sessionId: z.uuid(),
+  sessionToken: z.string(),
+  type: connectorTypeSchema,
+  status: z.literal("pending"),
+  userCode: z.string(),
+  verificationUri: z.string(),
+  verificationUriComplete: z.string().optional(),
+  expiresIn: z.number(),
+  interval: z.number(),
+});
 
-export type ConnectorOauthDeviceAuthorizationSessionStartResponse = z.infer<
-  typeof connectorOauthDeviceAuthorizationSessionStartResponseSchema
+export type ConnectorOauthDeviceAuthSessionStartResponse = z.infer<
+  typeof connectorOauthDeviceAuthSessionStartResponseSchema
 >;
 
-export const connectorOauthDeviceAuthorizationSessionPollRequestSchema =
-  z.object({
-    sessionToken: z.string(),
-  });
+export const connectorOauthDeviceAuthSessionPollRequestSchema = z.object({
+  sessionToken: z.string(),
+});
 
-export type ConnectorOauthDeviceAuthorizationSessionPollRequest = z.infer<
-  typeof connectorOauthDeviceAuthorizationSessionPollRequestSchema
+export type ConnectorOauthDeviceAuthSessionPollRequest = z.infer<
+  typeof connectorOauthDeviceAuthSessionPollRequestSchema
 >;
 
-export const connectorOauthDeviceAuthorizationSessionPollResponseSchema =
+export const connectorOauthDeviceAuthSessionPollResponseSchema =
   z.discriminatedUnion("status", [
     z.object({
       status: z.literal("pending"),
@@ -148,8 +146,8 @@ export const connectorOauthDeviceAuthorizationSessionPollResponseSchema =
     }),
   ]);
 
-export type ConnectorOauthDeviceAuthorizationSessionPollResponse = z.infer<
-  typeof connectorOauthDeviceAuthorizationSessionPollResponseSchema
+export type ConnectorOauthDeviceAuthSessionPollResponse = z.infer<
+  typeof connectorOauthDeviceAuthSessionPollResponseSchema
 >;
 
 /**

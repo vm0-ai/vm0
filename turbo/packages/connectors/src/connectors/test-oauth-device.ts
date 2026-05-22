@@ -29,7 +29,7 @@ export const testOauthDevice = {
       // Relative paths — the provider resolves them against the concrete
       // app/API URL because the fake provider lives inside this same app and
       // the preview URL host changes per deploy.
-      deviceAuthorizationUrl: "/api/test/oauth-provider/device/code",
+      deviceAuthUrl: "/api/test/oauth-provider/device/code",
       tokenUrl: "/api/test/oauth-provider/token",
       client: {
         clientRegistration: "static",

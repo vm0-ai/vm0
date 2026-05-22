@@ -1,11 +1,11 @@
 import type {
   ConnectorType,
-  OAuthAuthorizationCodeConnectorType,
+  OAuthAuthCodeConnectorType,
   OAuthConnectorType,
-  OAuthDeviceAuthorizationConnectorType,
+  OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthDeviceAuthorizationConfig,
+  getConnectorOAuthDeviceAuthConfig,
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   isStaticConfidentialConnectorOAuthCredentials,
   isStaticConnectorOAuthCredentials,
@@ -14,15 +14,15 @@ import {
 import {
   type AuthUrlResult,
   type ConnectorOAuthAuthorizeArgs,
-  type ConnectorOAuthDeviceAuthorizationPollArgs,
-  type ConnectorOAuthDeviceAuthorizationStartArgs,
+  type ConnectorOAuthDeviceAuthPollArgs,
+  type ConnectorOAuthDeviceAuthStartArgs,
   type ConnectorOAuthExchangeArgs,
   type ConnectorOAuthProviderFor,
   type OAuthAuthorizeArgs,
-  type OAuthDeviceAuthorizationPollArgs,
-  type OAuthDeviceAuthorizationPollResult,
-  type OAuthDeviceAuthorizationStartArgs,
-  type OAuthDeviceAuthorizationStartResult,
+  type OAuthDeviceAuthPollArgs,
+  type OAuthDeviceAuthPollResult,
+  type OAuthDeviceAuthStartArgs,
+  type OAuthDeviceAuthStartResult,
   type OAuthExchangeArgs,
   type OAuthRefreshArgs,
   type OAuthRefreshResult,
@@ -81,10 +81,10 @@ import { testOauthDeviceProvider } from "./providers/test-oauth-device-provider"
 
 export type {
   AuthUrlResult,
-  OAuthDeviceAuthorizationPollArgs,
-  OAuthDeviceAuthorizationPollResult,
-  OAuthDeviceAuthorizationStartArgs,
-  OAuthDeviceAuthorizationStartResult,
+  OAuthDeviceAuthPollArgs,
+  OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthStartArgs,
+  OAuthDeviceAuthStartResult,
   OAuthAuthorizeArgs,
   OAuthExchangeArgs,
   OAuthRefreshArgs,
@@ -195,7 +195,7 @@ export function getConnectorOAuthProvider(
 }
 
 export async function buildConnectorOAuthAuthUrl<
-  T extends OAuthAuthorizationCodeConnectorType,
+  T extends OAuthAuthCodeConnectorType,
 >(args: {
   readonly type: T;
   readonly credentials: ConnectorOAuthCredentials;
@@ -212,7 +212,7 @@ export async function buildConnectorOAuthAuthUrl<
 }
 
 export async function exchangeConnectorOAuthCode<
-  T extends OAuthAuthorizationCodeConnectorType,
+  T extends OAuthAuthCodeConnectorType,
 >(args: {
   readonly type: T;
   readonly credentials: ConnectorOAuthCredentials;
@@ -234,34 +234,34 @@ export async function exchangeConnectorOAuthCode<
   } as ConnectorOAuthExchangeArgs<T>);
 }
 
-export async function startConnectorOAuthDeviceAuthorization<
-  T extends OAuthDeviceAuthorizationConnectorType,
+export async function startConnectorOAuthDeviceAuth<
+  T extends OAuthDeviceAuthConnectorType,
 >(args: {
   readonly type: T;
   readonly credentials: ConnectorOAuthCredentials;
-}): Promise<OAuthDeviceAuthorizationStartResult> {
+}): Promise<OAuthDeviceAuthStartResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   const provider = connectorProviderFor(args.type);
-  const oauthConfig = getConnectorOAuthDeviceAuthorizationConfig(args.type);
-  return await provider.startDeviceAuthorization({
+  const oauthConfig = getConnectorOAuthDeviceAuthConfig(args.type);
+  return await provider.startDeviceAuth({
     ...connectorCredentialArgs(args.credentials),
     scopes: oauthConfig.scopes,
-  } as ConnectorOAuthDeviceAuthorizationStartArgs<T>);
+  } as ConnectorOAuthDeviceAuthStartArgs<T>);
 }
 
-export async function pollConnectorOAuthDeviceAuthorization<
-  T extends OAuthDeviceAuthorizationConnectorType,
+export async function pollConnectorOAuthDeviceAuth<
+  T extends OAuthDeviceAuthConnectorType,
 >(args: {
   readonly type: T;
   readonly credentials: ConnectorOAuthCredentials;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthorizationPollResult> {
+}): Promise<OAuthDeviceAuthPollResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   const provider = connectorProviderFor(args.type);
-  return await provider.pollDeviceAuthorization({
+  return await provider.pollDeviceAuth({
     ...connectorCredentialArgs(args.credentials),
     deviceCode: args.deviceCode,
-  } as ConnectorOAuthDeviceAuthorizationPollArgs<T>);
+  } as ConnectorOAuthDeviceAuthPollArgs<T>);
 }
 
 export async function refreshConnectorOAuthToken(args: {

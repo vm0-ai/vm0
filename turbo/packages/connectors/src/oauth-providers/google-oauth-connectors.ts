@@ -1,7 +1,4 @@
-import type {
-  ConnectorType,
-  OAuthAuthorizationCodeConnectorType,
-} from "../connectors";
+import type { ConnectorType, OAuthAuthCodeConnectorType } from "../connectors";
 
 export const GOOGLE_OAUTH_CONNECTOR_TYPES = [
   "gmail",
@@ -11,7 +8,7 @@ export const GOOGLE_OAUTH_CONNECTOR_TYPES = [
   "google-drive",
   "google-meet",
   "google-sheets",
-] as const satisfies readonly OAuthAuthorizationCodeConnectorType[];
+] as const satisfies readonly OAuthAuthCodeConnectorType[];
 
 export type GoogleOAuthConnectorType =
   (typeof GOOGLE_OAUTH_CONNECTOR_TYPES)[number];

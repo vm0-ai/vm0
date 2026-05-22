@@ -82,7 +82,7 @@ import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
 import { zeroCliAuthStripeRoutes } from "./routes/zero-connectors-cli-auth-stripe";
-import { zeroConnectorsOauthDeviceAuthorizationRoutes } from "./routes/zero-connectors-oauth-device-authorization";
+import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-authorization";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
@@ -168,7 +168,7 @@ import { storagesDownloadRoutes } from "./routes/storages-download";
 import { storagesListRoutes } from "./routes/storages-list";
 import { storagesPrepareRoutes } from "./routes/storages-prepare";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
-import { testOAuthProviderDeviceAuthorizationRoutes } from "./routes/test-oauth-provider-device-authorization";
+import { testOAuthProviderDeviceAuthRoutes } from "./routes/test-oauth-provider-device-authorization";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
 import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
@@ -266,7 +266,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
   ...zeroCliAuthStripeRoutes,
-  ...zeroConnectorsOauthDeviceAuthorizationRoutes,
+  ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,
   ...zeroDefaultAgentRoutes,
@@ -356,7 +356,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...runnersRoutes,
   ...testOAuthProviderAuthorizeRoutes,
-  ...testOAuthProviderDeviceAuthorizationRoutes,
+  ...testOAuthProviderDeviceAuthRoutes,
   ...testOAuthProviderEchoRoutes,
   ...testOAuthProviderTokenRoutes,
   ...testOAuthProviderUserinfoRoutes,

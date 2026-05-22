@@ -3,13 +3,13 @@ import { unescape as decodeCookieComponent } from "node:querystring";
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
-  isOAuthAuthorizationCodeConnectorType,
+  isOAuthAuthCodeConnectorType,
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type OAuthAuthorizationCodeConnectorType,
+  type OAuthAuthCodeConnectorType,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -59,7 +59,7 @@ type CallbackIdentity = {
 };
 
 type CompleteOAuthCallbackInput = {
-  readonly connectorType: OAuthAuthorizationCodeConnectorType;
+  readonly connectorType: OAuthAuthCodeConnectorType;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -109,7 +109,7 @@ type ClaimedCallbackState =
 type ResolvedOAuthConnectorType =
   | {
       readonly ok: true;
-      readonly connectorType: OAuthAuthorizationCodeConnectorType;
+      readonly connectorType: OAuthAuthCodeConnectorType;
     }
   | {
       readonly ok: false;
@@ -171,7 +171,7 @@ function missingStateRedirectResponse(origin: string, type: string): Response {
 }
 
 async function exchangeTokenForConnector(args: {
-  readonly connectorType: OAuthAuthorizationCodeConnectorType;
+  readonly connectorType: OAuthAuthCodeConnectorType;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
@@ -198,7 +198,7 @@ async function exchangeTokenForConnector(args: {
 }
 
 function getRequestedScopes(
-  connectorType: OAuthAuthorizationCodeConnectorType,
+  connectorType: OAuthAuthCodeConnectorType,
 ): readonly string[] {
   return getConnectorOAuthConfig(connectorType).scopes;
 }
@@ -236,7 +236,7 @@ function resolveOAuthConnectorType(
       ),
     };
   }
-  if (!isOAuthAuthorizationCodeConnectorType(connectorType)) {
+  if (!isOAuthAuthCodeConnectorType(connectorType)) {
     return {
       ok: false,
       response: redirectWithError(
@@ -253,7 +253,7 @@ function resolveOAuthConnectorType(
 async function claimStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorType: OAuthAuthorizationCodeConnectorType;
+  readonly connectorType: OAuthAuthCodeConnectorType;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
@@ -282,7 +282,7 @@ async function claimStoredOAuthStateForCallback(args: {
 async function rejectInvalidStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorType: OAuthAuthorizationCodeConnectorType;
+  readonly connectorType: OAuthAuthCodeConnectorType;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;

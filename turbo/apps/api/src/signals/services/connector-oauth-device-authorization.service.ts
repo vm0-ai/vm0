@@ -2,28 +2,28 @@ import { createHash, randomBytes } from "node:crypto";
 
 import type {
   ConnectorResponse,
-  ConnectorOauthDeviceAuthorizationSessionPollResponse,
-  ConnectorOauthDeviceAuthorizationSessionStartResponse,
+  ConnectorOauthDeviceAuthSessionPollResponse,
+  ConnectorOauthDeviceAuthSessionStartResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorType,
-  OAuthDeviceAuthorizationConnectorType,
+  OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
   getConnectorOAuthCredentials,
   isConnectorAuthMethodAvailable,
-  isOAuthDeviceAuthorizationConnectorType,
+  isOAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
   CONNECTOR_OAUTH_PROVIDERS,
   isOAuthConnectorType,
-  pollConnectorOAuthDeviceAuthorization,
-  startConnectorOAuthDeviceAuthorization,
+  pollConnectorOAuthDeviceAuth,
+  startConnectorOAuthDeviceAuth,
 } from "@vm0/connectors/oauth-providers";
 import type {
-  OAuthDeviceAuthorizationCompleteResult,
-  OAuthDeviceAuthorizationPollResult,
+  OAuthDeviceAuthCompleteResult,
+  OAuthDeviceAuthPollResult,
 } from "@vm0/connectors/oauth-providers/provider-types";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
@@ -58,11 +58,11 @@ type ConfiguredConnectorOAuthCredentials = Extract<
   { readonly configured: true }
 >;
 
-type DeviceAuthorizationSessionRow =
+type DeviceAuthSessionRow =
   typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
 
 type PendingPollBody = Extract<
-  ConnectorOauthDeviceAuthorizationSessionPollResponse,
+  ConnectorOauthDeviceAuthSessionPollResponse,
   { status: "pending" }
 >;
 
@@ -73,7 +73,7 @@ type PendingSuccess = {
 
 type PollSuccess = {
   readonly status: 200;
-  readonly body: ConnectorOauthDeviceAuthorizationSessionPollResponse;
+  readonly body: ConnectorOauthDeviceAuthSessionPollResponse;
 };
 
 const encryptedProviderStateSchema = z.object({
@@ -87,17 +87,17 @@ type PollClaimedSessionArgs = {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly type: OAuthDeviceAuthConnectorType;
   readonly credentials: ConfiguredConnectorOAuthCredentials;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly signal: AbortSignal;
   readonly persistConnector: (args: {
-    readonly result: OAuthDeviceAuthorizationCompleteResult;
+    readonly result: OAuthDeviceAuthCompleteResult;
   }) => Promise<ConnectorResponse>;
 };
 
-const connectorOauthDeviceAuthorizationDisabled = Object.freeze({
+const connectorOauthDeviceAuthDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
@@ -128,8 +128,8 @@ function generateSessionToken(): string {
 }
 
 function terminalErrorBody(
-  session: DeviceAuthorizationSessionRow,
-): ConnectorOauthDeviceAuthorizationSessionPollResponse {
+  session: DeviceAuthSessionRow,
+): ConnectorOauthDeviceAuthSessionPollResponse {
   if (
     session.status !== "denied" &&
     session.status !== "expired" &&
@@ -147,19 +147,19 @@ function terminalErrorBody(
 }
 
 function pendingBody(
-  session: Pick<DeviceAuthorizationSessionRow, "intervalSeconds">,
+  session: Pick<DeviceAuthSessionRow, "intervalSeconds">,
 ): PendingPollBody {
   return { status: "pending", interval: session.intervalSeconds };
 }
 
 function pendingResponse(
-  session: Pick<DeviceAuthorizationSessionRow, "intervalSeconds">,
+  session: Pick<DeviceAuthSessionRow, "intervalSeconds">,
 ): PendingSuccess {
   return { status: 200, body: pendingBody(session) };
 }
 
 function shouldWaitBeforeProviderPoll(
-  session: DeviceAuthorizationSessionRow,
+  session: DeviceAuthSessionRow,
   now: Date,
 ): boolean {
   return (
@@ -169,7 +169,7 @@ function shouldWaitBeforeProviderPoll(
 }
 
 function isFreshPollingSession(
-  session: DeviceAuthorizationSessionRow,
+  session: DeviceAuthSessionRow,
   now: Date,
 ): boolean {
   return (
@@ -178,10 +178,10 @@ function isFreshPollingSession(
   );
 }
 
-function resolveDeviceAuthorizationType(
+function resolveDeviceAuthType(
   type: ConnectorType,
 ):
-  | OAuthDeviceAuthorizationConnectorType
+  | OAuthDeviceAuthConnectorType
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof internalServerError> {
   if (!getConnectorAuthMethod(type, "oauth")) {
@@ -190,7 +190,7 @@ function resolveDeviceAuthorizationType(
   if (!isOAuthConnectorType(type)) {
     return internalServerError(`${type} OAuth provider is not configured`);
   }
-  if (!isOAuthDeviceAuthorizationConnectorType(type)) {
+  if (!isOAuthDeviceAuthConnectorType(type)) {
     return badRequestMessage(
       `${type} connector does not support OAuth device authorization`,
     );
@@ -199,7 +199,7 @@ function resolveDeviceAuthorizationType(
 }
 
 function resolveConfiguredCredentials(
-  type: OAuthDeviceAuthorizationConnectorType,
+  type: OAuthDeviceAuthConnectorType,
 ):
   | ConfiguredConnectorOAuthCredentials
   | ReturnType<typeof internalServerError> {
@@ -210,11 +210,11 @@ function resolveConfiguredCredentials(
   return credentials;
 }
 
-async function lockDeviceAuthorizationSessionOwner(args: {
+async function lockDeviceAuthSessionOwner(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly type: OAuthDeviceAuthConnectorType;
 }): Promise<void> {
   await args.writeDb.execute(
     sql`SELECT pg_advisory_xact_lock(hashtext('oauth_device_authorization:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type}))`,
@@ -225,7 +225,7 @@ async function markActiveSessionsSuperseded(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly type: OAuthDeviceAuthConnectorType;
   readonly now: Date;
 }): Promise<void> {
   await args.writeDb
@@ -282,11 +282,11 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly type: OAuthDeviceAuthConnectorType;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
-}): Promise<DeviceAuthorizationSessionRow | null> {
+}): Promise<DeviceAuthSessionRow | null> {
   const [session] = await args.writeDb
     .select()
     .from(connectorOauthDeviceAuthorizationSessions)
@@ -309,7 +309,7 @@ async function loadOwnedSession(args: {
 
 async function expireSession(args: {
   readonly writeDb: Db;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly session: DeviceAuthSessionRow;
   readonly now: Date;
   readonly signal: AbortSignal;
 }): Promise<PollSuccess> {
@@ -349,10 +349,10 @@ async function expireSession(args: {
 
 async function claimSession(args: {
   readonly writeDb: Db;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly signal: AbortSignal;
-}): Promise<DeviceAuthorizationSessionRow | null> {
+}): Promise<DeviceAuthSessionRow | null> {
   const staleBefore = new Date(
     args.claimStartedAt.getTime() - POLLING_STALE_MS,
   );
@@ -383,8 +383,8 @@ async function claimSession(args: {
 }
 
 function parseEncryptedProviderState(args: {
-  readonly session: DeviceAuthorizationSessionRow;
-  readonly type: OAuthDeviceAuthorizationConnectorType;
+  readonly session: DeviceAuthSessionRow;
+  readonly type: OAuthDeviceAuthConnectorType;
 }): EncryptedProviderState {
   const providerState = encryptedProviderStateSchema.parse(
     JSON.parse(decryptSecretValue(args.session.encryptedProviderState)),
@@ -419,7 +419,7 @@ async function claimStillCurrent(args: {
 
 async function claimNoLongerCurrentResponse(args: {
   readonly writeDb: Db;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly session: DeviceAuthSessionRow;
   readonly signal: AbortSignal;
 }): Promise<PollSuccess> {
   const [currentSession] = await args.writeDb
@@ -441,10 +441,10 @@ async function claimNoLongerCurrentResponse(args: {
 
 async function markClaimTerminal(args: {
   readonly writeDb: Db;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly result: Extract<
-    OAuthDeviceAuthorizationPollResult,
+    OAuthDeviceAuthPollResult,
     { readonly status: "denied" | "expired" | "error" }
   >;
   readonly signal: AbortSignal;
@@ -484,7 +484,7 @@ async function markClaimTerminal(args: {
 
 async function markClaimComplete(args: {
   readonly writeDb: Db;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly connector: ConnectorResponse;
   readonly signal: AbortSignal;
@@ -523,17 +523,17 @@ async function completeClaimedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthorizationConnectorType;
-  readonly session: DeviceAuthorizationSessionRow;
+  readonly type: OAuthDeviceAuthConnectorType;
+  readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
-  readonly result: OAuthDeviceAuthorizationCompleteResult;
+  readonly result: OAuthDeviceAuthCompleteResult;
   readonly signal: AbortSignal;
   readonly persistConnector: (args: {
-    readonly result: OAuthDeviceAuthorizationCompleteResult;
+    readonly result: OAuthDeviceAuthCompleteResult;
   }) => Promise<ConnectorResponse>;
 }): Promise<PollSuccess> {
   return await args.writeDb.transaction(async (tx) => {
-    await lockDeviceAuthorizationSessionOwner({
+    await lockDeviceAuthSessionOwner({
       writeDb: tx,
       orgId: args.orgId,
       userId: args.userId,
@@ -586,7 +586,7 @@ async function runClaimedSession(
     session: args.session,
     type: args.type,
   });
-  const pollResult = await pollConnectorOAuthDeviceAuthorization({
+  const pollResult = await pollConnectorOAuthDeviceAuth({
     type: args.type,
     credentials: args.credentials,
     deviceCode: providerState.deviceCode,
@@ -666,7 +666,7 @@ async function pollClaimedSession(
   throw result.error;
 }
 
-export const startConnectorOauthDeviceAuthorizationSession$ = command(
+export const startConnectorOauthDeviceAuthSession$ = command(
   async (
     { get, set },
     args: {
@@ -676,7 +676,7 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const resolvedType = resolveDeviceAuthorizationType(args.type);
+    const resolvedType = resolveDeviceAuthType(args.type);
     if (typeof resolvedType !== "string") {
       return resolvedType;
     }
@@ -687,7 +687,7 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
     signal.throwIfAborted();
 
     if (!isConnectorAuthMethodAvailable(resolvedType, "oauth", overrides)) {
-      return connectorOauthDeviceAuthorizationDisabled;
+      return connectorOauthDeviceAuthDisabled;
     }
 
     const credentials = resolveConfiguredCredentials(resolvedType);
@@ -695,7 +695,7 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
       return credentials;
     }
 
-    const startResult = await startConnectorOAuthDeviceAuthorization({
+    const startResult = await startConnectorOAuthDeviceAuth({
       type: resolvedType,
       credentials,
     });
@@ -714,7 +714,7 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
     );
 
     const [session] = await set(writeDb$).transaction(async (tx) => {
-      await lockDeviceAuthorizationSessionOwner({
+      await lockDeviceAuthSessionOwner({
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
@@ -754,7 +754,7 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
       throw new Error("Failed to create OAuth device authorization session");
     }
 
-    const body: ConnectorOauthDeviceAuthorizationSessionStartResponse = {
+    const body: ConnectorOauthDeviceAuthSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
       type: resolvedType,
@@ -769,7 +769,7 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
   },
 );
 
-export const pollConnectorOauthDeviceAuthorizationSession$ = command(
+export const pollConnectorOauthDeviceAuthSession$ = command(
   async (
     { get, set },
     args: {
@@ -781,7 +781,7 @@ export const pollConnectorOauthDeviceAuthorizationSession$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const resolvedType = resolveDeviceAuthorizationType(args.type);
+    const resolvedType = resolveDeviceAuthType(args.type);
     if (typeof resolvedType !== "string") {
       return resolvedType;
     }
@@ -792,7 +792,7 @@ export const pollConnectorOauthDeviceAuthorizationSession$ = command(
     signal.throwIfAborted();
 
     if (!isConnectorAuthMethodAvailable(resolvedType, "oauth", overrides)) {
-      return connectorOauthDeviceAuthorizationDisabled;
+      return connectorOauthDeviceAuthDisabled;
     }
 
     const credentials = resolveConfiguredCredentials(resolvedType);

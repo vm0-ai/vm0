@@ -1,7 +1,7 @@
 import { defineConnectorOAuthProvider } from "../provider-types";
 import {
-  pollTestOAuthDeviceAuthorization,
-  startTestOAuthDeviceAuthorization,
+  pollTestOAuthDeviceAuth,
+  startTestOAuthDeviceAuth,
   TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
 } from "./test-oauth-device";
 
@@ -11,16 +11,16 @@ export const testOauthDeviceProvider = defineConnectorOAuthProvider(
     getSecretName: () => {
       return TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME;
     },
-    startDeviceAuthorization: async (args) => {
+    startDeviceAuth: async (args) => {
       const { clientId } = args;
-      return await startTestOAuthDeviceAuthorization({
+      return await startTestOAuthDeviceAuth({
         clientId,
         scopes: args.scopes,
       });
     },
-    pollDeviceAuthorization: async (args) => {
+    pollDeviceAuth: async (args) => {
       const { clientId } = args;
-      return await pollTestOAuthDeviceAuthorization({
+      return await pollTestOAuthDeviceAuth({
         clientId,
         deviceCode: args.deviceCode,
       });

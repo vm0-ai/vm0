@@ -4,12 +4,12 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const testOAuthProviderDeviceAuthorizationErrorSchema = z.object({
+export const testOAuthProviderDeviceAuthErrorSchema = z.object({
   error: z.string(),
   error_description: z.string().optional(),
 });
 
-export const testOAuthProviderDeviceAuthorizationResponseSchema = z.object({
+export const testOAuthProviderDeviceAuthResponseSchema = z.object({
   device_code: z.string(),
   user_code: z.string(),
   verification_uri: z.string(),
@@ -18,15 +18,15 @@ export const testOAuthProviderDeviceAuthorizationResponseSchema = z.object({
   interval: z.number(),
 });
 
-export const testOAuthProviderDeviceAuthorizationContract = c.router({
-  deviceAuthorization: {
+export const testOAuthProviderDeviceAuthContract = c.router({
+  deviceAuth: {
     method: "POST",
     path: "/api/test/oauth-provider/device/code",
     body: c.type<string>(),
     responses: {
-      200: testOAuthProviderDeviceAuthorizationResponseSchema,
-      400: testOAuthProviderDeviceAuthorizationErrorSchema,
-      401: testOAuthProviderDeviceAuthorizationErrorSchema,
+      200: testOAuthProviderDeviceAuthResponseSchema,
+      400: testOAuthProviderDeviceAuthErrorSchema,
+      401: testOAuthProviderDeviceAuthErrorSchema,
       404: z.string(),
     },
     summary:
@@ -34,8 +34,8 @@ export const testOAuthProviderDeviceAuthorizationContract = c.router({
   },
 });
 
-export type TestOAuthProviderDeviceAuthorizationContract =
-  typeof testOAuthProviderDeviceAuthorizationContract;
-export type TestOAuthProviderDeviceAuthorizationResponse = z.infer<
-  typeof testOAuthProviderDeviceAuthorizationResponseSchema
+export type TestOAuthProviderDeviceAuthContract =
+  typeof testOAuthProviderDeviceAuthContract;
+export type TestOAuthProviderDeviceAuthResponse = z.infer<
+  typeof testOAuthProviderDeviceAuthResponseSchema
 >;

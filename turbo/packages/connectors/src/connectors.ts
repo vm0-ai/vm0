@@ -318,24 +318,24 @@ export type DynamicPublicConnectorOAuthClientConfig = Extract<
 
 export type ConnectorOAuthFlow = "authorization-code" | "device-authorization";
 
-export interface ConnectorOAuthAuthorizationCodeConfig {
+export interface ConnectorOAuthAuthCodeConfig {
   readonly flow: "authorization-code";
   readonly tokenUrl: string;
   readonly client: ConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 
-export interface ConnectorOAuthDeviceAuthorizationConfig {
+export interface ConnectorOAuthDeviceAuthConfig {
   readonly flow: "device-authorization";
-  readonly deviceAuthorizationUrl: string;
+  readonly deviceAuthUrl: string;
   readonly tokenUrl: string;
   readonly client: StaticPublicConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 
 export type ConnectorOAuthConfig =
-  | ConnectorOAuthAuthorizationCodeConfig
-  | ConnectorOAuthDeviceAuthorizationConfig;
+  | ConnectorOAuthAuthCodeConfig
+  | ConnectorOAuthDeviceAuthConfig;
 
 /**
  * CLI auth configuration for connectors that can import credentials through a
@@ -788,12 +788,12 @@ export type OAuthConnectorType = {
     ? Type
     : never;
 }[ConnectorType];
-export type OAuthAuthorizationCodeConnectorType = {
+export type OAuthAuthCodeConnectorType = {
   [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "authorization-code"
     ? Type
     : never;
 }[OAuthConnectorType];
-export type OAuthDeviceAuthorizationConnectorType = {
+export type OAuthDeviceAuthConnectorType = {
   [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "device-authorization"
     ? Type
     : never;
