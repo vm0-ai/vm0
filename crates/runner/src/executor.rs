@@ -44,6 +44,10 @@ const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// This covers vsock-guest's 5s stdout/stderr drain deadline after it kills
 /// the cancelled process.
 const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(6);
+const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
+    write: PROCESS_CANCEL_WRITE_TIMEOUT,
+    terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
+};
 /// Exit code when a process is killed by SIGKILL (128 + 9).
 const EXIT_SIGKILL: i32 = 137;
 /// Raw SIGKILL signal number.
@@ -169,6 +173,12 @@ impl AgentStdoutStreamDiagnostics {
     fn is_empty(self) -> bool {
         !self.chunk_truncated && !self.stream_overflowed
     }
+}
+
+#[derive(Clone, Copy)]
+struct ProcessCancelTimeouts {
+    write: Duration,
+    terminal_grace: Duration,
 }
 
 struct AgentExecutionResult {
@@ -447,6 +457,7 @@ async fn execute_new_sandbox(
         },
         telemetry,
         cancel.clone(),
+        PROCESS_CANCEL_TIMEOUTS,
     )
     .await;
 
@@ -535,6 +546,7 @@ async fn execute_reused_sandbox(
         },
         telemetry,
         cancel.clone(),
+        PROCESS_CANCEL_TIMEOUTS,
     )
     .await;
 
@@ -666,6 +678,7 @@ async fn run_in_sandbox(
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
+    process_cancel_timeouts: ProcessCancelTimeouts,
 ) -> RunnerResult<AgentExecutionResult> {
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -800,10 +813,10 @@ async fn run_in_sandbox(
                 Ok(cancelled_agent_process_exit(process_pid, false))
             };
             match process_cancel {
-                Some(process_cancel) => match process_cancel.cancel(PROCESS_CANCEL_WRITE_TIMEOUT).await {
+                Some(process_cancel) => match process_cancel.cancel(process_cancel_timeouts.write).await {
                     Ok(()) => {
                         match tokio::time::timeout(
-                            PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
+                            process_cancel_timeouts.terminal_grace,
                             &mut wait_process,
                         )
                         .await
@@ -836,7 +849,7 @@ async fn run_in_sandbox(
                                 warn!(
                                     run_id = %context.run_id,
                                     pid = process_pid,
-                                    timeout_ms = PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT.as_millis(),
+                                    timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
                                     "timed out waiting for cancelled guest process"
                                 );
                                 (cancelled_exit(), true, true)
@@ -3859,6 +3872,22 @@ mod tests {
         config: ExecutorConfig,
         cancel: tokio_util::sync::CancellationToken,
     ) -> tokio::task::JoinHandle<RunnerResult<AgentExecutionResult>> {
+        spawn_run_in_sandbox_test_with_timeouts(
+            sandbox,
+            ctx,
+            config,
+            cancel,
+            PROCESS_CANCEL_TIMEOUTS,
+        )
+    }
+
+    fn spawn_run_in_sandbox_test_with_timeouts(
+        sandbox: Box<dyn Sandbox>,
+        ctx: ExecutionContext,
+        config: ExecutorConfig,
+        cancel: tokio_util::sync::CancellationToken,
+        process_cancel_timeouts: ProcessCancelTimeouts,
+    ) -> tokio::task::JoinHandle<RunnerResult<AgentExecutionResult>> {
         tokio::spawn(async move {
             let mut telemetry = test_telemetry(&config, &ctx);
             run_in_sandbox(
@@ -3872,6 +3901,7 @@ mod tests {
                 },
                 &mut telemetry,
                 cancel,
+                process_cancel_timeouts,
             )
             .await
         })
@@ -3916,6 +3946,7 @@ mod tests {
             },
             &mut telemetry,
             cancel.clone(),
+            PROCESS_CANCEL_TIMEOUTS,
         )
         .await
         .unwrap();
@@ -4024,6 +4055,48 @@ mod tests {
         let ctx = minimal_context();
         let cancel = tokio_util::sync::CancellationToken::new();
         let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
+        cancel.cancel();
+
+        let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            overrides.process_cancel_calls().as_slice(),
+            [sandbox_mock::ProcessCancelCall {
+                timeout: PROCESS_CANCEL_WRITE_TIMEOUT
+            }]
+        );
+        assert_eq!(
+            result.failure.as_ref().map(|failure| failure.exit_code),
+            Some(EXIT_SIGKILL)
+        );
+    }
+
+    #[tokio::test]
+    async fn run_in_sandbox_returns_cancelled_when_terminal_grace_times_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let wait_gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+            wait_gate,
+        ));
+        overrides.set_process_cancel_releases_wait_gate(false);
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let ctx = minimal_context();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let run_task = spawn_run_in_sandbox_test_with_timeouts(
+            sandbox,
+            ctx,
+            config,
+            cancel.clone(),
+            ProcessCancelTimeouts {
+                write: PROCESS_CANCEL_WRITE_TIMEOUT,
+                terminal_grace: Duration::from_millis(1),
+            },
+        );
         cancel.cancel();
 
         let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)

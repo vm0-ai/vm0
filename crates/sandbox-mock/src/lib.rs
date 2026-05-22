@@ -331,6 +331,10 @@ pub struct MockSandboxOverrides {
     process_cancel_notify: tokio::sync::Notify,
     /// FIFO queue of process cancel errors consumed by cancel handles.
     process_cancel_errors: Mutex<VecDeque<String>>,
+    /// Whether a successful process cancel releases the configured
+    /// `wait_process` gate. Tests can disable this to exercise bounded wait
+    /// timeout paths after cancel is sent.
+    process_cancel_releases_wait_gate: Mutex<bool>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -363,6 +367,7 @@ impl MockSandboxOverrides {
             process_cancel_calls: Mutex::new(Vec::new()),
             process_cancel_notify: tokio::sync::Notify::new(),
             process_cancel_errors: Mutex::new(VecDeque::new()),
+            process_cancel_releases_wait_gate: Mutex::new(true),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
             destroy_calls: Mutex::new(0),
@@ -587,6 +592,14 @@ impl MockSandboxOverrides {
         self.process_cancel_errors
             .lock_ignoring_poison()
             .push_back(message.into());
+    }
+
+    /// Configure whether successful process cancellation releases a configured
+    /// `wait_process` gate.
+    pub fn set_process_cancel_releases_wait_gate(&self, releases: bool) {
+        *self
+            .process_cancel_releases_wait_gate
+            .lock_ignoring_poison() = releases;
     }
 }
 
@@ -1039,7 +1052,11 @@ impl Sandbox for MockSandbox {
                     {
                         return Err(std::io::Error::other(message));
                     }
-                    if let Some(gate) = &overrides.wait_process_gate {
+                    if *overrides
+                        .process_cancel_releases_wait_gate
+                        .lock_ignoring_poison()
+                        && let Some(gate) = &overrides.wait_process_gate
+                    {
                         gate.notify_one();
                     }
                     Ok(())
