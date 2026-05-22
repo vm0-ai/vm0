@@ -723,10 +723,10 @@ describe("POST /api/zero/runs", () => {
     const existingVendorKeys = await db
       .select({ model: vm0ApiKeys.model })
       .from(vm0ApiKeys)
-      .where(eq(vm0ApiKeys.vendor, "anthropic"));
+      .where(eq(vm0ApiKeys.vendor, "minimax"));
     await seedVm0ApiKey({
-      vendor: "anthropic",
-      model: "claude-haiku-4-5",
+      vendor: "minimax",
+      model: "MiniMax-M2.1",
       apiKey: "sk-vm0-fallback",
     });
     await db.insert(modelProviders).values({
@@ -734,7 +734,7 @@ describe("POST /api/zero/runs", () => {
       userId: ORG_SENTINEL_USER_ID,
       type: "vm0",
       isDefault: true,
-      selectedModel: "claude-opus-4-6",
+      selectedModel: "MiniMax-M2.7",
     });
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -758,16 +758,17 @@ describe("POST /api/zero/runs", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_MODEL: "claude-opus-4-6",
+      ANTHROPIC_MODEL: "MiniMax-M2.7",
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
     });
     // Local dev databases may already have dev-seeded vendor keys.
     if (existingVendorKeys.length === 0) {
-      expect(executionContext.environment.ANTHROPIC_API_KEY).toBe(
+      expect(executionContext.environment.ANTHROPIC_AUTH_TOKEN).toBe(
         "sk-vm0-fallback",
       );
     }
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
+      MINIMAX_API_KEY: executionContext.environment.ANTHROPIC_AUTH_TOKEN,
     });
   });
 
