@@ -2939,12 +2939,17 @@ mod tests {
             slow: true,
             ..fast_expected
         };
+        let fast_one_shot_expected = ExecTerminalLogContext {
+            lifecycle: ExecTerminalLogLifecycle::OneShot,
+            ..fast_expected
+        };
         let slow_one_shot_expected = ExecTerminalLogContext {
             lifecycle: ExecTerminalLogLifecycle::OneShot,
             ..slow_expected
         };
 
         assert_eq!(exec_terminal_log_severity(fast_expected), None);
+        assert_eq!(exec_terminal_log_severity(fast_one_shot_expected), None);
         assert_eq!(
             exec_terminal_log_severity(slow_expected),
             Some(ExecTerminalLogSeverity::Info)
@@ -2957,16 +2962,21 @@ mod tests {
 
     #[test]
     fn exec_terminal_log_severity_warns_for_unexpected_nonzero_exit_code() {
-        let context = clean_terminal_log_context(
+        for lifecycle in [
+            ExecTerminalLogLifecycle::OneShot,
             ExecTerminalLogLifecycle::Supervised,
-            false,
-            ExecTermination::Exited { exit_code: 1 },
-        );
+        ] {
+            let context = clean_terminal_log_context(
+                lifecycle,
+                false,
+                ExecTermination::Exited { exit_code: 1 },
+            );
 
-        assert_eq!(
-            exec_terminal_log_severity(context),
-            Some(ExecTerminalLogSeverity::Warn)
-        );
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Warn)
+            );
+        }
     }
 
     #[test]
@@ -3011,54 +3021,60 @@ mod tests {
 
     #[test]
     fn exec_terminal_log_severity_warns_for_notable_result_metadata() {
-        let clean = clean_terminal_log_context(
+        for lifecycle in [
+            ExecTerminalLogLifecycle::OneShot,
             ExecTerminalLogLifecycle::Supervised,
-            false,
-            ExecTermination::Exited { exit_code: 0 },
-        );
-        for context in [
-            ExecTerminalLogContext {
-                stdout_truncated: true,
-                ..clean
-            },
-            ExecTerminalLogContext {
-                stderr_truncated: true,
-                ..clean
-            },
-            ExecTerminalLogContext {
-                stream_overflowed: true,
-                ..clean
-            },
-            ExecTerminalLogContext {
-                diagnostic_present: true,
-                ..clean
-            },
         ] {
-            assert_eq!(
-                exec_terminal_log_severity(context),
-                Some(ExecTerminalLogSeverity::Warn)
+            let clean = clean_terminal_log_context(
+                lifecycle,
+                false,
+                ExecTermination::Exited { exit_code: 0 },
             );
+            for context in [
+                ExecTerminalLogContext {
+                    stdout_truncated: true,
+                    ..clean
+                },
+                ExecTerminalLogContext {
+                    stderr_truncated: true,
+                    ..clean
+                },
+                ExecTerminalLogContext {
+                    stream_overflowed: true,
+                    ..clean
+                },
+                ExecTerminalLogContext {
+                    diagnostic_present: true,
+                    ..clean
+                },
+            ] {
+                assert_eq!(
+                    exec_terminal_log_severity(context),
+                    Some(ExecTerminalLogSeverity::Warn)
+                );
+            }
         }
     }
 
     #[test]
     fn exec_terminal_log_severity_warns_for_non_exit_terminations() {
-        for termination in [
-            ExecTermination::TimedOut,
-            ExecTermination::Cancelled,
-            ExecTermination::StartFailed,
-            ExecTermination::WaitFailed,
+        for lifecycle in [
+            ExecTerminalLogLifecycle::OneShot,
+            ExecTerminalLogLifecycle::Supervised,
         ] {
-            let context = clean_terminal_log_context(
-                ExecTerminalLogLifecycle::Supervised,
-                false,
-                termination,
-            );
+            for termination in [
+                ExecTermination::TimedOut,
+                ExecTermination::Cancelled,
+                ExecTermination::StartFailed,
+                ExecTermination::WaitFailed,
+            ] {
+                let context = clean_terminal_log_context(lifecycle, false, termination);
 
-            assert_eq!(
-                exec_terminal_log_severity(context),
-                Some(ExecTerminalLogSeverity::Warn)
-            );
+                assert_eq!(
+                    exec_terminal_log_severity(context),
+                    Some(ExecTerminalLogSeverity::Warn)
+                );
+            }
         }
     }
 
