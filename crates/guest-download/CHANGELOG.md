@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.15...guest-download-v0.20.16) (2026-05-22)
+
+
+### Bug Fixes
+
+* surface storage download diagnostics ([#14516](https://github.com/vm0-ai/vm0/issues/14516)) ([268dcc6](https://github.com/vm0-ai/vm0/commit/268dcc6e06cdf8318496df9a2881116e0a7e4f92))
+
 ## [0.20.15](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.14...guest-download-v0.20.15) (2026-05-14)
 
 ## [0.20.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.13...guest-download-v0.20.14) (2026-05-13)

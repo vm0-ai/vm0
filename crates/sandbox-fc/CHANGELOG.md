@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.7...sandbox-fc-v0.35.8) (2026-05-22)
+
+
+### Bug Fixes
+
+* cancel guest process before runner cleanup ([#14537](https://github.com/vm0-ai/vm0/issues/14537)) ([55b3ab7](https://github.com/vm0-ai/vm0/commit/55b3ab78eb113e7665c6d097f5e2fdbef8b30193))
+
 ## [0.35.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.6...sandbox-fc-v0.35.7) (2026-05-22)
 
 

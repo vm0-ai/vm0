@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.375.1](https://github.com/vm0-ai/vm0/compare/app-v0.375.0...app-v0.375.1) (2026-05-22)
+
+
+### Bug Fixes
+
+* harden github integration triggers ([#14541](https://github.com/vm0-ai/vm0/issues/14541)) ([4dc2dcb](https://github.com/vm0-ai/vm0/commit/4dc2dcb27bcca045bc1ae3b9757da6495137e93e))
+* reset permissions dialog per connector ([#14546](https://github.com/vm0-ai/vm0/issues/14546)) ([bef28db](https://github.com/vm0-ai/vm0/commit/bef28db59a1be247fee8f7a5f8ca6e66b01e4d44))
+* track google ads subscriber conversions ([#14557](https://github.com/vm0-ai/vm0/issues/14557)) ([26f5773](https://github.com/vm0-ai/vm0/commit/26f577363c2d4cd04bceb48ee76f12a37714e631))
+
+
+### Refactoring
+
+* clarify oauth auth-code connector commands ([#14553](https://github.com/vm0-ai/vm0/issues/14553)) ([cec51ec](https://github.com/vm0-ai/vm0/commit/cec51ec0b9238ccd96e2e9a5e990eaec400ba085))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.0
+    * @vm0/core bumped to 8.289.1
+
 ## [0.375.0](https://github.com/vm0-ai/vm0/compare/app-v0.374.0...app-v0.375.0) (2026-05-22)
 
 

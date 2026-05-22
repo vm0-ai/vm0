@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.67.0](https://github.com/vm0-ai/vm0/compare/api-v1.66.0...api-v1.67.0) (2026-05-22)
+
+
+### Features
+
+* add github zero file tools ([#14551](https://github.com/vm0-ai/vm0/issues/14551)) ([82a9adf](https://github.com/vm0-ai/vm0/commit/82a9adf5234d4cfbbb3ea9e71ffd50a7e33cf1e1))
+* switch built-in video generation to byteplus ([#14547](https://github.com/vm0-ai/vm0/issues/14547)) ([7be0a3e](https://github.com/vm0-ai/vm0/commit/7be0a3edd4ae401d42a2f038de26d4a6f782e7a7))
+
+
+### Bug Fixes
+
+* harden github integration triggers ([#14541](https://github.com/vm0-ai/vm0/issues/14541)) ([4dc2dcb](https://github.com/vm0-ai/vm0/commit/4dc2dcb27bcca045bc1ae3b9757da6495137e93e))
+
+
+### Refactoring
+
+* **web:** remove legacy model-provider backend ([#14561](https://github.com/vm0-ai/vm0/issues/14561)) ([48ec9f1](https://github.com/vm0-ai/vm0/commit/48ec9f127062d47f663219ecb98756ee2e210a08))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.0
+    * @vm0/core bumped to 8.289.1
+    * @vm0/db bumped to 1.18.1
+
 ## [1.66.0](https://github.com/vm0-ai/vm0/compare/api-v1.65.0...api-v1.66.0) (2026-05-22)
 
 

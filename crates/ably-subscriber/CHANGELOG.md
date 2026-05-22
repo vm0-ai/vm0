@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.14](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.13...ably-subscriber-v0.7.14) (2026-05-22)
+
+
+### Refactoring
+
+* merge msgpack binary match arms ([#14548](https://github.com/vm0-ai/vm0/issues/14548)) ([fa416b4](https://github.com/vm0-ai/vm0/commit/fa416b425c65def7346bd0b6d498284428af32a2))
+
 ## [0.7.13](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.12...ably-subscriber-v0.7.13) (2026-05-20)
 
 

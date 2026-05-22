@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.384.0](https://github.com/vm0-ai/vm0/compare/web-v12.383.0...web-v12.384.0) (2026-05-22)
+
+
+### Features
+
+* add github zero file tools ([#14551](https://github.com/vm0-ai/vm0/issues/14551)) ([82a9adf](https://github.com/vm0-ai/vm0/commit/82a9adf5234d4cfbbb3ea9e71ffd50a7e33cf1e1))
+* switch built-in video generation to byteplus ([#14547](https://github.com/vm0-ai/vm0/issues/14547)) ([7be0a3e](https://github.com/vm0-ai/vm0/commit/7be0a3edd4ae401d42a2f038de26d4a6f782e7a7))
+
+
+### Refactoring
+
+* remove legacy web email backend ([#14545](https://github.com/vm0-ai/vm0/issues/14545)) ([015f26d](https://github.com/vm0-ai/vm0/commit/015f26d7ae9e3a5b68881a374eb9d3d782324cf5))
+* **web:** remove legacy model-provider backend ([#14561](https://github.com/vm0-ai/vm0/issues/14561)) ([48ec9f1](https://github.com/vm0-ai/vm0/commit/48ec9f127062d47f663219ecb98756ee2e210a08))
+* **web:** remove legacy secrets and variables services ([#14555](https://github.com/vm0-ai/vm0/issues/14555)) ([ba543f1](https://github.com/vm0-ai/vm0/commit/ba543f1cf9acf7e5b81f90406937bf56c68db2d5)), closes [#14550](https://github.com/vm0-ai/vm0/issues/14550)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.0
+    * @vm0/core bumped to 8.289.1
+    * @vm0/db bumped to 1.18.1
+
 ## [12.383.0](https://github.com/vm0-ai/vm0/compare/web-v12.382.2...web-v12.383.0) (2026-05-22)
 
 

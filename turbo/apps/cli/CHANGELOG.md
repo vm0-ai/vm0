@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.161.0](https://github.com/vm0-ai/vm0/compare/cli-v9.160.9...cli-v9.161.0) (2026-05-22)
+
+
+### Features
+
+* add github zero file tools ([#14551](https://github.com/vm0-ai/vm0/issues/14551)) ([82a9adf](https://github.com/vm0-ai/vm0/commit/82a9adf5234d4cfbbb3ea9e71ffd50a7e33cf1e1))
+* switch built-in video generation to byteplus ([#14547](https://github.com/vm0-ai/vm0/issues/14547)) ([7be0a3e](https://github.com/vm0-ai/vm0/commit/7be0a3edd4ae401d42a2f038de26d4a6f782e7a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.38.0
+    * @vm0/core bumped to 8.289.1
+
 ## [9.160.9](https://github.com/vm0-ai/vm0/compare/cli-v9.160.8...cli-v9.160.9) (2026-05-22)
 
 

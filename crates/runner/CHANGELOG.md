@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.103.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.7...runner-rs-v0.103.8) (2026-05-22)
+
+
+### Bug Fixes
+
+* cancel guest process before runner cleanup ([#14537](https://github.com/vm0-ai/vm0/issues/14537)) ([55b3ab7](https://github.com/vm0-ai/vm0/commit/55b3ab78eb113e7665c6d097f5e2fdbef8b30193))
+* **mitm-addon:** prevent rewrite query shadowing ([#14544](https://github.com/vm0-ai/vm0/issues/14544)) ([fb1cae4](https://github.com/vm0-ai/vm0/commit/fb1cae4c9a77e7df38cd7759ee7a8d9e59aaad53))
+
+
+### Documentation
+
+* **mitm-addon:** fix firewall fixture reference ([#14549](https://github.com/vm0-ai/vm0/issues/14549)) ([9edd0cd](https://github.com/vm0-ai/vm0/commit/9edd0cd55918a172f05fa88ee3c9bf985e6ddf13))
+
+
+### Refactoring
+
+* make runner completion auth lifecycle explicit ([#14522](https://github.com/vm0-ai/vm0/issues/14522)) ([cd2a0dd](https://github.com/vm0-ai/vm0/commit/cd2a0dd0608ceb21f0ad3c2df7f269bbb23040ee))
+
 ## [0.103.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.6...runner-rs-v0.103.7) (2026-05-22)
 
 
