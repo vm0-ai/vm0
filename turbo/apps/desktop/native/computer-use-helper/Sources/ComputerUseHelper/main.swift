@@ -109,6 +109,34 @@ func appElement(named appName: String) throws -> AXUIElement {
     return AXUIElementCreateApplication(app.processIdentifier)
 }
 
+func trimmedPipeOutput(_ pipe: Pipe) -> String {
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+}
+
+func appOpenFailureCode(_ stderr: String) -> String {
+    let normalized = stderr.lowercased()
+    if normalized.contains("unable to find application") ||
+        normalized.contains("does not exist")
+    {
+        return "app_not_found"
+    }
+    return "app_open_failed"
+}
+
+func activateRunningApp(_ app: NSRunningApplication, named appName: String) throws {
+    if app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) {
+        return
+    }
+
+    let targetName = app.localizedName ?? app.bundleIdentifier ?? appName
+    throw HelperFailure(
+        code: "app_open_failed",
+        message: "Unable to activate \(targetName)"
+    )
+}
+
 func attribute(_ element: AXUIElement, _ name: CFString) -> Any? {
     var value: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(element, name, &value)
@@ -504,15 +532,34 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
 
 func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
+    if let runningApp = findRunningApp(named: appName) {
+        try activateRunningApp(runningApp, named: appName)
+        return [:]
+    }
+
     let process = Process()
+    let stdoutPipe = Pipe()
+    let stderrPipe = Pipe()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     process.arguments = ["-a", appName]
-    try process.run()
-    process.waitUntilExit()
-    if process.terminationStatus != 0 {
+    process.standardOutput = stdoutPipe
+    process.standardError = stderrPipe
+    do {
+        try process.run()
+    } catch {
         throw HelperFailure(
-            code: "accessibility_unavailable",
-            message: "Unable to open \(appName)"
+            code: "app_open_failed",
+            message: "Unable to request opening \(appName): \(error)"
+        )
+    }
+    process.waitUntilExit()
+    _ = trimmedPipeOutput(stdoutPipe)
+    if process.terminationStatus != 0 {
+        let stderr = trimmedPipeOutput(stderrPipe)
+        let detail = stderr.isEmpty ? "" : ": \(stderr)"
+        throw HelperFailure(
+            code: appOpenFailureCode(stderr),
+            message: "Unable to open \(appName)\(detail)"
         )
     }
     return [:]

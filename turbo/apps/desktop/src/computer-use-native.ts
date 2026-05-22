@@ -115,6 +115,8 @@ function responseErrorCode(value: unknown): ComputerUseNativeErrorCode {
     value === "permission_denied" ||
     value === "accessibility_unavailable" ||
     value === "screen_recording_unavailable" ||
+    value === "app_not_found" ||
+    value === "app_open_failed" ||
     value === "unsupported_command"
   ) {
     return value;
