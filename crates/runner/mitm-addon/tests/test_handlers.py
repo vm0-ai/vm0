@@ -5672,6 +5672,18 @@ class TestUsageWebhookDelivery:
             assert isinstance(port, int)
             return host, port
 
+        def start_server(server: ThreadingHTTPServer) -> threading.Thread:
+            started = threading.Event()
+
+            def serve():
+                started.set()
+                server.serve_forever(poll_interval=0.01)
+
+            thread = threading.Thread(target=serve, daemon=True)
+            thread.start()
+            assert started.wait(timeout=1)
+            return thread
+
         class TargetHandler(BaseHTTPRequestHandler):
             def do_POST(self):
                 redirected_hits.append(self.path)
@@ -5682,12 +5694,7 @@ class TestUsageWebhookDelivery:
                 return
 
         target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
-        target_thread = threading.Thread(
-            target=target_server.serve_forever,
-            kwargs={"poll_interval": 0.01},
-            daemon=True,
-        )
-        target_thread.start()
+        target_thread = start_server(target_server)
 
         class RedirectHandler(BaseHTTPRequestHandler):
             def do_POST(self):
@@ -5700,12 +5707,7 @@ class TestUsageWebhookDelivery:
                 return
 
         redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
-        redirect_thread = threading.Thread(
-            target=redirect_server.serve_forever,
-            kwargs={"poll_interval": 0.01},
-            daemon=True,
-        )
-        redirect_thread.start()
+        redirect_thread = start_server(redirect_server)
         try:
             host, port = server_host_port(redirect_server)
             with pytest.raises(urllib.error.HTTPError) as exc:
