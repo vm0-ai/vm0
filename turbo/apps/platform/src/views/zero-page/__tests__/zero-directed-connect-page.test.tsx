@@ -21,7 +21,10 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import {
+  setMockConnectors,
+  setMockOauthDeviceAuthSessionPollResponses,
+} from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
@@ -356,7 +359,7 @@ describe("directed connect page", () => {
     });
   });
 
-  it("does not enable connect for device-auth OAuth connectors", async () => {
+  it("opens device auth dialog before provider verification for device-auth OAuth connectors", async () => {
     const openSpy = vi.spyOn(window, "open");
     let startCalled = false;
     server.use(
@@ -384,12 +387,18 @@ describe("directed connect page", () => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectButton).toBeDefined();
-    expect(connectButton).toBeDisabled();
     click(connectButton!);
 
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Connect Test OAuth Device (internal)"),
+    ).toBeInTheDocument();
     expect(openSpy).not.toHaveBeenCalled();
     expect(startCalled).toBeFalsy();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("save button submits the api token to the server (CONN-I-049)", async () => {
@@ -503,6 +512,60 @@ describe("directed connect page", () => {
     });
     expect(saveBtn).toBeDefined();
     click(saveBtn!);
+
+    await waitFor(() => {
+      expect(authorizeCalled).toBeTruthy();
+    });
+  });
+
+  it("auto-authorizes agent after device auth connect when agentId is present", async () => {
+    mockUserConnectors();
+    setMockOauthDeviceAuthSessionPollResponses([
+      {
+        status: "complete",
+        connector: {
+          id: "00000000-0000-4000-8000-000000000201",
+          type: "test-oauth-device",
+          authMethod: "oauth",
+          externalId: "test-oauth-device-user",
+          externalUsername: "device-user",
+          externalEmail: null,
+          oauthScopes: ["read"],
+          needsReconnect: false,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      },
+    ]);
+
+    let authorizeCalled = false;
+    server.use(
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
+        authorizeCalled = true;
+        return respond(200, { enabledTypes: ["test-oauth-device"] });
+      }),
+    );
+    vi.spyOn(window, "open").mockReturnValue(
+      createMockAuthWindow() as unknown as Window,
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/test-oauth-device/connect?agentId=${AGENT_ID}`,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Test OAuth Device (internal) to proceed"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Connect"));
+
+    await userEvent.click(
+      await screen.findByText("Connect Test OAuth Device (internal)"),
+    );
+    await userEvent.click(await screen.findByText("Open verification page"));
 
     await waitFor(() => {
       expect(authorizeCalled).toBeTruthy();

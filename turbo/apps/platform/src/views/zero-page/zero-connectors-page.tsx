@@ -20,10 +20,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  isGoogleOAuthConnector,
-  isOAuthAuthCodeConnectorType,
-} from "@vm0/connectors/connector-utils";
+import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
@@ -42,6 +39,7 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   pollingOAuthAuthCodeConnectorType$,
+  pollingOAuthDeviceAuthConnectorType$,
   justConnectedTypes$,
   LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
@@ -52,6 +50,8 @@ import {
   setPermissionDialogType$,
   isStandaloneMode,
   matchesConnectorSearch,
+  getConfiguredConnectorAuthMethods,
+  getConnectorConnectLaunchMode,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
@@ -662,7 +662,8 @@ function renderBuiltinList({
 
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
@@ -708,12 +709,13 @@ export function ZeroConnectorsPage() {
     const ct = allConnectors.find((c) => {
       return c.type === type;
     });
-    const canLaunchOAuthAuthCode =
-      (ct?.availableAuthMethods.includes("oauth") ?? false) &&
-      isOAuthAuthCodeConnectorType(type);
-    // Connectors without auth-code OAuth open the ConnectModal for the
-    // available non-popup method.
-    if (!canLaunchOAuthAuthCode || isGoogleOAuthConnector(type)) {
+    const launchMode = getConnectorConnectLaunchMode({
+      type,
+      availableAuthMethods:
+        ct?.availableAuthMethods ?? getConfiguredConnectorAuthMethods(type),
+      preferModalForGoogleOAuth: true,
+    });
+    if (launchMode === "modal") {
       setSelected(type);
     } else {
       detach(
@@ -738,12 +740,14 @@ export function ZeroConnectorsPage() {
 
   const renderCard = (c: ConnectorTypeWithStatus) => {
     const effectiveConnector = getEffective(c);
+    const isPolling =
+      pollingAuthCodeType === c.type || pollingDeviceAuthType === c.type;
     if (!effectiveConnector.connected) {
       return (
         <AvailableConnectorCard
           key={c.type}
           connector={effectiveConnector}
-          isPolling={pollingType === c.type}
+          isPolling={isPolling}
           onConnect={() => {
             return connectHandler(c.type);
           }}
@@ -754,7 +758,7 @@ export function ZeroConnectorsPage() {
       <GlobalConnectorCard
         key={c.type}
         connector={effectiveConnector}
-        isPolling={pollingType === c.type}
+        isPolling={isPolling}
         isDisconnecting={disconnecting}
         onConnect={() => {
           return connectHandler(c.type);

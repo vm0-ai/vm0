@@ -266,6 +266,40 @@ describe("connectors page - connector status indicators", () => {
     expect(screen.getByText("Review")).toBeInTheDocument();
   });
 
+  it("device auth connector opens connect dialog instead of OAuth popup", async () => {
+    const open = vi.spyOn(window, "open");
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.type(
+      screen.getByPlaceholderText("Find connectors"),
+      "device",
+    );
+    await userEvent.click(
+      await screen.findByLabelText(/Connect .*Test OAuth Device \(internal\)/),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          name: /Test OAuth Device \(internal\)/,
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/Connect .*Test OAuth Device \(internal\)/),
+    ).toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("connected connector shows username (CONN-D-006)", async () => {
     // Pass the required GitHub OAuth scopes to avoid triggering scope mismatch state
     mockConnectors([

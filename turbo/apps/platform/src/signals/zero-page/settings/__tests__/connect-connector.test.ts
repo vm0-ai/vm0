@@ -3,14 +3,23 @@ import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
 import {
+  clearConnectorOAuthDeviceAuth$,
   connectConnectorOAuthAuthCode$,
+  connectConnectorOAuthDeviceAuth$,
+  connectorOAuthDeviceAuthState$,
+  openConnectorOAuthDeviceAuthVerificationPage$,
   permissionDialogType$,
   pollingOAuthAuthCodeConnectorType$,
+  pollingOAuthDeviceAuthConnectorType$,
   submitApiToken$,
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
-import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type {
+  ConnectorListResponse,
+  ConnectorResponse,
+} from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -78,6 +87,21 @@ function mockConnectorOauthStart() {
 
 function createMockAuthWindow() {
   return { closed: false, close: vi.fn(), location: { href: "" } };
+}
+
+function makeTestOauthDeviceConnectorResponse(): ConnectorResponse {
+  return {
+    id: "00000000-0000-4000-8000-000000000124",
+    type: "test-oauth-device",
+    authMethod: "oauth",
+    externalId: "test-oauth-device-user",
+    externalUsername: "device-user",
+    externalEmail: null,
+    oauthScopes: ["read"],
+    needsReconnect: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
 }
 
 describe("connectConnectorOAuthAuthCode$", () => {
@@ -450,6 +474,229 @@ describe("connectConnectorOAuthAuthCode$", () => {
     expect(open).not.toHaveBeenCalled();
     expect(startCalled).toBeFalsy();
     expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
+  });
+});
+
+describe("connectConnectorOAuthDeviceAuth$", () => {
+  it("shows a code before opening the verification page and polling completion", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    let authCodeStartCalled = false;
+    server.use(
+      mockApi(zeroConnectorOauthStartContract.start, ({ respond }) => {
+        authCodeStartCalled = true;
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/test-oauth-device/authorize",
+        });
+      }),
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.create,
+        ({ params, respond }) => {
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000123",
+            sessionToken: "device-session-token",
+            type: params.type,
+            status: "pending",
+            userCode: "VM0-DEVICE",
+            verificationUri: "https://oauth.test/device",
+            verificationUriComplete:
+              "https://oauth.test/device?user_code=VM0-DEVICE",
+            expiresIn: 300,
+            interval: 0,
+          });
+        },
+      ),
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.poll,
+        ({ respond }) => {
+          return respond(200, {
+            status: "complete",
+            connector: makeTestOauthDeviceConnectorResponse(),
+          });
+        },
+      ),
+    );
+
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(createMockAuthWindow() as unknown as Window);
+
+    const connectPromise = context.store.set(
+      connectConnectorOAuthDeviceAuth$,
+      "test-oauth-device",
+      {},
+      context.signal,
+    );
+
+    await vi.waitFor(() => {
+      const state = context.store.get(connectorOAuthDeviceAuthState$);
+      expect(state.status).toBe("pending");
+      if (state.status === "pending") {
+        expect(state.userCode).toBe("VM0-DEVICE");
+      }
+    });
+
+    expect(authCodeStartCalled).toBeFalsy();
+    expect(open).not.toHaveBeenCalled();
+
+    context.store.set(
+      openConnectorOAuthDeviceAuthVerificationPage$,
+      "test-oauth-device",
+    );
+
+    await expect(connectPromise).resolves.toBeTruthy();
+    expect(open).toHaveBeenCalledWith(
+      "https://oauth.test/device?user_code=VM0-DEVICE",
+      "_blank",
+    );
+    expect(context.store.get(pollingOAuthDeviceAuthConnectorType$)).toBeNull();
+  });
+
+  it("opens the verification URI when complete verification URI is absent", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    server.use(
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.create,
+        ({ params, respond }) => {
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000125",
+            sessionToken: "device-session-token",
+            type: params.type,
+            status: "pending",
+            userCode: "VM0-DEVICE",
+            verificationUri: "https://oauth.test/device/manual",
+            expiresIn: 300,
+            interval: 0,
+          });
+        },
+      ),
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.poll,
+        ({ respond }) => {
+          return respond(200, {
+            status: "complete",
+            connector: makeTestOauthDeviceConnectorResponse(),
+          });
+        },
+      ),
+    );
+
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(createMockAuthWindow() as unknown as Window);
+
+    const connectPromise = context.store.set(
+      connectConnectorOAuthDeviceAuth$,
+      "test-oauth-device",
+      {},
+      context.signal,
+    );
+
+    await vi.waitFor(() => {
+      expect(context.store.get(connectorOAuthDeviceAuthState$).status).toBe(
+        "pending",
+      );
+    });
+
+    context.store.set(
+      openConnectorOAuthDeviceAuthVerificationPage$,
+      "test-oauth-device",
+    );
+
+    await expect(connectPromise).resolves.toBeTruthy();
+    expect(open).toHaveBeenCalledWith(
+      "https://oauth.test/device/manual",
+      "_blank",
+    );
+  });
+
+  it("keeps pending state active and updates the poll interval", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    server.use(
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.create,
+        ({ params, respond }) => {
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000126",
+            sessionToken: "device-session-token",
+            type: params.type,
+            status: "pending",
+            userCode: "VM0-DEVICE",
+            verificationUri: "https://oauth.test/device",
+            verificationUriComplete:
+              "https://oauth.test/device?user_code=VM0-DEVICE",
+            expiresIn: 300,
+            interval: 0,
+          });
+        },
+      ),
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.poll,
+        ({ respond }) => {
+          return respond(200, {
+            status: "pending",
+            interval: 2,
+          });
+        },
+      ),
+    );
+
+    const connectPromise = (async () => {
+      try {
+        return await context.store.set(
+          connectConnectorOAuthDeviceAuth$,
+          "test-oauth-device",
+          {},
+          context.signal,
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+    await vi.waitFor(() => {
+      expect(context.store.get(connectorOAuthDeviceAuthState$).status).toBe(
+        "pending",
+      );
+    });
+
+    vi.spyOn(window, "open").mockReturnValue(
+      createMockAuthWindow() as unknown as Window,
+    );
+    context.store.set(
+      openConnectorOAuthDeviceAuthVerificationPage$,
+      "test-oauth-device",
+    );
+
+    await vi.waitFor(() => {
+      const state = context.store.get(connectorOAuthDeviceAuthState$);
+      expect(state.status).toBe("pending");
+      if (state.status === "pending") {
+        expect(state.approvalOpened).toBeTruthy();
+        expect(state.pollIntervalMs).toBe(2000);
+      }
+    });
+
+    context.store.set(clearConnectorOAuthDeviceAuth$);
+    await expect(connectPromise).resolves.toBeFalsy();
+    expect(context.store.get(pollingOAuthDeviceAuthConnectorType$)).toBeNull();
   });
 });
 

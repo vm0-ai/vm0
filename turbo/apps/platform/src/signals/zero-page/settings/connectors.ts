@@ -3,6 +3,7 @@ import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
+  CONNECTOR_AUTH_METHOD_TYPES,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodType,
@@ -18,7 +19,9 @@ import {
   getConnectorCliAuthModes,
   getConnectorTags,
   hasRequiredScopes,
+  isGoogleOAuthConnector,
   isOAuthAuthCodeConnectorType,
+  isOAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
   zeroLocalAgentHostsContract,
@@ -33,6 +36,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
   zeroConnectorScopeDiffContract,
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroLocalBrowserConnectorContract,
   zeroConnectorsMainContract,
@@ -44,6 +48,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import type {
+  ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
@@ -124,6 +129,38 @@ export interface ConnectorTypeWithStatus {
   localAgentHosts?: LocalAgentHost[];
   /** Online local browser hosts for the virtual local-browser connector. */
   localBrowserHosts?: LocalBrowserHost[];
+}
+
+type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
+
+export function getConfiguredConnectorAuthMethods(
+  type: ConnectorType,
+): ConnectorAuthMethodType[] {
+  return CONNECTOR_AUTH_METHOD_TYPES.filter((authMethod) => {
+    return authMethod in CONNECTOR_TYPES[type].authMethods;
+  });
+}
+
+export function getConnectorConnectLaunchMode({
+  type,
+  availableAuthMethods,
+  preferModalForGoogleOAuth = false,
+}: {
+  readonly type: ConnectorType;
+  readonly availableAuthMethods: readonly ConnectorAuthMethodType[];
+  readonly preferModalForGoogleOAuth?: boolean;
+}): ConnectorConnectLaunchMode {
+  const hasOAuth = availableAuthMethods.includes("oauth");
+  if (!hasOAuth) {
+    return "modal";
+  }
+  if (!isOAuthAuthCodeConnectorType(type)) {
+    return "modal";
+  }
+  if (preferModalForGoogleOAuth && isGoogleOAuthConnector(type)) {
+    return "modal";
+  }
+  return "oauth-auth-code";
 }
 
 const internalReloadLocalAgentHosts$ = state(0);
@@ -462,6 +499,39 @@ export type ConnectorCliAuthState =
       readonly message: string;
     };
 
+type ActiveConnectorOAuthDeviceAuthState = {
+  readonly connectorType: ConnectorType;
+  readonly requestId: string;
+  readonly sessionId: string;
+  readonly sessionToken: string;
+  readonly userCode: string;
+  readonly verificationUri: string;
+  readonly verificationUriComplete?: string;
+  readonly expiresAtMs: number;
+  readonly pollIntervalMs: number;
+  readonly approvalOpened: boolean;
+  readonly errorMessage: string | null;
+};
+
+export type ConnectorOAuthDeviceAuthState =
+  | {
+      readonly status: "idle";
+      readonly connectorType: ConnectorType | null;
+    }
+  | {
+      readonly status: "starting";
+      readonly connectorType: ConnectorType;
+      readonly requestId: string;
+    }
+  | (ActiveConnectorOAuthDeviceAuthState & {
+      readonly status: "pending" | "polling";
+    })
+  | {
+      readonly status: "denied" | "expired" | "error";
+      readonly connectorType: ConnectorType | null;
+      readonly message: string;
+    };
+
 type ConnectorConnectFlowState = {
   readonly type: ConnectorType;
   readonly id: string;
@@ -474,10 +544,21 @@ function createIdleConnectorCliAuthState(
   return { status: "idle", connectorType, mode };
 }
 
+function createIdleConnectorOAuthDeviceAuthState(
+  connectorType: ConnectorType | null = null,
+): ConnectorOAuthDeviceAuthState {
+  return { status: "idle", connectorType };
+}
+
 const internalConnectorCliAuthState$ = state<ConnectorCliAuthState>(
   createIdleConnectorCliAuthState(),
 );
 const resetConnectorCliAuthFlowSignal$ = resetSignal();
+const internalConnectorOAuthDeviceAuthState$ =
+  state<ConnectorOAuthDeviceAuthState>(
+    createIdleConnectorOAuthDeviceAuthState(),
+  );
+const resetConnectorOAuthDeviceAuthFlowSignal$ = resetSignal();
 
 export const selectedConnectorType$ = computed((get) => {
   return get(internalSelectedConnectorType$);
@@ -490,11 +571,23 @@ export const setSelectedConnectorType$ = command(
       set(resetConnectorCliAuthFlowSignal$);
       set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
     }
+    const deviceAuthCurrent = get(internalConnectorOAuthDeviceAuthState$);
+    if (type !== deviceAuthCurrent.connectorType) {
+      set(resetConnectorOAuthDeviceAuthFlowSignal$);
+      set(
+        internalConnectorOAuthDeviceAuthState$,
+        createIdleConnectorOAuthDeviceAuthState(type),
+      );
+    }
   },
 );
 
 export const connectorCliAuthState$ = computed((get) => {
   return get(internalConnectorCliAuthState$);
+});
+
+export const connectorOAuthDeviceAuthState$ = computed((get) => {
+  return get(internalConnectorOAuthDeviceAuthState$);
 });
 
 // ---------------------------------------------------------------------------
@@ -562,6 +655,44 @@ export const setTokenFormSubmitting$ = command(
   },
 );
 
+type FinishConnectorConnectionOptions = PostConnectOptions & {
+  readonly clearSelectedConnector?: boolean;
+  readonly toastMessage?: string | null;
+};
+
+const finishConnectorConnection$ = command(
+  (
+    { get, set },
+    type: ConnectorType,
+    options: FinishConnectorConnectionOptions = {},
+  ): boolean => {
+    set(internalJustConnectedTypes$, (prev) => {
+      return new Set([...prev, type]);
+    });
+    set(reloadConnectors$);
+
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+
+    if (options.toastMessage !== null) {
+      toast.success(
+        options.toastMessage ?? `${CONNECTOR_TYPES[type].label} connected`,
+        {
+          id: `connector-connected-${type}`,
+        },
+      );
+    }
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, type);
+    }
+    if (options.clearSelectedConnector) {
+      set(internalSelectedConnectorType$, null);
+    }
+    return true;
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Submit API token command
 // ---------------------------------------------------------------------------
@@ -608,20 +739,10 @@ export const submitApiToken$ = command(
           signal.throwIfAborted();
         }
         signal.throwIfAborted();
-        set(internalJustConnectedTypes$, (prev) => {
-          return new Set([...prev, type]);
+        set(finishConnectorConnection$, type, {
+          ...options,
+          toastMessage: `${CONNECTOR_TYPES[type].label} connected successfully`,
         });
-        set(reloadConnectors$);
-        // Show in connections list
-        const hidden = new Set(get(hiddenConnectorTypes$));
-        hidden.delete(type);
-        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-        toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
-          id: `connector-connected-${type}`,
-        });
-        if (options.showPermissionDialog) {
-          set(internalPermissionDialogType$, type);
-        }
       })(),
       () => {
         set(internalConnectFlowState$, (current) => {
@@ -643,6 +764,13 @@ const internalConnectFlowState$ = state<ConnectorConnectFlowState | null>(null);
 
 export const pollingOAuthAuthCodeConnectorType$ = computed((get) => {
   return get(internalPollingOAuthAuthCodeConnectorType$);
+});
+
+export const pollingOAuthDeviceAuthConnectorType$ = computed((get) => {
+  const current = get(internalConnectorOAuthDeviceAuthState$);
+  return current.status === "pending" || current.status === "polling"
+    ? current.connectorType
+    : null;
 });
 
 export const connectFlowType$ = computed((get) => {
@@ -994,25 +1122,8 @@ export const connectLocalAgentConnector$ = command(
         );
         signal.throwIfAborted();
 
-        set(internalJustConnectedTypes$, (prev) => {
-          return new Set([...prev, LOCAL_AGENT_CONNECTOR_TYPE]);
-        });
-        set(reloadConnectors$);
         set(reloadLocalAgentHosts$);
-
-        const hidden = new Set(get(hiddenConnectorTypes$));
-        hidden.delete(LOCAL_AGENT_CONNECTOR_TYPE);
-        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-
-        toast.success(
-          `${CONNECTOR_TYPES[LOCAL_AGENT_CONNECTOR_TYPE].label} connected`,
-          {
-            id: `connector-connected-${LOCAL_AGENT_CONNECTOR_TYPE}`,
-          },
-        );
-        if (options.showPermissionDialog) {
-          set(internalPermissionDialogType$, LOCAL_AGENT_CONNECTOR_TYPE);
-        }
+        set(finishConnectorConnection$, LOCAL_AGENT_CONNECTOR_TYPE, options);
       })(),
       () => {
         set(internalConnectFlowState$, (current) => {
@@ -1046,25 +1157,8 @@ export const connectLocalBrowserConnector$ = command(
         );
         signal.throwIfAborted();
 
-        set(internalJustConnectedTypes$, (prev) => {
-          return new Set([...prev, LOCAL_BROWSER_CONNECTOR_TYPE]);
-        });
-        set(reloadConnectors$);
         set(reloadLocalBrowserHosts$);
-
-        const hidden = new Set(get(hiddenConnectorTypes$));
-        hidden.delete(LOCAL_BROWSER_CONNECTOR_TYPE);
-        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-
-        toast.success(
-          `${CONNECTOR_TYPES[LOCAL_BROWSER_CONNECTOR_TYPE].label} connected`,
-          {
-            id: `connector-connected-${LOCAL_BROWSER_CONNECTOR_TYPE}`,
-          },
-        );
-        if (options.showPermissionDialog) {
-          set(internalPermissionDialogType$, LOCAL_BROWSER_CONNECTOR_TYPE);
-        }
+        set(finishConnectorConnection$, LOCAL_BROWSER_CONNECTOR_TYPE, options);
       })(),
       () => {
         set(internalConnectFlowState$, (current) => {
@@ -1325,22 +1419,8 @@ export const clearConnectorCliAuth$ = command(({ set }) => {
 });
 
 const finishConnectorCliAuthConnection$ = command(
-  ({ get, set }, type: ConnectorType, options: PostConnectOptions) => {
-    set(internalJustConnectedTypes$, (prev) => {
-      return new Set([...prev, type]);
-    });
-    set(reloadConnectors$);
-
-    const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(type);
-    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-
-    toast.success(`${CONNECTOR_TYPES[type].label} connected`, {
-      id: `connector-connected-${type}`,
-    });
-    if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, type);
-    }
+  ({ set }, type: ConnectorType, options: PostConnectOptions) => {
+    set(finishConnectorConnection$, type, options);
     set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
     return true;
   },
@@ -1570,6 +1650,334 @@ export const runConnectorCliAuth$ = command(
         });
       },
     );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// OAuth device authorization flow state
+// ---------------------------------------------------------------------------
+
+const OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
+
+type PollConnectorOAuthDeviceAuthArgs = {
+  readonly type: ConnectorType;
+  readonly requestId: string;
+  readonly createClient: ZeroClientFactory;
+  readonly options: PostConnectOptions;
+};
+
+function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
+  return `${type}-oauth-device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function oauthDeviceAuthErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Connection failed";
+}
+
+function getOAuthDeviceAuthTerminalMessage(
+  result: Extract<
+    ConnectorOauthDeviceAuthSessionPollResponse,
+    { readonly status: "denied" | "expired" | "error" }
+  >,
+): string {
+  if (result.errorMessage) {
+    return result.errorMessage;
+  }
+  switch (result.status) {
+    case "denied": {
+      return "Connection was denied. Start again to retry.";
+    }
+    case "expired": {
+      return "Connection session expired. Start again to retry.";
+    }
+    case "error": {
+      return "Connection failed. Start again to retry.";
+    }
+  }
+}
+
+function isCurrentConnectorOAuthDeviceAuthRequest(
+  state: ConnectorOAuthDeviceAuthState,
+  type: ConnectorType,
+  requestId: string,
+): state is ActiveConnectorOAuthDeviceAuthState & {
+  readonly status: "pending" | "polling";
+} {
+  return (
+    (state.status === "pending" || state.status === "polling") &&
+    state.connectorType === type &&
+    state.requestId === requestId
+  );
+}
+
+export const clearConnectorOAuthDeviceAuth$ = command(({ set }) => {
+  set(resetConnectorOAuthDeviceAuthFlowSignal$);
+  set(
+    internalConnectorOAuthDeviceAuthState$,
+    createIdleConnectorOAuthDeviceAuthState(),
+  );
+});
+
+export const openConnectorOAuthDeviceAuthVerificationPage$ = command(
+  ({ get, set }, type: ConnectorType): boolean => {
+    const current = get(internalConnectorOAuthDeviceAuthState$);
+    if (
+      (current.status !== "pending" && current.status !== "polling") ||
+      current.connectorType !== type
+    ) {
+      return false;
+    }
+
+    const verificationUrl =
+      current.verificationUriComplete ?? current.verificationUri;
+    const verificationWindow = window.open(verificationUrl, "_blank");
+    if (!verificationWindow) {
+      set(internalConnectorOAuthDeviceAuthState$, {
+        ...current,
+        errorMessage: "Could not open the verification page. Try again.",
+      });
+      return false;
+    }
+
+    verificationWindow.opener = null;
+    set(internalConnectorOAuthDeviceAuthState$, {
+      ...current,
+      status: "pending",
+      approvalOpened: true,
+      errorMessage: null,
+    });
+    return true;
+  },
+);
+
+const pollConnectorOAuthDeviceAuth$ = command(
+  async (
+    { get, set },
+    {
+      type,
+      requestId,
+      createClient,
+      options,
+    }: PollConnectorOAuthDeviceAuthArgs,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const client = createClient(zeroConnectorOauthDeviceAuthSessionContract);
+
+    while (true) {
+      const current = get(internalConnectorOAuthDeviceAuthState$);
+      if (!isCurrentConnectorOAuthDeviceAuthRequest(current, type, requestId)) {
+        return false;
+      }
+
+      const remainingMs = current.expiresAtMs - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+
+      if (!current.approvalOpened) {
+        await delay(
+          Math.min(OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS, remainingMs),
+          { signal },
+        );
+        signal.throwIfAborted();
+        continue;
+      }
+
+      set(internalConnectorOAuthDeviceAuthState$, {
+        ...current,
+        status: "polling",
+      });
+
+      const pollSettled = await settle(
+        accept(
+          client.poll({
+            params: { type, sessionId: current.sessionId },
+            body: { sessionToken: current.sessionToken },
+            fetchOptions: { signal },
+          }),
+          [200],
+          { toast: false },
+        ),
+        signal,
+      );
+      const pollResult = pollSettled.ok
+        ? pollSettled.value.body
+        : {
+            status: "error" as const,
+            errorMessage: oauthDeviceAuthErrorMessage(pollSettled.error),
+          };
+
+      const latest = get(internalConnectorOAuthDeviceAuthState$);
+      if (!isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)) {
+        return false;
+      }
+
+      if (pollResult.status === "complete") {
+        set(finishConnectorConnection$, type, {
+          ...options,
+          clearSelectedConnector: true,
+        });
+        set(
+          internalConnectorOAuthDeviceAuthState$,
+          createIdleConnectorOAuthDeviceAuthState(),
+        );
+        return true;
+      }
+
+      if (pollResult.status !== "pending") {
+        set(internalConnectorOAuthDeviceAuthState$, {
+          status: pollResult.status,
+          connectorType: type,
+          message: getOAuthDeviceAuthTerminalMessage(pollResult),
+        });
+        return false;
+      }
+
+      const pollIntervalMs = Math.max(
+        secondsToMilliseconds(pollResult.interval),
+        OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
+      );
+      set(internalConnectorOAuthDeviceAuthState$, {
+        ...latest,
+        status: "pending",
+        pollIntervalMs,
+        errorMessage: null,
+      });
+
+      const nextRemainingMs = latest.expiresAtMs - Date.now();
+      if (nextRemainingMs <= 0) {
+        break;
+      }
+      await delay(Math.min(pollIntervalMs, nextRemainingMs), { signal });
+      signal.throwIfAborted();
+    }
+
+    const latest = get(internalConnectorOAuthDeviceAuthState$);
+    if (isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)) {
+      set(internalConnectorOAuthDeviceAuthState$, {
+        status: "expired",
+        connectorType: type,
+        message: "Connection session expired. Start again to retry.",
+      });
+    }
+    return false;
+  },
+);
+
+export const connectConnectorOAuthDeviceAuth$ = command(
+  async (
+    { get, set },
+    type: ConnectorType,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (!isOAuthDeviceAuthConnectorType(type)) {
+      throw new Error(`${type} does not use device authorization OAuth`);
+    }
+
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
+    return await withCleanup(
+      (async () => {
+        const requestId = createConnectorOAuthDeviceAuthRequestId(type);
+        const flowSignal = set(
+          resetConnectorOAuthDeviceAuthFlowSignal$,
+          signal,
+        );
+        set(internalConnectorOAuthDeviceAuthState$, {
+          status: "starting",
+          connectorType: type,
+          requestId,
+        });
+
+        const createClient = get(zeroClient$);
+        const client = createClient(
+          zeroConnectorOauthDeviceAuthSessionContract,
+        );
+        const startSettled = await settle(
+          accept(
+            client.create({
+              params: { type },
+              body: {},
+              fetchOptions: { signal: flowSignal },
+            }),
+            [200],
+            { toast: false },
+          ),
+          flowSignal,
+        );
+        const startResult = startSettled.ok ? startSettled.value.body : null;
+        if (!startSettled.ok) {
+          if (flowSignal.aborted) {
+            return false;
+          }
+          set(internalConnectorOAuthDeviceAuthState$, {
+            status: "error",
+            connectorType: type,
+            message: oauthDeviceAuthErrorMessage(startSettled.error),
+          });
+        }
+        flowSignal.throwIfAborted();
+        if (!startResult) {
+          return false;
+        }
+
+        set(internalConnectorOAuthDeviceAuthState$, {
+          status: "pending",
+          connectorType: type,
+          requestId,
+          sessionId: startResult.sessionId,
+          sessionToken: startResult.sessionToken,
+          userCode: startResult.userCode,
+          verificationUri: startResult.verificationUri,
+          verificationUriComplete: startResult.verificationUriComplete,
+          expiresAtMs:
+            Date.now() + secondsToMilliseconds(startResult.expiresIn),
+          pollIntervalMs: Math.max(
+            secondsToMilliseconds(startResult.interval),
+            OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
+          ),
+          approvalOpened: false,
+          errorMessage: null,
+        });
+
+        return await set(
+          pollConnectorOAuthDeviceAuth$,
+          {
+            type,
+            requestId,
+            createClient,
+            options,
+          },
+          flowSignal,
+        );
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
+      },
+    );
+  },
+);
+
+export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
+  async (
+    { set },
+    type: ConnectorType,
+    onSuccess: () => void | Promise<void>,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const connected = await set(
+      connectConnectorOAuthDeviceAuth$,
+      type,
+      options,
+      signal,
+    );
+    if (connected) {
+      await onSuccess();
+    }
   },
 );
 
@@ -1822,21 +2230,11 @@ export const connectConnectorOAuthAuthCode$ = command(
           return c.type === type;
         });
         if (isConnected) {
-          set(internalJustConnectedTypes$, (prev) => {
-            return new Set([...prev, type]);
+          set(finishConnectorConnection$, type, {
+            ...options,
+            clearSelectedConnector: true,
+            toastMessage: null,
           });
-        }
-        // Show in connections list again when user connects
-        const hidden = new Set(get(hiddenConnectorTypes$));
-        hidden.delete(type);
-        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-        // Close connect modal on auth-code OAuth success. Only connectors-page
-        // flows should show the post-connect permission dialog.
-        if (isConnected) {
-          set(internalSelectedConnectorType$, null);
-          if (options.showPermissionDialog) {
-            set(internalPermissionDialogType$, type);
-          }
         }
         return isConnected;
       })(),

@@ -16,11 +16,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  getConnectorTags,
-  isGoogleOAuthConnector,
-  isOAuthAuthCodeConnectorType,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorTags } from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,
@@ -51,9 +47,12 @@ import {
   connectConnectorOAuthAuthCode$,
   matchesConnectorSearch,
   pollingOAuthAuthCodeConnectorType$,
+  pollingOAuthDeviceAuthConnectorType$,
   selectedConnectorType$,
   setSelectedConnectorType$,
   setPermissionDialogType$,
+  getConfiguredConnectorAuthMethods,
+  getConnectorConnectLaunchMode,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -226,7 +225,8 @@ function ConnectStepContent() {
   const effectiveConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
   const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const setSelectedConnector = useSet(setSelectedConnectorType$);
   const clearPermissionDialog = useSet(setPermissionDialogType$);
@@ -262,15 +262,14 @@ function ConnectStepContent() {
     if (connector?.connected) {
       return;
     }
-    const hasAvailableOAuth =
-      connector?.availableAuthMethods.includes("oauth") ?? true;
-    const canLaunchOAuthAuthCode =
-      hasAvailableOAuth && isOAuthAuthCodeConnectorType(type);
-    if (
-      !canLaunchOAuthAuthCode ||
-      connector?.availableAuthMethods.includes("api-token") ||
-      isGoogleOAuthConnector(type)
-    ) {
+    const launchMode = getConnectorConnectLaunchMode({
+      type,
+      availableAuthMethods:
+        connector?.availableAuthMethods ??
+        getConfiguredConnectorAuthMethods(type),
+      preferModalForGoogleOAuth: true,
+    });
+    if (launchMode === "modal") {
       setSelectedConnector(type);
     } else {
       detach(
@@ -307,7 +306,8 @@ function ConnectStepContent() {
         <div className="w-full flex flex-col gap-3">
           {selectedEntries.map(([type, config]) => {
             const isConnected = connectedSet.has(type);
-            const isPolling = pollingType === type;
+            const isPolling =
+              pollingAuthCodeType === type || pollingDeviceAuthType === type;
             return (
               <div
                 key={type}

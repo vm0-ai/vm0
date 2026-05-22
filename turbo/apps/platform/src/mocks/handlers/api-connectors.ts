@@ -1,6 +1,14 @@
-import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  CONNECTOR_TYPE_KEYS,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
+import type {
+  ConnectorOauthDeviceAuthSessionPollResponse,
+  ConnectorOauthDeviceAuthSessionStartResponse,
+  ConnectorResponse,
+} from "@vm0/api-contracts/contracts/connector-schemas";
+import {
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
@@ -9,6 +17,18 @@ import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-con
 import { mockApi } from "../msw-contract.ts";
 
 let mockConnectors: ConnectorResponse[] = [];
+type MockOauthDeviceAuthSessionStartResponse = Omit<
+  Partial<ConnectorOauthDeviceAuthSessionStartResponse>,
+  "verificationUriComplete"
+> & {
+  readonly verificationUriComplete?: string | undefined;
+};
+
+let mockOauthDeviceAuthSessionStartResponse:
+  | MockOauthDeviceAuthSessionStartResponse
+  | undefined;
+let mockOauthDeviceAuthSessionPollResponses: ConnectorOauthDeviceAuthSessionPollResponse[] =
+  [];
 
 type MockStripeCliAuthStartResponse = {
   sessionToken: string;
@@ -47,6 +67,40 @@ function createMockStripeConnector(): ConnectorResponse {
   };
 }
 
+function createMockOauthDeviceAuthConnector(
+  type: ConnectorType,
+): ConnectorResponse {
+  const now = "2026-01-01T00:00:00Z";
+  return {
+    id: crypto.randomUUID(),
+    type,
+    authMethod: "oauth",
+    externalId: `mock-${type}-external-id`,
+    externalUsername: `mock-${type}`,
+    externalEmail: null,
+    oauthScopes: ["read"],
+    needsReconnect: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function defaultOauthDeviceAuthSessionStartResponse(
+  type: ConnectorType,
+): ConnectorOauthDeviceAuthSessionStartResponse {
+  return {
+    sessionId: "00000000-0000-4000-8000-000000000001",
+    sessionToken: `mock-${type}-oauth-device-session-token`,
+    type,
+    status: "pending",
+    userCode: "VM0-DEVICE",
+    verificationUri: `https://oauth.test/${type}/device`,
+    verificationUriComplete: `https://oauth.test/${type}/device?user_code=VM0-DEVICE`,
+    expiresIn: 300,
+    interval: 1,
+  };
+}
+
 function defaultStripeCliAuthStartResponse(
   mode: "test" | "live",
 ): MockStripeCliAuthStartResponse {
@@ -76,6 +130,7 @@ export function setMockConnectors(connectors: ConnectorResponse[]): void {
 export function resetMockConnectors(): void {
   mockConnectors = [];
   resetMockStripeCliAuth();
+  resetMockOauthDeviceAuth();
 }
 
 export function upsertMockConnector(connector: ConnectorResponse): void {
@@ -92,10 +147,27 @@ function resetMockStripeCliAuth(): void {
   mockStripeCliAuthCompleteResponse = undefined;
 }
 
+function resetMockOauthDeviceAuth(): void {
+  mockOauthDeviceAuthSessionStartResponse = undefined;
+  mockOauthDeviceAuthSessionPollResponses = [];
+}
+
 export function setMockStripeCliAuthCompleteResponse(
   response: MockStripeCliAuthCompleteResponse,
 ): void {
   mockStripeCliAuthCompleteResponse = response;
+}
+
+export function setMockOauthDeviceAuthSessionStartResponse(
+  response: MockOauthDeviceAuthSessionStartResponse,
+): void {
+  mockOauthDeviceAuthSessionStartResponse = response;
+}
+
+export function setMockOauthDeviceAuthSessionPollResponses(
+  responses: ConnectorOauthDeviceAuthSessionPollResponse[],
+): void {
+  mockOauthDeviceAuthSessionPollResponses = responses;
 }
 
 export const apiConnectorsHandlers = [
@@ -133,6 +205,43 @@ export const apiConnectorsHandlers = [
       storedScopes: [],
     });
   }),
+
+  mockApi(
+    zeroConnectorOauthDeviceAuthSessionContract.create,
+    ({ params, respond }) => {
+      const response = {
+        ...defaultOauthDeviceAuthSessionStartResponse(params.type),
+        ...mockOauthDeviceAuthSessionStartResponse,
+        type: mockOauthDeviceAuthSessionStartResponse?.type ?? params.type,
+      };
+      if (
+        mockOauthDeviceAuthSessionStartResponse &&
+        "verificationUriComplete" in mockOauthDeviceAuthSessionStartResponse &&
+        mockOauthDeviceAuthSessionStartResponse.verificationUriComplete ===
+          undefined
+      ) {
+        delete response.verificationUriComplete;
+      }
+      return respond(200, response);
+    },
+  ),
+
+  mockApi(
+    zeroConnectorOauthDeviceAuthSessionContract.poll,
+    ({ params, respond }) => {
+      const response =
+        mockOauthDeviceAuthSessionPollResponses.shift() ??
+        ({
+          status: "complete",
+          connector: createMockOauthDeviceAuthConnector(params.type),
+        } satisfies ConnectorOauthDeviceAuthSessionPollResponse);
+
+      if (response.status === "complete") {
+        upsertMockConnector(response.connector);
+      }
+      return respond(200, response);
+    },
+  ),
 
   mockApi(zeroCliAuthStripeContract.start, ({ body, respond }) => {
     return respond(200, {

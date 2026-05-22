@@ -24,7 +24,11 @@ import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockStripeCliAuthCompleteResponse } from "../../../mocks/handlers/api-connectors.ts";
+import {
+  setMockOauthDeviceAuthSessionStartResponse,
+  setMockOauthDeviceAuthSessionPollResponses,
+  setMockStripeCliAuthCompleteResponse,
+} from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -116,7 +120,28 @@ describe("connect modal - content by auth method", () => {
     });
   });
 
-  it("does not show auth-code OAuth button for device-auth OAuth connectors", async () => {
+  it("shows device auth code before opening provider verification", async () => {
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(createMockAuthWindow(false) as unknown as Window);
+    setMockOauthDeviceAuthSessionPollResponses([
+      {
+        status: "complete",
+        connector: {
+          id: "00000000-0000-4000-8000-000000000101",
+          type: "test-oauth-device",
+          authMethod: "oauth",
+          externalId: "test-oauth-device-user",
+          externalUsername: "device-user",
+          externalEmail: null,
+          oauthScopes: ["read"],
+          needsReconnect: false,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      },
+    ]);
+
     await openConnectModal("test-oauth-device", {
       featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
     });
@@ -129,8 +154,137 @@ describe("connect modal - content by auth method", () => {
       screen.queryByText("Sign in with Test OAuth Device (internal)"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Connection methods unavailable"),
-    ).toBeInTheDocument();
+      screen.queryByText("Connection methods unavailable"),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      await screen.findByText("Connect Test OAuth Device (internal)"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    expect(open).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText("Open verification page"));
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        "https://oauth.test/test-oauth-device/device?user_code=VM0-DEVICE",
+        "_blank",
+      );
+    });
+    expect(
+      screen.queryByText("Connection methods unavailable"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the verification URI when the complete verification URI is absent", async () => {
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(createMockAuthWindow(false) as unknown as Window);
+    setMockOauthDeviceAuthSessionStartResponse({
+      verificationUri: "https://oauth.test/test-oauth-device/manual",
+      verificationUriComplete: undefined,
+    });
+    setMockOauthDeviceAuthSessionPollResponses([
+      {
+        status: "complete",
+        connector: {
+          id: "00000000-0000-4000-8000-000000000102",
+          type: "test-oauth-device",
+          authMethod: "oauth",
+          externalId: "test-oauth-device-user",
+          externalUsername: "device-user",
+          externalEmail: null,
+          oauthScopes: ["read"],
+          needsReconnect: false,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      },
+    ]);
+
+    await openConnectModal("test-oauth-device", {
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await userEvent.click(
+      await screen.findByText("Connect Test OAuth Device (internal)"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    await userEvent.click(getButtonByText("Open verification page"));
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        "https://oauth.test/test-oauth-device/manual",
+        "_blank",
+      );
+    });
+  });
+
+  it.each([
+    ["denied", "The device request was denied."],
+    ["expired", "The device request expired."],
+    ["error", "The device request failed."],
+  ] as const)(
+    "shows terminal device auth %s state with retry",
+    async (status, message) => {
+      setMockOauthDeviceAuthSessionPollResponses([
+        {
+          status,
+          errorMessage: message,
+        },
+      ]);
+
+      await openConnectModal("test-oauth-device", {
+        featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+      });
+
+      await userEvent.click(
+        await screen.findByText("Connect Test OAuth Device (internal)"),
+      );
+      vi.spyOn(window, "open").mockReturnValue(
+        createMockAuthWindow(false) as unknown as Window,
+      );
+      await userEvent.click(await screen.findByText("Open verification page"));
+
+      await waitFor(() => {
+        expect(screen.getByText(message)).toBeInTheDocument();
+      });
+      expect(screen.getByText("Try again")).toBeInTheDocument();
+    },
+  );
+
+  it("clears device auth state when the dialog closes", async () => {
+    await openConnectModal("test-oauth-device", {
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await userEvent.click(
+      await screen.findByText("Connect Test OAuth Device (internal)"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+
+    click(screen.getByLabelText(/close/i));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("connector-oauth-device-code"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows API token form for api-token connectors (CONN-C-019)", async () => {

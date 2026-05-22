@@ -19,6 +19,8 @@ import {
 } from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { setMockOauthDeviceAuthSessionPollResponses } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -142,5 +144,70 @@ describe("onboarding connector permission dialog suppression", () => {
     await waitFor(() => {
       expect(context.store.get(permissionDialogType$)).toBeNull();
     });
+  });
+
+  it("opens device auth dialog during onboarding before provider verification", async () => {
+    mockAdminOnboarding();
+    setMockOauthDeviceAuthSessionPollResponses([
+      {
+        status: "complete",
+        connector: {
+          id: "00000000-0000-4000-8000-000000000301",
+          type: "test-oauth-device",
+          authMethod: "oauth",
+          externalId: "test-oauth-device-user",
+          externalUsername: "device-user",
+          externalEmail: null,
+          oauthScopes: ["read"],
+          needsReconnect: false,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      },
+    ]);
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(createMockAuthWindow() as unknown as Window);
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello&connector=test-oauth-device",
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
+    await fill(screen.getByPlaceholderText("e.g. Acme Corp"), "Test Workspace");
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+    });
+    click(screen.getByText("Connect"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Connect Test OAuth Device (internal)"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    expect(open).not.toHaveBeenCalled();
+
+    click(screen.getByText("Open verification page"));
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        "https://oauth.test/test-oauth-device/device?user_code=VM0-DEVICE",
+        "_blank",
+      );
+    });
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 });

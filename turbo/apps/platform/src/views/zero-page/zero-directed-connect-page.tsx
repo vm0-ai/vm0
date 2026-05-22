@@ -1,12 +1,12 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
-  isOAuthAuthCodeConnectorType,
 } from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
@@ -19,8 +19,13 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  getConfiguredConnectorAuthMethods,
+  getConnectorConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
+  pollingOAuthDeviceAuthConnectorType$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
   submitApiToken$,
   tokenFormSubmitting$,
   setTokenFormValue$,
@@ -45,9 +50,10 @@ import { authorizeConnector$ } from "../../signals/connectors-page/directed-auth
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
+import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
 function runDirectedConnect(params: {
-  authMethods: string[];
+  authMethods: readonly ConnectorAuthMethodType[];
   connectorType: ConnectorType;
   signal: AbortSignal;
   connect: (
@@ -56,24 +62,29 @@ function runDirectedConnect(params: {
     signal: AbortSignal,
   ) => Promise<boolean>;
   onConnected: () => Promise<void>;
+  openConnectModal: () => void;
   openTokenDialog: () => void;
 }): void {
-  const hasOAuthAuthCode =
-    params.authMethods.includes("oauth") &&
-    isOAuthAuthCodeConnectorType(params.connectorType);
+  const launchMode = getConnectorConnectLaunchMode({
+    type: params.connectorType,
+    availableAuthMethods: params.authMethods,
+  });
+  if (launchMode === "modal" && params.authMethods.includes("oauth")) {
+    params.openConnectModal();
+    return;
+  }
+
   const hasApiToken = params.authMethods.includes("api-token");
 
-  // Priority: auth-code OAuth launches the external popup; api-token opens the
-  // modal so the user can enter credentials.
-  if (!hasOAuthAuthCode && hasApiToken) {
+  if (launchMode === "modal" && hasApiToken) {
     params.openTokenDialog();
     return;
   }
-  // Device-auth OAuth needs a separate UI and must not fall through to the
-  // api-token dialog when no api-token method exists.
-  if (!hasOAuthAuthCode) {
+  if (launchMode === "modal") {
+    params.openConnectModal();
     return;
   }
+
   detach(
     (async () => {
       let connected = true;
@@ -260,11 +271,27 @@ function ConnectActions({
   );
 }
 
+function DirectedConnectModal({
+  open,
+  onClose,
+  onSuccess,
+}: {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly onSuccess: () => Promise<void>;
+}) {
+  if (!open) {
+    return null;
+  }
+  return <ConnectModal onClose={onClose} onSuccess={onSuccess} />;
+}
+
 function DirectedConnectCard() {
   const type = useGet(directedConnectType$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
-  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
@@ -272,6 +299,8 @@ function DirectedConnectCard() {
   const allLoadable = useLastLoadable(allConnectorTypes$);
   const tokenDialogOpen = useGet(tokenDialogOpen$);
   const setTokenDialogOpen = useSet(setTokenDialogOpen$);
+  const selectedConnectorType = useGet(selectedConnectorType$);
+  const setSelectedConnectorType = useSet(setSelectedConnectorType$);
 
   if (!type || !(type in CONNECTOR_TYPES)) {
     return null;
@@ -283,7 +312,9 @@ function DirectedConnectCard() {
     agentNameLoadable.state === "hasData" && agentNameLoadable.data
       ? agentNameLoadable.data
       : "Zero";
-  const isConnecting = pollingType === connectorType;
+  const isConnecting =
+    pollingAuthCodeType === connectorType ||
+    pollingDeviceAuthType === connectorType;
   const isLoading =
     !justConnected.has(connectorType) && allLoadable.state === "loading";
   const allData = allLoadable.state === "hasData" ? allLoadable.data : [];
@@ -293,11 +324,9 @@ function DirectedConnectCard() {
   const isConnected =
     justConnected.has(connectorType) || (item?.connected ?? false);
   const authMethods =
-    item?.availableAuthMethods ?? Object.keys(config.authMethods);
-  const canConnect =
-    authMethods.includes("api-token") ||
-    (authMethods.includes("oauth") &&
-      isOAuthAuthCodeConnectorType(connectorType));
+    item?.availableAuthMethods ??
+    getConfiguredConnectorAuthMethods(connectorType);
+  const canConnect = authMethods.length > 0;
 
   const runPostConnectActions = async () => {
     if (agentId) {
@@ -317,6 +346,9 @@ function DirectedConnectCard() {
       onConnected: runPostConnectActions,
       openTokenDialog: () => {
         return setTokenDialogOpen(true);
+      },
+      openConnectModal: () => {
+        setSelectedConnectorType(connectorType);
       },
     });
   };
@@ -376,6 +408,13 @@ function DirectedConnectCard() {
               }
             : undefined
         }
+      />
+      <DirectedConnectModal
+        open={selectedConnectorType === connectorType}
+        onClose={() => {
+          setSelectedConnectorType(null);
+        }}
+        onSuccess={runPostConnectActions}
       />
     </>
   );

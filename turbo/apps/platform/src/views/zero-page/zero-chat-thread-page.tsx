@@ -56,6 +56,7 @@ import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-provider
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isOAuthAuthCodeConnectorType } from "@vm0/connectors/connector-utils";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -682,6 +683,10 @@ function startGoogleDriveConnectAndSync(params: {
   }
   if (!params.agentId) {
     toast.error("Agent is still loading");
+    return;
+  }
+  if (!isOAuthAuthCodeConnectorType("google-drive")) {
+    toast.error("Google Drive connection is not available");
     return;
   }
   const authWindow = window.open(

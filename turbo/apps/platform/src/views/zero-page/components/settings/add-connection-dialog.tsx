@@ -7,6 +7,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
+import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -25,13 +26,18 @@ import {
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
   isOAuthAuthCodeConnectorType,
+  isOAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
   connectorCliAuthState$,
   connectFlowType$,
   pollingOAuthAuthCodeConnectorType$,
+  connectorOAuthDeviceAuthState$,
   connectConnectorOAuthAuthCodeAndSettle$,
+  connectConnectorOAuthDeviceAuthAndSettle$,
+  openConnectorOAuthDeviceAuthVerificationPage$,
+  clearConnectorOAuthDeviceAuth$,
   runConnectorConnectSuccess$,
   submitApiToken$,
   setTokenFormValue$,
@@ -56,6 +62,7 @@ import {
   localAgentHosts$,
   type LocalBrowserExtensionStatus,
   type ConnectorCliAuthState,
+  type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
@@ -153,6 +160,8 @@ type ConnectOAuthAuthCodeAndSettleFn = (
   signal: AbortSignal,
 ) => Promise<void>;
 
+type ConnectOAuthDeviceAuthAndSettleFn = ConnectOAuthAuthCodeAndSettleFn;
+
 type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
@@ -161,6 +170,7 @@ type ConnectModalContentProps = {
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
+  connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
   submitApiToken: SubmitApiTokenFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
@@ -181,6 +191,18 @@ type ConnectMethodContentEntry = {
 
 function connectorCliAuthFlowIsActive(
   state: ConnectorCliAuthState,
+  type: ConnectorType,
+): boolean {
+  return (
+    state.connectorType === type &&
+    (state.status === "starting" ||
+      state.status === "pending" ||
+      state.status === "polling")
+  );
+}
+
+function connectorOAuthDeviceAuthFlowIsActive(
+  state: ConnectorOAuthDeviceAuthState,
   type: ConnectorType,
 ): boolean {
   return (
@@ -682,6 +704,155 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   );
 }
 
+function getOAuthDeviceAuthStatusText(
+  state: Extract<
+    ConnectorOAuthDeviceAuthState,
+    { readonly status: "pending" | "polling" }
+  >,
+): string {
+  if (!state.approvalOpened) {
+    return "Copy this code, then open the verification page to approve access.";
+  }
+  if (state.status === "polling") {
+    return "Checking for approval...";
+  }
+  return "Waiting for approval. Keep this dialog open.";
+}
+
+function OAuthDeviceAuthCodePanel({
+  state,
+  onOpenVerificationPage,
+}: {
+  state: Extract<
+    ConnectorOAuthDeviceAuthState,
+    { readonly status: "pending" | "polling" }
+  >;
+  onOpenVerificationPage: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Enter this code on the provider verification page to approve access.
+      </p>
+      <div className="rounded-lg border border-border bg-muted/30 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Device code</p>
+            <p
+              className="mt-1 break-all font-mono text-2xl font-semibold tracking-normal"
+              data-testid="connector-oauth-device-code"
+            >
+              {state.userCode}
+            </p>
+          </div>
+          <CopyButton
+            type="button"
+            text={state.userCode}
+            className="-m-1 p-1.5 hover:bg-accent"
+          />
+        </div>
+      </div>
+      {state.errorMessage && (
+        <p className="text-xs text-destructive" role="alert">
+          {state.errorMessage}
+        </p>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={onOpenVerificationPage}
+        data-testid="connector-oauth-device-open"
+      >
+        Open verification page
+      </Button>
+      <p className="text-xs text-muted-foreground" role="status">
+        {getOAuthDeviceAuthStatusText(state)}
+      </p>
+    </div>
+  );
+}
+
+function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
+  const state = useGet(connectorOAuthDeviceAuthState$);
+  const openVerificationPage = useSet(
+    openConnectorOAuthDeviceAuthVerificationPage$,
+  );
+  const current = state.connectorType === props.item.type ? state : null;
+  const starting = current?.status === "starting";
+
+  const start = onDomEventFn(async () => {
+    await props.connectOAuthDeviceAuthAndSettle(
+      props.item.type,
+      props.onSuccess,
+      {
+        showPermissionDialog: props.showPermissionDialogOnConnect,
+      },
+      props.signal,
+    );
+  });
+
+  if (current?.status === "starting") {
+    return (
+      <p className="text-sm text-muted-foreground">Starting connection...</p>
+    );
+  }
+
+  if (current?.status === "pending" || current?.status === "polling") {
+    return (
+      <OAuthDeviceAuthCodePanel
+        state={current}
+        onOpenVerificationPage={() => {
+          openVerificationPage(props.item.type);
+        }}
+      />
+    );
+  }
+
+  if (
+    current?.status === "denied" ||
+    current?.status === "expired" ||
+    current?.status === "error"
+  ) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-destructive" role="alert">
+          {current.message}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={start}
+          disabled={starting}
+          className="w-full"
+        >
+          {starting ? "Starting..." : "Try again"}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Start the connection to get a code, then approve access on the provider
+        verification page.
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={start}
+        disabled={starting}
+        className="w-full"
+      >
+        {starting
+          ? "Starting..."
+          : `Connect ${CONNECTOR_TYPES[props.item.type].label}`}
+      </Button>
+    </div>
+  );
+}
+
 function ApiTokenConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <ApiTokenForm
@@ -717,10 +888,13 @@ function getConnectMethodContentComponent(
 ): ConnectMethodContentComponent | null {
   switch (authMethod) {
     case "oauth": {
-      if (!isOAuthAuthCodeConnectorType(item.type)) {
-        return null;
+      if (isOAuthAuthCodeConnectorType(item.type)) {
+        return OAuthAuthCodeConnectMethodContent;
       }
-      return OAuthAuthCodeConnectMethodContent;
+      if (isOAuthDeviceAuthConnectorType(item.type)) {
+        return OAuthDeviceAuthConnectMethodContent;
+      }
+      return null;
     }
     case "api-token": {
       return ApiTokenConnectMethodContent;
@@ -829,12 +1003,14 @@ function StandardConnectMethodsContent({
   onSuccess,
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
+  connectOAuthDeviceAuthAndSettle,
   submitApiToken,
   credentialSubmitting,
   signal,
   entries,
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
+  connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
   submitApiToken: SubmitApiTokenFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
@@ -857,6 +1033,7 @@ function StandardConnectMethodsContent({
           onSuccess,
           showPermissionDialogOnConnect,
           connectOAuthAuthCodeAndSettle,
+          connectOAuthDeviceAuthAndSettle,
           submitApiToken,
           credentialSubmitting,
           signal,
@@ -873,6 +1050,9 @@ function ConnectModalContent({
 }: ConnectModalContentProps) {
   const [settleLoadable, connectOAuthAuthCodeAndSettle] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
+  );
+  const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
+    connectConnectorOAuthDeviceAuthAndSettle$,
   );
   const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
   const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
@@ -904,6 +1084,7 @@ function ConnectModalContent({
       onSuccess={onConnectSuccess}
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
+      connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettle}
       submitApiToken={submitApiToken}
       credentialSubmitting={credentialSubmitting}
       signal={pageSignal}
@@ -928,9 +1109,11 @@ export function ConnectModal({
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const clearConnectorCliAuth = useSet(clearConnectorCliAuth$);
+  const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const connectFlowType = useGet(connectFlowType$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const connectorCliAuthState = useGet(connectorCliAuthState$);
+  const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
 
   const item = connectorTypes?.find((c) => {
     return c.type === selectedType;
@@ -944,7 +1127,11 @@ export function ConnectModal({
   const connectFlowActive =
     connectFlowType === selectedType ||
     pollingType === selectedType ||
-    connectorCliAuthFlowIsActive(connectorCliAuthState, selectedType);
+    connectorCliAuthFlowIsActive(connectorCliAuthState, selectedType) ||
+    connectorOAuthDeviceAuthFlowIsActive(
+      connectorOAuthDeviceAuthState,
+      selectedType,
+    );
 
   return (
     <Dialog
@@ -952,6 +1139,7 @@ export function ConnectModal({
       onOpenChange={(open) => {
         if (!open) {
           clearConnectorCliAuth();
+          clearConnectorOAuthDeviceAuth();
           onClose();
         }
       }}
@@ -986,6 +1174,7 @@ export function ConnectModal({
           onSuccess={async () => {
             await onSuccess?.();
             clearConnectorCliAuth();
+            clearConnectorOAuthDeviceAuth();
             onClose();
           }}
         />
