@@ -5708,15 +5708,11 @@ class TestUsageWebhookDelivery:
         redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
         target_thread, target_started = make_server_thread(target_server)
         redirect_thread, redirect_started = make_server_thread(redirect_server)
-        target_started_ok = False
-        redirect_started_ok = False
         try:
             target_thread.start()
-            target_started_ok = target_started.wait(timeout=1)
-            assert target_started_ok
+            assert target_started.wait(timeout=1)
             redirect_thread.start()
-            redirect_started_ok = redirect_started.wait(timeout=1)
-            assert redirect_started_ok
+            assert redirect_started.wait(timeout=1)
 
             host, port = server_host_port(redirect_server)
             with pytest.raises(urllib.error.HTTPError) as exc:
@@ -5729,14 +5725,16 @@ class TestUsageWebhookDelivery:
             assert exc.value.code == 302
             assert redirected_hits == []
         finally:
-            if redirect_started_ok:
+            if redirect_thread.is_alive():
                 redirect_server.shutdown()
-            if target_started_ok:
+            if target_thread.is_alive():
                 target_server.shutdown()
             redirect_server.server_close()
             target_server.server_close()
             redirect_thread.join(timeout=5)
             target_thread.join(timeout=5)
+            assert not redirect_thread.is_alive()
+            assert not target_thread.is_alive()
 
     def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
