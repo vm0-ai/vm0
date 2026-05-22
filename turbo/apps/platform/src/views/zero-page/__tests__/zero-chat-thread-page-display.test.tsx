@@ -839,9 +839,9 @@ describe("zero chat thread page display - body link document preview", () => {
   });
 });
 
-// CHAT-D-065: Video attachments render as compact download chips.
-describe("zero chat thread page display - attachment video chip", () => {
-  it("renders a compact download chip for mp4 attachments", async () => {
+// CHAT-D-065: Video attachments render as playable previews with download.
+describe("zero chat thread page display - attachment video preview", () => {
+  it("renders an mp4 attachment with a preview cover and download button", async () => {
     const videoUrl = "https://example.com/clip.mp4";
     mockChatLifecycle({
       chatMessages: [
@@ -855,20 +855,22 @@ describe("zero chat thread page display - attachment video chip", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    const download = await waitFor(() => {
-      return screen.getByLabelText("Download clip.mp4");
+    const preview = await waitFor(() => {
+      return screen.getByTestId("attachment-preview-video");
     });
+    const video = screen.getByLabelText("Video preview for clip.mp4");
+    const download = screen.getByLabelText("Download clip.mp4");
 
+    expect(preview).toBeInTheDocument();
+    expect(
+      within(preview).getByTestId("attachment-preview-video-icon"),
+    ).toBeInTheDocument();
+    expect(video).toHaveAttribute("src", videoUrl);
+    expect(video).toHaveAttribute("preload", "metadata");
     expect(download).toHaveAttribute("type", "button");
     expect(download).not.toHaveAttribute("href");
     expect(
-      within(download).getByTestId("attachment-chip-file-icon"),
-    ).toBeInTheDocument();
-    expect(
       document.querySelector(`img[src="${videoUrl}"]`),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(`video[src="${videoUrl}"]`),
     ).not.toBeInTheDocument();
   });
 });
@@ -1133,6 +1135,56 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(within(table).getByText("value")).toBeInTheDocument();
       expect(within(table).getByText("alpha")).toBeInTheDocument();
       expect(within(table).getByText("1")).toBeInTheDocument();
+    });
+  });
+
+  it("opens artifacts from the mobile top bar icon", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create a file",
+          runId: "run-mobile-artifacts",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-mobile-artifacts",
+              files: [
+                {
+                  id: "file-mobile",
+                  filename: "mobile.zip",
+                  contentType: "application/zip",
+                  size: 512,
+                  url: "https://example.com/mobile.zip",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open mobile artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Artifacts")).toBeInTheDocument();
+      expect(screen.getAllByText("mobile.zip").length).toBeGreaterThan(0);
     });
   });
 

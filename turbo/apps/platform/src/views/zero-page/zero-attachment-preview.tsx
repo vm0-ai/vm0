@@ -6,6 +6,7 @@ import {
   IconEye,
   IconFileMusic,
   IconLoader2,
+  IconVideo,
 } from "@tabler/icons-react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
@@ -322,6 +323,68 @@ function AudioPreview({ filename, url }: { filename: string; url: string }) {
   );
 }
 
+function VideoPreview({
+  contentType,
+  filename,
+  url,
+}: {
+  contentType?: string;
+  filename: string;
+  url: string;
+}) {
+  return (
+    <div
+      className="relative w-fit max-w-full overflow-hidden rounded-xl border border-foreground/10 bg-black"
+      data-testid="attachment-preview-video"
+    >
+      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-stone-900 text-white">
+        <div className="flex flex-col items-center gap-3 px-6 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
+            <FilePreviewIcon
+              filename={filename}
+              contentType={contentType ?? "video/mp4"}
+              testId="attachment-preview-video-icon"
+            />
+          </span>
+          <span className="max-w-[240px] truncate text-xs font-medium text-white/85">
+            {filename}
+          </span>
+        </div>
+      </div>
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        className="relative block max-h-64 w-[min(360px,calc(100vw-3rem))] bg-transparent object-contain"
+        aria-label={`Video preview for ${filename}`}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          detach(
+            downloadAttachmentUrl(
+              normalizePlatformFileUrl(url),
+              undefined,
+              filename,
+            ),
+            Reason.DomCallback,
+            "attachment download",
+          );
+        }}
+        title={filename}
+        aria-label={`Download ${filename}`}
+        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+      >
+        <IconDownload size={13} />
+      </button>
+      <div className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-background/90 px-2 py-1 text-xs font-medium text-muted-foreground">
+        <IconVideo size={13} stroke={1.5} />
+        Video
+      </div>
+    </div>
+  );
+}
+
 export function AttachmentPreview({
   attachment,
   text$,
@@ -391,6 +454,15 @@ export function AttachmentPreview({
     case "audio": {
       return (
         <AudioPreview filename={attachment.filename} url={attachment.url} />
+      );
+    }
+    case "video": {
+      return (
+        <VideoPreview
+          contentType={attachment.contentType}
+          filename={attachment.filename}
+          url={attachment.url}
+        />
       );
     }
     case "file": {

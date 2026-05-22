@@ -2384,11 +2384,14 @@ function BodyContentBlocks({
 
         if (block.preview.kind === "video") {
           return (
-            <video
+            <AttachmentPreview
               key={block.id}
-              src={block.preview.url}
-              controls
-              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+              attachment={{
+                filename: block.preview.filename,
+                url: block.preview.url,
+                contentType: contentTypeForBodyPreviewKind(block.preview.kind),
+              }}
+              text$={block.preview.text$}
             />
           );
         }
@@ -2787,6 +2790,18 @@ function UserMessageAttachments({
               }}
               placeholderClassName="h-9 w-[72px]"
               url={a.url}
+            />
+          );
+        }
+        if (a.kind === "video") {
+          return (
+            <AttachmentPreview
+              key={a.url}
+              attachment={{
+                filename: a.filename,
+                url: a.url,
+                contentType: a.contentType,
+              }}
             />
           );
         }
