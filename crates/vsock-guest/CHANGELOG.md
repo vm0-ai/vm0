@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.9](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.8...vsock-guest-v0.18.9) (2026-05-22)
+
+
+### Refactoring
+
+* **vsock-guest:** share exec output data helper ([#14489](https://github.com/vm0-ai/vm0/issues/14489)) ([85ec854](https://github.com/vm0-ai/vm0/commit/85ec854bb1a821c861f653d526eb0694641a456c))
+
 ## [0.18.8](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.7...vsock-guest-v0.18.8) (2026-05-21)
 
 

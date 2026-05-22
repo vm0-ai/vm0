@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.383.0](https://github.com/vm0-ai/vm0/compare/web-v12.382.2...web-v12.383.0) (2026-05-22)
+
+
+### Features
+
+* add claude code device auth login ([#14431](https://github.com/vm0-ai/vm0/issues/14431)) ([7f159ae](https://github.com/vm0-ai/vm0/commit/7f159ae5d81d52ad09f0715794750de44e8b713a))
+* add github label listeners ([#14374](https://github.com/vm0-ai/vm0/issues/14374)) ([8d6d24b](https://github.com/vm0-ai/vm0/commit/8d6d24bbc00882dbc628650f94842fb9e3d71dc1))
+* add LinkedIn Insight Tag to www.vm0.ai and app.vm0.ai ([#13816](https://github.com/vm0-ai/vm0/issues/13816)) ([ffe9370](https://github.com/vm0-ai/vm0/commit/ffe937056f20b6c66be58b82299b3c42d3dac74c))
+* add OAuth device session API ([#14472](https://github.com/vm0-ai/vm0/issues/14472)) ([d32dd4b](https://github.com/vm0-ai/vm0/commit/d32dd4bd69c9b3dab1f6720f8bd84cc2c66aad2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.37.0
+    * @vm0/connectors bumped to 1.28.0
+    * @vm0/core bumped to 8.289.0
+    * @vm0/db bumped to 1.18.0
+
 ## [12.382.2](https://github.com/vm0-ai/vm0/compare/web-v12.382.1...web-v12.382.2) (2026-05-21)
 
 

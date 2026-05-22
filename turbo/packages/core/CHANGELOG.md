@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.289.0](https://github.com/vm0-ai/vm0/compare/core-v8.288.1...core-v8.289.0) (2026-05-22)
+
+
+### Features
+
+* add github label listeners ([#14374](https://github.com/vm0-ai/vm0/issues/14374)) ([8d6d24b](https://github.com/vm0-ai/vm0/commit/8d6d24bbc00882dbc628650f94842fb9e3d71dc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.37.0
+    * @vm0/connectors bumped to 1.28.0
+
 ## [8.288.1](https://github.com/vm0-ai/vm0/compare/core-v8.288.0...core-v8.288.1) (2026-05-21)
 
 

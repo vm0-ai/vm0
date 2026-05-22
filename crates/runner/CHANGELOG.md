@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.103.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.6...runner-rs-v0.103.7) (2026-05-22)
+
+
+### Bug Fixes
+
+* **mitm-addon:** emit utc log timestamps ([#14498](https://github.com/vm0-ai/vm0/issues/14498)) ([b2ba913](https://github.com/vm0-ai/vm0/commit/b2ba9136ebf2568332d6d8493992e094abfb76a5))
+* **mitm-addon:** preserve rewritten response headers ([#14491](https://github.com/vm0-ai/vm0/issues/14491)) ([b724e48](https://github.com/vm0-ai/vm0/commit/b724e48961b94c3fa3d29a1888e46d8f355bb44f))
+
+
+### Refactoring
+
+* rename mitm usage counter helpers ([#14493](https://github.com/vm0-ai/vm0/issues/14493)) ([ba45a51](https://github.com/vm0-ai/vm0/commit/ba45a51b8310ed65d144d95e9bd771c801f66c19))
+
 ## [0.103.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.5...runner-rs-v0.103.6) (2026-05-21)
 
 ## [0.103.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.4...runner-rs-v0.103.5) (2026-05-21)

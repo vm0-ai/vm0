@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.35.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.6...sandbox-fc-v0.35.7) (2026-05-22)
+
+
+### Refactoring
+
+* split netns pool lifecycle state ([#14504](https://github.com/vm0-ai/vm0/issues/14504)) ([38b57ab](https://github.com/vm0-ai/vm0/commit/38b57ab7a02a0a75328ba13d0235278c72e0e1d2))
+* unify netns pool queue selector ([#14492](https://github.com/vm0-ai/vm0/issues/14492)) ([a92cb95](https://github.com/vm0-ai/vm0/commit/a92cb95174ccb78e3f04fa9f65a5ff170808e67d))
+
 ## [0.35.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.5...sandbox-fc-v0.35.6) (2026-05-21)
 
 
