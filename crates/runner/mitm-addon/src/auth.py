@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
@@ -317,13 +318,26 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
-def _filter_response_headers(raw: dict[str, str]) -> dict[str, str]:
+def _filter_response_headers(raw: Iterable[tuple[str, str]]) -> http.Headers:
     """Strip hop-by-hop headers from an upstream response.
 
     The response body is fully read (not chunked/compressed from our
     perspective), so headers like transfer-encoding must not be forwarded.
     """
-    return {k: v for k, v in raw.items() if k.lower() not in HOP_BY_HOP}
+    pairs = list(raw)
+    hop_by_hop: set[str] = set(HOP_BY_HOP)
+    for name, value in pairs:
+        if name.lower() == "connection":
+            hop_by_hop.update(token.strip().lower() for token in value.split(",") if token.strip())
+
+    return http.Headers(
+        (
+            name.encode("utf-8", "surrogateescape"),
+            value.encode("utf-8", "surrogateescape"),
+        )
+        for name, value in pairs
+        if name.lower() not in hop_by_hop
+    )
 
 
 def _forward_request_sync(
@@ -331,7 +345,7 @@ def _forward_request_sync(
     method: str,
     headers: dict[str, str],
     body: bytes | None,
-) -> tuple[int, bytes, dict[str, str]]:
+) -> tuple[int, bytes, http.Headers]:
     """Forward an HTTP request to the real URL and return (status, body, headers).
 
     Used for auth.base URL rewriting: the addon makes the upstream request
@@ -353,13 +367,13 @@ def _forward_request_sync(
         req.add_header(k, v)
     try:
         with _opener.open(req, timeout=30) as resp:
-            return resp.status, resp.read(), _filter_response_headers(dict(resp.headers))
+            return resp.status, resp.read(), _filter_response_headers(resp.headers.items())
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; context-manage it or the fd leaks
         # (sustained auth.base URL-rewrite traffic would eventually exhaust
         # the mitmproxy process FD limit).
         with e:
-            return e.code, e.read(), _filter_response_headers(dict(e.headers))
+            return e.code, e.read(), _filter_response_headers(e.headers.items())
 
 
 async def forward_request(
@@ -367,7 +381,7 @@ async def forward_request(
     method: str,
     headers: dict[str, str],
     body: bytes | None,
-) -> tuple[int, bytes, dict[str, str]]:
+) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
     return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
 

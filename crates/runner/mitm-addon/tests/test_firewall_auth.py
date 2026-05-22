@@ -5,6 +5,7 @@ import io
 import json
 import time
 import urllib.error
+from email.message import Message
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,6 +19,13 @@ from tests.auth_state_helpers import (
     set_cached_headers,
 )
 from tests.firewall_helpers import _cancel_pending_task
+
+
+def _upstream_headers(*pairs: tuple[str, str]) -> Message:
+    headers = Message()
+    for name, value in pairs:
+        headers[name] = value
+    return headers
 
 
 class TestGetFirewallHeaders:
@@ -1019,17 +1027,45 @@ class TestForwardRequestSecurity:
 
     def test_filters_hop_by_hop_from_response(self):
         filtered = auth._filter_response_headers(
-            {
-                "Content-Type": "application/json",
-                "Transfer-Encoding": "chunked",
-                "Connection": "keep-alive",
-                "X-Custom": "value",
-            }
+            [
+                ("Content-Type", "application/json"),
+                ("Transfer-Encoding", "chunked"),
+                ("Connection", "keep-alive"),
+                ("X-Custom", "value"),
+            ]
         )
         assert "Content-Type" in filtered
         assert "X-Custom" in filtered
         assert "Transfer-Encoding" not in filtered
         assert "Connection" not in filtered
+
+    def test_filters_connection_declared_hop_by_hop_from_response(self):
+        filtered = auth._filter_response_headers(
+            [
+                ("Connection", "X-Upstream-Only, x-another-hop"),
+                ("X-Upstream-Only", "drop"),
+                ("x-another-hop", "drop"),
+                ("Set-Cookie", "a=1"),
+                ("Set-Cookie", "b=2"),
+            ]
+        )
+
+        assert "X-Upstream-Only" not in filtered
+        assert "x-another-hop" not in filtered
+        assert filtered.get_all("Set-Cookie") == ["a=1", "b=2"]
+
+    def test_preserves_duplicate_response_headers(self):
+        filtered = auth._filter_response_headers(
+            [
+                ("Set-Cookie", "a=1"),
+                ("Set-Cookie", "b=2"),
+                ("Link", "<next>; rel=next"),
+                ("Link", "<prev>; rel=prev"),
+            ]
+        )
+
+        assert filtered.get_all("Set-Cookie") == ["a=1", "b=2"]
+        assert filtered.get_all("Link") == ["<next>; rel=next", "<prev>; rel=prev"]
 
     def test_no_redirect_following(self):
         """_NoRedirect handler returns None to stop redirect chain."""
@@ -1049,16 +1085,41 @@ class TestForwardRequestResourceCleanup:
         resp.__enter__.return_value = resp
         resp.status = 200
         resp.read.return_value = b"ok"
-        resp.headers = {"Content-Type": "application/json"}
+        resp.headers = _upstream_headers(("Content-Type", "application/json"))
         with patch.object(auth._opener, "open", return_value=resp):
             status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
         assert status == 200
         assert body == b"ok"
         resp.__exit__.assert_called_once()
 
+    def test_preserves_duplicate_headers_on_success(self):
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.headers = _upstream_headers(
+            ("Set-Cookie", "a=1"),
+            ("Set-Cookie", "b=2"),
+            ("Content-Type", "text/plain"),
+        )
+
+        with patch.object(auth._opener, "open", return_value=resp):
+            status, body, headers = auth._forward_request_sync(
+                "https://example.com", "GET", {}, None
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        assert headers.get_all("Set-Cookie") == ["a=1", "b=2"]
+        assert headers["Content-Type"] == "text/plain"
+
     def test_closes_httperror_on_error(self):
         err = urllib.error.HTTPError(
-            "https://example.com", 500, "Server Error", {}, io.BytesIO(b"oops")
+            "https://example.com",
+            500,
+            "Server Error",
+            _upstream_headers(("Content-Type", "text/plain")),
+            io.BytesIO(b"oops"),
         )
         err.close = MagicMock(wraps=err.close)
         with patch.object(auth._opener, "open", side_effect=err):
@@ -1067,12 +1128,37 @@ class TestForwardRequestResourceCleanup:
         assert body == b"oops"
         err.close.assert_called_once()
 
+    def test_preserves_duplicate_headers_on_httperror(self):
+        err = urllib.error.HTTPError(
+            "https://example.com",
+            429,
+            "Too Many Requests",
+            _upstream_headers(
+                ("WWW-Authenticate", "Bearer realm=one"),
+                ("WWW-Authenticate", "Bearer realm=two"),
+                ("Content-Type", "text/plain"),
+            ),
+            io.BytesIO(b"rate limited"),
+        )
+        err.close = MagicMock(wraps=err.close)
+
+        with patch.object(auth._opener, "open", side_effect=err):
+            status, body, headers = auth._forward_request_sync(
+                "https://example.com", "GET", {}, None
+            )
+
+        assert status == 429
+        assert body == b"rate limited"
+        assert headers.get_all("WWW-Authenticate") == ["Bearer realm=one", "Bearer realm=two"]
+        assert headers["Content-Type"] == "text/plain"
+        err.close.assert_called_once()
+
     def test_closes_response_when_read_raises(self):
         resp = MagicMock()
         resp.__enter__.return_value = resp
         resp.status = 200
         resp.read.side_effect = OSError("socket closed")
-        resp.headers = {}
+        resp.headers = _upstream_headers()
         with (
             patch.object(auth._opener, "open", return_value=resp),
             pytest.raises(OSError, match="socket closed"),

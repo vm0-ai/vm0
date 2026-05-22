@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 
+from mitmproxy import http
+
 import auth
 import url_utils
 
@@ -53,6 +55,59 @@ class TestAuthBaseUrlRewrite:
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.response.status_code == 200
+
+    async def test_url_rewrite_response_preserves_duplicate_headers(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
+        """Duplicate upstream response headers survive response construction."""
+        flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
+            "auth": {"headers": {}, "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        match_info = {
+            "name": "discord-webhook",
+            "permission": "send-message",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://discord.com/api/webhooks/123/abc",
+            "resolved_secrets": ["DISCORD_WEBHOOK_URL"],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
+        response_headers = http.Headers(
+            [
+                (b"Set-Cookie", b"a=1"),
+                (b"Set-Cookie", b"b=2"),
+                (b"Link", b"<next>; rel=next"),
+                (b"Link", b"<prev>; rel=prev"),
+            ]
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", response_headers))
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.response.status_code == 200
+        assert flow.response.headers.get_all("Set-Cookie") == ["a=1", "b=2"]
+        assert flow.response.headers.get_all("Link") == ["<next>; rel=next", "<prev>; rel=prev"]
 
     async def test_url_rewrite_with_remaining_path(self, real_flow, headers, mitm_ctx, tmp_path):
         """When rel_path has content, it's appended to resolved base in forwarded URL."""
