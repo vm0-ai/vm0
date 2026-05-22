@@ -723,6 +723,7 @@ class TestHandleFirewallRequest:
         assert body["message"] == "Insufficient credits"
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
 
     async def test_connector_not_configured_without_name_omits_connectors(
         self, real_flow, headers, mitm_ctx, tmp_path
