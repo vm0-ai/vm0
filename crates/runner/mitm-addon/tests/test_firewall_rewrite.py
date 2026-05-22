@@ -3,8 +3,8 @@
 import asyncio
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
-from urllib.parse import urlparse
+from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 from mitmproxy import http
 
@@ -654,6 +654,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?redirect=a;b&region=us&q=test&api_key=trusted+key"
 
+    def test_base_path_params_are_preserved(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook;v=1?token=abc",
+            {"rel_path": "/sub;mode=fast"},
+            "extra=1",
+        )
+        assert url == "https://example.com/hook;v=1/sub;mode=fast?token=abc&extra=1"
+
     def test_trailing_slash_on_base_deduped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook/",
@@ -683,6 +691,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
         seed_url=None,
         resolved_base="https://discord.com/api/webhooks/123/abc",
         rel_path="/",
+        method="GET",
+        request_body=None,
+        request_headers=None,
     ):
         # ``seed_url`` lets callers specify a scheme://host/path?query to
         # seed the request. We parse it back into ``real_flow`` kwargs
@@ -693,9 +704,23 @@ class TestAuthBaseUrlRewriteEdgeCases:
             real_path = parsed.path or "/"
             if parsed.query:
                 real_path = f"{real_path}?{parsed.query}"
-            flow = real_flow(with_response=False, host=host, path=real_path)
+            flow = real_flow(
+                with_response=False,
+                host=host,
+                path=real_path,
+                method=method,
+                request_body=request_body,
+                request_headers=request_headers,
+            )
         else:
-            flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path=path)
+            flow = real_flow(
+                with_response=False,
+                host="firewall-placeholder.vm3.ai",
+                path=path,
+                method=method,
+                request_body=request_body,
+                request_headers=request_headers,
+            )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
@@ -799,10 +824,173 @@ class TestAuthBaseUrlRewriteEdgeCases:
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
-        # Auth headers passed to forward_request (in the headers dict)
+        # Auth headers passed to forward_request.
         call_args = mock_forward.call_args
         req_headers = call_args[0][2]
-        assert req_headers["X-Custom"] == "injected-value"
+        assert ("X-Custom", "injected-value") in req_headers
+
+    async def test_forward_request_preserves_duplicate_headers_and_auth_override(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.base forwarding keeps repeated headers unless auth overrides that name."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Connection", "Authorization, X-Remove"),
+                ("X-Remove", "drop"),
+                ("X-Repeat", "one"),
+                ("X-Repeat", "two"),
+                ("Authorization", "Bearer agent"),
+                ("authorization", "Bearer lower-agent"),
+                ("AUTHORIZATION", "Bearer upper-agent"),
+                ("Authorization", "Bearer stale"),
+            ),
+        )
+        token_meta["headers"] = {"Authorization": "Bearer real"}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        assert ("Connection", "Authorization, X-Remove") not in req_headers
+        assert ("X-Remove", "drop") not in req_headers
+        assert req_headers.count(("X-Repeat", "one")) == 1
+        assert req_headers.count(("X-Repeat", "two")) == 1
+        assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("authorization", "Bearer lower-agent") not in req_headers
+        assert ("AUTHORIZATION", "Bearer upper-agent") not in req_headers
+        assert ("Authorization", "Bearer stale") not in req_headers
+        assert req_headers.count(("Authorization", "Bearer real")) == 1
+
+    async def test_forward_request_filters_client_and_injected_unsafe_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Unsafe client and injected headers are stripped without suppressing auth."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Connection", "Authorization"),
+                ("Host", "evil-client.example.com"),
+                ("Content-Length", "123"),
+                ("Transfer-Encoding", "chunked"),
+                ("Keep-Alive", "timeout=5"),
+                ("Proxy-Authenticate", "Basic realm=client"),
+                ("Proxy-Authorization", "Basic client"),
+                ("Proxy-Connection", "keep-alive"),
+                ("TE", "trailers"),
+                ("Trailer", "X-Client-Trailer"),
+                ("Upgrade", "websocket"),
+                ("Authorization", "Bearer agent"),
+                ("X-Keep", "client"),
+            ),
+        )
+        token_meta["headers"] = {
+            "Connection": "Authorization, X-Injected",
+            "Keep-Alive": "timeout=5",
+            "Host": "evil.example.com",
+            "Content-Length": "999",
+            "Transfer-Encoding": "chunked",
+            "Proxy-Authenticate": "Basic realm=proxy",
+            "Proxy-Authorization": "Basic secret",
+            "Proxy-Connection": "keep-alive",
+            "TE": "trailers",
+            "Trailer": "X-Trailer",
+            "Upgrade": "websocket",
+            "Authorization": "Bearer real",
+            "X-Injected": "trusted",
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        header_names = [name.lower() for name, _value in req_headers]
+        blocked_headers = {
+            "connection",
+            "content-length",
+            "host",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "proxy-connection",
+            "te",
+            "trailer",
+            "transfer-encoding",
+            "upgrade",
+        }
+        assert blocked_headers.isdisjoint(header_names)
+        assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("Authorization", "Bearer real") in req_headers
+        assert ("X-Injected", "trusted") in req_headers
+        assert ("X-Keep", "client") in req_headers
+
+    async def test_forward_request_uses_raw_body_for_any_method(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.base forwarding does not drop bodies for non-POST methods."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="DELETE",
+            request_body=b"delete-body",
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert mock_forward.call_args[0][1] == "DELETE"
+        assert mock_forward.call_args[0][3] == b"delete-body"
+
+    async def test_forward_request_preserves_empty_raw_body(self, real_flow, mitm_ctx, tmp_path):
+        """An explicit empty body is distinct from no body for Content-Length."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="POST",
+            request_body=b"",
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert mock_forward.call_args[0][3] == b""
+
+    async def test_forward_request_preserves_absent_body(self, real_flow, mitm_ctx, tmp_path):
+        """A request with no raw body remains distinct from an explicit empty body."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="GET",
+            request_body=None,
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert mock_forward.call_args[0][3] is None
 
     async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
@@ -838,6 +1026,34 @@ class TestAuthBaseUrlRewriteEdgeCases:
         )
         assert "Firewall URL rewrite:" not in log_text
 
+    async def test_forward_failure_does_not_log_resolved_url_secret(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """Forward errors must not leak secret-bearing resolved auth.base URLs."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            resolved_base="https://real.example.com/webhook/super-secret-token",
+        )
+        mock_forward = AsyncMock(
+            side_effect=Exception("failed https://real.example.com/webhook/super-secret-token")
+        )
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.response is not None
+        assert b"super-secret-token" not in flow.response.content
+        log_args = mock_log.call_args.args
+        log_kwargs = mock_log.call_args.kwargs
+        assert "super-secret-token" not in json.dumps(log_args)
+        assert "super-secret-token" not in json.dumps(log_kwargs)
+
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server is treated as absent — no URL rewrite."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
@@ -868,7 +1084,14 @@ class TestAuthQueryInjection:
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://serpapi.com",
-            "auth": {"headers": {}, "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"}},
+            "auth": {
+                "headers": {},
+                "query": {
+                    "api_key": "${{ secrets.SERPAPI_TOKEN }}",
+                    "empty_auth": "${{ vars.EMPTY }}",
+                    "space": "${{ vars.SPACE }}",
+                },
+            },
         }
         vm_info = {
             "runId": "run-1",
@@ -886,7 +1109,11 @@ class TestAuthQueryInjection:
             "headers": {},
             "resolved_secrets": ["SERPAPI_TOKEN"],
             "cache_hit": False,
-            "query": {"api_key": "resolved-key-123"},
+            "query": {
+                "api_key": "resolved-key-123",
+                "empty_auth": "",
+                "space": "a b",
+            },
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -895,13 +1122,18 @@ class TestAuthQueryInjection:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
+        assert flow.request.query["empty_auth"] == ""
+        assert flow.request.query["space"] == "a b"
 
     async def test_query_param_overwrites_existing_key(self, real_flow, headers, mitm_ctx):
         """auth.query overwrites a query param already present in the original request."""
         flow = real_flow(
             with_response=False,
             host="serpapi.com",
-            path="/search?api_key=agent-value&q=test",
+            path=(
+                "/search?api_key=agent-value&api_key=stale-value"
+                "&q=test&empty=&repeat=one&repeat=two"
+            ),
         )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
@@ -933,8 +1165,13 @@ class TestAuthQueryInjection:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         # auth.query overwrites the agent's api_key
         assert flow.request.query["api_key"] == "real-secret-key"
+        assert list(flow.request.query.get_all("api_key")) == ["real-secret-key"]
         # Other query params are preserved
         assert flow.request.query["q"] == "test"
+        assert flow.request.query["empty"] == ""
+        query_items = list(flow.request.query.items(multi=True))
+        assert query_items.count(("repeat", "one")) == 1
+        assert query_items.count(("repeat", "two")) == 1
 
     async def test_query_params_with_headers_simultaneously(self, real_flow, headers, mitm_ctx):
         """auth.query and auth.headers can coexist on the standard path."""
@@ -1018,6 +1255,128 @@ class TestAuthQueryInjection:
         forwarded_url = call_args[0][0]
         assert "api_key=resolved-key-456" in forwarded_url
         assert forwarded_url.startswith("https://real-api.com/webhook/secret")
+
+    async def test_query_params_overwrite_existing_rewrite_url_keys(
+        self, real_flow, headers, mitm_ctx
+    ):
+        """auth.query overwrites duplicate keys while preserving other query values."""
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/hook?api_key=agent-key&q=test&empty=&repeat=one&repeat=two",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
+            "auth": {
+                "headers": {},
+                "base": "${{ secrets.WEBHOOK }}",
+                "query": {
+                    "api_key": "${{ secrets.KEY }}",
+                    "empty_auth": "${{ vars.EMPTY }}",
+                    "space": "${{ vars.SPACE }}",
+                },
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
+        }
+        match_info = {
+            "name": "test",
+            "permission": "send",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://real-api.com/webhook/secret?api_key=base-key&mode=fast&base_empty=",
+            "resolved_secrets": ["WEBHOOK", "KEY"],
+            "cache_hit": False,
+            "query": {
+                "api_key": "resolved-key-456",
+                "empty_auth": "",
+                "space": "a b",
+            },
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        forwarded = urlparse(mock_forward.call_args[0][0])
+        query = parse_qs(forwarded.query, keep_blank_values=True)
+        assert forwarded.scheme == "https"
+        assert forwarded.netloc == "real-api.com"
+        assert forwarded.path == "/webhook/secret"
+        assert query["api_key"] == ["resolved-key-456"]
+        assert query["mode"] == ["fast"]
+        assert query["base_empty"] == [""]
+        assert query["q"] == ["test"]
+        assert query["empty"] == [""]
+        assert query["empty_auth"] == [""]
+        assert query["space"] == ["a b"]
+        assert query["repeat"] == ["one", "two"]
+
+    async def test_query_params_preserve_rewrite_path_params(self, real_flow, headers, mitm_ctx):
+        """auth.query merging must not strip URL path params from the rewrite target."""
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/hook/callback;matrix=1?q=test",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
+            "auth": {
+                "headers": {},
+                "base": "${{ secrets.WEBHOOK }}",
+                "query": {"api_key": "${{ secrets.KEY }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
+        }
+        match_info = {
+            "name": "test",
+            "permission": "send",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/callback;matrix=1",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://real-api.com/webhook/secret;v=1?mode=fast",
+            "resolved_secrets": ["WEBHOOK", "KEY"],
+            "cache_hit": False,
+            "query": {"api_key": "resolved-key"},
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        forwarded = urlparse(mock_forward.call_args[0][0])
+        assert forwarded.path == "/webhook/secret;v=1/callback"
+        assert forwarded.params == "matrix=1"
+        query = parse_qs(forwarded.query, keep_blank_values=True)
+        assert query == {
+            "mode": ["fast"],
+            "q": ["test"],
+            "api_key": ["resolved-key"],
+        }
 
     async def test_no_query_injection_when_absent(self, real_flow, headers, mitm_ctx):
         """No query modification when auth.query is not present."""

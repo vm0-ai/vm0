@@ -11,12 +11,31 @@ import copy
 import json
 import time
 import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from auth import _opener, make_api_request
+from auth import make_api_request
 from logging_utils import log_proxy_entry
 
 from .counters import decrement_pending_reports, increment_pending_reports
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Disable automatic redirect following for webhook delivery."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
 
 
 def _log_webhook_entry(

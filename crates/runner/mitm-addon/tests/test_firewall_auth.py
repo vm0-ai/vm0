@@ -289,6 +289,57 @@ class TestGetFirewallHeaders:
         assert result["cache_hit"] is True
         mock_fetch.assert_not_called()
 
+    async def test_query_is_cached_and_returned_on_cache_hit(self):
+        """auth.query is cached after a fetch and returned on cache hit."""
+        cache_key = ("run-1", "api-1")
+        cached_query = {"api_key": "cached-key", "empty_auth": ""}
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": {},
+                "resolvedSecrets": ["QUERY_KEY"],
+                "query": cached_query,
+            }
+        )
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            first = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            second = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert first["query"] == cached_query
+        assert first["cache_hit"] is False
+        assert second["query"] == cached_query
+        assert second["cache_hit"] is True
+        mock_fetch.assert_called_once()
+        assert require_cached_headers(cache_key).query == cached_query
+
+    async def test_base_and_query_are_cached_together(self):
+        """auth.base and auth.query survive the same cache entry."""
+        cache_key = ("run-1", "api-1")
+        cached_base = "https://example.com/webhook/secret"
+        cached_query = {"api_key": "cached-key", "empty_auth": ""}
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": {},
+                "base": cached_base,
+                "query": cached_query,
+            }
+        )
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            first = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            second = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert first["base"] == cached_base
+        assert first["query"] == cached_query
+        assert first["cache_hit"] is False
+        assert second["base"] == cached_base
+        assert second["query"] == cached_query
+        assert second["cache_hit"] is True
+        mock_fetch.assert_called_once()
+        cached = require_cached_headers(cache_key)
+        assert cached.base == cached_base
+        assert cached.query == cached_query
+
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
         cache_key = ("run-1", "api-1")
@@ -846,6 +897,37 @@ class TestFetchFirewallHeaders:
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
 
+    def test_includes_auth_base_and_query_in_request_body(self, headers):
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {
+                "headers": {},
+                "base": "https://example.com/webhook/secret",
+                "query": {"api_key": "resolved-key"},
+            }
+        ).encode()
+
+        with (
+            patch("auth.urllib.request.Request") as mock_req_cls,
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                "https://api.vm0.ai",
+                auth_base="${{ secrets.WEBHOOK_URL }}",
+                auth_query={"api_key": "${{ secrets.API_KEY }}"},
+            )
+
+        assert result["base"] == "https://example.com/webhook/secret"
+        assert result["query"] == {"api_key": "resolved-key"}
+        body = json.loads(mock_req_cls.call_args[1]["data"])
+        assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
+        assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
+
     def test_includes_billable_firewall_flag_in_request_body(self, headers):
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
@@ -1005,159 +1087,3 @@ class TestFetchFirewallHeaders:
         # Verify the URL was built from the ctx-provided api_url
         call_args = mock_req_cls.call_args
         assert call_args[0][0] == "https://ctx-url.vm0.ai/api/webhooks/agent/firewall/auth"
-
-
-# =========================================================================
-# _forward_request_sync security
-# =========================================================================
-
-
-class TestForwardRequestSecurity:
-    """Security tests for _forward_request_sync."""
-
-    def test_rejects_file_scheme(self):
-        with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            auth._forward_request_sync("file:///etc/passwd", "GET", {}, None)
-
-    def test_rejects_ftp_scheme(self):
-        with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            auth._forward_request_sync("ftp://evil.com/file", "GET", {}, None)
-
-    def test_rejects_empty_scheme(self):
-        with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            auth._forward_request_sync("//no-scheme.com/path", "GET", {}, None)
-
-    def test_filters_hop_by_hop_from_response(self):
-        filtered = auth._filter_response_headers(
-            [
-                ("Content-Type", "application/json"),
-                ("Transfer-Encoding", "chunked"),
-                ("Connection", "keep-alive"),
-                ("X-Custom", "value"),
-            ]
-        )
-        assert "Content-Type" in filtered
-        assert "X-Custom" in filtered
-        assert "Transfer-Encoding" not in filtered
-        assert "Connection" not in filtered
-
-    def test_filters_connection_declared_hop_by_hop_from_response(self):
-        filtered = auth._filter_response_headers(
-            [
-                ("Connection", "X-Upstream-Only, x-another-hop"),
-                ("X-Upstream-Only", "drop"),
-                ("x-another-hop", "drop"),
-                ("Set-Cookie", "a=1"),
-                ("Set-Cookie", "b=2"),
-            ]
-        )
-
-        assert "X-Upstream-Only" not in filtered
-        assert "x-another-hop" not in filtered
-        assert filtered.get_all("Set-Cookie") == ["a=1", "b=2"]
-
-    def test_preserves_duplicate_response_headers(self):
-        filtered = auth._filter_response_headers(
-            [
-                ("Set-Cookie", "a=1"),
-                ("Set-Cookie", "b=2"),
-                ("Link", "<next>; rel=next"),
-                ("Link", "<prev>; rel=prev"),
-            ]
-        )
-
-        assert filtered.get_all("Set-Cookie") == ["a=1", "b=2"]
-        assert filtered.get_all("Link") == ["<next>; rel=next", "<prev>; rel=prev"]
-
-    def test_no_redirect_following(self):
-        """_NoRedirect handler returns None to stop redirect chain."""
-        handler = auth._NoRedirect()
-        result = handler.redirect_request(MagicMock(), None, 302, "Found", {}, "https://evil.com")
-        assert result is None
-
-
-class TestForwardRequestResourceCleanup:
-    """Regression tests for #10476: urllib response/HTTPError must be closed
-    or sustained auth.base URL-rewrite traffic will leak sockets and
-    eventually exhaust the mitmproxy process FD limit.
-    """
-
-    def test_closes_response_on_success(self):
-        resp = MagicMock()
-        resp.__enter__.return_value = resp
-        resp.status = 200
-        resp.read.return_value = b"ok"
-        resp.headers = _upstream_headers(("Content-Type", "application/json"))
-        with patch.object(auth._opener, "open", return_value=resp):
-            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
-        assert status == 200
-        assert body == b"ok"
-        resp.__exit__.assert_called_once()
-
-    def test_preserves_duplicate_headers_on_success(self):
-        resp = MagicMock()
-        resp.__enter__.return_value = resp
-        resp.status = 200
-        resp.read.return_value = b"ok"
-        resp.headers = _upstream_headers(
-            ("Set-Cookie", "a=1"),
-            ("Set-Cookie", "b=2"),
-            ("Content-Type", "text/plain"),
-        )
-
-        with patch.object(auth._opener, "open", return_value=resp):
-            status, body, headers = auth._forward_request_sync(
-                "https://example.com", "GET", {}, None
-            )
-
-        assert status == 200
-        assert body == b"ok"
-        assert headers.get_all("Set-Cookie") == ["a=1", "b=2"]
-        assert headers["Content-Type"] == "text/plain"
-
-    def test_closes_httperror_on_error(self):
-        err = _http_error("https://example.com", 500, "Server Error", b"oops")
-        err.close = MagicMock(wraps=err.close)
-        with patch.object(auth._opener, "open", side_effect=err):
-            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
-        assert status == 500
-        assert body == b"oops"
-        err.close.assert_called_once()
-
-    def test_preserves_duplicate_headers_on_httperror(self):
-        err = urllib.error.HTTPError(
-            "https://example.com",
-            429,
-            "Too Many Requests",
-            _upstream_headers(
-                ("WWW-Authenticate", "Bearer realm=one"),
-                ("WWW-Authenticate", "Bearer realm=two"),
-                ("Content-Type", "text/plain"),
-            ),
-            io.BytesIO(b"rate limited"),
-        )
-        err.close = MagicMock(wraps=err.close)
-
-        with patch.object(auth._opener, "open", side_effect=err):
-            status, body, headers = auth._forward_request_sync(
-                "https://example.com", "GET", {}, None
-            )
-
-        assert status == 429
-        assert body == b"rate limited"
-        assert headers.get_all("WWW-Authenticate") == ["Bearer realm=one", "Bearer realm=two"]
-        assert headers["Content-Type"] == "text/plain"
-        err.close.assert_called_once()
-
-    def test_closes_response_when_read_raises(self):
-        resp = MagicMock()
-        resp.__enter__.return_value = resp
-        resp.status = 200
-        resp.read.side_effect = OSError("socket closed")
-        resp.headers = _upstream_headers()
-        with (
-            patch.object(auth._opener, "open", return_value=resp),
-            pytest.raises(OSError, match="socket closed"),
-        ):
-            auth._forward_request_sync("https://example.com", "GET", {}, None)
-        resp.__exit__.assert_called_once()

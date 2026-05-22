@@ -12,11 +12,16 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
 
+from auth_base_forwarder import (
+    forward_request,
+    forwarded_request_header_pairs,
+    header_pairs,
+    trusted_request_header_pairs,
+)
 from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
@@ -287,103 +292,16 @@ async def fetch_firewall_headers(
     )
 
 
-HOP_BY_HOP = frozenset(
-    (
-        "connection",
-        "keep-alive",
-        "proxy-connection",
-        "transfer-encoding",
-        "te",
-        "trailer",
-        "upgrade",
-    )
-)
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Disable automatic redirect following to prevent SSRF via open redirects."""
-
-    def redirect_request(
-        self,
-        req: urllib.request.Request,
-        fp: object,
-        code: int,
-        msg: str,
-        headers: object,
-        newurl: str,
-    ) -> None:
-        return None
-
-
-_opener = urllib.request.build_opener(_NoRedirect)
-
-
-def _filter_response_headers(raw: Iterable[tuple[str, str]]) -> http.Headers:
-    """Strip hop-by-hop headers from an upstream response.
-
-    The response body is fully read (not chunked/compressed from our
-    perspective), so headers like transfer-encoding must not be forwarded.
-    """
-    pairs = list(raw)
-    hop_by_hop: set[str] = set(HOP_BY_HOP)
-    for name, value in pairs:
-        if name.lower() == "connection":
-            hop_by_hop.update(token.strip().lower() for token in value.split(",") if token.strip())
-
-    return http.Headers(
-        (
-            name.encode("utf-8", "surrogateescape"),
-            value.encode("utf-8", "surrogateescape"),
-        )
-        for name, value in pairs
-        if name.lower() not in hop_by_hop
-    )
-
-
-def _forward_request_sync(
-    url: str,
-    method: str,
-    headers: dict[str, str],
-    body: bytes | None,
-) -> tuple[int, bytes, http.Headers]:
-    """Forward an HTTP request to the real URL and return (status, body, headers).
-
-    Used for auth.base URL rewriting: the addon makes the upstream request
-    itself instead of relying on mitmproxy's connection (which would go to
-    the placeholder IP in eager mode).
-
-    Security: redirects are disabled (_NoRedirect) to prevent SSRF via open
-    redirects, and only https/http schemes are allowed.
-    """
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("https", "http"):
-        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-    # S310 is satisfied by the explicit scheme whitelist above: file:, ftp:,
-    # and other schemes S310 warns about are rejected before this point.
-    req = urllib.request.Request(url, data=body, method=method)  # noqa: S310
-    for k, v in headers.items():
-        if k.lower() in HOP_BY_HOP or k.lower() == "host":
-            continue
-        req.add_header(k, v)
-    try:
-        with _opener.open(req, timeout=30) as resp:
-            return resp.status, resp.read(), _filter_response_headers(resp.headers.items())
-    except urllib.error.HTTPError as e:
-        # HTTPError wraps an open socket; context-manage it or the fd leaks
-        # (sustained auth.base URL-rewrite traffic would eventually exhaust
-        # the mitmproxy process FD limit).
-        with e:
-            return e.code, e.read(), _filter_response_headers(e.headers.items())
-
-
-async def forward_request(
-    url: str,
-    method: str,
-    headers: dict[str, str],
-    body: bytes | None,
-) -> tuple[int, bytes, http.Headers]:
-    """Async wrapper for _forward_request_sync."""
-    return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
+def _merge_auth_headers(
+    headers,
+    auth_headers: dict[str, str],
+) -> list[tuple[str, str]]:
+    pairs = header_pairs(headers)
+    auth_pairs = trusted_request_header_pairs(auth_headers)
+    override_names = {name.lower() for name, _value in auth_pairs}
+    return [
+        (name, value) for name, value in pairs if name.lower() not in override_names
+    ] + auth_pairs
 
 
 def _has_valid_expiry(value: object, now: float | None = None) -> bool:
@@ -670,26 +588,31 @@ async def handle_firewall_request(
         orig_query = urllib.parse.urlparse(flow.request.path).query
         new_url = build_rewrite_url(resolved_base, match_info, orig_query, resolved_query)
 
-        # Merge original request headers with resolved auth headers
-        req_headers = dict(flow.request.headers)
-        for header_name, header_value in headers.items():
-            req_headers[header_name] = header_value
+        # Filter client-controlled hop-by-hop headers before adding trusted
+        # auth headers, so Connection tokens cannot suppress injected auth.
+        # Repeated request headers are preserved; resolved auth headers
+        # intentionally replace any client-supplied value with the same name.
+        req_headers = _merge_auth_headers(
+            forwarded_request_header_pairs(flow.request.headers), headers
+        )
+        req_body = flow.request.raw_content if flow.request.raw_content is not None else None
 
         try:
             status, resp_body, resp_headers = await forward_request(
                 new_url,
                 flow.request.method,
                 req_headers,
-                flow.request.content if flow.request.method in ("POST", "PUT", "PATCH") else None,
+                req_body,
             )
             flow.response = http.Response.make(status, resp_body, resp_headers)
         except Exception as e:
             log_proxy_entry(
                 proxy_log_path,
                 "error",
-                f"URL rewrite forward failed: {e}",
+                "URL rewrite forward failed",
                 type="firewall",
                 firewall_base=firewall_base,
+                error_type=type(e).__name__,
             )
             flow.metadata["firewall_action"] = "ALLOW"
             flow.metadata["firewall_error"] = "url_rewrite_forward_failed"
