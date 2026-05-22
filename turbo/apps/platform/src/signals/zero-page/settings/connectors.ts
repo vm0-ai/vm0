@@ -657,6 +657,7 @@ export const setTokenFormSubmitting$ = command(
 
 type FinishConnectorConnectionOptions = PostConnectOptions & {
   readonly clearSelectedConnector?: boolean;
+  readonly reloadConnectors?: boolean;
   readonly toastMessage?: string | null;
 };
 
@@ -669,7 +670,9 @@ const finishConnectorConnection$ = command(
     set(internalJustConnectedTypes$, (prev) => {
       return new Set([...prev, type]);
     });
-    set(reloadConnectors$);
+    if (options.reloadConnectors !== false) {
+      set(reloadConnectors$);
+    }
 
     const hidden = new Set(get(hiddenConnectorTypes$));
     hidden.delete(type);
@@ -2248,6 +2251,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           set(finishConnectorConnection$, type, {
             ...options,
             clearSelectedConnector: true,
+            reloadConnectors: false,
             toastMessage: null,
           });
         }
