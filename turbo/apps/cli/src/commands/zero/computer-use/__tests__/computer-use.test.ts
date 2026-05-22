@@ -301,4 +301,70 @@ describe("computer-use command visibility", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('"text": "clicked"');
   });
+
+  it("should send click element indexes", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/write-commands",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          expect(body).toMatchObject({
+            kind: "element.click",
+            app: "Slack",
+            snapshotId: "snap_1",
+            elementIndex: 7,
+            button: "left",
+            clickCount: 1,
+            timeoutMs: 30_000,
+          });
+          return HttpResponse.json({
+            commandId: "cmd_click_index",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_click_index",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_click_index",
+            kind: "element.click",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {
+              app: "Slack",
+              snapshotId: "snap_1",
+              elementIndex: 7,
+              button: "left",
+              clickCount: 1,
+            },
+            result: { text: "clicked" },
+            timeoutMs: 30_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "click",
+      "--app",
+      "Slack",
+      "--snapshot-id",
+      "snap_1",
+      "--element-index",
+      "7",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain('"text": "clicked"');
+  });
 });

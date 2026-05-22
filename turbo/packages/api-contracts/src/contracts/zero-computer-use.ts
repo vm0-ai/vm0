@@ -60,6 +60,7 @@ const supportedCapabilitiesSchema = z
 const appNameSchema = z.string().trim().min(1).max(256);
 const snapshotIdSchema = z.string().trim().min(1).max(256);
 const elementIdSchema = z.string().trim().min(1).max(256);
+const elementIndexSchema = z.number().int().min(0);
 
 const computerUsePermissionsSchema = z.object({
   accessibility: z.boolean(),
@@ -84,6 +85,7 @@ const computerUseCommandPayloadShape = {
   app: appNameSchema.optional(),
   snapshotId: snapshotIdSchema.optional(),
   elementId: elementIdSchema.optional(),
+  elementIndex: elementIndexSchema.optional(),
   x: z.number().int().min(0).optional(),
   y: z.number().int().min(0).optional(),
   button: z.enum(["left", "right", "middle"]).optional(),
@@ -143,11 +145,11 @@ function validateElementClickCommand(
   ctx: ComputerUseCommandValidationContext,
 ): void {
   const hasPoint = body.x !== undefined && body.y !== undefined;
-  if (!body.elementId && !hasPoint) {
+  if (!body.elementId && body.elementIndex === undefined && !hasPoint) {
     requireComputerUseField(
       ctx,
-      "elementId",
-      "element.click requires elementId or x/y",
+      "elementIndex",
+      "element.click requires elementId, elementIndex, or x/y",
     );
   }
   if ((body.x === undefined) !== (body.y === undefined)) {
@@ -163,11 +165,11 @@ function validateElementScrollCommand(
   body: ComputerUseWriteCommandCreateBody,
   ctx: ComputerUseCommandValidationContext,
 ): void {
-  if (!body.elementId) {
+  if (!body.elementId && body.elementIndex === undefined) {
     requireComputerUseField(
       ctx,
-      "elementId",
-      "element.scroll requires elementId",
+      "elementIndex",
+      "element.scroll requires elementId or elementIndex",
     );
   }
   if (!body.direction) {
@@ -183,11 +185,11 @@ function validateElementSetValueCommand(
   body: ComputerUseWriteCommandCreateBody,
   ctx: ComputerUseCommandValidationContext,
 ): void {
-  if (!body.elementId) {
+  if (!body.elementId && body.elementIndex === undefined) {
     requireComputerUseField(
       ctx,
-      "elementId",
-      "element.set_value requires elementId",
+      "elementIndex",
+      "element.set_value requires elementId or elementIndex",
     );
   }
   if (!body.value) {
@@ -199,11 +201,11 @@ function validateElementActionCommand(
   body: ComputerUseWriteCommandCreateBody,
   ctx: ComputerUseCommandValidationContext,
 ): void {
-  if (!body.elementId) {
+  if (!body.elementId && body.elementIndex === undefined) {
     requireComputerUseField(
       ctx,
-      "elementId",
-      "element.perform_action requires elementId",
+      "elementIndex",
+      "element.perform_action requires elementId or elementIndex",
     );
   }
   if (!body.action) {

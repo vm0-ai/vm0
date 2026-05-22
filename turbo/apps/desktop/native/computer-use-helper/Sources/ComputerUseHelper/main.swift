@@ -194,6 +194,16 @@ func stringValue(_ value: Any?) -> String? {
     return nil
 }
 
+func urlStringValue(_ value: Any?) -> String? {
+    if let url = value as? URL {
+        return stringValue(url.absoluteString)
+    }
+    if let url = value as? NSURL {
+        return stringValue(url.absoluteString)
+    }
+    return stringValue(value)
+}
+
 func boolValue(_ value: Any?) -> Bool? {
     return (value as? NSNumber)?.boolValue
 }
@@ -253,6 +263,54 @@ func actionNames(_ element: AXUIElement) -> [String] {
     return ((names as? [String]) ?? []).prefix(limits.maxActions).map { name in
         name
     }
+}
+
+func attributeIsSettable(_ element: AXUIElement, _ name: CFString) -> Bool? {
+    var settable = DarwinBoolean(false)
+    let error = AXUIElementIsAttributeSettable(element, name, &settable)
+    if error != .success {
+        return nil
+    }
+    return settable.boolValue
+}
+
+func valueTypeDescription(_ value: Any?) -> String? {
+    guard let value else {
+        return nil
+    }
+    if value is String {
+        return "string"
+    }
+    if value is URL || value is NSURL {
+        return "url"
+    }
+    if let number = value as? NSNumber {
+        if CFGetTypeID(number as CFTypeRef) == CFBooleanGetTypeID() {
+            return "boolean"
+        }
+        return "number"
+    }
+    if let axValue = axValueValue(value) {
+        switch AXValueGetType(axValue) {
+        case .cgPoint:
+            return "point"
+        case .cgSize:
+            return "size"
+        case .cgRect:
+            return "rect"
+        case .cfRange:
+            return "range"
+        default:
+            return "value"
+        }
+    }
+    if axElementValue(value) != nil {
+        return "element"
+    }
+    if value is [Any] {
+        return "array"
+    }
+    return nil
 }
 
 func setAttribute(_ element: AXUIElement, _ name: CFString, _ value: CFTypeRef) throws {
@@ -355,20 +413,45 @@ func describe(
     if let roleDescription = stringValue(attribute(element, kAXRoleDescriptionAttribute as CFString)) {
         node["roleDescription"] = roleDescription
     }
+    if let subrole = stringValue(attribute(element, kAXSubroleAttribute as CFString)) {
+        node["subrole"] = subrole
+    }
     if let name = stringValue(attribute(element, kAXTitleAttribute as CFString)) {
         node["name"] = name
     }
-    if let value = stringValue(attribute(element, kAXValueAttribute as CFString)) {
+    let rawValue = attribute(element, kAXValueAttribute as CFString)
+    if let value = stringValue(rawValue) {
         node["value"] = value
+    }
+    if let valueType = valueTypeDescription(rawValue) {
+        node["valueType"] = valueType
+    }
+    if let valueSettable = attributeIsSettable(element, kAXValueAttribute as CFString), valueSettable {
+        node["valueSettable"] = valueSettable
     }
     if let description = stringValue(attribute(element, kAXDescriptionAttribute as CFString)) {
         node["description"] = description
+    }
+    if let help = stringValue(attribute(element, kAXHelpAttribute as CFString)) {
+        node["help"] = help
+    }
+    if let identifier = stringValue(attribute(element, kAXIdentifierAttribute as CFString)) {
+        node["identifier"] = identifier
+    }
+    if let url = urlStringValue(attribute(element, kAXURLAttribute as CFString)) {
+        node["url"] = url
     }
     if let focused = boolValue(attribute(element, kAXFocusedAttribute as CFString)) {
         node["focused"] = focused
     }
     if let enabled = boolValue(attribute(element, kAXEnabledAttribute as CFString)) {
         node["enabled"] = enabled
+    }
+    if let selected = boolValue(attribute(element, kAXSelectedAttribute as CFString)) {
+        node["selected"] = selected
+    }
+    if let expanded = boolValue(attribute(element, kAXExpandedAttribute as CFString)) {
+        node["expanded"] = expanded
     }
     let actions = actionNames(element)
     if !actions.isEmpty {
@@ -454,6 +537,17 @@ func resolveElement(appName: String, elementId: String) throws -> AXUIElement {
                 )
             }
             current = windows[index]
+        } else if part.hasPrefix("m") {
+            let index = try resolveIndex(part)
+            guard index == 0,
+                  let menuBar = axElementValue(attribute(root, kAXMenuBarAttribute as CFString))
+            else {
+                throw HelperFailure(
+                    code: "accessibility_unavailable",
+                    message: "Element not found: \(elementId)"
+                )
+            }
+            current = menuBar
         } else {
             guard let element = current else {
                 throw HelperFailure(
@@ -520,14 +614,39 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
             )
         }
 
-    return [
+    var elements = Array(windows)
+    if let menuBar = axElementValue(attribute(root, kAXMenuBarAttribute as CFString)),
+       let menuBarSnapshot = describe(
+           menuBar,
+           id: "m0",
+           depth: 0,
+           nodeCount: &nodeCount,
+           truncationReasons: &truncationReasons
+       )
+    {
+        elements.append(menuBarSnapshot)
+    }
+
+    var response: [String: Any] = [
         "app": appName,
+        "appDisplayName": runningApp.localizedName ?? appName,
+        "pid": Int(runningApp.processIdentifier),
         "snapshotId": snapshotId,
-        "elements": windows,
+        "elements": elements,
         "nodeCount": nodeCount,
         "truncated": !truncationReasons.isEmpty,
         "truncationReasons": truncationReasons,
     ]
+    if let bundleId = runningApp.bundleIdentifier {
+        response["bundleId"] = bundleId
+    }
+    if let appPath = runningApp.bundleURL?.path {
+        response["appPath"] = appPath
+    }
+    if let windowTitle = elements.first?["name"] as? String {
+        response["windowTitle"] = windowTitle
+    }
+    return response
 }
 
 func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {

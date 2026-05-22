@@ -311,10 +311,9 @@ describe("desktop computer-use runtime", () => {
           kind: "element.click",
           app: "Safari",
           snapshotId: "snap_1",
-          x: 680,
-          y: 600,
-          button: "right",
-          clickCount: 2,
+          elementIndex: 7,
+          button: "left",
+          clickCount: 1,
           timeoutMs: 15_000,
         },
         headers: { authorization: `Bearer ${token}` },
@@ -342,10 +341,9 @@ describe("desktop computer-use runtime", () => {
       payload: {
         app: "Safari",
         snapshotId: "snap_1",
-        x: 680,
-        y: 600,
-        button: "right",
-        clickCount: 2,
+        elementIndex: 7,
+        button: "left",
+        clickCount: 1,
       },
     });
 
@@ -356,6 +354,7 @@ describe("desktop computer-use runtime", () => {
           status: "succeeded",
           result: {
             text: "clicked",
+            elementIndex: 7,
             dispatchMode: "accessibility_action",
             dispatchTarget: "element",
             inputRisk: "targeted_app_action",
@@ -381,6 +380,7 @@ describe("desktop computer-use runtime", () => {
     expect(auditEvents[0]?.redactedResult).toStrictEqual({
       dispatchMode: "accessibility_action",
       dispatchTarget: "element",
+      elementIndex: 7,
       inputRisk: "targeted_app_action",
       textLength: 7,
     });

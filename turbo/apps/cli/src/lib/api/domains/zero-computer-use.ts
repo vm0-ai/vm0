@@ -67,6 +67,7 @@ interface ComputerUseCommandParams<
   readonly app?: string;
   readonly snapshotId?: string;
   readonly elementId?: string;
+  readonly elementIndex?: number;
   readonly x?: number;
   readonly y?: number;
   readonly button?: "left" | "right" | "middle";
@@ -91,6 +92,9 @@ function commandBody<
     ...(params.app ? { app: params.app } : {}),
     ...(params.snapshotId ? { snapshotId: params.snapshotId } : {}),
     ...(params.elementId ? { elementId: params.elementId } : {}),
+    ...(params.elementIndex !== undefined
+      ? { elementIndex: params.elementIndex }
+      : {}),
     ...(params.x !== undefined ? { x: params.x } : {}),
     ...(params.y !== undefined ? { y: params.y } : {}),
     ...(params.button ? { button: params.button } : {}),

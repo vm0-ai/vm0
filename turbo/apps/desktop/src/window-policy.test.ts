@@ -467,9 +467,74 @@ describe("computer use desktop runtime", () => {
     };
     const text = renderAccessibilityTree(snapshot);
 
-    expect(text).toContain("snapshot_id=snap_1");
-    expect(text).toContain('w0 AXWindow "Example"');
-    expect(text).toContain('w0.e0 AXButton "Open" actions=AXPress');
+    expect(text).toContain("Computer Use state");
+    expect(text).toContain("<app_state>");
+    expect(text).toContain("App=Safari");
+    expect(text).toContain('Window: "Example", App: Safari.');
+    expect(text).toContain("0 standard window Example");
+    expect(text).toContain("\t1 button Open");
+    expect(text).not.toContain("w0.e0");
+  });
+
+  it("renders CUA-style element details and focused element summary", () => {
+    const snapshot = {
+      app: "Electron",
+      appDisplayName: "Zero",
+      bundleId: "com.github.Electron",
+      pid: 26037,
+      appPath: "/Applications/Zero.app",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Zero | VM0",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXWebArea",
+              roleDescription: "HTML content",
+              name: "Zero | VM0",
+              url: "https://app.vm7.ai/agents/1/chat",
+              children: [
+                {
+                  id: "w0.e0.e0",
+                  role: "AXTextArea",
+                  name: "Ask me to automate workflows",
+                  valueSettable: true,
+                  valueType: "string",
+                  focused: true,
+                },
+                {
+                  id: "w0.e0.e1",
+                  role: "AXButton",
+                  description: "Invite people",
+                  actions: ["AXPress", "AXRaise"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const text = renderAccessibilityTree(snapshot);
+
+    expect(text).toContain(
+      "App=/Applications/Zero.app (bundleID com.github.Electron, pid 26037)",
+    );
+    expect(text).toContain(
+      "\t1 HTML content Zero | VM0, URL: https://app.vm7.ai/agents/1/chat",
+    );
+    expect(text).toContain(
+      "\t\t2 text entry area (settable, string) Ask me to automate workflows",
+    );
+    expect(text).toContain(
+      "\t\t3 button Invite people, Secondary Actions: Raise",
+    );
+    expect(text).toContain(
+      "The focused UI element is 2 text entry area (settable, string) Ask me to automate workflows.",
+    );
   });
 
   it("compacts generic wrappers while preserving WebArea branching context", () => {
@@ -527,16 +592,11 @@ describe("computer use desktop runtime", () => {
       normalizeAccessibilitySnapshot(snapshot),
     );
 
-    expect(text).not.toContain("w0.e0 AXGroup");
-    expect(text).toContain("w0.e0.e0 AXWebArea");
-    expect(text).toContain("w0.e0.e0.e0 AXGroup");
-    expect(text).not.toContain("w0.e0.e0.e0.e0 AXGroup");
-    expect(text).toContain(
-      'w0.e0.e0.e0.e0.e0 AXButton "Send message" actions=AXPress',
-    );
-    expect(text).toContain(
-      'w0.e0.e0.e0.e1 AXStaticText value="release-notify"',
-    );
+    expect(text).not.toContain("w0.e0");
+    expect(text).toContain("\t1 HTML content");
+    expect(text).toContain("\t\t2 container");
+    expect(text).toContain("\t\t\t3 button Send message");
+    expect(text).toContain("\t\t\t4 text release-notify");
   });
 
   it("marks accessibility snapshots truncated at the output node budget", () => {
@@ -568,9 +628,9 @@ describe("computer use desktop runtime", () => {
     expect(normalized.truncated).toBe(true);
     expect(normalized.truncationReasons).toContain("max_nodes");
     expect(normalized.nodeCount).toBe(3);
-    expect(text).toContain('w0.e0 AXButton "Button 0"');
-    expect(text).toContain('w0.e1 AXButton "Button 1"');
-    expect(text).not.toContain("w0.e2");
+    expect(text).toContain("\t1 button Button 0");
+    expect(text).toContain("\t2 button Button 1");
+    expect(text).not.toContain("Button 2");
   });
 
   it("returns screenshot metadata with model-readable app state", async () => {
@@ -627,7 +687,14 @@ describe("computer use desktop runtime", () => {
         screenshotHeight: 600,
       },
     });
-    expect(result.result.text).toContain('w0 AXWindow "Example"');
+    expect(result.result.text).toContain("0 standard window Example");
+    expect(result.result.elements).toStrictEqual([
+      {
+        index: 0,
+        role: "AXWindow",
+        name: "Example",
+      },
+    ]);
   });
 
   it("normalizes deep accessibility state from the native helper", async () => {
@@ -713,9 +780,8 @@ describe("computer use desktop runtime", () => {
       snapshotId: expect.stringMatching(/^desktop_/),
     });
     expect(result.result.text).toContain("Release notes posted");
-    expect(result.result.text).toContain(
-      'w0.e0.e0.c0.v1 AXTextArea "Message composer"',
-    );
+    expect(result.result.text).toContain("text entry area Message composer");
+    expect(result.result.text).toContain("Secondary Actions: Confirm");
     expect(result.result.truncated).toBe(false);
   });
 
@@ -744,6 +810,114 @@ describe("computer use desktop runtime", () => {
       button: "left",
       clickCount: 1,
     });
+  });
+
+  it("maps model-facing element indexes back to internal element ids", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    const nativeBackend = createNativeBackend({
+      clickElement,
+      getAppState: async (app, snapshotId) => {
+        return {
+          app,
+          snapshotId,
+          elements: [
+            {
+              id: "w0",
+              role: "AXWindow",
+              name: "Example",
+              children: [
+                {
+                  id: "w0.e0",
+                  role: "AXButton",
+                  name: "Open",
+                  actions: ["AXPress"],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    });
+
+    const state = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+        captureScreenshot: async () => {
+          return {
+            dataUrl: "data:image/png;base64,abc123",
+            source: "window",
+            sourceName: "Example",
+            width: 800,
+            height: 600,
+          };
+        },
+      },
+    );
+    expect(state.status).toBe("succeeded");
+    if (state.status !== "succeeded") {
+      throw new Error("expected app.state to succeed");
+    }
+
+    const snapshotId = state.result.snapshotId;
+    expect(typeof snapshotId).toBe("string");
+    if (typeof snapshotId !== "string") {
+      throw new Error("expected snapshot id");
+    }
+    expect(state.result.elements).toStrictEqual([
+      {
+        index: 0,
+        role: "AXWindow",
+        name: "Example",
+        children: [
+          {
+            index: 1,
+            role: "AXButton",
+            name: "Open",
+            actions: ["AXPress"],
+          },
+        ],
+      },
+    ]);
+
+    const click = await executeComputerUseCommand(
+      {
+        id: "cmd_2",
+        kind: "element.click",
+        payload: { app: "Safari", snapshotId, elementIndex: 1 },
+      },
+      { accessibility: true, screenRecording: false },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(click.status).toBe("succeeded");
+    expect(clickElement).toHaveBeenCalledWith({
+      app: "Safari",
+      elementId: "w0.e0",
+      button: "left",
+      clickCount: 1,
+    });
+    if (click.status !== "succeeded") {
+      throw new Error("expected click to succeed");
+    }
+    expect(click.result).toMatchObject({
+      app: "Safari",
+      snapshotId,
+      elementIndex: 1,
+      dispatchMode: "accessibility_action",
+    });
+    expect(click.result).not.toHaveProperty("elementId");
   });
 
   it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {

@@ -29,13 +29,22 @@ export interface ComputerUseCommand {
 
 export interface AccessibilityElementSnapshot {
   readonly id: string;
+  readonly index?: number;
   readonly role?: string;
   readonly roleDescription?: string;
+  readonly subrole?: string;
   readonly name?: string;
   readonly value?: string;
+  readonly valueType?: string;
+  readonly valueSettable?: boolean;
   readonly description?: string;
+  readonly help?: string;
+  readonly identifier?: string;
+  readonly url?: string;
   readonly focused?: boolean;
   readonly enabled?: boolean;
+  readonly selected?: boolean;
+  readonly expanded?: boolean;
   readonly actions?: readonly string[];
   readonly bounds?: ComputerUseCoordinateBounds;
   readonly children?: readonly AccessibilityElementSnapshot[];
@@ -43,8 +52,14 @@ export interface AccessibilityElementSnapshot {
 
 export interface AccessibilityAppStateSnapshot {
   readonly app: string;
+  readonly appDisplayName?: string;
+  readonly bundleId?: string;
+  readonly pid?: number;
+  readonly appPath?: string;
+  readonly windowTitle?: string;
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
+  readonly focusedElementIndex?: number;
   readonly nodeCount?: number;
   readonly truncated?: boolean;
   readonly truncationReasons?: readonly string[];
@@ -122,11 +137,25 @@ export interface ComputerUseWindowCaptureCandidate {
 interface ComputerUseSnapshotMetadata {
   readonly app: string;
   readonly snapshotId: string;
+  readonly elementIdsByIndex?: readonly string[];
+  readonly focusedElementIndex?: number;
   readonly screenshotWidth: number;
   readonly screenshotHeight: number;
   readonly screenshotSource: "window" | "screen";
   readonly screenshotSourceName: string;
   readonly sourceBounds?: ComputerUseCoordinateBounds;
+}
+
+interface IndexedAccessibilitySnapshot {
+  readonly snapshot: AccessibilityAppStateSnapshot;
+  readonly elementIdsByIndex: readonly string[];
+  readonly focusedElementIndex?: number;
+}
+
+interface ComputerUseElementTarget {
+  readonly elementId: string;
+  readonly elementIndex?: number;
+  readonly snapshotId?: string;
 }
 
 export type ComputerUseMouseButton = "left" | "right" | "middle";
@@ -379,6 +408,19 @@ function payloadNumber(
 ): number | null {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function payloadElementIndex(payload: Record<string, unknown>): number | null {
+  const value = payload.elementIndex;
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  throw new UnsupportedComputerUseCommandError(
+    "elementIndex must be a non-negative integer",
+  );
 }
 
 function payloadMouseButton(
@@ -683,38 +725,311 @@ function parseComputerUseKeyPress(key: string): ParsedComputerUseKeyPress {
   };
 }
 
+function indexAccessibilitySnapshot(
+  snapshot: AccessibilityAppStateSnapshot,
+): IndexedAccessibilitySnapshot {
+  let nextIndex = 0;
+  const elementIdsByIndex: string[] = [];
+  let focusedElementIndex = snapshot.focusedElementIndex;
+
+  const indexElement = (
+    element: AccessibilityElementSnapshot,
+  ): AccessibilityElementSnapshot => {
+    const index = nextIndex;
+    nextIndex += 1;
+    elementIdsByIndex[index] = element.id;
+    if (focusedElementIndex === undefined && element.focused === true) {
+      focusedElementIndex = index;
+    }
+
+    const children = element.children?.map((child) => {
+      return indexElement(child);
+    });
+    return {
+      ...element,
+      index,
+      ...(children && children.length > 0 ? { children } : {}),
+    };
+  };
+
+  const elements = snapshot.elements.map((element) => {
+    return indexElement(element);
+  });
+
+  return {
+    snapshot: {
+      ...snapshot,
+      elements,
+      ...(focusedElementIndex !== undefined ? { focusedElementIndex } : {}),
+    },
+    elementIdsByIndex,
+    ...(focusedElementIndex !== undefined ? { focusedElementIndex } : {}),
+  };
+}
+
+const ROLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  AXButton: "button",
+  AXCheckBox: "checkbox",
+  AXComboBox: "combo box",
+  AXDisclosureTriangle: "disclosure triangle",
+  AXGroup: "container",
+  AXHeading: "heading",
+  AXImage: "image",
+  AXLink: "link",
+  AXList: "list",
+  AXMenu: "menu",
+  AXMenuBar: "menu bar",
+  AXMenuBarItem: "menu bar item",
+  AXMenuItem: "menu item",
+  AXOutline: "outline",
+  AXPopUpButton: "pop up button",
+  AXRadioButton: "radio button",
+  AXScrollArea: "scroll area",
+  AXSlider: "slider",
+  AXStaticText: "text",
+  AXTabGroup: "tab group",
+  AXTable: "table",
+  AXTextArea: "text entry area",
+  AXTextField: "text field",
+  AXToolbar: "toolbar",
+  AXUnknown: "container",
+});
+
+const DEFAULT_ACTION_NAMES = new Set(["AXPress"]);
+
+const ACTION_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  AXCancel: "Cancel",
+  AXConfirm: "Confirm",
+  AXDecrement: "Decrement",
+  AXDelete: "Delete",
+  AXIncrement: "Increment",
+  AXPick: "Pick",
+  AXRaise: "Raise",
+  AXShowMenu: "Show Menu",
+});
+
+function normalizeText(value: string | undefined): string | null {
+  if (value === undefined) {
+    return null;
+  }
+  const normalized = value.replaceAll(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function truncateText(value: string, maxLength = 180): string {
+  return value.length <= maxLength
+    ? value
+    : `${value.slice(0, maxLength - 3)}...`;
+}
+
+function formatText(
+  value: string | undefined,
+  maxLength?: number,
+): string | null {
+  const normalized = normalizeText(value);
+  return normalized ? truncateText(normalized, maxLength) : null;
+}
+
+function labelFromAxRole(role: string): string {
+  const withoutPrefix = role.startsWith("AX") ? role.slice(2) : role;
+  return withoutPrefix.replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+function elementRoleLabel(element: AccessibilityElementSnapshot): string {
+  if (element.role === "AXWindow") {
+    if (element.subrole === "AXDialog") {
+      return "dialog";
+    }
+    return "standard window";
+  }
+  if (element.role === "AXWebArea") {
+    return formatText(element.roleDescription, 80) ?? "HTML content";
+  }
+  if (element.role) {
+    const label = ROLE_LABELS[element.role];
+    if (label) {
+      return label;
+    }
+  }
+  if (element.roleDescription) {
+    return formatText(element.roleDescription, 80) ?? "element";
+  }
+  return element.role ? labelFromAxRole(element.role) : "element";
+}
+
+function elementAnnotations(element: AccessibilityElementSnapshot): string[] {
+  const annotations: string[] = [];
+  if (element.valueSettable === true) {
+    annotations.push(
+      element.valueType ? `settable, ${element.valueType}` : "settable",
+    );
+  }
+  if (element.enabled === false) {
+    annotations.push("disabled");
+  }
+  if (element.selected === true) {
+    annotations.push("selected");
+  }
+  if (element.expanded === true) {
+    annotations.push("expanded");
+  }
+  return annotations;
+}
+
+function elementPrimaryText(
+  element: AccessibilityElementSnapshot,
+): string | null {
+  return (
+    formatText(element.name) ??
+    formatText(element.value) ??
+    formatText(element.description) ??
+    formatText(element.url, 240)
+  );
+}
+
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action] ?? action.replace(/^AX/, "");
+}
+
+function secondaryActions(element: AccessibilityElementSnapshot): string[] {
+  return (element.actions ?? [])
+    .filter((action) => {
+      return !DEFAULT_ACTION_NAMES.has(action);
+    })
+    .map((action) => {
+      return actionLabel(action);
+    });
+}
+
+function elementDetails(
+  element: AccessibilityElementSnapshot,
+  primary: string | null,
+): string[] {
+  const details: string[] = [];
+  const description = formatText(element.description);
+  if (description && description !== primary) {
+    details.push(`Description: ${description}`);
+  }
+  const value = formatText(element.value);
+  if (value && value !== primary) {
+    details.push(`Value: ${value}`);
+  }
+  const url = formatText(element.url, 240);
+  if (url && url !== primary) {
+    details.push(`URL: ${url}`);
+  }
+  const help = formatText(element.help);
+  if (help && help !== primary) {
+    details.push(`Help: ${help}`);
+  }
+  const actions = secondaryActions(element);
+  if (actions.length > 0) {
+    details.push(`Secondary Actions: ${actions.join(", ")}`);
+  }
+  return details;
+}
+
+function elementIndex(element: AccessibilityElementSnapshot): number {
+  return element.index ?? 0;
+}
+
+function formatElementLine(
+  element: AccessibilityElementSnapshot,
+  depth: number,
+): string {
+  const primary = elementPrimaryText(element);
+  const annotations = elementAnnotations(element);
+  const details = elementDetails(element, primary);
+  let line = `${"\t".repeat(depth)}${elementIndex(element)} ${elementRoleLabel(
+    element,
+  )}`;
+  if (annotations.length > 0) {
+    line += ` (${annotations.join(", ")})`;
+  }
+  if (primary) {
+    line += ` ${primary}`;
+  }
+  if (details.length > 0) {
+    line += `${primary ? ", " : " "}${details.join(", ")}`;
+  }
+  return line;
+}
+
+function findElementByIndex(
+  elements: readonly AccessibilityElementSnapshot[],
+  index: number,
+): AccessibilityElementSnapshot | null {
+  for (const element of elements) {
+    if (element.index === index) {
+      return element;
+    }
+    const child = findElementByIndex(element.children ?? [], index);
+    if (child) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function focusedElementLine(
+  snapshot: AccessibilityAppStateSnapshot,
+): string | null {
+  if (snapshot.focusedElementIndex === undefined) {
+    return null;
+  }
+  const element = findElementByIndex(
+    snapshot.elements,
+    snapshot.focusedElementIndex,
+  );
+  if (!element) {
+    return `The focused UI element is ${snapshot.focusedElementIndex}.`;
+  }
+  return `The focused UI element is ${formatElementLine(element, 0)}.`;
+}
+
 export function renderAccessibilityTree(
   snapshot: AccessibilityAppStateSnapshot,
 ): string {
-  const lines = [`snapshot_id=${snapshot.snapshotId}`, `app=${snapshot.app}`];
+  const indexed = indexAccessibilitySnapshot(snapshot).snapshot;
+  const appName = indexed.appDisplayName ?? indexed.app;
+  const appIdentity = indexed.appPath ?? appName;
+  const appDetails = [
+    indexed.bundleId ? `bundleID ${indexed.bundleId}` : null,
+    indexed.pid !== undefined ? `pid ${indexed.pid}` : null,
+  ].filter((part): part is string => {
+    return part !== null;
+  });
+  const lines = [
+    "Computer Use state",
+    "<app_state>",
+    appDetails.length > 0
+      ? `App=${appIdentity} (${appDetails.join(", ")})`
+      : `App=${appIdentity}`,
+  ];
+  const windowTitle =
+    formatText(indexed.windowTitle) ?? formatText(indexed.elements[0]?.name);
+  if (windowTitle) {
+    lines.push(`Window: "${windowTitle}", App: ${appName}.`);
+  }
 
   const visit = (
     element: AccessibilityElementSnapshot,
     depth: number,
   ): void => {
-    const indent = "  ".repeat(depth);
-    const label = [
-      element.id,
-      element.role,
-      element.name ? `"${element.name}"` : null,
-      element.value ? `value="${element.value}"` : null,
-      element.actions && element.actions.length > 0
-        ? `actions=${element.actions.join(",")}`
-        : null,
-    ]
-      .filter((part): part is string => {
-        return part !== null && part !== undefined;
-      })
-      .join(" ");
-    lines.push(`${indent}${label}`);
+    lines.push(formatElementLine(element, depth));
     for (const child of element.children ?? []) {
       visit(child, depth + 1);
     }
   };
 
-  for (const element of snapshot.elements) {
+  for (const element of indexed.elements) {
     visit(element, 0);
   }
+  const focusedLine = focusedElementLine(indexed);
+  if (focusedLine) {
+    lines.push("", focusedLine);
+  }
+  lines.push("</app_state>");
   return lines.join("\n");
 }
 
@@ -745,12 +1060,44 @@ function snapshotWindowCaptureCandidates(
     });
 }
 
+function publicElementSnapshot(
+  element: AccessibilityElementSnapshot,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(element)) {
+    if (key !== "id" && key !== "children" && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  if (element.children && element.children.length > 0) {
+    result.children = element.children.map((child) => {
+      return publicElementSnapshot(child);
+    });
+  }
+  return result;
+}
+
+function publicAppStateSnapshot(
+  snapshot: AccessibilityAppStateSnapshot,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (key !== "elements" && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  result.elements = snapshot.elements.map((element) => {
+    return publicElementSnapshot(element);
+  });
+  return result;
+}
+
 function buildComputerUseAppStateResult(
   snapshot: AccessibilityAppStateSnapshot,
   screenshot: ComputerUseScreenshotCaptureResult,
 ): Record<string, unknown> {
   return {
-    ...snapshot,
+    ...publicAppStateSnapshot(snapshot),
     text: renderAccessibilityTree(snapshot),
     screenshot: screenshot.dataUrl,
     screenshotMimeType: "image/png",
@@ -781,12 +1128,13 @@ async function getAppState(
   const snapshot = normalizeAccessibilitySnapshot(
     await nativeBackend.getAppState(app, id),
   );
-  const windowBounds = snapshotWindowCaptureCandidates(snapshot);
+  const indexed = indexAccessibilitySnapshot(snapshot);
+  const windowBounds = snapshotWindowCaptureCandidates(indexed.snapshot);
   let screenshot: ComputerUseScreenshotCaptureResult;
   try {
     screenshot = await captureScreenshot({
       app,
-      windowNames: snapshotWindowNames(snapshot),
+      windowNames: snapshotWindowNames(indexed.snapshot),
       windowBounds,
     });
   } catch (error) {
@@ -799,8 +1147,12 @@ async function getAppState(
     };
   }
   snapshotStore.set({
-    app: snapshot.app,
-    snapshotId: snapshot.snapshotId,
+    app: indexed.snapshot.app,
+    snapshotId: indexed.snapshot.snapshotId,
+    elementIdsByIndex: indexed.elementIdsByIndex,
+    ...(indexed.focusedElementIndex !== undefined
+      ? { focusedElementIndex: indexed.focusedElementIndex }
+      : {}),
     screenshotWidth: screenshot.width,
     screenshotHeight: screenshot.height,
     screenshotSource: screenshot.source,
@@ -811,7 +1163,7 @@ async function getAppState(
   });
   return {
     status: "succeeded",
-    result: buildComputerUseAppStateResult(snapshot, screenshot),
+    result: buildComputerUseAppStateResult(indexed.snapshot, screenshot),
   };
 }
 
@@ -889,9 +1241,66 @@ function resolveClickSnapshot(args: {
   );
 }
 
+function resolveElementTarget(args: {
+  readonly app: string;
+  readonly elementId: string | null;
+  readonly elementIndex: number | null;
+  readonly snapshotId: string | null;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+  readonly commandName: string;
+}): ComputerUseElementTarget | ComputerUseCommandFailure {
+  if (args.elementId) {
+    return { elementId: args.elementId };
+  }
+  if (args.elementIndex === null) {
+    return unsupportedCommand(
+      `${args.commandName} requires elementId or elementIndex`,
+    );
+  }
+
+  const snapshot = resolveClickSnapshot({
+    app: args.app,
+    snapshotId: args.snapshotId,
+    snapshotStore: args.snapshotStore,
+  });
+  if ("status" in snapshot) {
+    return snapshot;
+  }
+  const elementId = snapshot.elementIdsByIndex?.[args.elementIndex];
+  if (!elementId) {
+    return unsupportedCommand(
+      `Element index ${args.elementIndex} was not found in snapshot ${snapshot.snapshotId}`,
+    );
+  }
+  return {
+    elementId,
+    elementIndex: args.elementIndex,
+    snapshotId: snapshot.snapshotId,
+  };
+}
+
+function elementTargetResult(
+  target: ComputerUseElementTarget,
+): Record<string, unknown> {
+  if (target.elementIndex !== undefined) {
+    return {
+      elementIndex: target.elementIndex,
+      ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
+    };
+  }
+  return { elementId: target.elementId };
+}
+
+function elementTargetText(target: ComputerUseElementTarget): string {
+  return target.elementIndex !== undefined
+    ? `elementIndex=${target.elementIndex}`
+    : target.elementId;
+}
+
 async function clickElement(args: {
   readonly app: string;
   readonly elementId: string | null;
+  readonly elementIndex: number | null;
   readonly snapshotId: string | null;
   readonly x: number | null;
   readonly y: number | null;
@@ -900,15 +1309,26 @@ async function clickElement(args: {
   readonly nativeBackend: ComputerUseNativeBackend;
   readonly snapshotStore: ComputerUseSnapshotStore;
 }): Promise<ComputerUseCommandExecutionResult> {
-  if (args.elementId) {
+  if (args.elementId || args.elementIndex !== null) {
     if (args.button !== "left") {
       return unsupportedCommand(
-        "element.click with element id only supports the left button; use coordinates for right or middle clicks",
+        "element.click with element target only supports the left button; use coordinates for right or middle clicks",
       );
+    }
+    const target = resolveElementTarget({
+      app: args.app,
+      elementId: args.elementId,
+      elementIndex: args.elementIndex,
+      snapshotId: args.snapshotId,
+      snapshotStore: args.snapshotStore,
+      commandName: "element.click",
+    });
+    if ("status" in target) {
+      return target;
     }
     await args.nativeBackend.clickElement({
       app: args.app,
-      elementId: args.elementId,
+      elementId: target.elementId,
       button: args.button,
       clickCount: args.clickCount,
     });
@@ -916,13 +1336,13 @@ async function clickElement(args: {
       status: "succeeded",
       result: {
         app: args.app,
-        elementId: args.elementId,
+        ...elementTargetResult(target),
         button: args.button,
         clickCount: args.clickCount,
         dispatchMode: "accessibility_action",
         dispatchTarget: "element",
         inputRisk: "targeted_app_action",
-        text: `Clicked ${args.elementId}`,
+        text: `Clicked ${elementTargetText(target)}`,
       },
     };
   }
@@ -965,42 +1385,50 @@ async function clickElement(args: {
     };
   }
   return unsupportedCommand(
-    "element.click requires an element id or coordinates",
+    "element.click requires elementId, elementIndex, or coordinates",
   );
 }
 
 async function setElementValue(
   app: string,
-  elementId: string,
+  target: ComputerUseElementTarget,
   value: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.setElementValue({ app, elementId, value });
+  await nativeBackend.setElementValue({
+    app,
+    elementId: target.elementId,
+    value,
+  });
   return {
     status: "succeeded",
     result: {
       app,
-      elementId,
+      ...elementTargetResult(target),
       dispatchMode: "accessibility_value",
       dispatchTarget: "element",
       inputRisk: "targeted_app_text",
-      text: `Set ${elementId}`,
+      text: `Set ${elementTargetText(target)}`,
     },
   };
 }
 
 async function performElementAction(
   app: string,
-  elementId: string,
+  target: ComputerUseElementTarget,
   action: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.performElementAction({ app, elementId, action });
+  await nativeBackend.performElementAction({
+    app,
+    elementId: target.elementId,
+    action,
+  });
   return {
     status: "succeeded",
     result: {
       app,
-      elementId,
+      ...elementTargetResult(target),
       action,
       dispatchMode: "accessibility_action",
       dispatchTarget: "element",
@@ -1058,23 +1486,28 @@ async function pressKey(
 
 async function scrollElement(
   app: string,
-  elementId: string,
+  target: ComputerUseElementTarget,
   direction: string,
   pages: number,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.scrollElement({ app, elementId, direction, pages });
+  await nativeBackend.scrollElement({
+    app,
+    elementId: target.elementId,
+    direction,
+    pages,
+  });
   return {
     status: "succeeded",
     result: {
       app,
-      elementId,
+      ...elementTargetResult(target),
       direction,
       pages,
       dispatchMode: "accessibility_action",
       dispatchTarget: "element",
       inputRisk: "targeted_app_action",
-      text: `Scrolled ${elementId}`,
+      text: `Scrolled ${elementTargetText(target)}`,
     },
   };
 }
@@ -1123,8 +1556,11 @@ export async function executeComputerUseCommand(
       const x = payloadNumber(command.payload, "x");
       const y = payloadNumber(command.payload, "y");
       const snapshotId = payloadString(command.payload, "snapshotId");
+      const elementId = payloadString(command.payload, "elementId");
+      const elementIndex = payloadElementIndex(command.payload);
       if (
-        !payloadString(command.payload, "elementId") &&
+        !elementId &&
+        elementIndex === null &&
         x !== null &&
         y !== null &&
         !snapshotId &&
@@ -1146,7 +1582,8 @@ export async function executeComputerUseCommand(
       }
       return await clickElement({
         app,
-        elementId: payloadString(command.payload, "elementId"),
+        elementId,
+        elementIndex,
         snapshotId,
         x,
         y,
@@ -1158,16 +1595,26 @@ export async function executeComputerUseCommand(
     }
     if (command.kind === "element.scroll") {
       const elementId = payloadString(command.payload, "elementId");
+      const elementIndex = payloadElementIndex(command.payload);
+      const snapshotId = payloadString(command.payload, "snapshotId");
       const direction = payloadString(command.payload, "direction");
-      if (!elementId) {
-        return missingField("elementId");
-      }
       if (!direction) {
         return missingField("direction");
       }
-      return await scrollElement(
+      const target = resolveElementTarget({
         app,
         elementId,
+        elementIndex,
+        snapshotId,
+        snapshotStore,
+        commandName: "element.scroll",
+      });
+      if ("status" in target) {
+        return target;
+      }
+      return await scrollElement(
+        app,
+        target,
         direction,
         payloadNumber(command.payload, "pages") ?? 1,
         nativeBackend,
@@ -1175,25 +1622,45 @@ export async function executeComputerUseCommand(
     }
     if (command.kind === "element.set_value") {
       const elementId = payloadString(command.payload, "elementId");
+      const elementIndex = payloadElementIndex(command.payload);
+      const snapshotId = payloadString(command.payload, "snapshotId");
       const value = payloadString(command.payload, "value");
-      if (!elementId) {
-        return missingField("elementId");
-      }
       if (!value) {
         return missingField("value");
       }
-      return await setElementValue(app, elementId, value, nativeBackend);
+      const target = resolveElementTarget({
+        app,
+        elementId,
+        elementIndex,
+        snapshotId,
+        snapshotStore,
+        commandName: "element.set_value",
+      });
+      if ("status" in target) {
+        return target;
+      }
+      return await setElementValue(app, target, value, nativeBackend);
     }
     if (command.kind === "element.perform_action") {
       const elementId = payloadString(command.payload, "elementId");
+      const elementIndex = payloadElementIndex(command.payload);
+      const snapshotId = payloadString(command.payload, "snapshotId");
       const action = payloadString(command.payload, "action");
-      if (!elementId) {
-        return missingField("elementId");
-      }
       if (!action) {
         return missingField("action");
       }
-      return await performElementAction(app, elementId, action, nativeBackend);
+      const target = resolveElementTarget({
+        app,
+        elementId,
+        elementIndex,
+        snapshotId,
+        snapshotStore,
+        commandName: "element.perform_action",
+      });
+      if ("status" in target) {
+        return target;
+      }
+      return await performElementAction(app, target, action, nativeBackend);
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");

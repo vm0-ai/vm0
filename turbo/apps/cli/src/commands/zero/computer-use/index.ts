@@ -26,6 +26,7 @@ interface ComputerUseAppOptions extends ComputerUseCommandOptions {
 interface ComputerUseClickOptions extends ComputerUseAppOptions {
   readonly snapshotId?: string;
   readonly element?: string;
+  readonly elementIndex?: string;
   readonly x?: string;
   readonly y?: string;
   readonly button?: "left" | "right" | "middle";
@@ -34,20 +35,23 @@ interface ComputerUseClickOptions extends ComputerUseAppOptions {
 
 interface ComputerUseScrollOptions extends ComputerUseAppOptions {
   readonly snapshotId?: string;
-  readonly element: string;
+  readonly element?: string;
+  readonly elementIndex?: string;
   readonly direction: "up" | "down" | "left" | "right";
   readonly pages?: string;
 }
 
 interface ComputerUseSetValueOptions extends ComputerUseAppOptions {
   readonly snapshotId?: string;
-  readonly element: string;
+  readonly element?: string;
+  readonly elementIndex?: string;
   readonly value: string;
 }
 
 interface ComputerUsePerformActionOptions extends ComputerUseAppOptions {
   readonly snapshotId?: string;
-  readonly element: string;
+  readonly element?: string;
+  readonly elementIndex?: string;
   readonly action: string;
 }
 
@@ -122,6 +126,23 @@ function parseMouseButton(
     return value;
   }
   throw new Error("button must be left, right, or middle");
+}
+
+function elementTargetPayload(options: {
+  readonly element?: string;
+  readonly elementIndex?: string;
+}): { readonly elementId?: string; readonly elementIndex?: number } {
+  const elementIndex = parseOptionalNonNegativeInteger(
+    options.elementIndex,
+    "element-index",
+  );
+  if (!options.element && elementIndex === undefined) {
+    throw new Error("element or element-index is required");
+  }
+  return {
+    ...(options.element ? { elementId: options.element } : {}),
+    ...(elementIndex !== undefined ? { elementIndex } : {}),
+  };
 }
 
 function sanitizeFilenamePart(value: unknown, fallback: string): string {
@@ -266,6 +287,7 @@ async function runWriteCommand(
     readonly app: string;
     readonly snapshotId?: string;
     readonly elementId?: string;
+    readonly elementIndex?: number;
     readonly x?: number;
     readonly y?: number;
     readonly button?: "left" | "right" | "middle";
@@ -331,6 +353,7 @@ const clickCommand = appOption(
       .description("Click an accessibility element or screenshot coordinate")
       .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
       .option("--element <id>", "Element id from get-app-state")
+      .option("--element-index <index>", "Element index from get-app-state")
       .option("--x <points>", "Screenshot x coordinate fallback")
       .option("--y <points>", "Screenshot y coordinate fallback")
       .option("--button <button>", "Mouse button", "left")
@@ -339,10 +362,15 @@ const clickCommand = appOption(
         withErrorHandler(async (options: ComputerUseClickOptions) => {
           const x = parseOptionalNonNegativeInteger(options.x, "x");
           const y = parseOptionalNonNegativeInteger(options.y, "y");
+          const elementIndex = parseOptionalNonNegativeInteger(
+            options.elementIndex,
+            "element-index",
+          );
           await runWriteCommand("element.click", options, {
             app: options.app,
             ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
             ...(options.element ? { elementId: options.element } : {}),
+            ...(elementIndex !== undefined ? { elementIndex } : {}),
             ...(x !== undefined ? { x } : {}),
             ...(y !== undefined ? { y } : {}),
             button: parseMouseButton(options.button),
@@ -359,7 +387,8 @@ const scrollCommand = appOption(
       .name("scroll")
       .description("Scroll an accessibility element")
       .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
-      .requiredOption("--element <id>", "Element id from get-app-state")
+      .option("--element <id>", "Element id from get-app-state")
+      .option("--element-index <index>", "Element index from get-app-state")
       .requiredOption(
         "--direction <direction>",
         "Scroll direction: up, down, left, or right",
@@ -370,7 +399,7 @@ const scrollCommand = appOption(
           await runWriteCommand("element.scroll", options, {
             app: options.app,
             ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
-            elementId: options.element,
+            ...elementTargetPayload(options),
             direction: options.direction,
             pages: parsePositiveNumber(options.pages, "pages"),
           });
@@ -385,14 +414,15 @@ const setValueCommand = appOption(
       .name("set-value")
       .description("Set the value of a settable accessibility element")
       .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
-      .requiredOption("--element <id>", "Element id from get-app-state")
+      .option("--element <id>", "Element id from get-app-state")
+      .option("--element-index <index>", "Element index from get-app-state")
       .requiredOption("--value <text>", "Value to assign")
       .action(
         withErrorHandler(async (options: ComputerUseSetValueOptions) => {
           await runWriteCommand("element.set_value", options, {
             app: options.app,
             ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
-            elementId: options.element,
+            ...elementTargetPayload(options),
             value: options.value,
           });
         }),
@@ -443,14 +473,15 @@ const performActionCommand = appOption(
       .name("perform-action")
       .description("Invoke a secondary accessibility action")
       .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
-      .requiredOption("--element <id>", "Element id from get-app-state")
+      .option("--element <id>", "Element id from get-app-state")
+      .option("--element-index <index>", "Element index from get-app-state")
       .requiredOption("--action <name>", "Accessibility action name")
       .action(
         withErrorHandler(async (options: ComputerUsePerformActionOptions) => {
           await runWriteCommand("element.perform_action", options, {
             app: options.app,
             ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
-            elementId: options.element,
+            ...elementTargetPayload(options),
             action: options.action,
           });
         }),

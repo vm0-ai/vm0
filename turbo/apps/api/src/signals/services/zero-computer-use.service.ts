@@ -49,6 +49,7 @@ interface ComputerUseCommandPayload {
   readonly app?: string;
   readonly snapshotId?: string;
   readonly elementId?: string;
+  readonly elementIndex?: number;
   readonly x?: number;
   readonly y?: number;
   readonly button?: "left" | "right" | "middle";
@@ -178,6 +179,9 @@ function commandPayload(
   if (params.elementId) {
     payload.elementId = params.elementId.trim();
   }
+  if (params.elementIndex !== undefined) {
+    payload.elementIndex = params.elementIndex;
+  }
   if (params.x !== undefined) {
     payload.x = params.x;
   }
@@ -227,6 +231,7 @@ function redactedResultForAudit(
     "dispatchMode",
     "dispatchTarget",
     "elementId",
+    "elementIndex",
     "inputRisk",
     "key",
     "pages",
