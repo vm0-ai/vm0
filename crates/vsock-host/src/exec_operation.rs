@@ -2984,6 +2984,38 @@ mod tests {
     }
 
     #[test]
+    fn exec_operation_diagnostic_ignores_non_truncated_captured_output() {
+        let captured_output = vsock_proto::DecodedExecResult {
+            stdout: ExecCapturedOutput::Captured {
+                bytes: b"stdout",
+                truncated: false,
+            },
+            stderr: ExecCapturedOutput::Captured {
+                bytes: b"stderr",
+                truncated: false,
+            },
+            ..clean_terminal_result()
+        };
+
+        assert!(
+            capture_terminal_log_levels(
+                ExecTerminalLogLifecycle::Supervised,
+                false,
+                &captured_output,
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            capture_terminal_log_levels(
+                ExecTerminalLogLifecycle::Supervised,
+                true,
+                &captured_output
+            ),
+            vec![Level::INFO]
+        );
+    }
+
+    #[test]
     fn exec_operation_diagnostic_respects_expected_exit_codes_for_terminal_logs() {
         let expected_nonzero = vsock_proto::DecodedExecResult {
             termination: ExecTermination::Exited { exit_code: 66 },
