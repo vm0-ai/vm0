@@ -970,7 +970,7 @@ class TestRequestHandler:
             _assert_pending(pending_path, flows=1, reports=0)
         finally:
             if usage.counters._in_flight_flows:
-                usage.decrement_flows()
+                usage.decrement_in_flight_flows()
             usage.set_pending_path("")
 
     async def test_local_firewall_error_does_not_track_usage_flow(
@@ -1099,7 +1099,7 @@ class TestRequestHandler:
             _assert_pending(pending_path, flows=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
-                usage.decrement_flows()
+                usage.decrement_in_flight_flows()
             usage.set_pending_path("")
 
     async def test_non_billable_model_provider_is_not_tracked_before_responseheaders(
@@ -1244,7 +1244,7 @@ class TestRequestHandler:
             _assert_pending(pending_path, flows=1, reports=0)
         finally:
             if usage.counters._in_flight_flows:
-                usage.decrement_flows()
+                usage.decrement_in_flight_flows()
             usage.set_pending_path("")
 
     async def test_billable_auth_url_rewrite_flow_drains_after_response(
@@ -1343,7 +1343,7 @@ class TestRequestHandler:
             _assert_pending(pending_path, flows=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
-                usage.decrement_flows()
+                usage.decrement_in_flight_flows()
             usage.set_pending_path("")
 
     async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
@@ -1438,7 +1438,7 @@ class TestRequestHandler:
             _assert_pending(pending_path, flows=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
-                usage.decrement_flows()
+                usage.decrement_in_flight_flows()
             usage.set_pending_path("")
 
     async def test_firewall_no_base_match_passes_through(
@@ -6197,28 +6197,28 @@ class TestUsagePendingCounter:
         usage.counters._usage_state_id = "test-usage-state-id"
         usage.counters._pending_write_error_logged = False
 
-    def test_increment_decrement_flows(self, tmp_path):
+    def test_increment_decrement_in_flight_flows(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
-        usage.increment_flows()
-        usage.increment_flows()
+        usage.increment_in_flight_flows()
+        usage.increment_in_flight_flows()
         assert usage.counters._in_flight_flows == 2
         _assert_pending(pending_path, flows=2, reports=0)
 
-        usage.decrement_flows()
+        usage.decrement_in_flight_flows()
         _assert_pending(pending_path, flows=1, reports=0)
 
-        usage.decrement_flows()
+        usage.decrement_in_flight_flows()
         _assert_pending(pending_path, flows=0, reports=0)
 
-    def test_increment_decrement_reports(self, tmp_path):
+    def test_increment_decrement_pending_reports(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
-        usage.counters._increment_reports()
+        usage.counters.increment_pending_reports()
         assert usage.counters._pending_reports == 1
         _assert_pending(pending_path, flows=0, reports=1)
 
-        usage.counters._decrement_reports()
+        usage.counters.decrement_pending_reports()
         _assert_pending(pending_path, flows=0, reports=0)
 
     def test_enqueue_deep_copies_nested_payload(self):
@@ -6246,7 +6246,7 @@ class TestUsagePendingCounter:
                 "events": [{"category": "tokens.input", "quantity": 1}],
             }
         finally:
-            usage.counters._decrement_reports()
+            usage.counters.decrement_pending_reports()
 
     def test_enqueue_logs_payload_collisions_under_payload(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
@@ -6270,7 +6270,7 @@ class TestUsagePendingCounter:
                 )
             mock_submit.assert_called_once()
         finally:
-            usage.counters._decrement_reports()
+            usage.counters.decrement_pending_reports()
 
         entry = json.loads(proxy_log.read_text())
         assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
@@ -6307,17 +6307,17 @@ class TestUsagePendingCounter:
 
     def test_decrement_does_not_go_negative(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage.decrement_flows()
-        usage.counters._decrement_reports()
+        usage.decrement_in_flight_flows()
+        usage.counters.decrement_pending_reports()
         assert usage.counters._in_flight_flows == 0
         assert usage.counters._pending_reports == 0
 
     def test_no_op_when_path_not_set(self):
         usage.set_pending_path("")
-        usage.increment_flows()
-        usage.decrement_flows()
-        usage.counters._increment_reports()
-        usage.counters._decrement_reports()
+        usage.increment_in_flight_flows()
+        usage.decrement_in_flight_flows()
+        usage.counters.increment_pending_reports()
+        usage.counters.decrement_pending_reports()
         # Should not raise — just no file written.
         assert usage.counters._in_flight_flows == 0
         assert usage.counters._pending_reports == 0
@@ -6336,7 +6336,7 @@ class TestUsagePendingCounter:
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
             for _ in range(3):
-                usage.increment_flows()
+                usage.increment_in_flight_flows()
 
         assert mock_log.warn.call_count == 1
         assert "Failed to write pending count" in mock_log.warn.call_args[0][0]
@@ -6351,8 +6351,8 @@ class TestUsagePendingCounter:
             patch.object(usage.counters.ctx, "log", MagicMock(), create=True),
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
-            usage.increment_flows()  # should not raise
-            usage.decrement_flows()  # should not raise
+            usage.increment_in_flight_flows()  # should not raise
+            usage.decrement_in_flight_flows()  # should not raise
 
     def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
         """Retry exhaustion still runs the decrement finally-block."""
@@ -6407,7 +6407,7 @@ class TestUsagePendingCounter:
     def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage.increment_flows()
+        usage.increment_in_flight_flows()
         assert usage.counters._in_flight_flows == 1
 
         flow = real_flow(with_response=False)
@@ -6427,7 +6427,7 @@ class TestUsagePendingCounter:
     def test_untracked_flow_not_decremented(self, tmp_path, real_flow):
         """Flows without _usage_flow_tracked should not touch the counter."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage.increment_flows()  # simulate one tracked flow in flight
+        usage.increment_in_flight_flows()  # simulate one tracked flow in flight
 
         flow = real_flow(with_response=False)
         # No _usage_flow_tracked in metadata — this is a regular flow.

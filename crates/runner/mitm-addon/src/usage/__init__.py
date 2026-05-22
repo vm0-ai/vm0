@@ -24,7 +24,11 @@ from .anthropic_messages import (
     create_anthropic_messages_sse_usage_extractor,
     extract_anthropic_messages_usage_from_json,
 )
-from .counters import decrement_flows, increment_flows, set_pending_path
+from .counters import (
+    decrement_in_flight_flows,
+    increment_in_flight_flows,
+    set_pending_path,
+)
 from .openai_responses import (
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
@@ -39,11 +43,11 @@ __all__ = [
     "create_anthropic_messages_sse_usage_extractor",
     "create_openai_responses_json_usage_extractor",
     "create_openai_responses_sse_usage_extractor",
-    "decrement_flows",
+    "decrement_in_flight_flows",
     "extract_anthropic_messages_usage_from_json",
     "extract_openai_responses_usage_from_event_json",
     "extract_openai_responses_usage_from_json",
-    "increment_flows",
+    "increment_in_flight_flows",
     "report_connector_usage",
     "report_model_provider_usage",
     "set_pending_path",

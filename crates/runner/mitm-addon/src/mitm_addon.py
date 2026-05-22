@@ -312,13 +312,13 @@ def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> Non
     if flow.metadata.get("_usage_flow_tracked"):
         return
     if firewall_billable:
-        usage.increment_flows()
+        usage.increment_in_flight_flows()
         flow.metadata["_usage_flow_tracked"] = True
 
 
 def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
     if flow.metadata.pop("_usage_flow_tracked", False):
-        usage.decrement_flows()
+        usage.decrement_in_flight_flows()
 
 
 def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
@@ -353,9 +353,9 @@ def websocket_message(flow: http.HTTPFlow) -> None:
 
 
 def _track_usage_flow(fn):
-    """Decorator ensuring decrement_flows runs after response/error handlers.
+    """Decorator ensuring decrement_in_flight_flows runs after response/error handlers.
 
-    Pairs with ``increment_flows()`` in ``request()``.  Uses ``pop`` so
+    Pairs with ``increment_in_flight_flows()`` in ``request()``.  Uses ``pop`` so
     that even if both ``response()`` and ``error()`` fire for the same
     flow, the decrement only happens once.
     """

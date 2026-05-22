@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from auth import _opener, make_api_request
 from logging_utils import log_proxy_entry
 
-from .counters import _decrement_reports, _increment_reports
+from .counters import decrement_pending_reports, increment_pending_reports
 
 
 def _log_webhook_entry(
@@ -72,7 +72,7 @@ def _post_webhook_with_retry(
             url, sandbox_token, payload, proxy_log_path, log_type, max_retries
         )
     finally:
-        _decrement_reports()
+        decrement_pending_reports()
 
 
 def _do_post_webhook_attempts(
@@ -164,7 +164,7 @@ def _enqueue_webhook(
         log_type,
         copied,
     )
-    _increment_reports()
+    increment_pending_reports()
     try:
         usage_executor.submit(
             _post_webhook_with_retry, url, sandbox_token, copied, proxy_log_path, log_type
@@ -180,5 +180,5 @@ def _enqueue_webhook(
         )
         _post_webhook_with_retry(url, sandbox_token, copied, proxy_log_path, log_type)
     except Exception:
-        _decrement_reports()
+        decrement_pending_reports()
         raise

@@ -79,7 +79,7 @@ def _write_pending() -> None:
             )
 
 
-def increment_flows() -> None:
+def increment_in_flight_flows() -> None:
     """Track a new in-flight billable flow (call from request).
 
     Covers billable model-provider and connector flows — any flow that may
@@ -91,7 +91,7 @@ def increment_flows() -> None:
         _write_pending()
 
 
-def decrement_flows() -> None:
+def decrement_in_flight_flows() -> None:
     """Mark a tracked in-flight flow as complete (call from response/error)."""
     global _in_flight_flows
     with _counter_lock:
@@ -99,14 +99,14 @@ def decrement_flows() -> None:
         _write_pending()
 
 
-def _increment_reports() -> None:
+def increment_pending_reports() -> None:
     global _pending_reports
     with _counter_lock:
         _pending_reports += 1
         _write_pending()
 
 
-def _decrement_reports() -> None:
+def decrement_pending_reports() -> None:
     global _pending_reports
     with _counter_lock:
         _pending_reports = max(0, _pending_reports - 1)
