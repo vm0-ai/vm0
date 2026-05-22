@@ -14,10 +14,61 @@ interface RouteResult {
   readonly body: unknown;
 }
 
+interface HeadersLike {
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+}
+
+interface ResponseLike {
+  readonly status: number;
+  readonly statusText?: string;
+  readonly headers: HeadersLike;
+  readonly body: BodyInit | null;
+}
+
+function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isHeadersLike(value: unknown): value is HeadersLike {
+  return isRecord(value) && typeof value[Symbol.iterator] === "function";
+}
+
+function isResponseLike(value: unknown): value is ResponseLike {
+  return (
+    isRecord(value) &&
+    typeof value.status === "number" &&
+    isHeadersLike(value.headers) &&
+    typeof value.arrayBuffer === "function" &&
+    typeof value.blob === "function" &&
+    typeof value.clone === "function" &&
+    typeof value.formData === "function" &&
+    typeof value.json === "function" &&
+    typeof value.text === "function"
+  );
+}
+
+function cloneHeaders(headers: HeadersLike): Headers {
+  const cloned = new Headers();
+  for (const [key, value] of headers) {
+    cloned.append(key, value);
+  }
+  return cloned;
+}
+
+function toResponse(response: ResponseLike): Response {
+  const init: ResponseInit = {
+    headers: cloneHeaders(response.headers),
+    status: response.status,
+  };
+  if (typeof response.statusText === "string") {
+    init.statusText = response.statusText;
+  }
+  return new Response(response.body, init);
+}
+
 function isRouteResult(value: unknown): value is RouteResult {
   return (
-    typeof value === "object" &&
-    value !== null &&
+    isRecord(value) &&
     "status" in value &&
     "body" in value &&
     typeof value.status === "number"
@@ -58,6 +109,10 @@ export function honoSignalHandler(
 
     if (data instanceof Response) {
       return data;
+    }
+
+    if (isResponseLike(data)) {
+      return toResponse(data);
     }
 
     if (!isRouteResult(data)) {
