@@ -6,6 +6,7 @@ Pure functions with no module-level state or I/O.
 import ipaddress
 import urllib.parse
 from dataclasses import dataclass
+from typing import Literal
 
 from mitmproxy import http
 from mitmproxy.net.http import url as mitm_url
@@ -19,15 +20,47 @@ _IPV6_VERSION = 6
 
 @dataclass(frozen=True)
 class TrustedAuthority:
+    """Authority components trusted by firewall/auth decisions.
+
+    For HTTPS, ``host`` is the normalized TLS SNI after Host/``:authority``
+    validation. For non-HTTPS traffic, ``host`` is the transparent destination
+    because there is no SNI binding. ``url`` is the reconstructed URL used by
+    firewall matching and credential injection.
+    """
+
     host: str
     port: int
     url: str
 
 
+AuthorityValidationReason = Literal[
+    "missing_sni",
+    "invalid_sni",
+    "missing_authority",
+    "invalid_authority",
+    "authority_mismatch",
+    "authority_port_mismatch",
+]
+
+
 class AuthorityValidationError(Exception):
+    """HTTPS authority validation failure with a public diagnostic reason.
+
+    ``reason`` is exposed in proxy logs as ``reason``, network logs as
+    ``firewall_error``, and the 403 JSON response body as ``error``.
+
+    Valid reason values:
+    - ``missing_sni``: the HTTPS request had no TLS SNI.
+    - ``invalid_sni``: the TLS SNI failed hostname normalization.
+    - ``missing_authority``: the HTTPS request had no Host/``:authority``.
+    - ``invalid_authority``: Host/``:authority`` failed parsing or normalization.
+    - ``authority_mismatch``: the Host hostname did not match TLS SNI.
+    - ``authority_port_mismatch``: the Host port did not match destination port.
+    """
+
     def __init__(
         self,
-        reason: str,
+        reason: AuthorityValidationReason,
         *,
         message: str,
         sni: str | None,
@@ -37,7 +70,7 @@ class AuthorityValidationError(Exception):
         fallback_url: str,
     ) -> None:
         super().__init__(message)
-        self.reason = reason
+        self.reason: AuthorityValidationReason = reason
         self.message = message
         self.sni = sni
         self.request_host = request_host
@@ -95,6 +128,9 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
     the HTTP authority to agree with SNI before using the URL for firewall
     matching or credential injection. For non-HTTPS traffic there is no SNI
     binding, so use the transparent destination host and do not trust Host.
+
+    HTTPS validation failures raise ``AuthorityValidationError`` with one of
+    the documented ``AuthorityValidationReason`` values.
     """
     scheme = flow.request.scheme
     port = flow.request.port
