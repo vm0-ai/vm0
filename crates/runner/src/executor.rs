@@ -41,6 +41,8 @@ const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
 /// Maximum time to spend writing the guest cancel frame after a user cancel.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Grace period for the guest to report a terminal status after cancel is sent.
+/// This covers vsock-guest's 5s stdout/stderr drain deadline after it kills
+/// the cancelled process.
 const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(6);
 /// Exit code when a process is killed by SIGKILL (128 + 9).
 const EXIT_SIGKILL: i32 = 137;
@@ -1969,6 +1971,8 @@ mod tests {
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
     use std::sync::Arc;
+
+    const RUN_IN_SANDBOX_TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
     fn api_storage(name: &str, mount_path: &str, version: &str, archive_url: &str) -> StorageEntry {
         StorageEntry {
@@ -3950,11 +3954,11 @@ mod tests {
 
         assert!(
             overrides
-                .wait_for_process_cancel_calls(1, Duration::from_secs(1))
+                .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
                 .await
         );
 
-        let result = tokio::time::timeout(Duration::from_secs(1), run_task)
+        let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
             .await
             .unwrap()
             .unwrap()
@@ -3994,7 +3998,7 @@ mod tests {
         let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
         cancel.cancel();
 
-        let result = tokio::time::timeout(Duration::from_secs(1), run_task)
+        let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
             .await
             .unwrap()
             .unwrap()
@@ -4022,7 +4026,7 @@ mod tests {
         let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
         cancel.cancel();
 
-        let result = tokio::time::timeout(Duration::from_secs(1), run_task)
+        let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
             .await
             .unwrap()
             .unwrap()
