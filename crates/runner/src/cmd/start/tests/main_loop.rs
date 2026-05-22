@@ -1045,7 +1045,7 @@ async fn claim_failure_rolls_back_budget() {
 
     // Returning to discovery proves the failed claim was processed.
     wait_discover_entered(&env, Duration::from_secs(5)).await;
-    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated().2, 0);
 
     // Second job: claim succeeds — budget should have been freed.
     let run_id_2 = RunId::new_v4();
@@ -1088,7 +1088,7 @@ async fn claim_run_id_mismatch_rolls_back_local_state() {
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, candidate_run_id, Duration::from_secs(5)).await;
-    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated().2, 0);
     {
         let completions = env.handle.completions.lock().unwrap();
         assert!(
