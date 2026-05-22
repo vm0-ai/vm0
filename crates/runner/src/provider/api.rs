@@ -1102,5 +1102,6 @@ mod tests {
             "completion should stop after the retry"
         );
         server_task.abort();
+        let _ = server_task.await;
     }
 }

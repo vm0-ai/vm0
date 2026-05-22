@@ -1068,7 +1068,7 @@ async fn claim_failure_rolls_back_budget() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn claim_run_id_mismatch_rolls_back_local_state() {
     // Budget for exactly 1 job, so a leaked lease would block the follow-up job.
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
