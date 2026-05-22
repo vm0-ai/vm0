@@ -575,6 +575,10 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/oauth-provider/authorize", "/api/test/oauth-provider/authorize"],
+  [
+    "/api/test/oauth-provider/device/code",
+    "/api/test/oauth-provider/device/code",
+  ],
   ["/api/test/oauth-provider/echo", "/api/test/oauth-provider/echo"],
   ["/api/test/oauth-provider/token", "/api/test/oauth-provider/token"],
   ["/api/test/oauth-provider/userinfo", "/api/test/oauth-provider/userinfo"],

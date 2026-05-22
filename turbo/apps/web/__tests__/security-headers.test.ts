@@ -334,6 +334,15 @@ const TEST_OAUTH_PROVIDER_AUTHORIZE_PROXY_NEGATIVE_PATHS = [
   "/api/test/oauth-provider",
   "/api/test/oauth-provider/profile",
 ] as const;
+const TEST_OAUTH_PROVIDER_DEVICE_CODE_REWRITE_SOURCE =
+  "/api/test/oauth-provider/device/code";
+const TEST_OAUTH_PROVIDER_DEVICE_CODE_PATH =
+  "/api/test/oauth-provider/device/code";
+const TEST_OAUTH_PROVIDER_DEVICE_CODE_PROXY_NEGATIVE_PATHS = [
+  "/api/test/oauth-provider/device/code/extra",
+  "/api/test/oauth-provider/device",
+  "/api/test/oauth-provider",
+] as const;
 const TEST_OAUTH_PROVIDER_ECHO_REWRITE_SOURCE = "/api/test/oauth-provider/echo";
 const TEST_OAUTH_PROVIDER_ECHO_PATH = "/api/test/oauth-provider/echo";
 const TEST_OAUTH_PROVIDER_ECHO_PROXY_NEGATIVE_PATHS = [
@@ -2042,6 +2051,11 @@ describe("API backend rewrites", () => {
           source: TEST_OAUTH_PROVIDER_AUTHORIZE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/test/oauth-provider/authorize",
+        },
+        {
+          source: TEST_OAUTH_PROVIDER_DEVICE_CODE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/test/oauth-provider/device/code",
         },
         {
           source: TEST_OAUTH_PROVIDER_ECHO_REWRITE_SOURCE,
@@ -8018,6 +8032,15 @@ describe("API backend rewrites", () => {
       matchesApiBackendRewritePath(TEST_OAUTH_PROVIDER_AUTHORIZE_PATH),
     ).toBe(true);
     for (const pathname of TEST_OAUTH_PROVIDER_AUTHORIZE_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact test OAuth provider device code path", () => {
+    expect(
+      matchesApiBackendRewritePath(TEST_OAUTH_PROVIDER_DEVICE_CODE_PATH),
+    ).toBe(true);
+    for (const pathname of TEST_OAUTH_PROVIDER_DEVICE_CODE_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

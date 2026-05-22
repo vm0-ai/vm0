@@ -254,6 +254,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test OAuth provider device code rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/device/code"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/oauth-provider/device/code/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/device"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/oauth-provider")).toBe(
+      false,
+    );
+  });
+
   it("matches the test OAuth provider echo rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/oauth-provider/echo")).toBe(
       true,
