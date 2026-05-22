@@ -1141,6 +1141,31 @@ fn exec_operation_stream_limits_track_exact_over_and_zero_budget() {
     assert!(zero_chunks[0].truncated);
     assert!(zero_chunks[0].chunk.is_empty());
 
+    send_exec_start(
+        &mut host_stream,
+        139,
+        "printf abcde >&2",
+        5000,
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Stream {
+            limit_bytes: 4,
+            chunk_limit_bytes: 2,
+        },
+    );
+    let (stderr_over_chunks, stderr_over) = read_exec_result(&mut host_stream, 139);
+    assert_eq!(
+        stderr_over.termination,
+        ExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(stderr_data(&stderr_over_chunks), b"abcd".to_vec());
+    assert!(
+        stderr_over_chunks
+            .iter()
+            .any(|chunk| chunk.stream == ExecOutputStream::Stderr
+                && chunk.truncated
+                && chunk.chunk.is_empty())
+    );
+
     finish_guest_connection(handle, host_stream);
 }
 
