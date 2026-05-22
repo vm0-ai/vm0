@@ -24,6 +24,7 @@ function buildCommands(): Command[] {
     new Command("run"),
     new Command("schedule"),
     new Command("secret"),
+    new Command("github"),
     new Command("slack"),
     new Command("telegram"),
     new Command("phone"),
@@ -156,6 +157,7 @@ describe("registerZeroCommands", () => {
       "preference",
       "run",
       "secret",
+      "github",
       "slack",
       "telegram",
       "phone",
@@ -228,6 +230,32 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("slack");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show github when github:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["github:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("github");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show github when github:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["github:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("github");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 

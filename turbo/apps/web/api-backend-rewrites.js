@@ -984,6 +984,18 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/chat/message",
     "/api/zero/integrations/chat/message",
   ],
+  [
+    "/api/zero/integrations/github/download-file",
+    "/api/zero/integrations/github/download-file",
+  ],
+  [
+    "/api/zero/integrations/github/upload-file/complete",
+    "/api/zero/integrations/github/upload-file/complete",
+  ],
+  [
+    "/api/zero/integrations/github/upload-file/init",
+    "/api/zero/integrations/github/upload-file/init",
+  ],
   ["/api/zero/integrations/slack", "/api/zero/integrations/slack"],
   [
     "/api/zero/integrations/slack/connect",

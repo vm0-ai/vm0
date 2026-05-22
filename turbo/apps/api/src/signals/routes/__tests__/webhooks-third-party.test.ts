@@ -1180,6 +1180,40 @@ describe("POST /api/webhooks/github", () => {
     });
   });
 
+  it("adds GitHub file blocks from issue attachments to the context prompt", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "opened",
+        issueBody:
+          "Please inspect this attachment:\n\n![screenshot.png](https://github.com/user-attachments/assets/abc123)",
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.appendSystemPrompt).toContain("[GitHub file]");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "[URL] https://github.com/user-attachments/assets/abc123",
+    );
+    expect(runs[0]?.appendSystemPrompt).toContain("[FILENAME] screenshot.png");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "zero github download-file -h",
+    );
+  });
+
   it("posts a formatted failure comment when the GitHub trigger run is rejected", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),

@@ -39,6 +39,8 @@ export const ZERO_CAPABILITIES = [
   "schedule:read",
   "schedule:write",
   "schedule:delete",
+  "github:read",
+  "github:write",
   "slack:write",
   "phone:read",
   "phone:write",
@@ -98,6 +100,14 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Create & manage schedules",
     },
     "schedule:delete": { group: "Schedules", label: "Delete schedules" },
+    "github:read": {
+      group: "Integrations",
+      label: "Download GitHub files",
+    },
+    "github:write": {
+      group: "Integrations",
+      label: "Send GitHub comments and files",
+    },
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
     "phone:read": {
       group: "Integrations",

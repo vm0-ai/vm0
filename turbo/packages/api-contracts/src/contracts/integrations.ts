@@ -386,6 +386,111 @@ export const integrationsTelegramUploadCompleteContract = c.router({
 });
 
 /**
+ * Integration GitHub file upload — init contract
+ * POST /api/zero/integrations/github/upload-file/init
+ *
+ * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
+ * uploads the file body directly to R2, then the complete route posts the file
+ * URL back to a GitHub issue or pull request comment.
+ * Requires `github:write` capability (via ZERO_TOKEN).
+ */
+const githubUploadInitBodySchema = z.object({
+  filename: z.string().min(1, "Filename is required").max(255),
+  contentType: z.string().min(1, "Content type is required").max(200),
+  length: z.number().int().positive("File length must be a positive integer"),
+});
+
+export type GithubUploadInitBody = z.infer<typeof githubUploadInitBodySchema>;
+
+const githubUploadInitResponseSchema = z.object({
+  uploadId: z.string().uuid(),
+  uploadUrl: z.string(),
+  fileUrl: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number().int().nonnegative(),
+});
+
+export type GithubUploadInitResponse = z.infer<
+  typeof githubUploadInitResponseSchema
+>;
+
+export const integrationsGithubUploadInitContract = c.router({
+  init: {
+    method: "POST",
+    path: "/api/zero/integrations/github/upload-file/init",
+    headers: authHeadersSchema,
+    body: githubUploadInitBodySchema,
+    responses: {
+      200: githubUploadInitResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Get a pre-signed upload URL for GitHub file delivery",
+  },
+});
+
+/**
+ * Integration GitHub file upload — complete contract
+ * POST /api/zero/integrations/github/upload-file/complete
+ *
+ * Posts an uploaded file URL to a GitHub issue or pull request comment using
+ * the organization GitHub App installation token.
+ * Requires `github:write` capability (via ZERO_TOKEN).
+ */
+const githubUploadCompleteBodySchema = z.object({
+  uploadId: z.string().uuid("Upload ID must be a UUID"),
+  repo: z
+    .string()
+    .min(1, "Repository is required")
+    .regex(/^[^/\s]+\/[^/\s]+$/, "Repository must be owner/name"),
+  issueNumber: z
+    .number()
+    .int()
+    .positive("Issue or pull request number must be positive"),
+  contentType: z.string().min(1).max(200).optional(),
+  caption: z.string().max(65_536).optional(),
+});
+
+export type GithubUploadCompleteBody = z.infer<
+  typeof githubUploadCompleteBodySchema
+>;
+
+const githubUploadCompleteResponseSchema = z.object({
+  commentId: z.string(),
+  repo: z.string(),
+  issueNumber: z.number().int(),
+  filename: z.string(),
+  mimetype: z.string(),
+  size: z.number().int().nonnegative(),
+  url: z.string(),
+});
+
+export type GithubUploadCompleteResponse = z.infer<
+  typeof githubUploadCompleteResponseSchema
+>;
+
+export const integrationsGithubUploadCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/integrations/github/upload-file/complete",
+    headers: authHeadersSchema,
+    body: githubUploadCompleteBodySchema,
+    responses: {
+      200: githubUploadCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Finalize GitHub file upload and post it to an issue or PR",
+  },
+});
+
+/**
  * Integration AgentPhone file upload — init contract
  * POST /api/zero/integrations/phone/upload-file/init
  *

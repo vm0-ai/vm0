@@ -131,6 +131,11 @@ type GitHubInstallationRecord = typeof githubInstallations.$inferSelect;
 type GitHubLabelListenerRecord = typeof githubLabelListeners.$inferSelect;
 type GitHubTriggerKind = "issue" | "pull_request";
 
+interface GitHubFileReference {
+  readonly url: string;
+  readonly filename: string;
+}
+
 interface DispatchParams {
   readonly ghInstallationId: string;
   readonly repo: string;
@@ -193,6 +198,7 @@ function buildIntegrationPrompt(): string {
   const headerParts = [
     "# Current Integration",
     "You are currently running inside: GitHub",
+    "GitHub issue and pull request attachments are shown as [GitHub file] blocks. Download them with `zero github download-file -h`.",
   ];
   const botUsername = githubAppBotUsername();
   if (botUsername) {
@@ -253,11 +259,103 @@ function formatGithubContextSender(args: {
   return `{${senderParts.join(", ")}}`;
 }
 
+const GITHUB_FILE_URL_SOURCE = String.raw`https:\/\/(?:github\.com\/user-attachments\/assets\/[A-Za-z0-9-]+|(?:raw|objects|private-user-images|user-images)\.githubusercontent\.com\/[^\s)<>'"]+)`;
+
+function githubMarkdownFileLinkRegex(): RegExp {
+  return new RegExp(
+    `!?\\[([^\\]]*)\\]\\((${GITHUB_FILE_URL_SOURCE})\\)`,
+    "giu",
+  );
+}
+
+function githubFileUrlRegex(): RegExp {
+  return new RegExp(GITHUB_FILE_URL_SOURCE, "giu");
+}
+
+function normalizeGithubFileUrl(url: string): string {
+  return url.replace(/[.,;:!?]+$/u, "");
+}
+
+function filenameFromGithubUrl(url: string): string {
+  if (!URL.canParse(url)) {
+    return "github-file";
+  }
+  const parsed = new URL(url);
+  const segment = parsed.pathname.split("/").filter(Boolean).pop();
+  return segment ?? "github-file";
+}
+
+function isUsefulFilenameCandidate(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 255 &&
+    !trimmed.includes("/") &&
+    !/^image$/iu.test(trimmed)
+  );
+}
+
+function extractGithubFileReferences(
+  body: string,
+): readonly GitHubFileReference[] {
+  const references: GitHubFileReference[] = [];
+  const seen = new Set<string>();
+
+  function addReference(url: string, filenameCandidate: string | undefined) {
+    const normalizedUrl = normalizeGithubFileUrl(url);
+    if (seen.has(normalizedUrl)) {
+      return;
+    }
+    seen.add(normalizedUrl);
+    const filename =
+      filenameCandidate && isUsefulFilenameCandidate(filenameCandidate)
+        ? filenameCandidate.trim()
+        : filenameFromGithubUrl(normalizedUrl);
+    references.push({ url: normalizedUrl, filename });
+  }
+
+  for (const match of body.matchAll(githubMarkdownFileLinkRegex())) {
+    const filenameCandidate = match[1];
+    const url = match[2];
+    if (url) {
+      addReference(url, filenameCandidate);
+    }
+  }
+
+  for (const match of body.matchAll(githubFileUrlRegex())) {
+    const url = match[0];
+    addReference(url, undefined);
+  }
+
+  return references;
+}
+
+function formatGithubFileReferences(body: string): string | null {
+  const references = extractGithubFileReferences(body);
+  if (references.length === 0) {
+    return null;
+  }
+
+  return references
+    .map((file) => {
+      return [
+        "[GitHub file]",
+        `[URL] ${file.url}`,
+        `[FILENAME] ${file.filename}`,
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
 function formatGitHubIssueContextMessage(args: {
   readonly issue: GitHubIssue;
   readonly relativeIndex: number;
   readonly subjectLabel: string;
 }): string {
+  const body = args.issue.body ?? "_No description provided._";
+  const files = args.issue.body
+    ? formatGithubFileReferences(args.issue.body)
+    : null;
   return [
     "---",
     "",
@@ -272,14 +370,20 @@ function formatGitHubIssueContextMessage(args: {
     "",
     `Title: ${args.issue.title}`,
     "",
-    args.issue.body ?? "_No description provided._",
-  ].join("\n");
+    body,
+    files ? `\n${files}` : null,
+  ]
+    .filter((part): part is string => {
+      return part !== null;
+    })
+    .join("\n");
 }
 
 function formatGitHubCommentContextMessage(args: {
   readonly comment: GithubIssueComment;
   readonly relativeIndex: number;
 }): string {
+  const files = formatGithubFileReferences(args.comment.body);
   return [
     "---",
     "",
@@ -289,7 +393,12 @@ function formatGitHubCommentContextMessage(args: {
     "- SOURCE: comment",
     "",
     args.comment.body,
-  ].join("\n");
+    files ? `\n${files}` : null,
+  ]
+    .filter((part): part is string => {
+      return part !== null;
+    })
+    .join("\n");
 }
 
 function formatIssueContext(args: {

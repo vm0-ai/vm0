@@ -13,6 +13,7 @@ import { zeroRunCommand } from "./commands/zero/run";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroChatCommand } from "./commands/zero/chat";
+import { zeroGithubCommand } from "./commands/zero/github";
 import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroTelegramCommand } from "./commands/zero/telegram";
 import { zeroPhoneCommand } from "./commands/zero/phone";
@@ -59,6 +60,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   logs: "agent-run:read",
   search: "chat-message:read",
   chat: "chat-message:write",
+  github: ["github:read", "github:write"],
   slack: "slack:write",
   telegram: ["telegram:read", "telegram:write"],
   phone: ["phone:read", "phone:write"],
@@ -85,6 +87,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroScheduleCommand,
   zeroSecretCommand,
   zeroChatCommand,
+  zeroGithubCommand,
   zeroSlackCommand,
   zeroTelegramCommand,
   zeroPhoneCommand,
@@ -131,6 +134,8 @@ export function buildZeroHelpText(
   const examples = [
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
     "  Send a Slack message?  zero slack message send --help",
+    "  Upload GitHub?        zero github upload-file --help",
+    "  Download GitHub?      zero github download-file --help",
     "  List Telegram bots?    zero telegram bot list",
     "  Send Telegram?         zero telegram message send --help",
     "  Upload Telegram?       zero telegram upload-file --help",

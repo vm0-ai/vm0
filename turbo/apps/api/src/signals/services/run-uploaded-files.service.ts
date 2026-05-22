@@ -390,6 +390,67 @@ interface RecordAgentPhoneUploadedFileArgs {
   readonly metadata: Record<string, unknown>;
 }
 
+interface RecordGithubUploadedFileArgs {
+  readonly runId: string | undefined;
+  readonly externalId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly url: string;
+  readonly metadata: Record<string, unknown>;
+}
+
+export const recordGithubUploadedFile$ = command(
+  async (
+    { set },
+    args: RecordGithubUploadedFileArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!args.runId) {
+      return;
+    }
+    const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "github", signal);
+
+    await writeDb
+      .insert(runUploadedFiles)
+      .values({
+        runId: args.runId,
+        source,
+        externalId: args.externalId,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: args.filename,
+        contentType: args.contentType,
+        sizeBytes: args.sizeBytes,
+        url: args.url,
+        metadata: args.metadata,
+      })
+      .onConflictDoUpdate({
+        target: [
+          runUploadedFiles.runId,
+          runUploadedFiles.source,
+          runUploadedFiles.externalId,
+        ],
+        set: {
+          userId: args.userId,
+          orgId: args.orgId,
+          filename: args.filename,
+          contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          url: args.url,
+          metadata: args.metadata,
+          updatedAt: sql`now()`,
+        },
+      });
+    signal.throwIfAborted();
+
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+  },
+);
+
 /**
  * Insert (or upsert) a `run_uploaded_files` row for an AgentPhone-delivered
  * upload, then publish the chat-thread artifacts-changed signal if the

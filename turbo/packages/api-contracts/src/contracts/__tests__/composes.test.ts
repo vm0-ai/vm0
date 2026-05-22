@@ -27,8 +27,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 26 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(26);
+  it("should have exactly 28 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(28);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -55,6 +55,11 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include phone read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("phone:read");
     expect(ZERO_CAPABILITIES).toContain("phone:write");
+  });
+
+  it("should include github read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("github:read");
+    expect(ZERO_CAPABILITIES).toContain("github:write");
   });
 
   it("should include file read and write capabilities", () => {

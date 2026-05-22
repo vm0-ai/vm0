@@ -137,6 +137,13 @@ export {
   completeTelegramFileUpload,
 } from "./domains/integrations-telegram";
 
+// Domain modules - Integrations GitHub
+export {
+  downloadGithubFile,
+  initGithubFileUpload,
+  completeGithubFileUpload,
+} from "./domains/integrations-github";
+
 // Domain modules - Integrations Phone
 export {
   sendPhoneMessage,

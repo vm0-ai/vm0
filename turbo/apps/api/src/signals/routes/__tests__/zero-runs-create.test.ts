@@ -426,6 +426,7 @@ describe("POST /api/zero/runs", () => {
     for (const toolHint of [
       "zero web download-file -h",
       "zero slack download-file -h",
+      "zero github download-file -h",
       "zero telegram download-file -h",
       "zero phone download-file -h",
       "zero connector status <type>",
