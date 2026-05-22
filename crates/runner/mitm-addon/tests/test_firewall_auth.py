@@ -686,6 +686,7 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_error"] == "connector_not_configured"
         body = json.loads(flow.response.content)
         assert body["error"] == "connector_not_configured"
+        assert body["message"] == "Connector not configured"
         assert body["connectors"] == ["github"]
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
@@ -763,6 +764,7 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_error"] == "connector_not_configured"
         body = json.loads(flow.response.content)
         assert body["error"] == "connector_not_configured"
+        assert body["message"] == "Connector not configured"
         assert body["permission"] == ""
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
@@ -825,6 +827,7 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_error"] == "auth_unavailable"
         body = json.loads(flow.response.content)
         assert body["error"] == "auth_unavailable"
+        assert body["message"] == "Auth secrets not configured"
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
