@@ -100,6 +100,44 @@ EOF
     fi
 }
 
+seed_test_oauth_connector() {
+    local access_token="$1"
+    local refresh_token="$2"
+    local expires_in="$3"
+
+    local encoded_email
+    encoded_email=$(encode_test_email) || return 1
+
+    local body
+    body=$(jq -nc \
+        --arg accessToken "$access_token" \
+        --arg refreshToken "$refresh_token" \
+        --argjson expiresIn "$expires_in" \
+        '{
+            connectorName: "test-oauth",
+            accessToken: $accessToken,
+            refreshToken: $refreshToken,
+            expiresIn: $expiresIn
+        }')
+
+    local curl_args=(-s -w "\n%{http_code}" -X POST)
+    curl_args+=(-H "Content-Type: application/json")
+    append_test_oauth_bypass_headers curl_args
+    curl_args+=(-d "$body")
+
+    local response http_code resp_body
+    response=$(curl "${curl_args[@]}" \
+        "${VM0_API_URL}/api/cli/auth/test-connector?email=${encoded_email}")
+    http_code=$(echo "$response" | tail -n1)
+    resp_body=$(echo "$response" | head -n-1)
+
+    if [[ "$http_code" != "200" ]]; then
+        echo "test-connector failed: HTTP $http_code"
+        echo "Response: $resp_body"
+        return 1
+    fi
+}
+
 append_test_oauth_bypass_headers() {
     local -n headers_ref="$1"
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
@@ -254,8 +292,13 @@ EOF
     # token into the request and echo's own expiry check catches the drift,
     # returning 401 with "expired_token". Proves the echo route's
     # self-validation guards against webhook-side staleness bugs.
+    # After the real OAuth callback, use the test-only seed endpoint to create
+    # this intentionally inconsistent connector-secret state.
     local past_ms=$(( ( $(date +%s) - 3600 ) * 1000 ))
-    run $ZERO_CLI secret set TEST_OAUTH_ACCESS_TOKEN --body "testoauth_at_${past_ms}_staleaccesstoken"
+    run seed_test_oauth_connector \
+        "testoauth_at_${past_ms}_staleaccesstoken" \
+        "testoauth_rt_success_stalerefreshtoken" \
+        3600
     echo "$output"
     assert_success
 
