@@ -130,6 +130,19 @@ impl CompletionAuth {
             CompletionAuthKind::Local => Err(CompletionAuthError::NotSandbox),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn matches_sandbox_token_for_test(
+        &self,
+        expected_run_id: RunId,
+        expected_token: &str,
+    ) -> bool {
+        matches!(
+            &self.kind,
+            CompletionAuthKind::Sandbox { run_id, token }
+                if *run_id == expected_run_id && token == expected_token
+        )
+    }
 }
 
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.

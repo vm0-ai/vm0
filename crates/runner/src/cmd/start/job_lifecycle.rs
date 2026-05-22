@@ -191,7 +191,7 @@ impl CompletionReady {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use async_trait::async_trait;
     use sandbox::SandboxId;
@@ -249,6 +249,10 @@ mod tests {
         status_path: std::path::PathBuf,
     }
 
+    struct CompletionAuthProvider {
+        auth_matches: Arc<AtomicBool>,
+    }
+
     #[async_trait]
     impl JobProvider for CompletionOrderProvider {
         async fn discover(&self) -> Option<JobCandidate> {
@@ -272,6 +276,36 @@ mod tests {
                 .store(self.budget.allocated().2, Ordering::SeqCst);
             self.active_runs_at_complete.store(
                 status_active_run_count(&self.status_path).await,
+                Ordering::SeqCst,
+            );
+        }
+
+        async fn heartbeat(&self, _state: &HeartbeatState) {}
+
+        async fn shutdown(&self) {}
+    }
+
+    #[async_trait]
+    impl JobProvider for CompletionAuthProvider {
+        async fn discover(&self) -> Option<JobCandidate> {
+            None
+        }
+
+        async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
+            None
+        }
+
+        async fn complete(
+            &self,
+            run_id: RunId,
+            _exit_code: i32,
+            _error: Option<&str>,
+            _sandbox_id: Option<SandboxId>,
+            _reuse_result: Option<SandboxReuseResult>,
+            completion_auth: CompletionAuth,
+        ) {
+            self.auth_matches.store(
+                completion_auth.matches_sandbox_token_for_test(run_id, "completion-token"),
                 Ordering::SeqCst,
             );
         }
@@ -328,6 +362,41 @@ mod tests {
             RunCleanupDisposition::StatusRemoved,
         );
         assert_eq!(budget.allocated().2, 0);
+    }
+
+    #[tokio::test]
+    async fn completion_ready_forwards_completion_auth() {
+        let (_budget, lease) = test_budget_lease();
+        let auth_matches = Arc::new(AtomicBool::new(false));
+        let dir = tempfile::tempdir().unwrap();
+        let status = StatusTracker::new(dir.path().join("status.json"), 4, None, None);
+        let ownership = OwnershipTransitions::new(&status);
+        let provider = CompletionAuthProvider {
+            auth_matches: Arc::clone(&auth_matches),
+        };
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+
+        CompletionReady::new(
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::sandbox_token(run_id, "completion-token".to_string()),
+            ),
+            BudgetOwnership::active(ActiveBudgetLease::new(lease)),
+        )
+        .complete_and_release(&provider, &ownership, &cleanup_state)
+        .await;
+
+        assert!(
+            auth_matches.load(Ordering::SeqCst),
+            "completion payload auth must be forwarded to provider.complete"
+        );
     }
 
     #[tokio::test]
