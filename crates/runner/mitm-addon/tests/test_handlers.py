@@ -2821,6 +2821,8 @@ class TestResponseHeadersSseParser:
 
         assert "model_provider_usage" in flow.metadata
         assert isinstance(flow.metadata["model_provider_usage"], dict)
+        assert "model_sse_usage_finish" in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
         # Feed SSE data through the callback
         callback = _response_stream(flow)
         callback(
@@ -5642,6 +5644,7 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         callback = _response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
 
         # 2. Stream chunks (including keep-alives and a mid-line split)
         chunks = [
