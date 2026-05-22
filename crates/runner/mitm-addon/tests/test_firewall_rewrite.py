@@ -899,6 +899,24 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert mock_forward.call_args[0][3] == b""
 
+    async def test_forward_request_preserves_absent_body(self, real_flow, mitm_ctx, tmp_path):
+        """A request with no raw body remains distinct from an explicit empty body."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="GET",
+            request_body=None,
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert mock_forward.call_args[0][3] is None
+
     async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
         firewall_error without falling through to the success-path metadata.

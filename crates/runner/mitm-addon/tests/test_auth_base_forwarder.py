@@ -115,6 +115,7 @@ class TestAuthBaseForwarderSecurity:
                 call("X-Repeat", "two"),
             ]
         )
+        assert call("Content-Length", "0") not in conn.putheader.call_args_list
 
     def test_root_request_target_preserves_query(self):
         resp = MagicMock()
