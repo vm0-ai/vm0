@@ -1,9 +1,6 @@
-import { initServices } from "../../lib/init-services";
-import { and, eq, or } from "drizzle-orm";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { users } from "@vm0/db/schema/user";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 
 /**
  * Insert a user row for testing.
@@ -74,54 +71,4 @@ export async function insertTestPushSubscription(args: {
         auth: args.auth,
       },
     });
-}
-
-/**
- * Insert test VM0 API keys into the key pool.
- * @why-db-direct VM0 API key pool has no user-facing API; keys must be seeded directly
- */
-export async function insertVm0ApiKeys(
-  keys: Array<{
-    vendor: string;
-    model: string;
-    apiKey: string;
-    label?: string;
-  }>,
-) {
-  initServices();
-  await globalThis.services.db.insert(vm0ApiKeys).values(keys);
-  insertedVm0ApiKeys.push(...keys);
-}
-
-type InsertedVm0ApiKey = {
-  vendor: string;
-  model: string;
-  apiKey: string;
-};
-
-const insertedVm0ApiKeys: InsertedVm0ApiKey[] = [];
-
-/**
- * Delete VM0 API keys inserted through insertVm0ApiKeys in the current test worker.
- * @why-db-direct Cleans up direct VM0 key-pool fixtures so local dev-seed keys are not polluted
- */
-export async function deleteInsertedVm0ApiKeys(): Promise<void> {
-  initServices();
-  const keys = insertedVm0ApiKeys.splice(0);
-
-  if (keys.length > 0) {
-    const predicate = or(
-      ...keys.map((key) => {
-        return and(
-          eq(vm0ApiKeys.vendor, key.vendor),
-          eq(vm0ApiKeys.model, key.model),
-          eq(vm0ApiKeys.apiKey, key.apiKey),
-        );
-      }),
-    );
-
-    if (predicate) {
-      await globalThis.services.db.delete(vm0ApiKeys).where(predicate);
-    }
-  }
 }

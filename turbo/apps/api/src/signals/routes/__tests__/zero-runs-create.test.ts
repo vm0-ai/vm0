@@ -634,12 +634,24 @@ describe("POST /api/zero/runs", () => {
     const fx = await fixture();
     await setOrgCredits(fx.orgId, 100);
     await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
+    const db = store.set(writeDb$);
+    const existingVendorKeys = await db
+      .select({ model: vm0ApiKeys.model })
+      .from(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.vendor, "anthropic"));
+    const hasExistingExactKey = existingVendorKeys.some((row) => {
+      return row.model === "claude-opus-4-6";
+    });
+    await seedVm0ApiKey({
+      vendor: "anthropic",
+      model: "claude-haiku-4-5",
+      apiKey: "sk-vm0-fallback",
+    });
     await seedVm0ApiKey({
       vendor: "anthropic",
       model: "claude-opus-4-6",
       apiKey: "sk-vm0-managed",
     });
-    const db = store.set(writeDb$);
     await db.insert(modelProviders).values({
       orgId: fx.orgId,
       userId: ORG_SENTINEL_USER_ID,
@@ -671,9 +683,17 @@ describe("POST /api/zero/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_API_KEY: expect.any(String),
       ANTHROPIC_MODEL: "claude-opus-4-6",
     });
+    // Local dev databases may already have dev-seeded exact keys.
+    if (!hasExistingExactKey) {
+      expect(executionContext.environment.ANTHROPIC_API_KEY).toBe(
+        "sk-vm0-managed",
+      );
+    }
+    expect(executionContext.environment.ANTHROPIC_API_KEY).not.toBe(
+      "sk-vm0-fallback",
+    );
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
       ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
     });
@@ -692,6 +712,62 @@ describe("POST /api/zero/runs", () => {
     expect(zeroRun).toStrictEqual({
       modelProvider: "vm0",
       selectedModel: "claude-opus-4-6",
+    });
+  });
+
+  it("falls back to the VM0 vendor key pool when no exact model key exists", async () => {
+    const fx = await fixture();
+    await setOrgCredits(fx.orgId, 100);
+    await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
+    const db = store.set(writeDb$);
+    const existingVendorKeys = await db
+      .select({ model: vm0ApiKeys.model })
+      .from(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.vendor, "anthropic"));
+    await seedVm0ApiKey({
+      vendor: "anthropic",
+      model: "claude-haiku-4-5",
+      apiKey: "sk-vm0-fallback",
+    });
+    await db.insert(modelProviders).values({
+      orgId: fx.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      type: "vm0",
+      isDefault: true,
+      selectedModel: "claude-opus-4-6",
+    });
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "vm0 fallback provider", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_MODEL: "claude-opus-4-6",
+    });
+    // Local dev databases may already have dev-seeded vendor keys.
+    if (existingVendorKeys.length === 0) {
+      expect(executionContext.environment.ANTHROPIC_API_KEY).toBe(
+        "sk-vm0-fallback",
+      );
+    }
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
     });
   });
 

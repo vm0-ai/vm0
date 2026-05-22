@@ -204,18 +204,12 @@ export {
   insertTestUser,
   seedUserCacheEntry,
   insertUserCacheEntry,
-  insertVm0ApiKeys,
-  deleteInsertedVm0ApiKeys,
   insertTestVoiceChatSession,
   countUserRows,
   getPushSubscriptionsByEndpoint,
   getTestVoiceChatSession,
   countTestVoiceChatSessionsByReasoningStatus,
-  getTestVm0ApiKey,
   createTestPushSubscription,
-  consumeTestCaptureNetworkBodies,
-  getTestUserPreferencesAll,
-  updateTestUserPreferencesAll,
 } from "./users";
 export {
   seedTestSkill,
