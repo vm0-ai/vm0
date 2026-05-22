@@ -112,6 +112,46 @@ class TestAuthBaseForwarderSecurity:
             ]
         )
 
+    def test_http_scheme_uses_http_connection_and_default_port_host(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(forwarder.http_client, "HTTPConnection", return_value=conn) as http_conn:
+            forwarder._forward_request_sync(
+                "http://example.com:80/path",
+                "GET",
+                [],
+                None,
+            )
+
+        http_conn.assert_called_once_with("example.com", port=80, timeout=30)
+        assert call("Host", "example.com") in conn.putheader.call_args_list
+
+    def test_ipv6_host_header_is_bracketed(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(
+            forwarder.http_client, "HTTPSConnection", return_value=conn
+        ) as https_conn:
+            forwarder._forward_request_sync(
+                "https://[2001:db8::1]:444/path",
+                "GET",
+                [],
+                None,
+            )
+
+        https_conn.assert_called_once_with("2001:db8::1", port=444, timeout=30)
+        assert call("Host", "[2001:db8::1]:444") in conn.putheader.call_args_list
+
     def test_filters_request_hop_by_hop_headers_and_recomputes_content_length(self):
         resp = MagicMock()
         resp.status = 200
