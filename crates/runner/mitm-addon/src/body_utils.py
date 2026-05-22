@@ -340,9 +340,14 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.response:
         stream_buf = flow.metadata.get("stream_buffer")
         stream_state = flow.metadata.get("stream_buffer_state")
+        stream_truncated = False
         if stream_buf is not None:
-            if stream_buf and not stream_state:
-                raise KeyError("truncated")
+            if stream_buf:
+                if not stream_state:
+                    raise KeyError("truncated")
+                stream_truncated = bool(stream_state["truncated"])
+            elif stream_state:
+                stream_truncated = bool(stream_state.get("truncated", False))
             body = decompress_body(
                 bytes(stream_buf),
                 flow.response.headers,
@@ -360,14 +365,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         res_ct = flow.response.headers.get("content-type", "")
         # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
         # Also check decompressed size in case it expanded beyond the limit.
-        already_truncated = bool(
-            stream_state
-            and (stream_state["truncated"] if body else stream_state.get("truncated", False))
-        )
         _set_body_fields(
             log_entry,
             "response",
             body,
             res_ct,
-            already_truncated=already_truncated,
+            already_truncated=stream_truncated,
         )
