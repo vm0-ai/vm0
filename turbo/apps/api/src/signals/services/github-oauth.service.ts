@@ -541,16 +541,23 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
     return false;
   }
 
+  let unclaimedInstallation: AppInstallation | undefined;
   for (const ghInstall of installations) {
     const ghInstallationId = String(ghInstall.id);
     const [existing] = await args.db
-      .select({ id: githubInstallations.id })
+      .select({
+        id: githubInstallations.id,
+        orgId: githubInstallations.orgId,
+      })
       .from(githubInstallations)
       .where(eq(githubInstallations.installationId, ghInstallationId))
       .limit(1);
     args.signal.throwIfAborted();
 
     if (existing) {
+      if (args.orgId && existing.orgId !== args.orgId) {
+        continue;
+      }
       const linked = await linkGithubVm0User({
         db: args.db,
         installRecordId: existing.id,
@@ -559,9 +566,11 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
       });
       return linked !== null;
     }
+
+    unclaimedInstallation ??= ghInstall;
   }
 
-  const ghInstall = installations[0];
+  const ghInstall = unclaimedInstallation;
   if (!ghInstall) {
     return false;
   }

@@ -663,6 +663,39 @@ describe("GitHub OAuth API routes", () => {
     expect(linkedInstallation?.status).toBe("active");
   });
 
+  it("does not link an installation that belongs to another organization", async () => {
+    const fixture = await seedComposeFixture(cleanup);
+    const otherFixture = await seedComposeFixture(cleanup);
+    await seedOrgMembership({ fixture, role: "admin" });
+    const installationId = "987654322";
+    const githubUserId = newGithubUserId();
+    await seedGithubConnector({ fixture, githubUserId });
+    await store.set(writeDb$).insert(githubInstallations).values({
+      installationId,
+      status: "active",
+      orgId: otherFixture.orgId,
+      adminGithubUserId: null,
+      defaultComposeId: otherFixture.composeId,
+    });
+    cleanup.installationIds.push(installationId);
+    mockGitHubInstallationsList([
+      {
+        id: installationId,
+        targetId: newGithubUserId(),
+      },
+    ]);
+
+    const response = await appRequest(
+      `/api/github/oauth/install?vm0UserId=${fixture.userId}&orgId=${fixture.orgId}&composeId=${fixture.composeId}`,
+    );
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin).toBe("https://github.com");
+    expect(location.pathname).toBe(`/apps/${APP_SLUG}/installations/new`);
+    await expect(findLinksForUser(fixture.userId)).resolves.toHaveLength(0);
+  });
+
   it("creates and links a missing local installation during install from GitHub API data", async () => {
     const fixture = await seedComposeFixture(cleanup);
     await seedOrgMembership({ fixture, role: "admin" });
