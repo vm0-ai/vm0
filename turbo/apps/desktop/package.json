@@ -6,7 +6,9 @@
   "description": "Zero desktop shell",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
+    "build": "pnpm build:native && pnpm build:electron",
+    "build:electron": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
+    "build:native": "node scripts/build-native-helper.js",
     "check-types": "tsc --noEmit",
     "dev": "pnpm build && electron-forge start",
     "lint": "oxlint src --deny-warnings",

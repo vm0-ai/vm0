@@ -118,9 +118,19 @@ jobs:
             find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
             exit 1
           fi
+          if [ ! -x "$app_dir/Contents/Resources/native/computer-use-helper" ]; then
+            echo "No executable native Computer Use helper found"
+            find "$app_dir/Contents/Resources" -maxdepth 3 -print || true
+            exit 1
+          fi
           if [ -e "$app_dir/Contents/Resources/app/src" ]; then
             echo "Packaged app should not contain desktop source files"
             find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/native" ]; then
+            echo "Packaged app should not contain native helper source files"
+            find "$app_dir/Contents/Resources/app/native" -maxdepth 3 -print || true
             exit 1
           fi
           if [ -e "$app_dir/Contents/Resources/app/desktop-runtime-config.json" ]; then
@@ -140,6 +150,7 @@ jobs:
 
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/native/computer-use-helper"
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/assets/icon.png"
 
@@ -217,9 +228,19 @@ jobs:
             find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
             exit 1
           fi
+          if [ ! -x "$app_dir/Contents/Resources/native/computer-use-helper" ]; then
+            echo "No executable native Computer Use helper found"
+            find "$app_dir/Contents/Resources" -maxdepth 3 -print || true
+            exit 1
+          fi
           if [ -e "$app_dir/Contents/Resources/app/src" ]; then
             echo "Packaged preview app should not contain desktop source files"
             find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/native" ]; then
+            echo "Packaged preview app should not contain native helper source files"
+            find "$app_dir/Contents/Resources/app/native" -maxdepth 3 -print || true
             exit 1
           fi
           if [ ! -f "$runtime_config" ]; then
@@ -253,6 +274,7 @@ jobs:
 
           unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/MacOS/Zero Dev"
           unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/native/computer-use-helper"
           unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/app/dist/main.js"
           unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/app/assets/icon.png"
           unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/app/desktop-runtime-config.json"

@@ -7,6 +7,12 @@ import {
   renderAccessibilityTree,
 } from "./computer-use-accessibility";
 import {
+  ComputerUseNativeHelperError,
+  resolveComputerUseHelperPath,
+  type ComputerUseNativeBackend,
+  type ComputerUseNativePressKeyRequest,
+} from "./computer-use-native";
+import {
   buildComputerUseRuntimeBody,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
@@ -22,6 +28,28 @@ import {
 } from "./desktop-auth";
 import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
+
+function createNativeBackend(
+  overrides: Partial<ComputerUseNativeBackend> = {},
+): ComputerUseNativeBackend {
+  const defaults: ComputerUseNativeBackend = {
+    listApps: async () => [],
+    getAppState: async (app, snapshotId) => {
+      return { app, snapshotId, elements: [] };
+    },
+    openApp: async () => {},
+    clickElement: async () => {},
+    clickPoint: async () => {},
+    setElementValue: async () => {},
+    performElementAction: async () => {},
+    typeText: async () => {
+      return {};
+    },
+    pressKey: async () => {},
+    scrollElement: async () => {},
+  };
+  return { ...defaults, ...overrides };
+}
 
 describe("resolveDesktopConfig", () => {
   it("defaults to production", () => {
@@ -168,6 +196,36 @@ describe("window policy", () => {
     expect(
       decideWindowOpen("javascript:alert('nope')", allowedOrigins),
     ).toStrictEqual({ action: "deny" });
+  });
+});
+
+describe("computer use native helper", () => {
+  it("prefers the packaged helper path when it exists", () => {
+    const packagedPath = "/resources/native/computer-use-helper";
+    const localPath = "/app/native/dist/native/computer-use-helper";
+    const existing = new Set([packagedPath, localPath]);
+
+    expect(
+      resolveComputerUseHelperPath({
+        appRoot: "/app",
+        resourcesPath: "/resources",
+        exists: (candidate) => {
+          return existing.has(candidate);
+        },
+      }),
+    ).toBe(packagedPath);
+  });
+
+  it("falls back to the local dist helper path", () => {
+    expect(
+      resolveComputerUseHelperPath({
+        appRoot: "/app",
+        resourcesPath: "/resources",
+        exists: () => {
+          return false;
+        },
+      }),
+    ).toBe("/app/native/dist/native/computer-use-helper");
   });
 });
 
@@ -521,19 +579,21 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        runJxa: async () => {
-          return JSON.stringify({
-            app: "Safari",
-            snapshotId: "snap_1",
-            elements: [
-              {
-                id: "w0",
-                role: "AXWindow",
-                name: "Example",
-              },
-            ],
-          });
-        },
+        nativeBackend: createNativeBackend({
+          getAppState: async (app, snapshotId) => {
+            return {
+              app,
+              snapshotId,
+              elements: [
+                {
+                  id: "w0",
+                  role: "AXWindow",
+                  name: "Example",
+                },
+              ],
+            };
+          },
+        }),
         captureScreenshot: async (request) => {
           expect(request).toStrictEqual({
             app: "Safari",
@@ -558,7 +618,7 @@ describe("computer use desktop runtime", () => {
     expect(result).toMatchObject({
       result: {
         app: "Safari",
-        snapshotId: "snap_1",
+        snapshotId: expect.stringMatching(/^desktop_/),
         screenshot: "data:image/png;base64,abc123",
         screenshotMimeType: "image/png",
         screenshotSource: "window",
@@ -570,62 +630,67 @@ describe("computer use desktop runtime", () => {
     expect(result.result.text).toContain('w0 AXWindow "Example"');
   });
 
-  it("requests bounded deep accessibility state from JXA", async () => {
-    let capturedScript = "";
+  it("normalizes deep accessibility state from the native helper", async () => {
+    const nativeRequests: {
+      readonly app: string;
+      readonly snapshotId: string;
+    }[] = [];
     const result = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.state", payload: { app: "Slack" } },
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        runJxa: async (script) => {
-          capturedScript = script;
-          return JSON.stringify({
-            app: "Slack",
-            snapshotId: "snap_1",
-            nodeCount: 7,
-            truncated: false,
-            truncationReasons: [],
-            elements: [
-              {
-                id: "w0",
-                role: "AXWindow",
-                name: "release-notify (Channel) - VM0 - Slack",
-                children: [
-                  {
-                    id: "w0.e0",
-                    role: "AXGroup",
-                    children: [
-                      {
-                        id: "w0.e0.e0",
-                        role: "AXGroup",
-                        children: [
-                          {
-                            id: "w0.e0.e0.c0",
-                            role: "AXWebArea",
-                            roleDescription: "HTML content",
-                            children: [
-                              {
-                                id: "w0.e0.e0.c0.v0",
-                                role: "AXStaticText",
-                                value: "Release notes posted",
-                              },
-                              {
-                                id: "w0.e0.e0.c0.v1",
-                                role: "AXTextArea",
-                                name: "Message composer",
-                                actions: ["AXConfirm"],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          });
-        },
+        nativeBackend: createNativeBackend({
+          getAppState: async (app, snapshotId) => {
+            nativeRequests.push({ app, snapshotId });
+            return {
+              app,
+              snapshotId,
+              nodeCount: 7,
+              truncated: false,
+              truncationReasons: [],
+              elements: [
+                {
+                  id: "w0",
+                  role: "AXWindow",
+                  name: "release-notify (Channel) - VM0 - Slack",
+                  children: [
+                    {
+                      id: "w0.e0",
+                      role: "AXGroup",
+                      children: [
+                        {
+                          id: "w0.e0.e0",
+                          role: "AXGroup",
+                          children: [
+                            {
+                              id: "w0.e0.e0.c0",
+                              role: "AXWebArea",
+                              roleDescription: "HTML content",
+                              children: [
+                                {
+                                  id: "w0.e0.e0.c0.v0",
+                                  role: "AXStaticText",
+                                  value: "Release notes posted",
+                                },
+                                {
+                                  id: "w0.e0.e0.c0.v1",
+                                  role: "AXTextArea",
+                                  name: "Message composer",
+                                  actions: ["AXConfirm"],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            };
+          },
+        }),
         captureScreenshot: async () => {
           return {
             dataUrl: "data:image/png;base64,abc123",
@@ -642,11 +707,11 @@ describe("computer use desktop runtime", () => {
     if (result.status !== "succeeded") {
       throw new Error("expected app.state to succeed");
     }
-    expect(capturedScript).toContain('"maxDepth":32');
-    expect(capturedScript).toContain("AXManualAccessibility");
-    expect(capturedScript).toContain("AXEnhancedUserInterface");
-    expect(capturedScript).toContain("AXContents");
-    expect(capturedScript).toContain("AXVisibleChildren");
+    expect(nativeRequests).toHaveLength(1);
+    expect(nativeRequests[0]).toMatchObject({
+      app: "Slack",
+      snapshotId: expect.stringMatching(/^desktop_/),
+    });
     expect(result.result.text).toContain("Release notes posted");
     expect(result.result.text).toContain(
       'w0.e0.e0.c0.v1 AXTextArea "Message composer"',
@@ -655,7 +720,7 @@ describe("computer use desktop runtime", () => {
   });
 
   it("resolves action element ids from non-uiElement child sources", async () => {
-    let capturedScript = "";
+    const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -665,10 +730,7 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: false },
       {
         platform: "darwin",
-        runJxa: async (script) => {
-          capturedScript = script;
-          return "";
-        },
+        nativeBackend: createNativeBackend({ clickElement }),
         captureScreenshot: async () => {
           throw new Error("unexpected screenshot capture");
         },
@@ -676,18 +738,34 @@ describe("computer use desktop runtime", () => {
     );
 
     expect(result.status).toBe("succeeded");
-    expect(capturedScript).toContain(
-      'attributeChildren(element, "AXContents")',
-    );
-    expect(capturedScript).toContain(
-      'attributeChildren(element, "AXVisibleChildren")',
-    );
-    expect(capturedScript).toContain("element.click()");
+    expect(clickElement).toHaveBeenCalledWith({
+      app: "Slack",
+      elementId: "w0.c0.v2",
+      button: "left",
+      clickCount: 1,
+    });
   });
 
   it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
-    const scripts: string[] = [];
+    const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    const nativeBackend = createNativeBackend({
+      clickPoint,
+      getAppState: async (app) => {
+        return {
+          app,
+          snapshotId: "snap_1",
+          elements: [
+            {
+              id: "w0",
+              role: "AXWindow",
+              name: "Example",
+              bounds: { x: 100, y: 200, width: 1600, height: 1200 },
+            },
+          ],
+        };
+      },
+    });
 
     const state = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
@@ -695,21 +773,7 @@ describe("computer use desktop runtime", () => {
       {
         platform: "darwin",
         snapshotStore,
-        runJxa: async (script) => {
-          scripts.push(script);
-          return JSON.stringify({
-            app: "Safari",
-            snapshotId: "snap_1",
-            elements: [
-              {
-                id: "w0",
-                role: "AXWindow",
-                name: "Example",
-                bounds: { x: 100, y: 200, width: 1600, height: 1200 },
-              },
-            ],
-          });
-        },
+        nativeBackend,
         captureScreenshot: async (request) => {
           expect(request).toStrictEqual({
             app: "Safari",
@@ -751,10 +815,7 @@ describe("computer use desktop runtime", () => {
       {
         platform: "darwin",
         snapshotStore,
-        runJxa: async (script) => {
-          scripts.push(script);
-          return "";
-        },
+        nativeBackend,
         captureScreenshot: async () => {
           throw new Error("unexpected screenshot capture");
         },
@@ -777,19 +838,19 @@ describe("computer use desktop runtime", () => {
         inputRisk: "targeted_app_pointer",
       },
     });
-    const clickScript = scripts.at(-1);
-    expect(clickScript).toContain("$.CGPointMake(900, 800)");
-    expect(clickScript).toContain("$.CGEventCreateMouseEvent");
-    expect(clickScript).toContain("$.CGEventPostToPid(pid, event)");
-    expect(clickScript).toContain("postMouseEvent(3, clickIndex)");
-    expect(clickScript).not.toContain("$.CGEventPost($.kCGHIDEventTap");
-    expect(clickScript).not.toContain("systemEvents.click");
+    expect(clickPoint).toHaveBeenCalledWith({
+      app: "Safari",
+      x: 900,
+      y: 800,
+      button: "right",
+      clickCount: 2,
+    });
   });
 
   it("captures fresh app state for coordinate clicks without a cached snapshot", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
-    const scripts: string[] = [];
     let captureCount = 0;
+    const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
 
     const result = await executeComputerUseCommand(
       {
@@ -801,10 +862,10 @@ describe("computer use desktop runtime", () => {
       {
         platform: "darwin",
         snapshotStore,
-        runJxa: async (script) => {
-          scripts.push(script);
-          if (script.includes("snapshotId")) {
-            return JSON.stringify({
+        nativeBackend: createNativeBackend({
+          clickPoint,
+          getAppState: async () => {
+            return {
               app: "Safari",
               snapshotId: "snap_fresh",
               elements: [
@@ -815,10 +876,9 @@ describe("computer use desktop runtime", () => {
                   bounds: { x: 40, y: 80, width: 800, height: 600 },
                 },
               ],
-            });
-          }
-          return "";
-        },
+            };
+          },
+        }),
         captureScreenshot: async () => {
           captureCount += 1;
           return {
@@ -850,9 +910,13 @@ describe("computer use desktop runtime", () => {
       },
     });
     expect(captureCount).toBe(1);
-    expect(scripts).toHaveLength(2);
-    expect(scripts[1]).toContain("$.CGPointMake(440, 380)");
-    expect(scripts[1]).toContain("$.CGEventPostToPid(pid, event)");
+    expect(clickPoint).toHaveBeenCalledWith({
+      app: "Safari",
+      x: 440,
+      y: 380,
+      button: "left",
+      clickCount: 1,
+    });
   });
 
   it("requires screen recording permission for app state screenshots", async () => {
@@ -881,25 +945,31 @@ describe("computer use desktop runtime", () => {
       {
         key: "Command+K",
         normalizedKey: "Command+K",
-        keyCodeSnippet: "postKey(40, true, flags)",
-        flagsSnippet: "const flags = 1048576;",
+        keyCode: 40,
+        flags: 1_048_576,
+        modifiers: [{ keyCode: 55, flag: 1_048_576 }],
       },
       {
         key: "Control+K",
         normalizedKey: "Control+K",
-        keyCodeSnippet: "postKey(40, true, flags)",
-        flagsSnippet: "const flags = 262144;",
+        keyCode: 40,
+        flags: 262_144,
+        modifiers: [{ keyCode: 59, flag: 262_144 }],
       },
       {
         key: "Command+Shift+S",
         normalizedKey: "Command+Shift+S",
-        keyCodeSnippet: "postKey(1, true, flags)",
-        flagsSnippet: "const flags = 1179648;",
+        keyCode: 1,
+        flags: 1_179_648,
+        modifiers: [
+          { keyCode: 55, flag: 1_048_576 },
+          { keyCode: 56, flag: 131_072 },
+        ],
       },
     ];
 
     for (const testCase of cases) {
-      const scripts: string[] = [];
+      const pressRequests: ComputerUseNativePressKeyRequest[] = [];
       const result = await executeComputerUseCommand(
         {
           id: "cmd_1",
@@ -909,10 +979,11 @@ describe("computer use desktop runtime", () => {
         { accessibility: true, screenRecording: true },
         {
           platform: "darwin",
-          runJxa: async (script) => {
-            scripts.push(script);
-            return JSON.stringify({ pid: 123 });
-          },
+          nativeBackend: createNativeBackend({
+            pressKey: async (request) => {
+              pressRequests.push(request);
+            },
+          }),
           captureScreenshot: async () => {
             throw new Error("unexpected screenshot capture");
           },
@@ -923,13 +994,21 @@ describe("computer use desktop runtime", () => {
         status: "succeeded",
         result: { key: testCase.normalizedKey },
       });
-      expect(scripts[0]).toContain(testCase.keyCodeSnippet);
-      expect(scripts[0]).toContain(testCase.flagsSnippet);
+      expect(pressRequests).toStrictEqual([
+        {
+          app: "Safari",
+          keyCode: testCase.keyCode,
+          flags: testCase.flags,
+          modifiers: testCase.modifiers,
+          normalizedKey: testCase.normalizedKey,
+        },
+      ]);
     }
   });
 
   it("posts press-key combinations to the target process without app activation", async () => {
-    const scripts: string[] = [];
+    const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
+    const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -939,10 +1018,7 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        runJxa: async (script) => {
-          scripts.push(script);
-          return JSON.stringify({ pid: 123 });
-        },
+        nativeBackend: createNativeBackend({ openApp, pressKey }),
         captureScreenshot: async () => {
           throw new Error("unexpected screenshot capture");
         },
@@ -958,15 +1034,18 @@ describe("computer use desktop runtime", () => {
         inputRisk: "targeted_app_shortcut",
       },
     });
-    expect(scripts).toHaveLength(1);
-    expect(scripts[0]).toContain("$.CGEventPostToPid(pid, event)");
-    expect(scripts[0]).toContain("postKey(40, true, flags)");
-    expect(scripts[0]).not.toContain("activate()");
-    expect(scripts[0]).not.toContain("keystroke");
+    expect(pressKey).toHaveBeenCalledWith({
+      app: "Safari",
+      keyCode: 40,
+      modifiers: [{ keyCode: 55, flag: 1_048_576 }],
+      flags: 1_048_576,
+      normalizedKey: "Command+K",
+    });
+    expect(openApp).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported press-key syntax before dispatching input", async () => {
-    const runJxa = vi.fn<(script: string) => Promise<string>>();
+    const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -976,7 +1055,7 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        runJxa,
+        nativeBackend: createNativeBackend({ pressKey }),
         captureScreenshot: async () => {
           throw new Error("unexpected screenshot capture");
         },
@@ -990,7 +1069,7 @@ describe("computer use desktop runtime", () => {
         message: "Unsupported key specification: Launchpad",
       },
     });
-    expect(runJxa).not.toHaveBeenCalled();
+    expect(pressKey).not.toHaveBeenCalled();
   });
 
   it("rejects type-text when the target app has no focused editable element", async () => {
@@ -1003,13 +1082,14 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        runJxa: async () => {
-          return JSON.stringify({
-            status: "failed",
-            message:
+        nativeBackend: createNativeBackend({
+          typeText: async () => {
+            throw new ComputerUseNativeHelperError(
+              "unsupported_command",
               "keyboard.type_text requires a focused editable text element in Safari",
-          });
-        },
+            );
+          },
+        }),
         captureScreenshot: async () => {
           throw new Error("unexpected screenshot capture");
         },

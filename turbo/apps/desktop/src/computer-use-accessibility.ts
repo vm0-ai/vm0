@@ -1,8 +1,10 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { ComputerUsePermissionState } from "./computer-use-types";
-
-const execFileAsync = promisify(execFile);
+import {
+  ComputerUseNativeHelperError,
+  createComputerUseNativeBackend,
+  type ComputerUseNativeBackend,
+  type ComputerUseNativePressKeyRequest,
+} from "./computer-use-native";
 
 export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
   "apps.list",
@@ -25,7 +27,7 @@ export interface ComputerUseCommand {
   readonly payload: Record<string, unknown>;
 }
 
-interface AccessibilityElementSnapshot {
+export interface AccessibilityElementSnapshot {
   readonly id: string;
   readonly role?: string;
   readonly roleDescription?: string;
@@ -39,7 +41,7 @@ interface AccessibilityElementSnapshot {
   readonly children?: readonly AccessibilityElementSnapshot[];
 }
 
-interface AccessibilityAppStateSnapshot {
+export interface AccessibilityAppStateSnapshot {
   readonly app: string;
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
@@ -53,14 +55,6 @@ interface AccessibilitySnapshotOutputLimits {
   readonly maxNodes: number;
   readonly maxChildrenPerNode: number;
 }
-
-const ACCESSIBILITY_JXA_SNAPSHOT_LIMITS = Object.freeze({
-  maxDepth: 32,
-  maxNodes: 2_000,
-  maxChildrenPerSource: 160,
-  maxWindows: 8,
-  maxActions: 12,
-});
 
 export const ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS =
   Object.freeze<AccessibilitySnapshotOutputLimits>({
@@ -111,8 +105,6 @@ export type ComputerUseCommandExecutionResult =
   | ComputerUseCommandSuccess
   | ComputerUseCommandFailure;
 
-type RunJxa = (script: string) => Promise<string>;
-
 export interface ComputerUseCoordinateBounds {
   readonly x: number;
   readonly y: number;
@@ -135,258 +127,16 @@ interface ComputerUseSnapshotMetadata {
   readonly sourceBounds?: ComputerUseCoordinateBounds;
 }
 
-type ComputerUseMouseButton = "left" | "right" | "middle";
+export type ComputerUseMouseButton = "left" | "right" | "middle";
 
 interface ComputerUseCommandExecutionDependencies {
   readonly captureScreenshot: ComputerUseScreenshotCapture;
   readonly snapshotStore?: ComputerUseSnapshotStore;
   readonly platform?: NodeJS.Platform;
-  readonly runJxa?: RunJxa;
+  readonly nativeBackend?: ComputerUseNativeBackend;
 }
 
 const DEFAULT_SNAPSHOT_STORE_LIMIT = 50;
-
-function appSnapshotKey(app: string): string {
-  return app.trim().toLowerCase();
-}
-
-export class ComputerUseSnapshotStore {
-  private readonly snapshots = new Map<string, ComputerUseSnapshotMetadata>();
-  private readonly latestByApp = new Map<string, string>();
-
-  constructor(private readonly maxEntries = DEFAULT_SNAPSHOT_STORE_LIMIT) {}
-
-  set(metadata: ComputerUseSnapshotMetadata): void {
-    const key = this.key(metadata.app, metadata.snapshotId);
-    if (this.snapshots.has(key)) {
-      this.snapshots.delete(key);
-    }
-    this.snapshots.set(key, metadata);
-    this.latestByApp.set(appSnapshotKey(metadata.app), key);
-
-    while (this.snapshots.size > this.maxEntries) {
-      const oldestKey = this.snapshots.keys().next().value;
-      if (typeof oldestKey !== "string") {
-        return;
-      }
-      this.snapshots.delete(oldestKey);
-      for (const [appKey, snapshotKey] of this.latestByApp) {
-        if (snapshotKey === oldestKey) {
-          this.latestByApp.delete(appKey);
-        }
-      }
-    }
-  }
-
-  get(app: string, snapshotId: string): ComputerUseSnapshotMetadata | null {
-    return this.snapshots.get(this.key(app, snapshotId)) ?? null;
-  }
-
-  getLatestForApp(app: string): ComputerUseSnapshotMetadata | null {
-    const key = this.latestByApp.get(appSnapshotKey(app));
-    return key ? (this.snapshots.get(key) ?? null) : null;
-  }
-
-  private key(app: string, snapshotId: string): string {
-    return `${appSnapshotKey(app)}\0${snapshotId}`;
-  }
-}
-
-function payloadString(
-  payload: Record<string, unknown>,
-  key: string,
-): string | null {
-  const value = payload[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
-}
-
-function snapshotId(): string {
-  return `desktop_${Date.now().toString(36)}`;
-}
-
-function requireAccessibility(
-  permissions: ComputerUsePermissionState,
-  platform: NodeJS.Platform,
-): ComputerUseCommandFailure | null {
-  if (platform !== "darwin") {
-    return {
-      status: "failed",
-      error: {
-        code: "accessibility_unavailable",
-        message: "Desktop Computer Use is currently implemented for macOS",
-      },
-    };
-  }
-  if (!permissions.accessibility) {
-    return {
-      status: "failed",
-      error: {
-        code: "permission_denied",
-        message: "macOS Accessibility permission is required",
-      },
-    };
-  }
-  return null;
-}
-
-function requireScreenRecording(
-  permissions: ComputerUsePermissionState,
-): ComputerUseCommandFailure | null {
-  if (!permissions.screenRecording) {
-    return {
-      status: "failed",
-      error: {
-        code: "screen_recording_unavailable",
-        message: "macOS Screen Recording permission is required",
-      },
-    };
-  }
-  return null;
-}
-
-function jxaString(value: string): string {
-  return JSON.stringify(value);
-}
-
-function stringHasValue(value: string | undefined): boolean {
-  return value !== undefined && value.trim().length > 0;
-}
-
-function elementIsWebArea(element: AccessibilityElementSnapshot): boolean {
-  return (
-    element.role === "AXWebArea" ||
-    element.roleDescription?.toLowerCase().includes("html") === true
-  );
-}
-
-function elementHasMeaningfulContent(
-  element: AccessibilityElementSnapshot,
-): boolean {
-  return (
-    stringHasValue(element.name) ||
-    stringHasValue(element.value) ||
-    stringHasValue(element.description) ||
-    element.focused === true ||
-    element.enabled === false ||
-    (element.actions !== undefined && element.actions.length > 0)
-  );
-}
-
-function shouldElideElement(
-  element: AccessibilityElementSnapshot,
-  childCount: number,
-  inWebArea: boolean,
-): boolean {
-  if (!element.role || !GENERIC_WRAPPER_ROLES.has(element.role)) {
-    return false;
-  }
-  if (elementHasMeaningfulContent(element)) {
-    return false;
-  }
-  if (inWebArea && childCount > 1) {
-    return false;
-  }
-  return true;
-}
-
-function pushUniqueReason(reasons: string[], reason: string): void {
-  if (!reasons.includes(reason)) {
-    reasons.push(reason);
-  }
-}
-
-export function normalizeAccessibilitySnapshot(
-  snapshot: AccessibilityAppStateSnapshot,
-  limits: AccessibilitySnapshotOutputLimits = ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
-): AccessibilityAppStateSnapshot {
-  let nodeCount = 0;
-  const truncationReasons: string[] = [];
-
-  const normalizeElement = (
-    element: AccessibilityElementSnapshot,
-    depth: number,
-    inWebArea: boolean,
-  ): AccessibilityElementSnapshot[] => {
-    if (depth > limits.maxDepth) {
-      pushUniqueReason(truncationReasons, "max_depth");
-      return [];
-    }
-
-    const nextInWebArea = inWebArea || elementIsWebArea(element);
-    const rawChildren = element.children ?? [];
-    const childEntries = rawChildren.slice(0, limits.maxChildrenPerNode);
-    if (rawChildren.length > childEntries.length) {
-      pushUniqueReason(truncationReasons, "max_children_per_node");
-    }
-
-    const elide = shouldElideElement(element, rawChildren.length, inWebArea);
-    if (!elide) {
-      if (nodeCount >= limits.maxNodes) {
-        pushUniqueReason(truncationReasons, "max_nodes");
-        return [];
-      }
-      nodeCount += 1;
-    }
-
-    const children: AccessibilityElementSnapshot[] = [];
-    for (const child of childEntries) {
-      if (nodeCount >= limits.maxNodes) {
-        pushUniqueReason(truncationReasons, "max_nodes");
-        break;
-      }
-      children.push(...normalizeElement(child, depth + 1, nextInWebArea));
-    }
-
-    if (elide) {
-      return children;
-    }
-
-    return [
-      {
-        ...element,
-        children: children.length > 0 ? children : undefined,
-      },
-    ];
-  };
-
-  const elements = snapshot.elements.flatMap((element) => {
-    return normalizeElement(element, 0, false);
-  });
-
-  const combinedReasons = [
-    ...(snapshot.truncationReasons ?? []),
-    ...truncationReasons,
-  ];
-
-  return {
-    ...snapshot,
-    elements,
-    nodeCount,
-    truncated:
-      snapshot.truncated === true ||
-      combinedReasons.length > 0 ||
-      snapshot.nodeCount !== undefined
-        ? snapshot.truncated === true || combinedReasons.length > 0
-        : undefined,
-    truncationReasons:
-      combinedReasons.length > 0
-        ? [...new Set(combinedReasons)]
-        : snapshot.truncationReasons,
-  };
-}
-
-async function runJxa(script: string): Promise<string> {
-  const { stdout } = await execFileAsync("osascript", [
-    "-l",
-    "JavaScript",
-    "-e",
-    script,
-  ]);
-  return stdout.trim();
-}
-
 const CG_EVENT_FLAG_SHIFT = 131_072;
 const CG_EVENT_FLAG_CONTROL = 262_144;
 const CG_EVENT_FLAG_OPTION = 524_288;
@@ -565,6 +315,261 @@ class UnsupportedComputerUseCommandError extends Error {
   }
 }
 
+function appSnapshotKey(app: string): string {
+  return app.trim().toLowerCase();
+}
+
+export class ComputerUseSnapshotStore {
+  private readonly snapshots = new Map<string, ComputerUseSnapshotMetadata>();
+  private readonly latestByApp = new Map<string, string>();
+
+  constructor(private readonly maxEntries = DEFAULT_SNAPSHOT_STORE_LIMIT) {}
+
+  set(metadata: ComputerUseSnapshotMetadata): void {
+    const key = this.key(metadata.app, metadata.snapshotId);
+    if (this.snapshots.has(key)) {
+      this.snapshots.delete(key);
+    }
+    this.snapshots.set(key, metadata);
+    this.latestByApp.set(appSnapshotKey(metadata.app), key);
+
+    while (this.snapshots.size > this.maxEntries) {
+      const oldestKey = this.snapshots.keys().next().value;
+      if (typeof oldestKey !== "string") {
+        return;
+      }
+      this.snapshots.delete(oldestKey);
+      for (const [appKey, snapshotKey] of this.latestByApp) {
+        if (snapshotKey === oldestKey) {
+          this.latestByApp.delete(appKey);
+        }
+      }
+    }
+  }
+
+  get(app: string, snapshotId: string): ComputerUseSnapshotMetadata | null {
+    return this.snapshots.get(this.key(app, snapshotId)) ?? null;
+  }
+
+  getLatestForApp(app: string): ComputerUseSnapshotMetadata | null {
+    const key = this.latestByApp.get(appSnapshotKey(app));
+    return key ? (this.snapshots.get(key) ?? null) : null;
+  }
+
+  private key(app: string, snapshotId: string): string {
+    return `${appSnapshotKey(app)}\0${snapshotId}`;
+  }
+}
+
+function payloadString(
+  payload: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function payloadNumber(
+  payload: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = payload[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function payloadMouseButton(
+  payload: Record<string, unknown>,
+): ComputerUseMouseButton {
+  const value = payload.button;
+  if (value === "right" || value === "middle") {
+    return value;
+  }
+  return "left";
+}
+
+function payloadClickCount(payload: Record<string, unknown>): number {
+  const value = payload.clickCount;
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 3
+    ? value
+    : 1;
+}
+
+function snapshotId(): string {
+  return `desktop_${Date.now().toString(36)}`;
+}
+
+function requireAccessibility(
+  permissions: ComputerUsePermissionState,
+  platform: NodeJS.Platform,
+): ComputerUseCommandFailure | null {
+  if (platform !== "darwin") {
+    return {
+      status: "failed",
+      error: {
+        code: "accessibility_unavailable",
+        message: "Desktop Computer Use is currently implemented for macOS",
+      },
+    };
+  }
+  if (!permissions.accessibility) {
+    return {
+      status: "failed",
+      error: {
+        code: "permission_denied",
+        message: "macOS Accessibility permission is required",
+      },
+    };
+  }
+  return null;
+}
+
+function requireScreenRecording(
+  permissions: ComputerUsePermissionState,
+): ComputerUseCommandFailure | null {
+  if (!permissions.screenRecording) {
+    return {
+      status: "failed",
+      error: {
+        code: "screen_recording_unavailable",
+        message: "macOS Screen Recording permission is required",
+      },
+    };
+  }
+  return null;
+}
+
+function stringHasValue(value: string | undefined): boolean {
+  return value !== undefined && value.trim().length > 0;
+}
+
+function elementIsWebArea(element: AccessibilityElementSnapshot): boolean {
+  return (
+    element.role === "AXWebArea" ||
+    element.roleDescription?.toLowerCase().includes("html") === true
+  );
+}
+
+function elementHasMeaningfulContent(
+  element: AccessibilityElementSnapshot,
+): boolean {
+  return (
+    stringHasValue(element.name) ||
+    stringHasValue(element.value) ||
+    stringHasValue(element.description) ||
+    element.focused === true ||
+    element.enabled === false ||
+    (element.actions !== undefined && element.actions.length > 0)
+  );
+}
+
+function shouldElideElement(
+  element: AccessibilityElementSnapshot,
+  childCount: number,
+  inWebArea: boolean,
+): boolean {
+  if (!element.role || !GENERIC_WRAPPER_ROLES.has(element.role)) {
+    return false;
+  }
+  if (elementHasMeaningfulContent(element)) {
+    return false;
+  }
+  if (inWebArea && childCount > 1) {
+    return false;
+  }
+  return true;
+}
+
+function pushUniqueReason(reasons: string[], reason: string): void {
+  if (!reasons.includes(reason)) {
+    reasons.push(reason);
+  }
+}
+
+export function normalizeAccessibilitySnapshot(
+  snapshot: AccessibilityAppStateSnapshot,
+  limits: AccessibilitySnapshotOutputLimits = ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
+): AccessibilityAppStateSnapshot {
+  let nodeCount = 0;
+  const truncationReasons: string[] = [];
+
+  const normalizeElement = (
+    element: AccessibilityElementSnapshot,
+    depth: number,
+    inWebArea: boolean,
+  ): AccessibilityElementSnapshot[] => {
+    if (depth > limits.maxDepth) {
+      pushUniqueReason(truncationReasons, "max_depth");
+      return [];
+    }
+
+    const nextInWebArea = inWebArea || elementIsWebArea(element);
+    const rawChildren = element.children ?? [];
+    const childEntries = rawChildren.slice(0, limits.maxChildrenPerNode);
+    if (rawChildren.length > childEntries.length) {
+      pushUniqueReason(truncationReasons, "max_children_per_node");
+    }
+
+    const elide = shouldElideElement(element, rawChildren.length, inWebArea);
+    if (!elide) {
+      if (nodeCount >= limits.maxNodes) {
+        pushUniqueReason(truncationReasons, "max_nodes");
+        return [];
+      }
+      nodeCount += 1;
+    }
+
+    const children: AccessibilityElementSnapshot[] = [];
+    for (const child of childEntries) {
+      if (nodeCount >= limits.maxNodes) {
+        pushUniqueReason(truncationReasons, "max_nodes");
+        break;
+      }
+      children.push(...normalizeElement(child, depth + 1, nextInWebArea));
+    }
+
+    if (elide) {
+      return children;
+    }
+
+    return [
+      {
+        ...element,
+        children: children.length > 0 ? children : undefined,
+      },
+    ];
+  };
+
+  const elements = snapshot.elements.flatMap((element) => {
+    return normalizeElement(element, 0, false);
+  });
+
+  const combinedReasons = [
+    ...(snapshot.truncationReasons ?? []),
+    ...truncationReasons,
+  ];
+
+  return {
+    ...snapshot,
+    elements,
+    nodeCount,
+    truncated:
+      snapshot.truncated === true ||
+      combinedReasons.length > 0 ||
+      snapshot.nodeCount !== undefined
+        ? snapshot.truncated === true || combinedReasons.length > 0
+        : undefined,
+    truncationReasons:
+      combinedReasons.length > 0
+        ? [...new Set(combinedReasons)]
+        : snapshot.truncationReasons,
+  };
+}
+
 function normalizeKeyToken(value: string): string {
   return value
     .trim()
@@ -591,6 +596,16 @@ function unsupportedCommand(message: string): ComputerUseCommandFailure {
     error: {
       code: "unsupported_command",
       message,
+    },
+  };
+}
+
+function missingField(field: string): ComputerUseCommandFailure {
+  return {
+    status: "failed",
+    error: {
+      code: "unsupported_command",
+      message: `Missing required payload field: ${field}`,
     },
   };
 }
@@ -664,24 +679,6 @@ function parseComputerUseKeyPress(key: string): ParsedComputerUseKeyPress {
       displayKey,
     ].join("+"),
   };
-}
-
-function parseJsonRecord(output: string): Record<string, unknown> {
-  const value = JSON.parse(output) as unknown;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, unknown>;
-}
-
-function recordString(
-  record: Record<string, unknown>,
-  key: string,
-): string | null {
-  const value = record[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
 }
 
 export function renderAccessibilityTree(
@@ -765,368 +762,22 @@ function buildComputerUseAppStateResult(
   };
 }
 
-function appStateScript(app: string, id: string): string {
-  return `
-const appName = ${jxaString(app)};
-const snapshotId = ${jxaString(id)};
-const limits = ${JSON.stringify(ACCESSIBILITY_JXA_SNAPSHOT_LIMITS)};
-const systemEvents = Application("System Events");
-let nodeCount = 0;
-let truncated = false;
-let truncationReasons = [];
-function markTruncated(reason) {
-  truncated = true;
-  if (!truncationReasons.includes(reason)) {
-    truncationReasons.push(reason);
-  }
-}
-function safeString(read) {
-  try {
-    const value = read();
-    if (value === undefined || value === null) return undefined;
-    const text = String(value).trim();
-    return text.length > 0 ? text : undefined;
-  } catch (_error) {
-    return undefined;
-  }
-}
-function safeAttributeValue(element, name) {
-  try {
-    return element.attributes.byName(name).value();
-  } catch (_error) {
-    return undefined;
-  }
-}
-function safeAttributeString(element, name) {
-  const value = safeAttributeValue(element, name);
-  if (value === undefined || value === null) return undefined;
-  const text = String(value).trim();
-  return text.length > 0 ? text : undefined;
-}
-function safeBool(read) {
-  try {
-    const value = read();
-    return typeof value === "boolean" ? value : undefined;
-  } catch (_error) {
-    return undefined;
-  }
-}
-function safeBounds(element) {
-  try {
-    const position = element.position();
-    const size = element.size();
-    return { x: position[0], y: position[1], width: size[0], height: size[1] };
-  } catch (_error) {
-    return undefined;
-  }
-}
-function safeActions(element) {
-  try {
-    return element.actions().slice(0, limits.maxActions).map((action) => String(action.name()));
-  } catch (_error) {
-    return [];
-  }
-}
-function asArray(value) {
-  if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) return value;
-  try {
-    if (typeof value.length === "number") {
-      return Array.prototype.slice.call(value);
-    }
-  } catch (_error) {
-    return [];
-  }
-  return [value];
-}
-function collectionChildren(read, prefix) {
-  try {
-    return read().slice(0, limits.maxChildrenPerSource).map((child, index) => ({
-      child,
-      segment: prefix + index,
-    }));
-  } catch (_error) {
-    return [];
-  }
-}
-function attributeChildren(element, attributeName, prefix) {
-  return asArray(safeAttributeValue(element, attributeName))
-    .slice(0, limits.maxChildrenPerSource)
-    .map((child, index) => ({
-      child,
-      segment: prefix + index,
-    }));
-}
-function childFingerprint(element) {
-  const bounds = safeBounds(element);
-  if (!bounds) return "";
-  return [
-    safeString(() => element.role()) || "",
-    safeString(() => element.name()) || "",
-    safeString(() => element.value()) || "",
-    [bounds.x, bounds.y, bounds.width, bounds.height].join(","),
-  ].join("|");
-}
-function collectChildren(element) {
-  const candidates = [
-    ...collectionChildren(() => element.uiElements(), "e"),
-    ...collectionChildren(() => element.rows(), "r"),
-    ...attributeChildren(element, "AXContents", "c"),
-    ...attributeChildren(element, "AXVisibleChildren", "v"),
-  ];
-  const seen = {};
-  const children = [];
-  for (const candidate of candidates) {
-    const fingerprint = childFingerprint(candidate.child);
-    if (fingerprint.length > 0 && seen[fingerprint]) {
-      continue;
-    }
-    if (fingerprint.length > 0) {
-      seen[fingerprint] = true;
-    }
-    children.push(candidate);
-  }
-  return children;
-}
-function setAttributeValue(element, name, value) {
-  try {
-    element.attributes.byName(name).value = value;
-  } catch (_error) {
-  }
-}
-function enableBestEffortAccessibilityModes(process) {
-  setAttributeValue(process, "AXManualAccessibility", true);
-  setAttributeValue(process, "AXEnhancedUserInterface", true);
-}
-function describe(element, id, depth) {
-  if (nodeCount >= limits.maxNodes) {
-    markTruncated("max_nodes");
-    return undefined;
-  }
-  if (depth > limits.maxDepth) {
-    markTruncated("max_depth");
-    return undefined;
-  }
-  nodeCount += 1;
-  const node = {
-    id,
-    role: safeString(() => element.role()),
-    roleDescription: safeAttributeString(element, "AXRoleDescription"),
-    name: safeString(() => element.name()),
-    value: safeString(() => element.value()),
-    description: safeString(() => element.description()),
-    focused: safeBool(() => element.focused()),
-    enabled: safeBool(() => element.enabled()),
-    actions: safeActions(element),
-    bounds: safeBounds(element),
-    children: [],
-  };
-  if (depth >= limits.maxDepth) {
-    markTruncated("max_depth");
-    return node;
-  }
-  const childEntries = collectChildren(element);
-  for (const childEntry of childEntries) {
-    const child = describe(childEntry.child, id + "." + childEntry.segment, depth + 1);
-    if (child !== undefined) {
-      node.children.push(child);
-    }
-  }
-  return node;
-}
-const processes = systemEvents.processes.whose({ name: appName })();
-if (processes.length === 0) {
-  JSON.stringify({ app: appName, snapshotId, elements: [] });
-} else {
-  const process = processes[0];
-  enableBestEffortAccessibilityModes(process);
-  const windows = process.windows().slice(0, limits.maxWindows);
-  JSON.stringify({
-    app: appName,
-    snapshotId,
-    elements: windows
-      .map((window, index) => describe(window, "w" + index, 0))
-      .filter((element) => element !== undefined),
-    nodeCount,
-    truncated,
-    truncationReasons,
-  });
-}
-`;
-}
-
-function targetProcessScript(app: string): string {
-  return `
-const appName = ${jxaString(app)};
-const systemEvents = Application("System Events");
-const processes = systemEvents.processes.whose({ name: appName })();
-if (processes.length === 0) throw new Error("App is not running: " + appName);
-const process = processes[0];
-const pid = Number(process.unixId());
-if (!Number.isFinite(pid) || pid <= 0) {
-  throw new Error("Unable to resolve process id for app: " + appName);
-}
-`;
-}
-
-function targetedKeyPressScript(
-  app: string,
-  parsed: ParsedComputerUseKeyPress,
-): string {
-  return `
-ObjC.import("ApplicationServices");
-${targetProcessScript(app)}
-function postKey(keyCode, keyDown, flags) {
-  const event = $.CGEventCreateKeyboardEvent(null, keyCode, keyDown);
-  $.CGEventSetFlags(event, flags);
-  $.CGEventPostToPid(pid, event);
-  $.CFRelease(event);
-}
-const flags = ${parsed.flags};
-const modifiers = ${JSON.stringify(parsed.modifiers)};
-let activeFlags = 0;
-for (const modifier of modifiers) {
-  activeFlags |= modifier.flag;
-  postKey(modifier.keyCode, true, activeFlags);
-}
-postKey(${parsed.keyCode}, true, flags);
-postKey(${parsed.keyCode}, false, flags);
-for (let index = modifiers.length - 1; index >= 0; index -= 1) {
-  activeFlags &= ~modifiers[index].flag;
-  postKey(modifiers[index].keyCode, false, activeFlags);
-}
-JSON.stringify({ pid });
-`;
-}
-
-const MOUSE_BUTTON_EVENT_CONFIG = Object.freeze({
-  left: { button: 0, down: 1, up: 2 },
-  right: { button: 1, down: 3, up: 4 },
-  middle: { button: 2, down: 25, up: 26 },
-} satisfies Record<
-  ComputerUseMouseButton,
-  { readonly button: number; readonly down: number; readonly up: number }
->);
-
-function targetedMouseClickScript(
-  app: string,
-  x: number,
-  y: number,
-  button: ComputerUseMouseButton,
-  clickCount: number,
-): string {
-  const events = MOUSE_BUTTON_EVENT_CONFIG[button];
-  return `
-ObjC.import("ApplicationServices");
-${targetProcessScript(app)}
-const point = $.CGPointMake(${x}, ${y});
-function postMouseEvent(type, clickState) {
-  const event = $.CGEventCreateMouseEvent(null, type, point, ${events.button});
-  $.CGEventSetIntegerValueField(event, $.kCGMouseEventClickState, clickState);
-  $.CGEventPostToPid(pid, event);
-  $.CFRelease(event);
-}
-for (let clickIndex = 1; clickIndex <= ${clickCount}; clickIndex += 1) {
-  postMouseEvent(${events.down}, clickIndex);
-  postMouseEvent(${events.up}, clickIndex);
-  if (clickIndex < ${clickCount}) delay(0.05);
-}
-JSON.stringify({ pid });
-`;
-}
-
-function resolveElementScript(app: string, elementId: string): string {
-  return `
-const appName = ${jxaString(app)};
-const elementId = ${jxaString(elementId)};
-const systemEvents = Application("System Events");
-function asArray(value) {
-  if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) return value;
-  try {
-    if (typeof value.length === "number") {
-      return Array.prototype.slice.call(value);
-    }
-  } catch (_error) {
-    return [];
-  }
-  return [value];
-}
-function attributeChildren(element, attributeName) {
-  try {
-    return asArray(element.attributes.byName(attributeName).value());
-  } catch (_error) {
-    return [];
-  }
-}
-function childForSegment(element, part) {
-  const index = Number(part.slice(1));
-  if (!Number.isInteger(index) || index < 0) {
-    throw new Error("Invalid element id segment: " + part);
-  }
-  if (part.startsWith("e")) {
-    return element.uiElements()[index];
-  }
-  if (part.startsWith("r")) {
-    return element.rows()[index];
-  }
-  if (part.startsWith("c")) {
-    return attributeChildren(element, "AXContents")[index];
-  }
-  if (part.startsWith("v")) {
-    return attributeChildren(element, "AXVisibleChildren")[index];
-  }
-  throw new Error("Invalid element id segment: " + part);
-}
-function resolve(process, id) {
-  const parts = id.split(".");
-  let current = null;
-  for (const part of parts) {
-    const index = Number(part.slice(1));
-    if (part.startsWith("w")) {
-      current = process.windows()[index];
-    } else if (part.startsWith("e") && current) {
-      current = childForSegment(current, part);
-    } else if ((part.startsWith("r") || part.startsWith("c") || part.startsWith("v")) && current) {
-      current = childForSegment(current, part);
-    } else {
-      throw new Error("Invalid element id: " + id);
-    }
-    if (!current) throw new Error("Element not found: " + id);
-  }
-  if (!current) throw new Error("Element not found: " + id);
-  return current;
-}
-const processes = systemEvents.processes.whose({ name: appName })();
-if (processes.length === 0) throw new Error("App is not running: " + appName);
-const element = resolve(processes[0], elementId);
-`;
-}
-
 async function listApps(
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  const output = await runJxaCommand(`
-const systemEvents = Application("System Events");
-const apps = systemEvents.applicationProcesses.whose({ backgroundOnly: false })()
-  .map((app) => String(app.name()))
-  .sort();
-JSON.stringify(apps);
-`);
-  const apps = JSON.parse(output) as string[];
+  const apps = [...(await nativeBackend.listApps())].sort();
   return { status: "succeeded", result: { apps, text: apps.join("\n") } };
 }
 
 async function getAppState(
   app: string,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
   captureScreenshot: ComputerUseScreenshotCapture,
   snapshotStore: ComputerUseSnapshotStore,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
-  const output = await runJxaCommand(appStateScript(app, id));
   const snapshot = normalizeAccessibilitySnapshot(
-    JSON.parse(output) as AccessibilityAppStateSnapshot,
+    await nativeBackend.getAppState(app, id),
   );
   const windowBounds = snapshotWindowCaptureCandidates(snapshot);
   let screenshot: ComputerUseScreenshotCaptureResult;
@@ -1164,9 +815,9 @@ async function getAppState(
 
 async function openApp(
   app: string,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxaCommand(`Application(${jxaString(app)}).activate();`);
+  await nativeBackend.openApp(app);
   return {
     status: "succeeded",
     result: {
@@ -1244,7 +895,7 @@ async function clickElement(args: {
   readonly y: number | null;
   readonly button: ComputerUseMouseButton;
   readonly clickCount: number;
-  readonly runJxaCommand: RunJxa;
+  readonly nativeBackend: ComputerUseNativeBackend;
   readonly snapshotStore: ComputerUseSnapshotStore;
 }): Promise<ComputerUseCommandExecutionResult> {
   if (args.elementId) {
@@ -1253,12 +904,12 @@ async function clickElement(args: {
         "element.click with element id only supports the left button; use coordinates for right or middle clicks",
       );
     }
-    await args.runJxaCommand(`
-${resolveElementScript(args.app, args.elementId)}
-for (let clickIndex = 0; clickIndex < ${args.clickCount}; clickIndex += 1) {
-element.click();
-}
-`);
+    await args.nativeBackend.clickElement({
+      app: args.app,
+      elementId: args.elementId,
+      button: args.button,
+      clickCount: args.clickCount,
+    });
     return {
       status: "succeeded",
       result: {
@@ -1286,15 +937,13 @@ element.click();
     if ("status" in screenPoint) {
       return screenPoint;
     }
-    await args.runJxaCommand(
-      targetedMouseClickScript(
-        args.app,
-        screenPoint.screenX,
-        screenPoint.screenY,
-        args.button,
-        args.clickCount,
-      ),
-    );
+    await args.nativeBackend.clickPoint({
+      app: args.app,
+      x: screenPoint.screenX,
+      y: screenPoint.screenY,
+      button: args.button,
+      clickCount: args.clickCount,
+    });
     return {
       status: "succeeded",
       result: {
@@ -1322,12 +971,9 @@ async function setElementValue(
   app: string,
   elementId: string,
   value: string,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxaCommand(`
-${resolveElementScript(app, elementId)}
-element.value = ${jxaString(value)};
-`);
+  await nativeBackend.setElementValue({ app, elementId, value });
   return {
     status: "succeeded",
     result: {
@@ -1345,12 +991,9 @@ async function performElementAction(
   app: string,
   elementId: string,
   action: string,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxaCommand(`
-${resolveElementScript(app, elementId)}
-element.actions.byName(${jxaString(action)}).perform();
-`);
+  await nativeBackend.performElementAction({ app, elementId, action });
   return {
     status: "succeeded",
     result: {
@@ -1368,70 +1011,9 @@ element.actions.byName(${jxaString(action)}).perform();
 async function typeText(
   app: string,
   text: string,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandExecutionResult> {
-  const output = await runJxaCommand(`
-const inputText = ${jxaString(text)};
-${targetProcessScript(app)}
-function safeString(read) {
-  try {
-    const value = read();
-    if (value === undefined || value === null) return undefined;
-    return String(value);
-  } catch (_error) {
-    return undefined;
-  }
-}
-function focusedElement(process) {
-  try {
-    return process.attributes.byName("AXFocusedUIElement").value();
-  } catch (_error) {
-    return null;
-  }
-}
-const element = focusedElement(process);
-if (!element) {
-  JSON.stringify({
-    status: "failed",
-    message: "keyboard.type_text requires a focused editable text element in " + appName,
-  });
-} else {
-  const role = safeString(() => element.role());
-  const description = safeString(() => element.description());
-  const editableRoles = [
-    "AXComboBox",
-    "AXSearchField",
-    "AXTextArea",
-    "AXTextField",
-    "AXTextView",
-  ];
-  const editable = editableRoles.includes(role);
-  if (!editable) {
-    JSON.stringify({
-      status: "failed",
-      message: "keyboard.type_text requires a focused editable text element in " + appName,
-      role,
-      description,
-    });
-  } else {
-    const currentValue = safeString(() => element.value()) ?? "";
-    element.value = currentValue + inputText;
-    JSON.stringify({
-      status: "succeeded",
-      role,
-      description,
-    });
-  }
-}
-`);
-  const result = parseJsonRecord(output);
-  if (result.status === "failed") {
-    return unsupportedCommand(
-      recordString(result, "message") ??
-        "keyboard.type_text requires a focused editable text element",
-    );
-  }
-
+  const result = await nativeBackend.typeText({ app, text });
   return {
     status: "succeeded",
     result: {
@@ -1439,7 +1021,7 @@ if (!element) {
       dispatchMode: "accessibility_value",
       dispatchTarget: "focused_editable_element",
       inputRisk: "targeted_app_text",
-      role: recordString(result, "role"),
+      role: result.role,
       text: "Typed text",
     },
   };
@@ -1448,10 +1030,17 @@ if (!element) {
 async function pressKey(
   app: string,
   key: string,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
   const parsed = parseComputerUseKeyPress(key);
-  await runJxaCommand(targetedKeyPressScript(app, parsed));
+  const request: ComputerUseNativePressKeyRequest = {
+    app,
+    keyCode: parsed.keyCode,
+    modifiers: parsed.modifiers,
+    flags: parsed.flags,
+    normalizedKey: parsed.normalizedKey,
+  };
+  await nativeBackend.pressKey(request);
   return {
     status: "succeeded",
     result: {
@@ -1470,21 +1059,9 @@ async function scrollElement(
   elementId: string,
   direction: string,
   pages: number,
-  runJxaCommand: RunJxa,
+  nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  const axis =
-    direction === "left" || direction === "right"
-      ? "AXHorizontalScrollBar"
-      : "AXVerticalScrollBar";
-  const sign = direction === "up" || direction === "left" ? -1 : 1;
-  await runJxaCommand(`
-${resolveElementScript(app, elementId)}
-const scrollBars = element.uiElements.whose({ role: ${jxaString(axis)} })();
-if (scrollBars.length > 0) {
-  const scrollBar = scrollBars[0];
-  scrollBar.value = Number(scrollBar.value()) + ${sign * pages};
-}
-`);
+  await nativeBackend.scrollElement({ app, elementId, direction, pages });
   return {
     status: "succeeded",
     result: {
@@ -1498,44 +1075,6 @@ if (scrollBars.length > 0) {
       text: `Scrolled ${elementId}`,
     },
   };
-}
-
-function missingField(field: string): ComputerUseCommandFailure {
-  return {
-    status: "failed",
-    error: {
-      code: "unsupported_command",
-      message: `Missing required payload field: ${field}`,
-    },
-  };
-}
-
-function payloadNumber(
-  payload: Record<string, unknown>,
-  key: string,
-): number | null {
-  const value = payload[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function payloadMouseButton(
-  payload: Record<string, unknown>,
-): ComputerUseMouseButton {
-  const value = payload.button;
-  if (value === "right" || value === "middle") {
-    return value;
-  }
-  return "left";
-}
-
-function payloadClickCount(payload: Record<string, unknown>): number {
-  const value = payload.clickCount;
-  return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 1 &&
-    value <= 3
-    ? value
-    : 1;
 }
 
 export async function executeComputerUseCommand(
@@ -1552,12 +1091,13 @@ export async function executeComputerUseCommand(
   }
 
   try {
-    const runJxaCommand = dependencies.runJxa ?? runJxa;
+    const nativeBackend =
+      dependencies.nativeBackend ?? createComputerUseNativeBackend();
     const snapshotStore =
       dependencies.snapshotStore ?? new ComputerUseSnapshotStore();
     const app = payloadString(command.payload, "app");
     if (command.kind === "apps.list") {
-      return await listApps(runJxaCommand);
+      return await listApps(nativeBackend);
     }
     if (!app) {
       return missingField("app");
@@ -1569,13 +1109,13 @@ export async function executeComputerUseCommand(
       }
       return await getAppState(
         app,
-        runJxaCommand,
+        nativeBackend,
         dependencies.captureScreenshot,
         snapshotStore,
       );
     }
     if (command.kind === "app.open") {
-      return await openApp(app, runJxaCommand);
+      return await openApp(app, nativeBackend);
     }
     if (command.kind === "element.click") {
       const x = payloadNumber(command.payload, "x");
@@ -1594,7 +1134,7 @@ export async function executeComputerUseCommand(
         }
         const snapshotResult = await getAppState(
           app,
-          runJxaCommand,
+          nativeBackend,
           dependencies.captureScreenshot,
           snapshotStore,
         );
@@ -1610,7 +1150,7 @@ export async function executeComputerUseCommand(
         y,
         button: payloadMouseButton(command.payload),
         clickCount: payloadClickCount(command.payload),
-        runJxaCommand,
+        nativeBackend,
         snapshotStore,
       });
     }
@@ -1628,7 +1168,7 @@ export async function executeComputerUseCommand(
         elementId,
         direction,
         payloadNumber(command.payload, "pages") ?? 1,
-        runJxaCommand,
+        nativeBackend,
       );
     }
     if (command.kind === "element.set_value") {
@@ -1640,7 +1180,7 @@ export async function executeComputerUseCommand(
       if (!value) {
         return missingField("value");
       }
-      return await setElementValue(app, elementId, value, runJxaCommand);
+      return await setElementValue(app, elementId, value, nativeBackend);
     }
     if (command.kind === "element.perform_action") {
       const elementId = payloadString(command.payload, "elementId");
@@ -1651,23 +1191,32 @@ export async function executeComputerUseCommand(
       if (!action) {
         return missingField("action");
       }
-      return await performElementAction(app, elementId, action, runJxaCommand);
+      return await performElementAction(app, elementId, action, nativeBackend);
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");
       return text
-        ? await typeText(app, text, runJxaCommand)
+        ? await typeText(app, text, nativeBackend)
         : missingField("text");
     }
     if (command.kind === "keyboard.press_key") {
       const key = payloadString(command.payload, "key");
       return key
-        ? await pressKey(app, key, runJxaCommand)
+        ? await pressKey(app, key, nativeBackend)
         : missingField("key");
     }
   } catch (error) {
     if (error instanceof UnsupportedComputerUseCommandError) {
       return unsupportedCommand(error.message);
+    }
+    if (error instanceof ComputerUseNativeHelperError) {
+      return {
+        status: "failed",
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      };
     }
     return {
       status: "failed",

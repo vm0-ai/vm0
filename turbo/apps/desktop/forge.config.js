@@ -32,6 +32,7 @@ module.exports = {
       CFBundleIconFile: "icon.icns",
     },
     asar: false,
+    extraResource: [path.join(__dirname, "native", "dist", "native")],
     osxSign: {
       hardenedRuntime: false,
       identity: "-",
@@ -51,6 +52,8 @@ module.exports = {
     ignore: [
       /^\/node_modules($|\/)/,
       /^\/src($|\/)/,
+      /^\/native($|\/)/,
+      /^\/scripts($|\/)/,
       /^\/\.turbo($|\/)/,
       /^\/\.npmrc$/,
       /^\/README\.md$/,
