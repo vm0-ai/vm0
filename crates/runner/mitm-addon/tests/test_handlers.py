@@ -3389,6 +3389,70 @@ class TestResponseUsageReporting:
             "tokens.cache_read": 10,
         }
 
+    def test_full_pipeline_model_websocket_zero_frame_preserves_billed_usage_and_id(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 40,
+                        },
+                    },
+                }
+            ).encode(),
+        )
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_empty",
+                        "model": "gpt-5.4",
+                        "usage": {
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "input_tokens_details": {"cached_tokens": 0},
+                        },
+                    },
+                }
+            ).encode(),
+        )
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.websocket_end(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
+        assert by_category == {
+            "tokens.input": 100,
+            "tokens.output": 40,
+        }
+        assert idempotency_by_category == {
+            "tokens.input": _model_usage_idempotency_key(
+                "run-abc-123", "resp_ws_1", "tokens.input"
+            ),
+            "tokens.output": _model_usage_idempotency_key(
+                "run-abc-123", "resp_ws_1", "tokens.output"
+            ),
+        }
+        assert {event["provider"] for event in events} == {"gpt-5.5"}
+
     def test_model_websocket_zero_frame_preserves_prior_positive_usage(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 

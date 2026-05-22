@@ -55,9 +55,19 @@ def _is_usage_quantity(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def _store_quantity(target: dict, category: str, value: object) -> None:
+def _store_quantity(target: dict, category: str, value: object) -> bool:
     if _is_usage_quantity(value) and (value > 0 or category not in target):
         target[category] = value
+        return True
+    return False
+
+
+def _has_positive_usage_quantity(values: dict) -> bool:
+    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
+        value = values.get(category)
+        if _is_usage_quantity(value) and value > 0:
+            return True
+    return False
 
 
 def _split_input_tokens(
@@ -109,6 +119,15 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
 
 
 def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
+    target_has_positive_quantity = _has_positive_usage_quantity(target)
+    source_has_positive_quantity = _has_positive_usage_quantity(source)
+    stored_quantity = False
+    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
+        stored_quantity = _store_quantity(target, category, source.get(category)) or stored_quantity
+
+    if not stored_quantity or (target_has_positive_quantity and not source_has_positive_quantity):
+        return
+
     model = source.get("model")
     if isinstance(model, str) and model:
         target["model"] = model
@@ -116,9 +135,6 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     message_id = source.get("message_id")
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
-
-    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
-        _store_quantity(target, category, source.get(category))
 
 
 def _has_response_wrapper_values(values: dict) -> bool:

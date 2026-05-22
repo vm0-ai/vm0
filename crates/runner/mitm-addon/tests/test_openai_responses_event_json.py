@@ -176,7 +176,6 @@ def test_merge_preserves_positive_quantities_when_source_has_zero():
         "model": "gpt-5.5",
         "tokens.input": 75,
         "tokens.output": 40,
-        "tokens.cache_read": 25,
     }
 
     merge_openai_responses_usage_result(
@@ -184,6 +183,35 @@ def test_merge_preserves_positive_quantities_when_source_has_zero():
         {
             "message_id": "resp_1",
             "model": "gpt-5.5",
+            "tokens.input": 0,
+            "tokens.output": 0,
+            "tokens.cache_read": 0,
+        },
+    )
+
+    assert target == {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.input": 75,
+        "tokens.output": 40,
+        "tokens.cache_read": 0,
+    }
+
+
+def test_merge_zero_only_source_does_not_relabel_existing_positive_usage():
+    target = {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.input": 75,
+        "tokens.output": 40,
+        "tokens.cache_read": 25,
+    }
+
+    merge_openai_responses_usage_result(
+        target,
+        {
+            "message_id": "resp_empty",
+            "model": "gpt-5.4",
             "tokens.input": 0,
             "tokens.output": 0,
             "tokens.cache_read": 0,
