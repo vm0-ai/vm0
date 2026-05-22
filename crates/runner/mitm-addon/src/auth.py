@@ -105,6 +105,40 @@ def _prepare_firewall_metadata(
     flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
 
 
+def _set_firewall_failure_response(
+    flow: http.HTTPFlow,
+    *,
+    status: int,
+    action: str,
+    error_code: str,
+    message: str,
+    permission: str,
+    firewall_base: str,
+    connectors: list[str] | None = None,
+) -> None:
+    """Set the common firewall failure metadata and JSON response envelope."""
+    # `firewall_action` records the firewall permission decision
+    # (ALLOW/DENY/BLOCK); `firewall_error` records post-decision execution
+    # failures. They are orthogonal: for example, action=ALLOW can pair with
+    # an auth or forwarding error when the firewall granted the request but
+    # the addon could not fulfill it. See #10493.
+    flow.metadata["firewall_action"] = action
+    flow.metadata["firewall_error"] = error_code
+    body: dict[str, object] = {
+        "error": error_code,
+        "message": message,
+        "permission": permission,
+        "base": firewall_base,
+    }
+    if connectors:
+        body["connectors"] = connectors
+    flow.response = http.Response.make(
+        status,
+        json.dumps(body).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 def request_force_refresh(cache_key: tuple[str, str]) -> None:
     """Request a forced token refresh on the next /firewall/auth fetch.
 
@@ -545,28 +579,14 @@ async def handle_firewall_request(
             type="firewall",
             firewall_base=firewall_base,
         )
-        # `firewall_action` records the firewall's permission decision
-        # (ALLOW/DENY/BLOCK); `firewall_error` records post-decision
-        # execution failures. They are orthogonal — the firewall granted
-        # the request, but we cannot fulfill it because auth is missing,
-        # so action=ALLOW + error=<reason> is the correct combination
-        # (applies to the two analogous 502 paths below as well).
-        # Permission-usage analytics should read `action`; execution error
-        # rates should aggregate independently on `firewall_error`.
-        # See #10493 for why this is not a miscategorization.
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_error"] = "auth_unavailable"
-        flow.response = http.Response.make(
-            502,
-            json.dumps(
-                {
-                    "error": "auth_unavailable",
-                    "message": "Auth secrets not configured",
-                    "permission": match_info.get("name", ""),
-                    "base": firewall_base,
-                }
-            ).encode(),
-            {"Content-Type": "application/json"},
+        _set_firewall_failure_response(
+            flow,
+            status=502,
+            action="ALLOW",
+            error_code="auth_unavailable",
+            message="Auth secrets not configured",
+            permission=match_info.get("name", ""),
+            firewall_base=firewall_base,
         )
         return
 
@@ -593,20 +613,15 @@ async def handle_firewall_request(
             type="firewall",
             firewall_base=firewall_base,
         )
-        flow.metadata["firewall_action"] = "BLOCK"
-        flow.metadata["firewall_error"] = "connector_not_configured"
-        error_body: dict = {
-            "error": "connector_not_configured",
-            "message": str(e),
-            "permission": fw_name,
-            "base": firewall_base,
-        }
-        if fw_name:
-            error_body["connectors"] = [fw_name]
-        flow.response = http.Response.make(
-            424,
-            json.dumps(error_body).encode(),
-            {"Content-Type": "application/json"},
+        _set_firewall_failure_response(
+            flow,
+            status=424,
+            action="BLOCK",
+            error_code="connector_not_configured",
+            message=str(e),
+            permission=fw_name,
+            firewall_base=firewall_base,
+            connectors=[fw_name] if fw_name else None,
         )
         return
     except InsufficientCreditsError as e:
@@ -617,19 +632,14 @@ async def handle_firewall_request(
             type="firewall",
             firewall_base=firewall_base,
         )
-        flow.metadata["firewall_action"] = "BLOCK"
-        flow.metadata["firewall_error"] = "insufficient_credits"
-        flow.response = http.Response.make(
-            402,
-            json.dumps(
-                {
-                    "error": "insufficient_credits",
-                    "message": str(e),
-                    "permission": match_info.get("name", ""),
-                    "base": firewall_base,
-                }
-            ).encode(),
-            {"Content-Type": "application/json"},
+        _set_firewall_failure_response(
+            flow,
+            status=402,
+            action="BLOCK",
+            error_code="insufficient_credits",
+            message=str(e),
+            permission=match_info.get("name", ""),
+            firewall_base=firewall_base,
         )
         return
     except Exception as e:
@@ -640,19 +650,14 @@ async def handle_firewall_request(
             type="firewall",
             firewall_base=firewall_base,
         )
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_error"] = "auth_failed"
-        flow.response = http.Response.make(
-            502,
-            json.dumps(
-                {
-                    "error": "auth_failed",
-                    "message": f"Failed to resolve auth headers: {e}",
-                    "permission": match_info.get("name", ""),
-                    "base": firewall_base,
-                }
-            ).encode(),
-            {"Content-Type": "application/json"},
+        _set_firewall_failure_response(
+            flow,
+            status=502,
+            action="ALLOW",
+            error_code="auth_failed",
+            message=f"Failed to resolve auth headers: {e}",
+            permission=match_info.get("name", ""),
+            firewall_base=firewall_base,
         )
         return
 
@@ -691,18 +696,14 @@ async def handle_firewall_request(
                 type="firewall",
                 firewall_base=firewall_base,
             )
-            flow.metadata["firewall_action"] = "ALLOW"
-            flow.metadata["firewall_error"] = "url_rewrite_forward_failed"
-            flow.response = http.Response.make(
-                502,
-                json.dumps(
-                    {
-                        "error": "url_rewrite_forward_failed",
-                        "message": "Failed to forward request to upstream",
-                        "permission": match_info.get("name", ""),
-                    }
-                ).encode(),
-                {"Content-Type": "application/json"},
+            _set_firewall_failure_response(
+                flow,
+                status=502,
+                action="ALLOW",
+                error_code="url_rewrite_forward_failed",
+                message="Failed to forward request to upstream",
+                permission=match_info.get("name", ""),
+                firewall_base=firewall_base,
             )
             return
 

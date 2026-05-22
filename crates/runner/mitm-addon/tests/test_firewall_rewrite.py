@@ -827,6 +827,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert flow.response.status_code == 502
         body = json.loads(flow.response.content)
         assert body["error"] == "url_rewrite_forward_failed"
+        assert body["base"] == api_entry["base"]
         # Failure must not masquerade as a successful rewrite.
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.metadata["firewall_action"] == "ALLOW"
