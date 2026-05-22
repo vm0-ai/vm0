@@ -2798,6 +2798,8 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::fmt;
+    use std::os::fd::AsRawFd;
+    use std::sync::atomic::AtomicU32;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
     use tracing::{Event, Level, Subscriber};
@@ -3204,6 +3206,81 @@ mod tests {
             ),
             vec![Level::WARN]
         );
+    }
+
+    #[tokio::test]
+    async fn dispatch_result_logs_supervised_terminal_result_with_supervised_lifecycle() {
+        let (result_tx, mut result_rx) = oneshot::channel();
+        let (_read_stream, write_stream) = tokio::net::UnixStream::pair().unwrap();
+        let fd = write_stream.as_raw_fd();
+        let (_read_half, write_half) = write_stream.into_split();
+        let shared = Arc::new(Shared {
+            writer: tokio::sync::Mutex::new(write_half),
+            fd,
+            seq: AtomicU32::new(2),
+            state: std::sync::Mutex::new(ConnectionState::Connected {
+                pending: HashMap::new(),
+                operations: Operations::new(),
+            }),
+            normal_operations: crate::operation_tracker::NormalOperationTracker::new(),
+            close_notify: tokio::sync::Notify::new(),
+        });
+        let mut diagnostic = ExecOperationDiagnostic::new(7, "dispatch-terminal-log", &[]);
+        diagnostic.registered_at =
+            Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
+        {
+            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            let ConnectionState::Connected { operations, .. } = &mut *guard else {
+                panic!("test shared state must be connected");
+            };
+            operations.insert(
+                7,
+                ExecOperation {
+                    normal_operation: None,
+                    lifecycle: ExecOperationLifecycle::SupervisedStarted {
+                        pid: 42,
+                        control_nonce: None,
+                    },
+                    diagnostic,
+                    result_tx,
+                    stream_tx: None,
+                    stdout_capture: ExecCaptureState::Discard,
+                    stderr_capture: ExecCaptureState::Discard,
+                    stdout_stream: None,
+                    stderr_stream: None,
+                    expected_output_seq: 0,
+                    stream_overflowed: false,
+                    pending_controls: HashMap::new(),
+                },
+            );
+        }
+        let payload = vsock_proto::encode_exec_result(
+            ExecTermination::Exited { exit_code: 0 },
+            10,
+            ExecCapturedOutput::Discarded,
+            ExecCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        let msg = RawMessage {
+            msg_type: MSG_EXEC_RESULT,
+            seq: 7,
+            payload,
+        };
+
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            dispatch_result(&shared, &msg).unwrap();
+        });
+
+        let events = captured.events();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::INFO);
+        assert_terminal_log_field(&events[0], "label", "dispatch-terminal-log");
+        let result = result_rx.try_recv().unwrap().unwrap();
+        assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     }
 
     #[test]
