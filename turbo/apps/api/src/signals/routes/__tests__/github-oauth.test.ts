@@ -822,7 +822,7 @@ describe("GitHub OAuth API routes", () => {
     expect(location).toContain("Missing%20default%20agent");
   });
 
-  it("creates a pending installation for request actions", async () => {
+  it("redirects request actions with an installation permission error", async () => {
     const fixture = await seedComposeFixture(cleanup);
     const targetId = "777888999";
     cleanup.targetIds.push(targetId);
@@ -839,18 +839,12 @@ describe("GitHub OAuth API routes", () => {
     const location = new URL(response.headers.get("location")!);
     expect(location.origin).toBe(APP_ORIGIN);
     expect(location.pathname).toBe("/works");
-    expect(location.searchParams.get("github")).toBe("pending");
+    expect(location.searchParams.get("error")).toBe(
+      "You don't have permission to install this GitHub App. Ask a GitHub organization owner to install it, then try again.",
+    );
+    expect(location.searchParams.has("github")).toBeFalsy();
     const installations = await findInstallationByTargetId(targetId);
-    expect(installations).toHaveLength(1);
-    expect(installations[0]).toMatchObject({
-      installationId: null,
-      encryptedAccessToken: null,
-      status: "pending",
-      targetId,
-      targetType: "Organization",
-      orgId: fixture.orgId,
-      defaultComposeId: fixture.composeId,
-    });
+    expect(installations).toHaveLength(0);
   });
 
   it("redirects callback with an error when installation id is missing", async () => {

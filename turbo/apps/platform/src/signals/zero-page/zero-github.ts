@@ -47,6 +47,7 @@ interface GithubIntegrationStatus {
 
 const internalReload$ = state(0);
 const internalAddListenerDialogOpen$ = state(false);
+const internalEditingListenerId$ = state<string | null>(null);
 const internalGithubIntegrationStatus$ = state<GithubIntegrationStatus | null>(
   null,
 );
@@ -156,9 +157,19 @@ export const githubAddListenerDialogOpen$ = computed((get) => {
   return get(internalAddListenerDialogOpen$);
 });
 
+export const githubEditingListenerId$ = computed((get) => {
+  return get(internalEditingListenerId$);
+});
+
 export const setGithubAddListenerDialogOpen$ = command(
   ({ set }, open: boolean) => {
     set(internalAddListenerDialogOpen$, open);
+  },
+);
+
+export const setGithubEditingListenerId$ = command(
+  ({ set }, listenerId: string | null) => {
+    set(internalEditingListenerId$, listenerId);
   },
 );
 

@@ -669,8 +669,10 @@ describe("POST /api/internal/callbacks/github/issues", () => {
 
     expect(response.status).toBe(200);
     expect(capturedComments).toHaveLength(1);
-    expect(capturedComments[0]!.body).toContain("**Error:**");
-    expect(capturedComments[0]!.body).toContain("Agent crashed unexpectedly");
+    expect(capturedComments[0]!.body).not.toContain("**Error:**");
+    expect(capturedComments[0]!.body).toContain(
+      "Oops, something went wrong. Please try again later.",
+    );
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
@@ -755,6 +757,56 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     expect(issueSession).not.toBeNull();
     expect(issueSession!.agentSessionId).toBe(session.id);
     expect(issueSession!.userId).toBe(fixture.userId);
+    expect(issueSession!.lastCommentId).toBe(GITHUB_COMMENT_ID);
+  });
+
+  it("replaces a stale GitHub issue session when starting a new session", async () => {
+    const fixture = await track(seedFixture());
+    const installation = await seedGithubInstallation({
+      composeId: fixture.composeId,
+    });
+    if (!installation.installationId) {
+      throw new Error("Expected active installation to have remote ID");
+    }
+    mockGithubAppEnv();
+    setupGithubApiMocks(installation.installationId);
+    const staleSession = await seedAgentSession(fixture);
+    const payload: GitHubIssuesPayload = {
+      installationId: installation.id,
+      repo: "test-org/test-repo",
+      issueNumber: 42,
+      agentId: fixture.composeId,
+    };
+    await seedIssueSession({
+      userId: fixture.userId,
+      installationId: installation.id,
+      repo: payload.repo,
+      issueNumber: payload.issueNumber,
+      agentSessionId: staleSession.id,
+      lastCommentId: "old-comment-id",
+    });
+    const { runId, callbackId } = await seedRunAndCallback({
+      fixture,
+      payload,
+    });
+    const newSession = await seedAgentSession(fixture);
+    completedOutput();
+
+    const response = await postSignedCallback({
+      callbackId,
+      runId,
+      status: "completed",
+      payload,
+    });
+
+    expect(response.status).toBe(200);
+    const issueSession = await findIssueSession({
+      installationId: installation.id,
+      repo: payload.repo,
+      issueNumber: payload.issueNumber,
+    });
+    expect(issueSession).not.toBeNull();
+    expect(issueSession!.agentSessionId).toBe(newSession.id);
     expect(issueSession!.lastCommentId).toBe(GITHUB_COMMENT_ID);
   });
 

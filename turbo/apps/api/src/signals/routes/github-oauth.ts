@@ -1,8 +1,5 @@
 import { command } from "ccstate";
-import {
-  githubOauthContract,
-  type GithubAppSetupCallbackQuery,
-} from "@vm0/api-contracts/contracts/github-oauth";
+import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
 import {
   getConnectorOAuthConfig,
   getConnectorOAuthCredentials,
@@ -26,7 +23,6 @@ import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   buildGithubOauthState,
   createOrActivateGithubInstallation,
-  createPendingGithubInstallation,
   findGithubInstallationByInstallationId,
   getGithubInstallationAccessToken,
   getGithubInstallationInfo,
@@ -124,6 +120,9 @@ const GITHUB_INSTALL_ADMIN_REQUIRED =
 
 const GITHUB_SINGLE_INSTALLATION_REQUIRED =
   "GitHub is already installed for this organization";
+
+const GITHUB_INSTALL_GITHUB_ADMIN_REQUIRED =
+  "You don't have permission to install this GitHub App. Ask a GitHub organization owner to install it, then try again.";
 
 type ParsedGithubOauthState = NonNullable<
   ReturnType<typeof parseGithubOauthState>
@@ -293,25 +292,6 @@ const resolveGithubCallbackAccess$ = command(
     return { ok: true, orgAlreadyHasActiveInstallation };
   },
 );
-
-async function handlePendingGithubInstallation(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly composeId: string;
-  readonly query: GithubAppSetupCallbackQuery;
-  readonly signal: AbortSignal;
-}): Promise<Response> {
-  await createPendingGithubInstallation({
-    db: args.db,
-    orgId: args.orgId,
-    targetId: args.query.target_id ?? null,
-    targetType: args.query.target_type ?? "Organization",
-    composeId: args.composeId,
-    signal: args.signal,
-  });
-
-  return redirectResponse(appUrl("/works?github=pending"));
-}
 
 const connectGithubUserAfterSetup$ = command(
   async (
@@ -756,17 +736,7 @@ const callbackGithubOauth$ = command(
     }
 
     if (query.setup_action === "request") {
-      if (access.orgAlreadyHasActiveInstallation) {
-        return worksErrorRedirect(GITHUB_SINGLE_INSTALLATION_REQUIRED);
-      }
-
-      return await handlePendingGithubInstallation({
-        db,
-        orgId,
-        composeId,
-        query,
-        signal,
-      });
+      return worksErrorRedirect(GITHUB_INSTALL_GITHUB_ADMIN_REQUIRED);
     }
 
     const installationId = query.installation_id;

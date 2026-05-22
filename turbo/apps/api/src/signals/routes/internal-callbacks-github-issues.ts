@@ -11,6 +11,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, gte } from "drizzle-orm";
 
 import {
@@ -29,8 +30,12 @@ import {
 } from "../services/github-issues-api.service";
 import { getRunOutputText } from "../services/run-output.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { formatRunErrorLikeWebMessage } from "../services/zero-chat-thread.service";
 
 const L = logger("InternalCallbacksGithubIssues");
+const RUN_COMPLETED_FALLBACK_MESSAGE = "Task completed successfully.";
+const RUN_FAILED_FALLBACK_MESSAGE =
+  "The agent encountered an error during execution.";
 
 function successResponse(): {
   readonly status: 200;
@@ -129,6 +134,28 @@ async function saveIssueSession(args: {
     : undefined;
 
   if (!args.existingSessionId && newSessionId) {
+    const updated = await args.db
+      .update(githubIssueSessions)
+      .set({
+        userId: run.userId,
+        agentSessionId: newSessionId,
+        lastCommentId: args.commentId,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(githubIssueSessions.installationId, args.installationId),
+          eq(githubIssueSessions.repo, args.repo),
+          eq(githubIssueSessions.issueNumber, args.issueNumber),
+        ),
+      )
+      .returning({ id: githubIssueSessions.id });
+    args.signal.throwIfAborted();
+
+    if (updated.length > 0) {
+      return;
+    }
+
     await args.db
       .insert(githubIssueSessions)
       .values({
@@ -163,19 +190,23 @@ async function saveIssueSession(args: {
   }
 }
 
-function formatGitHubComment(args: {
-  readonly status: "completed" | "failed";
-  readonly agentName: string;
+function buildGitHubResponse(args: {
+  readonly markdown: string;
   readonly logsUrl?: string;
-  readonly output?: string;
-  readonly error?: string;
+}): string {
+  const parts = [args.markdown];
+  if (args.logsUrl) {
+    parts.push(`<sub>📋 [Audit](${args.logsUrl})</sub>`);
+  }
+  return parts.join("\n\n");
+}
+
+function formatGitHubComment(args: {
+  readonly agentName: string;
+  readonly response: string;
+  readonly logsUrl?: string;
   readonly triggerCommentBody?: string;
 }): string {
-  const content =
-    args.status === "completed"
-      ? (args.output ?? "Task completed successfully.")
-      : `**Error:** ${args.error ?? "Agent execution failed."}`;
-
   const parts: string[] = [];
   if (args.triggerCommentBody) {
     const quoted = args.triggerCommentBody
@@ -187,10 +218,14 @@ function formatGitHubComment(args: {
     parts.push(quoted, "");
   }
 
-  parts.push(`<sub>🤖 **${args.agentName}**</sub>`, "", content);
-  if (args.logsUrl) {
-    parts.push("", `<sub>📋 [Audit](${args.logsUrl})</sub>`);
-  }
+  parts.push(
+    `<sub>🤖 **${args.agentName}**</sub>`,
+    "",
+    buildGitHubResponse({
+      markdown: args.response,
+      logsUrl: args.logsUrl,
+    }),
+  );
 
   return parts.join("\n");
 }
@@ -230,6 +265,32 @@ async function resolveGitHubAuditLogsUrl(args: {
   }
 
   return `${env("VM0_WEB_URL")}/activities/${encodeURIComponent(args.runId)}`;
+}
+
+async function resolveGitHubRunError(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly errorMessage: string | undefined;
+  readonly formatRunError: (params: {
+    readonly chatThreadId: string | null | undefined;
+    readonly runId: string;
+    readonly errorMessage: string;
+  }) => Promise<string>;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const [run] = await args.db
+    .select({ chatThreadId: zeroRuns.chatThreadId })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, args.runId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return await args.formatRunError({
+    chatThreadId: run?.chatThreadId,
+    runId: args.runId,
+    errorMessage:
+      args.errorMessage ?? "The agent encountered an error during execution.",
+  });
 }
 
 const handleGithubIssuesCallback$ = command(
@@ -305,12 +366,28 @@ const handleGithubIssuesCallback$ = command(
       },
       signal,
     });
+    const errorDetail =
+      status === "failed"
+        ? await resolveGitHubRunError({
+            db,
+            runId,
+            errorMessage: error,
+            formatRunError: (params) => {
+              return get(formatRunErrorLikeWebMessage(params));
+            },
+            signal,
+          })
+        : undefined;
+    signal.throwIfAborted();
+    const responseText =
+      status === "completed"
+        ? (output ?? RUN_COMPLETED_FALLBACK_MESSAGE)
+        : (errorDetail ?? RUN_FAILED_FALLBACK_MESSAGE);
+
     const commentBody = formatGitHubComment({
-      status,
       agentName: agent.label,
+      response: responseText,
       logsUrl,
-      output,
-      error,
       triggerCommentBody: payload.triggerCommentBody,
     });
     const commentId = await postGithubIssueComment({

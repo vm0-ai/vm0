@@ -3,11 +3,22 @@ import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconArrowLeft,
-  IconLoader2,
+  IconDotsVertical,
+  IconPencil,
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
-import { Button, Card, CardContent } from "@vm0/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  cn,
+} from "@vm0/ui";
 import {
   Dialog,
   DialogClose,
@@ -36,10 +47,12 @@ import {
   deleteGithubLabelListener$,
   disconnectGithubInstallation$,
   githubAddListenerDialogOpen$,
+  githubEditingListenerId$,
   githubIntegrationData$,
   githubLabelListenerForm$,
   resetGithubLabelListenerForm$,
   setGithubAddListenerDialogOpen$,
+  setGithubEditingListenerId$,
   setGithubLabelListenerForm$,
   uninstallGithubInstallation$,
   updateGithubLabelListener$,
@@ -48,7 +61,6 @@ import {
   type GithubLabelTriggerMode,
 } from "../../signals/zero-page/zero-github.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
 
@@ -63,11 +75,38 @@ interface GithubAgentOption {
   readonly displayName?: string | null;
 }
 
-function getTriggerModeLabel(mode: GithubLabelTriggerMode): string {
-  if (mode === "created_by_me") {
-    return "Only issues/PRs I create";
+const TRIGGER_MODE_OPTIONS: readonly {
+  readonly value: GithubLabelTriggerMode;
+  readonly label: string;
+  readonly description: string;
+  readonly badgeClassName: string;
+}[] = [
+  {
+    value: "created_by_me",
+    label: "Created by me",
+    description:
+      "Runs only when the issue or PR author is your connected GitHub account.",
+    badgeClassName:
+      "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+  },
+  {
+    value: "anyone",
+    label: "Any author",
+    description:
+      "Runs when any issue or PR receives the matching GitHub label.",
+    badgeClassName:
+      "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20",
+  },
+];
+
+function getTriggerModeOption(mode: GithubLabelTriggerMode) {
+  const option = TRIGGER_MODE_OPTIONS.find((item) => {
+    return item.value === mode;
+  });
+  if (!option) {
+    throw new Error(`Unknown GitHub trigger mode: ${mode}`);
   }
-  return "Any issue/PR with this label";
+  return option;
 }
 
 function GithubSettingsSkeleton() {
@@ -98,14 +137,13 @@ function GithubListenerList({
   readonly listeners: readonly GithubListener[];
 }) {
   const pageSignal = useGet(pageSignal$);
+  const setOpen = useSet(setGithubAddListenerDialogOpen$);
+  const setEditingListenerId = useSet(setGithubEditingListenerId$);
+  const setForm = useSet(setGithubLabelListenerForm$);
   const [deleteLoadable, deleteListener] = useLoadableSet(
     deleteGithubLabelListener$,
   );
-  const [updateLoadable, updateListener] = useLoadableSet(
-    updateGithubLabelListener$,
-  );
   const deleting = deleteLoadable.state === "loading";
-  const updating = updateLoadable.state === "loading";
 
   if (listeners.length === 0) {
     return (
@@ -119,62 +157,71 @@ function GithubListenerList({
   return (
     <div className="divide-y divide-border/50">
       {listeners.map((listener) => {
+        const triggerModeBadge = getTriggerModeOption(listener.triggerMode);
         return (
           <div
             key={listener.id}
-            className="flex items-center gap-3 px-3 py-2.5"
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3"
           >
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium text-foreground">
-                  {listener.labelName}
-                </span>
-                {!listener.enabled ? (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                    Disabled
-                  </span>
-                ) : null}
-              </div>
-              <div className="truncate text-xs text-muted-foreground">
-                {listener.agent?.name ?? "Unknown agent"} -{" "}
-                {getTriggerModeLabel(listener.triggerMode)}
-              </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                {listener.labelName}
+              </span>
+              <span
+                className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium leading-none ${triggerModeBadge.badgeClassName}`}
+              >
+                {triggerModeBadge.label}
+              </span>
             </div>
-            <LoadingSwitch
-              checked={listener.enabled}
-              loading={updating}
-              size="sm"
-              ariaLabel={`Toggle ${listener.labelName} listener`}
-              onCheckedChange={(enabled) => {
-                detach(
-                  updateListener(
-                    { listenerId: listener.id, body: { enabled } },
-                    pageSignal,
-                  ),
-                  Reason.DomCallback,
-                );
-              }}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              disabled={deleting || updating}
-              aria-label={`Delete ${listener.labelName}`}
-              onClick={() => {
-                detach(
-                  deleteListener(listener.id, pageSignal),
-                  Reason.DomCallback,
-                );
-              }}
-            >
-              {deleting ? (
-                <IconLoader2 size={15} className="animate-spin" />
-              ) : (
-                <IconTrash size={15} />
-              )}
-            </Button>
+            {listener.canManage ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
+                    disabled={deleting}
+                    aria-label={`Actions for ${listener.labelName}`}
+                  >
+                    <IconDotsVertical size={14} stroke={1.5} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem
+                    className="gap-2"
+                    disabled={deleting}
+                    onSelect={() => {
+                      setForm({
+                        labelName: listener.labelName,
+                        agentId: listener.agent?.id ?? "",
+                        triggerMode: listener.triggerMode,
+                        prompt: listener.prompt,
+                      });
+                      setEditingListenerId(listener.id);
+                      setOpen(true);
+                    }}
+                  >
+                    <IconPencil size={14} stroke={1.5} />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="gap-2 text-destructive focus:text-destructive"
+                    disabled={deleting}
+                    onSelect={() => {
+                      detach(
+                        deleteListener(listener.id, pageSignal),
+                        Reason.DomCallback,
+                      );
+                    }}
+                  >
+                    <IconTrash size={14} stroke={1.5} />
+                    {deleting ? "Deleting..." : "Delete"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         );
       })}
@@ -245,54 +292,49 @@ function GithubTriggerModeField({
   readonly triggerMode: GithubLabelTriggerMode;
   readonly setForm: (patch: Partial<GithubLabelListenerForm>) => void;
 }) {
-  const choices: readonly {
-    readonly value: GithubLabelTriggerMode;
-    readonly label: string;
-  }[] = [
-    {
-      value: "created_by_me",
-      label: getTriggerModeLabel("created_by_me"),
-    },
-    {
-      value: "anyone",
-      label: getTriggerModeLabel("anyone"),
-    },
-  ];
-
   return (
-    <label className="flex flex-col gap-2 text-sm font-medium text-foreground">
-      Trigger mode
-      <Select
-        value={triggerMode}
-        disabled={creating}
-        onValueChange={(value) => {
-          const choice = choices.find((item) => {
-            return item.value === value;
-          });
-          if (!choice) {
-            throw new Error(`Unknown GitHub trigger mode: ${value}`);
-          }
-          setForm({ triggerMode: choice.value });
-        }}
+    <div className="flex flex-col gap-2">
+      <div className="text-sm font-medium text-foreground">Trigger mode</div>
+      <div
+        role="radiogroup"
+        aria-label="Trigger mode"
+        className="grid gap-2 sm:grid-cols-2"
       >
-        <SelectTrigger
-          aria-label="Trigger mode"
-          className="h-10 rounded-lg"
-          style={ZERO_BORDER}
-        >
-          <SelectValue placeholder="Select trigger mode" />
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((choice) => {
-            return (
-              <SelectItem key={choice.value} value={choice.value}>
-                {choice.label}
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-    </label>
+        {TRIGGER_MODE_OPTIONS.map((option) => {
+          const active = option.value === triggerMode;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={creating}
+              style={{
+                border: active
+                  ? "0.7px solid hsl(var(--primary))"
+                  : ZERO_BORDER.border,
+              }}
+              className={cn(
+                "flex min-h-[86px] flex-col gap-1 rounded-lg bg-card px-4 py-3 text-left transition-colors",
+                active && "bg-primary/5",
+                !active && !creating && "hover:bg-muted/40",
+                creating && "cursor-not-allowed opacity-50",
+              )}
+              onClick={() => {
+                setForm({ triggerMode: option.value });
+              }}
+            >
+              <span className="text-sm font-medium text-foreground">
+                {option.label}
+              </span>
+              <span className="text-[13px] leading-snug text-muted-foreground">
+                {option.description}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -325,11 +367,13 @@ function GithubPromptField({
 function GithubListenerForm({
   agents,
   onCancel,
-  onCreated,
+  onSaved,
+  listenerId,
 }: {
   readonly agents: readonly GithubAgentOption[];
   readonly onCancel: () => void;
-  readonly onCreated: () => void;
+  readonly onSaved: () => void;
+  readonly listenerId: string | null;
 }) {
   const form = useGet(githubLabelListenerForm$);
   const setForm = useSet(setGithubLabelListenerForm$);
@@ -338,7 +382,11 @@ function GithubListenerForm({
   const [createLoadable, createListener] = useLoadableSet(
     createGithubLabelListener$,
   );
-  const creating = createLoadable.state === "loading";
+  const [updateLoadable, updateListener] = useLoadableSet(
+    updateGithubLabelListener$,
+  );
+  const saving =
+    createLoadable.state === "loading" || updateLoadable.state === "loading";
   const selectedAgentId = form.agentId || agents[0]?.id || "";
   const canCreate = Boolean(
     form.labelName.trim() && form.prompt.trim() && selectedAgentId,
@@ -348,23 +396,38 @@ function GithubListenerForm({
     event.preventDefault();
     const labelName = form.labelName.trim();
     const prompt = form.prompt.trim();
-    if (!labelName || !prompt || !selectedAgentId || creating) {
+    if (!labelName || !prompt || !selectedAgentId || saving) {
       return;
     }
 
     detach(
       (async () => {
-        await createListener(
-          {
-            labelName,
-            agentId: selectedAgentId,
-            triggerMode: form.triggerMode,
-            prompt,
-          },
-          pageSignal,
-        );
+        if (listenerId) {
+          await updateListener(
+            {
+              listenerId,
+              body: {
+                labelName,
+                agentId: selectedAgentId,
+                triggerMode: form.triggerMode,
+                prompt,
+              },
+            },
+            pageSignal,
+          );
+        } else {
+          await createListener(
+            {
+              labelName,
+              agentId: selectedAgentId,
+              triggerMode: form.triggerMode,
+              prompt,
+            },
+            pageSignal,
+          );
+        }
         resetForm();
-        onCreated();
+        onSaved();
       })(),
       Reason.DomCallback,
     );
@@ -374,18 +437,18 @@ function GithubListenerForm({
     <form className="flex flex-col gap-5" onSubmit={submit}>
       <GithubListenerPrimaryFields
         agents={agents}
-        creating={creating}
+        creating={saving}
         form={form}
         selectedAgentId={selectedAgentId}
         setForm={setForm}
       />
       <GithubTriggerModeField
-        creating={creating}
+        creating={saving}
         triggerMode={form.triggerMode}
         setForm={setForm}
       />
       <GithubPromptField
-        creating={creating}
+        creating={saving}
         prompt={form.prompt}
         setForm={setForm}
       />
@@ -393,13 +456,19 @@ function GithubListenerForm({
         <Button
           type="button"
           variant="outline"
-          disabled={creating}
+          disabled={saving}
           onClick={onCancel}
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={!canCreate || creating}>
-          {creating ? "Adding..." : "Add listener"}
+        <Button type="submit" disabled={!canCreate || saving}>
+          {saving
+            ? listenerId
+              ? "Saving..."
+              : "Adding..."
+            : listenerId
+              ? "Save changes"
+              : "Add listener"}
         </Button>
       </DialogFooter>
     </form>
@@ -414,12 +483,23 @@ function AddGithubListenerDialog({
   readonly disabled: boolean;
 }) {
   const open = useGet(githubAddListenerDialogOpen$);
+  const editingListenerId = useGet(githubEditingListenerId$);
   const setOpen = useSet(setGithubAddListenerDialogOpen$);
+  const setEditingListenerId = useSet(setGithubEditingListenerId$);
   const resetForm = useSet(resetGithubLabelListenerForm$);
 
   const close = () => {
     setOpen(false);
+    setEditingListenerId(null);
+    resetForm();
   };
+
+  const title = editingListenerId
+    ? "Edit GitHub label listener"
+    : "Add GitHub label listener";
+  const description = editingListenerId
+    ? "Update this label trigger for GitHub issues and pull requests."
+    : "Create a label trigger for GitHub issues and pull requests.";
 
   return (
     <Dialog
@@ -427,6 +507,7 @@ function AddGithubListenerDialog({
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (!nextOpen) {
+          setEditingListenerId(null);
           resetForm();
         }
       }}
@@ -437,6 +518,10 @@ function AddGithubListenerDialog({
           variant="outline"
           disabled={disabled}
           className="h-8 gap-2 rounded-lg px-3 text-sm"
+          onClick={() => {
+            setEditingListenerId(null);
+            resetForm();
+          }}
         >
           <IconPlus size={14} stroke={1.8} />
           Add listener
@@ -444,15 +529,14 @@ function AddGithubListenerDialog({
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add GitHub label listener</DialogTitle>
-          <DialogDescription>
-            Create a label trigger for GitHub issues and pull requests.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <GithubListenerForm
           agents={agents}
           onCancel={close}
-          onCreated={close}
+          onSaved={close}
+          listenerId={editingListenerId}
         />
       </DialogContent>
     </Dialog>

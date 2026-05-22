@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   githubIssuesCallbackPayloadSchema,
   type GitHubIssuesCallbackPayload,
@@ -12,7 +13,7 @@ import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { command } from "ccstate";
+import { command, type Setter } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -21,7 +22,6 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
 import {
   addGithubCommentReaction,
   fetchGithubIssueComments,
@@ -30,11 +30,16 @@ import {
   type GithubIssueComment,
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
-import { encryptPersistentSecretValue } from "./crypto.utils";
-import { loadComposeFeatureSwitchContext } from "./github-oauth.service";
-import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
+import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
+import {
+  resolveIntegrationModelRouteForUser,
+  type IntegrationModelRoutePin,
+} from "./integration-model-route.service";
+import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("WebhookGithub");
+const RUN_START_FALLBACK_MESSAGE =
+  "An unexpected error occurred. Please try again later.";
 
 const gitHubUserSchema = z.object({
   id: z.number(),
@@ -137,7 +142,6 @@ interface DispatchParams {
   readonly matchedLabelName: string;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
-  readonly forceNewSession?: boolean;
   readonly apiStartTime: number;
 }
 
@@ -146,7 +150,6 @@ type ExistingSessionResult =
   | {
       readonly kind: "resolved";
       readonly sessionId: string | undefined;
-      readonly lastCommentId: string | null | undefined;
     };
 
 interface GitHubRunTarget {
@@ -155,16 +158,56 @@ interface GitHubRunTarget {
   readonly zeroAgentId: string;
 }
 
+interface GitHubRunDispatchResult {
+  readonly status: "accepted" | "queued" | "failed";
+  readonly runId?: string;
+  readonly response?: string;
+}
+
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildIntegrationPrompt(platform: "GitHub"): string {
-  return `# Current Integration\nYou are currently running inside: ${platform}`;
+function githubSubjectLabel(subjectKind: GitHubTriggerKind): string {
+  return subjectKind === "pull_request" ? "Pull Request" : "Issue";
 }
 
-function buildGitHubPrompt(issueContext: string): string {
-  return [buildIntegrationPrompt("GitHub"), issueContext]
+function githubSubjectUrl(args: {
+  readonly repo: string;
+  readonly issueNumber: number;
+  readonly subjectKind: GitHubTriggerKind;
+}): string {
+  const pathSegment = args.subjectKind === "pull_request" ? "pull" : "issues";
+  return `https://github.com/${args.repo}/${pathSegment}/${args.issueNumber}`;
+}
+
+function githubAppBotUsername(): string | undefined {
+  const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim();
+  if (!appSlug) {
+    return undefined;
+  }
+  return `@${appSlug}[bot]`;
+}
+
+function buildIntegrationPrompt(): string {
+  const headerParts = [
+    "# Current Integration",
+    "You are currently running inside: GitHub",
+  ];
+  const botUsername = githubAppBotUsername();
+  if (botUsername) {
+    headerParts.push(`Bot username: ${botUsername}`);
+  }
+  return headerParts.join("\n");
+}
+
+function buildGitHubPrompt(args: {
+  readonly issueContext: string;
+  readonly repo: string;
+  readonly issueNumber: number;
+  readonly subjectKind: GitHubTriggerKind;
+}): string {
+  return [buildIntegrationPrompt(), args.issueContext]
     .filter((part): part is string => {
       return Boolean(part);
     })
@@ -177,14 +220,76 @@ function normalizeLabelName(labelName: string): string {
 
 function buildPromptParts(
   prompt: string,
-  issueContext: string,
+  args: {
+    readonly issueContext: string;
+    readonly repo: string;
+    readonly issueNumber: number;
+    readonly subjectKind: GitHubTriggerKind;
+  },
 ): {
   readonly prompt: string;
   readonly appendSystemPrompt: string | undefined;
 } {
-  const appendSystemPrompt = buildGitHubPrompt(issueContext) || undefined;
+  const appendSystemPrompt = buildGitHubPrompt(args) || undefined;
 
   return { prompt, appendSystemPrompt };
+}
+
+function formatGithubContextSender(args: {
+  readonly login: string;
+  readonly type: string;
+  readonly id?: number;
+}): string {
+  const senderParts =
+    args.type === "Bot"
+      ? ["id: BOT"]
+      : [args.id !== undefined ? `id: ${args.id}` : null].filter(
+          (part): part is string => {
+            return part !== null;
+          },
+        );
+
+  senderParts.push(`username: @${args.login}`, `type: ${args.type}`);
+  return `{${senderParts.join(", ")}}`;
+}
+
+function formatGitHubIssueContextMessage(args: {
+  readonly issue: GitHubIssue;
+  readonly relativeIndex: number;
+  readonly subjectLabel: string;
+}): string {
+  return [
+    "---",
+    "",
+    `- RELATIVE_INDEX: ${args.relativeIndex}`,
+    `- MSG_ID: ${args.subjectLabel.toLowerCase().replaceAll(" ", "_")}:${args.issue.number}`,
+    `- SENDER: ${formatGithubContextSender({
+      id: args.issue.user.id,
+      login: args.issue.user.login,
+      type: args.issue.user.type,
+    })}`,
+    `- SOURCE: ${args.subjectLabel}`,
+    "",
+    `Title: ${args.issue.title}`,
+    "",
+    args.issue.body ?? "_No description provided._",
+  ].join("\n");
+}
+
+function formatGitHubCommentContextMessage(args: {
+  readonly comment: GithubIssueComment;
+  readonly relativeIndex: number;
+}): string {
+  return [
+    "---",
+    "",
+    `- RELATIVE_INDEX: ${args.relativeIndex}`,
+    `- MSG_ID: comment:${args.comment.id}`,
+    `- SENDER: ${formatGithubContextSender(args.comment.user)}`,
+    "- SOURCE: comment",
+    "",
+    args.comment.body,
+  ].join("\n");
 }
 
 function formatIssueContext(args: {
@@ -193,55 +298,47 @@ function formatIssueContext(args: {
   readonly repo: string;
   readonly matchedLabelName: string;
   readonly comments: readonly GithubIssueComment[];
-  readonly lastCommentId: string | undefined;
   readonly currentCommentId: string | undefined;
 }): string {
-  let relevantComments = args.lastCommentId
+  const relevantComments = args.currentCommentId
     ? args.comments.filter((comment) => {
-        return comment.id > Number(args.lastCommentId);
+        return String(comment.id) !== args.currentCommentId;
       })
     : args.comments;
 
-  if (args.currentCommentId) {
-    relevantComments = relevantComments.filter((comment) => {
-      return String(comment.id) !== args.currentCommentId;
-    });
-  }
+  const subjectLabel = githubSubjectLabel(args.subjectKind);
+  const messages = [
+    formatGitHubIssueContextMessage({
+      issue: args.issue,
+      subjectLabel,
+      relativeIndex: -relevantComments.length - 1,
+    }),
+    ...relevantComments.map((comment, index) => {
+      return formatGitHubCommentContextMessage({
+        comment,
+        relativeIndex: index - relevantComments.length,
+      });
+    }),
+  ];
 
-  if (relevantComments.length === 0 && args.lastCommentId) {
-    return "";
-  }
-
-  const subjectLabel =
-    args.subjectKind === "pull_request" ? "Pull Request" : "Issue";
   const parts: string[] = [
-    "# GitHub Label Trigger",
+    `# GitHub ${subjectLabel} Context`,
     "",
     `Repository: ${args.repo}`,
     `${subjectLabel}: #${args.issue.number}`,
+    `${subjectLabel} URL: ${githubSubjectUrl({
+      repo: args.repo,
+      issueNumber: args.issue.number,
+      subjectKind: args.subjectKind,
+    })}`,
     `Matched label: ${args.matchedLabelName}`,
     "",
-    `# GitHub ${subjectLabel} Context`,
+    "The messages below are from the GitHub issue conversation. Messages closer to RELATIVE_INDEX 0 are more recent.",
+    "",
+    messages.join("\n\n"),
+    "",
+    "---",
   ];
-
-  if (!args.lastCommentId) {
-    parts.push(
-      "",
-      `**${args.issue.title}** (#${args.issue.number})`,
-      "",
-      args.issue.body ?? "_No description provided._",
-    );
-  }
-
-  if (relevantComments.length > 0) {
-    parts.push("", "## Comments", "");
-    for (const comment of relevantComments) {
-      const role = comment.user.type === "Bot" ? "bot" : "user";
-      parts.push(`**@${comment.user.login}** (${role}):`, comment.body, "");
-    }
-  }
-
-  parts.push("---");
   return parts.join("\n");
 }
 
@@ -313,6 +410,7 @@ async function resolveExistingSession(args: {
   readonly composeId: string;
   readonly vm0UserId: string;
   readonly commentId: string | undefined;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
   readonly signal: AbortSignal;
 }): Promise<ExistingSessionResult> {
   const [found] = await args.db
@@ -332,7 +430,7 @@ async function resolveExistingSession(args: {
   args.signal.throwIfAborted();
 
   if (!found) {
-    return { kind: "resolved", sessionId: undefined, lastCommentId: undefined };
+    return { kind: "resolved", sessionId: undefined };
   }
 
   if (args.commentId && found.lastCommentId === args.commentId) {
@@ -346,38 +444,61 @@ async function resolveExistingSession(args: {
     expectedComposeId: args.composeId,
     signal: args.signal,
   });
+  if (!sessionId) {
+    return {
+      kind: "resolved",
+      sessionId: undefined,
+    };
+  }
+
+  if (
+    !(await canReuseIntegrationSessionForModelRoute({
+      db: args.db,
+      sessionId,
+      modelRoute: args.modelRoute,
+    }))
+  ) {
+    return {
+      kind: "resolved",
+      sessionId: undefined,
+    };
+  }
 
   return {
     kind: "resolved",
     sessionId,
-    lastCommentId: sessionId ? found.lastCommentId : undefined,
   };
 }
 
-function createRunErrorMessage(result: {
-  readonly status: number;
-  readonly body: unknown;
-}): string {
-  if (
-    typeof result.body === "object" &&
-    result.body !== null &&
-    "error" in result.body
-  ) {
-    const error = result.body.error;
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "message" in error &&
-      typeof error.message === "string"
-    ) {
-      return error.message;
-    }
+function routeErrorMessage(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || !("error" in body)) {
+    return undefined;
   }
-  return `GitHub-triggered agent run failed with status ${result.status}`;
+  const error = body.error;
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return undefined;
+  }
+  const message = error.message;
+  if (typeof message !== "string") {
+    return undefined;
+  }
+  const code =
+    "code" in error && typeof error.code === "string"
+      ? error.code
+      : "INTERNAL_SERVER_ERROR";
+  return formatRunErrorForExternalSurface({ code, message });
+}
+
+function stringField(body: unknown, key: string): string | undefined {
+  if (typeof body !== "object" || body === null || !(key in body)) {
+    return undefined;
+  }
+  const value = (body as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 async function handleDispatchError(args: {
-  readonly error: unknown;
+  readonly message: string | undefined;
   readonly token: string | undefined;
   readonly repo: string;
   readonly issueNumber: number;
@@ -406,15 +527,12 @@ async function handleDispatchError(args: {
     : "";
 
   if (args.token) {
-    const message =
-      args.error instanceof Error
-        ? args.error.message
-        : "An unexpected error occurred.";
+    const message = args.message ?? RUN_START_FALLBACK_MESSAGE;
     await postGithubIssueCommentBestEffort({
       token: args.token,
       repo: args.repo,
       issueNumber: args.issueNumber,
-      body: `${quotePrefix}Failed to start the agent: ${message}`,
+      body: `${quotePrefix}${message}`,
       signal: args.signal,
     });
   }
@@ -510,37 +628,10 @@ async function loadGitHubRunTarget(args: {
   };
 }
 
-async function resolveDispatchSession(args: {
-  readonly db: Db;
-  readonly params: DispatchParams;
-  readonly installationDbId: string;
-  readonly issueNumber: number;
-  readonly composeId: string;
-  readonly vm0UserId: string;
-  readonly signal: AbortSignal;
-}): Promise<ExistingSessionResult> {
-  if (args.params.forceNewSession) {
-    return { kind: "resolved", sessionId: undefined, lastCommentId: undefined };
-  }
-
-  return await resolveExistingSession({
-    db: args.db,
-    installationDbId: args.installationDbId,
-    repo: args.params.repo,
-    issueNumber: args.issueNumber,
-    composeId: args.composeId,
-    vm0UserId: args.vm0UserId,
-    commentId: args.params.commentId,
-    signal: args.signal,
-  });
-}
-
 async function buildIssueContextForRun(args: {
   readonly token: string | undefined;
   readonly params: DispatchParams;
   readonly issueNumber: number;
-  readonly existingSessionId: string | undefined;
-  readonly lastCommentId: string | null | undefined;
   readonly signal: AbortSignal;
 }): Promise<string> {
   if (!args.token) {
@@ -561,9 +652,6 @@ async function buildIssueContextForRun(args: {
     repo: args.params.repo,
     matchedLabelName: args.params.matchedLabelName,
     comments,
-    lastCommentId: args.existingSessionId
-      ? (args.lastCommentId ?? undefined)
-      : undefined,
     currentCommentId: args.params.commentId,
   });
 }
@@ -612,6 +700,77 @@ async function updateExistingSessionComment(args: {
         eq(githubIssueSessions.issueNumber, args.issueNumber),
       ),
     );
+}
+
+async function runAgentForGitHub(args: {
+  readonly set: Setter;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly sessionId: string | undefined;
+  readonly prompt: string;
+  readonly appendSystemPrompt: string | undefined;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
+  readonly callbackPayload: GitHubIssuesCallbackPayload;
+  readonly apiStartTime: number;
+  readonly signal: AbortSignal;
+}): Promise<GitHubRunDispatchResult> {
+  const result = await args.set(
+    createZeroRun$,
+    {
+      auth: {
+        tokenType: "session",
+        userId: args.userId,
+        orgId: args.orgId,
+        orgRole: "member",
+      },
+      body: {
+        prompt: args.prompt,
+        agentId: args.agentId,
+        sessionId: args.sessionId,
+        ...(args.modelRoute?.modelProviderType
+          ? { modelProvider: args.modelRoute.modelProviderType }
+          : {}),
+      },
+      apiStartTime: args.apiStartTime,
+      triggerSource: "github",
+      appendSystemPrompt: args.appendSystemPrompt,
+      modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        args.modelRoute?.modelProviderCredentialScope,
+      selectedModelOverride: args.modelRoute?.selectedModel,
+      callbacks: [
+        {
+          url: `${env("VM0_API_URL")}/api/internal/callbacks/github/issues`,
+          secret: generateCallbackSecret(),
+          payload: args.callbackPayload,
+        },
+      ],
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+
+  if (result.status !== 201) {
+    return {
+      status: "failed",
+      response: routeErrorMessage(result.body) ?? RUN_START_FALLBACK_MESSAGE,
+    };
+  }
+
+  const status = stringField(result.body, "status");
+  const runId = stringField(result.body, "runId");
+  if (status === "queued") {
+    return { status: "queued", runId };
+  }
+  if (status === "failed") {
+    return {
+      status: "failed",
+      runId,
+      response: stringField(result.body, "error") ?? RUN_START_FALLBACK_MESSAGE,
+    };
+  }
+  return { status: "accepted", runId };
 }
 
 function labelsForAction(args: {
@@ -765,7 +924,6 @@ const dispatchMatchingLabelListener$ = command(
         composeId: listener.composeId,
         prompt: listener.prompt,
         matchedLabelName: listener.labelName,
-        forceNewSession: true,
         apiStartTime: args.apiStartTime,
       },
       signal,
@@ -846,7 +1004,7 @@ export const handleGithubIssueCommentEvent$ = command(
 
 const dispatchGithubAgentRun$ = command(
   async (
-    { set },
+    { get, set },
     params: DispatchParams,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -874,13 +1032,24 @@ const dispatchGithubAgentRun$ = command(
       composeId: params.composeId,
       signal,
     });
-    const sessionResult = await resolveDispatchSession({
+    const modelRoute = await resolveIntegrationModelRouteForUser({
+      get,
+      set,
+      orgId: target.orgId,
+      userId: params.vm0UserId,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    const sessionResult = await resolveExistingSession({
       db,
-      params,
       installationDbId: installation.id,
+      repo: params.repo,
       issueNumber,
       composeId: target.composeId,
       vm0UserId: params.vm0UserId,
+      commentId: params.commentId,
+      modelRoute,
       signal,
     });
     if (sessionResult.kind === "duplicate") {
@@ -892,11 +1061,14 @@ const dispatchGithubAgentRun$ = command(
       token,
       params,
       issueNumber,
-      existingSessionId,
-      lastCommentId: sessionResult.lastCommentId,
       signal,
     });
-    const promptParts = buildPromptParts(params.prompt, issueContext);
+    const promptParts = buildPromptParts(params.prompt, {
+      issueContext,
+      repo: params.repo,
+      issueNumber,
+      subjectKind: params.subjectKind,
+    });
 
     const callbackPayload = buildCallbackPayload({
       installationDbId: installation.id,
@@ -907,57 +1079,23 @@ const dispatchGithubAgentRun$ = command(
       reactionId,
     });
 
-    const dispatchResult = await settle(
-      (async () => {
-        const result = await set(
-          createZeroIntegrationRun$,
-          {
-            userId: params.vm0UserId,
-            orgId: target.orgId,
-            agentId: target.zeroAgentId,
-            sessionId: existingSessionId,
-            prompt: promptParts.prompt,
-            appendSystemPrompt: promptParts.appendSystemPrompt,
-            triggerSource: "github",
-            callbacks: [
-              {
-                url: `${env("VM0_API_URL")}/api/internal/callbacks/github/issues`,
-                secret: generateCallbackSecret(),
-                payload: callbackPayload,
-              },
-            ],
-            apiStartTime: params.apiStartTime,
-          },
-          signal,
-        );
-        signal.throwIfAborted();
+    const dispatchResult = await runAgentForGitHub({
+      set,
+      userId: params.vm0UserId,
+      orgId: target.orgId,
+      agentId: target.zeroAgentId,
+      sessionId: existingSessionId,
+      prompt: promptParts.prompt,
+      appendSystemPrompt: promptParts.appendSystemPrompt,
+      modelRoute,
+      callbackPayload,
+      apiStartTime: params.apiStartTime,
+      signal,
+    });
 
-        if (result.status !== 201) {
-          throw new Error(createRunErrorMessage(result));
-        }
-
-        L.debug("Agent run dispatched for GitHub issue", {
-          runId: result.body.runId,
-          repo: params.repo,
-          issueNumber,
-        });
-
-        await updateExistingSessionComment({
-          db,
-          installationDbId: installation.id,
-          repo: params.repo,
-          issueNumber,
-          existingSessionId,
-          commentId: params.commentId,
-        });
-        signal.throwIfAborted();
-      })(),
-    );
-    signal.throwIfAborted();
-
-    if (!dispatchResult.ok) {
+    if (dispatchResult.status === "failed") {
       await handleDispatchError({
-        error: dispatchResult.error,
+        message: dispatchResult.response,
         token,
         repo: params.repo,
         issueNumber,
@@ -967,8 +1105,25 @@ const dispatchGithubAgentRun$ = command(
         signal,
       });
       signal.throwIfAborted();
-      throw dispatchResult.error;
+      return;
     }
+
+    L.debug("Agent run dispatched for GitHub issue", {
+      runId: dispatchResult.runId,
+      status: dispatchResult.status,
+      repo: params.repo,
+      issueNumber,
+    });
+
+    await updateExistingSessionComment({
+      db,
+      installationDbId: installation.id,
+      repo: params.repo,
+      issueNumber,
+      existingSessionId,
+      commentId: params.commentId,
+    });
+    signal.throwIfAborted();
   },
 );
 
@@ -1070,66 +1225,9 @@ export const handleGithubInstallationEvent$ = command(
       return;
     }
 
-    const targetId = String(payload.installation.account.id);
-
-    const [pending] = await db
-      .select()
-      .from(githubInstallations)
-      .where(
-        and(
-          eq(githubInstallations.targetId, targetId),
-          eq(githubInstallations.status, "pending"),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!pending) {
-      L.debug("No pending installation found for target", { targetId });
-      return;
-    }
-
-    const appId = optionalEnv("GITHUB_APP_ID");
-    const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
-    if (!appId || !privateKey) {
-      throw new Error(
-        "GitHub App not configured (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY missing), cannot activate pending installation",
-      );
-    }
-
-    const { token } = await getGithubInstallationAccessToken({
-      appId,
-      privateKey,
+    L.debug("Ignoring GitHub installation created event", {
       installationId: ghInstallationId,
-      signal,
-    });
-    signal.throwIfAborted();
-    const featureSwitchContext = await loadComposeFeatureSwitchContext({
-      db,
-      composeId: pending.defaultComposeId,
-      signal,
-    });
-
-    await db
-      .update(githubInstallations)
-      .set({
-        status: "active",
-        installationId: ghInstallationId,
-        encryptedAccessToken: await encryptPersistentSecretValue(
-          token,
-          featureSwitchContext,
-        ),
-        targetName: payload.installation.account.login,
-        adminGithubUserId: payload.sender ? String(payload.sender.id) : null,
-        updatedAt: nowDate(),
-      })
-      .where(eq(githubInstallations.id, pending.id));
-    signal.throwIfAborted();
-
-    L.debug("Activated pending GitHub installation", {
-      installationId: ghInstallationId,
-      targetId,
-      recordId: pending.id,
+      targetId: String(payload.installation.account.id),
     });
   },
 );

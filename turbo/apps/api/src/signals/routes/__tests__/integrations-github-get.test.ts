@@ -8,6 +8,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -516,6 +517,65 @@ describe("GET /api/integrations/github", () => {
     );
 
     expect(response.body.installation.isAdmin).toBeFalsy();
+  });
+
+  it("marks label listeners manageable for their owner and org admins", async () => {
+    const fixture = await seedGithubFixture();
+    fixtures.push(fixture);
+    await writeDb.insert(githubLabelListeners).values([
+      {
+        installationId: fixture.installationRowId,
+        orgId: fixture.orgId,
+        createdByUserId: fixture.userId,
+        labelName: "Mine",
+        labelNameNormalized: "mine",
+        triggerMode: "anyone",
+        prompt: "Handle my label",
+        composeId: fixture.composeId,
+      },
+      {
+        installationId: fixture.installationRowId,
+        orgId: fixture.orgId,
+        createdByUserId: `user_${randomUUID()}`,
+        labelName: "Theirs",
+        labelNameNormalized: "theirs",
+        triggerMode: "anyone",
+        prompt: "Handle their label",
+        composeId: fixture.composeId,
+      },
+    ]);
+    mockSession(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const memberResponse = await accept(
+      client.getInstallation({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(
+      memberResponse.body.labelListeners.map((listener) => {
+        return {
+          labelName: listener.labelName,
+          canManage: listener.canManage,
+        };
+      }),
+    ).toStrictEqual([
+      { labelName: "Mine", canManage: true },
+      { labelName: "Theirs", canManage: false },
+    ]);
+
+    mockSession(`user_${randomUUID()}`, fixture.orgId);
+
+    const adminResponse = await accept(
+      client.getInstallation({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(
+      adminResponse.body.labelListeners.map((listener) => {
+        return listener.canManage;
+      }),
+    ).toStrictEqual([true, true]);
   });
 
   it("reports required and missing environment values from the default agent", async () => {

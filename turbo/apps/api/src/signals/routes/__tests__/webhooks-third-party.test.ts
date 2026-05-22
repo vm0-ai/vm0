@@ -10,20 +10,24 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { storages } from "@vm0/db/schema/storage";
@@ -166,6 +170,10 @@ interface GitHubApiComment {
   };
   readonly body: string;
   readonly created_at: string;
+}
+
+interface CapturedGitHubIssueComment {
+  readonly body: string;
 }
 
 interface GitHubIssuesPayloadOverrides {
@@ -457,8 +465,11 @@ async function selectGitHubRuns(fixture: GitHubWebhookFixture) {
     .select({
       id: agentRuns.id,
       prompt: agentRuns.prompt,
+      sessionId: agentRuns.sessionId,
       appendSystemPrompt: agentRuns.appendSystemPrompt,
       triggerSource: zeroRuns.triggerSource,
+      modelProvider: zeroRuns.modelProvider,
+      selectedModel: zeroRuns.selectedModel,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -482,8 +493,79 @@ async function selectGitHubCallbacks(runId: string) {
     .where(eq(agentRunCallbacks.runId, runId));
 }
 
+function expectGitHubIssueContextPrompt(
+  prompt: string | null | undefined,
+): void {
+  expect(prompt).toContain("You are currently running inside: GitHub");
+  expect(prompt).toContain(`Bot username: @${GITHUB_APP_SLUG}[bot]`);
+  expect(prompt).toContain(
+    "Issue URL: https://github.com/vm0-ai/vm0/issues/42",
+  );
+  expect(prompt).toContain("# GitHub Issue Context");
+  expect(prompt).not.toContain("# GitHub Label Trigger");
+  expect(prompt).toContain("Matched label: vm0-agent");
+  expect(prompt).toContain("- RELATIVE_INDEX: -2");
+  expect(prompt).toContain("- MSG_ID: issue:42");
+  expect(prompt).toContain("username: @linked-user, type: User");
+  expect(prompt).not.toContain("## Description");
+  expect(prompt).not.toContain("## Comments");
+  expect(prompt).toContain("This is a test issue body");
+  expect(prompt).toContain("Earlier discussion");
+}
+
 function remoteGitHubId(): string {
   return String(randomInt(1_000_000, 999_999_999));
+}
+
+async function seedGitHubModelRoute(args: {
+  readonly fixture: GitHubWebhookFixture;
+  readonly selectedModel?: string | null;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(orgModelPolicies).values([
+    {
+      orgId: args.fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: args.fixture.userId,
+      updatedByUserId: args.fixture.userId,
+    },
+    {
+      orgId: args.fixture.orgId,
+      model: "claude-opus-4-7",
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: args.fixture.userId,
+      updatedByUserId: args.fixture.userId,
+    },
+  ]);
+  await db.insert(vm0ApiKeys).values([
+    {
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: "vm0-key-claude-sonnet-4-6",
+      label: args.fixture.composeId,
+    },
+    {
+      vendor: "anthropic",
+      model: "claude-opus-4-7",
+      apiKey: "vm0-key-claude-opus-4-7",
+      label: args.fixture.composeId,
+    },
+  ]);
+  await db
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      selectedModel: args.selectedModel ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: { selectedModel: args.selectedModel ?? null },
+    });
 }
 
 async function postRaw(args: {
@@ -690,6 +772,12 @@ const deleteGitHubFixture$ = command(
         .where(inArray(githubInstallations.id, installationIds));
       signal.throwIfAborted();
     }
+    await db
+      .delete(orgModelPolicies)
+      .where(eq(orgModelPolicies.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.composeId));
+    signal.throwIfAborted();
     signal.throwIfAborted();
     await set(deleteUsageInsightFixture$, fixture, signal);
     signal.throwIfAborted();
@@ -753,6 +841,13 @@ const seedGitHubWebhookFixture$ = command(
       orgId: fixture.orgId,
       credits: 100_000,
       tier: "pro",
+    });
+    signal.throwIfAborted();
+    await db.insert(vm0ApiKeys).values({
+      vendor: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: "vm0-key-deepseek-v4-pro",
+      label: compose.id,
     });
     signal.throwIfAborted();
     await db.insert(userCache).values({
@@ -1028,6 +1123,10 @@ describe("POST /api/webhooks/github", () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
+    await seedGitHubModelRoute({
+      fixture,
+      selectedModel: "claude-opus-4-7",
+    });
     mockGitHubWebhookEnv();
     mockGitHubAppCredentials();
     setupGitHubApiMocks({
@@ -1054,13 +1153,10 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
-    expect(runs[0]?.appendSystemPrompt).toContain(
-      "You are currently running inside: GitHub",
-    );
-    expect(runs[0]?.appendSystemPrompt).toContain("Matched label: vm0-agent");
-    expect(runs[0]?.appendSystemPrompt).toContain("This is a test issue body");
-    expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
+    expectGitHubIssueContextPrompt(runs[0]?.appendSystemPrompt);
     expect(runs[0]?.triggerSource).toBe("github");
+    expect(runs[0]?.modelProvider).toBe("vm0");
+    expect(runs[0]?.selectedModel).toBe("claude-opus-4-7");
 
     const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
     expect(callbacks).toHaveLength(1);
@@ -1071,6 +1167,53 @@ describe("POST /api/webhooks/github", () => {
       issueNumber: 42,
       agentId: fixture.composeId,
     });
+  });
+
+  it("posts a formatted failure comment when the GitHub trigger run is rejected", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+    });
+
+    const capturedComments: CapturedGitHubIssueComment[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request }) => {
+          const body = (await request.json()) as { readonly body: string };
+          capturedComments.push({ body: body.body });
+          return HttpResponse.json({ id: 9876 });
+        },
+      ),
+    );
+
+    await store
+      .set(writeDb$)
+      .update(zeroAgents)
+      .set({
+        owner: `user_${randomUUID()}`,
+        visibility: "private",
+      })
+      .where(eq(zeroAgents.id, fixture.composeId));
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+    expect(capturedComments).toHaveLength(1);
+    expect(capturedComments[0]?.body).toContain(
+      "Oops, something went wrong. Please try again later.",
+    );
+    expect(capturedComments[0]?.body).not.toContain("Failed to start");
+    await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(0);
   });
 
   it("dispatches labeled issues only when the added label is the app slug", async () => {
@@ -1098,6 +1241,76 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
+  });
+
+  it("continues an existing session for the same GitHub issue", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [
+        {
+          id: 12,
+          user: { login: "maintainer", type: "User" },
+          body: "Earlier discussion",
+          created_at: "2026-05-20T00:00:00Z",
+        },
+        {
+          id: 13,
+          user: { login: "maintainer", type: "User" },
+          body: "New detail",
+          created_at: "2026-05-21T00:00:00Z",
+        },
+      ],
+    });
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .insert(agentSessions)
+      .values({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        agentComposeId: fixture.composeId,
+      })
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("agent session insert returned no row");
+    }
+    await db.insert(githubIssueSessions).values({
+      userId: fixture.userId,
+      installationId: fixture.installationDbId,
+      repo: "vm0-ai/vm0",
+      issueNumber: 42,
+      agentSessionId: session.id,
+      lastCommentId: "12",
+    });
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "labeled",
+        labels: [{ id: 1, name: GITHUB_APP_SLUG }],
+        label: { id: 1, name: GITHUB_APP_SLUG },
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.sessionId).toBe(session.id);
+    expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
+    expect(runs[0]?.appendSystemPrompt).toContain("New detail");
+    expect(runs[0]?.appendSystemPrompt).toContain("- MSG_ID: issue:42");
+    expect(runs[0]?.appendSystemPrompt).toContain("- MSG_ID: comment:12");
+    expect(runs[0]?.appendSystemPrompt).toContain("- MSG_ID: comment:13");
+
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
+    expect(callbacks[0]?.payload).toMatchObject({
+      existingSessionId: session.id,
+    });
   });
 
   it("dispatches pull requests with a matching label listener", async () => {
@@ -1130,6 +1343,12 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "Pull Request URL: https://github.com/vm0-ai/vm0/pull/42",
+    );
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "# GitHub Pull Request Context",
+    );
     expect(runs[0]?.appendSystemPrompt).toContain("Pull Request: #42");
   });
 
@@ -1329,12 +1548,11 @@ describe("POST /api/webhooks/github", () => {
     expect(response.body).toBe("OK");
   });
 
-  it("activates matching pending installations", async () => {
+  it("ignores installation created events without activating pending records", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
     mockGitHubWebhookEnv();
-    mockGitHubAppCredentials();
 
     const db = store.set(writeDb$);
     const targetId = remoteGitHubId();
@@ -1347,7 +1565,6 @@ describe("POST /api/webhooks/github", () => {
       targetName: "pending-org",
       defaultComposeId: fixture.composeId,
     });
-    setupGitHubApiMocks({ installationId });
 
     const response = await postGitHubWebhook({
       event: "installation",
@@ -1375,17 +1592,15 @@ describe("POST /api/webhooks/github", () => {
       .where(eq(githubInstallations.targetId, targetId));
 
     expect(installation).toMatchObject({
-      status: "active",
-      installationId,
-      targetName: "activated-org",
-      adminGithubUserId: fixture.githubUserId,
+      status: "pending",
+      installationId: null,
+      encryptedAccessToken: null,
+      targetName: "pending-org",
+      adminGithubUserId: null,
     });
-    expect(installation?.encryptedAccessToken).toStrictEqual(
-      expect.any(String),
-    );
   });
 
-  it("ignores installation events without a matching pending record", async () => {
+  it("ignores installation created events without a local record", async () => {
     mockGitHubWebhookEnv();
 
     const response = await postGitHubWebhook({

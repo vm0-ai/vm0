@@ -23,6 +23,7 @@ export const githubLabelListenerSchema = z.object({
   triggerMode: githubLabelTriggerModeSchema,
   prompt: z.string(),
   enabled: z.boolean(),
+  canManage: z.boolean(),
   agent: z
     .object({
       id: z.string(),

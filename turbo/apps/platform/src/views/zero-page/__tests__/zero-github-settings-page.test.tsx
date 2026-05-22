@@ -154,8 +154,7 @@ describe("github settings page", () => {
       "Review the labeled issue or pull request.",
     );
 
-    click(within(dialog).getByRole("combobox", { name: "Trigger mode" }));
-    click(screen.getByRole("option", { name: "Any issue/PR with this label" }));
+    click(within(dialog).getByText("Any author"));
 
     click(within(dialog).getByText("Add listener"));
 
@@ -165,12 +164,13 @@ describe("github settings page", () => {
       expect(integration?.labelListeners[0]?.triggerMode).toBe("anyone");
     });
     expect(screen.getByText("ready-for-zero")).toBeInTheDocument();
+    expect(screen.getByText("Any author")).toBeInTheDocument();
     expect(
-      screen.getAllByText(/Any issue\/PR with this label/u).length,
-    ).toBeGreaterThan(0);
+      screen.queryByText(/Any issue\/PR with this label/u),
+    ).not.toBeInTheDocument();
   });
 
-  it("toggles a GitHub label listener", async () => {
+  it("edits and deletes a GitHub label listener from the actions menu", async () => {
     setMockGithubIntegration(
       createDefaultMockGithubIntegration({
         labelListeners: [
@@ -180,6 +180,7 @@ describe("github settings page", () => {
             triggerMode: "created_by_me",
             prompt: "Review the labeled issue or pull request.",
             enabled: true,
+            canManage: true,
             agent: {
               id: "c0000000-0000-4000-a000-000000000001",
               name: "zero",
@@ -192,16 +193,68 @@ describe("github settings page", () => {
     );
     setupGithubPage();
 
-    const toggle = await screen.findByRole("switch", {
-      name: "Toggle ready-for-zero listener",
-    });
-    expect(toggle).toBeChecked();
-    click(toggle);
+    await expect(
+      screen.findByText("ready-for-zero"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Created by me")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Actions for ready-for-zero"));
+    click(await screen.findByText("Edit"));
+
+    const editDialog = await screen.findByRole("dialog");
+    await fill(within(editDialog).getByLabelText("Label"), "needs-agent");
+    await fill(
+      within(editDialog).getByLabelText("Prompt"),
+      "Review and fix the labeled issue or pull request.",
+    );
+    click(within(editDialog).getByText("Save changes"));
 
     await waitFor(() => {
       const integration = getMockGithubIntegration();
-      expect(integration?.labelListeners[0]?.enabled).toBeFalsy();
-      expect(screen.getByText("Disabled")).toBeInTheDocument();
+      expect(integration?.labelListeners[0]?.labelName).toBe("needs-agent");
+      expect(screen.getByText("needs-agent")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Actions for needs-agent"));
+    click(await screen.findByText("Delete"));
+
+    await waitFor(() => {
+      const integration = getMockGithubIntegration();
+      expect(integration?.labelListeners).toHaveLength(0);
+      expect(screen.queryByText("needs-agent")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows read-only label listeners without row actions", async () => {
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({
+        labelListeners: [
+          {
+            id: "b0000000-0000-4000-a000-000000000001",
+            labelName: "ready-for-zero",
+            triggerMode: "created_by_me",
+            prompt: "Review the labeled issue or pull request.",
+            enabled: true,
+            canManage: false,
+            agent: {
+              id: "c0000000-0000-4000-a000-000000000001",
+              name: "zero",
+            },
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          },
+        ],
+      }),
+    );
+    setupGithubPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("ready-for-zero")).toBeInTheDocument();
+      expect(screen.getByText("Created by me")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Actions for ready-for-zero"),
+      ).not.toBeInTheDocument();
     });
   });
 });

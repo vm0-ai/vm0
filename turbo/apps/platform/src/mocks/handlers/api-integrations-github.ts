@@ -67,6 +67,7 @@ function createMockListener(
     triggerMode: body.triggerMode,
     prompt: body.prompt.trim(),
     enabled: body.enabled ?? true,
+    canManage: true,
     agent: {
       id: body.agentId,
       name: listenerAgentName(body.agentId),
@@ -227,6 +228,11 @@ export const apiIntegrationsGithubHandlers = [
           error: { message: "Label listener not found", code: "NOT_FOUND" },
         });
       }
+      if (!listener.canManage) {
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
+        });
+      }
       if (body.labelName) {
         const duplicate = getExistingListener(body.labelName);
         if (duplicate && duplicate.id !== listener.id) {
@@ -271,13 +277,24 @@ export const apiIntegrationsGithubHandlers = [
           },
         });
       }
+      const listener = mockGithubIntegration.labelListeners.find((item) => {
+        return item.id === params.listenerId;
+      });
+      if (!listener) {
+        return respond(404, {
+          error: { message: "Label listener not found", code: "NOT_FOUND" },
+        });
+      }
+      if (!listener.canManage) {
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
+        });
+      }
       mockGithubIntegration = {
         ...mockGithubIntegration,
-        labelListeners: mockGithubIntegration.labelListeners.filter(
-          (listener) => {
-            return listener.id !== params.listenerId;
-          },
-        ),
+        labelListeners: mockGithubIntegration.labelListeners.filter((item) => {
+          return item.id !== params.listenerId;
+        }),
       };
       return respond(200, { ok: true });
     },

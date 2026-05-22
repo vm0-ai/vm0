@@ -245,6 +245,7 @@ interface ListenerRow {
   readonly enabled: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly createdByUserId: string;
   readonly agentId: string | null;
   readonly agentName: string | null;
 }
@@ -259,13 +260,35 @@ function canManageInstallation(args: {
   return args.orgRole === "admin";
 }
 
-function serializeListener(row: ListenerRow): GithubLabelListener {
+function canManageLabelListener(args: {
+  readonly createdByUserId: string;
+  readonly userId: string;
+  readonly orgRole: string | undefined;
+}): boolean {
+  return (
+    canManageInstallation({ orgRole: args.orgRole }) ||
+    args.createdByUserId === args.userId
+  );
+}
+
+function serializeListener(
+  row: ListenerRow,
+  args: {
+    readonly userId: string;
+    readonly orgRole: string | undefined;
+  },
+): GithubLabelListener {
   return {
     id: row.id,
     labelName: row.labelName,
     triggerMode: row.triggerMode,
     prompt: row.prompt,
     enabled: row.enabled,
+    canManage: canManageLabelListener({
+      createdByUserId: row.createdByUserId,
+      userId: args.userId,
+      orgRole: args.orgRole,
+    }),
     agent:
       row.agentId && row.agentName
         ? { id: row.agentId, name: row.agentName }
@@ -400,6 +423,8 @@ async function buildEnvironment(args: {
 async function loadListeners(args: {
   readonly db: ReadonlyDb;
   readonly installationId: string;
+  readonly userId: string;
+  readonly orgRole: string | undefined;
 }): Promise<readonly GithubLabelListener[]> {
   const rows = await args.db
     .select({
@@ -410,6 +435,7 @@ async function loadListeners(args: {
       enabled: githubLabelListeners.enabled,
       createdAt: githubLabelListeners.createdAt,
       updatedAt: githubLabelListeners.updatedAt,
+      createdByUserId: githubLabelListeners.createdByUserId,
       agentId: agentComposes.id,
       agentName: agentComposes.name,
     })
@@ -422,7 +448,10 @@ async function loadListeners(args: {
     .orderBy(asc(githubLabelListeners.labelNameNormalized));
 
   return rows.map((row) => {
-    return serializeListener(row);
+    return serializeListener(row, {
+      userId: args.userId,
+      orgRole: args.orgRole,
+    });
   });
 }
 
@@ -430,13 +459,7 @@ async function loadListener(args: {
   readonly db: ReadonlyDb;
   readonly listenerId: string;
   readonly orgId: string;
-}): Promise<
-  | (ListenerRow & {
-      readonly installationId: string;
-      readonly createdByUserId: string;
-    })
-  | null
-> {
+}): Promise<(ListenerRow & { readonly installationId: string }) | null> {
   const [row] = await args.db
     .select({
       id: githubLabelListeners.id,
@@ -512,6 +535,8 @@ async function loadCreatedListener(args: {
   readonly db: ReadonlyDb;
   readonly listenerId: string;
   readonly orgId: string;
+  readonly userId: string;
+  readonly orgRole: string | undefined;
 }): Promise<GithubLabelListener> {
   const listener = await loadListener({
     db: args.db,
@@ -523,7 +548,10 @@ async function loadCreatedListener(args: {
     throw new Error(`GitHub label listener not found: ${args.listenerId}`);
   }
 
-  return serializeListener(listener);
+  return serializeListener(listener, {
+    userId: args.userId,
+    orgRole: args.orgRole,
+  });
 }
 
 export const connectGithubUser$ = command(
@@ -774,6 +802,8 @@ export const createGithubLabelListener$ = command(
           db,
           listenerId: listener.id,
           orgId: auth.orgId,
+          userId: auth.userId,
+          orgRole: auth.orgRole,
         }),
       },
     };
@@ -800,6 +830,20 @@ export const updateGithubLabelListener$ = command(
 
     if (!existing) {
       return errorResponse(404, "GitHub label listener not found", "NOT_FOUND");
+    }
+
+    if (
+      !canManageLabelListener({
+        createdByUserId: existing.createdByUserId,
+        userId: auth.userId,
+        orgRole: auth.orgRole,
+      })
+    ) {
+      return errorResponse(
+        403,
+        "Only the label listener owner or an org admin can update this listener",
+        "FORBIDDEN",
+      );
     }
 
     const values: Partial<typeof githubLabelListeners.$inferInsert> = {
@@ -885,6 +929,8 @@ export const updateGithubLabelListener$ = command(
           db,
           listenerId: existing.id,
           orgId: auth.orgId,
+          userId: auth.userId,
+          orgRole: auth.orgRole,
         }),
       },
     };
@@ -908,6 +954,20 @@ export const deleteGithubLabelListener$ = command(
 
     if (!existing) {
       return errorResponse(404, "GitHub label listener not found", "NOT_FOUND");
+    }
+
+    if (
+      !canManageLabelListener({
+        createdByUserId: existing.createdByUserId,
+        userId: auth.userId,
+        orgRole: auth.orgRole,
+      })
+    ) {
+      return errorResponse(
+        403,
+        "Only the label listener owner or an org admin can delete this listener",
+        "FORBIDDEN",
+      );
     }
 
     await db
@@ -966,7 +1026,12 @@ export const getGithubInstallation$ = computed(async (get) => {
       get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
       get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
       get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
-      loadListeners({ db, installationId: installation.id }),
+      loadListeners({
+        db,
+        installationId: installation.id,
+        userId: auth.userId,
+        orgRole: auth.orgRole,
+      }),
     ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(

@@ -661,26 +661,6 @@ export async function findGithubInstallationByInstallationId(args: {
   return existing ?? null;
 }
 
-export async function createPendingGithubInstallation(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly targetId: string | null;
-  readonly targetType: string;
-  readonly composeId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await args.db.insert(githubInstallations).values({
-    installationId: null,
-    encryptedAccessToken: null,
-    status: "pending",
-    orgId: args.orgId,
-    targetId: args.targetId,
-    targetType: args.targetType,
-    defaultComposeId: args.composeId,
-  });
-  args.signal.throwIfAborted();
-}
-
 export async function createOrActivateGithubInstallation(args: {
   readonly db: Db;
   readonly orgId: string;
