@@ -2,10 +2,11 @@
 set -euo pipefail
 
 event_name="${EVENT_NAME:-${GITHUB_EVENT_NAME:-}}"
+checkout_ref="${CHECKOUT_REF:-${GITHUB_REF:-}}"
 
 case "$event_name" in
   pull_request)
-    if [[ "${GITHUB_REF:-}" == refs/pull/*/merge ]] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+    if [[ "$checkout_ref" == refs/pull/*/merge ]] && git rev-parse -q --verify HEAD^2 >/dev/null; then
       git rev-parse HEAD^1
       exit 0
     fi

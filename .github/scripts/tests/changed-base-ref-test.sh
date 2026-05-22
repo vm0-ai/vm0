@@ -53,7 +53,7 @@ actual=$(
   cd "$repo"
   run_clean \
     GITHUB_EVENT_NAME=pull_request \
-    GITHUB_REF=refs/pull/123/merge \
+    CHECKOUT_REF=refs/pull/123/merge \
     PULL_REQUEST_BASE_SHA="$event_base" \
     "$CHANGED_BASE_REF"
 )
@@ -64,7 +64,7 @@ actual=$(
   cd "$repo"
   run_clean \
     GITHUB_EVENT_NAME=pull_request \
-    GITHUB_REF=refs/heads/feature \
+    CHECKOUT_REF=refs/heads/feature \
     PULL_REQUEST_BASE_SHA="$event_base" \
     "$CHANGED_BASE_REF"
 )
@@ -88,3 +88,5 @@ assert_eq "$actual" "HEAD^"
 git -C "$repo" switch -q --detach "$merge_ref"
 changed_files=$(git -C "$repo" diff --name-only "$merge_parent" HEAD)
 assert_eq "$changed_files" "crates/lib.rs"
+
+echo "changed-base-ref-test: ok"
