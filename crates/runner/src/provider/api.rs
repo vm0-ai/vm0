@@ -456,9 +456,19 @@ mod tests {
     }
 
     async fn read_http_request_text(socket: &mut tokio::net::TcpStream) -> String {
-        let mut buf = [0_u8; 4096];
-        let n = socket.read(&mut buf).await.unwrap();
-        String::from_utf8_lossy(&buf[..n]).into_owned()
+        let mut request = Vec::new();
+        let mut buf = [0_u8; 1024];
+        loop {
+            let n = socket.read(&mut buf).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            request.extend_from_slice(&buf[..n]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&request).into_owned()
     }
 
     async fn write_http_status_response(socket: &mut tokio::net::TcpStream, status: u16) {

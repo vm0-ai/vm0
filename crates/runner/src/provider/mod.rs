@@ -66,7 +66,7 @@ pub struct ClaimedJob {
 }
 
 impl ClaimedJob {
-    pub(crate) fn new(context: ExecutionContext, completion_auth: CompletionAuth) -> Self {
+    fn new(context: ExecutionContext, completion_auth: CompletionAuth) -> Self {
         Self {
             context,
             completion_auth,
@@ -102,8 +102,8 @@ enum CompletionAuthKind {
     Local,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum CompletionAuthError {
+#[derive(Debug)]
+enum CompletionAuthError {
     NotSandbox,
     RunIdMismatch { auth_run_id: RunId },
 }
@@ -121,10 +121,7 @@ impl CompletionAuth {
         }
     }
 
-    pub(crate) fn into_sandbox_token(
-        self,
-        expected_run_id: RunId,
-    ) -> Result<String, CompletionAuthError> {
+    fn into_sandbox_token(self, expected_run_id: RunId) -> Result<String, CompletionAuthError> {
         match self.kind {
             CompletionAuthKind::Sandbox { run_id, token } if run_id == expected_run_id => Ok(token),
             CompletionAuthKind::Sandbox { run_id, .. } => Err(CompletionAuthError::RunIdMismatch {
