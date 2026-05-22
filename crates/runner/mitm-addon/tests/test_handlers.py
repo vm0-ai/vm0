@@ -4,11 +4,13 @@ import asyncio
 import gzip
 import json
 import os
+import threading
 import time
 import urllib.error
 import uuid
 from collections.abc import Callable, Iterable
 from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -5658,6 +5660,62 @@ class TestUsageWebhookDelivery:
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"tokens.input": 100}
         return flow
+
+    def test_post_webhook_does_not_follow_redirects(self):
+        redirected_hits: list[str] = []
+
+        def server_host_port(server: ThreadingHTTPServer) -> tuple[str, int]:
+            address = server.server_address
+            assert len(address) == 2
+            host, port = address
+            assert isinstance(host, str)
+            assert isinstance(port, int)
+            return host, port
+
+        class TargetHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                redirected_hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, fmt, *args):
+                return
+
+        target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
+        target_thread = threading.Thread(target=target_server.serve_forever, daemon=True)
+        target_thread.start()
+
+        class RedirectHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                host, port = server_host_port(target_server)
+                self.send_response(302)
+                self.send_header("Location", f"http://{host}:{port}/redirected")
+                self.end_headers()
+
+            def log_message(self, fmt, *args):
+                return
+
+        redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+        redirect_thread = threading.Thread(target=redirect_server.serve_forever, daemon=True)
+        redirect_thread.start()
+        try:
+            host, port = server_host_port(redirect_server)
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                usage.webhook._post_webhook(
+                    f"http://{host}:{port}/webhook",
+                    "tok",
+                    {"runId": "run-1"},
+                )
+
+            assert exc.value.code == 302
+            assert redirected_hits == []
+        finally:
+            redirect_server.shutdown()
+            target_server.shutdown()
+            redirect_server.server_close()
+            target_server.server_close()
+            redirect_thread.join(timeout=5)
+            target_thread.join(timeout=5)
 
     def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
