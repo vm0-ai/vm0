@@ -1,5 +1,3 @@
-import { getAuthContext } from "../../lib/auth/get-auth-context";
-import { resolveOrg } from "../../lib/zero/org/resolve-org";
 import {
   insertTestUserSecret,
   insertTestUserVariable,
@@ -30,17 +28,13 @@ export async function createTestSecret(
   createdAt: string;
   updatedAt: string;
 }> {
-  const authCtx = await getAuthContext();
-  if (!authCtx) {
-    throw new Error("Failed to create secret: not authenticated");
-  }
-  const { org } = await resolveOrg(authCtx);
+  const { userId, orgId } = await getTestAuthContext();
   const secret = await insertTestUserSecret({
-    orgId: org.orgId,
-    userId: authCtx.userId,
+    orgId,
+    userId,
     name,
     value,
-    description,
+    description: description ?? null,
   });
   return {
     id: secret.id,
