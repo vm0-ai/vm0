@@ -71,6 +71,40 @@ def _response_stream(flow: http.HTTPFlow) -> Callable[[bytes], bytes | Iterable[
     return stream
 
 
+def _openai_model_websocket_flow(
+    tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
+) -> http.HTTPFlow:
+    flow = real_flow(with_response=False, host="api.openai.com")
+    flow.metadata["vm_run_id"] = "run-abc-123"
+    flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+    flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+    flow.metadata["firewall_action"] = "ALLOW"
+    flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+    flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+    flow.metadata["cli_agent_type"] = "codex"
+    flow.metadata["firewall_billable"] = True
+    flow.metadata["vm_sandbox_token"] = "tok-xyz"
+    flow.response = tutils.tresp(
+        status_code=101,
+        headers=http.Headers(upgrade="websocket"),
+    )
+
+    mitm_addon.responseheaders(flow)
+    return flow
+
+
+def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes | str) -> None:
+    flow.websocket = SimpleNamespace(
+        messages=[
+            SimpleNamespace(
+                from_client=False,
+                content=content,
+            )
+        ]
+    )
+    mitm_addon.websocket_message(flow)
+
+
 def _pending_state(path: Path) -> dict:
     return json.loads(path.read_text())
 
@@ -3347,6 +3381,174 @@ class TestResponseUsageReporting:
             "tokens.output": 20,
             "tokens.cache_read": 10,
         }
+
+    def test_model_websocket_zero_frame_preserves_prior_positive_usage(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 40,
+                            "input_tokens_details": {"cached_tokens": 25},
+                        },
+                    },
+                }
+            ).encode(),
+        )
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 0, "output_tokens": 0},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 75,
+            "tokens.output": 40,
+            "tokens.cache_read": 25,
+        }
+
+    def test_model_websocket_positive_frame_updates_prior_zero_usage(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 0, "output_tokens": 0},
+                    },
+                }
+            ).encode(),
+        )
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 10, "output_tokens": 4},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+
+    def test_model_websocket_accepts_text_frame_content(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_text",
+                        "model": "gpt-5.4",
+                        "usage": {"input_tokens": 3, "output_tokens": 2},
+                    },
+                }
+            ),
+        )
+
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_text",
+            "model": "gpt-5.4",
+            "tokens.input": 3,
+            "tokens.output": 2,
+        }
+
+    def test_model_websocket_malformed_frame_preserves_prior_usage(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata["model_provider_usage"] = {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+
+        _feed_websocket_server_message(flow, b'{"type":"response.completed"')
+
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+
+    def test_model_websocket_valid_usage_replaces_non_dict_usage_metadata(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata["model_provider_usage"] = "invalid"
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 10, "output_tokens": 4},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+
+    def test_model_websocket_ignores_invalid_frames_with_non_dict_usage_metadata(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata["model_provider_usage"] = "invalid"
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.in_progress",
+                    "response": {"id": "resp_ws_1", "model": "gpt-5.5"},
+                }
+            ).encode(),
+        )
+        assert flow.metadata["model_provider_usage"] == "invalid"
+
+        _feed_websocket_server_message(flow, b'{"type":"response.completed"')
+        assert flow.metadata["model_provider_usage"] == "invalid"
 
     def test_model_websocket_ignores_client_messages(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor

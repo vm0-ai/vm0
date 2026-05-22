@@ -204,7 +204,7 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
     if not isinstance(usage_target, dict):
         usage_target = {}
         flow.metadata["model_provider_usage"] = usage_target
-    usage_target.update(usage_result)
+    usage.merge_openai_responses_usage_result(usage_target, usage_result)
 
 
 def finalize_x_json_state(flow: http.HTTPFlow) -> None:
