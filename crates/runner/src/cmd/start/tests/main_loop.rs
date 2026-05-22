@@ -1034,15 +1034,18 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
 async fn claim_failure_rolls_back_budget() {
     // Budget for exactly 1 job (2 vcpu, 4096 MB matches the test profile).
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.budget);
     let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     // First job: claim returns None (409 conflict)
     let run_id_1 = RunId::new_v4();
     push_job(&env, run_id_1, "vm0/default", None);
 
-    // Give main loop time to process the failed claim and release budget.
-    tokio::time::advance(Duration::from_millis(100)).await;
-    tokio::task::yield_now().await;
+    // Returning to discovery proves the failed claim was processed.
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
     // Second job: claim succeeds — budget should have been freed.
     let run_id_2 = RunId::new_v4();

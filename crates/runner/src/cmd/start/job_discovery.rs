@@ -82,8 +82,8 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     if matches!(*ctx.mode_rx.borrow(), RunnerMode::Stopping) {
         job_cancel.cancel();
     }
-    // claim() runs in the branch handler: non-interruptible, so a successful
-    // claim is always paired with complete().
+    // claim() runs in the branch handler: non-interruptible, so a valid
+    // successful claim is always paired with complete().
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and

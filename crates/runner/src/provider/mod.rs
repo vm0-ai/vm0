@@ -157,7 +157,8 @@ pub trait JobProvider: Send + Sync {
     async fn discover(&self) -> Option<JobCandidate>;
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
-    /// by another runner or an error occurred.
+    /// by another runner or an error occurred. A returned claim must carry an
+    /// execution context whose `run_id` matches the discovered candidate.
     ///
     /// Callers **must** invoke this from a non-cancellable context (e.g.
     /// inside a `select!` branch handler) to guarantee that a successful
