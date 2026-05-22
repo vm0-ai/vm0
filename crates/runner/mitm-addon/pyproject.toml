@@ -9,6 +9,10 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = [
+    "basedpyright>=1.39",
+    "mitmproxy>=10.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
     "ruff>=0.8",
 ]
 test = [
@@ -86,6 +90,14 @@ banned-from = ["matching"]
 # PLR2004: `assert status == 200` / `assert len(lines) == 2` are idiomatic in
 # tests; naming each threshold as a constant adds noise without catching bugs.
 "tests/**" = ["S101", "S105", "PLR2004"]
+
+[tool.basedpyright]
+include = ["src", "scripts", "tests"]
+exclude = ["build", "**/__pycache__"]
+extraPaths = ["src"]
+pythonVersion = "3.10"
+pythonPlatform = "Linux"
+typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

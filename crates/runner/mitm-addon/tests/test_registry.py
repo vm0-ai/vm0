@@ -388,7 +388,9 @@ class TestGetVmInfo:
         )
 
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            assert registry.get_vm_info("10.200.0.1", str(path))["runId"] == "good-run"
+            vm_info = registry.get_vm_info("10.200.0.1", str(path))
+            assert vm_info is not None
+            assert vm_info["runId"] == "good-run"
             assert registry.get_vm_info("10.200.0.2", str(path)) is None
 
 

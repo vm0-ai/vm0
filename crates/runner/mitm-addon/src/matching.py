@@ -813,11 +813,7 @@ def match_compiled_firewall_request(
     if network_policies is None:
         network_policies = {}
 
-    blocked_base = None
-    blocked_name = ""
-    blocked_rel_path = "/"
-    first_matched_api_entry = None
-    first_matched_base_params: dict = {}
+    blocked_match: tuple[str, str, str, dict, dict] | None = None
 
     upper_method = method.upper()
 
@@ -835,12 +831,14 @@ def match_compiled_firewall_request(
 
             rel_path, base_params = base_result
 
-            if blocked_base is None:
-                blocked_base = api_entry.base.raw
-                blocked_name = fw_entry.name
-                blocked_rel_path = rel_path
-                first_matched_api_entry = api_entry.raw_api_entry
-                first_matched_base_params = base_params
+            if blocked_match is None:
+                blocked_match = (
+                    api_entry.base.raw,
+                    fw_entry.name,
+                    rel_path,
+                    api_entry.raw_api_entry,
+                    base_params,
+                )
             if api_entry.has_malformed_rules and malformed_match is None:
                 malformed_match = (api_entry.base.raw, fw_entry.name, upper_method, rel_path)
 
@@ -878,7 +876,10 @@ def match_compiled_firewall_request(
                                 rel_path,
                             )
 
-    if blocked_base is not None:
+    if blocked_match is not None:
+        blocked_base, blocked_name, blocked_rel_path, first_matched_api_entry, base_params = (
+            blocked_match
+        )
         if denied_match is not None:
             return FirewallBlock(
                 *denied_match,
@@ -893,7 +894,7 @@ def match_compiled_firewall_request(
                 {
                     "name": blocked_name,
                     "permission": "",
-                    "params": first_matched_base_params,
+                    "params": base_params,
                     "rule": "",
                     "rel_path": blocked_rel_path,
                 },
@@ -933,12 +934,8 @@ def match_firewall_request(
         network_policies = {}
 
     # Track the first base URL that matched for block/unknown responses.
-    blocked_base = None
-    blocked_name = ""
-    blocked_rel_path = "/"
-    # Track the first api_entry that matched base URL (for unknown endpoint auth)
-    first_matched_api_entry = None
-    first_matched_base_params: dict = {}
+    # Track the first matched base URL and api_entry for unknown endpoint auth.
+    blocked_match: tuple[str, str, str, dict, dict] | None = None
 
     upper_method = method.upper()
 
@@ -964,12 +961,8 @@ def match_firewall_request(
             rel_path, base_params = base_result
 
             # Base URL matched
-            if blocked_base is None:
-                blocked_base = base
-                blocked_name = fw_name
-                blocked_rel_path = rel_path
-                first_matched_api_entry = api_entry
-                first_matched_base_params = base_params
+            if blocked_match is None:
+                blocked_match = (base, fw_name, rel_path, api_entry, base_params)
 
             permissions = api_entry.get("permissions")
             if not permissions:
@@ -1011,7 +1004,10 @@ def match_firewall_request(
                         if denied_match is None:
                             denied_match = (base, fw_name, upper_method, rel_path)
 
-    if blocked_base is not None:
+    if blocked_match is not None:
+        blocked_base, blocked_name, blocked_rel_path, first_matched_api_entry, base_params = (
+            blocked_match
+        )
         # A non-granted permission matched — DENY takes priority over unknown.
         if denied_match is not None:
             return FirewallBlock(
@@ -1027,7 +1023,7 @@ def match_firewall_request(
                 {
                     "name": blocked_name,
                     "permission": "",
-                    "params": first_matched_base_params,
+                    "params": base_params,
                     "rule": "",
                     "rel_path": blocked_rel_path,
                 },

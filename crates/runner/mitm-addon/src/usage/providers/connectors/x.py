@@ -340,9 +340,10 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     buf = flow.metadata.get("stream_buffer")
     if not buf:
         return result
-    headers = flow.response.headers if flow.response else None
+    if not flow.response:
+        return result
     body = body_utils.decompress_body(
-        bytes(buf), headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        bytes(buf), flow.response.headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
     )
     try:
         data = json.loads(body)

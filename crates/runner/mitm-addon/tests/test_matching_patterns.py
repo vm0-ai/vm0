@@ -121,6 +121,7 @@ class TestMatchHost:
     def test_param_name_preserves_case(self):
         """Param names should preserve original case from the pattern."""
         result = matching.match_host("acme.zendesk.com", "{Subdomain}.zendesk.com")
+        assert result is not None
         assert "Subdomain" in result
         assert result["Subdomain"] == "acme"
 

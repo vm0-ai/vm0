@@ -4,6 +4,8 @@ Pure parsers shared by both the SSE streaming path and the non-streaming
 JSON fallback.
 """
 
+from typing import TypeGuard
+
 import body_utils
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
@@ -36,7 +38,7 @@ _ANTHROPIC_SSE_SCALAR_FIELDS = {
 }
 
 
-def _is_usage_quantity(value: object) -> bool:
+def _is_usage_quantity(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
@@ -76,7 +78,7 @@ class _AnthropicMessagesSseUsageHandler:
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS
 
-    def on_event_start(self, _event_name: str | None) -> None:
+    def on_event_start(self, event_name: str | None) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_ANTHROPIC_SSE_SCALAR_FIELDS)
 
     def on_data(self, chunk: bytes) -> None:
@@ -113,7 +115,7 @@ class _AnthropicMessagesSseUsageHandler:
         elif event_type == "message_delta":
             _store_selected_usage_values(result.values, self._usage, ("usage",))
 
-    def on_event_discard(self, _event_name: str | None) -> None:
+    def on_event_discard(self, event_name: str | None) -> None:
         self._extractor = None
 
 

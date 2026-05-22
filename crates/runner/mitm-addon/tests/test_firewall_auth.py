@@ -16,6 +16,8 @@ from tests.auth_state_helpers import (
     force_refresh_pending,
     last_force_refresh_at,
     mark_force_refresh,
+    require_cached_headers,
+    require_last_force_refresh_at,
     set_cached_headers,
 )
 from tests.firewall_helpers import _cancel_pending_task
@@ -26,6 +28,10 @@ def _upstream_headers(*pairs: tuple[str, str]) -> Message:
     for name, value in pairs:
         headers[name] = value
     return headers
+
+
+def _http_error(url: str, status: int, reason: str, body: bytes) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(url, status, reason, Message(), io.BytesIO(body))
 
 
 class TestGetFirewallHeaders:
@@ -60,7 +66,7 @@ class TestGetFirewallHeaders:
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
         assert cached_headers(cache_key)
-        assert cached_headers(cache_key).headers == mock_headers
+        assert require_cached_headers(cache_key).headers == mock_headers
 
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = ("run-1", "https://api.github.com")
@@ -120,7 +126,7 @@ class TestGetFirewallHeaders:
         # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
-        assert cached_headers(cache_key).headers == fresh_headers
+        assert require_cached_headers(cache_key).headers == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
@@ -212,7 +218,7 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
         assert mock_fetch.call_args.args[8] is True
-        assert cached_headers(cache_key).expires_at == expires_at
+        assert require_cached_headers(cache_key).expires_at == expires_at
 
     async def test_billable_cache_with_expired_expiry_refetches(self, headers):
         cache_key = ("run-1", "api-1")
@@ -317,7 +323,7 @@ class TestGetFirewallHeaders:
         # Marker cleared after consumption
         assert not force_refresh_pending(cache_key)
         # Consume timestamp recorded for cooldown enforcement
-        assert last_force_refresh_at(cache_key) >= before
+        assert require_last_force_refresh_at(cache_key) >= before
 
     async def test_force_refresh_fetch_failure_still_consumes_marker(self, headers):
         """A failed forced refresh burns the cooldown and does not cache headers."""
@@ -334,7 +340,7 @@ class TestGetFirewallHeaders:
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
         assert not force_refresh_pending(cache_key)
-        assert last_force_refresh_at(cache_key) >= before
+        assert require_last_force_refresh_at(cache_key) >= before
         assert cached_headers(cache_key) is None
 
     async def test_non_forced_fetch_does_not_cache_if_marker_appears_in_flight(self, headers):
@@ -390,8 +396,8 @@ class TestGetFirewallHeaders:
         assert forced_result["headers"] == forced_headers
         assert forced_result["cache_hit"] is False
         assert not force_refresh_pending(cache_key)
-        assert last_force_refresh_at(cache_key) >= before_forced
-        assert cached_headers(cache_key).headers == forced_headers
+        assert require_last_force_refresh_at(cache_key) >= before_forced
+        assert require_cached_headers(cache_key).headers == forced_headers
 
     async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
         """A same-key waiter must not reuse headers from the stale-prone leader fetch."""
@@ -435,7 +441,7 @@ class TestGetFirewallHeaders:
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
         assert waiter_result["headers"] == {"Authorization": "Bearer refreshed"}
-        assert cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
         assert not force_refresh_pending(cache_key)
 
     async def test_force_refresh_absent_passes_false(self, headers):
@@ -878,12 +884,11 @@ class TestFetchFirewallHeaders:
                 }
             }
         ).encode()
-        http_error = urllib.error.HTTPError(
+        http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
             424,
             "Failed Dependency",
-            {},
-            io.BytesIO(error_body),
+            error_body,
         )
 
         with (
@@ -906,12 +911,11 @@ class TestFetchFirewallHeaders:
                 }
             }
         ).encode()
-        http_error = urllib.error.HTTPError(
+        http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
             402,
             "Payment Required",
-            {},
-            io.BytesIO(error_body),
+            error_body,
         )
 
         with (
@@ -930,12 +934,11 @@ class TestFetchFirewallHeaders:
         error_body = json.dumps(
             {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
         ).encode()
-        http_error = urllib.error.HTTPError(
+        http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
             400,
             "Bad Request",
-            {},
-            io.BytesIO(error_body),
+            error_body,
         )
 
         with (
@@ -966,12 +969,11 @@ class TestFetchFirewallHeaders:
         error_body = json.dumps(
             {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
         ).encode()
-        http_error = urllib.error.HTTPError(
+        http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
             400,
             "Bad Request",
-            {},
-            io.BytesIO(error_body),
+            error_body,
         )
         http_error.close = MagicMock()
 
@@ -1114,13 +1116,7 @@ class TestForwardRequestResourceCleanup:
         assert headers["Content-Type"] == "text/plain"
 
     def test_closes_httperror_on_error(self):
-        err = urllib.error.HTTPError(
-            "https://example.com",
-            500,
-            "Server Error",
-            _upstream_headers(("Content-Type", "text/plain")),
-            io.BytesIO(b"oops"),
-        )
+        err = _http_error("https://example.com", 500, "Server Error", b"oops")
         err.close = MagicMock(wraps=err.close)
         with patch.object(auth._opener, "open", side_effect=err):
             status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)

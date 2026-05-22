@@ -83,7 +83,7 @@ def _common_extractor() -> JsonSelectiveExtractor:
 
 def test_rejects_invalid_scalar_field_kind():
     with pytest.raises(ValueError, match="kind"):
-        ScalarField("number")
+        ScalarField(json.loads('"number"'))
 
 
 @pytest.mark.parametrize("max_bytes", [0, -1])
@@ -99,7 +99,7 @@ def test_rejects_bool_scalar_field_max_bytes():
 
 def test_rejects_invalid_scalar_field_config_value():
     with pytest.raises(TypeError, match="ScalarField"):
-        JsonSelectiveExtractor(scalar_fields={("model",): "string"})
+        JsonSelectiveExtractor(scalar_fields=json.loads('{"model": "string"}'))
 
 
 @pytest.mark.parametrize(

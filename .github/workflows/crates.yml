@@ -352,6 +352,7 @@ jobs:
           pip install ".[dev]"
           ruff check .
           ruff format --check .
+          basedpyright -p .
 
       - name: Run mitm-addon tests
         run: |

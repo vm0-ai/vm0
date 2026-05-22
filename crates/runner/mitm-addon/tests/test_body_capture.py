@@ -877,6 +877,7 @@ class TestExtractAnthropicUsageFromJson:
             b'"cache_read_input_tokens":50,"cache_creation_input_tokens":0}}'
         )
         result = extract_anthropic_messages_usage_from_json(body, None)
+        assert result is not None
         assert result["tokens.cache_read"] == 50
         assert result["tokens.cache_creation"] == 0
 
@@ -885,6 +886,7 @@ class TestExtractAnthropicUsageFromJson:
         compressed = gzip.compress(original)
         headers = headers(("Content-Encoding", "gzip"))
         result = extract_anthropic_messages_usage_from_json(compressed, headers)
+        assert result is not None
         assert result["model"] == "test"
         assert result["tokens.input"] == 42
 
@@ -904,6 +906,7 @@ class TestExtractAnthropicUsageFromJson:
             b'"server_tool_use":{"web_search_requests":2}}}'
         )
         result = extract_anthropic_messages_usage_from_json(body, None)
+        assert result is not None
         assert "web_search_requests" not in result
         assert result["tokens.input"] == 10
 
@@ -963,6 +966,7 @@ class TestExtractOpenAIResponsesUsageFromJson:
             }
         ).encode()
         result = extract_openai_responses_usage_from_json(body, None)
+        assert result is not None
         assert result == {
             "message_id": "resp_123",
             "model": "gpt-5.5",
@@ -975,6 +979,7 @@ class TestExtractOpenAIResponsesUsageFromJson:
     def test_missing_cached_input_details_does_not_emit_cache_read(self):
         body = b'{"model":"gpt-5.4","usage":{"input_tokens":10,"output_tokens":5}}'
         result = extract_openai_responses_usage_from_json(body, None)
+        assert result is not None
         assert result == {
             "model": "gpt-5.4",
             "tokens.input": 10,
@@ -1001,6 +1006,7 @@ class TestExtractOpenAIResponsesUsageFromJson:
             b'"input_tokens_details":{"cached_tokens":"bad"}}}'
         )
         result = extract_openai_responses_usage_from_json(body, None)
+        assert result is not None
         assert result == {
             "model": "gpt-5.5",
             "tokens.input": 10,

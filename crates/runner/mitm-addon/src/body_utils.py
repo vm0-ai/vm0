@@ -324,7 +324,8 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             # when Content-Encoding doesn't match the body bytes.
             log_entry["request_body_encoding"] = "binary"
         else:
-            _set_body_fields(log_entry, "request", body, req_ct)
+            if body is not None:
+                _set_body_fields(log_entry, "request", body, req_ct)
 
     # Response headers
     if flow.response:
@@ -347,6 +348,8 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 # ZlibError (decompression failure) or ValueError from mitmproxy
                 log_entry["response_body_encoding"] = "binary"
                 return
+        if body is None:
+            return
         stream_state = flow.metadata.get("stream_buffer_state")
         res_ct = flow.response.headers.get("content-type", "")
         # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.

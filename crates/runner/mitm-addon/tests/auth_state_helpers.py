@@ -34,6 +34,12 @@ def cached_headers(cache_key: tuple[str, str]) -> auth._FirewallHeaderCacheEntry
     return state.cache if state else None
 
 
+def require_cached_headers(cache_key: tuple[str, str]) -> auth._FirewallHeaderCacheEntry:
+    entry = cached_headers(cache_key)
+    assert entry is not None
+    return entry
+
+
 def mark_force_refresh(cache_key: tuple[str, str]) -> None:
     auth._get_auth_state(cache_key).force_refresh_pending = True
 
@@ -50,3 +56,9 @@ def set_last_force_refresh_at(cache_key: tuple[str, str], timestamp: float) -> N
 def last_force_refresh_at(cache_key: tuple[str, str]) -> float | None:
     state = auth._auth_state.get(cache_key)
     return state.last_force_refresh_at if state else None
+
+
+def require_last_force_refresh_at(cache_key: tuple[str, str]) -> float:
+    timestamp = last_force_refresh_at(cache_key)
+    assert timestamp is not None
+    return timestamp

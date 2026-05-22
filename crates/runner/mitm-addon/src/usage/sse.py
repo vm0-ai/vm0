@@ -22,6 +22,7 @@ class SseUsageEventHandler(Protocol):
 
     def should_capture_event(self, event_name: str | None) -> bool:
         """Return whether data fields for *event_name* should be streamed."""
+        ...
 
     def on_event_start(self, event_name: str | None) -> None:
         """Called before the first captured data field in an event."""
