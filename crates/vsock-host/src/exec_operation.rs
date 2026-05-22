@@ -2857,7 +2857,16 @@ mod tests {
         slow: bool,
         result: &vsock_proto::DecodedExecResult<'_>,
     ) -> Vec<Level> {
-        let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log", &[]);
+        capture_terminal_log_levels_with_expected_exit_codes(lifecycle, slow, &[], result)
+    }
+
+    fn capture_terminal_log_levels_with_expected_exit_codes(
+        lifecycle: ExecTerminalLogLifecycle,
+        slow: bool,
+        expected_exit_codes: &[i32],
+        result: &vsock_proto::DecodedExecResult<'_>,
+    ) -> Vec<Level> {
+        let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log", expected_exit_codes);
         if slow {
             diagnostic.registered_at =
                 Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
@@ -2913,6 +2922,46 @@ mod tests {
         };
         assert_eq!(
             capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &notable),
+            vec![Level::WARN]
+        );
+    }
+
+    #[test]
+    fn exec_operation_diagnostic_respects_expected_exit_codes_for_terminal_logs() {
+        let expected_nonzero = vsock_proto::DecodedExecResult {
+            termination: ExecTermination::Exited { exit_code: 66 },
+            ..clean_terminal_result()
+        };
+        assert_eq!(
+            capture_terminal_log_levels_with_expected_exit_codes(
+                ExecTerminalLogLifecycle::Supervised,
+                true,
+                &[66],
+                &expected_nonzero
+            ),
+            vec![Level::INFO]
+        );
+        assert!(
+            capture_terminal_log_levels_with_expected_exit_codes(
+                ExecTerminalLogLifecycle::OneShot,
+                false,
+                &[66],
+                &expected_nonzero
+            )
+            .is_empty()
+        );
+
+        let expected_nonzero_with_diagnostic = vsock_proto::DecodedExecResult {
+            diagnostic: "expected nonzero with diagnostic",
+            ..expected_nonzero
+        };
+        assert_eq!(
+            capture_terminal_log_levels_with_expected_exit_codes(
+                ExecTerminalLogLifecycle::Supervised,
+                true,
+                &[66],
+                &expected_nonzero_with_diagnostic
+            ),
             vec![Level::WARN]
         );
     }
