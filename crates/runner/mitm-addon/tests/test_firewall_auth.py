@@ -1161,6 +1161,25 @@ class TestForwardRequestSecurity:
         assert call("Content-Length", "999") not in header_calls
         conn.endheaders.assert_called_once_with(b"abc")
 
+    def test_explicit_empty_body_sets_zero_content_length(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(auth.http_client, "HTTPSConnection", return_value=conn):
+            auth._forward_request_sync(
+                "https://example.com/path",
+                "POST",
+                [],
+                b"",
+            )
+
+        assert call("Content-Length", "0") in conn.putheader.call_args_list
+        conn.endheaders.assert_called_once_with(b"")
+
     def test_preserves_duplicate_response_headers_and_filters_connection_names(self):
         resp = MagicMock()
         resp.status = 200
