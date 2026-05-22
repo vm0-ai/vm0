@@ -889,6 +889,38 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_uses_selected_stderr_over_generic_diagnostic() {
+        let _test_state_guard = lock_test_state();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let stderr_lines = vec![
+            "API Error: 402 Insufficient credits. Add credits or configure your own API key to continue."
+                .to_string(),
+        ];
+        let generic_diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
+        let msg = cli_failure_message(1, &stderr_lines, Some(&generic_diagnostic));
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, msg.message.as_str());
+
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::InsufficientCredits)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::Stderr)
+        );
+    }
+
+    #[test]
     fn cli_failure_message_uses_generic_codex_failure_diagnostic_without_stderr() {
         let diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
         let msg = cli_failure_message(1, &[], Some(&diagnostic));
