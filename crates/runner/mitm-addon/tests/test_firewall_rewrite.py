@@ -825,6 +825,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.response is not None
         assert flow.response.status_code == 502
+        assert flow.response.headers["Content-Type"] == "application/json"
         body = json.loads(flow.response.content)
         assert body["error"] == "url_rewrite_forward_failed"
         assert body["message"] == "Failed to forward request to upstream"
