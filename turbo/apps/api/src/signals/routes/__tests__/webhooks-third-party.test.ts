@@ -1184,6 +1184,7 @@ describe("POST /api/webhooks/github", () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
+    await seedGitHubModelRoute({ fixture });
     mockGitHubWebhookEnv();
     mockGitHubAppCredentials();
     setupGitHubApiMocks({
