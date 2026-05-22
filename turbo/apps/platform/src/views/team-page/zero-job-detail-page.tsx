@@ -615,6 +615,7 @@ function JobPermissionsTab({
 
           {connectorType && (
             <PermissionsDrawer
+              agentId={agentId}
               connectorType={connectorType}
               displayName={displayName}
               initialPolicies={permissionPolicies ?? {}}

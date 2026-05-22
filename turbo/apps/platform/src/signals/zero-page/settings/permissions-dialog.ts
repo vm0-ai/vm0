@@ -23,22 +23,12 @@ export const setPermissionUnknownPolicy$ = command(
   },
 );
 
-const internalInitialized$ = state(false);
+const internalFormKey$ = state<string | null>(null);
 
-export const initPermissionPolicies$ = command(
-  (
-    { get, set },
-    policies: Record<string, Record<string, PermissionPolicy>>,
-    unknownPolicy: FirewallPolicyValue,
-  ) => {
-    if (get(internalInitialized$)) {
-      return;
-    }
-    set(internalInitialized$, true);
-    set(internalAllPolicies$, policies);
-    set(internalUnknownPolicy$, unknownPolicy);
-  },
-);
+interface ApplyPermissionPoliciesOptions {
+  formKey: string;
+  ref: string;
+}
 
 export const setPermissionPolicy$ = command(
   ({ get, set }, ref: string, name: string, policy: PermissionPolicy) => {
@@ -91,6 +81,37 @@ export const togglePermissionGroup$ = command(
   },
 );
 
+export const initPermissionPolicies$ = command(
+  (
+    { get, set },
+    formKey: string,
+    policies: Record<string, Record<string, PermissionPolicy>>,
+    unknownPolicy: FirewallPolicyValue,
+  ) => {
+    if (get(internalFormKey$) === formKey) {
+      return;
+    }
+    set(internalFormKey$, formKey);
+    set(internalAllPolicies$, policies);
+    set(internalUnknownPolicy$, unknownPolicy);
+    set(internalScrolled$, false);
+    set(internalExpandedGroups$, new Set());
+  },
+);
+
+export const resetPermissionPolicies$ = command(
+  ({ get, set }, formKey: string) => {
+    if (get(internalFormKey$) !== formKey) {
+      return;
+    }
+    set(internalFormKey$, null);
+    set(internalAllPolicies$, {});
+    set(internalUnknownPolicy$, "allow");
+    set(internalScrolled$, false);
+    set(internalExpandedGroups$, new Set());
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Apply (save) command
 // ---------------------------------------------------------------------------
@@ -98,6 +119,7 @@ export const togglePermissionGroup$ = command(
 export const applyPermissionPolicies$ = command(
   async (
     { get },
+    options: ApplyPermissionPoliciesOptions,
     onApply: (
       policies: Record<string, Record<string, PermissionPolicy>>,
       unknownPolicy: FirewallPolicyValue,
@@ -105,7 +127,13 @@ export const applyPermissionPolicies$ = command(
     onClose: () => void,
     _signal: AbortSignal,
   ): Promise<void> => {
+    if (get(internalFormKey$) !== options.formKey) {
+      throw new Error("Permission policies form is not initialized");
+    }
     const policies = get(internalAllPolicies$);
+    if (policies[options.ref] === undefined) {
+      throw new Error("Permission policies form is missing connector state");
+    }
     const unknownPolicy = get(internalUnknownPolicy$);
     await onApply(policies, unknownPolicy);
     onClose();

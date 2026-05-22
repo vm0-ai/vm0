@@ -31,6 +31,7 @@ import type { PermissionPolicy } from "../../../../signals/zero-page/settings/pe
 import {
   permissionAllPolicies$,
   initPermissionPolicies$,
+  resetPermissionPolicies$,
   setPermissionPolicy$,
   setPermissionAllPolicies$,
   permissionScrolled$,
@@ -51,6 +52,7 @@ interface ConnectorPermission {
 }
 
 interface PermissionsDrawerProps {
+  agentId: string;
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -238,6 +240,7 @@ function UnknownEndpointsToggle({
 }
 
 export function PermissionsDrawer({
+  agentId,
   connectorType,
   displayName,
   initialPolicies,
@@ -252,8 +255,11 @@ export function PermissionsDrawer({
     : null;
 
   const initialUnknownPolicy = initialPolicies[ref]?.unknownPolicy ?? "allow";
+  const initialPolicyState = buildInitialPolicies(ref, config, initialPolicies);
+  const initialPolicyKey = `${agentId}\u0000${ref}\u0000${initialUnknownPolicy}\u0000${JSON.stringify(initialPolicyState[ref] ?? {})}`;
   useSet(initPermissionPolicies$)(
-    buildInitialPolicies(ref, config, initialPolicies),
+    initialPolicyKey,
+    initialPolicyState,
     initialUnknownPolicy,
   );
 
@@ -266,6 +272,7 @@ export function PermissionsDrawer({
   const toggleGroup = useSet(togglePermissionGroup$);
   const setPolicyFn = useSet(setPermissionPolicy$);
   const setAllPoliciesFn = useSet(setPermissionAllPolicies$);
+  const resetPermissionPolicies = useSet(resetPermissionPolicies$);
   const [applyLoadable, applyFn] = useLoadableSet(applyPermissionPolicies$);
   const saving = applyLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -298,19 +305,37 @@ export function PermissionsDrawer({
     setAllPoliciesFn(ref, next);
   };
 
+  const handleClose = () => {
+    resetPermissionPolicies(initialPolicyKey);
+    onClose();
+  };
+
   const handleApply = () => {
     const wrappedApply = async (
       perms: Record<string, Record<string, PermissionPolicy>>,
       unknownFlag: FirewallPolicyValue,
     ): Promise<void> => {
       // Convert dialog state (flat perms + unknownPolicy) to unified FirewallPolicies
-      const unified: FirewallPolicies = {};
+      const unified: FirewallPolicies = { ...initialPolicies };
       for (const [r, p] of Object.entries(perms)) {
-        unified[r] = { policies: p, unknownPolicy: unknownFlag };
+        const nextUnknownPolicy =
+          r === ref ? unknownFlag : initialPolicies[r]?.unknownPolicy;
+        unified[r] =
+          nextUnknownPolicy === undefined
+            ? { policies: p }
+            : { policies: p, unknownPolicy: nextUnknownPolicy };
       }
       await onApply(unified);
     };
-    detach(applyFn(wrappedApply, onClose, pageSignal), Reason.DomCallback);
+    detach(
+      applyFn(
+        { formKey: initialPolicyKey, ref },
+        wrappedApply,
+        handleClose,
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;
@@ -319,7 +344,7 @@ export function PermissionsDrawer({
     <Sheet
       open
       onOpenChange={(open) => {
-        return !open && onClose();
+        return !open && handleClose();
       }}
     >
       <SheetContent side="right">
@@ -481,7 +506,7 @@ export function PermissionsDrawer({
         )}
 
         <SheetFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={handleClose}>
             {readOnly ? "Close" : "Cancel"}
           </Button>
           {!readOnly && (

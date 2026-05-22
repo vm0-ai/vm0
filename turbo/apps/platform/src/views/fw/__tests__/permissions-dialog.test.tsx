@@ -20,9 +20,16 @@ const mockApi = createMockApi(context);
 
 function mockAPIs({
   connectorType = "slack" as ConnectorType,
+  connectorTypes,
   ownerId = "test-user-123",
   permissionPolicies = null as FirewallPolicies | null,
+}: {
+  connectorType?: ConnectorType;
+  connectorTypes?: readonly ConnectorType[];
+  ownerId?: string;
+  permissionPolicies?: FirewallPolicies | null;
 } = {}) {
+  const enabledTypes = [...(connectorTypes ?? [connectorType])];
   setMockTeam([
     {
       id: "c0000000-0000-4000-a000-000000000001",
@@ -60,23 +67,25 @@ function mockAPIs({
       return respond(200, { content: null, filename: null });
     }),
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [connectorType] });
+      return respond(200, { enabledTypes });
     }),
   );
-  setMockConnectors([
-    {
-      id: "d0000001-0000-4000-a000-000000000001",
-      type: connectorType,
-      authMethod: "oauth",
-      externalId: null,
-      externalUsername: "testuser",
-      externalEmail: null,
-      oauthScopes: [],
-      needsReconnect: false,
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
-    },
-  ]);
+  setMockConnectors(
+    enabledTypes.map((type, index) => {
+      return {
+        id: `d0000001-0000-4000-a000-${String(index + 1).padStart(12, "0")}`,
+        type,
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: "testuser",
+        externalEmail: null,
+        oauthScopes: [],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
+    }),
+  );
   server.use(
     mockApi(zeroAgentPermissionPoliciesContract.update, ({ body, respond }) => {
       return respond(200, {
@@ -118,6 +127,38 @@ async function openPermissionsDrawer(connectorLabel: string) {
       }),
     ).toBeInTheDocument();
   });
+}
+
+function getPermissionRow(permissionName: string): HTMLElement {
+  const permissionCode = screen.getAllByRole("code").find((el) => {
+    return el.textContent === permissionName;
+  });
+  const permissionRow = permissionCode?.closest("div")?.parentElement;
+  if (!(permissionRow instanceof HTMLElement)) {
+    throw new Error(`Permission row not found: ${permissionName}`);
+  }
+  return permissionRow;
+}
+
+function getPolicyButton(row: HTMLElement, label: string): HTMLElement {
+  const button = within(row)
+    .getAllByRole("button")
+    .find((el) => {
+      return el.textContent?.includes(label) ?? false;
+    });
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`Policy button not found: ${label}`);
+  }
+  return button;
+}
+
+function requireSavedPolicies(
+  savedPolicies: FirewallPolicies | null,
+): FirewallPolicies {
+  if (savedPolicies === null) {
+    throw new Error("Permission policies were not saved");
+  }
+  return savedPolicies;
 }
 
 describe("permissions dialog - flat list connector (Notion)", () => {
@@ -176,6 +217,71 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 });
 
 describe("permissions dialog - grouped connector (Slack)", () => {
+  it("reinitializes connector policies and preserves untouched connectors on save", async () => {
+    let savedPolicies: FirewallPolicies | null = null;
+    const permissionPolicies: FirewallPolicies = {
+      slack: {
+        policies: { "channels:read": "deny" },
+        unknownPolicy: "deny",
+      },
+      notion: {
+        policies: { insert_comments: "deny" },
+        unknownPolicy: "deny",
+      },
+    };
+    mockAPIs({
+      connectorTypes: ["slack", "notion"],
+      permissionPolicies,
+    });
+    server.use(
+      mockApi(
+        zeroAgentPermissionPoliciesContract.update,
+        ({ body, respond }) => {
+          savedPolicies = body.policies;
+          return respond(200, {
+            agentId: "e0000000-0000-4000-a000-000000000010",
+            ownerId: "test-user-123",
+            description: "A helpful agent",
+            displayName: "My Agent",
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: body.policies,
+            customSkills: [],
+          });
+        },
+      ),
+    );
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+
+    await openPermissionsDrawer("Slack");
+    click(screen.getByText("Cancel"));
+    await waitFor(() => {
+      return expect(
+        screen.queryByRole("heading", { name: /Slack permissions/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    await openPermissionsDrawer("Notion");
+    await waitFor(() => {
+      const denyButton = getPolicyButton(
+        getPermissionRow("insert_comments"),
+        "Deny",
+      );
+      expect(denyButton).toHaveAttribute("aria-pressed", "true");
+    });
+
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      return expect(savedPolicies).not.toBeNull();
+    });
+    const appliedPolicies = requireSavedPolicies(savedPolicies);
+    expect(appliedPolicies.slack?.policies["channels:read"]).toBe("deny");
+    expect(appliedPolicies.slack?.unknownPolicy).toBe("deny");
+    expect(appliedPolicies.notion?.policies.insert_comments).toBe("deny");
+    expect(appliedPolicies.notion?.unknownPolicy).toBe("deny");
+  });
+
   it("renders group categories with permission counts (FW-D-032)", async () => {
     mockAPIs({ connectorType: "slack" });
     detachedSetupPage({ context, path: "/agents/my-agent" });
