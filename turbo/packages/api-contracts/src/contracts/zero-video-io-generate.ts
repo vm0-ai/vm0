@@ -18,6 +18,14 @@ export const zeroVideoIoGenerateRequestSchema = z
     seed: z.unknown().optional(),
     autoFix: z.unknown().optional(),
     safetyTolerance: z.unknown().optional(),
+    imageUrls: z.unknown().optional(),
+    videoUrls: z.unknown().optional(),
+    audioUrls: z.unknown().optional(),
+    referenceImageUrls: z.unknown().optional(),
+    referenceVideoUrls: z.unknown().optional(),
+    referenceAudioUrls: z.unknown().optional(),
+    firstFrameImageUrl: z.unknown().optional(),
+    lastFrameImageUrl: z.unknown().optional(),
   })
   .passthrough();
 

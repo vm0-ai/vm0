@@ -2752,6 +2752,13 @@
       "when": 1779417949963,
       "tag": "0392_cute_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1779435569055,
+      "tag": "0393_add_byteplus_video_usage_pricing",
+      "breakpoints": true
     }
   ]
 }

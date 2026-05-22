@@ -234,6 +234,7 @@ export {
   webhookGithubContract,
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
+  webhookBuiltInGenerationBytePlusContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,

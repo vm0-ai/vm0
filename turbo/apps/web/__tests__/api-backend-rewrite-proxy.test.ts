@@ -2096,6 +2096,28 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the BytePlus built-in generation webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/byteplus/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/byteplus/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/byteplus/not-a-uuid",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/built-in-generation"),
+    ).toBe(false);
+  });
+
   it("matches the internal event consumer chat assistant rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -4162,6 +4184,47 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe(
           `/api/webhooks/built-in-generations/fal/${generationId}?token=test-token`,
+        );
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards BytePlus built-in generation webhook POST bodies", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const generationId = "550e8400-e29b-41d4-a716-446655440000";
+        const webhookBody = JSON.stringify({
+          id: "byteplus-task",
+          status: "succeeded",
+          content: {
+            video_url: "https://ark-content.byteplus.example/test.mp4",
+          },
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/built-in-generations/byteplus/${generationId}?token=test-token`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          `/api/webhooks/built-in-generations/byteplus/${generationId}?token=test-token`,
         );
         expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.body).toBe(webhookBody);

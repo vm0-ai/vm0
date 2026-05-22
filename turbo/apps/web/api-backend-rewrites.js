@@ -177,6 +177,10 @@ const BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE = `/api/webhooks/built-in-
 const BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE = new RegExp(
   `^/api/webhooks/built-in-generations/fal/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE = `/api/webhooks/built-in-generations/byteplus/:generationId(${UUID_PATH_SEGMENT_PATTERN})`;
+const BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH_RE = new RegExp(
+  `^/api/webhooks/built-in-generations/byteplus/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 const AGENT_COMPLETE_REWRITE_SOURCE = "/api/webhooks/agent/complete";
 const AGENT_EVENTS_REWRITE_SOURCE = "/api/webhooks/agent/events";
 const AGENT_FIREWALL_AUTH_REWRITE_SOURCE = "/api/webhooks/agent/firewall/auth";
@@ -559,6 +563,11 @@ export const API_BACKEND_REWRITES = [
     BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
     "/api/webhooks/built-in-generations/fal/:generationId",
     BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE,
+  ],
+  [
+    BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE,
+    "/api/webhooks/built-in-generations/byteplus/:generationId",
+    BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH_RE,
   ],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
   ["/api/internal/callbacks/agent", "/api/internal/callbacks/agent"],

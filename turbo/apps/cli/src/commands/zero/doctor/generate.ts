@@ -107,38 +107,33 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
   video: [
     {
       label: "Built-in",
-      model: "fal-ai/veo3.1/fast",
-      command: "zero built-in generate video --model veo3.1-fast -h",
+      model: "dreamina-seedance-2-0-260128",
+      command: "zero built-in generate video --model dreamina-seedance-2.0 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in",
-      model: "fal-ai/veo3.1",
-      command: "zero built-in generate video --model veo3.1 -h",
+      model: "dreamina-seedance-2-0-fast-260128",
+      command:
+        "zero built-in generate video --model dreamina-seedance-2.0-fast -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in",
-      model: "fal-ai/kling-video/o3/standard/text-to-video",
-      command: "zero built-in generate video --model kling-o3-standard -h",
+      model: "seedance-1-5-pro-251215",
+      command: "zero built-in generate video --model seedance-1.5-pro -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in",
-      model: "fal-ai/kling-video/v3/4k/text-to-video",
-      command: "zero built-in generate video --model kling-v3-4k -h",
+      model: "seedance-1-0-pro-250528",
+      command: "zero built-in generate video --model seedance-1.0-pro -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in",
-      model: "bytedance/seedance-2.0/text-to-video",
-      command: "zero built-in generate video --model seedance2.0 -h",
-      reason: "available without connector setup",
-    },
-    {
-      label: "Built-in",
-      model: "bytedance/seedance-2.0/fast/text-to-video",
-      command: "zero built-in generate video --model seedance2.0-fast -h",
+      model: "seedance-1-0-pro-fast-251015",
+      command: "zero built-in generate video --model seedance-1.0-pro-fast -h",
       reason: "available without connector setup",
     },
   ],
@@ -165,7 +160,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in video generation",
     command: "zero built-in generate video -h",
     models:
-      "veo3.1-fast, veo3.1, kling-o3-standard, kling-v3-4k, seedance2.0, seedance2.0-fast",
+      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, seedance-1.0-pro, seedance-1.0-pro-fast",
   },
   presentation: {
     label: "Built-in presentation generation",

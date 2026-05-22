@@ -19,7 +19,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import {
-  FAL_VIDEO_QUEUE_URL,
+  BYTEPLUS_VIDEO_TASKS_URL,
   VIDEO_IO_MODEL,
 } from "../../services/zero-video-io-generate.service";
 import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
@@ -43,63 +43,86 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
-const FAL_STATUS_URL =
-  "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/status";
-const FAL_RESPONSE_URL =
-  "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/response";
-const FAL_VIDEO_URL = "https://v3b.fal.media/files/video-output.mp4";
-const KLING_V3_4K_MODEL = "fal-ai/kling-video/v3/4k/text-to-video";
-const KLING_V3_4K_QUEUE_URL = `https://queue.fal.run/${KLING_V3_4K_MODEL}`;
-const KLING_STATUS_URL =
-  "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/status";
-const KLING_RESPONSE_URL =
-  "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
-const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
-const SEEDANCE_FAST_MODEL = "bytedance/seedance-2.0/fast/text-to-video";
-const SEEDANCE_FAST_QUEUE_URL = `https://queue.fal.run/${SEEDANCE_FAST_MODEL}`;
-const SEEDANCE_STATUS_URL =
-  "https://queue.fal.run/bytedance/seedance-2.0/fast/text-to-video/requests/seedance-video-request/status";
-const SEEDANCE_RESPONSE_URL =
-  "https://queue.fal.run/bytedance/seedance-2.0/fast/text-to-video/requests/seedance-video-request/response";
-const SEEDANCE_VIDEO_URL = "https://v3b.fal.media/files/seedance-output.mp4";
+const BYTEPLUS_VIDEO_URL =
+  "https://ark-content.byteplus.example/files/video-output.mp4";
 const WEB_ORIGIN = "https://www.vm0.test";
-const VIDEO_SECOND_PRICING_CATEGORIES = [
-  "output_video_seconds.audio",
-  "output_video_seconds.silent",
-  "output_video_seconds.audio.4k",
-  "output_video_seconds.silent.4k",
-] as const;
-const VIDEO_PRICING_CATEGORIES = [
-  ...VIDEO_SECOND_PRICING_CATEGORIES,
-  "output_video_tokens",
+
+const VIDEO_PRICING_DEFAULTS = [
+  {
+    provider: "dreamina-seedance-2-0-260128",
+    category: "output_video_tokens.480p_720p.no_video",
+    unitPrice: 14_000,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "dreamina-seedance-2-0-260128",
+    category: "output_video_tokens.480p_720p.with_video",
+    unitPrice: 8600,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "dreamina-seedance-2-0-260128",
+    category: "output_video_tokens.1080p.no_video",
+    unitPrice: 15_400,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "dreamina-seedance-2-0-260128",
+    category: "output_video_tokens.1080p.with_video",
+    unitPrice: 9400,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "dreamina-seedance-2-0-fast-260128",
+    category: "output_video_tokens.480p_720p.no_video",
+    unitPrice: 11_200,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "dreamina-seedance-2-0-fast-260128",
+    category: "output_video_tokens.480p_720p.with_video",
+    unitPrice: 6600,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "seedance-1-5-pro-251215",
+    category: "output_video_tokens.audio",
+    unitPrice: 4800,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "seedance-1-5-pro-251215",
+    category: "output_video_tokens.silent",
+    unitPrice: 2400,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "seedance-1-0-pro-250528",
+    category: "output_video_tokens",
+    unitPrice: 5000,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: "seedance-1-0-pro-fast-251015",
+    category: "output_video_tokens",
+    unitPrice: 2000,
+    unitSize: 1_000_000,
+  },
 ] as const;
 
-const tokenRequest = Object.freeze({
-  keyName: "test-key",
-  timestamp: 1_700_000_000_000,
-  capability: '{"user:test-user":["subscribe"]}',
-  clientId: "test-user",
-  nonce: "test-nonce",
-  mac: "test-mac",
-});
-
-type VideoPricingCategory = (typeof VIDEO_PRICING_CATEGORIES)[number];
+type VideoPricingDefault = (typeof VIDEO_PRICING_DEFAULTS)[number];
+type VideoPricingCategory = VideoPricingDefault["category"];
 
 interface VideoFixture {
   readonly orgId: string;
   readonly userId: string;
-  readonly insertedPricingCategories: readonly VideoPricingCategory[];
 }
 
 interface PricingSnapshot {
+  readonly provider: string;
   readonly category: VideoPricingCategory;
   readonly unitPrice: number;
   readonly unitSize: number;
-}
-
-interface ProviderPricingSnapshot extends PricingSnapshot {
-  readonly provider: string;
-  readonly existed: boolean;
 }
 
 function authHeaders() {
@@ -123,26 +146,31 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-function readWebhookUrl(requestUrl: string | null): string {
-  if (requestUrl) {
-    const webhookUrl = new URL(requestUrl).searchParams.get("fal_webhook");
-    if (webhookUrl) {
-      return webhookUrl;
-    }
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
-  throw new Error("Expected Fal request fal_webhook query parameter");
+  throw new Error("Expected record");
 }
 
-async function postFalWebhook(
+function readCallbackUrl(body: unknown): string {
+  const value = asRecord(body).callback_url;
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw new Error("Expected BytePlus callback_url");
+}
+
+async function postBytePlusWebhook(
   app: ReturnType<typeof createApp>,
-  requestUrl: string | null,
+  callbackUrl: string,
   payload: unknown,
 ): Promise<void> {
-  const url = new URL(readWebhookUrl(requestUrl));
+  const url = new URL(callbackUrl);
   const response = await app.request(`${url.pathname}${url.search}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "COMPLETED", payload }),
+    body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
 }
@@ -167,7 +195,14 @@ function readAcceptedGenerationId(
     realtime: {
       channelName: `user:${userId}`,
       eventName: `built-in-generation:${body.generationId}`,
-      tokenRequest,
+      tokenRequest: {
+        keyName: "test-key",
+        timestamp: 1_700_000_000_000,
+        capability: '{"user:test-user":["subscribe"]}',
+        clientId: "test-user",
+        nonce: "test-nonce",
+        mac: "test-mac",
+      },
     },
   });
   return body.generationId;
@@ -198,91 +233,45 @@ function zeroToken(args: {
   });
 }
 
-function isVideoPricingCategory(value: string): value is VideoPricingCategory {
-  return VIDEO_PRICING_CATEGORIES.some((category) => {
-    return category === value;
-  });
-}
-
-async function ensureVideoPricing(): Promise<{
-  readonly pricing: ReadonlyMap<VideoPricingCategory, PricingSnapshot>;
-  readonly insertedCategories: readonly VideoPricingCategory[];
-}> {
+async function upsertDefaultVideoPricingRows(): Promise<void> {
   const writeDb = store.set(writeDb$);
-  const rows = await writeDb
-    .select({
-      category: usagePricing.category,
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "video"),
-        eq(usagePricing.provider, VIDEO_IO_MODEL),
-        inArray(usagePricing.category, [...VIDEO_SECOND_PRICING_CATEGORIES]),
-      ),
-    );
-
-  const pricing = new Map<VideoPricingCategory, PricingSnapshot>();
-  for (const row of rows) {
-    if (isVideoPricingCategory(row.category)) {
-      pricing.set(row.category, {
+  for (const row of VIDEO_PRICING_DEFAULTS) {
+    await writeDb
+      .insert(usagePricing)
+      .values({
+        kind: "video",
+        provider: row.provider,
         category: row.category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
+      })
+      .onConflictDoUpdate({
+        target: [
+          usagePricing.kind,
+          usagePricing.provider,
+          usagePricing.category,
+        ],
+        set: {
+          unitPrice: row.unitPrice,
+          unitSize: row.unitSize,
+          updatedAt: sql`now()`,
+        },
       });
-    }
   }
-
-  const defaults: Readonly<
-    Record<(typeof VIDEO_SECOND_PRICING_CATEGORIES)[number], PricingSnapshot>
-  > = {
-    "output_video_seconds.audio": {
-      category: "output_video_seconds.audio",
-      unitPrice: 180,
-      unitSize: 1,
-    },
-    "output_video_seconds.silent": {
-      category: "output_video_seconds.silent",
-      unitPrice: 120,
-      unitSize: 1,
-    },
-    "output_video_seconds.audio.4k": {
-      category: "output_video_seconds.audio.4k",
-      unitPrice: 420,
-      unitSize: 1,
-    },
-    "output_video_seconds.silent.4k": {
-      category: "output_video_seconds.silent.4k",
-      unitPrice: 360,
-      unitSize: 1,
-    },
-  };
-
-  const insertedCategories: VideoPricingCategory[] = [];
-  for (const category of VIDEO_SECOND_PRICING_CATEGORIES) {
-    if (!pricing.has(category)) {
-      const row = defaults[category];
-      await writeDb.insert(usagePricing).values({
-        kind: "video",
-        provider: VIDEO_IO_MODEL,
-        category,
-        unitPrice: row.unitPrice,
-        unitSize: row.unitSize,
-      });
-      pricing.set(category, row);
-      insertedCategories.push(category);
-    }
-  }
-
-  return { pricing, insertedCategories };
 }
 
-async function deleteVideoPricingRows(): Promise<readonly PricingSnapshot[]> {
+async function deleteDefaultModelPricingRows(): Promise<
+  readonly PricingSnapshot[]
+> {
   const writeDb = store.set(writeDb$);
+  const categories = VIDEO_PRICING_DEFAULTS.filter((row) => {
+    return row.provider === VIDEO_IO_MODEL;
+  }).map((row) => {
+    return row.category;
+  });
   const rows = await writeDb
     .select({
+      provider: usagePricing.provider,
       category: usagePricing.category,
       unitPrice: usagePricing.unitPrice,
       unitSize: usagePricing.unitSize,
@@ -292,7 +281,7 @@ async function deleteVideoPricingRows(): Promise<readonly PricingSnapshot[]> {
       and(
         eq(usagePricing.kind, "video"),
         eq(usagePricing.provider, VIDEO_IO_MODEL),
-        inArray(usagePricing.category, [...VIDEO_SECOND_PRICING_CATEGORIES]),
+        inArray(usagePricing.category, categories),
       ),
     );
 
@@ -302,12 +291,17 @@ async function deleteVideoPricingRows(): Promise<readonly PricingSnapshot[]> {
       and(
         eq(usagePricing.kind, "video"),
         eq(usagePricing.provider, VIDEO_IO_MODEL),
-        inArray(usagePricing.category, [...VIDEO_SECOND_PRICING_CATEGORIES]),
+        inArray(usagePricing.category, categories),
       ),
     );
 
-  return rows.filter((row): row is PricingSnapshot => {
-    return isVideoPricingCategory(row.category);
+  return rows.map((row) => {
+    return {
+      provider: row.provider,
+      category: row.category as VideoPricingCategory,
+      unitPrice: row.unitPrice,
+      unitSize: row.unitSize,
+    };
   });
 }
 
@@ -324,95 +318,18 @@ async function restoreVideoPricingRows(
       rows.map((row) => {
         return {
           kind: "video",
-          provider: VIDEO_IO_MODEL,
+          provider: row.provider,
           category: row.category,
           unitPrice: row.unitPrice,
           unitSize: row.unitSize,
         };
       }),
-    );
-}
-
-async function upsertVideoPricingRow(args: {
-  readonly provider: string;
-  readonly category: VideoPricingCategory;
-  readonly unitPrice: number;
-  readonly unitSize: number;
-}): Promise<ProviderPricingSnapshot> {
-  const writeDb = store.set(writeDb$);
-  const rows = await writeDb
-    .select({
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "video"),
-        eq(usagePricing.provider, args.provider),
-        eq(usagePricing.category, args.category),
-      ),
-    );
-  const existing = rows[0];
-
-  await writeDb
-    .insert(usagePricing)
-    .values({
-      kind: "video",
-      provider: args.provider,
-      category: args.category,
-      unitPrice: args.unitPrice,
-      unitSize: args.unitSize,
-    })
+    )
     .onConflictDoUpdate({
       target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
       set: {
-        unitPrice: args.unitPrice,
-        unitSize: args.unitSize,
-        updatedAt: sql`now()`,
-      },
-    });
-
-  return {
-    provider: args.provider,
-    category: args.category,
-    unitPrice: existing?.unitPrice ?? args.unitPrice,
-    unitSize: existing?.unitSize ?? args.unitSize,
-    existed: existing !== undefined,
-  };
-}
-
-async function restoreVideoPricingRow(
-  snapshot: ProviderPricingSnapshot,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  if (!snapshot.existed) {
-    await writeDb
-      .delete(usagePricing)
-      .where(
-        and(
-          eq(usagePricing.kind, "video"),
-          eq(usagePricing.provider, snapshot.provider),
-          eq(usagePricing.category, snapshot.category),
-        ),
-      );
-    return;
-  }
-
-  await writeDb
-    .insert(usagePricing)
-    .values({
-      kind: "video",
-      provider: snapshot.provider,
-      category: snapshot.category,
-      unitPrice: snapshot.unitPrice,
-      unitSize: snapshot.unitSize,
-    })
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: snapshot.unitPrice,
-        unitSize: snapshot.unitSize,
+        unitPrice: sql`excluded.unit_price`,
+        unitSize: sql`excluded.unit_size`,
         updatedAt: sql`now()`,
       },
     });
@@ -441,15 +358,11 @@ async function seedVideoFixture(options: {
     VALUES (${orgId}, ${userId}, true)
   `);
 
-  const pricing = options.withPricing
-    ? await ensureVideoPricing()
-    : { insertedCategories: [] };
+  if (options.withPricing) {
+    await upsertDefaultVideoPricingRows();
+  }
 
-  return {
-    orgId,
-    userId,
-    insertedPricingCategories: pricing.insertedCategories,
-  };
+  return { orgId, userId };
 }
 
 async function deleteVideoFixture(fixture: VideoFixture): Promise<void> {
@@ -476,28 +389,12 @@ async function deleteVideoFixture(fixture: VideoFixture): Promise<void> {
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await store.set(deleteOrgMembership$, fixture, context.signal);
-  if (fixture.insertedPricingCategories.length > 0) {
-    await writeDb
-      .delete(usagePricing)
-      .where(
-        and(
-          eq(usagePricing.kind, "video"),
-          eq(usagePricing.provider, VIDEO_IO_MODEL),
-          inArray(usagePricing.category, [
-            ...fixture.insertedPricingCategories,
-          ]),
-        ),
-      );
-  }
 }
 
 describe("POST /api/zero/video-io/generate", () => {
   const track = createFixtureTracker<VideoFixture>(deleteVideoFixture);
   const trackPricing = createFixtureTracker<readonly PricingSnapshot[]>(
     restoreVideoPricingRows,
-  );
-  const trackPricingRow = createFixtureTracker<ProviderPricingSnapshot>(
-    restoreVideoPricingRow,
   );
 
   beforeEach(() => {
@@ -508,7 +405,14 @@ describe("POST /api/zero/video-io/generate", () => {
     });
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
-    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
+    context.mocks.ably.createTokenRequest.mockResolvedValue({
+      keyName: "test-key",
+      timestamp: 1_700_000_000_000,
+      capability: '{"user:test-user":["subscribe"]}',
+      clientId: "test-user",
+      nonce: "test-nonce",
+      mac: "test-mac",
+    });
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -524,13 +428,13 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
-  it("rejects unsupported durations before fal", async () => {
+  it("rejects unsupported durations before BytePlus", async () => {
     const fixture = await track(seedVideoFixture({ withPricing: true }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledFal = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(FAL_VIDEO_QUEUE_URL, () => {
-        calledFal = true;
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        calledBytePlus = true;
         return HttpResponse.json({});
       }),
     );
@@ -539,17 +443,18 @@ describe("POST /api/zero/video-io/generate", () => {
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ prompt: "a city", duration: "10s" }),
+      body: JSON.stringify({ prompt: "a city", duration: "3s" }),
     });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Unsupported video duration for veo3.1-fast: 10s",
+        message:
+          "Unsupported video duration for dreamina-seedance-2.0-fast: 3s",
         code: "BAD_REQUEST",
       },
     });
-    expect(calledFal).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
   it("returns 402 when the org has no spendable credits", async () => {
@@ -575,11 +480,12 @@ describe("POST /api/zero/video-io/generate", () => {
   it("returns 503 when video pricing is not configured", async () => {
     const fixture = await track(seedVideoFixture({ credits: 1000 }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    await trackPricing(deleteVideoPricingRows());
-    let calledFal = false;
+    await upsertDefaultVideoPricingRows();
+    await trackPricing(deleteDefaultModelPricingRows());
+    let calledBytePlus = false;
     server.use(
-      http.post(FAL_VIDEO_QUEUE_URL, () => {
-        calledFal = true;
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        calledBytePlus = true;
         return HttpResponse.json({});
       }),
     );
@@ -598,10 +504,10 @@ describe("POST /api/zero/video-io/generate", () => {
         code: "NOT_CONFIGURED",
       },
     });
-    expect(calledFal).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
-  it("generates video files with fal and charges configured pricing", async () => {
+  it("generates video files with BytePlus and charges actual callback token usage", async () => {
     const fixture = await track(seedVideoFixture({ withPricing: true }));
     const { composeId } = await store.set(
       seedCompose$,
@@ -621,37 +527,16 @@ describe("POST /api/zero/video-io/generate", () => {
 
     let observedAuthorization: string | null = null;
     let observedBody: unknown = null;
-    let observedRequestUrl: string | null = null;
     server.use(
-      http.post(FAL_VIDEO_QUEUE_URL, async ({ request }) => {
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
         observedAuthorization = request.headers.get("authorization");
-        observedRequestUrl = request.url;
         observedBody = await request.json();
         return HttpResponse.json({
-          request_id: "video-request",
-          status_url: FAL_STATUS_URL,
-          response_url: FAL_RESPONSE_URL,
+          id: "byteplus-video-task",
+          status: "queued",
         });
       }),
-      http.get(FAL_STATUS_URL, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe("Key test-fal-key");
-        return HttpResponse.json({
-          status: "COMPLETED",
-          response_url: FAL_RESPONSE_URL,
-        });
-      }),
-      http.get(FAL_RESPONSE_URL, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe("Key test-fal-key");
-        return HttpResponse.json({
-          video: {
-            url: FAL_VIDEO_URL,
-            content_type: "video/mp4",
-            file_name: "output.mp4",
-            file_size: VIDEO_BYTES.byteLength,
-          },
-        });
-      }),
-      http.get(FAL_VIDEO_URL, () => {
+      http.get(BYTEPLUS_VIDEO_URL, () => {
         return new HttpResponse(VIDEO_BYTES, {
           headers: { "content-type": "video/mp4" },
         });
@@ -683,19 +568,23 @@ describe("POST /api/zero/video-io/generate", () => {
       fixture.userId,
     );
 
-    await postFalWebhook(app, observedRequestUrl, {
-      video: {
-        url: FAL_VIDEO_URL,
-        content_type: "video/mp4",
-        file_name: "output.mp4",
-        file_size: VIDEO_BYTES.byteLength,
+    const callbackUrl = readCallbackUrl(observedBody);
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "byteplus-video-task",
+      model: VIDEO_IO_MODEL,
+      status: "succeeded",
+      content: {
+        video_url: BYTEPLUS_VIDEO_URL,
+      },
+      usage: {
+        completion_tokens: 123_456,
       },
     });
     await clearAllDetached();
-    const webhookUrl = new URL(readWebhookUrl(observedRequestUrl));
+    const webhookUrl = new URL(callbackUrl);
     expect(webhookUrl.origin).toBe(WEB_ORIGIN);
     expect(webhookUrl.pathname).toBe(
-      `/api/webhooks/built-in-generations/fal/${generationId}`,
+      `/api/webhooks/built-in-generations/byteplus/${generationId}`,
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `built-in-generation:${generationId}`,
@@ -721,25 +610,30 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1440,
+      creditsCharged: 1383,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
       durationSeconds: 8,
       resolution: "720p",
       generateAudio: true,
-      sourceUrl: FAL_VIDEO_URL,
-      requestId: "video-request",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "byteplus-video-task",
     });
-    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedAuthorization).toBe("Bearer test-byteplus-key");
     expect(observedBody).toMatchObject({
-      prompt: "a cinematic tracking shot through a neon market",
-      aspect_ratio: "16:9",
-      duration: "8s",
+      model: VIDEO_IO_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "a cinematic tracking shot through a neon market",
+        },
+      ],
+      callback_url: callbackUrl,
       resolution: "720p",
+      ratio: "16:9",
+      duration: 8,
       generate_audio: true,
-      auto_fix: true,
-      safety_tolerance: "4",
     });
 
     if (
@@ -796,13 +690,14 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(uploadRows[0]?.metadata).toMatchObject({
       generatedBy: "zero-official-video",
       model: VIDEO_IO_MODEL,
-      sourceUrl: FAL_VIDEO_URL,
-      requestId: "video-request",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "byteplus-video-task",
       aspectRatio: "16:9",
       duration: "8s",
       durationSeconds: 8,
       resolution: "720p",
       generateAudio: true,
+      billingQuantity: 123_456,
       s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
@@ -824,26 +719,19 @@ describe("POST /api/zero/video-io/generate", () => {
       idempotencyKey: builtInGenerationUsageIdempotencyKey({
         generationId,
         scope: "video",
-        category: "output_video_seconds.audio",
+        category: "output_video_tokens.480p_720p.no_video",
       }),
-      category: "output_video_seconds.audio",
-      quantity: 8,
-      creditsCharged: 1440,
+      category: "output_video_tokens.480p_720p.no_video",
+      quantity: 123_456,
+      creditsCharged: 1383,
       status: "processed",
       billingError: null,
     });
   });
 
-  it("generates video files with a selected fal video model", async () => {
+  it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await track(seedVideoFixture({ credits: 10_000 }));
-    await trackPricingRow(
-      upsertVideoPricingRow({
-        provider: KLING_V3_4K_MODEL,
-        category: "output_video_seconds.audio.4k",
-        unitPrice: 504,
-        unitSize: 1,
-      }),
-    );
+    await upsertDefaultVideoPricingRows();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -861,34 +749,15 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     let observedBody: unknown = null;
-    let observedRequestUrl: string | null = null;
     server.use(
-      http.post(KLING_V3_4K_QUEUE_URL, async ({ request }) => {
-        observedRequestUrl = request.url;
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
         observedBody = await request.json();
         return HttpResponse.json({
-          request_id: "kling-video-request",
-          status_url: KLING_STATUS_URL,
-          response_url: KLING_RESPONSE_URL,
+          id: "dreamina-video-task",
+          status: "queued",
         });
       }),
-      http.get(KLING_STATUS_URL, () => {
-        return HttpResponse.json({
-          status: "COMPLETED",
-          response_url: KLING_RESPONSE_URL,
-        });
-      }),
-      http.get(KLING_RESPONSE_URL, () => {
-        return HttpResponse.json({
-          video: {
-            url: KLING_VIDEO_URL,
-            content_type: "video/mp4",
-            file_name: "kling-output.mp4",
-            file_size: VIDEO_BYTES.byteLength,
-          },
-        });
-      }),
-      http.get(KLING_VIDEO_URL, () => {
+      http.get(BYTEPLUS_VIDEO_URL, () => {
         return new HttpResponse(VIDEO_BYTES, {
           headers: { "content-type": "video/mp4" },
         });
@@ -905,163 +774,14 @@ describe("POST /api/zero/video-io/generate", () => {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        prompt: "a vertical concert stage reveal",
-        model: "kling-v3-4k",
-        duration: "5s",
-        aspectRatio: "9:16",
-        generateAudio: true,
-        negativePrompt: "low quality",
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "video",
-      fixture.userId,
-    );
-
-    await postFalWebhook(app, observedRequestUrl, {
-      video: {
-        url: KLING_VIDEO_URL,
-        content_type: "video/mp4",
-        file_name: "kling-output.mp4",
-        file_size: VIDEO_BYTES.byteLength,
-      },
-    });
-    await clearAllDetached();
-
-    const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
-      { headers: { authorization: `Bearer ${token}` } },
-    );
-    expect(statusResponse.status).toBe(200);
-    const body = readGenerationResult(await statusResponse.json());
-    expect(body).toMatchObject({
-      contentType: "video/mp4",
-      size: VIDEO_BYTES.byteLength,
-      creditsCharged: 2520,
-      model: KLING_V3_4K_MODEL,
-      aspectRatio: "9:16",
-      duration: "5s",
-      durationSeconds: 5,
-      resolution: "4k",
-      generateAudio: true,
-      sourceUrl: KLING_VIDEO_URL,
-      requestId: "kling-video-request",
-    });
-    expect(observedBody).toMatchObject({
-      prompt: "a vertical concert stage reveal",
-      aspect_ratio: "9:16",
-      duration: "5",
-      generate_audio: true,
-      negative_prompt: "low quality",
-    });
-
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "video"),
-          eq(usageEvent.provider, KLING_V3_4K_MODEL),
-        ),
-      );
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "video",
-        category: "output_video_seconds.audio.4k",
-      }),
-      category: "output_video_seconds.audio.4k",
-      quantity: 5,
-      creditsCharged: 2520,
-      status: "processed",
-      billingError: null,
-    });
-  });
-
-  it("generates video files with seedance 2.0", async () => {
-    const fixture = await track(seedVideoFixture({ credits: 10_000 }));
-    await trackPricingRow(
-      upsertVideoPricingRow({
-        provider: SEEDANCE_FAST_MODEL,
-        category: "output_video_tokens",
-        unitPrice: 1344,
-        unitSize: 100_000,
-      }),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
-
-    let observedBody: unknown = null;
-    let observedRequestUrl: string | null = null;
-    server.use(
-      http.post(SEEDANCE_FAST_QUEUE_URL, async ({ request }) => {
-        observedRequestUrl = request.url;
-        observedBody = await request.json();
-        return HttpResponse.json({
-          request_id: "seedance-video-request",
-          status_url: SEEDANCE_STATUS_URL,
-          response_url: SEEDANCE_RESPONSE_URL,
-        });
-      }),
-      http.get(SEEDANCE_STATUS_URL, () => {
-        return HttpResponse.json({
-          status: "COMPLETED",
-          response_url: SEEDANCE_RESPONSE_URL,
-        });
-      }),
-      http.get(SEEDANCE_RESPONSE_URL, () => {
-        return HttpResponse.json({
-          video: {
-            url: SEEDANCE_VIDEO_URL,
-            content_type: "video/mp4",
-            file_name: "seedance-output.mp4",
-            file_size: VIDEO_BYTES.byteLength,
-          },
-        });
-      }),
-      http.get(SEEDANCE_VIDEO_URL, () => {
-        return new HttpResponse(VIDEO_BYTES, {
-          headers: { "content-type": "video/mp4" },
-        });
-      }),
-    );
-
-    const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId,
-    });
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/video-io/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        prompt: "a wide multi-shot chase scene",
-        model: "seedance2.0-fast",
-        duration: "8s",
-        resolution: "480p",
-        aspectRatio: "21:9",
-        generateAudio: false,
+        prompt: "preserve the character while matching the soundtrack",
+        model: "dreamina-seedance-2.0",
+        duration: "6s",
+        resolution: "1080p",
+        aspectRatio: "16:9",
+        imageUrls: ["https://example.com/reference.png"],
+        videoUrls: ["https://example.com/reference.mp4"],
+        audioUrls: ["https://example.com/reference.mp3"],
         seed: 42,
       }),
     });
@@ -1072,16 +792,52 @@ describe("POST /api/zero/video-io/generate", () => {
       "video",
       fixture.userId,
     );
+    const callbackUrl = readCallbackUrl(observedBody);
 
-    await postFalWebhook(app, observedRequestUrl, {
-      video: {
-        url: SEEDANCE_VIDEO_URL,
-        content_type: "video/mp4",
-        file_name: "seedance-output.mp4",
-        file_size: VIDEO_BYTES.byteLength,
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "dreamina-video-task",
+      status: "succeeded",
+      content: {
+        video_url: {
+          url: BYTEPLUS_VIDEO_URL,
+          content_type: "video/mp4",
+        },
+      },
+      usage: {
+        completion_tokens: 200_000,
       },
     });
     await clearAllDetached();
+
+    expect(observedBody).toMatchObject({
+      model: "dreamina-seedance-2-0-260128",
+      resolution: "1080p",
+      ratio: "16:9",
+      duration: 6,
+      generate_audio: true,
+      seed: 42,
+      content: [
+        {
+          type: "text",
+          text: "preserve the character while matching the soundtrack",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/reference.png" },
+          role: "reference_image",
+        },
+        {
+          type: "video_url",
+          video_url: { url: "https://example.com/reference.mp4" },
+          role: "reference_video",
+        },
+        {
+          type: "audio_url",
+          audio_url: { url: "https://example.com/reference.mp3" },
+          role: "reference_audio",
+        },
+      ],
+    });
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
@@ -1090,25 +846,10 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      contentType: "video/mp4",
-      size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1080,
-      model: SEEDANCE_FAST_MODEL,
-      aspectRatio: "21:9",
-      duration: "8s",
-      durationSeconds: 8,
-      resolution: "480p",
-      generateAudio: false,
-      sourceUrl: SEEDANCE_VIDEO_URL,
-      requestId: "seedance-video-request",
-    });
-    expect(observedBody).toMatchObject({
-      prompt: "a wide multi-shot chase scene",
-      aspect_ratio: "21:9",
-      duration: "8",
-      resolution: "480p",
-      generate_audio: false,
-      seed: 42,
+      creditsCharged: 1880,
+      model: "dreamina-seedance-2-0-260128",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "dreamina-video-task",
     });
 
     const usageRows = await store
@@ -1120,31 +861,26 @@ describe("POST /api/zero/video-io/generate", () => {
           eq(usageEvent.orgId, fixture.orgId),
           eq(usageEvent.userId, fixture.userId),
           eq(usageEvent.kind, "video"),
-          eq(usageEvent.provider, SEEDANCE_FAST_MODEL),
+          eq(usageEvent.provider, "dreamina-seedance-2-0-260128"),
         ),
       );
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "video",
-        category: "output_video_tokens",
-      }),
-      category: "output_video_tokens",
-      quantity: 80_352,
-      creditsCharged: 1080,
+      category: "output_video_tokens.1080p.with_video",
+      quantity: 200_000,
+      creditsCharged: 1880,
       status: "processed",
       billingError: null,
     });
   });
 
-  it("records a failed job when fal video generation fails", async () => {
+  it("records a failed job when BytePlus video generation fails", async () => {
     const fixture = await track(
       seedVideoFixture({ credits: 1000, withPricing: true }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
-      http.post(FAL_VIDEO_QUEUE_URL, () => {
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
         return HttpResponse.json(
           { error: { message: "rate limit exceeded" } },
           { status: 429 },

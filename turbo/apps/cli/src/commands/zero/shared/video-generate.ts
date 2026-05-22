@@ -15,6 +15,11 @@ interface VideoOptions {
   seed?: number;
   autoFix?: boolean;
   safetyTolerance: string;
+  imageUrl?: string[];
+  videoUrl?: string[];
+  audioUrl?: string[];
+  firstFrameImageUrl?: string;
+  lastFrameImageUrl?: string;
   json?: boolean;
 }
 
@@ -30,6 +35,10 @@ function parseSeed(value: string): number {
     throw new InvalidArgumentError("seed must be a non-negative safe integer");
   }
   return seed;
+}
+
+function collectUrl(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
 }
 
 function readPrompt(options: VideoOptions, usageCommand: string): string {
@@ -58,25 +67,45 @@ export function createVideoGenerateCommand(
     .option("--prompt <text>", "Video prompt; can also be piped via stdin")
     .option(
       "--model <model>",
-      "Model: veo3.1-fast, veo3.1, kling-o3-standard, kling-v3-4k, seedance2.0, or seedance2.0-fast",
-      "veo3.1-fast",
+      "Model: dreamina-seedance-2.0, dreamina-seedance-2.0-fast, seedance-1.5-pro, seedance-1.0-pro, or seedance-1.0-pro-fast",
+      "dreamina-seedance-2.0-fast",
     )
     .option(
       "--aspect-ratio <ratio>",
-      "Aspect ratio: 16:9 or 9:16; Seedance also supports 21:9, 4:3, 1:1, 3:4",
+      "Aspect ratio: 21:9, 16:9, 4:3, 1:1, 3:4, or 9:16",
       "16:9",
     )
     .option(
       "--duration <duration>",
-      "Duration: 3s-15s; Veo supports 4s/6s/8s",
+      "Duration: 2s-15s depending on model",
       "8s",
     )
-    .option("--resolution <resolution>", "Resolution: 720p, 1080p, or 4k")
+    .option("--resolution <resolution>", "Resolution: 480p, 720p, or 1080p")
     .option("--no-audio", "Generate a silent video")
     .option("--negative-prompt <text>", "Negative prompt")
     .option("--seed <integer>", "Deterministic seed", parseSeed)
-    .option("--no-auto-fix", "Disable fal prompt auto-fix")
-    .option("--safety-tolerance <level>", "Safety tolerance: 1-6", "4")
+    .option("--no-auto-fix", "Disable prompt auto-fix")
+    .option("--safety-tolerance <level>", "Safety tolerance", "4")
+    .option(
+      "--image-url <url>",
+      "Reference image URL; repeat for multiple Dreamina Seedance 2.0 references",
+      collectUrl,
+      [],
+    )
+    .option(
+      "--video-url <url>",
+      "Reference video URL; repeat up to 3 times for Dreamina Seedance 2.0",
+      collectUrl,
+      [],
+    )
+    .option(
+      "--audio-url <url>",
+      "Reference audio URL for Dreamina Seedance 2.0",
+      collectUrl,
+      [],
+    )
+    .option("--first-frame-image-url <url>", "First frame image URL")
+    .option("--last-frame-image-url <url>", "Last frame image URL")
     .option("--json", "Print metadata as JSON")
     .addHelpText(
       "after",
@@ -90,18 +119,18 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
-  - Uses fal video models with configured usage pricing
+  - Uses BytePlus ModelArk video models with configured usage pricing
 
 Models:
-  - Veo: veo3.1-fast (default), veo3.1. Supports 4s/6s/8s,
-    16:9 or 9:16, 720p/1080p/4k, negative prompts, seed,
-    auto-fix, safety tolerance, and optional audio.
-  - Kling: kling-o3-standard, kling-v3-4k. Supports 3s-15s and
-    16:9 or 9:16. kling-v3-4k uses 4k output; kling-o3-standard
-    uses 1080p output.
-  - Seedance: seedance2.0, seedance2.0-fast. Supports 4s-15s,
-    480p/720p, seed, and aspect ratios 21:9, 16:9, 4:3, 1:1,
-    3:4, or 9:16.`,
+  - Dreamina Seedance 2.0: dreamina-seedance-2.0,
+    dreamina-seedance-2.0-fast (default). Supports 4s-15s,
+    480p/720p, seed, optional audio, first/last frames, and
+    image/video/audio references. The non-fast model also supports 1080p.
+  - Seedance 1.5 Pro: seedance-1.5-pro. Supports 4s-12s,
+    480p/720p/1080p, seed, optional audio, and first/last frames.
+  - Seedance 1.0 Pro: seedance-1.0-pro, seedance-1.0-pro-fast.
+    Supports 2s-12s, 480p/720p/1080p, seed, and first frame.
+    The non-fast model also supports last frame.`,
     )
     .action(
       withErrorHandler(async (options: VideoOptions) => {
@@ -117,6 +146,11 @@ Models:
           seed: options.seed,
           autoFix: options.autoFix !== false,
           safetyTolerance: options.safetyTolerance,
+          imageUrls: options.imageUrl,
+          videoUrls: options.videoUrl,
+          audioUrls: options.audioUrl,
+          firstFrameImageUrl: options.firstFrameImageUrl,
+          lastFrameImageUrl: options.lastFrameImageUrl,
         });
 
         if (options.json) {

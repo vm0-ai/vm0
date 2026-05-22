@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { env } from "../../lib/env";
 
-type BuiltInGenerationProviderWebhookProvider = "fal";
+type BuiltInGenerationProviderWebhookProvider = "fal" | "byteplus";
 
 function webhookTokenPayload(args: {
   readonly provider: BuiltInGenerationProviderWebhookProvider;
@@ -60,6 +60,28 @@ export function falBuiltInGenerationWebhookUrl(args: {
     "token",
     signBuiltInGenerationProviderWebhookToken({
       provider: "fal",
+      generationId: args.generationId,
+      visualKey: args.visualKey,
+    }),
+  );
+  if (args.visualKey) {
+    baseUrl.searchParams.set("visualKey", args.visualKey);
+  }
+  return baseUrl.toString();
+}
+
+export function bytePlusBuiltInGenerationWebhookUrl(args: {
+  readonly generationId: string;
+  readonly visualKey?: string;
+}): string {
+  const baseUrl = new URL(
+    `/api/webhooks/built-in-generations/byteplus/${args.generationId}`,
+    env("VM0_WEB_URL"),
+  );
+  baseUrl.searchParams.set(
+    "token",
+    signBuiltInGenerationProviderWebhookToken({
+      provider: "byteplus",
       generationId: args.generationId,
       visualKey: args.visualKey,
     }),

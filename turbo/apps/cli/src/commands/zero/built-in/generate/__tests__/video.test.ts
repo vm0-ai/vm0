@@ -23,12 +23,12 @@ const VIDEO_RESULT = {
   url: "http://localhost:3000/f/user-1/video-file-id/video-video-fi.mp4",
   durationSeconds: 6,
   creditsCharged: 720,
-  model: "fal-ai/veo3.1/fast",
+  model: "dreamina-seedance-2-0-fast-260128",
   aspectRatio: "9:16",
   duration: "6s",
   resolution: "1080p",
   generateAudio: false,
-  sourceUrl: "https://v3b.fal.media/files/video-output.mp4",
+  sourceUrl: "https://ark-content.byteplus.example/files/video-output.mp4",
   requestId: "video-request",
 };
 
@@ -59,7 +59,7 @@ describe("zero built-in generate video command", () => {
         expect(request.headers.get("content-type")).toBe("application/json");
         expect(await request.json()).toEqual({
           prompt: "A neon market tracking shot",
-          model: "kling-o3-standard",
+          model: "dreamina-seedance-2.0",
           aspectRatio: "9:16",
           duration: "6s",
           resolution: "1080p",
@@ -67,6 +67,11 @@ describe("zero built-in generate video command", () => {
           seed: 123,
           autoFix: false,
           safetyTolerance: "5",
+          imageUrls: ["https://example.com/reference.png"],
+          videoUrls: ["https://example.com/reference.mp4"],
+          audioUrls: ["https://example.com/reference.mp3"],
+          firstFrameImageUrl: "https://example.com/first.png",
+          lastFrameImageUrl: "https://example.com/last.png",
         });
 
         return HttpResponse.json(VIDEO_RESULT);
@@ -81,7 +86,7 @@ describe("zero built-in generate video command", () => {
       "--prompt",
       "A neon market tracking shot",
       "--model",
-      "kling-o3-standard",
+      "dreamina-seedance-2.0",
       "--aspect-ratio",
       "9:16",
       "--duration",
@@ -94,6 +99,16 @@ describe("zero built-in generate video command", () => {
       "--no-auto-fix",
       "--safety-tolerance",
       "5",
+      "--image-url",
+      "https://example.com/reference.png",
+      "--video-url",
+      "https://example.com/reference.mp4",
+      "--audio-url",
+      "https://example.com/reference.mp3",
+      "--first-frame-image-url",
+      "https://example.com/first.png",
+      "--last-frame-image-url",
+      "https://example.com/last.png",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
@@ -132,7 +147,7 @@ describe("zero built-in generate video command", () => {
       size: VIDEO_RESULT.size,
       url: VIDEO_RESULT.url,
       creditsCharged: 720,
-      model: "fal-ai/veo3.1/fast",
+      model: "dreamina-seedance-2-0-fast-260128",
       duration: "6s",
       resolution: "1080p",
       aspectRatio: "9:16",
@@ -151,15 +166,15 @@ describe("zero built-in generate video command", () => {
     videoCommand.outputHelp();
 
     expect(helpOutput).toContain("Models:");
-    expect(helpOutput).toContain("veo3.1-fast");
-    expect(helpOutput).toContain("veo3.1");
-    expect(helpOutput).toContain("kling-o3-standard");
-    expect(helpOutput).toContain("kling-v3-4k");
-    expect(helpOutput).toContain("seedance2.0");
-    expect(helpOutput).toContain("seedance2.0-fast");
-    expect(helpOutput).toContain("4s/6s/8s");
-    expect(helpOutput).toContain("3s-15s");
+    expect(helpOutput).toContain("dreamina-seedance-2.0-fast");
+    expect(helpOutput).toContain("dreamina-seedance-2.0");
+    expect(helpOutput).toContain("seedance-1.5-pro");
+    expect(helpOutput).toContain("seedance-1.0-pro");
+    expect(helpOutput).toContain("seedance-1.0-pro-fast");
+    expect(helpOutput).toContain("4s-15s");
+    expect(helpOutput).toContain("2s-12s");
     expect(helpOutput).toContain("21:9");
+    expect(helpOutput).toContain("--image-url");
   });
 
   it("should surface API errors", async () => {

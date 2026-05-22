@@ -719,6 +719,15 @@ const BUILT_IN_GENERATIONS_FAL_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000/extra",
   "/api/webhooks/built-in-generations",
 ] as const;
+const BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE =
+  "/api/webhooks/built-in-generations/byteplus/:generationId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH =
+  "/api/webhooks/built-in-generations/byteplus/550e8400-e29b-41d4-a716-446655440000";
+const BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/built-in-generations/byteplus/not-a-uuid",
+  "/api/webhooks/built-in-generations/byteplus/550e8400-e29b-41d4-a716-446655440000/extra",
+  "/api/webhooks/built-in-generations",
+] as const;
 const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
   "/api/webhooks/agent/checkpoints/prepare-history";
 const AGENT_CHECKPOINTS_PREPARE_HISTORY_PATH =
@@ -2267,6 +2276,11 @@ describe("API backend rewrites", () => {
           source: BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/built-in-generations/fal/:generationId",
+        },
+        {
+          source: BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/built-in-generations/byteplus/:generationId",
         },
         {
           source: AGENT_COMPLETE_REWRITE_SOURCE,
@@ -5097,6 +5111,37 @@ describe("API backend rewrites", () => {
       generationId: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of BUILT_IN_GENERATIONS_FAL_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact BytePlus built-in generation webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return (
+        entry.source === BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE
+      );
+    });
+    expect(rewrite).toStrictEqual({
+      source: BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/built-in-generations/byteplus/:generationId",
+    });
+
+    const matcher = getPathMatch(
+      BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_PATH)).toStrictEqual({
+      generationId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of BUILT_IN_GENERATIONS_BYTEPLUS_WEBHOOK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

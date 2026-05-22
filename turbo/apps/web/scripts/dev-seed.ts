@@ -214,6 +214,28 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["output_image", usd(0.036), 1],
   ]),
 
+  // BytePlus ModelArk video generation with a 200% provider-price multiplier.
+  ...usageGroup("video", "dreamina-seedance-2-0-260128", [
+    ["output_video_tokens.480p_720p.no_video", usd(7.0 * 2), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(4.3 * 2), 1_000_000],
+    ["output_video_tokens.1080p.no_video", usd(7.7 * 2), 1_000_000],
+    ["output_video_tokens.1080p.with_video", usd(4.7 * 2), 1_000_000],
+  ]),
+  ...usageGroup("video", "dreamina-seedance-2-0-fast-260128", [
+    ["output_video_tokens.480p_720p.no_video", usd(5.6 * 2), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(3.3 * 2), 1_000_000],
+  ]),
+  ...usageGroup("video", "seedance-1-5-pro-251215", [
+    ["output_video_tokens.audio", usd(2.4 * 2), 1_000_000],
+    ["output_video_tokens.silent", usd(1.2 * 2), 1_000_000],
+  ]),
+  ...usageGroup("video", "seedance-1-0-pro-250528", [
+    ["output_video_tokens", usd(2.5 * 2), 1_000_000],
+  ]),
+  ...usageGroup("video", "seedance-1-0-pro-fast-251015", [
+    ["output_video_tokens", usd(1.0 * 2), 1_000_000],
+  ]),
+
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute cost with 20% gross margin = $0.01875/minute,
   // rounded to 19 credits/minute.

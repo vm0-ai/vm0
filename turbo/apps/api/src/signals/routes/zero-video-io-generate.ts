@@ -10,11 +10,11 @@ import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
-import { falBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
+import { bytePlusBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 import {
   checkVideoCredits$,
   parseVideoOptions,
-  submitFalVideoGeneration,
+  submitBytePlusVideoGeneration,
   type VideoOptions,
   type VideoPricingRow,
   videoInsufficientCredits,
@@ -59,7 +59,7 @@ interface VideoJobArgs {
   readonly admission: RunBuiltInAdmission | null;
   readonly options: VideoOptions;
   readonly pricing: VideoPricingRow;
-  readonly falKey: string;
+  readonly bytePlusApiKey: string;
 }
 
 function isGenerationError(value: unknown): value is GenerationError {
@@ -98,6 +98,21 @@ function videoRequestRecord(options: VideoOptions): Record<string, unknown> {
     ...(options.seed !== undefined ? { seed: options.seed } : {}),
     autoFix: options.autoFix,
     safetyTolerance: options.safetyTolerance,
+    ...(options.referenceImageUrls.length > 0
+      ? { referenceImageUrls: options.referenceImageUrls }
+      : {}),
+    ...(options.inputVideoUrls.length > 0
+      ? { inputVideoUrls: options.inputVideoUrls }
+      : {}),
+    ...(options.referenceAudioUrls.length > 0
+      ? { referenceAudioUrls: options.referenceAudioUrls }
+      : {}),
+    ...(options.firstFrameImageUrl
+      ? { firstFrameImageUrl: options.firstFrameImageUrl }
+      : {}),
+    ...(options.lastFrameImageUrl
+      ? { lastFrameImageUrl: options.lastFrameImageUrl }
+      : {}),
   };
 }
 
@@ -123,11 +138,13 @@ const submitVideoProviderWebhookJob$ = command(
     signal: AbortSignal,
   ): Promise<GenerationErrorResponse | null> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
-    const handle = await submitFalVideoGeneration(
+    const handle = await submitBytePlusVideoGeneration(
       args.options,
-      args.falKey,
+      args.bytePlusApiKey,
       signal,
-      falBuiltInGenerationWebhookUrl({ generationId: args.generationId }),
+      bytePlusBuiltInGenerationWebhookUrl({
+        generationId: args.generationId,
+      }),
     );
     signal.throwIfAborted();
     if (isErrorResponse(handle)) {
@@ -143,10 +160,8 @@ const submitVideoProviderWebhookJob$ = command(
       {
         generationId: args.generationId,
         internal: {
-          provider: "fal",
-          providerJobId: handle.requestId,
-          providerStatusUrl: handle.statusUrl,
-          providerResponseUrl: handle.responseUrl,
+          provider: "byteplus",
+          providerJobId: handle.taskId,
           providerTask: "video",
         },
       },
@@ -191,10 +206,10 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const falKey = env("FAL_KEY");
-  if (!falKey) {
+  const bytePlusApiKey = env("BYTEPLUS_API_KEY");
+  if (!bytePlusApiKey) {
     return videoServiceUnavailable(
-      "Fal video generation is not configured",
+      "BytePlus video generation is not configured",
       "NOT_CONFIGURED",
     );
   }
@@ -245,7 +260,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       admission,
       options,
       pricing: pricingRow,
-      falKey,
+      bytePlusApiKey,
     },
     signal,
   );

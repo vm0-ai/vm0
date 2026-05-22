@@ -282,6 +282,11 @@ interface GenerateWebVideoOptions {
   seed?: number;
   autoFix?: boolean;
   safetyTolerance?: string;
+  imageUrls?: string[];
+  videoUrls?: string[];
+  audioUrls?: string[];
+  firstFrameImageUrl?: string;
+  lastFrameImageUrl?: string;
 }
 
 interface GenerateWebVideoResult {
@@ -299,6 +304,45 @@ interface GenerateWebVideoResult {
   generateAudio: boolean;
   sourceUrl: string;
   requestId?: string;
+}
+
+function shouldIncludePayloadValue(value: unknown): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  return !Array.isArray(value) || value.length > 0;
+}
+
+function compactPayload(
+  entries: readonly (readonly [string, unknown])[],
+): Record<string, unknown> {
+  return Object.fromEntries(
+    entries.filter(([, value]) => {
+      return shouldIncludePayloadValue(value);
+    }),
+  );
+}
+
+function generateWebVideoPayload(
+  options: GenerateWebVideoOptions,
+): Record<string, unknown> {
+  return compactPayload([
+    ["prompt", options.prompt],
+    ["model", options.model],
+    ["aspectRatio", options.aspectRatio],
+    ["duration", options.duration],
+    ["resolution", options.resolution],
+    ["generateAudio", options.generateAudio],
+    ["negativePrompt", options.negativePrompt],
+    ["seed", options.seed],
+    ["autoFix", options.autoFix],
+    ["safetyTolerance", options.safetyTolerance],
+    ["imageUrls", options.imageUrls],
+    ["videoUrls", options.videoUrls],
+    ["audioUrls", options.audioUrls],
+    ["firstFrameImageUrl", options.firstFrameImageUrl],
+    ["lastFrameImageUrl", options.lastFrameImageUrl],
+  ]);
 }
 
 interface GenerateWebPresentationOptions {
@@ -931,24 +975,7 @@ export async function generateWebVideo(
     {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        prompt: options.prompt,
-        ...(options.model ? { model: options.model } : {}),
-        ...(options.aspectRatio ? { aspectRatio: options.aspectRatio } : {}),
-        ...(options.duration ? { duration: options.duration } : {}),
-        ...(options.resolution ? { resolution: options.resolution } : {}),
-        ...(options.generateAudio !== undefined
-          ? { generateAudio: options.generateAudio }
-          : {}),
-        ...(options.negativePrompt
-          ? { negativePrompt: options.negativePrompt }
-          : {}),
-        ...(options.seed !== undefined ? { seed: options.seed } : {}),
-        ...(options.autoFix !== undefined ? { autoFix: options.autoFix } : {}),
-        ...(options.safetyTolerance
-          ? { safetyTolerance: options.safetyTolerance }
-          : {}),
-      }),
+      body: JSON.stringify(generateWebVideoPayload(options)),
     },
   );
 
