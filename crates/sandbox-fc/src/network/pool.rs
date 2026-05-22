@@ -328,14 +328,14 @@ impl NetnsReleaseOutcome {
 struct PendingId(u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PendingKind {
+enum NetnsKind {
     Plain,
     Proxy,
 }
 
 struct CreationCompletion {
     id: PendingId,
-    kind: PendingKind,
+    kind: NetnsKind,
     result: Result<NetnsInfo>,
 }
 
@@ -392,7 +392,7 @@ enum AcquirePlan {
 
 struct ReleasePlan {
     info: NetnsInfo,
-    has_proxy: bool,
+    kind: NetnsKind,
     active_at_prepare: bool,
     ops: NetnsLifecycleOps,
 }
@@ -1258,11 +1258,11 @@ impl NetnsPool {
     }
 
     fn spawn_plain_creation(&mut self) -> Result<()> {
-        self.spawn_creation(PendingKind::Plain)
+        self.spawn_creation(NetnsKind::Plain)
     }
 
     fn spawn_proxy_creation(&mut self) -> Result<()> {
-        self.spawn_creation(PendingKind::Proxy)
+        self.spawn_creation(NetnsKind::Proxy)
     }
 
     fn spawn_initial_warmup(&mut self) {
@@ -1320,13 +1320,13 @@ impl NetnsPool {
         }
     }
 
-    fn spawn_creation(&mut self, kind: PendingKind) -> Result<()> {
+    fn spawn_creation(&mut self, kind: NetnsKind) -> Result<()> {
         let ns_index = self.reserve_ns_index()?;
         let pool_index = self.pool_index;
         let default_iface = self.default_iface.clone();
         let (proxy_port, dns_port) = match kind {
-            PendingKind::Plain => (None, None),
-            PendingKind::Proxy => {
+            NetnsKind::Plain => (None, None),
+            NetnsKind::Proxy => {
                 let Some(proxy_port) = self.proxy_port else {
                     return Err(NetworkError::Prerequisite(
                         "proxy namespace requested without proxy port".into(),
@@ -1353,20 +1353,20 @@ impl NetnsPool {
     {
         let id = self.reserve_pending_id();
         self.pending_plain.insert(id);
-        spawn_creation_worker(id, PendingKind::Plain, self.creation_notifier(), future);
+        spawn_creation_worker(id, NetnsKind::Plain, self.creation_notifier(), future);
     }
 
-    fn checkout_or_requeue(&mut self, info: NetnsInfo, has_proxy: bool) -> Result<NetnsLease> {
+    fn checkout_or_requeue(&mut self, info: NetnsInfo, kind: NetnsKind) -> Result<NetnsLease> {
         let name = info.name.clone();
         match self.checkout(info) {
             Ok(lease) => Ok(lease),
             Err(info) => {
                 warn!(
                     name = %name,
-                    has_proxy,
+                    has_proxy = matches!(kind, NetnsKind::Proxy),
                     "namespace is already checked out; returning metadata to queue"
                 );
-                self.target_queue_mut(has_proxy).push_front(info);
+                self.target_queue_mut(kind).push_front(info);
                 Err(NetworkError::InvalidLease(format!(
                     "namespace {name} is already checked out"
                 )))
@@ -1409,8 +1409,7 @@ impl NetnsPool {
 
         match completion.result {
             Ok(ns) if self.active || queue_when_inactive => {
-                self.target_queue_for_kind_mut(completion.kind)
-                    .push_back(ns);
+                self.target_queue_mut(completion.kind).push_back(ns);
             }
             Ok(ns) => delete.push(ns),
             Err(e) => {
@@ -1470,16 +1469,11 @@ impl NetnsPool {
     }
 
     fn try_checkout_ready(&mut self) -> Result<Option<NetnsLease>> {
-        let has_proxy = self.proxy_port.is_some();
-        let queue_len_after_pop;
-        let pooled = if has_proxy {
-            let pooled = self.proxy_queue.pop_front();
-            queue_len_after_pop = self.proxy_queue.len();
-            pooled
-        } else {
-            let pooled = self.plain_queue.pop_front();
-            queue_len_after_pop = self.plain_queue.len();
-            pooled
+        let kind = self.acquire_kind();
+        let (pooled, queue_len_after_pop) = {
+            let queue = self.target_queue_mut(kind);
+            let pooled = queue.pop_front();
+            (pooled, queue.len())
         };
         let Some(pooled) = pooled else {
             return Ok(None);
@@ -1488,35 +1482,35 @@ impl NetnsPool {
         info!(
             name = %pooled.name,
             remaining = queue_len_after_pop,
-            has_proxy,
+            has_proxy = matches!(kind, NetnsKind::Proxy),
             "acquired namespace"
         );
-        let lease = self.checkout_or_requeue(pooled, has_proxy)?;
-        self.maybe_replenish_kind(self.acquire_kind());
+        let lease = self.checkout_or_requeue(pooled, kind)?;
+        self.maybe_replenish_kind(kind);
         Ok(Some(lease))
     }
 
-    fn acquire_kind(&self) -> PendingKind {
+    fn acquire_kind(&self) -> NetnsKind {
         if self.proxy_port.is_some() {
-            PendingKind::Proxy
+            NetnsKind::Proxy
         } else {
-            PendingKind::Plain
+            NetnsKind::Plain
         }
     }
 
-    fn maybe_replenish_kind(&mut self, kind: PendingKind) {
-        if matches!(kind, PendingKind::Proxy) && self.proxy_port.is_none() {
+    fn maybe_replenish_kind(&mut self, kind: NetnsKind) {
+        if matches!(kind, NetnsKind::Proxy) && self.proxy_port.is_none() {
             return;
         }
-        if self.target_queue_for_kind(kind).len() + self.pending_set(kind).len() >= BUFFER_SIZE
+        if self.target_queue(kind).len() + self.pending_set(kind).len() >= BUFFER_SIZE
             || !self.pending_set(kind).is_empty()
             || self.next_ns_index >= MAX_NAMESPACES
         {
             return;
         }
         let result = match kind {
-            PendingKind::Plain => self.spawn_plain_creation(),
-            PendingKind::Proxy => self.spawn_proxy_creation(),
+            NetnsKind::Plain => self.spawn_plain_creation(),
+            NetnsKind::Proxy => self.spawn_proxy_creation(),
         };
         if let Err(e) = result {
             warn!(kind = ?kind, error = %e, "failed to replenish namespace pool");
@@ -1599,11 +1593,11 @@ impl NetnsPool {
             ));
         }
 
-        let has_proxy = self.proxy_port.is_some();
+        let kind = self.acquire_kind();
         let reusable = self.active && !self.non_reusable.contains(active_lease.name());
         if reusable
             && self
-                .target_queue(has_proxy)
+                .target_queue(kind)
                 .iter()
                 .any(|r| r.name == active_lease.name())
         {
@@ -1619,7 +1613,7 @@ impl NetnsPool {
 
         Ok(ReleasePlan {
             info: active_lease.info().clone(),
-            has_proxy,
+            kind,
             active_at_prepare: reusable,
             ops: self.ops.clone(),
         })
@@ -1643,16 +1637,13 @@ impl NetnsPool {
         self.non_reusable.remove(lease.name());
         let ns = lease.into_info();
 
-        let target_queue = if plan.has_proxy {
-            &mut self.proxy_queue
-        } else {
-            &mut self.plain_queue
-        };
+        let kind = plan.kind;
+        let target_queue = self.target_queue_mut(kind);
 
         info!(
             name = %ns.name,
             available = target_queue.len() + 1,
-            has_proxy = plan.has_proxy,
+            has_proxy = matches!(kind, NetnsKind::Proxy),
             "namespace released"
         );
         target_queue.push_back(ns);
@@ -1687,47 +1678,31 @@ impl NetnsPool {
         }
     }
 
-    fn target_queue(&self, has_proxy: bool) -> &VecDeque<NetnsInfo> {
-        if has_proxy {
-            &self.proxy_queue
-        } else {
-            &self.plain_queue
-        }
-    }
-
-    fn target_queue_mut(&mut self, has_proxy: bool) -> &mut VecDeque<NetnsInfo> {
-        if has_proxy {
-            &mut self.proxy_queue
-        } else {
-            &mut self.plain_queue
-        }
-    }
-
-    fn target_queue_for_kind(&self, kind: PendingKind) -> &VecDeque<NetnsInfo> {
+    fn target_queue(&self, kind: NetnsKind) -> &VecDeque<NetnsInfo> {
         match kind {
-            PendingKind::Plain => &self.plain_queue,
-            PendingKind::Proxy => &self.proxy_queue,
+            NetnsKind::Plain => &self.plain_queue,
+            NetnsKind::Proxy => &self.proxy_queue,
         }
     }
 
-    fn target_queue_for_kind_mut(&mut self, kind: PendingKind) -> &mut VecDeque<NetnsInfo> {
+    fn target_queue_mut(&mut self, kind: NetnsKind) -> &mut VecDeque<NetnsInfo> {
         match kind {
-            PendingKind::Plain => &mut self.plain_queue,
-            PendingKind::Proxy => &mut self.proxy_queue,
+            NetnsKind::Plain => &mut self.plain_queue,
+            NetnsKind::Proxy => &mut self.proxy_queue,
         }
     }
 
-    fn pending_set(&self, kind: PendingKind) -> &HashSet<PendingId> {
+    fn pending_set(&self, kind: NetnsKind) -> &HashSet<PendingId> {
         match kind {
-            PendingKind::Plain => &self.pending_plain,
-            PendingKind::Proxy => &self.pending_proxy,
+            NetnsKind::Plain => &self.pending_plain,
+            NetnsKind::Proxy => &self.pending_proxy,
         }
     }
 
-    fn pending_set_mut(&mut self, kind: PendingKind) -> &mut HashSet<PendingId> {
+    fn pending_set_mut(&mut self, kind: NetnsKind) -> &mut HashSet<PendingId> {
         match kind {
-            PendingKind::Plain => &mut self.pending_plain,
-            PendingKind::Proxy => &mut self.pending_proxy,
+            NetnsKind::Plain => &mut self.pending_plain,
+            NetnsKind::Proxy => &mut self.pending_proxy,
         }
     }
 
@@ -1930,7 +1905,7 @@ impl NetnsPoolHandle {
     }
 }
 
-fn spawn_creation_worker<F>(id: PendingId, kind: PendingKind, notifier: CreationNotifier, future: F)
+fn spawn_creation_worker<F>(id: PendingId, kind: NetnsKind, notifier: CreationNotifier, future: F)
 where
     F: Future<Output = Result<NetnsInfo>> + Send + 'static,
 {
@@ -1944,7 +1919,7 @@ where
     });
 }
 
-fn join_error_to_creation_error(e: tokio::task::JoinError, kind: PendingKind) -> NetworkError {
+fn join_error_to_creation_error(e: tokio::task::JoinError, kind: NetnsKind) -> NetworkError {
     if e.is_panic() {
         NetworkError::Prerequisite(format!("{kind:?} namespace creation task panicked: {e}"))
     } else {
@@ -2580,7 +2555,7 @@ mod tests {
         notifier
             .send(CreationCompletion {
                 id: PendingId(0),
-                kind: PendingKind::Plain,
+                kind: NetnsKind::Plain,
                 result: Ok(test_info("orphan-ns")),
             })
             .await;
@@ -2607,7 +2582,7 @@ mod tests {
         pool.completion_tx
             .send(CreationCompletion {
                 id: PendingId(999),
-                kind: PendingKind::Plain,
+                kind: NetnsKind::Plain,
                 result: Ok(test_info("unknown-ns")),
             })
             .unwrap();
@@ -3282,6 +3257,25 @@ mod tests {
         assert!(pool.in_flight.is_empty());
         assert_eq!(pool.plain_queue.len(), 1);
         assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn proxy_release_disarms_lease_and_returns_info_to_proxy_queue() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        pool.proxy_port = Some(8080);
+        let info = test_info("test-ns");
+        let mut lease = Some(pool.checkout(info).unwrap());
+
+        pool.release(&mut lease).await.unwrap();
+
+        assert!(lease.is_none());
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.plain_queue.is_empty());
+        assert_eq!(pool.proxy_queue.len(), 1);
+        assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
 
         pool.cleanup().await.unwrap();
     }
