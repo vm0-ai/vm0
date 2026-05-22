@@ -621,6 +621,7 @@ mod tests {
             event.fields.get("message").map(String::as_str),
             Some("job execution failed")
         );
+        assert!(!event.fields.contains_key("failure_reason"));
     }
 
     #[test]
