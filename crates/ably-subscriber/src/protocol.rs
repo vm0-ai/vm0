@@ -160,7 +160,7 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
                 serde_json::Value::String(String::new())
             }
         },
-        rmpv::Value::Binary(bytes) => {
+        rmpv::Value::Binary(bytes) | rmpv::Value::Ext(_, bytes) => {
             let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
             serde_json::Value::String(encoded)
         }
@@ -185,10 +185,6 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
                 })
                 .collect();
             serde_json::Value::Object(obj)
-        }
-        rmpv::Value::Ext(_, bytes) => {
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            serde_json::Value::String(encoded)
         }
     }
 }
