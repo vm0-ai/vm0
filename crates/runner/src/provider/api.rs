@@ -466,15 +466,42 @@ mod tests {
     async fn read_http_request_text(socket: &mut tokio::net::TcpStream) -> String {
         let mut request = Vec::new();
         let mut buf = [0_u8; 1024];
+        let header_end = loop {
+            let n = socket.read(&mut buf).await.unwrap();
+            if n == 0 {
+                break request.len();
+            }
+            request.extend_from_slice(&buf[..n]);
+            if let Some(header_end) = request
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|position| position + 4)
+            {
+                break header_end;
+            }
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                if name.eq_ignore_ascii_case("content-length") {
+                    value.trim().parse::<usize>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let request_len = header_end + content_length;
         loop {
+            if request.len() >= request_len {
+                break;
+            }
             let n = socket.read(&mut buf).await.unwrap();
             if n == 0 {
                 break;
             }
             request.extend_from_slice(&buf[..n]);
-            if request.windows(4).any(|window| window == b"\r\n\r\n") {
-                break;
-            }
         }
         String::from_utf8_lossy(&request).into_owned()
     }
