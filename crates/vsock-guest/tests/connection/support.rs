@@ -344,20 +344,20 @@ fn captured_truncated(captured: ExecCapturedOutput<'_>) -> bool {
     }
 }
 
-pub(crate) fn stdout_data(chunks: &[ExecOutputChunk]) -> Vec<u8> {
+fn output_data(chunks: &[ExecOutputChunk], stream: ExecOutputStream) -> Vec<u8> {
     chunks
         .iter()
-        .filter(|chunk| chunk.stream == ExecOutputStream::Stdout && !chunk.truncated)
-        .flat_map(|chunk| chunk.chunk.clone())
+        .filter(|chunk| chunk.stream == stream && !chunk.truncated)
+        .flat_map(|chunk| chunk.chunk.iter().copied())
         .collect()
 }
 
+pub(crate) fn stdout_data(chunks: &[ExecOutputChunk]) -> Vec<u8> {
+    output_data(chunks, ExecOutputStream::Stdout)
+}
+
 pub(crate) fn stderr_data(chunks: &[ExecOutputChunk]) -> Vec<u8> {
-    chunks
-        .iter()
-        .filter(|chunk| chunk.stream == ExecOutputStream::Stderr && !chunk.truncated)
-        .flat_map(|chunk| chunk.chunk.clone())
-        .collect()
+    output_data(chunks, ExecOutputStream::Stderr)
 }
 
 pub(crate) fn read_retry_eintr(
