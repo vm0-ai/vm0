@@ -197,32 +197,51 @@ def get_original_url(flow: http.HTTPFlow) -> str:
     return get_trusted_authority(flow).url
 
 
-def _split_query_pairs(query: str) -> list[str]:
+_QueryPair = tuple[str, str]
+
+
+def _split_query_pairs(query: str) -> list[_QueryPair]:
     if not query:
         return []
-    return query.split("&")
+    pairs: list[_QueryPair] = []
+    separator = ""
+    start = 0
+    for index, char in enumerate(query):
+        if char in ("&", ";"):
+            pairs.append((separator, query[start:index]))
+            separator = char
+            start = index + 1
+    pairs.append((separator, query[start:]))
+    return pairs
 
 
-def _query_pair_key(pair: str) -> str:
-    raw_key, _, _ = pair.partition("=")
+def _query_pair_key(pair: _QueryPair) -> str:
+    _, raw_pair = pair
+    raw_key, _, _ = raw_pair.partition("=")
     return urllib.parse.unquote_plus(raw_key)
 
 
-def _query_pair_keys(pairs: list[str]) -> set[str]:
+def _query_pair_keys(pairs: list[_QueryPair]) -> set[str]:
     return {_query_pair_key(pair) for pair in pairs}
 
 
-def _filter_query_pairs(pairs: list[str], blocked_keys: set[str]) -> list[str]:
+def _filter_query_pairs(pairs: list[_QueryPair], blocked_keys: set[str]) -> list[_QueryPair]:
     if not blocked_keys:
         return pairs
     return [pair for pair in pairs if _query_pair_key(pair) not in blocked_keys]
 
 
-def _encode_query_pairs(query: dict[str, str] | None) -> list[str]:
+def _join_query_pairs(pairs: list[_QueryPair]) -> str:
+    query_parts: list[str] = []
+    for index, (separator, raw_pair) in enumerate(pairs):
+        query_parts.append(raw_pair if index == 0 else f"{separator or '&'}{raw_pair}")
+    return "".join(query_parts)
+
+
+def _encode_query_pairs(query: dict[str, str] | None) -> list[_QueryPair]:
     if not query:
         return []
-    encoded = urllib.parse.urlencode(query)
-    return _split_query_pairs(encoded)
+    return _split_query_pairs(urllib.parse.urlencode(query))
 
 
 def _merge_rewrite_query(
@@ -239,7 +258,7 @@ def _merge_rewrite_query(
     filtered_orig_pairs = _filter_query_pairs(orig_pairs, blocked_orig_keys)
     auth_pairs = _encode_query_pairs(resolved_query)
 
-    return "&".join([*filtered_base_pairs, *filtered_orig_pairs, *auth_pairs])
+    return _join_query_pairs([*filtered_base_pairs, *filtered_orig_pairs, *auth_pairs])
 
 
 def build_rewrite_url(

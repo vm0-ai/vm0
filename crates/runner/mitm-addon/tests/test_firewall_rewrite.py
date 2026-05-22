@@ -443,6 +443,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret&wait=true"
 
+    def test_original_semicolon_duplicate_query_key_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "wait=true;token=attacker",
+        )
+        assert url == "https://example.com/hook?token=secret&wait=true"
+
     def test_duplicate_trusted_base_query_keys_preserved(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=first&token=second",
@@ -450,6 +458,14 @@ class TestBuildRewriteUrl:
             "token=attacker&wait=true",
         )
         assert url == "https://example.com/hook?token=first&token=second&wait=true"
+
+    def test_duplicate_trusted_base_query_keys_with_semicolon_preserved(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=first;token=second",
+            {"rel_path": "/"},
+            "token=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?token=first;token=second&wait=true"
 
     def test_blank_trusted_base_query_value_is_authoritative(self):
         url = url_utils.build_rewrite_url(
