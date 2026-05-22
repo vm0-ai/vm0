@@ -3289,19 +3289,23 @@ mod tests {
 
     #[tokio::test]
     async fn proxy_release_disarms_lease_and_returns_info_to_proxy_queue() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.proxy_port = Some(8080);
         let info = test_info("test-ns");
         let mut lease = Some(pool.checkout(info).unwrap());
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         pool.release(&mut lease).await.unwrap();
 
         assert!(lease.is_none());
-        assert!(pool.in_flight.is_empty());
-        assert!(pool.plain_queue.is_empty());
-        assert_eq!(pool.proxy_queue.len(), 1);
-        assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(pool.in_flight.is_empty());
+            assert!(pool.plain_queue.is_empty());
+            assert_eq!(pool.proxy_queue.len(), 1);
+            assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+        }
 
         pool.cleanup().await.unwrap();
     }
@@ -3615,24 +3619,31 @@ mod tests {
 
     #[tokio::test]
     async fn proxy_release_keeps_lease_when_namespace_already_queued() {
-        let mut pool = NetnsPool::inactive_for_test();
+        let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.proxy_port = Some(8080);
         let info = test_info("test-ns");
         let mut lease = Some(pool.checkout(info.clone()).unwrap());
         pool.proxy_queue.push_back(info);
+        let mut pool = NetnsPool::from_state_for_test(pool);
 
         let err = pool.release(&mut lease).await.unwrap_err();
 
         assert!(matches!(err, NetworkError::InvalidLease(_)));
         assert!(lease.is_some());
-        assert!(pool.plain_queue.is_empty());
-        assert_eq!(pool.proxy_queue.len(), 1);
-        assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+        {
+            let pool = pool.inner.state.lock().await;
+            assert!(pool.plain_queue.is_empty());
+            assert_eq!(pool.proxy_queue.len(), 1);
+            assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+        }
 
         let _ = lease.take().unwrap().into_info_for_test();
-        pool.in_flight.clear();
-        pool.proxy_queue.clear();
+        {
+            let mut pool = pool.inner.state.lock().await;
+            pool.in_flight.clear();
+            pool.proxy_queue.clear();
+        }
         pool.cleanup().await.unwrap();
     }
 
