@@ -67,6 +67,7 @@ import { setupRealtime$ } from "./realtime.ts";
 
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
+import { googleAdsBillingConversionPayload } from "./bootstrap/billing-conversion.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -326,11 +327,13 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
 const handleBillingRedirect$ = command(() => {
   const url = new URL(window.location.href);
   const billing = url.searchParams.get("billing");
+  const transactionId = url.searchParams.get("billing_session_id");
   if (!billing) {
     return;
   }
 
   url.searchParams.delete("billing");
+  url.searchParams.delete("billing_session_id");
   window.history.replaceState(null, "", url.toString());
 
   // Defer toast until Toaster component is mounted
@@ -339,9 +342,14 @@ const handleBillingRedirect$ = command(() => {
     // checkout. The `billing` param is set only on Stripe success redirect
     // and stripped above, so this fires at most once per real conversion.
     type GtagFn = (...args: unknown[]) => void;
-    (window as Window & { gtag?: GtagFn }).gtag?.("event", "conversion", {
-      send_to: "AW-18144854014/3tdOCMimwK8cEP7_kcxD",
-    });
+    const payload = googleAdsBillingConversionPayload(billing, transactionId);
+    if (payload) {
+      (window as Window & { gtag?: GtagFn }).gtag?.(
+        "event",
+        "conversion",
+        payload,
+      );
+    }
 
     const label = billing === "pro" ? "Pro" : "Team";
     window.addEventListener(

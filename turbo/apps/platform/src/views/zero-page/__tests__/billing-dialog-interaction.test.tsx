@@ -332,7 +332,12 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     click(upgradeBtn1!);
 
     await waitFor(() => {
-      expect(capturedCheckoutBody).toMatchObject({ tier: "team" });
+      expect(capturedCheckoutBody).toMatchObject({
+        tier: "team",
+        successUrl: expect.stringContaining(
+          "billing_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
     });
   });
 

@@ -90,6 +90,13 @@ export const startCheckout$ = command(
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
     successUrl.searchParams.set("billing", tier);
+    successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "billing_session_id={CHECKOUT_SESSION_ID}",
+      );
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
 
@@ -99,7 +106,7 @@ export const startCheckout$ = command(
       client.create({
         body: {
           tier,
-          successUrl: successUrl.toString(),
+          successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
         },
         fetchOptions: { signal },
