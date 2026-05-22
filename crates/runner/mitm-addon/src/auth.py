@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
 
-from auth_base_forwarder import forward_request, header_pairs
+from auth_base_forwarder import forward_request, forwarded_request_header_pairs, header_pairs
 from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
@@ -602,7 +602,9 @@ async def handle_firewall_request(
 
         # Keep repeated request headers. Resolved auth headers intentionally
         # replace any client-supplied value with the same name.
-        req_headers = _merge_auth_headers(flow.request.headers, headers)
+        req_headers = _merge_auth_headers(
+            forwarded_request_header_pairs(flow.request.headers), headers
+        )
         req_body = flow.request.raw_content if flow.request.raw_content is not None else None
 
         try:

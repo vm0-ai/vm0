@@ -62,6 +62,14 @@ def _filter_header_pairs(
     return [(name, value) for name, value in pairs if name.lower() not in excluded]
 
 
+def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
+    """Return client headers that are safe to forward before adding trusted headers."""
+    return _filter_header_pairs(
+        headers,
+        extra_excluded={"host", "content-length", "transfer-encoding"},
+    )
+
+
 def _headers_from_pairs(pairs: list[tuple[str, str]]) -> http.Headers:
     return http.Headers(
         (
@@ -120,10 +128,7 @@ def _outbound_request_headers(
     parsed: urllib.parse.SplitResult,
     body: bytes | None,
 ) -> list[tuple[str, str]]:
-    filtered = _filter_header_pairs(
-        headers,
-        extra_excluded={"host", "content-length", "transfer-encoding"},
-    )
+    filtered = forwarded_request_header_pairs(headers)
     outbound = [("Host", _host_header(parsed)), *filtered]
     if body is not None:
         outbound.append(("Content-Length", str(len(body))))

@@ -830,6 +830,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
             tmp_path,
             request_headers=headers(
                 ("Host", "firewall-placeholder.vm3.ai"),
+                ("Connection", "Authorization, X-Remove"),
+                ("X-Remove", "drop"),
                 ("X-Repeat", "one"),
                 ("X-Repeat", "two"),
                 ("Authorization", "Bearer agent"),
@@ -848,6 +850,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         req_headers = mock_forward.call_args[0][2]
+        assert ("Connection", "Authorization, X-Remove") not in req_headers
+        assert ("X-Remove", "drop") not in req_headers
         assert req_headers.count(("X-Repeat", "one")) == 1
         assert req_headers.count(("X-Repeat", "two")) == 1
         assert ("Authorization", "Bearer agent") not in req_headers
