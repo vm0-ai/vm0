@@ -287,20 +287,23 @@ def _set_body_fields(
     *,
     already_truncated: bool = False,
 ) -> None:
+    truncated = already_truncated or len(body) > STREAM_BUFFER_LIMIT
+    if truncated:
+        log_entry[f"{side}_body_truncated"] = True
+
     if not body:
         return
 
-    truncated = already_truncated or len(body) > STREAM_BUFFER_LIMIT
-    if truncated:
-        body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
-    encoded, encoding = _encode_body(body, content_type)
-    if encoded is not None:
-        log_entry[f"{side}_body"] = encoded
-        log_entry[f"{side}_body_encoding"] = encoding
-        if truncated:
-            log_entry[f"{side}_body_truncated"] = True
-    else:
+    encoded, encoding = _encode_body(
+        _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT) if truncated else body,
+        content_type,
+    )
+    if encoded is None:
         log_entry[f"{side}_body_encoding"] = "binary"
+        return
+
+    log_entry[f"{side}_body"] = encoded
+    log_entry[f"{side}_body_encoding"] = encoding
 
 
 def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
@@ -359,5 +362,5 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             "response",
             body,
             res_ct,
-            already_truncated=bool(body and stream_state and stream_state["truncated"]),
+            already_truncated=bool(stream_state and stream_state.get("truncated", False)),
         )
