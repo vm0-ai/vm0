@@ -539,6 +539,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token&wait=true"
 
+    def test_empty_trusted_base_query_key_is_authoritative(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?=secret",
+            {"rel_path": "/"},
+            "=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?=secret&wait=true"
+
     def test_auth_query_overrides_base_and_original_query(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?api_key=base&region=us",
