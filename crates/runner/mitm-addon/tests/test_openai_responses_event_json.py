@@ -140,3 +140,152 @@ def test_clamps_cached_tokens_to_total_input_tokens():
         "tokens.output": 5,
         "tokens.cache_read": 10,
     }
+
+
+from response_streaming import feed_model_websocket_usage
+
+class MockFlow:
+    def __init__(self, metadata=None):
+        self.metadata = metadata or {}
+
+
+def test_feed_websocket_usage_retains_positive_tokens_on_subsequent_zero():
+    flow = MockFlow(metadata={"model_websocket_usage_enabled": True})
+    
+    # First frame: positive usage
+    frame_1 = json.dumps({
+        "type": "response.completed",
+        "response": {
+            "id": "resp_1",
+            "model": "gpt-5.5",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 40,
+                "input_tokens_details": {"cached_tokens": 25},
+            }
+        }
+    })
+    
+    # Second frame: zero usage
+    frame_2 = json.dumps({
+        "type": "response.done",
+        "response": {
+            "id": "resp_1",
+            "model": "gpt-5.5",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+        }
+    })
+    
+    feed_model_websocket_usage(flow, frame_1)
+    assert flow.metadata["model_provider_usage"] == {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.input": 75,
+        "tokens.output": 40,
+        "tokens.cache_read": 25,
+    }
+    
+    feed_model_websocket_usage(flow, frame_2)
+    # The non-zero usage must be retained!
+    assert flow.metadata["model_provider_usage"] == {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.input": 75,
+        "tokens.output": 40,
+        "tokens.cache_read": 25,
+    }
+
+
+def test_feed_websocket_usage_allows_zero_then_positive():
+    flow = MockFlow(metadata={"model_websocket_usage_enabled": True})
+    
+    # First frame: zero usage
+    frame_1 = json.dumps({
+        "type": "response.completed",
+        "response": {
+            "id": "resp_1",
+            "model": "gpt-5.5",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+        }
+    })
+    
+    # Second frame: positive usage
+    frame_2 = json.dumps({
+        "type": "response.completed",
+        "response": {
+            "id": "resp_1",
+            "model": "gpt-5.5",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 40,
+            }
+        }
+    })
+    
+    feed_model_websocket_usage(flow, frame_1)
+    assert flow.metadata["model_provider_usage"] == {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.input": 0,
+        "tokens.output": 0,
+    }
+    
+    feed_model_websocket_usage(flow, frame_2)
+    assert flow.metadata["model_provider_usage"] == {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.input": 100,
+        "tokens.output": 40,
+    }
+
+
+def test_feed_websocket_usage_supports_str_content():
+    flow = MockFlow(metadata={"model_websocket_usage_enabled": True})
+    frame = json.dumps({
+        "type": "response.completed",
+        "response": {
+            "id": "resp_1",
+            "model": "gpt-5.5",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 40,
+            }
+        }
+    })
+    # Pass as str
+    feed_model_websocket_usage(flow, frame)
+    assert flow.metadata["model_provider_usage"]["tokens.input"] == 100
+
+
+def test_feed_websocket_usage_ignores_malformed_json_without_raising():
+    flow = MockFlow(metadata={"model_websocket_usage_enabled": True})
+    feed_model_websocket_usage(flow, b'{"type":"response.completed"')
+    assert "model_provider_usage" not in flow.metadata
+
+
+def test_feed_websocket_usage_overwrites_preexisting_non_dict():
+    flow = MockFlow(metadata={
+        "model_websocket_usage_enabled": True,
+        "model_provider_usage": "not-a-dict",
+    })
+    frame = json.dumps({
+        "type": "response.completed",
+        "response": {
+            "id": "resp_1",
+            "model": "gpt-5.5",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 40,
+            }
+        }
+    })
+    feed_model_websocket_usage(flow, frame)
+    assert isinstance(flow.metadata["model_provider_usage"], dict)
+    assert flow.metadata["model_provider_usage"]["tokens.input"] == 100
+

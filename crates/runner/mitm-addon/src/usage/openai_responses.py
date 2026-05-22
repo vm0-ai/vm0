@@ -251,3 +251,29 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
     ):
         return None
     return usage
+
+
+_OPENAI_RESPONSES_USAGE_CATEGORIES = (
+    MODEL_USAGE_CATEGORY_INPUT,
+    MODEL_USAGE_CATEGORY_OUTPUT,
+    MODEL_USAGE_CATEGORY_CACHE_READ,
+)
+
+
+def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
+    """Merge an OpenAI Responses usage extraction result into a target dict.
+
+    - copy/update non-empty 'model' and 'message_id' strings from 'source'
+    - for a local OpenAI Responses category tuple, call the existing '_store_quantity' rule
+    """
+    model = source.get("model")
+    if isinstance(model, str) and model:
+        target["model"] = model
+
+    message_id = source.get("message_id")
+    if isinstance(message_id, str) and message_id:
+        target["message_id"] = message_id
+
+    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
+        _store_quantity(target, category, source.get(category))
+

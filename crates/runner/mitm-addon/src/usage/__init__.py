@@ -34,6 +34,7 @@ from .openai_responses import (
     create_openai_responses_sse_usage_extractor,
     extract_openai_responses_usage_from_event_json,
     extract_openai_responses_usage_from_json,
+    merge_openai_responses_usage_result,
 )
 from .providers.connectors import report_connector_usage, x
 from .providers.model_provider import report_model_provider_usage
@@ -48,6 +49,7 @@ __all__ = [
     "extract_openai_responses_usage_from_event_json",
     "extract_openai_responses_usage_from_json",
     "increment_in_flight_flows",
+    "merge_openai_responses_usage_result",
     "report_connector_usage",
     "report_model_provider_usage",
     "set_pending_path",
