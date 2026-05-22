@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
+use agent_diagnostics::{FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
 use sandbox::SandboxId;
 use tokio::task::JoinSet;
@@ -230,28 +231,7 @@ pub(super) fn spawn_job(
             match (cancelled_for_log, failure.as_ref()) {
                 (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
                 (false, Some(failure)) => {
-                    if let Some(diagnostic) = failure.diagnostic.as_ref() {
-                        let failure_detail_source =
-                            diagnostic.failure_detail_source.map(|source| source.as_str());
-                        error!(
-                            run_id = %run_id,
-                            exit_code,
-                            reused,
-                            error = %failure.error,
-                            failure_class = diagnostic.failure_class.as_str(),
-                            failure_framework = diagnostic.framework.as_str(),
-                            failure_cli_exit_code = diagnostic.cli_exit_code,
-                            failure_claude_num_turns = diagnostic.claude_num_turns,
-                            failure_detail_source,
-                            session_history_status = diagnostic.session_history_status.as_str(),
-                            prompt_shape = diagnostic.prompt_shape.as_str(),
-                            prompt_bytes = diagnostic.prompt_bytes,
-                            first_line_bytes = diagnostic.first_line_bytes,
-                            "job execution failed"
-                        );
-                    } else {
-                        error!(run_id = %run_id, exit_code, reused, error = %failure.error, "job execution failed");
-                    }
+                    log_job_execution_failed(run_id, exit_code, reused, failure);
                 }
                 (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
             }
@@ -350,6 +330,55 @@ pub(super) fn spawn_job(
     });
 }
 
+fn log_job_execution_failed(
+    run_id: RunId,
+    exit_code: i32,
+    reused: bool,
+    failure: &executor::ExecutionFailure,
+) {
+    if let Some(diagnostic) = failure.diagnostic.as_ref() {
+        let failure_detail_source = diagnostic
+            .failure_detail_source
+            .map(|source| source.as_str());
+        let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
+        macro_rules! log_with_diagnostic {
+            ($level:ident) => {
+                $level!(
+                    run_id = %run_id,
+                    exit_code,
+                    reused,
+                    error = %failure.error,
+                    failure_class = diagnostic.failure_class.as_str(),
+                    failure_framework = diagnostic.framework.as_str(),
+                    failure_cli_exit_code = diagnostic.cli_exit_code,
+                    failure_claude_num_turns = diagnostic.claude_num_turns,
+                    failure_detail_source,
+                    failure_reason,
+                    session_history_status = diagnostic.session_history_status.as_str(),
+                    prompt_shape = diagnostic.prompt_shape.as_str(),
+                    prompt_bytes = diagnostic.prompt_bytes,
+                    first_line_bytes = diagnostic.first_line_bytes,
+                    "job execution failed"
+                )
+            };
+        }
+        if is_info_level_job_failure(diagnostic) {
+            log_with_diagnostic!(info);
+        } else {
+            log_with_diagnostic!(error);
+        }
+    } else {
+        error!(run_id = %run_id, exit_code, reused, error = %failure.error, "job execution failed");
+    }
+}
+
+fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
+    matches!(
+        diagnostic.failure_reason,
+        Some(FailureReason::InsufficientCredits | FailureReason::UsageLimit)
+    )
+}
+
 pub(super) async fn cleanup_panicked_job(
     run_id: RunId,
     sandbox_id: SandboxId,
@@ -404,13 +433,21 @@ pub(super) async fn handle_job_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
+    use std::fmt;
     use std::sync::Arc;
     use std::time::Duration;
 
+    use agent_diagnostics::{
+        AgentFramework, FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
+    };
     use sandbox::{SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
     use tokio_util::sync::CancellationToken;
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Level, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::RunCleanupState;
@@ -422,6 +459,160 @@ mod tests {
     use crate::ids::RunId;
     use crate::resource_budget::ResourceBudget;
     use crate::status::StatusTracker;
+
+    #[derive(Clone, Debug)]
+    struct CapturedEvent {
+        level: Level,
+        fields: BTreeMap<String, String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedEvents {
+        events: Arc<std::sync::Mutex<Vec<CapturedEvent>>>,
+    }
+
+    impl CapturedEvents {
+        fn entries(&self) -> Vec<CapturedEvent> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = CapturedFields::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(CapturedEvent {
+                level: *event.metadata().level(),
+                fields: visitor.fields,
+            });
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields {
+        fields: BTreeMap<String, String>,
+    }
+
+    impl Visit for CapturedFields {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_i64(&mut self, field: &Field, value: i64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_bool(&mut self, field: &Field, value: bool) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
+
+    fn job_failure_diagnostic(failure_reason: Option<FailureReason>) -> FailureDiagnostic {
+        let mut diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::CodexJsonl)
+        .with_session_history_status(SessionHistoryStatus::NotApplicable);
+        if let Some(reason) = failure_reason {
+            diagnostic = diagnostic.with_failure_reason(reason);
+        }
+        diagnostic
+    }
+
+    fn capture_job_failure_log(failure: &executor::ExecutionFailure) -> CapturedEvent {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            log_job_execution_failed(RunId::nil(), failure.exit_code, false, failure);
+        });
+        let events = captured.entries();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        events[0].clone()
+    }
+
+    fn assert_field_contains(event: &CapturedEvent, field: &str, expected: &str) {
+        let value = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert!(
+            value.contains(expected),
+            "field {field}={value:?} did not contain {expected:?}"
+        );
+    }
+
+    #[test]
+    fn quota_failure_reasons_log_job_execution_failed_at_info() {
+        for reason in [
+            FailureReason::InsufficientCredits,
+            FailureReason::UsageLimit,
+        ] {
+            let diagnostic = job_failure_diagnostic(Some(reason));
+            let failure = executor::ExecutionFailure::new(
+                1,
+                format!("quota failure: {}", reason.as_str()),
+                Some(diagnostic),
+            );
+
+            let event = capture_job_failure_log(&failure);
+
+            assert_eq!(event.level, Level::INFO);
+            assert_eq!(
+                event.fields.get("message").map(String::as_str),
+                Some("job execution failed")
+            );
+            assert_field_contains(&event, "failure_reason", reason.as_str());
+            assert_field_contains(&event, "failure_class", "cli_nonzero");
+            assert_field_contains(&event, "failure_detail_source", "codex_jsonl");
+        }
+    }
+
+    #[test]
+    fn unclassified_diagnostic_failure_logs_job_execution_failed_at_error() {
+        let diagnostic = job_failure_diagnostic(None);
+        let failure = executor::ExecutionFailure::new(1, "permission denied", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+    }
+
+    #[test]
+    fn failure_without_diagnostic_logs_job_execution_failed_at_error() {
+        let failure = executor::ExecutionFailure::new(1, "executor task panicked", None);
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert!(!event.fields.contains_key("failure_reason"));
+    }
 
     async fn status_idle_sessions_and_active_runs(
         status_path: &std::path::Path,

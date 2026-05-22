@@ -18,6 +18,7 @@ pub struct FailureDiagnostic {
     pub cli_exit_code: Option<i32>,
     pub claude_num_turns: Option<u64>,
     pub failure_detail_source: Option<FailureDetailSource>,
+    pub failure_reason: Option<FailureReason>,
     pub session_history_status: SessionHistoryStatus,
     pub prompt_shape: PromptShape,
     pub prompt_bytes: u64,
@@ -38,6 +39,7 @@ impl FailureDiagnostic {
             cli_exit_code: None,
             claude_num_turns: None,
             failure_detail_source: None,
+            failure_reason: None,
             session_history_status: SessionHistoryStatus::Unknown,
             prompt_shape: prompt.prompt_shape,
             prompt_bytes: prompt.prompt_bytes,
@@ -63,6 +65,12 @@ impl FailureDiagnostic {
         failure_detail_source: FailureDetailSource,
     ) -> Self {
         self.failure_detail_source = Some(failure_detail_source);
+        self
+    }
+
+    #[must_use]
+    pub fn with_failure_reason(mut self, failure_reason: FailureReason) -> Self {
+        self.failure_reason = Some(failure_reason);
         self
     }
 
@@ -97,6 +105,23 @@ impl FailureClass {
             Self::ClaudeZeroTurnNoHistory => "claude_zero_turn_no_history",
             Self::EventUploadFailed => "event_upload_failed",
             Self::CheckpointFailed => "checkpoint_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureReason {
+    InsufficientCredits,
+    UsageLimit,
+}
+
+impl FailureReason {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InsufficientCredits => "insufficient_credits",
+            Self::UsageLimit => "usage_limit",
         }
     }
 }
@@ -250,6 +275,7 @@ mod tests {
         assert_eq!(json["cliExitCode"], 0);
         assert_eq!(json["claudeNumTurns"], 0);
         assert_eq!(json["failureDetailSource"], serde_json::Value::Null);
+        assert_eq!(json["failureReason"], serde_json::Value::Null);
         assert_eq!(json["sessionHistoryStatus"], "missing");
         assert_eq!(json["promptShape"], "slash_like");
         assert_eq!(json["promptBytes"], 5);
@@ -260,24 +286,43 @@ mod tests {
     }
 
     #[test]
-    fn failure_diagnostic_serializes_optional_detail_source() {
+    fn failure_diagnostic_serializes_optional_detail_source_and_reason() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
             AgentFramework::ClaudeCode,
             PromptMetadata::from_prompt("debug failure"),
         )
         .with_cli_exit_code(1)
-        .with_failure_detail_source(FailureDetailSource::ClaudeResult);
+        .with_failure_detail_source(FailureDetailSource::ClaudeResult)
+        .with_failure_reason(FailureReason::InsufficientCredits);
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureDetailSource"], "claude_result");
+        assert_eq!(json["failureReason"], "insufficient_credits");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
     }
 
     #[test]
-    fn failure_diagnostic_deserializes_without_optional_detail_source() {
+    fn failure_diagnostic_serializes_usage_limit_reason() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::UsageLimit);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "usage_limit");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_deserializes_without_optional_fields() {
         let json = serde_json::json!({
             "schemaVersion": 1,
             "failureClass": "cli_nonzero",
@@ -293,6 +338,7 @@ mod tests {
         let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
 
         assert_eq!(diagnostic.failure_detail_source, None);
+        assert_eq!(diagnostic.failure_reason, None);
     }
 
     #[test]

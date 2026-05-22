@@ -15,8 +15,8 @@ use guest_agent::paths;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use agent_diagnostics::{
-    AgentFramework, FailureClass, FailureDetailSource, FailureDiagnostic, PromptMetadata,
-    SessionHistoryStatus,
+    AgentFramework, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
+    PromptMetadata, SessionHistoryStatus,
 };
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -216,6 +216,8 @@ async fn execute(
                     cli_result.claude_result,
                 )
                 .with_failure_detail_source(failure_message.source);
+                let diagnostic =
+                    with_cli_failure_reason(diagnostic, failure_message.message.as_str());
                 (
                     cli_exit_code,
                     cli_exit_code,
@@ -327,6 +329,31 @@ fn diagnostic_framework() -> AgentFramework {
         env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
         env::Framework::Codex => AgentFramework::Codex,
     }
+}
+
+fn with_cli_failure_reason(
+    diagnostic: FailureDiagnostic,
+    failure_message: &str,
+) -> FailureDiagnostic {
+    if let Some(reason) = classify_cli_failure_reason(diagnostic.framework, failure_message) {
+        diagnostic.with_failure_reason(reason)
+    } else {
+        diagnostic
+    }
+}
+
+fn classify_cli_failure_reason(
+    framework: AgentFramework,
+    failure_message: &str,
+) -> Option<FailureReason> {
+    let normalized = failure_message.to_ascii_lowercase();
+    if normalized.contains("402 insufficient credits") {
+        return Some(FailureReason::InsufficientCredits);
+    }
+    if matches!(framework, AgentFramework::Codex) && normalized.contains("usage limit") {
+        return Some(FailureReason::UsageLimit);
+    }
+    None
 }
 
 fn diagnostic_session_history_status() -> SessionHistoryStatus {
@@ -899,6 +926,68 @@ mod tests {
 
         assert_eq!(msg.source, FailureDetailSource::FallbackExitCode);
         assert_eq!(msg.message, "Agent exited with code 7");
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_insufficient_credits() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 402 Insufficient credits. Add credits or configure your own API key to continue.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::InsufficientCredits));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_usage_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_codex_usage_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "Claude usage limit reached. Visit https://claude.ai/settings/usage.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_unrelated_failures() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "permission denied while running command",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_is_attached_without_changing_failure_class() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::CodexJsonl);
+        let diagnostic = with_cli_failure_reason(
+            diagnostic,
+            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
+        );
+
+        assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
+        assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::CodexJsonl)
+        );
     }
 
     #[test]
