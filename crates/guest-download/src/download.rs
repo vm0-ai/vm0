@@ -46,6 +46,10 @@ impl DownloadTask {
     pub(crate) fn mount_path(&self) -> &str {
         &self.mount_path
     }
+
+    fn failure_detail(&self, error: &DownloadError) -> String {
+        format!("{} download failed: {}", self.label, error)
+    }
 }
 
 struct ActiveDownload {
@@ -238,8 +242,9 @@ fn run_download_task(task: DownloadTask) -> bool {
             true
         }
         Err(e) => {
-            record_sandbox_op(task.op_name, start.elapsed(), false, Some(&e.message));
-            log_error!(LOG_TAG, "{} download failed: {}", task.label, e);
+            let failure_detail = task.failure_detail(&e);
+            record_sandbox_op(task.op_name, start.elapsed(), false, Some(&failure_detail));
+            log_error!(LOG_TAG, "{failure_detail}");
             false
         }
     }
@@ -355,5 +360,27 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(false)));
+    }
+
+    #[test]
+    fn download_task_failure_detail_includes_entry_metadata() {
+        let task = DownloadTask::new(
+            "storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false"
+                .into(),
+            "storage_download",
+            "file:///tmp/archive.tar.gz".into(),
+            "/workspace".into(),
+            false,
+        );
+        let error = DownloadError::fatal("Failed to read archive entries: invalid gzip header");
+
+        let detail = task.failure_detail(&error);
+
+        assert!(detail.contains("storage 1"));
+        assert!(detail.contains("mountPath=/workspace"));
+        assert!(detail.contains("vasStorageName=repo"));
+        assert!(detail.contains("vasVersionId=v1"));
+        assert!(detail.contains("urlScheme=file"));
+        assert!(detail.contains("Failed to read archive entries"));
     }
 }

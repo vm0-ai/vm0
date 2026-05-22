@@ -36,6 +36,10 @@ pub(crate) struct ManifestEntry {
     pub(crate) instructions_target_filename: Option<String>,
     #[serde(default)]
     pub(crate) cached: bool,
+    #[serde(default)]
+    pub(crate) vas_storage_name: Option<String>,
+    #[serde(default)]
+    pub(crate) vas_version_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -87,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_ignores_runner_entry_metadata() {
+    fn manifest_preserves_runner_entry_metadata() {
         let json = r#"{
             "storages": [{
                 "mountPath": "/data",
@@ -105,6 +109,16 @@ mod tests {
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.storages[0].mount_path, "/data");
+        assert_eq!(
+            manifest.storages[0].vas_storage_name.as_deref(),
+            Some("storage")
+        );
+        assert_eq!(manifest.storages[0].vas_version_id.as_deref(), Some("v1"));
         assert_eq!(manifest.artifacts[0].mount_path, "/workspace");
+        assert_eq!(
+            manifest.artifacts[0].vas_storage_name.as_deref(),
+            Some("artifact")
+        );
+        assert_eq!(manifest.artifacts[0].vas_version_id.as_deref(), Some("v2"));
     }
 }

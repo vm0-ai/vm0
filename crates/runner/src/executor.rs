@@ -46,6 +46,7 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
+const GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES: usize = 8 * 1024;
 const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
     b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
@@ -1483,12 +1484,85 @@ async fn download_storages(
         .await?;
 
     if result.exit_code != 0 {
-        return Err(RunnerError::Internal(format!(
-            "storage download failed (exit code {})",
-            result.exit_code
+        return Err(RunnerError::Internal(format_guest_download_failure(
+            &result,
         )));
     }
     Ok(())
+}
+
+fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {
+    let mut message = format!("storage download failed (exit code {})", result.exit_code);
+
+    if let Some(stderr) =
+        format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated)
+    {
+        message.push_str("; ");
+        message.push_str(&stderr);
+    }
+    if let Some(stdout) =
+        format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated)
+    {
+        message.push_str("; ");
+        message.push_str(&stdout);
+    }
+
+    message
+}
+
+fn format_command_output_excerpt(
+    label: &str,
+    bytes: &[u8],
+    sandbox_truncated: bool,
+) -> Option<String> {
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let omitted_prefix = bytes.len() > GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
+    let excerpt_start = if omitted_prefix {
+        bytes.len() - GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES
+    } else {
+        0
+    };
+    let excerpt_bytes = bytes.get(excerpt_start..)?;
+    let excerpt = String::from_utf8_lossy(excerpt_bytes);
+    let excerpt = redact_url_query_strings(excerpt.trim());
+    if excerpt.is_empty() {
+        return None;
+    }
+
+    let mut qualifiers = Vec::new();
+    if omitted_prefix {
+        qualifiers.push("last 8192 bytes");
+    } else {
+        qualifiers.push("captured");
+    }
+    if sandbox_truncated {
+        qualifiers.push("sandbox-truncated");
+    }
+
+    Some(format!("{label} ({}): {excerpt}", qualifiers.join(", ")))
+}
+
+fn redact_url_query_strings(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(redact_url_query_token)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn redact_url_query_token(token: &str) -> String {
+    for scheme in ["https://", "http://"] {
+        if let Some((prefix, candidate)) = token.split_once(scheme)
+            && let Some((base_url, _)) = candidate.split_once('?')
+        {
+            return format!("{prefix}{scheme}{base_url}?<redacted>");
+        }
+    }
+
+    token.to_owned()
 }
 
 /// Write CLI agent session history into the guest filesystem.
@@ -3102,8 +3176,8 @@ mod tests {
         // write_file succeeds, but exec returns non-zero.
         sandbox.push_exec_result(Ok(ExecResult::new(
             1,
-            Vec::new(),
-            b"download failed".to_vec(),
+            b"stdout clue".to_vec(),
+            b"[2026-05-20T18:03:00Z] [ERROR] [sandbox:guest-download] storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false download failed: Failed to read archive entries: invalid gzip header".to_vec(),
         )));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
@@ -3114,7 +3188,31 @@ mod tests {
         let err = download_storages(&sandbox, &ctx, &manifest)
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("storage download failed"));
+        let msg = err.to_string();
+        assert!(msg.contains("storage download failed (exit code 1)"));
+        assert!(msg.contains("stderr (captured)"));
+        assert!(msg.contains("mountPath=/workspace"));
+        assert!(msg.contains("vasStorageName=repo"));
+        assert!(msg.contains("Failed to read archive entries"));
+        assert!(msg.contains("stdout (captured): stdout clue"));
+    }
+
+    #[test]
+    fn guest_download_failure_output_redacts_url_queries() {
+        let result = ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"HTTP transport error for archiveUrl=https://storage.example/archive.tar.gz?X-Amz-Signature=secret"
+                .to_vec(),
+            stdout_truncated: false,
+            stderr_truncated: true,
+        };
+
+        let msg = format_guest_download_failure(&result);
+
+        assert!(msg.contains("stderr (captured, sandbox-truncated)"));
+        assert!(msg.contains("archiveUrl=https://storage.example/archive.tar.gz?<redacted>"));
+        assert!(!msg.contains("secret"));
     }
 
     #[tokio::test]

@@ -575,7 +575,11 @@ fn binary_does_not_log_http_archive_url_on_fatal_status() {
         ops.iter()
             .any(|entry| entry["action_type"] == "storage_download"
                 && entry["success"] == false
-                && entry["error"] == "HTTP status 404"),
+                && entry["error"]
+                    .as_str()
+                    .is_some_and(|error| error.contains("HTTP status 404")
+                        && error.contains("mountPath=")
+                        && error.contains("urlScheme=http"))),
         "missing failed storage_download entry: {ops_log_content}"
     );
     assert!(

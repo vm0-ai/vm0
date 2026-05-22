@@ -91,7 +91,7 @@ fn append_download_tasks(
             && let Some(url) = entry.archive_url.clone()
         {
             tasks.push(DownloadTask::new(
-                format!("{} {}", label_prefix, idx + 1),
+                format_entry_label(entry, label_prefix, idx + 1, &url),
                 op_name,
                 url,
                 entry.mount_path.clone(),
@@ -99,6 +99,25 @@ fn append_download_tasks(
             ));
         }
     }
+}
+
+fn format_entry_label(
+    entry: &ManifestEntry,
+    label_prefix: &str,
+    index: usize,
+    archive_url: &str,
+) -> String {
+    let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
+    let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
+    let url_scheme = archive_url
+        .split_once("://")
+        .map(|(scheme, _)| scheme)
+        .unwrap_or("unknown");
+
+    format!(
+        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={}",
+        label_prefix, index, entry.mount_path, storage_name, version_id, url_scheme, entry.cached
+    )
 }
 
 #[cfg(test)]
@@ -133,11 +152,26 @@ mod tests {
     fn manifest_entries_yield_storage_and_artifact_tasks() {
         let json = r#"{
             "storages": [
-                {"mountPath": "/data", "archiveUrl": "https://s3/storage.tar.gz"}
+                {
+                    "mountPath": "/data",
+                    "archiveUrl": "https://s3/storage.tar.gz",
+                    "vasStorageName": "data",
+                    "vasVersionId": "storage-v1"
+                }
             ],
             "artifacts": [
-                {"mountPath": "/workspace/a", "archiveUrl": "https://s3/a.tar.gz"},
-                {"mountPath": "/workspace/b", "archiveUrl": "https://s3/b.tar.gz"}
+                {
+                    "mountPath": "/workspace/a",
+                    "archiveUrl": "https://s3/a.tar.gz",
+                    "vasStorageName": "workspace-a",
+                    "vasVersionId": "artifact-v1"
+                },
+                {
+                    "mountPath": "/workspace/b",
+                    "archiveUrl": "file:///tmp/vm0-storage-cache/b.tar.gz",
+                    "vasStorageName": "workspace-b",
+                    "vasVersionId": "artifact-v2"
+                }
             ]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
@@ -150,7 +184,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[0],
             DownloadTask::new(
-                "storage 1".into(),
+                "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
@@ -160,7 +194,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[1],
             DownloadTask::new(
-                "artifact 1".into(),
+                "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false".into(),
                 "artifact_download",
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
@@ -170,9 +204,9 @@ mod tests {
         assert_eq!(
             plan.download_tasks[2],
             DownloadTask::new(
-                "artifact 2".into(),
+                "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false".into(),
                 "artifact_download",
-                "https://s3/b.tar.gz".into(),
+                "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),
                 true,
             )
