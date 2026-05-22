@@ -610,6 +610,49 @@ async fn supervised_exec_cancel_handle_sends_cancel_without_consuming_wait() {
 }
 
 #[tokio::test]
+async fn supervised_exec_cancel_handle_timeout_before_write_does_not_poison_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-lock-wait"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let mut handle = task.await.unwrap().unwrap();
+    let cancel_handle = handle
+        .take_cancel_handle()
+        .expect("supervised handle should expose a cancel handle");
+    let writer_guard = host.shared.writer.lock().await;
+
+    let err = cancel_handle
+        .cancel(Duration::from_millis(1))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 1);
+
+    drop(writer_guard);
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+}
+
+#[tokio::test]
 async fn supervised_exec_cancel_after_terminal_result_returns_result_without_cancel_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

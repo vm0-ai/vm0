@@ -846,7 +846,6 @@ impl SupervisedExecCancelHandle {
                 elapsed_ms = self.diagnostic.elapsed_ms(),
                 "supervised exec operation cancel write timed out"
             );
-            self.shared.poison_connection();
             Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "supervised exec cancel write timed out",
