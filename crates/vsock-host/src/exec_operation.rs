@@ -2851,6 +2851,16 @@ mod tests {
                 .insert(field.name().to_string(), value.to_string());
         }
 
+        fn record_i128(&mut self, field: &Field, value: i128) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_u128(&mut self, field: &Field, value: u128) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
         fn record_bool(&mut self, field: &Field, value: bool) {
             self.fields
                 .insert(field.name().to_string(), value.to_string());
@@ -2964,6 +2974,16 @@ mod tests {
         assert_eq!(value, expected, "field {field} mismatch; event={event:#?}");
     }
 
+    fn terminal_log_field_u128(event: &CapturedEvent, field: &str) -> u128 {
+        let value = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        value
+            .parse()
+            .unwrap_or_else(|err| panic!("invalid u128 field {field}={value:?}: {err}"))
+    }
+
     #[test]
     fn exec_termination_notable_tracks_nonzero_exit() {
         assert!(!exec_termination_is_notable(
@@ -3023,8 +3043,14 @@ mod tests {
         assert_eq!(info_events.len(), 1, "captured events: {info_events:#?}");
         let info_event = &info_events[0];
         assert_eq!(info_event.level, Level::INFO);
+        assert_terminal_log_field(info_event, "message", "exec operation terminal result");
         assert_terminal_log_field(info_event, "seq", "7");
         assert_terminal_log_field(info_event, "label", "terminal-log");
+        assert!(
+            terminal_log_field_u128(info_event, "elapsed_ms")
+                >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD.as_millis(),
+            "elapsed_ms should preserve the slow terminal duration; event={info_event:#?}"
+        );
         assert_terminal_log_field(info_event, "guest_duration_ms", "10");
         assert_terminal_log_field(info_event, "termination", "Exited { exit_code: 0 }");
         assert_terminal_log_field(info_event, "stream_overflowed", "false");
@@ -3055,8 +3081,10 @@ mod tests {
         assert_eq!(warn_events.len(), 1, "captured events: {warn_events:#?}");
         let warn_event = &warn_events[0];
         assert_eq!(warn_event.level, Level::WARN);
+        assert_terminal_log_field(warn_event, "message", "exec operation terminal result");
         assert_terminal_log_field(warn_event, "seq", "7");
         assert_terminal_log_field(warn_event, "label", "terminal-log");
+        let _ = terminal_log_field_u128(warn_event, "elapsed_ms");
         assert_terminal_log_field(warn_event, "guest_duration_ms", "77");
         assert_terminal_log_field(warn_event, "termination", "TimedOut");
         assert_terminal_log_field(warn_event, "stream_overflowed", "true");
