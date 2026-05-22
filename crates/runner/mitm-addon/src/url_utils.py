@@ -237,6 +237,8 @@ def _filter_query_pairs(
         if _query_pair_key((separator, raw_pair)) in blocked_keys:
             removed_since_last_kept = True
             continue
+        if removed_since_last_kept and not raw_pair:
+            continue
         if removed_since_last_kept and filtered:
             separator = "&"
         filtered.append((separator, raw_pair))
