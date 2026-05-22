@@ -860,24 +860,41 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert ("Authorization", "Bearer stale") not in req_headers
         assert req_headers.count(("Authorization", "Bearer real")) == 1
 
-    async def test_forward_request_filters_injected_hop_headers_without_suppressing_auth(
+    async def test_forward_request_filters_client_and_injected_unsafe_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
-        """Trusted auth headers cannot use Connection tokens to suppress other auth headers."""
+        """Unsafe client and injected headers are stripped without suppressing auth."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
             real_flow,
             tmp_path,
             request_headers=headers(
                 ("Connection", "Authorization"),
+                ("Host", "evil-client.example.com"),
+                ("Content-Length", "123"),
+                ("Transfer-Encoding", "chunked"),
+                ("Keep-Alive", "timeout=5"),
+                ("Proxy-Authenticate", "Basic realm=client"),
+                ("Proxy-Authorization", "Basic client"),
+                ("Proxy-Connection", "keep-alive"),
+                ("TE", "trailers"),
+                ("Trailer", "X-Client-Trailer"),
+                ("Upgrade", "websocket"),
                 ("Authorization", "Bearer agent"),
                 ("X-Keep", "client"),
             ),
         )
         token_meta["headers"] = {
             "Connection": "Authorization, X-Injected",
+            "Keep-Alive": "timeout=5",
             "Host": "evil.example.com",
             "Content-Length": "999",
             "Transfer-Encoding": "chunked",
+            "Proxy-Authenticate": "Basic realm=proxy",
+            "Proxy-Authorization": "Basic secret",
+            "Proxy-Connection": "keep-alive",
+            "TE": "trailers",
+            "Trailer": "X-Trailer",
+            "Upgrade": "websocket",
             "Authorization": "Bearer real",
             "X-Injected": "trusted",
         }
@@ -891,10 +908,20 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         req_headers = mock_forward.call_args[0][2]
         header_names = [name.lower() for name, _value in req_headers]
-        assert "connection" not in header_names
-        assert "host" not in header_names
-        assert "content-length" not in header_names
-        assert "transfer-encoding" not in header_names
+        blocked_headers = {
+            "connection",
+            "content-length",
+            "host",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "proxy-connection",
+            "te",
+            "trailer",
+            "transfer-encoding",
+            "upgrade",
+        }
+        assert blocked_headers.isdisjoint(header_names)
         assert ("Authorization", "Bearer agent") not in req_headers
         assert ("Authorization", "Bearer real") in req_headers
         assert ("X-Injected", "trusted") in req_headers
@@ -1049,7 +1076,14 @@ class TestAuthQueryInjection:
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://serpapi.com",
-            "auth": {"headers": {}, "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"}},
+            "auth": {
+                "headers": {},
+                "query": {
+                    "api_key": "${{ secrets.SERPAPI_TOKEN }}",
+                    "empty_auth": "${{ vars.EMPTY }}",
+                    "space": "${{ vars.SPACE }}",
+                },
+            },
         }
         vm_info = {
             "runId": "run-1",
@@ -1067,7 +1101,11 @@ class TestAuthQueryInjection:
             "headers": {},
             "resolved_secrets": ["SERPAPI_TOKEN"],
             "cache_hit": False,
-            "query": {"api_key": "resolved-key-123"},
+            "query": {
+                "api_key": "resolved-key-123",
+                "empty_auth": "",
+                "space": "a b",
+            },
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -1076,13 +1114,18 @@ class TestAuthQueryInjection:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
+        assert flow.request.query["empty_auth"] == ""
+        assert flow.request.query["space"] == "a b"
 
     async def test_query_param_overwrites_existing_key(self, real_flow, headers, mitm_ctx):
         """auth.query overwrites a query param already present in the original request."""
         flow = real_flow(
             with_response=False,
             host="serpapi.com",
-            path="/search?api_key=agent-value&q=test",
+            path=(
+                "/search?api_key=agent-value&api_key=stale-value"
+                "&q=test&empty=&repeat=one&repeat=two"
+            ),
         )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
@@ -1114,8 +1157,13 @@ class TestAuthQueryInjection:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         # auth.query overwrites the agent's api_key
         assert flow.request.query["api_key"] == "real-secret-key"
+        assert list(flow.request.query.get_all("api_key")) == ["real-secret-key"]
         # Other query params are preserved
         assert flow.request.query["q"] == "test"
+        assert flow.request.query["empty"] == ""
+        query_items = list(flow.request.query.items(multi=True))
+        assert query_items.count(("repeat", "one")) == 1
+        assert query_items.count(("repeat", "two")) == 1
 
     async def test_query_params_with_headers_simultaneously(self, real_flow, headers, mitm_ctx):
         """auth.query and auth.headers can coexist on the standard path."""
@@ -1203,11 +1251,11 @@ class TestAuthQueryInjection:
     async def test_query_params_overwrite_existing_rewrite_url_keys(
         self, real_flow, headers, mitm_ctx
     ):
-        """auth.query overwrites duplicate keys from base and original query in rewrite path."""
+        """auth.query overwrites duplicate keys while preserving other query values."""
         flow = real_flow(
             with_response=False,
             host="firewall-placeholder.vm3.ai",
-            path="/hook?api_key=agent-key&q=test",
+            path="/hook?api_key=agent-key&q=test&empty=&repeat=one&repeat=two",
         )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
@@ -1215,7 +1263,11 @@ class TestAuthQueryInjection:
             "auth": {
                 "headers": {},
                 "base": "${{ secrets.WEBHOOK }}",
-                "query": {"api_key": "${{ secrets.KEY }}"},
+                "query": {
+                    "api_key": "${{ secrets.KEY }}",
+                    "empty_auth": "${{ vars.EMPTY }}",
+                    "space": "${{ vars.SPACE }}",
+                },
             },
         }
         vm_info = {
@@ -1233,10 +1285,14 @@ class TestAuthQueryInjection:
         }
         token_meta = {
             "headers": {},
-            "base": "https://real-api.com/webhook/secret?api_key=base-key&mode=fast",
+            "base": "https://real-api.com/webhook/secret?api_key=base-key&mode=fast&base_empty=",
             "resolved_secrets": ["WEBHOOK", "KEY"],
             "cache_hit": False,
-            "query": {"api_key": "resolved-key-456"},
+            "query": {
+                "api_key": "resolved-key-456",
+                "empty_auth": "",
+                "space": "a b",
+            },
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
@@ -1253,7 +1309,12 @@ class TestAuthQueryInjection:
         assert forwarded.path == "/webhook/secret"
         assert query["api_key"] == ["resolved-key-456"]
         assert query["mode"] == ["fast"]
+        assert query["base_empty"] == [""]
         assert query["q"] == ["test"]
+        assert query["empty"] == [""]
+        assert query["empty_auth"] == [""]
+        assert query["space"] == ["a b"]
+        assert query["repeat"] == ["one", "two"]
 
     async def test_no_query_injection_when_absent(self, real_flow, headers, mitm_ctx):
         """No query modification when auth.query is not present."""

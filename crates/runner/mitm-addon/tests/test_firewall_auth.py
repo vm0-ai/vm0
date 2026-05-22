@@ -289,6 +289,29 @@ class TestGetFirewallHeaders:
         assert result["cache_hit"] is True
         mock_fetch.assert_not_called()
 
+    async def test_query_is_cached_and_returned_on_cache_hit(self):
+        """auth.query is cached after a fetch and returned on cache hit."""
+        cache_key = ("run-1", "api-1")
+        cached_query = {"api_key": "cached-key", "empty_auth": ""}
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": {},
+                "resolvedSecrets": ["QUERY_KEY"],
+                "query": cached_query,
+            }
+        )
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            first = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            second = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert first["query"] == cached_query
+        assert first["cache_hit"] is False
+        assert second["query"] == cached_query
+        assert second["cache_hit"] is True
+        mock_fetch.assert_called_once()
+        assert require_cached_headers(cache_key).query == cached_query
+
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
         cache_key = ("run-1", "api-1")
