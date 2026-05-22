@@ -435,6 +435,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret&wait=true"
 
+    def test_all_original_duplicate_query_keys_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "token=first&token=second",
+        )
+        assert url == "https://example.com/hook?token=secret"
+
     def test_original_encoded_duplicate_query_key_dropped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",
@@ -532,6 +540,15 @@ class TestBuildRewriteUrl:
             {"api_key": "trusted key"},
         )
         assert url == "https://example.com/hook?api_key=trusted+key"
+
+    def test_auth_query_overrides_duplicate_trusted_base_query_keys(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?api_key=first&api_key=second&region=us",
+            {"rel_path": "/"},
+            "api_key=agent&q=test",
+            {"api_key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_auth_query_overrides_encoded_base_and_original_query_keys(self):
         url = url_utils.build_rewrite_url(
