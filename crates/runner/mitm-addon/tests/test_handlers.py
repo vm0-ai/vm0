@@ -3410,7 +3410,11 @@ class TestResponseUsageReporting:
                     "response": {
                         "id": "resp_ws_1",
                         "model": "gpt-5.5",
-                        "usage": {"input_tokens": 0, "output_tokens": 0},
+                        "usage": {
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "input_tokens_details": {"cached_tokens": 0},
+                        },
                     },
                 }
             ).encode(),
