@@ -90,6 +90,16 @@ function createMockAuthWindow() {
   return { closed: false, close: vi.fn(), location: { href: "" } };
 }
 
+function returnFalseForAbortError(error: unknown): false {
+  if (
+    (error instanceof Error || error instanceof DOMException) &&
+    error.name === "AbortError"
+  ) {
+    return false;
+  }
+  throw error;
+}
+
 function makeTestOauthDeviceConnectorResponse(): ConnectorResponse {
   return {
     id: "00000000-0000-4000-8000-000000000124",
@@ -667,8 +677,8 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
           {},
           context.signal,
         );
-      } catch {
-        return false;
+      } catch (error) {
+        return returnFalseForAbortError(error);
       }
     })();
 
@@ -741,8 +751,8 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
           {},
           flowSignal,
         );
-      } catch {
-        return false;
+      } catch (error) {
+        return returnFalseForAbortError(error);
       }
     })();
 
