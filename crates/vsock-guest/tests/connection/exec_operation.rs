@@ -1157,6 +1157,8 @@ fn exec_operation_stream_limits_track_exact_over_and_zero_budget() {
         stderr_over.termination,
         ExecTermination::Exited { exit_code: 0 }
     );
+    assert_eq!(stderr_over.stdout, None);
+    assert_eq!(stderr_over.stderr, None);
     assert_eq!(stderr_data(&stderr_over_chunks), b"abcd".to_vec());
     assert!(
         stderr_over_chunks
