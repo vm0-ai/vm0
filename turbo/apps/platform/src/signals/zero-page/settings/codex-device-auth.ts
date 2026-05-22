@@ -10,7 +10,7 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
-import { resetSignal, settle } from "../../utils.ts";
+import { onRef, resetSignal, settle } from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
 
 type CodexDeviceAuthDialogMode = "connect" | "reconnect";
@@ -552,6 +552,89 @@ export const runCodexDeviceAuthPersonal$ = command(
       signal: flowSignal,
     });
   },
+);
+
+const startCodexDeviceAuthOnRef$ = command(
+  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+    if (get(internalCodexDeviceAuthFlowState$).status !== "idle") {
+      return;
+    }
+    const flowSignal = set(resetCodexDeviceAuthFlowSignal$, signal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (get(internalCodexDeviceAuthFlowState$).status === "starting") {
+          set(internalCodexDeviceAuthFlowState$, createIdleFlowState());
+        }
+      },
+      { once: true },
+    );
+    await runCodexDeviceAuthFlow({
+      scope: "org",
+      createClient: get(zeroClient$),
+      getFlow: () => {
+        return get(internalCodexDeviceAuthFlowState$);
+      },
+      setFlow: (next) => {
+        set(internalCodexDeviceAuthFlowState$, next);
+      },
+      reloadProviders: () => {
+        set(reloadOrgModelProviders$);
+      },
+      closeDialog: () => {
+        set(internalCodexDeviceAuthDialogState$, createInitialDialogState());
+        set(internalCodexDeviceAuthFlowState$, createIdleFlowState());
+      },
+      signal: flowSignal,
+    });
+  },
+);
+
+const startCodexDeviceAuthPersonalOnRef$ = command(
+  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+    if (get(internalCodexDeviceAuthFlowStatePersonal$).status !== "idle") {
+      return;
+    }
+    const flowSignal = set(resetCodexDeviceAuthFlowSignalPersonal$, signal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (
+          get(internalCodexDeviceAuthFlowStatePersonal$).status === "starting"
+        ) {
+          set(internalCodexDeviceAuthFlowStatePersonal$, createIdleFlowState());
+        }
+      },
+      { once: true },
+    );
+    await runCodexDeviceAuthFlow({
+      scope: "personal",
+      createClient: get(zeroClient$),
+      getFlow: () => {
+        return get(internalCodexDeviceAuthFlowStatePersonal$);
+      },
+      setFlow: (next) => {
+        set(internalCodexDeviceAuthFlowStatePersonal$, next);
+      },
+      reloadProviders: () => {
+        set(reloadPersonalModelProviders$);
+      },
+      closeDialog: () => {
+        set(
+          internalCodexDeviceAuthDialogStatePersonal$,
+          createInitialDialogState(),
+        );
+        set(internalCodexDeviceAuthFlowStatePersonal$, createIdleFlowState());
+      },
+      signal: flowSignal,
+    });
+  },
+);
+
+export const codexDeviceAuthAutoStartRef$ = onRef(startCodexDeviceAuthOnRef$);
+
+export const codexDeviceAuthAutoStartRefPersonal$ = onRef(
+  startCodexDeviceAuthPersonalOnRef$,
 );
 
 export type { CodexDeviceAuthFlowState };

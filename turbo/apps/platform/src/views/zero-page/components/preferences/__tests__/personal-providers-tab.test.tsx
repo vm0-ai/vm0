@@ -4,6 +4,8 @@ import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type {
   ModelProviderResponse,
   ModelProviderType,
@@ -152,6 +154,18 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 
   it("opens the Claude Code device login dialog", async () => {
+    server.use(
+      mockApi(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-claude-code-device-session",
+          type: "claude-code",
+          status: "pending",
+          scope: "personal",
+          browserUrl: "https://claude.com/cai/oauth/authorize?code=true",
+          expiresIn: 30,
+        });
+      }),
+    );
     setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
@@ -161,10 +175,14 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     click(await screen.findByLabelText("Connect Claude Code OAuth"));
 
     await expect(
-      screen.findByTestId("claude-code-device-auth-start"),
+      screen.findByTestId("claude-code-device-auth-code"),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("Connect Claude Code")).toBeInTheDocument();
-    expect(screen.getByText("Sign in with Claude")).toBeInTheDocument();
+    expect(
+      screen.getByText(/First click Open Claude approval page/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Open Claude approval page")).toBeInTheDocument();
+    expect(screen.queryByText("Sign in with Claude")).not.toBeInTheDocument();
     expect(screen.queryByText("Select model")).not.toBeInTheDocument();
   });
 
@@ -281,6 +299,23 @@ describe("personal-providers-tab — ChatGPT (Codex) device login flow", () => {
     const openSpy = vi
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
+    server.use(
+      mockApi(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-codex-device-session",
+          type: "codex",
+          status: "pending",
+          scope: "personal",
+          browserUrl: "https://auth.openai.com/codex/device",
+          verificationCode: "ABCD-EFGH",
+          expiresIn: 30,
+          interval: 1,
+        });
+      }),
+      mockApi(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+        return respond(200, { status: "pending", errorMessage: null });
+      }),
+    );
     setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([]);
@@ -290,14 +325,37 @@ describe("personal-providers-tab — ChatGPT (Codex) device login flow", () => {
     click(await screen.findByLabelText("Connect ChatGPT (Codex)"));
 
     await expect(
-      screen.findByTestId("codex-device-auth-start"),
-    ).resolves.toBeInTheDocument();
+      screen.findByTestId("codex-device-auth-code"),
+    ).resolves.toHaveTextContent("ABCD-EFGH");
     expect(openSpy).not.toHaveBeenCalled();
     expect(screen.getByText("Connect Codex")).toBeInTheDocument();
-    expect(screen.getByText("Sign in with ChatGPT")).toBeInTheDocument();
+    expect(
+      screen.getByText(/First click Copy code and open approval page/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Copy code and open approval page"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Sign in with ChatGPT")).not.toBeInTheDocument();
   });
 
   it("opens the device reconnect dialog for stale ChatGPT (Codex)", async () => {
+    server.use(
+      mockApi(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-codex-device-session",
+          type: "codex",
+          status: "pending",
+          scope: "personal",
+          browserUrl: "https://auth.openai.com/codex/device",
+          verificationCode: "ABCD-EFGH",
+          expiresIn: 30,
+          interval: 1,
+        });
+      }),
+      mockApi(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+        return respond(200, { status: "pending", errorMessage: null });
+      }),
+    );
     setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([
@@ -323,8 +381,10 @@ describe("personal-providers-tab — ChatGPT (Codex) device login flow", () => {
     await expect(
       screen.findByText("Re-connect Codex"),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByTestId("codex-device-auth-start")).toBeInTheDocument();
-    expect(screen.getByText("Reconnect ChatGPT")).toBeInTheDocument();
+    await expect(
+      screen.findByTestId("codex-device-auth-code"),
+    ).resolves.toHaveTextContent("ABCD-EFGH");
+    expect(screen.queryByText("Reconnect ChatGPT")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Your ChatGPT session expired."),
     ).not.toBeInTheDocument();

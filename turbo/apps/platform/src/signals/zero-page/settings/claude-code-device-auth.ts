@@ -9,7 +9,7 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
-import { resetSignal, settle } from "../../utils.ts";
+import { onRef, resetSignal, settle } from "../../utils.ts";
 
 type ClaudeCodeDeviceAuthDialogMode = "connect" | "reconnect";
 
@@ -573,6 +573,81 @@ export const runClaudeCodeDeviceAuthPersonal$ = command(
       signal: flowSignal,
     });
   },
+);
+
+const startClaudeCodeDeviceAuthOnRef$ = command(
+  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+    if (get(internalClaudeCodeDeviceAuthFlowState$).status !== "idle") {
+      return;
+    }
+    const flowSignal = set(resetClaudeCodeDeviceAuthFlowSignal$, signal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (get(internalClaudeCodeDeviceAuthFlowState$).status === "starting") {
+          set(internalClaudeCodeDeviceAuthFlowState$, createIdleFlowState());
+        }
+      },
+      { once: true },
+    );
+    await runClaudeCodeDeviceAuthFlow({
+      scope: "org",
+      createClient: get(zeroClient$),
+      getFlow: () => {
+        return get(internalClaudeCodeDeviceAuthFlowState$);
+      },
+      setFlow: (next) => {
+        set(internalClaudeCodeDeviceAuthFlowState$, next);
+      },
+      signal: flowSignal,
+    });
+  },
+);
+
+const startClaudeCodeDeviceAuthPersonalOnRef$ = command(
+  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+    if (get(internalClaudeCodeDeviceAuthFlowStatePersonal$).status !== "idle") {
+      return;
+    }
+    const flowSignal = set(
+      resetClaudeCodeDeviceAuthFlowSignalPersonal$,
+      signal,
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (
+          get(internalClaudeCodeDeviceAuthFlowStatePersonal$).status ===
+          "starting"
+        ) {
+          set(
+            internalClaudeCodeDeviceAuthFlowStatePersonal$,
+            createIdleFlowState(),
+          );
+        }
+      },
+      { once: true },
+    );
+    await runClaudeCodeDeviceAuthFlow({
+      scope: "personal",
+      createClient: get(zeroClient$),
+      getFlow: () => {
+        return get(internalClaudeCodeDeviceAuthFlowStatePersonal$);
+      },
+      setFlow: (next) => {
+        set(internalClaudeCodeDeviceAuthFlowStatePersonal$, next);
+      },
+      signal: flowSignal,
+    });
+  },
+);
+
+export const claudeCodeDeviceAuthAutoStartRef$ = onRef(
+  startClaudeCodeDeviceAuthOnRef$,
+);
+
+export const claudeCodeDeviceAuthAutoStartRefPersonal$ = onRef(
+  startClaudeCodeDeviceAuthPersonalOnRef$,
 );
 
 export type { ClaudeCodeDeviceAuthFlowState };

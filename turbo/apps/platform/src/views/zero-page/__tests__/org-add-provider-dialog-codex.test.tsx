@@ -4,7 +4,7 @@
  * Covers:
  * - Card visible by default
  * - Click on the card opens the Codex device login dialog
- * - Device auth starts on the dialog Connect click, shows the device code, and
+ * - Device auth starts when the dialog opens, shows the device code, and
  *   waits for an explicit click before copying the code and opening OpenAI
  */
 
@@ -61,6 +61,18 @@ describe("connect Claude Code card — click handler", () => {
   });
 
   it("opens the Claude Code device login dialog when the card is clicked", async () => {
+    server.use(
+      mockApi(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-claude-code-device-session",
+          type: "claude-code",
+          status: "pending",
+          scope: "org",
+          browserUrl: "https://claude.com/cai/oauth/authorize?code=true",
+          expiresIn: 30,
+        });
+      }),
+    );
     await openProvidersPage();
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
@@ -73,10 +85,14 @@ describe("connect Claude Code card — click handler", () => {
         screen.getByRole("dialog", { name: /Connect Claude Code/i }),
       ).toBeInTheDocument();
     });
+    await expect(
+      screen.findByTestId("claude-code-device-auth-code"),
+    ).resolves.toBeInTheDocument();
     expect(
-      screen.getByTestId("claude-code-device-auth-start"),
+      screen.getByText(/First click Open Claude approval page/),
     ).toBeInTheDocument();
-    expect(screen.getByText("Sign in with Claude")).toBeInTheDocument();
+    expect(screen.getByText("Open Claude approval page")).toBeInTheDocument();
+    expect(screen.queryByText("Sign in with Claude")).not.toBeInTheDocument();
   });
 
   it("starts Claude Code auth, opens approval, and submits the callback code", async () => {
@@ -128,7 +144,6 @@ describe("connect Claude Code card — click handler", () => {
     click(
       await screen.findByTestId("org-provider-card-claude-code-oauth-token"),
     );
-    click(await screen.findByTestId("claude-code-device-auth-start"));
     await expect(
       screen.findByTestId("claude-code-device-auth-code"),
     ).resolves.toBeInTheDocument();
@@ -171,6 +186,23 @@ describe("connect Codex card — click handler", () => {
   });
 
   it("opens the device login dialog when the codex card is clicked", async () => {
+    server.use(
+      mockApi(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-codex-device-session",
+          type: "codex",
+          status: "pending",
+          scope: "org",
+          browserUrl: "https://auth.openai.com/codex/device",
+          verificationCode: "ABCD-EFGH",
+          expiresIn: 30,
+          interval: 1,
+        });
+      }),
+      mockApi(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+        return respond(200, { status: "pending", errorMessage: null });
+      }),
+    );
     await openProvidersPage();
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
@@ -184,11 +216,21 @@ describe("connect Codex card — click handler", () => {
         screen.getByRole("dialog", { name: /Connect Codex/i }),
       ).toBeInTheDocument();
     });
-    expect(screen.getByTestId("codex-device-auth-start")).toBeInTheDocument();
-    expect(screen.getByText("Sign in with ChatGPT")).toBeInTheDocument();
+    await expect(
+      screen.findByTestId("codex-device-auth-code"),
+    ).resolves.toHaveTextContent("ABCD-EFGH");
+    expect(screen.getByLabelText("Copy to clipboard")).toBeInTheDocument();
+    expect(
+      screen.getByText(/First click Copy code and open approval page/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Copy code and open approval page"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Sign in with ChatGPT")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("keeps the connect button visible and loading while preparing", async () => {
+  it("shows only loading while preparing", async () => {
     server.use(
       mockApi(zeroCodexDeviceAuthContract.start, async ({ never }) => {
         return await never();
@@ -199,13 +241,15 @@ describe("connect Codex card — click handler", () => {
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
     click(await screen.findByTestId("org-provider-card-codex-oauth-token"));
-    click(await screen.findByTestId("codex-device-auth-start"));
 
     await waitFor(() => {
-      const startButton = screen.getByTestId("codex-device-auth-start");
-      expect(startButton).toBeDisabled();
-      expect(startButton).toHaveTextContent("Preparing...");
+      expect(screen.getByTestId("codex-device-auth-loading")).toHaveTextContent(
+        "Preparing...",
+      );
     });
+    expect(
+      screen.queryByTestId("codex-device-auth-start"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Preparing Codex login…"),
     ).not.toBeInTheDocument();
@@ -278,13 +322,13 @@ describe("connect Codex card — click handler", () => {
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
     click(await screen.findByTestId("org-provider-card-codex-oauth-token"));
-    click(await screen.findByTestId("codex-device-auth-start"));
 
     await expect(
       screen.findByTestId("codex-device-auth-code"),
     ).resolves.toHaveTextContent("ABCD-EFGH");
     expect(open).not.toHaveBeenCalled();
     expect(writeText).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     click(screen.getByTestId("codex-device-auth-open"));
 
@@ -295,6 +339,9 @@ describe("connect Codex card — click handler", () => {
         "_blank",
       );
     });
+    await expect(screen.findByRole("status")).resolves.toHaveTextContent(
+      "Device code copied. Waiting for approval...",
+    );
     expect(resolveComplete).toBeDefined();
     resolveComplete?.();
 
@@ -336,7 +383,6 @@ describe("connect Codex card — click handler", () => {
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
     click(await screen.findByTestId("org-provider-card-codex-oauth-token"));
-    click(await screen.findByTestId("codex-device-auth-start"));
 
     await expect(
       screen.findByTestId("codex-device-auth-code"),
