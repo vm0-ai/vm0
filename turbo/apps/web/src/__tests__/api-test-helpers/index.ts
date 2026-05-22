@@ -117,15 +117,7 @@ export {
   completeTestRun,
   failTestRun,
 } from "./runs";
-export {
-  seedTestSchedule,
-  createTestSchedule,
-  getTestSchedule,
-  enableTestSchedule,
-  disableTestSchedule,
-  deleteTestSchedule,
-  getTestScheduleRuns,
-} from "./schedules";
+export { seedTestSchedule } from "./schedules";
 export {
   createTestVolumeForOrg,
   insertStorageVersion,

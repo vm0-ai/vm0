@@ -30,8 +30,6 @@ type StoredSecretReadMode =
   | "legacy-only"
   | "kms-only";
 
-const secretsMapSchema = z.record(z.string(), z.string());
-
 const directKmsCiphertextSchema = z.object({
   keyId: z.string().min(1),
   ciphertext: z.string().min(1),
@@ -306,29 +304,6 @@ export async function encryptStoredSecretValue(
   return await encryptSecretValueWithMode(
     plaintext,
     storedSecretWriteMode(FeatureSwitchKey.StoredSecretKmsWrite, ctx),
-  );
-}
-
-async function decryptStoredSecretValue(
-  encrypted: string,
-  ctx: FeatureSwitchContext = {},
-): Promise<string> {
-  return await decryptSecretValueWithMode(
-    encrypted,
-    storedSecretReadMode(FeatureSwitchKey.StoredSecretKmsRead, ctx),
-  );
-}
-
-export async function decryptStoredSecretsMap(
-  encryptedData: string | null,
-  ctx: FeatureSwitchContext = {},
-): Promise<Record<string, string> | null> {
-  if (!encryptedData) {
-    return null;
-  }
-
-  return secretsMapSchema.parse(
-    JSON.parse(await decryptStoredSecretValue(encryptedData, ctx)) as unknown,
   );
 }
 

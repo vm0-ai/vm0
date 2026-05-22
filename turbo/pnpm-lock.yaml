@@ -703,9 +703,6 @@ importers:
       cpu-features:
         specifier: 0.0.10
         version: 0.0.10
-      croner:
-        specifier: ^9.1.0
-        version: 9.1.0
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.9)
