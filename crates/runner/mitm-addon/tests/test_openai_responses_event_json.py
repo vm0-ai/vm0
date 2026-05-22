@@ -198,6 +198,29 @@ def test_merge_updates_with_positive_quantities():
     }
 
 
+def test_merge_allows_positive_corrections_to_lower_quantities():
+    target = {
+        "tokens.input": 20,
+        "tokens.output": 12,
+        "tokens.cache_read": 8,
+    }
+
+    merge_openai_responses_usage_result(
+        target,
+        {
+            "tokens.input": 10,
+            "tokens.output": 7,
+            "tokens.cache_read": 3,
+        },
+    )
+
+    assert target == {
+        "tokens.input": 10,
+        "tokens.output": 7,
+        "tokens.cache_read": 3,
+    }
+
+
 def test_merge_ignores_unknown_keys():
     target = {}
 
