@@ -407,6 +407,23 @@ describe("org-providers-tab — stale banner reconnect", () => {
   it("opens the device login dialog in reconnect mode when Reconnect is clicked", async () => {
     setMockFeatureSwitches({});
     setMockOrgModelProviders([makeStaleProvider()]);
+    server.use(
+      mockApi(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-codex-device-session",
+          type: "codex",
+          status: "pending",
+          scope: "org",
+          browserUrl: "https://auth.openai.com/codex/device",
+          verificationCode: "ABCD-EFGH",
+          expiresIn: 30,
+          interval: 1,
+        });
+      }),
+      mockApi(zeroCodexDeviceAuthContract.complete, async ({ never }) => {
+        return await never();
+      }),
+    );
     await openProvidersPage();
 
     click(await findReconnectButton());
@@ -414,8 +431,15 @@ describe("org-providers-tab — stale banner reconnect", () => {
     await waitFor(() => {
       expect(findReconnectDialogTitle()).toBeInTheDocument();
     });
-    expect(screen.getByTestId("codex-device-auth-start")).toBeInTheDocument();
-    expect(screen.getByText("Reconnect ChatGPT")).toBeInTheDocument();
+    await expect(
+      screen.findByTestId("codex-device-auth-code"),
+    ).resolves.toHaveTextContent("ABCD-EFGH");
+    expect(
+      screen.getByText("Copy code and open approval page"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("codex-device-auth-start"),
+    ).not.toBeInTheDocument();
   });
 
   it("clears the stale banner after a successful reconnect", async () => {
@@ -454,7 +478,6 @@ describe("org-providers-tab — stale banner reconnect", () => {
     });
 
     click(await findReconnectButton());
-    click(await screen.findByTestId("codex-device-auth-start"));
 
     await waitFor(() => {
       expect(
