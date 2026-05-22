@@ -443,6 +443,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret&wait=true"
 
+    def test_original_duplicate_query_key_preceded_by_empty_segment_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "wait=true&&token=attacker",
+        )
+        assert url == "https://example.com/hook?token=secret&wait=true"
+
     def test_all_original_duplicate_query_keys_dropped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",
@@ -543,6 +551,15 @@ class TestBuildRewriteUrl:
     def test_auth_query_overrides_base_query_without_leading_empty_segment(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?api_key=base&&region=us",
+            {"rel_path": "/"},
+            "q=test",
+            {"api_key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
+
+    def test_auth_query_overrides_base_query_without_trailing_empty_segment(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?region=us&&api_key=base",
             {"rel_path": "/"},
             "q=test",
             {"api_key": "trusted key"},

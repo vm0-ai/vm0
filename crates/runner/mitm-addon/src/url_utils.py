@@ -235,6 +235,8 @@ def _filter_query_pairs(
     removed_since_last_kept = False
     for separator, raw_pair in pairs:
         if _query_pair_key((separator, raw_pair)) in blocked_keys:
+            while filtered and not filtered[-1][1]:
+                filtered.pop()
             removed_since_last_kept = True
             continue
         if removed_since_last_kept and not raw_pair:
