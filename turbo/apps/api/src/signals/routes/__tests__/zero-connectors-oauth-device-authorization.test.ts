@@ -148,6 +148,15 @@ function mockTestOAuthDeviceProvider(): void {
           { status: 400 },
         );
       }
+      if (!deviceCode?.startsWith("test-device:test-oauth-device-client:")) {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Unknown device authorization code",
+          },
+          { status: 400 },
+        );
+      }
 
       return HttpResponse.json({
         access_token: `test-device-access:${body.get("client_id")}:${deviceCode}`,
@@ -593,6 +602,14 @@ describe("OAuth device authorization connector routes", () => {
           status: "error",
           errorCode: "invalid_request",
           errorMessage: "Synthetic device authorization error",
+        },
+      },
+      {
+        deviceCode: "not-issued",
+        expected: {
+          status: "error",
+          errorCode: "invalid_grant",
+          errorMessage: "Unknown device authorization code",
         },
       },
     ] as const;

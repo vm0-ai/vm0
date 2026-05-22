@@ -308,6 +308,17 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
               { status: 400 },
             );
           }
+          if (
+            !deviceCode?.startsWith(`test-device:${body.get("client_id")}:`)
+          ) {
+            return Response.json(
+              {
+                error: "invalid_grant",
+                error_description: "Unknown device authorization code",
+              },
+              { status: 400 },
+            );
+          }
 
           return Response.json({
             access_token: `test-device-access:${body.get("client_id")}:${deviceCode}`,
@@ -395,6 +406,17 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         status: "error",
         error: "invalid_request",
         errorDescription: "Synthetic device authorization error",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: "invalid-grant",
+        }),
+      ).resolves.toStrictEqual({
+        status: "error",
+        error: "invalid_grant",
+        errorDescription: "Unknown device authorization code",
       });
       await expect(
         pollConnectorOAuthDeviceAuthorization({

@@ -112,7 +112,7 @@ function devicePollErrorResult(args: {
       errorDescription: args.errorDescription,
     };
   }
-  if (args.error === "invalid_request") {
+  if (args.error === "invalid_request" || args.error === "invalid_grant") {
     return {
       status: "error",
       error: args.error,

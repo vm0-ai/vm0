@@ -133,6 +133,9 @@ function handleDeviceCode(body: URLSearchParams) {
   if (error) {
     return error;
   }
+  if (!deviceCode.startsWith(`test-device:${clientId}:`)) {
+    return errorResponse(400, "invalid_grant", "unknown device_code");
+  }
 
   return {
     status: 200 as const,
@@ -159,9 +162,14 @@ function isPreviewSyntheticRefreshRequest(body: URLSearchParams): boolean {
 
 const token$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$);
+  const testEndpointAllowed = isTestEndpointAllowed(request);
+  if (!testEndpointAllowed && env("ENV") !== "preview") {
+    return testEndpointNotFoundResponse();
+  }
+
   const contentType = request.header("content-type") ?? "";
   if (!contentType.includes("application/x-www-form-urlencoded")) {
-    if (!isTestEndpointAllowed(request)) {
+    if (!testEndpointAllowed) {
       return testEndpointNotFoundResponse();
     }
     return errorResponse(400, "invalid_request", "expected form body");
@@ -171,10 +179,7 @@ const token$ = command(async ({ get }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const body = new URLSearchParams(text);
-  if (
-    !isTestEndpointAllowed(request) &&
-    !isPreviewSyntheticRefreshRequest(body)
-  ) {
+  if (!testEndpointAllowed && !isPreviewSyntheticRefreshRequest(body)) {
     return testEndpointNotFoundResponse();
   }
 

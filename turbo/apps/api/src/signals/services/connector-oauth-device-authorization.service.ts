@@ -740,6 +740,8 @@ export const startConnectorOauthDeviceAuthorizationSession$ = command(
           verificationUri: startResult.verificationUri,
           verificationUriComplete: startResult.verificationUriComplete,
           intervalSeconds,
+          createdAt: now,
+          updatedAt: now,
           expiresAt,
         })
         .returning({

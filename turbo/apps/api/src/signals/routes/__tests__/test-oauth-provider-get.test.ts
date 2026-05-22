@@ -717,6 +717,14 @@ describe("/api/test/oauth-provider/*", () => {
           client_id: "test-oauth-device-client",
         }),
       );
+      const unknownDeviceCode = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "test-oauth-device-client",
+          device_code: "not-issued",
+        }),
+      );
 
       expect(invalidClient.status).toBe(401);
       await expect(readJson<ErrorBody>(invalidClient)).resolves.toStrictEqual({
@@ -728,6 +736,13 @@ describe("/api/test/oauth-provider/*", () => {
       ).resolves.toStrictEqual({
         error: "invalid_request",
         error_description: "device_code required",
+      });
+      expect(unknownDeviceCode.status).toBe(400);
+      await expect(
+        readJson<ErrorBody>(unknownDeviceCode),
+      ).resolves.toStrictEqual({
+        error: "invalid_grant",
+        error_description: "unknown device_code",
       });
     });
   });
