@@ -52,14 +52,13 @@ jobs:
       - name: Determine base ref
         id: base
         if: steps.identity.outputs.release-skip != 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
-          elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            BASE_REF="${{ github.event.merge_group.base_sha }}"
-          else
-            BASE_REF="HEAD^"
-          fi
+          BASE_REF=$(.github/scripts/changed-base-ref.sh)
           echo "base-ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
           echo "Base ref: ${BASE_REF}"
 

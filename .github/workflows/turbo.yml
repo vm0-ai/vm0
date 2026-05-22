@@ -73,17 +73,14 @@ jobs:
 
       - name: Detect Turbo TypeScript check need
         id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
-            echo "PR mode: comparing against merge base $BASE_REF"
-          elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            BASE_REF="${{ github.event.merge_group.base_sha }}"
-            echo "Merge queue mode: comparing against base $BASE_REF"
-          else
-            BASE_REF="HEAD^"
-            echo "Main push mode: comparing against HEAD^"
-          fi
+          BASE_REF=$(.github/scripts/changed-base-ref.sh)
+          echo "${{ github.event_name }} mode: comparing against base $BASE_REF"
 
           CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD)
 
@@ -136,20 +133,16 @@ jobs:
 
       - name: Detect changes
         id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
           echo "Checking for changes..."
 
-          # Determine base ref based on event type
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
-            echo "PR mode: comparing against merge base $BASE_REF"
-          elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            BASE_REF="${{ github.event.merge_group.base_sha }}"
-            echo "Merge queue mode: comparing against base $BASE_REF"
-          else
-            BASE_REF="HEAD^"
-            echo "Main push mode: comparing against HEAD^"
-          fi
+          BASE_REF=$(.github/scripts/changed-base-ref.sh)
+          echo "${{ github.event_name }} mode: comparing against base $BASE_REF"
 
           echo "base-ref=$BASE_REF" >> "$GITHUB_OUTPUT"
           CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD)
@@ -315,13 +308,13 @@ jobs:
           fetch-depth: 0
 
       - name: Check file sizes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
-          # Get changed files in PR
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          else
-            BASE_SHA="HEAD^"
-          fi
+          BASE_SHA=$(.github/scripts/changed-base-ref.sh)
 
           # Get list of added/modified files (exclude deleted)
           CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_SHA" HEAD)
