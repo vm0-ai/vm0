@@ -613,6 +613,7 @@ class TestHandleFirewallRequest:
         assert "API unreachable" in body["message"]
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
 
     async def test_no_response_set_on_success(self, real_flow, headers, mitm_ctx):
         """On success, flow.response should remain None (request continues to origin)."""
@@ -826,6 +827,7 @@ class TestHandleFirewallRequest:
         assert body["error"] == "auth_unavailable"
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
 
 
 # =========================================================================
