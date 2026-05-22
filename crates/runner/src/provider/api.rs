@@ -157,6 +157,14 @@ impl JobProvider for ApiProvider {
         let run_id = candidate.run_id();
         match self.api.claim(run_id).await {
             Ok(ctx) => {
+                if ctx.run_id != run_id {
+                    error!(
+                        run_id = %run_id,
+                        context_run_id = %ctx.run_id,
+                        "claim response run_id mismatch"
+                    );
+                    return None;
+                }
                 info!(run_id = %run_id, "job claimed");
                 Some(ClaimedJob::api(ctx))
             }
@@ -732,6 +740,42 @@ mod tests {
 
         assert_api_error(err, "complete 500 Internal Server Error: complete failed");
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_rejects_run_id_mismatch() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let context_run_id = RunId::new_v4();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": context_run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "workingDir": "/home/user",
+                    "cliAgentType": "claude_code",
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await;
+
+        assert!(claimed.is_none());
+        claim_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]
