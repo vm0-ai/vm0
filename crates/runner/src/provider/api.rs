@@ -1068,7 +1068,8 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn api_provider_complete_stops_after_two_failures() {
-        let (api_url, mut requests, server_task) = complete_sequence_server(vec![500, 500]).await;
+        let (api_url, mut requests, server_task) =
+            complete_sequence_server(vec![500, 500, 200]).await;
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -1096,10 +1097,10 @@ mod tests {
         assert_complete_authorization(&second_request, "sandbox-token");
 
         complete_task.await.unwrap();
-        server_task.await.unwrap();
         assert!(
             requests.try_recv().is_err(),
             "completion should stop after the retry"
         );
+        server_task.abort();
     }
 }
