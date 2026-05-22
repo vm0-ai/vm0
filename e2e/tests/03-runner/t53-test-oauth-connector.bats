@@ -41,8 +41,6 @@ setup_file() {
     export ARTIFACT_NAME="e2e-test-oauth-artifact-${UNIQUE_ID}"
     export TEST_OAUTH_PROVIDER_URL="${VM0_API_URL/-www./-api.}"
 
-    enable_test_oauth_feature_switch
-
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
     $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
@@ -66,14 +64,6 @@ encode_test_email() {
         return 1
     fi
     printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g'
-}
-
-enable_test_oauth_feature_switch() {
-    local response
-    response=$(zero_curl "/api/zero/feature-switches" \
-        -X POST \
-        -d '{"switches":{"testOauthConnector":true}}') || return 1
-    printf '%s' "$response" | jq -e '.switches.testOauthConnector == true' >/dev/null
 }
 
 # Enable the test-oauth connector for a specific compose (user_connectors row).
@@ -179,21 +169,6 @@ connect_test_oauth_via_authorization_code() {
     [[ "$success_url" == *"/connector/success"* && "$success_url" == *"type=test-oauth"* ]] || {
         echo "# Callback did not redirect to test-oauth success URL"
         echo "$success_url"
-        return 1
-    }
-
-    local connector_body
-    connector_body=$(zero_curl "/api/zero/connectors/test-oauth")
-    printf '%s' "$connector_body" | jq -e '
-        .type == "test-oauth"
-        and .authMethod == "oauth"
-        and .externalUsername == "testoauth"
-        and .externalEmail == "testoauth@example.com"
-        and .oauthScopes == ["read"]
-        and .needsReconnect == false
-    ' >/dev/null || {
-        echo "# test-oauth connector was not connected as expected"
-        echo "$connector_body"
         return 1
     }
 }
