@@ -7,7 +7,7 @@ import {
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route";
-import { safeJsonParse } from "../utils";
+import { safeJsonParse, safeSync } from "../utils";
 import {
   downloadFalImage,
   getMissingImagePricing,
@@ -237,16 +237,27 @@ const PROVIDER_FAILURE_DETAIL_KEYS = [
   "logs",
 ] as const;
 
-const PROVIDER_FAILURE_FIELD_ALIASES: ReadonlyMap<string, string> = new Map([
-  ["failure_reason", "failureReason"],
-  ["error_message", "errorMessage"],
-  ["status_message", "statusMessage"],
-  ["err_msg", "errorMessage"],
-  ["error_code", "errorCode"],
-]);
-
 function providerFailureLogKey(key: string): string {
-  return PROVIDER_FAILURE_FIELD_ALIASES.get(key) ?? key;
+  switch (key) {
+    case "failure_reason": {
+      return "failureReason";
+    }
+    case "error_message": {
+      return "errorMessage";
+    }
+    case "err_msg": {
+      return "errorMessage";
+    }
+    case "status_message": {
+      return "statusMessage";
+    }
+    case "error_code": {
+      return "errorCode";
+    }
+    default: {
+      return key;
+    }
+  }
 }
 
 function truncateProviderFailureDetail(value: string): string {
@@ -263,8 +274,12 @@ function stringifyProviderFailureDetail(value: unknown): string | undefined {
   }
   if (Array.isArray(value)) {
     const text = value
-      .map((item) => stringifyProviderFailureDetail(item))
-      .filter((item): item is string => Boolean(item))
+      .map((item) => {
+        return stringifyProviderFailureDetail(item);
+      })
+      .filter((item): item is string => {
+        return Boolean(item);
+      })
       .join("\n");
     return text ? truncateProviderFailureDetail(text) : undefined;
   }
@@ -277,11 +292,12 @@ function stringifyProviderFailureDetail(value: unknown): string | undefined {
       return detail;
     }
   }
-  try {
-    return truncateProviderFailureDetail(JSON.stringify(value));
-  } catch {
-    return undefined;
-  }
+  const serialized = safeSync(() => {
+    return JSON.stringify(value);
+  });
+  return "ok" in serialized
+    ? truncateProviderFailureDetail(serialized.ok)
+    : undefined;
 }
 
 export function providerFailureDetailsForLog(
