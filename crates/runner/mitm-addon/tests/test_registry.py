@@ -17,6 +17,7 @@ from tests.auth_state_helpers import (
     set_cached_headers,
     set_last_force_refresh_at,
 )
+from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
 def _reset_cache():
@@ -569,6 +570,20 @@ class TestLogNetworkEntry:
         parsed = json.loads(lines[0])
         assert parsed["action"] == "ALLOW"
         assert parsed["host"] == "example.com"
+        assert_utc_millisecond_timestamp(parsed["timestamp"])
+        assert "timestamp" not in entry
+
+    def test_timestamp_is_authoritative(self, tmp_path):
+        log_path = str(tmp_path / "net.jsonl")
+        entry = {"timestamp": "caller-timestamp", "action": "ALLOW"}
+
+        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+            logging_utils.log_network_entry(log_path, entry)
+
+        parsed = json.loads(Path(log_path).read_text().strip())
+        assert_utc_millisecond_timestamp(parsed["timestamp"])
+        assert parsed["timestamp"] != "caller-timestamp"
+        assert entry["timestamp"] == "caller-timestamp"
 
     def test_appends_multiple(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")

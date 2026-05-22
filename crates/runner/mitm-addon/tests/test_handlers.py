@@ -29,6 +29,7 @@ from tests.auth_state_helpers import (
     set_cached_headers,
     set_last_force_refresh_at,
 )
+from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 from usage import (
     create_anthropic_messages_sse_usage_extractor,
     create_openai_responses_sse_usage_extractor,
@@ -1914,6 +1915,7 @@ class TestResponseHandler:
         assert entry["host"] == "api.anthropic.com"
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
+        assert_utc_millisecond_timestamp(entry["timestamp"])
 
     def test_response_size_from_stream_buffer(
         self, registry_file, tmp_path, real_flow, mitm_ctx, headers
@@ -4196,6 +4198,7 @@ class TestErrorHandler:
         assert entry["response_size"] == 0
         assert entry["error"] == "connection reset by peer"
         assert entry["latency_ms"] > 0
+        assert_utc_millisecond_timestamp(entry["timestamp"])
 
     def test_error_includes_firewall_context(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="slack.com")
@@ -6007,6 +6010,7 @@ class TestTcpLog:
         assert entry["request_size"] == 5  # b"hello"
         assert entry["response_size"] == 14  # b"SSH-2.0-babeld"
         assert "error" not in entry
+        assert_utc_millisecond_timestamp(entry["timestamp"])
 
     def test_logs_tcp_error(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow(client_ip="10.200.0.1")

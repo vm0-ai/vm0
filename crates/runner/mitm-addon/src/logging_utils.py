@@ -6,11 +6,15 @@ log entries, and extracting firewall metadata.
 
 import json
 import os
-import time
+from datetime import datetime, timezone
 
 from mitmproxy import ctx, http
 
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
+
+
+def _utc_log_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
@@ -30,7 +34,10 @@ def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
 
 def log_network_entry(log_path: str, entry: dict) -> None:
     """Write a network log entry to the per-run JSONL file."""
-    _write_jsonl_entry(log_path, entry, "network")
+    if not log_path:
+        return
+    log_entry = {**entry, "timestamp": _utc_log_timestamp()}
+    _write_jsonl_entry(log_path, log_entry, "network")
 
 
 def log_proxy_entry(
@@ -42,7 +49,7 @@ def log_proxy_entry(
 ) -> None:
     """Write a diagnostic log entry to the per-job proxy log file (JSONL)."""
     entry: dict = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+        "timestamp": _utc_log_timestamp(),
         "level": log_level,
         "message": log_message,
     }

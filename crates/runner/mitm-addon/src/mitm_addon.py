@@ -431,7 +431,6 @@ def response(flow: http.HTTPFlow) -> None:
     proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     if network_log_path:
         log_entry = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "type": "http",
             "action": firewall_action,
             "host": host,
@@ -549,7 +548,6 @@ def error(flow: http.HTTPFlow) -> None:
 
     # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
     log_entry: dict = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
         "type": "http",
         "action": firewall_action,
         "host": host,
@@ -658,7 +656,6 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
 
     # [NETWORK_LOG_FIELDS] — TCP fields; api-contracts is the shared schema boundary.
     log_entry = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
         "type": "tcp",
         "host": host,
         "port": port,

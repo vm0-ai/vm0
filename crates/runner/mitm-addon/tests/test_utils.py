@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import logging_utils
+from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 from url_utils import AuthorityValidationError, get_original_url
 
 
@@ -111,7 +112,7 @@ class TestLogProxyEntry:
         assert entry["level"] == "warn"
         assert entry["message"] == "test message"
         assert entry["extra_field"] == "value"
-        assert "timestamp" in entry
+        assert_utc_millisecond_timestamp(entry["timestamp"])
 
     def test_appends_multiple_entries(self, tmp_path):
         proxy_path = str(tmp_path / "proxy-test.jsonl")
@@ -181,6 +182,7 @@ class TestLogProxyEntry:
         logging_utils.log_proxy_entry(str(proxy_path), "warn", "logger-message", **extra)
 
         entry = json.loads(Path(proxy_path).read_text().strip())
+        assert_utc_millisecond_timestamp(entry["timestamp"])
         assert entry["timestamp"] != "caller-timestamp"
         assert entry["level"] == "warn"
         assert entry["message"] == "logger-message"
