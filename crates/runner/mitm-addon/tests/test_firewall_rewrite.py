@@ -654,6 +654,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?redirect=a;b&region=us&q=test&api_key=trusted+key"
 
+    def test_base_path_params_are_preserved(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook;v=1?token=abc",
+            {"rel_path": "/sub;mode=fast"},
+            "extra=1",
+        )
+        assert url == "https://example.com/hook;v=1/sub;mode=fast?token=abc&extra=1"
+
     def test_trailing_slash_on_base_deduped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook/",
@@ -1315,6 +1323,60 @@ class TestAuthQueryInjection:
         assert query["empty_auth"] == [""]
         assert query["space"] == ["a b"]
         assert query["repeat"] == ["one", "two"]
+
+    async def test_query_params_preserve_rewrite_path_params(self, real_flow, headers, mitm_ctx):
+        """auth.query merging must not strip URL path params from the rewrite target."""
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/hook/callback;matrix=1?q=test",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
+            "auth": {
+                "headers": {},
+                "base": "${{ secrets.WEBHOOK }}",
+                "query": {"api_key": "${{ secrets.KEY }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
+        }
+        match_info = {
+            "name": "test",
+            "permission": "send",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/callback;matrix=1",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://real-api.com/webhook/secret;v=1?mode=fast",
+            "resolved_secrets": ["WEBHOOK", "KEY"],
+            "cache_hit": False,
+            "query": {"api_key": "resolved-key"},
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        forwarded = urlparse(mock_forward.call_args[0][0])
+        assert forwarded.path == "/webhook/secret;v=1/callback"
+        assert forwarded.params == "matrix=1"
+        query = parse_qs(forwarded.query, keep_blank_values=True)
+        assert query == {
+            "mode": ["fast"],
+            "q": ["test"],
+            "api_key": ["resolved-key"],
+        }
 
     async def test_no_query_injection_when_absent(self, real_flow, headers, mitm_ctx):
         """No query modification when auth.query is not present."""

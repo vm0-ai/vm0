@@ -347,7 +347,7 @@ def build_rewrite_url(
     incoming request (no leading ``?``). Query key precedence is
     ``resolved_query`` > resolved base query > original request query.
     """
-    base_parsed = urllib.parse.urlparse(resolved_base)
+    base_parsed = urllib.parse.urlsplit(resolved_base)
 
     # Append rel_path to the base path portion
     rel_path = match_info.get("rel_path", "/")
@@ -355,6 +355,6 @@ def build_rewrite_url(
 
     merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)
 
-    return urllib.parse.urlunparse(
-        (base_parsed.scheme, base_parsed.netloc, base_path, "", merged_qs, "")
+    return urllib.parse.urlunsplit(
+        (base_parsed.scheme, base_parsed.netloc, base_path, merged_qs, "")
     )
