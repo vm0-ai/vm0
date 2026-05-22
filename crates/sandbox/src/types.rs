@@ -605,4 +605,22 @@ mod tests {
 
         assert!(closed.load(Ordering::SeqCst));
     }
+
+    #[test]
+    fn guest_process_handle_takes_cancel_handle_once() {
+        let mut handle = GuestProcessHandle::new(
+            42,
+            None,
+            None,
+            GuestProcessWaiter::new(|_| {
+                Box::pin(async { Ok(ProcessExit::new(42, 0, Vec::new(), Vec::new())) })
+            }),
+        )
+        .with_cancel_handle(GuestProcessCancelHandle::new(|_| {
+            Box::pin(async { Ok(()) })
+        }));
+
+        assert!(handle.take_cancel_handle().is_some());
+        assert!(handle.take_cancel_handle().is_none());
+    }
 }
