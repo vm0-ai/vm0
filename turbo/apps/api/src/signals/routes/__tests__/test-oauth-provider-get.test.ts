@@ -481,6 +481,31 @@ describe("/api/test/oauth-provider/*", () => {
       const body = await readJson<TokenBody>(response);
       expect(body.expires_in).toBe(0);
     });
+
+    it("returns a short-lived token for short-lived-access scenario", async () => {
+      mockEnv("ENV", "development");
+
+      const authorize = await requestApp(
+        validAuthorizePath({ scenario: "short-lived-access" }),
+      );
+      const location = authorize.headers.get("location");
+      expect(location).not.toBeNull();
+      const code = new URL(location ?? "").searchParams.get("code");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: code ?? "",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = await readJson<TokenBody>(response);
+      expect(body.expires_in).toBe(30);
+    });
   });
 
   describe("token refresh_token", () => {

@@ -23,11 +23,17 @@ import {
 
 const DEFAULT_EXPIRES_IN = 3600;
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+const SHORT_LIVED_EXPIRES_IN = 30;
 
 function mintTokensForScenario(
   scenario: TestOAuthScenario,
 ): TestOAuthProviderTokenResponse {
-  const expiresIn = scenario === "expired-access" ? 0 : DEFAULT_EXPIRES_IN;
+  const expiresIn =
+    scenario === "expired-access"
+      ? 0
+      : scenario === "short-lived-access"
+        ? SHORT_LIVED_EXPIRES_IN
+        : DEFAULT_EXPIRES_IN;
   return {
     access_token: mintAccessToken(expiresIn),
     refresh_token: mintRefreshToken(scenario),

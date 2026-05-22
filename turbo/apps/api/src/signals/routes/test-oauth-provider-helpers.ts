@@ -12,6 +12,7 @@ export const TEST_OAUTH_DEVICE_VERIFICATION_URI =
 
 const TEST_OAUTH_SCENARIOS = [
   "success",
+  "short-lived-access",
   "expired-access",
   "invalid-refresh",
   "revoked",

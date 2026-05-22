@@ -10,7 +10,7 @@
 #
 # Steps:
 # 1. Compose an agent that references TEST_OAUTH_TOKEN.
-# 2. Link test-oauth with an EXPIRED access token via /api/cli/auth/test-connector.
+# 2. Connect test-oauth through the real authorization-code OAuth flow.
 # 3. Enable the connector for the compose via /api/cli/auth/test-enable-connector
 #    so the zero run flow passes it in allowedConnectorTypes.
 # 4. Zero-run an agent that curls the echo endpoint. The firewall rule
@@ -66,43 +66,6 @@ encode_test_email() {
     printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g'
 }
 
-# Seed the test-oauth connector access/refresh secrets + `connectors` row.
-# Usage: link_test_oauth_connector <access_token> <refresh_token> <expires_in_secs>
-# expires_in_secs may be negative to pre-expire the access token.
-link_test_oauth_connector() {
-    local access_token="$1"
-    local refresh_token="$2"
-    local expires_in="$3"
-
-    local encoded_email
-    encoded_email=$(encode_test_email) || return 1
-
-    local body
-    body=$(cat <<EOF
-{"connectorName":"test-oauth","accessToken":"${access_token}","refreshToken":"${refresh_token}","expiresIn":${expires_in}}
-EOF
-)
-
-    local curl_args=(-s -w "\n%{http_code}" -X POST)
-    curl_args+=(-H "Content-Type: application/json")
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
-    curl_args+=(-d "$body")
-
-    local response http_code resp_body
-    response=$(curl "${curl_args[@]}" \
-        "${VM0_API_URL}/api/cli/auth/test-connector?email=${encoded_email}")
-    http_code=$(echo "$response" | tail -n1)
-    resp_body=$(echo "$response" | head -n-1)
-
-    if [[ "$http_code" != "200" ]]; then
-        echo "test-connector failed: HTTP $http_code"
-        echo "Response: $resp_body"
-        return 1
-    fi
-}
-
 # Enable the test-oauth connector for a specific compose (user_connectors row).
 # Required for zero-run to pass it in allowedConnectorTypes.
 enable_test_oauth_for_compose() {
@@ -137,13 +100,99 @@ EOF
     fi
 }
 
+append_test_oauth_bypass_headers() {
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        curl_args+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+}
+
+header_location() {
+    local header_file="$1"
+    grep -i '^location:' "$header_file" | head -n1 | sed -E 's/^[Ll]ocation:[[:space:]]*//; s/\r$//'
+}
+
+connect_test_oauth_via_authorization_code() {
+    local scenario="${1:-}"
+    local start_body
+    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{}')
+    local authorization_url
+    authorization_url=$(printf '%s' "$start_body" | jq -r '.authorizationUrl // empty')
+    [ -n "$authorization_url" ] || {
+        echo "# Missing authorizationUrl from OAuth start response"
+        echo "$start_body"
+        return 1
+    }
+    if [[ -n "$scenario" ]]; then
+        authorization_url="${authorization_url}&scenario=${scenario}"
+    fi
+
+    local authorize_headers="$BATS_FILE_TMPDIR/test-oauth-authorize.headers"
+    local authorize_body="$BATS_FILE_TMPDIR/test-oauth-authorize.body"
+    local curl_args=(-sS -D "$authorize_headers" -o "$authorize_body" -w "%{http_code}")
+    append_test_oauth_bypass_headers
+    local authorize_status
+    authorize_status=$(curl "${curl_args[@]}" "$authorization_url")
+    if [[ "$authorize_status" != "302" ]]; then
+        echo "# test-oauth authorize returned HTTP $authorize_status"
+        cat "$authorize_body"
+        return 1
+    fi
+
+    local callback_url
+    callback_url=$(header_location "$authorize_headers")
+    [ -n "$callback_url" ] || {
+        echo "# Missing callback Location from test-oauth authorize response"
+        cat "$authorize_headers"
+        return 1
+    }
+
+    local callback_headers="$BATS_FILE_TMPDIR/test-oauth-callback.headers"
+    local callback_body="$BATS_FILE_TMPDIR/test-oauth-callback.body"
+    curl_args=(-sS -D "$callback_headers" -o "$callback_body" -w "%{http_code}")
+    append_test_oauth_bypass_headers
+    local callback_status
+    callback_status=$(curl "${curl_args[@]}" "$callback_url")
+    if [[ "$callback_status" != "307" ]]; then
+        echo "# test-oauth callback returned HTTP $callback_status"
+        cat "$callback_body"
+        return 1
+    fi
+
+    local success_url
+    success_url=$(header_location "$callback_headers")
+    [ -n "$success_url" ] || {
+        echo "# Missing success Location from test-oauth callback response"
+        cat "$callback_headers"
+        return 1
+    }
+    [[ "$success_url" == *"/connector/success"* && "$success_url" == *"type=test-oauth"* ]] || {
+        echo "# Callback did not redirect to test-oauth success URL"
+        echo "$success_url"
+        return 1
+    }
+
+    local connector_body
+    connector_body=$(zero_curl "/api/zero/connectors/test-oauth")
+    printf '%s' "$connector_body" | jq -e '
+        .type == "test-oauth"
+        and .authMethod == "oauth"
+        and .externalUsername == "testoauth"
+        and .externalEmail == "testoauth@example.com"
+        and .oauthScopes == ["read"]
+        and .needsReconnect == false
+    ' >/dev/null || {
+        echo "# test-oauth connector was not connected as expected"
+        echo "$connector_body"
+        return 1
+    }
+}
+
 @test "test-oauth: mid-run token refresh through proxy" {
-    # Seed an access token with past expiry (-3600s). The firewall/auth webhook
-    # should detect this at request time and refresh via the fake provider.
-    run link_test_oauth_connector \
-        "testoauth_at_EXPIRED_do_not_use" \
-        "testoauth_rt_success_valid" \
-        -3600
+    # Connect with a short-lived token. The callback succeeds because the token
+    # is still valid for userinfo, and the webhook refreshes it later because
+    # its DB expiry is inside the refresh buffer.
+    run connect_test_oauth_via_authorization_code "short-lived-access"
     echo "$output"
     assert_success
 
@@ -191,9 +240,8 @@ EOF
     # 200 proves the proxy matched + refresh path injected a fresh, unexpired token.
     assert_output --partial "ECHO_STATUS=200"
 
-    # The echoed Authorization must NOT be the expired token — it must be a
-    # fresh testoauth_at_<unix_ms>_<hex> minted by the fake provider's refresh grant.
-    refute_output --partial "testoauth_at_EXPIRED_do_not_use"
+    # The echoed Authorization must be a fresh testoauth_at_<unix_ms>_<hex>
+    # minted by the fake provider's refresh grant.
     assert_output --regexp "ECHO_BODY=.*testoauth_at_[0-9]+_[a-f0-9]+"
 
     # Extract Run ID and confirm the proxy (a) matched test-oauth firewall
@@ -210,6 +258,10 @@ EOF
 }
 
 @test "test-oauth: stored token expired but DB says fresh — echo 401s" {
+    run connect_test_oauth_via_authorization_code
+    echo "$output"
+    assert_success
+
     # The stored access token embeds a past unix-ms expiry but DB
     # tokenExpiresAt is in the future (expiresIn=3600), so the firewall/auth
     # webhook trusts the DB and does NOT refresh. mitm injects the stored
@@ -217,10 +269,7 @@ EOF
     # returning 401 with "expired_token". Proves the echo route's
     # self-validation guards against webhook-side staleness bugs.
     local past_ms=$(( ( $(date +%s) - 3600 ) * 1000 ))
-    run link_test_oauth_connector \
-        "testoauth_at_${past_ms}_staleaccesstoken" \
-        "testoauth_rt_success_unused" \
-        3600
+    run $ZERO_CLI secret set TEST_OAUTH_ACCESS_TOKEN --body "testoauth_at_${past_ms}_staleaccesstoken"
     echo "$output"
     assert_success
 
