@@ -21,7 +21,36 @@ struct ChildEntry {
     let segment: String
 }
 
+struct ChildSource: Sendable {
+    let attribute: String
+    let prefix: String
+}
+
 let limits = SnapshotLimits()
+
+let childSources = [
+    ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
+    ChildSource(attribute: "AXRows", prefix: "r"),
+    ChildSource(attribute: "AXContents", prefix: "c"),
+    ChildSource(attribute: "AXVisibleChildren", prefix: "v"),
+    ChildSource(attribute: "AXVisibleRows", prefix: "a"),
+    ChildSource(attribute: "AXVisibleCells", prefix: "b"),
+    ChildSource(attribute: "AXVisibleColumns", prefix: "d"),
+    ChildSource(attribute: "AXSelectedChildren", prefix: "s"),
+    ChildSource(attribute: "AXSelectedRows", prefix: "q"),
+    ChildSource(attribute: "AXSelectedCells", prefix: "l"),
+]
+
+let visibleCollectionChildSources = [
+    ChildSource(attribute: "AXVisibleRows", prefix: "a"),
+    ChildSource(attribute: "AXVisibleCells", prefix: "b"),
+    ChildSource(attribute: "AXVisibleColumns", prefix: "d"),
+    ChildSource(attribute: "AXSelectedRows", prefix: "q"),
+    ChildSource(attribute: "AXSelectedCells", prefix: "l"),
+    ChildSource(attribute: "AXSelectedChildren", prefix: "s"),
+    ChildSource(attribute: "AXVisibleChildren", prefix: "v"),
+    ChildSource(attribute: "AXContents", prefix: "c"),
+]
 
 func isRecord(_ value: Any) -> [String: Any]? {
     return value as? [String: Any]
@@ -194,6 +223,23 @@ func stringValue(_ value: Any?) -> String? {
     return nil
 }
 
+func stringArrayValue(_ value: Any?) -> [String] {
+    if let strings = value as? [String] {
+        return strings.compactMap { entry in
+            stringValue(entry)
+        }
+    }
+    if let entries = value as? [Any] {
+        return entries.compactMap { entry in
+            stringValue(entry)
+        }
+    }
+    if let string = stringValue(value) {
+        return [string]
+    }
+    return []
+}
+
 func urlStringValue(_ value: Any?) -> String? {
     if let url = value as? URL {
         return stringValue(url.absoluteString)
@@ -313,6 +359,15 @@ func valueTypeDescription(_ value: Any?) -> String? {
     return nil
 }
 
+func titleElementText(_ element: AXUIElement) -> String? {
+    guard let titleElement = axElementValue(attribute(element, kAXTitleUIElementAttribute as CFString)) else {
+        return nil
+    }
+    return stringValue(attribute(titleElement, kAXTitleAttribute as CFString)) ??
+        stringValue(attribute(titleElement, kAXValueAttribute as CFString)) ??
+        stringValue(attribute(titleElement, kAXDescriptionAttribute as CFString))
+}
+
 func setAttribute(_ element: AXUIElement, _ name: CFString, _ value: CFTypeRef) throws {
     let error = AXUIElementSetAttributeValue(element, name, value)
     if error != .success {
@@ -362,15 +417,38 @@ func prefixedChildren(
         }
 }
 
-func collectChildren(_ element: AXUIElement) -> [ChildEntry] {
-    let candidates = prefixedChildren(element, kAXChildrenAttribute as CFString, "e") +
-        prefixedChildren(element, "AXRows" as CFString, "r") +
-        prefixedChildren(element, "AXContents" as CFString, "c") +
-        prefixedChildren(element, "AXVisibleChildren" as CFString, "v")
+func elementUsesVisibleCollectionSources(_ element: AXUIElement) -> Bool {
+    guard let role = role(element),
+          role == "AXList" || role == "AXOutline" || role == "AXTable"
+    else {
+        return false
+    }
+    return !attributeArray(element, "AXVisibleRows" as CFString).isEmpty ||
+        !attributeArray(element, "AXVisibleCells" as CFString).isEmpty ||
+        !attributeArray(element, "AXVisibleColumns" as CFString).isEmpty ||
+        !attributeArray(element, "AXSelectedChildren" as CFString).isEmpty ||
+        !attributeArray(element, "AXSelectedRows" as CFString).isEmpty ||
+        !attributeArray(element, "AXSelectedCells" as CFString).isEmpty
+}
 
+func collectChildren(_ element: AXUIElement) -> [ChildEntry] {
+    let sources = elementUsesVisibleCollectionSources(element)
+        ? visibleCollectionChildSources
+        : childSources
+    let candidates = sources.flatMap { source in
+        prefixedChildren(element, source.attribute as CFString, source.prefix)
+    }
+
+    var seenElements = Set<CFHashCode>()
     var seen = Set<String>()
     var children: [ChildEntry] = []
     for candidate in candidates {
+        let elementHash = CFHash(candidate.element)
+        if seenElements.contains(elementHash) {
+            continue
+        }
+        seenElements.insert(elementHash)
+
         let fingerprint = childFingerprint(candidate.element)
         if !fingerprint.isEmpty {
             if seen.contains(fingerprint) {
@@ -435,6 +513,22 @@ func describe(
     if let help = stringValue(attribute(element, kAXHelpAttribute as CFString)) {
         node["help"] = help
     }
+    if let placeholderValue = stringValue(attribute(element, kAXPlaceholderValueAttribute as CFString)) {
+        node["placeholderValue"] = placeholderValue
+    }
+    if let visibleText = stringValue(attribute(element, kAXVisibleTextAttribute as CFString)) {
+        node["visibleText"] = visibleText
+    }
+    if let text = stringValue(attribute(element, kAXTextAttribute as CFString)) {
+        node["text"] = text
+    }
+    if let titleElementText = titleElementText(element) {
+        node["titleElementText"] = titleElementText
+    }
+    let columnTitles = stringArrayValue(attribute(element, kAXColumnTitlesAttribute as CFString))
+    if !columnTitles.isEmpty {
+        node["columnTitles"] = columnTitles
+    }
     if let identifier = stringValue(attribute(element, kAXIdentifierAttribute as CFString)) {
         node["identifier"] = identifier
     }
@@ -452,6 +546,9 @@ func describe(
     }
     if let expanded = boolValue(attribute(element, kAXExpandedAttribute as CFString)) {
         node["expanded"] = expanded
+    }
+    if let hidden = boolValue(attribute(element, "AXHidden" as CFString)) {
+        node["hidden"] = hidden
     }
     let actions = actionNames(element)
     if !actions.isEmpty {
@@ -482,8 +579,11 @@ func describe(
 }
 
 func resolveIndex(_ segment: Substring) throws -> Int {
-    guard segment.count > 1,
-          let index = Int(segment.dropFirst()),
+    let indexText = segment.drop(while: { character in
+        !character.isNumber
+    })
+    guard !indexText.isEmpty,
+          let index = Int(indexText),
           index >= 0
     else {
         throw HelperFailure(
@@ -496,21 +596,15 @@ func resolveIndex(_ segment: Substring) throws -> Int {
 
 func childForSegment(_ element: AXUIElement, _ segment: Substring) throws -> AXUIElement {
     let index = try resolveIndex(segment)
-    let children: [AXUIElement]
-    if segment.hasPrefix("e") {
-        children = attributeArray(element, kAXChildrenAttribute as CFString)
-    } else if segment.hasPrefix("r") {
-        children = attributeArray(element, "AXRows" as CFString)
-    } else if segment.hasPrefix("c") {
-        children = attributeArray(element, "AXContents" as CFString)
-    } else if segment.hasPrefix("v") {
-        children = attributeArray(element, "AXVisibleChildren" as CFString)
-    } else {
+    guard let source = childSources.first(where: { source in
+        segment.hasPrefix(source.prefix)
+    }) else {
         throw HelperFailure(
             code: "unsupported_command",
             message: "Invalid element id segment: \(segment)"
         )
     }
+    let children = attributeArray(element, source.attribute as CFString)
 
     guard index < children.count else {
         throw HelperFailure(

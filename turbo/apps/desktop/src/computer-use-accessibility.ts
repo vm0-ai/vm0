@@ -31,23 +31,57 @@ export interface AccessibilityElementSnapshot {
   readonly id: string;
   readonly index?: number;
   readonly role?: string;
-  readonly roleDescription?: string;
   readonly subrole?: string;
+  readonly roleDescription?: string;
   readonly name?: string;
   readonly value?: string;
   readonly valueType?: string;
   readonly valueSettable?: boolean;
   readonly description?: string;
   readonly help?: string;
+  readonly placeholderValue?: string;
+  readonly visibleText?: string;
+  readonly text?: string;
+  readonly titleElementText?: string;
+  readonly columnTitles?: readonly string[];
   readonly identifier?: string;
   readonly url?: string;
   readonly focused?: boolean;
   readonly enabled?: boolean;
   readonly selected?: boolean;
   readonly expanded?: boolean;
+  readonly hidden?: boolean;
   readonly actions?: readonly string[];
   readonly bounds?: ComputerUseCoordinateBounds;
   readonly children?: readonly AccessibilityElementSnapshot[];
+}
+
+type AccessibilityTextSourceAttribute =
+  | "AXTitle"
+  | "AXValue"
+  | "AXDescription"
+  | "AXHelp"
+  | "AXPlaceholderValue"
+  | "AXVisibleText"
+  | "AXText"
+  | "AXTitleUIElement"
+  | "AXColumnTitles"
+  | "AXIdentifier"
+  | "AXURL";
+
+interface AccessibilityVisibleElement {
+  readonly elementIndex?: number;
+  readonly elementId: string;
+  readonly role?: string;
+  readonly text: string;
+  readonly source: "accessibility";
+  readonly sourceAttributes: readonly AccessibilityTextSourceAttribute[];
+  readonly bounds?: ComputerUseCoordinateBounds;
+  readonly focused?: boolean;
+  readonly enabled?: boolean;
+  readonly selected?: boolean;
+  readonly expanded?: boolean;
+  readonly actions?: readonly string[];
 }
 
 export interface AccessibilityAppStateSnapshot {
@@ -491,6 +525,19 @@ function stringHasValue(value: string | undefined): boolean {
   return value !== undefined && value.trim().length > 0;
 }
 
+function normalizeDisplayText(value: string): string {
+  return value.trim().replaceAll(/\s+/g, " ");
+}
+
+function stringArrayHasValue(value: readonly string[] | undefined): boolean {
+  return (
+    value !== undefined &&
+    value.some((entry) => {
+      return normalizeDisplayText(entry).length > 0;
+    })
+  );
+}
+
 function elementIsWebArea(element: AccessibilityElementSnapshot): boolean {
   return (
     element.role === "AXWebArea" ||
@@ -505,8 +552,18 @@ function elementHasMeaningfulContent(
     stringHasValue(element.name) ||
     stringHasValue(element.value) ||
     stringHasValue(element.description) ||
+    stringHasValue(element.help) ||
+    stringHasValue(element.placeholderValue) ||
+    stringHasValue(element.visibleText) ||
+    stringHasValue(element.text) ||
+    stringHasValue(element.titleElementText) ||
+    stringArrayHasValue(element.columnTitles) ||
+    stringHasValue(element.identifier) ||
+    stringHasValue(element.url) ||
     element.focused === true ||
     element.enabled === false ||
+    element.selected === true ||
+    element.expanded !== undefined ||
     (element.actions !== undefined && element.actions.length > 0)
   );
 }
@@ -548,6 +605,14 @@ export function normalizeAccessibilitySnapshot(
   ): AccessibilityElementSnapshot[] => {
     if (depth > limits.maxDepth) {
       pushUniqueReason(truncationReasons, "max_depth");
+      return [];
+    }
+    if (
+      depth > 0 &&
+      element.hidden === true &&
+      element.focused !== true &&
+      element.selected !== true
+    ) {
       return [];
     }
 
@@ -612,6 +677,191 @@ export function normalizeAccessibilitySnapshot(
         ? [...new Set(combinedReasons)]
         : snapshot.truncationReasons,
   };
+}
+
+function boundsIntersect(
+  lhs: ComputerUseCoordinateBounds,
+  rhs: ComputerUseCoordinateBounds,
+): boolean {
+  const lhsRight = lhs.x + lhs.width;
+  const lhsBottom = lhs.y + lhs.height;
+  const rhsRight = rhs.x + rhs.width;
+  const rhsBottom = rhs.y + rhs.height;
+  return (
+    lhs.width > 0 &&
+    lhs.height > 0 &&
+    rhs.width > 0 &&
+    rhs.height > 0 &&
+    lhs.x < rhsRight &&
+    lhsRight > rhs.x &&
+    lhs.y < rhsBottom &&
+    lhsBottom > rhs.y
+  );
+}
+
+function elementIsInCapturedSource(
+  element: AccessibilityElementSnapshot,
+  sourceBounds: ComputerUseCoordinateBounds | undefined,
+): boolean {
+  if (!sourceBounds || !element.bounds) {
+    return true;
+  }
+  return (
+    boundsIntersect(element.bounds, sourceBounds) ||
+    element.focused === true ||
+    element.selected === true
+  );
+}
+
+interface AccessibilityTextCandidate {
+  readonly text: string;
+  readonly sourceAttribute: AccessibilityTextSourceAttribute;
+}
+
+function pushTextCandidate(
+  candidates: AccessibilityTextCandidate[],
+  value: string | undefined,
+  sourceAttribute: AccessibilityTextSourceAttribute,
+): void {
+  if (!value) {
+    return;
+  }
+  const text = normalizeDisplayText(value);
+  if (text.length === 0) {
+    return;
+  }
+  candidates.push({ text, sourceAttribute });
+}
+
+function pushTextArrayCandidate(
+  candidates: AccessibilityTextCandidate[],
+  value: readonly string[] | undefined,
+  sourceAttribute: AccessibilityTextSourceAttribute,
+): void {
+  if (!value) {
+    return;
+  }
+  const text = value
+    .map(normalizeDisplayText)
+    .filter((entry) => {
+      return entry.length > 0;
+    })
+    .join(", ");
+  if (text.length === 0) {
+    return;
+  }
+  candidates.push({ text, sourceAttribute });
+}
+
+function elementTextCandidates(
+  element: AccessibilityElementSnapshot,
+): readonly AccessibilityTextCandidate[] {
+  const candidates: AccessibilityTextCandidate[] = [];
+  pushTextCandidate(candidates, element.name, "AXTitle");
+  pushTextCandidate(candidates, element.value, "AXValue");
+  pushTextCandidate(candidates, element.description, "AXDescription");
+  pushTextCandidate(candidates, element.help, "AXHelp");
+  pushTextCandidate(candidates, element.placeholderValue, "AXPlaceholderValue");
+  pushTextCandidate(candidates, element.visibleText, "AXVisibleText");
+  pushTextCandidate(candidates, element.text, "AXText");
+  pushTextCandidate(candidates, element.titleElementText, "AXTitleUIElement");
+  pushTextArrayCandidate(candidates, element.columnTitles, "AXColumnTitles");
+  pushTextCandidate(candidates, element.identifier, "AXIdentifier");
+  pushTextCandidate(candidates, element.url, "AXURL");
+  return candidates;
+}
+
+function visibleElementForSnapshotElement(
+  element: AccessibilityElementSnapshot,
+  sourceBounds: ComputerUseCoordinateBounds | undefined,
+): AccessibilityVisibleElement | null {
+  if (
+    element.hidden === true &&
+    element.focused !== true &&
+    element.selected !== true
+  ) {
+    return null;
+  }
+  if (!elementIsInCapturedSource(element, sourceBounds)) {
+    return null;
+  }
+
+  const candidates = elementTextCandidates(element);
+  const primary = candidates[0];
+  if (!primary) {
+    return null;
+  }
+
+  const sourceAttributes = candidates
+    .filter((candidate) => {
+      return candidate.text === primary.text;
+    })
+    .map((candidate) => {
+      return candidate.sourceAttribute;
+    });
+
+  return {
+    ...(element.index !== undefined ? { elementIndex: element.index } : {}),
+    elementId: element.id,
+    ...(element.role ? { role: element.role } : {}),
+    text: primary.text,
+    source: "accessibility",
+    sourceAttributes: [...new Set(sourceAttributes)],
+    ...(element.bounds ? { bounds: element.bounds } : {}),
+    ...(element.focused !== undefined ? { focused: element.focused } : {}),
+    ...(element.enabled !== undefined ? { enabled: element.enabled } : {}),
+    ...(element.selected !== undefined ? { selected: element.selected } : {}),
+    ...(element.expanded !== undefined ? { expanded: element.expanded } : {}),
+    ...(element.actions && element.actions.length > 0
+      ? { actions: element.actions }
+      : {}),
+  };
+}
+
+export function collectAccessibilityVisibleElements(
+  snapshot: AccessibilityAppStateSnapshot,
+  sourceBounds?: ComputerUseCoordinateBounds,
+): readonly AccessibilityVisibleElement[] {
+  const result: AccessibilityVisibleElement[] = [];
+  const seen = new Set<string>();
+
+  const visit = (element: AccessibilityElementSnapshot): void => {
+    const visibleElement = visibleElementForSnapshotElement(
+      element,
+      sourceBounds,
+    );
+    if (visibleElement) {
+      const key = `${visibleElement.elementId}\0${visibleElement.text}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(visibleElement);
+      }
+    }
+    for (const child of element.children ?? []) {
+      visit(child);
+    }
+  };
+
+  for (const element of snapshot.elements) {
+    visit(element);
+  }
+  return result;
+}
+
+function renderAccessibilityVisibleText(
+  visibleElements: readonly AccessibilityVisibleElement[],
+): string {
+  return visibleElements
+    .map((element) => {
+      const role = element.role ? ` ${element.role}` : "";
+      const source = element.sourceAttributes.join("+");
+      const selector =
+        element.elementIndex !== undefined
+          ? String(element.elementIndex)
+          : element.elementId;
+      return `${selector}${role} [${source}] ${element.text}`;
+    })
+    .join("\n");
 }
 
 function normalizeKeyToken(value: string): string {
@@ -882,7 +1132,12 @@ function elementPrimaryText(
   return (
     formatText(element.name) ??
     formatText(element.value) ??
+    formatText(element.visibleText) ??
+    formatText(element.text) ??
+    formatText(element.titleElementText) ??
     formatText(element.description) ??
+    formatText(element.placeholderValue) ??
+    formatText(element.identifier) ??
     formatText(element.url, 240)
   );
 }
@@ -913,6 +1168,30 @@ function elementDetails(
   const value = formatText(element.value);
   if (value && value !== primary) {
     details.push(`Value: ${value}`);
+  }
+  const visibleText = formatText(element.visibleText);
+  if (visibleText && visibleText !== primary) {
+    details.push(`Visible Text: ${visibleText}`);
+  }
+  const text = formatText(element.text);
+  if (text && text !== primary) {
+    details.push(`Text: ${text}`);
+  }
+  const titleElementText = formatText(element.titleElementText);
+  if (titleElementText && titleElementText !== primary) {
+    details.push(`Title Element: ${titleElementText}`);
+  }
+  const placeholderValue = formatText(element.placeholderValue);
+  if (placeholderValue && placeholderValue !== primary) {
+    details.push(`Placeholder: ${placeholderValue}`);
+  }
+  const columnTitles = formatText(element.columnTitles?.join(", "));
+  if (columnTitles && columnTitles !== primary) {
+    details.push(`Columns: ${columnTitles}`);
+  }
+  const identifier = formatText(element.identifier, 120);
+  if (identifier && identifier !== primary) {
+    details.push(`Identifier: ${identifier}`);
   }
   const url = formatText(element.url, 240);
   if (url && url !== primary) {
@@ -1096,9 +1375,16 @@ function buildComputerUseAppStateResult(
   snapshot: AccessibilityAppStateSnapshot,
   screenshot: ComputerUseScreenshotCaptureResult,
 ): Record<string, unknown> {
+  const visibleElements = collectAccessibilityVisibleElements(
+    snapshot,
+    screenshot.sourceBounds,
+  );
   return {
     ...publicAppStateSnapshot(snapshot),
     text: renderAccessibilityTree(snapshot),
+    visibleTextSource: "accessibility",
+    visibleText: renderAccessibilityVisibleText(visibleElements),
+    visibleElements,
     screenshot: screenshot.dataUrl,
     screenshotMimeType: "image/png",
     screenshotSource: screenshot.source,

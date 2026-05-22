@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
   ComputerUseSnapshotStore,
+  collectAccessibilityVisibleElements,
   executeComputerUseCommand,
   normalizeAccessibilitySnapshot,
   renderAccessibilityTree,
@@ -537,6 +538,84 @@ describe("computer use desktop runtime", () => {
     );
   });
 
+  it("builds an AX-derived visible element summary", () => {
+    const snapshot = normalizeAccessibilitySnapshot({
+      app: "Things",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Things",
+          bounds: { x: 0, y: 0, width: 800, height: 600 },
+          children: [
+            {
+              id: "w0.a0",
+              role: "AXRow",
+              description: "Hello Computer Use",
+              selected: true,
+              bounds: { x: 24, y: 120, width: 360, height: 24 },
+            },
+            {
+              id: "w0.a1",
+              role: "AXRow",
+              help: "Can you see this?",
+              bounds: { x: 24, y: 152, width: 360, height: 24 },
+            },
+            {
+              id: "w0.a2",
+              role: "AXRow",
+              value: "Hidden old task",
+              hidden: true,
+              bounds: { x: 24, y: 184, width: 360, height: 24 },
+            },
+            {
+              id: "w0.a3",
+              role: "AXRow",
+              value: "Scrolled away task",
+              bounds: { x: 24, y: 900, width: 360, height: 24 },
+            },
+          ],
+        },
+      ],
+    });
+
+    const visibleElements = collectAccessibilityVisibleElements(snapshot, {
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+    });
+
+    expect(visibleElements).toStrictEqual([
+      {
+        elementId: "w0",
+        role: "AXWindow",
+        text: "Things",
+        source: "accessibility",
+        sourceAttributes: ["AXTitle"],
+        bounds: { x: 0, y: 0, width: 800, height: 600 },
+      },
+      {
+        elementId: "w0.a0",
+        role: "AXRow",
+        text: "Hello Computer Use",
+        source: "accessibility",
+        sourceAttributes: ["AXDescription"],
+        bounds: { x: 24, y: 120, width: 360, height: 24 },
+        selected: true,
+      },
+      {
+        elementId: "w0.a1",
+        role: "AXRow",
+        text: "Can you see this?",
+        source: "accessibility",
+        sourceAttributes: ["AXHelp"],
+        bounds: { x: 24, y: 152, width: 360, height: 24 },
+      },
+    ]);
+  });
+
   it("compacts generic wrappers while preserving WebArea branching context", () => {
     const snapshot = {
       app: "Slack",
@@ -679,6 +758,18 @@ describe("computer use desktop runtime", () => {
       result: {
         app: "Safari",
         snapshotId: expect.stringMatching(/^desktop_/),
+        visibleTextSource: "accessibility",
+        visibleText: "0 AXWindow [AXTitle] Example",
+        visibleElements: [
+          {
+            elementIndex: 0,
+            elementId: "w0",
+            role: "AXWindow",
+            text: "Example",
+            source: "accessibility",
+            sourceAttributes: ["AXTitle"],
+          },
+        ],
         screenshot: "data:image/png;base64,abc123",
         screenshotMimeType: "image/png",
         screenshotSource: "window",
@@ -744,6 +835,7 @@ describe("computer use desktop runtime", () => {
                                   id: "w0.e0.e0.c0.v1",
                                   role: "AXTextArea",
                                   name: "Message composer",
+                                  placeholderValue: "Type a message",
                                   actions: ["AXConfirm"],
                                 },
                               ],
@@ -782,6 +874,22 @@ describe("computer use desktop runtime", () => {
     expect(result.result.text).toContain("Release notes posted");
     expect(result.result.text).toContain("text entry area Message composer");
     expect(result.result.text).toContain("Secondary Actions: Confirm");
+    expect(result.result.visibleText).toContain(
+      "AXStaticText [AXValue] Release notes posted",
+    );
+    expect(result.result.visibleElements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          elementIndex: expect.any(Number),
+          elementId: "w0.e0.e0.c0.v1",
+          role: "AXTextArea",
+          text: "Message composer",
+          source: "accessibility",
+          sourceAttributes: ["AXTitle"],
+          actions: ["AXConfirm"],
+        }),
+      ]),
+    );
     expect(result.result.truncated).toBe(false);
   });
 
