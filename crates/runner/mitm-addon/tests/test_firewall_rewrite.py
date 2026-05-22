@@ -564,6 +564,15 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
+    def test_auth_query_empty_key_overrides_base_and_original_empty_keys(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?=base&region=us",
+            {"rel_path": "/"},
+            "=agent&q=test",
+            {"": "trusted"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&=trusted"
+
     def test_auth_query_overrides_base_query_without_leading_empty_segment(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?api_key=base&&region=us",
