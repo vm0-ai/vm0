@@ -2395,6 +2395,63 @@ describe("CLI auth routes", () => {
       ).resolves.toBeUndefined();
     });
 
+    it("preserves Codex workspace metadata when legacy token refresh omits it", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "codex-oauth-preserve-metadata",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      await acceptResponse<TestCodexOauthResponseBody>(
+        client.create({
+          query: {},
+          body: {
+            authJson: makeCodexAuthJson({
+              workspaceName: "Acme Preserved",
+              planType: "business",
+            }),
+          },
+        }),
+        200,
+      );
+
+      await acceptResponse<TestCodexOauthResponseBody>(
+        client.create({
+          query: {},
+          body: {
+            ...LEGACY_CODEX_OAUTH_BODY,
+            accessToken: "refreshed-access-token",
+            refreshToken: "refreshed-refresh-token",
+            accountId: "ws_refreshed_account",
+            idToken: "refreshed-id-token",
+            expiresIn: 600,
+          },
+        }),
+        200,
+      );
+
+      const provider = await readOrgCodexOauthProviderState(orgId);
+      expect(provider).toMatchObject({
+        authMethod: "auth_json",
+        workspaceName: "Acme Preserved",
+        planType: "business",
+        needsReconnect: false,
+        lastRefreshErrorCode: null,
+      });
+      expect(provider?.tokenExpiresAt).toBeInstanceOf(Date);
+      expect(provider!.tokenExpiresAt!.getTime()).toBeGreaterThan(now());
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_ACCESS_TOKEN"),
+      ).resolves.toBe("refreshed-access-token");
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_ACCOUNT_ID"),
+      ).resolves.toBe("ws_refreshed_account");
+    });
+
     it("rejects malformed authJson with the parser error", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);

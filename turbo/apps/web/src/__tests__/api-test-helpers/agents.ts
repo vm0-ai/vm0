@@ -1,21 +1,10 @@
 import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup uses production model-provider services after legacy web route removal.
-import {
-  upsertOrgModelProvider,
-  upsertOrgMultiAuthModelProvider,
-  upsertUserModelProvider,
-  upsertUserMultiAuthModelProvider,
-} from "../../lib/zero/model-provider/model-provider-service";
 import {
   createDefaultComposeConfig,
   getTestAuthContext,
   type ComposeConfigOptions,
 } from "./core";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
-import {
-  modelProviderTypeSchema,
-  type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
 import {
   ensureZeroAgentRow,
   seedApiCompatibleCompose,
@@ -99,69 +88,6 @@ export async function createTestCompose(
 }
 
 /**
- * Create a test org-level model provider via production service setup.
- * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
- *
- * @param type - The provider type
- * @param secretValue - The secret value
- * @param selectedModel - Optional selected model for providers with model selection
- * @returns The created provider with id and type
- */
-export async function createTestOrgModelProvider(
-  type: string,
-  secretValue: string,
-  selectedModel?: string,
-): Promise<{ id: string; type: string; selectedModel: string | null }> {
-  const { orgId } = await getTestAuthContext();
-  const result = await upsertOrgModelProvider(
-    orgId,
-    modelProviderTypeSchema.parse(type),
-    secretValue,
-    selectedModel,
-  );
-  return result.provider;
-}
-
-/**
- * Create a test org-level multi-auth model provider via production service setup.
- * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
- *
- * @param type - The provider type (e.g., "aws-bedrock")
- * @param authMethod - The auth method (e.g., "api-key", "access-keys")
- * @param secrets - Map of secret names to values
- * @param selectedModel - Optional selected model
- * @returns The created provider with id and type
- */
-export async function createTestOrgMultiAuthModelProvider(
-  type: string,
-  authMethod: string,
-  secrets: Record<string, string>,
-  selectedModel?: string,
-): Promise<{
-  id: string;
-  type: string;
-  authMethod: string | null;
-  secretNames: string[] | null;
-  selectedModel: string | null;
-}> {
-  const { orgId } = await getTestAuthContext();
-  const result = await upsertOrgMultiAuthModelProvider(
-    orgId,
-    modelProviderTypeSchema.parse(type),
-    authMethod,
-    secrets,
-    selectedModel,
-  );
-  return {
-    id: result.provider.id,
-    type: result.provider.type,
-    authMethod: result.provider.authMethod ?? null,
-    secretNames: result.provider.secretNames ?? null,
-    selectedModel: result.provider.selectedModel,
-  };
-}
-
-/**
  * Update the title of a chat thread for test setup.
  * Wraps updateChatThreadTitle from chat-thread-service.
  */
@@ -171,77 +97,4 @@ export async function updateTestChatThreadTitle(
   title: string,
 ): Promise<void> {
   return updateChatThreadTitle(threadId, userId, title);
-}
-
-/**
- * Create a test user-level (BYOK) model provider via direct service call.
- *
- * The user-tier HTTP route lands in Wave 2 (#a3); this helper lets
- * service-layer tests exercise user-tier behavior in the meantime by
- * calling `upsertUserModelProvider` directly.
- */
-export async function createTestUserModelProvider(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-  secretValue: string,
-  selectedModel?: string,
-): Promise<{
-  id: string;
-  type: string;
-  isDefault: boolean;
-  selectedModel: string | null;
-}> {
-  const result = await upsertUserModelProvider(
-    orgId,
-    userId,
-    type,
-    secretValue,
-    selectedModel,
-  );
-  return {
-    id: result.provider.id,
-    type: result.provider.type,
-    isDefault: result.provider.isDefault,
-    selectedModel: result.provider.selectedModel,
-  };
-}
-
-/**
- * Create a test user-level multi-auth model provider via direct service call.
- *
- * Mirrors `createTestUserModelProvider` for multi-auth providers (e.g.,
- * aws-bedrock).
- */
-export async function createTestUserMultiAuthModelProvider(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-  authMethod: string,
-  secretValues: Record<string, string>,
-  selectedModel?: string,
-): Promise<{
-  id: string;
-  type: string;
-  authMethod: string | null;
-  secretNames: string[] | null;
-  isDefault: boolean;
-  selectedModel: string | null;
-}> {
-  const result = await upsertUserMultiAuthModelProvider(
-    orgId,
-    userId,
-    type,
-    authMethod,
-    secretValues,
-    selectedModel,
-  );
-  return {
-    id: result.provider.id,
-    type: result.provider.type,
-    authMethod: result.provider.authMethod ?? null,
-    secretNames: result.provider.secretNames ?? null,
-    isDefault: result.provider.isDefault,
-    selectedModel: result.provider.selectedModel,
-  };
 }

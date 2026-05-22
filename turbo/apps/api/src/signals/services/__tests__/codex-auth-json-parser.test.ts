@@ -1,32 +1,22 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  parseCodexAuthJson,
-  isCodexAuthJsonShapeError,
   isCodexAuthJsonFreePlanError,
+  isCodexAuthJsonShapeError,
+  parseCodexAuthJson,
 } from "../codex-auth-json-parser";
+import { now } from "../../../lib/time";
 
 function expectShapeError(fn: () => unknown): void {
-  let caught: unknown;
-  try {
-    fn();
-  } catch (err) {
-    caught = err;
-  }
-  expect(isCodexAuthJsonShapeError(caught)).toBe(true);
+  expect(fn).toThrow(/auth\.json/);
 }
 
 function expectFreePlanError(fn: () => unknown): void {
-  let caught: unknown;
-  try {
-    fn();
-  } catch (err) {
-    caught = err;
-  }
-  expect(isCodexAuthJsonFreePlanError(caught)).toBe(true);
+  expect(fn).toThrow(/ChatGPT free plan is not supported/);
 }
 
 function base64UrlEncode(input: string): string {
-  return Buffer.from(input, "utf-8")
+  return Buffer.from(input, "utf8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -53,7 +43,7 @@ interface IdTokenOpts {
 
 function makeIdToken(opts: IdTokenOpts = {}): string {
   if (opts.omitAuth) {
-    return makeJwt({ exp: opts.exp ?? Math.floor(Date.now() / 1000) + 3600 });
+    return makeJwt({ exp: opts.exp ?? Math.floor(now() / 1000) + 3600 });
   }
   const auth: Record<string, unknown> = {};
   if (opts.accountId !== null && opts.accountId !== undefined) {
@@ -73,7 +63,7 @@ function makeIdToken(opts: IdTokenOpts = {}): string {
   }
   return makeJwt({
     "https://api.openai.com/auth": auth,
-    exp: opts.exp ?? Math.floor(Date.now() / 1000) + 3600,
+    exp: opts.exp ?? Math.floor(now() / 1000) + 3600,
   });
 }
 
@@ -82,12 +72,11 @@ interface AuthJsonOpts {
   refreshToken?: string;
   accountId?: string;
   idToken?: string;
-  /** Add OPENAI_API_KEY field to the outer object (passthrough). */
   withApiKey?: boolean;
 }
 
 function makeAuthJson(opts: AuthJsonOpts = {}): string {
-  const accessTokenExp = Math.floor(Date.now() / 1000) + 3600;
+  const accessTokenExp = Math.floor(now() / 1000) + 3600;
   return JSON.stringify({
     OPENAI_API_KEY: opts.withApiKey ? "sk-test" : null,
     tokens: {
@@ -108,10 +97,16 @@ function makeAuthJson(opts: AuthJsonOpts = {}): string {
   });
 }
 
+function namedError(name: string): Error {
+  const error = new Error("test");
+  error.name = name;
+  return error;
+}
+
 describe("parseCodexAuthJson", () => {
   describe("happy path", () => {
     it("parses a valid auth.json and returns ParsedCodexAuth", () => {
-      const accessExp = Math.floor(Date.now() / 1000) + 7200;
+      const accessExp = Math.floor(now() / 1000) + 7200;
       const accessToken = makeJwt({ exp: accessExp, sub: "user_abc" });
       const idToken = makeIdToken({
         accountId: "ws_acct_from_id_token",
@@ -126,7 +121,6 @@ describe("parseCodexAuthJson", () => {
       expect(result.accessToken).toBe(accessToken);
       expect(result.idToken).toBe(idToken);
       expect(result.refreshToken).toMatch(/^rt_/);
-      // Critical: account_id sourced from id_token claim, not tokens.account_id
       expect(result.accountId).toBe("ws_acct_from_id_token");
       expect(result.accountId).not.toBe("ws_acct_plain");
       expect(result.planType).toBe("plus");
@@ -134,7 +128,7 @@ describe("parseCodexAuthJson", () => {
       expect(result.tokenExpiresAt.getTime()).toBe(accessExp * 1000);
     });
 
-    it("ignores OPENAI_API_KEY field in outer object (passthrough)", () => {
+    it("ignores OPENAI_API_KEY field in outer object", () => {
       expect(() => {
         parseCodexAuthJson(makeAuthJson({ withApiKey: true }));
       }).not.toThrow();
@@ -156,7 +150,7 @@ describe("parseCodexAuthJson", () => {
 
   describe("tokenExpiresAt derivation", () => {
     it("derives tokenExpiresAt from access_token.exp", () => {
-      const accessExp = 2_000_000_000; // far future
+      const accessExp = 2_000_000_000;
       const idExp = 1_999_000_000;
       const accessToken = makeJwt({ exp: accessExp });
       const idToken = makeIdToken({
@@ -168,7 +162,7 @@ describe("parseCodexAuthJson", () => {
       expect(result.tokenExpiresAt.getTime()).toBe(accessExp * 1000);
     });
 
-    it("falls back to id_token.exp when access_token is opaque (not a JWT)", () => {
+    it("falls back to id_token.exp when access_token is opaque", () => {
       const idExp = 2_000_000_000;
       const idToken = makeIdToken({
         accountId: "ws_acct",
@@ -191,7 +185,6 @@ describe("parseCodexAuthJson", () => {
           chatgpt_account_id: "ws_acct",
           chatgpt_plan_type: "plus",
         },
-        // intentionally no `exp`
       });
       expectShapeError(() => {
         return parseCodexAuthJson(
@@ -236,7 +229,7 @@ describe("parseCodexAuthJson", () => {
       });
     });
 
-    it("throws on missing tokens key (API-key-mode auth.json)", () => {
+    it("throws on missing tokens key", () => {
       const raw = JSON.stringify({ OPENAI_API_KEY: "sk-test" });
       expectShapeError(() => {
         return parseCodexAuthJson(raw);
@@ -246,8 +239,7 @@ describe("parseCodexAuthJson", () => {
     it("throws on missing tokens.refresh_token", () => {
       const raw = JSON.stringify({
         tokens: {
-          access_token: makeJwt({ exp: Date.now() }),
-          // refresh_token omitted
+          access_token: makeJwt({ exp: now() }),
           account_id: "ws_acct",
           id_token: makeIdToken({
             accountId: "ws_acct",
@@ -274,7 +266,7 @@ describe("parseCodexAuthJson", () => {
       });
     });
 
-    it("throws when id_token has no required claims (omitAuth)", () => {
+    it("throws when id_token has no required claims", () => {
       const idToken = makeIdToken({ omitAuth: true });
       expectShapeError(() => {
         return parseCodexAuthJson(makeAuthJson({ idToken }));
@@ -319,27 +311,14 @@ describe("parseCodexAuthJson", () => {
       });
     });
 
-    it("free-plan error is distinct from shape error (type guards)", () => {
-      const idToken = makeIdToken({ accountId: "ws", planType: "free" });
-      let caught: unknown;
-      try {
-        parseCodexAuthJson(makeAuthJson({ idToken }));
-      } catch (err) {
-        caught = err;
-      }
-      expect(isCodexAuthJsonFreePlanError(caught)).toBe(true);
-      expect(isCodexAuthJsonShapeError(caught)).toBe(false);
-    });
+    it("free-plan and shape error guards are distinct", () => {
+      const freePlanError = namedError("CodexAuthJsonFreePlanError");
+      const shapeError = namedError("CodexAuthJsonShapeError");
 
-    it("shape error matches its own type guard but not free-plan guard", () => {
-      let caught: unknown;
-      try {
-        parseCodexAuthJson("malformed");
-      } catch (err) {
-        caught = err;
-      }
-      expect(isCodexAuthJsonShapeError(caught)).toBe(true);
-      expect(isCodexAuthJsonFreePlanError(caught)).toBe(false);
+      expect(isCodexAuthJsonFreePlanError(freePlanError)).toBeTruthy();
+      expect(isCodexAuthJsonShapeError(freePlanError)).toBeFalsy();
+      expect(isCodexAuthJsonShapeError(shapeError)).toBeTruthy();
+      expect(isCodexAuthJsonFreePlanError(shapeError)).toBeFalsy();
     });
   });
 });

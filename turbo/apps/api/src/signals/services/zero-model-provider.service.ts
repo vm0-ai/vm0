@@ -123,15 +123,15 @@ type NotFoundResponse = ReturnType<typeof notFound>;
 /**
  * Delete a user-level model provider and cascade-delete its secrets.
  *
- * Mirrors apps/web's `deleteModelProvider` (via `deleteUserModelProvider`):
+ * Delete behavior:
  *   - Legacy single-secret providers: deleting the secret cascades the
  *     model_provider row via FK (`onDelete: "cascade"` at the schema).
  *   - Multi-auth providers: deletes the per-auth-method secrets by name,
  *     then deletes the model_provider row explicitly.
  *
- * Non-transactional, matching web. A partial failure (secret-delete
- * succeeds, provider-delete fails) would leave an orphan provider row —
- * web has the same gap; transactional rewrite is a separate follow-up.
+ * Non-transactional. A partial failure (secret-delete succeeds,
+ * provider-delete fails) would leave an orphan provider row; transactional
+ * rewrite is a separate follow-up.
  */
 export const deleteUserModelProvider$ = command(
   async (
@@ -221,20 +221,17 @@ export const deleteOrgModelProvider$ = command(
 );
 
 // ===========================================================================
-// Upsert path — POST /api/zero/me/model-providers
+// Upsert path for API model-provider routes.
 //
-// Verbatim port of apps/web's `upsertModelProvider` /
-// `upsertMultiAuthModelProvider` (and supporting helpers) for the personal-tier
-// upsert handler. Returns either a `BadRequestResponse` (when web throws
-// `badRequest`) or `{ provider, created }`.
+// Shared upsert path for API org and personal model-provider routes. Returns
+// either a `BadRequestResponse` or `{ provider, created }`.
 // ===========================================================================
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 
 /**
- * Row shape returned to the route handler. Mirrors apps/web's
- * `ModelProviderInfo` exactly so the codex paste handler's `UpsertedProvider`
- * remains a structural subset (drops `userId`, `tokenExpiresAt`).
+ * Row shape returned to the route handler. The codex paste handler's
+ * `UpsertedProvider` remains a structural subset of this shape.
  */
 export interface ModelProviderInfo {
   readonly id: string;
@@ -439,9 +436,6 @@ async function upsertMultiAuthSecret(
 
 /**
  * Create or update a single-secret personal model provider.
- *
- * Verbatim port of apps/web's `upsertModelProvider`, adapted for api's
- * write-via-`set(writeDb$)` pattern and result-union error shape.
  */
 export const upsertUserModelProvider$ = command(
   async (
@@ -663,8 +657,6 @@ function validateMultiAuthUpsertInput(args: {
 /**
  * Create or update a multi-auth personal model provider (e.g., aws-bedrock,
  * codex-oauth-token).
- *
- * Verbatim port of apps/web's `upsertMultiAuthModelProvider`.
  */
 export const upsertUserMultiAuthModelProvider$ = command(
   async (

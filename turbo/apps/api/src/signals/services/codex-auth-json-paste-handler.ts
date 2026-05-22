@@ -112,10 +112,7 @@ type CodexAuthJsonPasteArgs =
  * derived `CHATGPT_*` fields via the caller-supplied upsert. The raw
  * `CODEX_AUTH_JSON` blob is NEVER persisted (per Epic #11974 / #7365).
  *
- * Verbatim port of apps/web's `handleCodexAuthJsonPaste` for the apps/api
- * personal model-providers POST upsert migration. The discriminated `scope`
- * union is preserved so a future apps/web → apps/api migration of the org
- * route can adopt the same handler without modification.
+ * Shared implementation for API org and personal model-provider paste routes.
  */
 export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
   const log = logger(

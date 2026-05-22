@@ -12,11 +12,7 @@ import { safeJsonParse, throwIfAbort } from "../utils";
  * the route handler discards it after parsing and only the four derived
  * `CHATGPT_*` fields are stored as secrets (per #7365 / Epic #11974).
  *
- * Verbatim port of apps/web's `codex-auth-json-parser.ts` for the apps/api
- * personal model-providers POST upsert migration. Cross-app duplication is
- * a deliberate consequence of the migration policy (cannot edit apps/web to
- * extract a shared package); future consolidation when the web route is
- * removed.
+ * API-authoritative parser for model-provider auth_json paste routes.
  */
 
 // JWT payload decode without signature verification: the access_token and
