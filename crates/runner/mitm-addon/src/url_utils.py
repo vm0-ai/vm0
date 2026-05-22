@@ -197,13 +197,64 @@ def get_original_url(flow: http.HTTPFlow) -> str:
     return get_trusted_authority(flow).url
 
 
-def build_rewrite_url(resolved_base: str, match_info: dict, orig_query: str) -> str:
+def _split_query_pairs(query: str) -> list[str]:
+    if not query:
+        return []
+    return query.split("&")
+
+
+def _query_pair_key(pair: str) -> str:
+    raw_key, _, _ = pair.partition("=")
+    return urllib.parse.unquote_plus(raw_key)
+
+
+def _query_pair_keys(pairs: list[str]) -> set[str]:
+    return {_query_pair_key(pair) for pair in pairs}
+
+
+def _filter_query_pairs(pairs: list[str], blocked_keys: set[str]) -> list[str]:
+    if not blocked_keys:
+        return pairs
+    return [pair for pair in pairs if _query_pair_key(pair) not in blocked_keys]
+
+
+def _encode_query_pairs(query: dict[str, str] | None) -> list[str]:
+    if not query:
+        return []
+    encoded = urllib.parse.urlencode(query)
+    return _split_query_pairs(encoded)
+
+
+def _merge_rewrite_query(
+    base_query: str,
+    orig_query: str,
+    resolved_query: dict[str, str] | None,
+) -> str:
+    base_pairs = _split_query_pairs(base_query)
+    orig_pairs = _split_query_pairs(orig_query)
+    auth_keys = set(resolved_query or {})
+
+    filtered_base_pairs = _filter_query_pairs(base_pairs, auth_keys)
+    blocked_orig_keys = auth_keys | _query_pair_keys(filtered_base_pairs)
+    filtered_orig_pairs = _filter_query_pairs(orig_pairs, blocked_orig_keys)
+    auth_pairs = _encode_query_pairs(resolved_query)
+
+    return "&".join([*filtered_base_pairs, *filtered_orig_pairs, *auth_pairs])
+
+
+def build_rewrite_url(
+    resolved_base: str,
+    match_info: dict,
+    orig_query: str,
+    resolved_query: dict[str, str] | None = None,
+) -> str:
     """Build the final URL for auth.base URL rewriting.
 
     Combines the resolved base URL (with credentials in path), the relative
-    path from the firewall match, and query strings from both base and
-    original request. ``orig_query`` is the raw query string of the
-    incoming request (no leading ``?``).
+    path from the firewall match, and query strings from trusted auth data
+    and the original request. ``orig_query`` is the raw query string of the
+    incoming request (no leading ``?``). Query key precedence is
+    ``resolved_query`` > resolved base query > original request query.
     """
     base_parsed = urllib.parse.urlparse(resolved_base)
 
@@ -211,13 +262,7 @@ def build_rewrite_url(resolved_base: str, match_info: dict, orig_query: str) -> 
     rel_path = match_info.get("rel_path", "/")
     base_path = base_parsed.path.rstrip("/") + rel_path if rel_path != "/" else base_parsed.path
 
-    # Merge query strings: base qs + original request qs
-    qs_parts: list[str] = []
-    if base_parsed.query:
-        qs_parts.append(base_parsed.query)
-    if orig_query:
-        qs_parts.append(orig_query)
-    merged_qs = "&".join(qs_parts)
+    merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)
 
     return urllib.parse.urlunparse(
         (base_parsed.scheme, base_parsed.netloc, base_path, "", merged_qs, "")

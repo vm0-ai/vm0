@@ -290,6 +290,59 @@ class TestAuthBaseUrlRewrite:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
+    async def test_url_rewrite_auth_query_overrides_base_and_original_query(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
+        """auth.query is the highest-priority trusted query source for URL rewrites."""
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/discord-webhook/hook?api_key=agent&q=test",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
+            "auth": {
+                "headers": {},
+                "base": "${{ secrets.WEBHOOK_URL }}",
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        match_info = {
+            "name": "test",
+            "permission": "send",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://example.com/hook?api_key=base&region=us",
+            "query": {"api_key": "trusted key"},
+            "resolved_secrets": ["WEBHOOK_URL", "API_KEY"],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        assert (
+            mock_forward.call_args[0][0]
+            == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
+        )
+
     async def test_no_url_rewrite_when_auth_base_absent(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
@@ -373,6 +426,47 @@ class TestBuildRewriteUrl:
             "extra=1",
         )
         assert url == "https://example.com/hook/sub?token=abc&extra=1"
+
+    def test_original_duplicate_query_key_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "token=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?token=secret&wait=true"
+
+    def test_original_encoded_duplicate_query_key_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "to%6ben=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?token=secret&wait=true"
+
+    def test_duplicate_trusted_base_query_keys_preserved(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=first&token=second",
+            {"rel_path": "/"},
+            "token=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?token=first&token=second&wait=true"
+
+    def test_blank_trusted_base_query_value_is_authoritative(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=",
+            {"rel_path": "/"},
+            "token=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?token=&wait=true"
+
+    def test_auth_query_overrides_base_and_original_query(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?api_key=base&region=us",
+            {"rel_path": "/"},
+            "api_key=agent&q=test",
+            {"api_key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
 
     def test_trailing_slash_on_base_deduped(self):
         url = url_utils.build_rewrite_url(

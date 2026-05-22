@@ -668,20 +668,7 @@ async def handle_firewall_request(
     resolved_base = token_meta.get("base")
     if resolved_base:
         orig_query = urllib.parse.urlparse(flow.request.path).query
-        new_url = build_rewrite_url(resolved_base, match_info, orig_query)
-
-        # Merge resolved auth.query params into the forwarded URL.
-        # Uses parse_qs + merge so auth.query overwrites duplicate keys
-        # (consistent with the standard path's flow.request.query[k] = v).
-        if resolved_query:
-            parsed = urllib.parse.urlparse(new_url)
-            existing_qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-            for key, value in resolved_query.items():
-                existing_qs[key] = [value]
-            new_qs = urllib.parse.urlencode(existing_qs, doseq=True)
-            new_url = urllib.parse.urlunparse(
-                (parsed.scheme, parsed.netloc, parsed.path, "", new_qs, "")
-            )
+        new_url = build_rewrite_url(resolved_base, match_info, orig_query, resolved_query)
 
         # Merge original request headers with resolved auth headers
         req_headers = dict(flow.request.headers)
