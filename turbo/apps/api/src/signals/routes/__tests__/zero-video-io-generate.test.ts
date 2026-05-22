@@ -519,6 +519,38 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(calledBytePlus).toBeFalsy();
   });
 
+  it("rejects BytePlus 4k requests before provider submission", async () => {
+    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledBytePlus = false;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        calledBytePlus = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a city",
+        model: "dreamina-seedance-2.0",
+        resolution: "4k",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Unsupported video resolution for dreamina-seedance-2.0: 4k",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledBytePlus).toBeFalsy();
+  });
+
   it("returns 402 when the org has no spendable credits", async () => {
     const fixture = await track(seedVideoFixture({ credits: 0 }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
