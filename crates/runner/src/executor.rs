@@ -4111,7 +4111,7 @@ mod tests {
             cancel.clone(),
             ProcessCancelTimeouts {
                 write: PROCESS_CANCEL_WRITE_TIMEOUT,
-                terminal_grace: Duration::from_millis(1),
+                terminal_grace: Duration::ZERO,
             },
         );
         cancel.cancel();

@@ -629,10 +629,7 @@ async fn supervised_exec_cancel_handle_timeout_before_write_does_not_poison_conn
         .expect("supervised handle should expose a cancel handle");
     let writer_guard = host.shared.writer.lock().await;
 
-    let err = cancel_handle
-        .cancel(Duration::from_millis(1))
-        .await
-        .unwrap_err();
+    let err = cancel_handle.cancel(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     assert!(is_connected(&host));
     assert_eq!(operation_count(&host), 1);
