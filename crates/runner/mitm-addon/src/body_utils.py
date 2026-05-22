@@ -289,6 +289,7 @@ def _set_body_fields(
 ) -> None:
     truncated = already_truncated or len(body) > STREAM_BUFFER_LIMIT
     if truncated:
+        # Truncation describes capture completeness, even when no body string is emitted.
         log_entry[f"{side}_body_truncated"] = True
 
     if not body:
