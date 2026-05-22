@@ -77,6 +77,31 @@ def test_extracts_usage_from_flat_response_completed_event():
     }
 
 
+def test_extracts_zero_usage_quantities():
+    body = json.dumps(
+        {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_zero",
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "input_tokens_details": {"cached_tokens": 0},
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) == {
+        "message_id": "resp_zero",
+        "model": "gpt-5.5",
+        "tokens.input": 0,
+        "tokens.output": 0,
+        "tokens.cache_read": 0,
+    }
+
+
 def test_returns_none_for_non_usage_event_type():
     body = json.dumps(
         {
