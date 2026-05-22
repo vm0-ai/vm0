@@ -16,7 +16,12 @@ from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
 
-from auth_base_forwarder import forward_request, forwarded_request_header_pairs, header_pairs
+from auth_base_forwarder import (
+    forward_request,
+    forwarded_request_header_pairs,
+    header_pairs,
+    trusted_request_header_pairs,
+)
 from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
@@ -292,10 +297,11 @@ def _merge_auth_headers(
     auth_headers: dict[str, str],
 ) -> list[tuple[str, str]]:
     pairs = header_pairs(headers)
-    override_names = {name.lower() for name in auth_headers}
-    return [(name, value) for name, value in pairs if name.lower() not in override_names] + list(
-        auth_headers.items()
-    )
+    auth_pairs = trusted_request_header_pairs(auth_headers)
+    override_names = {name.lower() for name, _value in auth_pairs}
+    return [
+        (name, value) for name, value in pairs if name.lower() not in override_names
+    ] + auth_pairs
 
 
 def _has_valid_expiry(value: object, now: float | None = None) -> bool:

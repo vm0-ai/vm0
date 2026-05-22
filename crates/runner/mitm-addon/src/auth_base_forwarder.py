@@ -72,6 +72,13 @@ def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
     )
 
 
+def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:
+    """Return trusted injected request headers safe to append after client filtering."""
+    excluded = set(HOP_BY_HOP)
+    excluded.update({"host", "content-length", "transfer-encoding"})
+    return [(name, value) for name, value in header_pairs(headers) if name.lower() not in excluded]
+
+
 def _headers_from_pairs(pairs: list[tuple[str, str]]) -> http.Headers:
     return http.Headers(
         (

@@ -860,6 +860,46 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert ("Authorization", "Bearer stale") not in req_headers
         assert req_headers.count(("Authorization", "Bearer real")) == 1
 
+    async def test_forward_request_filters_injected_hop_headers_without_suppressing_auth(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Trusted auth headers cannot use Connection tokens to suppress other auth headers."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Connection", "Authorization"),
+                ("Authorization", "Bearer agent"),
+                ("X-Keep", "client"),
+            ),
+        )
+        token_meta["headers"] = {
+            "Connection": "Authorization, X-Injected",
+            "Host": "evil.example.com",
+            "Content-Length": "999",
+            "Transfer-Encoding": "chunked",
+            "Authorization": "Bearer real",
+            "X-Injected": "trusted",
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        header_names = [name.lower() for name, _value in req_headers]
+        assert "connection" not in header_names
+        assert "host" not in header_names
+        assert "content-length" not in header_names
+        assert "transfer-encoding" not in header_names
+        assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("Authorization", "Bearer real") in req_headers
+        assert ("X-Injected", "trusted") in req_headers
+        assert ("X-Keep", "client") in req_headers
+
     async def test_forward_request_uses_raw_body_for_any_method(
         self, real_flow, mitm_ctx, tmp_path
     ):
