@@ -12,7 +12,7 @@ import {
 } from "./test-oauth-provider-helpers";
 
 const DEFAULT_EXPIRES_IN = 600;
-const DEFAULT_INTERVAL = 5;
+const DEFAULT_INTERVAL = 0;
 
 function errorResponse(
   status: 400 | 401,

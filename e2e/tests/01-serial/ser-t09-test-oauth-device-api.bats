@@ -97,6 +97,7 @@ assert_response_jq() {
       .userCode == "TEST-DEVICE" and
       .verificationUri == "https://oauth-device.test/device" and
       .verificationUriComplete == "https://oauth-device.test/device?user_code=TEST-DEVICE" and
+      .interval == 0 and
       (.sessionId | type == "string" and length > 0) and
       (.sessionToken | type == "string" and length > 0)
     ' "device authorization start"

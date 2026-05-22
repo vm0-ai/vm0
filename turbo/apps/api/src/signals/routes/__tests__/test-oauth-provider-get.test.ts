@@ -261,7 +261,7 @@ describe("/api/test/oauth-provider/*", () => {
         verification_uri_complete:
           "https://oauth-device.test/device?user_code=TEST-DEVICE",
         expires_in: 600,
-        interval: 5,
+        interval: 0,
       });
     });
 

@@ -265,7 +265,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
             verification_uri_complete:
               "https://oauth-device.test/device?user_code=TEST-DEVICE",
             expires_in: 600,
-            interval: 5,
+            interval: 0,
           });
         }
 
@@ -346,7 +346,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         verificationUriComplete:
           "https://oauth-device.test/device?user_code=TEST-DEVICE",
         expiresIn: 600,
-        interval: 5,
+        interval: 0,
       });
 
       await expect(

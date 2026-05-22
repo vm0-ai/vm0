@@ -99,7 +99,7 @@ function mockTestOAuthDeviceProvider(): void {
         verification_uri_complete:
           "https://oauth-device.test/device?user_code=TEST-DEVICE",
         expires_in: 600,
-        interval: 5,
+        interval: 0,
       });
     }),
     http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
@@ -279,7 +279,7 @@ describe("OAuth device authorization connector routes", () => {
       verificationUriComplete:
         "https://oauth-device.test/device?user_code=TEST-DEVICE",
       expiresIn: 600,
-      interval: 5,
+      interval: 0,
     });
     expect(JSON.stringify(response.body)).not.toContain("test-device:");
 
@@ -522,7 +522,6 @@ describe("OAuth device authorization connector routes", () => {
       }),
       [200],
     );
-    await makeSessionPollable(start.body.sessionId);
     testOauthDeviceProvider.pollDeviceAuthorization = async (args) => {
       const result = await originalPollDeviceAuthorization(args);
       if (result.status !== "complete") {
