@@ -29,20 +29,17 @@ function errorResponse(
 
 const deviceAuthorization$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$);
+  if (!isTestEndpointAllowed(request)) {
+    return testEndpointNotFoundResponse();
+  }
+
   const contentType = request.header("content-type") ?? "";
   if (!contentType.includes("application/x-www-form-urlencoded")) {
-    if (!isTestEndpointAllowed(request)) {
-      return testEndpointNotFoundResponse();
-    }
     return errorResponse(400, "invalid_request", "expected form body");
   }
 
   const text = await request.text();
   signal.throwIfAborted();
-
-  if (!isTestEndpointAllowed(request)) {
-    return testEndpointNotFoundResponse();
-  }
 
   const body = new URLSearchParams(text);
   const clientId = body.get("client_id");
