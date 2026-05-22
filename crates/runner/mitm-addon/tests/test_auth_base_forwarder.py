@@ -30,6 +30,7 @@ class TestAuthBaseForwarderSecurity:
                 ("Content-Type", "application/json"),
                 ("Transfer-Encoding", "chunked"),
                 ("Connection", "keep-alive"),
+                ("Proxy-Authenticate", "Basic realm=proxy"),
                 ("X-Custom", "value"),
             ]
         )
@@ -37,6 +38,7 @@ class TestAuthBaseForwarderSecurity:
         assert "X-Custom" in filtered
         assert "Transfer-Encoding" not in filtered
         assert "Connection" not in filtered
+        assert "Proxy-Authenticate" not in filtered
 
     def test_filters_connection_declared_hop_by_hop_from_response(self):
         filtered = forwarder._filter_response_headers(
@@ -218,6 +220,7 @@ class TestAuthBaseForwarderSecurity:
                     ("Connection", "X-Remove, Keep-Alive"),
                     ("X-Remove", "secret"),
                     ("Keep-Alive", "timeout=5"),
+                    ("Proxy-Authorization", "Basic secret"),
                     ("Content-Length", "999"),
                     ("Transfer-Encoding", "chunked"),
                     ("X-Keep", "ok"),
@@ -230,6 +233,7 @@ class TestAuthBaseForwarderSecurity:
         assert "connection" not in header_names
         assert "x-remove" not in header_names
         assert "keep-alive" not in header_names
+        assert "proxy-authorization" not in header_names
         assert "transfer-encoding" not in header_names
         assert call("Host", "example.com:444") in header_calls
         assert call("X-Keep", "ok") in header_calls

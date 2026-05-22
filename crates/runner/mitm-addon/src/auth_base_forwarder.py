@@ -16,6 +16,8 @@ HOP_BY_HOP: frozenset[str] = frozenset(
         "connection",
         "keep-alive",
         "proxy-connection",
+        "proxy-authenticate",
+        "proxy-authorization",
         "transfer-encoding",
         "te",
         "trailer",
