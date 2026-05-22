@@ -228,21 +228,29 @@ def _query_pair_keys(pairs: list[_QueryPair]) -> set[str]:
 def _filter_query_pairs(
     pairs: list[_QueryPair],
     blocked_keys: set[str],
-) -> tuple[list[_QueryPair], bool]:
+) -> list[_QueryPair]:
     if not blocked_keys:
-        return pairs, False
-    filtered = [pair for pair in pairs if _query_pair_key(pair) not in blocked_keys]
-    return filtered, len(filtered) != len(pairs)
+        return pairs
+    filtered: list[_QueryPair] = []
+    removed_since_last_kept = False
+    for separator, raw_pair in pairs:
+        if _query_pair_key((separator, raw_pair)) in blocked_keys:
+            removed_since_last_kept = True
+            continue
+        if removed_since_last_kept and filtered:
+            separator = "&"
+        filtered.append((separator, raw_pair))
+        removed_since_last_kept = False
+    return filtered
 
 
-def _join_query_pairs(pairs: list[_QueryPair], *, preserve_separators: bool) -> str:
+def _join_query_pairs(pairs: list[_QueryPair]) -> str:
     query_parts: list[str] = []
     for index, (separator, raw_pair) in enumerate(pairs):
         if index == 0:
             query_parts.append(raw_pair)
             continue
-        selected_separator = separator if preserve_separators else "&"
-        query_parts.append(f"{selected_separator or '&'}{raw_pair}")
+        query_parts.append(f"{separator or '&'}{raw_pair}")
     return "".join(query_parts)
 
 
@@ -253,14 +261,9 @@ def _drop_leading_separator(pairs: list[_QueryPair]) -> list[_QueryPair]:
     return [("", raw_pair), *pairs[1:]]
 
 
-def _join_query_sources(*sources: tuple[list[_QueryPair], bool]) -> str:
+def _join_query_sources(*sources: list[_QueryPair]) -> str:
     source_queries = [
-        _join_query_pairs(
-            _drop_leading_separator(source),
-            preserve_separators=not had_filtered_pair,
-        )
-        for source, had_filtered_pair in sources
-        if source
+        _join_query_pairs(_drop_leading_separator(source)) for source in sources if source
     ]
     return "&".join(query for query in source_queries if query)
 
@@ -280,16 +283,12 @@ def _merge_rewrite_query(
     orig_pairs = _split_query_pairs(orig_query)
     auth_keys = set(resolved_query or {})
 
-    filtered_base_pairs, filtered_base = _filter_query_pairs(base_pairs, auth_keys)
+    filtered_base_pairs = _filter_query_pairs(base_pairs, auth_keys)
     blocked_orig_keys = auth_keys | _query_pair_keys(filtered_base_pairs)
-    filtered_orig_pairs, filtered_orig = _filter_query_pairs(orig_pairs, blocked_orig_keys)
+    filtered_orig_pairs = _filter_query_pairs(orig_pairs, blocked_orig_keys)
     auth_pairs = _encode_query_pairs(resolved_query)
 
-    return _join_query_sources(
-        (filtered_base_pairs, filtered_base),
-        (filtered_orig_pairs, filtered_orig),
-        (auth_pairs, False),
-    )
+    return _join_query_sources(filtered_base_pairs, filtered_orig_pairs, auth_pairs)
 
 
 def build_rewrite_url(

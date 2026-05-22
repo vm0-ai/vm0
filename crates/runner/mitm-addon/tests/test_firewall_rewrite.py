@@ -518,6 +518,15 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?tenant=one&region=us&q=test&api_key=trusted+key"
 
+    def test_auth_query_filter_preserves_existing_semicolon_value(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?redirect=a;b&api_key=base&region=us",
+            {"rel_path": "/"},
+            "q=test",
+            {"api_key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?redirect=a;b&region=us&q=test&api_key=trusted+key"
+
     def test_trailing_slash_on_base_deduped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook/",
