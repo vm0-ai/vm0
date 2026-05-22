@@ -20,6 +20,10 @@ class TestAuthBaseForwarderSecurity:
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             forwarder._forward_request_sync("//no-scheme.com/path", "GET", [], None)
 
+    def test_rejects_missing_host(self):
+        with pytest.raises(ValueError, match="Invalid upstream URL: missing host"):
+            forwarder._forward_request_sync("https:///path", "GET", [], None)
+
     def test_rejects_invalid_port(self):
         with pytest.raises(ValueError, match="Invalid upstream URL: invalid port"):
             forwarder._forward_request_sync("https://example.com:bad/path", "GET", [], None)
@@ -138,6 +142,29 @@ class TestAuthBaseForwarderSecurity:
         conn.putrequest.assert_called_once_with(
             "GET",
             "/?wait=true",
+            skip_host=True,
+            skip_accept_encoding=True,
+        )
+
+    def test_request_target_omits_fragment(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn):
+            forwarder._forward_request_sync(
+                "https://example.com/path?x=1#client-only-secret",
+                "GET",
+                [],
+                None,
+            )
+
+        conn.putrequest.assert_called_once_with(
+            "GET",
+            "/path?x=1",
             skip_host=True,
             skip_accept_encoding=True,
         )
