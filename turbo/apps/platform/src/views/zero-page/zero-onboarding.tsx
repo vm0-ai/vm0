@@ -262,9 +262,10 @@ function ConnectStepContent() {
     if (connector?.connected) {
       return;
     }
+    const hasAvailableOAuth =
+      connector?.availableAuthMethods.includes("oauth") ?? true;
     const canLaunchOAuthAuthCode =
-      (connector?.availableAuthMethods.includes("oauth") ?? false) &&
-      isOAuthAuthCodeConnectorType(type);
+      hasAvailableOAuth && isOAuthAuthCodeConnectorType(type);
     if (
       !canLaunchOAuthAuthCode ||
       connector?.availableAuthMethods.includes("api-token") ||

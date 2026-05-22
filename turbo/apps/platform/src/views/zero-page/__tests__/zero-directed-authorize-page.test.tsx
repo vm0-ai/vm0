@@ -15,6 +15,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -24,6 +25,16 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
+
+function getButtonByText(text: string): HTMLElement {
+  const button = screen.getAllByRole("button").find((element) => {
+    return element.textContent?.trim() === text;
+  });
+  if (!button) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
 
 function mockAgentWithName(agentId: string, displayName: string) {
   setMockTeam([
@@ -292,5 +303,21 @@ describe("directed authorize page", () => {
     expect(
       screen.queryByText(/Google will show a security warning/),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not enable auth-code authorization for device-auth OAuth connectors", async () => {
+    detachedSetupPage({
+      context,
+      path: `/connectors/test-oauth-device/authorize?agentId=${AGENT_ID}`,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Test OAuth Device (internal) to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(getButtonByText("Authorize Zero")).toBeDisabled();
   });
 });

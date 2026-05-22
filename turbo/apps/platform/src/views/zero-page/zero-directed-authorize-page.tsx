@@ -3,7 +3,10 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
+import {
+  isGoogleOAuthConnector,
+  isOAuthAuthCodeConnectorType,
+} from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -31,11 +34,13 @@ import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 function AuthorizeAction({
   isAuthorized,
   isConnecting,
+  disabled,
   agentName,
   onAuthorize,
 }: {
   isAuthorized: boolean;
   isConnecting: boolean;
+  disabled: boolean;
   agentName: string;
   onAuthorize: () => void;
 }) {
@@ -50,7 +55,7 @@ function AuthorizeAction({
   return (
     <button
       type="button"
-      disabled={isConnecting}
+      disabled={isConnecting || disabled}
       onClick={onAuthorize}
       className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
     >
@@ -103,8 +108,13 @@ function DirectedAuthorizeCard() {
     justAuthorized.has(connectorType) ||
     (enabledLoadable.state === "hasData" &&
       enabledLoadable.data.includes(connectorType));
+  const canAuthorize =
+    isConnected || isOAuthAuthCodeConnectorType(connectorType);
 
   const handleAuthorize = () => {
+    if (!canAuthorize) {
+      return;
+    }
     if (isConnected) {
       detach(authorize(connectorType, agentId, signal), Reason.DomCallback);
     } else {
@@ -155,6 +165,7 @@ function DirectedAuthorizeCard() {
               <AuthorizeAction
                 isAuthorized={isAuthorized}
                 isConnecting={isConnecting}
+                disabled={!canAuthorize}
                 agentName={agentName}
                 onAuthorize={handleAuthorize}
               />
