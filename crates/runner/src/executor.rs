@@ -4093,6 +4093,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_in_sandbox_returns_cancelled_when_wait_fails_after_process_cancel() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let wait_gate = Arc::new(tokio::sync::Notify::new());
+        let mut overrides = sandbox_mock::MockSandboxOverrides::with_wait_process_gate(wait_gate);
+        overrides.set_wait_process_error("wait failed after cancel");
+        let overrides = Arc::new(overrides);
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let ctx = minimal_context();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let run_task = spawn_run_in_sandbox_test(sandbox, ctx, config, cancel.clone());
+        cancel.cancel();
+
+        let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            overrides.process_cancel_calls().as_slice(),
+            [sandbox_mock::ProcessCancelCall {
+                timeout: PROCESS_CANCEL_WRITE_TIMEOUT
+            }]
+        );
+        assert_eq!(
+            result.failure.as_ref().map(|failure| failure.exit_code),
+            Some(EXIT_SIGKILL)
+        );
+    }
+
+    #[tokio::test]
     async fn run_in_sandbox_returns_cancelled_when_terminal_grace_times_out() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;

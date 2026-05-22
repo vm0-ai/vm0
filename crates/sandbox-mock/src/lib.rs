@@ -561,6 +561,12 @@ impl MockSandboxOverrides {
             .push_back(chunks);
     }
 
+    /// Configure `wait_process` to return an error while preserving any other
+    /// overrides already set on this instance.
+    pub fn set_wait_process_error(&mut self, msg: impl Into<String>) {
+        self.wait_process_error = Some(msg.into());
+    }
+
     /// Configure whether future `start_process` handles include a cancel handle.
     pub fn set_process_cancel_supported(&self, supported: bool) {
         *self.process_cancel_supported.lock_ignoring_poison() = supported;
