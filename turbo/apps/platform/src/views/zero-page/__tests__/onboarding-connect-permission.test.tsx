@@ -105,15 +105,17 @@ describe("onboarding connector permission dialog suppression", () => {
     });
 
     // Mock the connectors API to return GitHub as connected (simulates
-    // successful OAuth — the polling inside connectConnector$ will pick it up).
+    // successful auth-code OAuth — the polling inside
+    // connectConnectorOAuthAuthCode$ will pick it up).
     server.use(
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         return respond(200, makeGithubConnectedResponse());
       }),
     );
 
-    // Click "Connect" on GitHub — this triggers connectConnector$ without
-    // opting into the post-connect permission dialog.
+    // Click "Connect" on GitHub — this triggers
+    // connectConnectorOAuthAuthCode$ without opting into the post-connect
+    // permission dialog.
     click(screen.getByText("Connect"));
 
     await waitFor(() => {
@@ -123,8 +125,8 @@ describe("onboarding connector permission dialog suppression", () => {
     });
 
     // Wait for the Ably subscription to be registered, then simulate the
-    // OAuth callback publishing `connector:changed` so connectConnector$
-    // observes the connector appear.
+    // Auth-code OAuth callback publishing `connector:changed` so
+    // connectConnectorOAuthAuthCode$ observes the connector appear.
     await waitFor(() => {
       expect(hasSubscription("connector:changed")).toBeTruthy();
     });

@@ -3,9 +3,9 @@ import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
 import {
-  connectConnector$,
+  connectConnectorOAuthAuthCode$,
   permissionDialogType$,
-  pollingConnectorType$,
+  pollingOAuthAuthCodeConnectorType$,
   submitApiToken$,
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
@@ -14,6 +14,7 @@ import {
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroSecretsContract,
   zeroVariablesContract,
@@ -79,7 +80,7 @@ function createMockAuthWindow() {
   return { closed: false, close: vi.fn(), location: { href: "" } };
 }
 
-describe("connectConnector$", () => {
+describe("connectConnectorOAuthAuthCode$", () => {
   beforeEach(() => {
     mockConnectorOauthStart();
   });
@@ -102,7 +103,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       {},
       context.signal,
@@ -114,17 +115,17 @@ describe("connectConnector$", () => {
       expect(hasSubscription("connector:changed")).toBeTruthy();
     });
 
-    // Simulate the OAuth callback publishing the signal.
+    // Simulate the auth-code OAuth callback publishing the signal.
     triggerAblyEvent("connector:changed");
 
     const result = await connectPromise;
 
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(2);
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
   });
 
-  it("clears polling when the oauth popup closes before connector appears", async () => {
+  it("clears polling when the auth-code OAuth popup closes before connector appears", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = createMockAuthWindow();
@@ -139,7 +140,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       {},
       context.signal,
@@ -148,13 +149,15 @@ describe("connectConnector$", () => {
     await vi.waitFor(() => {
       expect(pollCount).toBeGreaterThanOrEqual(1);
       expect(hasSubscription("connector:changed")).toBeTruthy();
-      expect(context.store.get(pollingConnectorType$)).toBe("github");
+      expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBe(
+        "github",
+      );
     });
 
     mockWindow.closed = true;
 
     await expect(connectPromise).resolves.toBeFalsy();
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
     expect(hasSubscription("connector:changed")).toBeFalsy();
   });
 
@@ -164,9 +167,14 @@ describe("connectConnector$", () => {
     vi.spyOn(window, "open").mockReturnValue(null);
 
     await expect(
-      context.store.set(connectConnector$, "github", {}, context.signal),
+      context.store.set(
+        connectConnectorOAuthAuthCode$,
+        "github",
+        {},
+        context.signal,
+      ),
     ).rejects.toThrow("Failed to open authorization window");
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
   });
 
   it("opens connector OAuth on the web host when apiBackend is enabled", async () => {
@@ -205,7 +213,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       {},
       context.signal,
@@ -276,7 +284,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       {},
       context.signal,
@@ -300,7 +308,7 @@ describe("connectConnector$", () => {
 
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
@@ -317,7 +325,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       { showPermissionDialog: true },
       context.signal,
@@ -335,7 +343,7 @@ describe("connectConnector$", () => {
     expect(context.store.get(permissionDialogType$)).toBe("github");
   });
 
-  it("completes oauth flow in standalone mode without popup dimensions", async () => {
+  it("completes auth-code OAuth flow in standalone mode without popup dimensions", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
@@ -348,7 +356,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       {},
       context.signal,
@@ -362,7 +370,7 @@ describe("connectConnector$", () => {
     const result = await connectPromise;
 
     expect(result).toBeTruthy();
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
@@ -384,7 +392,7 @@ describe("connectConnector$", () => {
     );
 
     const connectPromise = context.store.set(
-      connectConnector$,
+      connectConnectorOAuthAuthCode$,
       "github",
       {},
       context.signal,
@@ -405,8 +413,43 @@ describe("connectConnector$", () => {
 
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
     expect(context.store.get(permissionDialogType$)).toBeNull();
+  });
+
+  it("rejects device-auth OAuth connectors before opening popup or starting auth-code OAuth", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    const open = vi.spyOn(window, "open");
+    let startCalled = false;
+    server.use(
+      mockApi(zeroConnectorOauthStartContract.start, ({ respond }) => {
+        startCalled = true;
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/test-oauth-device/authorize",
+        });
+      }),
+    );
+
+    await expect(
+      context.store.set(
+        connectConnectorOAuthAuthCode$,
+        "test-oauth-device",
+        {},
+        context.signal,
+      ),
+    ).rejects.toThrow(
+      "test-oauth-device does not use authorization-code OAuth",
+    );
+
+    expect(open).not.toHaveBeenCalled();
+    expect(startCalled).toBeFalsy();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
   });
 });
 

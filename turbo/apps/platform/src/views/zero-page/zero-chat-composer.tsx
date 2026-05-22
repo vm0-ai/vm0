@@ -94,7 +94,7 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   justConnectedTypes$,
-  pollingConnectorType$,
+  pollingOAuthAuthCodeConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
@@ -1248,7 +1248,7 @@ export function ZeroChatComposer({
   const pendingConnectType = useGet(pendingConnectType$);
   const setPendingConnectType = useSet(setPendingConnectType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
-  const pollingConnType = useGet(pollingConnectorType$);
+  const pollingConnType = useGet(pollingOAuthAuthCodeConnectorType$);
   const authorizeFn = useSet(authorizeConnector$);
   const deauthorizeFn = useSet(deauthorizeConnector$);
   const optimisticConnected = useGet(justConnectedTypes$);

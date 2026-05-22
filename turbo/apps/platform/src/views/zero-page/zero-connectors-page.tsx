@@ -20,7 +20,10 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
+import {
+  isGoogleOAuthConnector,
+  isOAuthAuthCodeConnectorType,
+} from "@vm0/connectors/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
@@ -32,13 +35,13 @@ import { CustomConnectorsPanel } from "./components/settings/custom-connectors-p
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
-  connectConnector$,
+  connectConnectorOAuthAuthCode$,
   connectorsSearch$,
   disconnectConnector$,
   setConnectorsSearch$,
   selectedConnectorType$,
   setSelectedConnectorType$,
-  pollingConnectorType$,
+  pollingOAuthAuthCodeConnectorType$,
   justConnectedTypes$,
   LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
@@ -659,8 +662,8 @@ function renderBuiltinList({
 
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const pollingType = useGet(pollingConnectorType$);
-  const connect = useSet(connectConnector$);
+  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const connect = useSet(connectConnectorOAuthAuthCode$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
   const selectedType = useGet(selectedConnectorType$);
@@ -705,13 +708,12 @@ export function ZeroConnectorsPage() {
     const ct = allConnectors.find((c) => {
       return c.type === type;
     });
-    // Any connector without OAuth opens the ConnectModal for api-token entry.
-    // Only pure-OAuth connectors skip the modal and jump straight to the popup
-    // flow.
-    if (
-      (ct && !ct.availableAuthMethods.includes("oauth")) ||
-      isGoogleOAuthConnector(type)
-    ) {
+    const canLaunchOAuthAuthCode =
+      (ct?.availableAuthMethods.includes("oauth") ?? false) &&
+      isOAuthAuthCodeConnectorType(type);
+    // Connectors without auth-code OAuth open the ConnectModal for the
+    // available non-popup method.
+    if (!canLaunchOAuthAuthCode || isGoogleOAuthConnector(type)) {
       setSelected(type);
     } else {
       detach(

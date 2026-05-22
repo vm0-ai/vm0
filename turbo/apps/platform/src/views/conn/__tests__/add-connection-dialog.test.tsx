@@ -116,6 +116,23 @@ describe("connect modal - content by auth method", () => {
     });
   });
 
+  it("does not show auth-code OAuth button for device-auth OAuth connectors", async () => {
+    await openConnectModal("test-oauth-device", {
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText("Sign in with Test OAuth Device (internal)"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Connection methods unavailable"),
+    ).toBeInTheDocument();
+  });
+
   it("shows API token form for api-token connectors (CONN-C-019)", async () => {
     await openConnectModal("axiom");
 

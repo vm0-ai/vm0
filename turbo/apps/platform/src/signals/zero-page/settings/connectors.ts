@@ -18,6 +18,7 @@ import {
   getConnectorCliAuthModes,
   getConnectorTags,
   hasRequiredScopes,
+  isOAuthAuthCodeConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
   zeroLocalAgentHostsContract,
@@ -635,11 +636,13 @@ export const submitApiToken$ = command(
 // Polling state (for connect flow)
 // ---------------------------------------------------------------------------
 
-const internalPollingType$ = state<ConnectorType | null>(null);
+const internalPollingOAuthAuthCodeConnectorType$ = state<ConnectorType | null>(
+  null,
+);
 const internalConnectFlowState$ = state<ConnectorConnectFlowState | null>(null);
 
-export const pollingConnectorType$ = computed((get) => {
-  return get(internalPollingType$);
+export const pollingOAuthAuthCodeConnectorType$ = computed((get) => {
+  return get(internalPollingOAuthAuthCodeConnectorType$);
 });
 
 export const connectFlowType$ = computed((get) => {
@@ -1582,9 +1585,9 @@ export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
-const OAUTH_POPUP_CLOSED_POLL_MS = 250;
+const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = 250;
 
-function waitForOAuthPopupClosed(
+function waitForOAuthAuthCodePopupClosed(
   authWindow: Pick<Window, "closed">,
   signal: AbortSignal,
 ): Promise<"popupClosed"> {
@@ -1630,22 +1633,33 @@ function waitForOAuthPopupClosed(
     }
   }
 
-  intervalId = window.setInterval(checkClosed, OAUTH_POPUP_CLOSED_POLL_MS);
+  intervalId = window.setInterval(
+    checkClosed,
+    OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS,
+  );
   signal.addEventListener("abort", onAbort, { once: true });
   checkClosed();
 
   return deferred.promise;
 }
 
-const resetOAuthConnectorLoopSignal$ = resetSignal();
-const resetOAuthConnectorPopupSignal$ = resetSignal();
+const resetOAuthAuthCodeConnectorLoopSignal$ = resetSignal();
+const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 
 // ---------------------------------------------------------------------------
 // Connect command
 // ---------------------------------------------------------------------------
 
-const openConnectorOauthWindow$ = command(
+function assertConnectorUsesOAuthAuthCode(type: ConnectorType): void {
+  if (!isOAuthAuthCodeConnectorType(type)) {
+    throw new Error(`${type} does not use authorization-code OAuth`);
+  }
+}
+
+const openConnectorOAuthAuthCodeWindow$ = command(
   async ({ get }, type: ConnectorType, signal: AbortSignal) => {
+    assertConnectorUsesOAuthAuthCode(type);
+
     const standalone = isStandaloneMode();
 
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
@@ -1680,23 +1694,29 @@ const openConnectorOauthWindow$ = command(
   },
 );
 
-export const connectConnector$ = command(
+export const connectConnectorOAuthAuthCode$ = command(
   async (
     { get, set },
     type: ConnectorType,
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
+    assertConnectorUsesOAuthAuthCode(type);
+
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
-    set(internalPollingType$, type);
+    set(internalPollingOAuthAuthCodeConnectorType$, type);
 
     return await withCleanup(
       (async () => {
-        const authWindow = await set(openConnectorOauthWindow$, type, signal);
+        const authWindow = await set(
+          openConnectorOAuthAuthCodeWindow$,
+          type,
+          signal,
+        );
         signal.throwIfAborted();
 
-        // Wait for the OAuth flow to complete. The callback publishes
+        // Wait for the auth-code OAuth flow to complete. The callback publishes
         // `connector:changed`, and the subscription rechecks the server state.
         // Snapshot taken on the first body invocation: `null` marks "no
         // connector yet" and an `updatedAt` value marks "reconnect scenario —
@@ -1742,8 +1762,11 @@ export const connectConnector$ = command(
         await set(onConnectorChanged$, signal);
         signal.throwIfAborted();
 
-        const loopSignal = set(resetOAuthConnectorLoopSignal$, signal);
-        const popupSignal = set(resetOAuthConnectorPopupSignal$, signal);
+        const loopSignal = set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
+        const popupSignal = set(
+          resetOAuthAuthCodeConnectorPopupSignal$,
+          signal,
+        );
 
         const completed = await withCleanup(
           (async () => {
@@ -1762,12 +1785,12 @@ export const connectConnector$ = command(
                 ? await changedPromise
                 : await Promise.race([
                     changedPromise,
-                    waitForOAuthPopupClosed(authWindow, popupSignal),
+                    waitForOAuthAuthCodePopupClosed(authWindow, popupSignal),
                   ]);
             signal.throwIfAborted();
 
             if (waitResult === "popupClosed") {
-              set(resetOAuthConnectorLoopSignal$, signal);
+              set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
               const connectedAfterClose = await set(
                 onConnectorChanged$,
                 signal,
@@ -1780,8 +1803,8 @@ export const connectConnector$ = command(
             return true;
           })(),
           () => {
-            set(resetOAuthConnectorLoopSignal$, signal);
-            set(resetOAuthConnectorPopupSignal$, signal);
+            set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
+            set(resetOAuthAuthCodeConnectorPopupSignal$, signal);
           },
         );
         if (!completed) {
@@ -1807,8 +1830,8 @@ export const connectConnector$ = command(
         const hidden = new Set(get(hiddenConnectorTypes$));
         hidden.delete(type);
         set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-        // Close connect modal on OAuth success. Only connectors-page flows should
-        // show the post-connect permission dialog.
+        // Close connect modal on auth-code OAuth success. Only connectors-page
+        // flows should show the post-connect permission dialog.
         if (isConnected) {
           set(internalSelectedConnectorType$, null);
           if (options.showPermissionDialog) {
@@ -1818,7 +1841,7 @@ export const connectConnector$ = command(
         return isConnected;
       })(),
       () => {
-        set(internalPollingType$, (current) => {
+        set(internalPollingOAuthAuthCodeConnectorType$, (current) => {
           return current === type ? null : current;
         });
         set(internalConnectFlowState$, (current) => {
@@ -1830,10 +1853,10 @@ export const connectConnector$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Connect via OAuth, then run onSuccess callback (settling phase)
+// Connect via auth-code OAuth, then run onSuccess callback (settling phase)
 // ---------------------------------------------------------------------------
 
-export const connectAndSettle$ = command(
+export const connectConnectorOAuthAuthCodeAndSettle$ = command(
   async (
     { set },
     type: ConnectorType,
@@ -1841,7 +1864,12 @@ export const connectAndSettle$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<void> => {
-    const connected = await set(connectConnector$, type, options, signal);
+    const connected = await set(
+      connectConnectorOAuthAuthCode$,
+      type,
+      options,
+      signal,
+    );
     if (connected) {
       await onSuccess();
     }

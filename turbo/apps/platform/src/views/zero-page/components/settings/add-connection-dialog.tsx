@@ -24,13 +24,14 @@ import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-b
 import {
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
+  isOAuthAuthCodeConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
   connectorCliAuthState$,
   connectFlowType$,
-  pollingConnectorType$,
-  connectAndSettle$,
+  pollingOAuthAuthCodeConnectorType$,
+  connectConnectorOAuthAuthCodeAndSettle$,
   runConnectorConnectSuccess$,
   submitApiToken$,
   setTokenFormValue$,
@@ -145,7 +146,7 @@ type SubmitApiTokenFn = (
   signal: AbortSignal,
 ) => Promise<void>;
 
-type ConnectAndSettleFn = (
+type ConnectOAuthAuthCodeAndSettleFn = (
   type: ConnectorType,
   onSuccess: () => void | Promise<void>,
   options: PostConnectOptions,
@@ -159,7 +160,7 @@ type ConnectModalContentProps = {
 };
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
-  connectAndSettle: ConnectAndSettleFn;
+  connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   submitApiToken: SubmitApiTokenFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
@@ -607,14 +608,14 @@ function UnavailableConnectMethodsContent() {
   );
 }
 
-function getOAuthProgressContent({
+function getOAuthAuthCodeProgressContent({
   isPolling,
   settling,
 }: {
   isPolling: boolean;
   settling: boolean;
 }) {
-  // While OAuth is in progress, only show connecting state
+  // While auth-code OAuth is in progress, only show connecting state
   if (isPolling) {
     const standaloneHint = isStandaloneMode()
       ? " Switch back here after completing sign-in."
@@ -633,16 +634,16 @@ function getOAuthProgressContent({
   return null;
 }
 
-function OAuthConnectButton({
+function OAuthAuthCodeConnectButton({
   item,
   label,
   onSuccess,
   showPermissionDialogOnConnect,
-  connectAndSettle,
+  connectOAuthAuthCodeAndSettle,
   signal,
 }: ConnectModalContentProps & {
   label: string;
-  connectAndSettle: ConnectAndSettleFn;
+  connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
   return (
@@ -650,7 +651,7 @@ function OAuthConnectButton({
       variant="outline"
       onClick={() => {
         return detach(
-          connectAndSettle(
+          connectOAuthAuthCodeAndSettle(
             item.type,
             onSuccess,
             {
@@ -668,14 +669,14 @@ function OAuthConnectButton({
   );
 }
 
-function OAuthConnectMethodContent(props: ConnectMethodContentProps) {
+function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
-    <OAuthConnectButton
+    <OAuthAuthCodeConnectButton
       item={props.item}
       label={CONNECTOR_TYPES[props.item.type].label}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
-      connectAndSettle={props.connectAndSettle}
+      connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
       signal={props.signal}
     />
   );
@@ -716,7 +717,10 @@ function getConnectMethodContentComponent(
 ): ConnectMethodContentComponent | null {
   switch (authMethod) {
     case "oauth": {
-      return OAuthConnectMethodContent;
+      if (!isOAuthAuthCodeConnectorType(item.type)) {
+        return null;
+      }
+      return OAuthAuthCodeConnectMethodContent;
     }
     case "api-token": {
       return ApiTokenConnectMethodContent;
@@ -824,13 +828,13 @@ function StandardConnectMethodsContent({
   item,
   onSuccess,
   showPermissionDialogOnConnect,
-  connectAndSettle,
+  connectOAuthAuthCodeAndSettle,
   submitApiToken,
   credentialSubmitting,
   signal,
   entries,
 }: ConnectModalContentProps & {
-  connectAndSettle: ConnectAndSettleFn;
+  connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   submitApiToken: SubmitApiTokenFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
@@ -852,7 +856,7 @@ function StandardConnectMethodsContent({
           item,
           onSuccess,
           showPermissionDialogOnConnect,
-          connectAndSettle,
+          connectOAuthAuthCodeAndSettle,
           submitApiToken,
           credentialSubmitting,
           signal,
@@ -867,11 +871,13 @@ function ConnectModalContent({
   onSuccess,
   showPermissionDialogOnConnect,
 }: ConnectModalContentProps) {
-  const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
+  const [settleLoadable, connectOAuthAuthCodeAndSettle] = useLoadableSet(
+    connectConnectorOAuthAuthCodeAndSettle$,
+  );
   const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
   const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
   const pageSignal = useGet(pageSignal$);
-  const pollingType = useGet(pollingConnectorType$);
+  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const settling = settleLoadable.state === "loading";
   const credentialSubmitting = apiTokenLoadable.state === "loading";
   const isPolling = pollingType === item.type;
@@ -880,12 +886,14 @@ function ConnectModalContent({
     await runConnectSuccess(item.type, onSuccess, pageSignal);
   };
 
-  const progressContent = item.availableAuthMethods.includes("oauth")
-    ? getOAuthProgressContent({
-        isPolling,
-        settling,
-      })
-    : null;
+  const progressContent =
+    item.availableAuthMethods.includes("oauth") &&
+    isOAuthAuthCodeConnectorType(item.type)
+      ? getOAuthAuthCodeProgressContent({
+          isPolling,
+          settling,
+        })
+      : null;
   if (progressContent) {
     return progressContent;
   }
@@ -895,7 +903,7 @@ function ConnectModalContent({
       item={item}
       onSuccess={onConnectSuccess}
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-      connectAndSettle={connectAndSettle}
+      connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       submitApiToken={submitApiToken}
       credentialSubmitting={credentialSubmitting}
       signal={pageSignal}
@@ -921,7 +929,7 @@ export function ConnectModal({
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const clearConnectorCliAuth = useSet(clearConnectorCliAuth$);
   const connectFlowType = useGet(connectFlowType$);
-  const pollingType = useGet(pollingConnectorType$);
+  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const connectorCliAuthState = useGet(connectorCliAuthState$);
 
   const item = connectorTypes?.find((c) => {

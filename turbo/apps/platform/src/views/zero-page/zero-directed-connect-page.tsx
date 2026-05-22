@@ -6,6 +6,7 @@ import {
 import {
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
+  isOAuthAuthCodeConnectorType,
 } from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
@@ -17,9 +18,9 @@ import {
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
-  connectConnector$,
+  connectConnectorOAuthAuthCode$,
   justConnectedTypes$,
-  pollingConnectorType$,
+  pollingOAuthAuthCodeConnectorType$,
   submitApiToken$,
   tokenFormSubmitting$,
   setTokenFormValue$,
@@ -57,19 +58,21 @@ function runDirectedConnect(params: {
   onConnected: () => Promise<void>;
   openTokenDialog: () => void;
 }): void {
-  const hasOAuth = params.authMethods.includes("oauth");
+  const hasOAuthAuthCode =
+    params.authMethods.includes("oauth") &&
+    isOAuthAuthCodeConnectorType(params.connectorType);
   const hasApiToken = params.authMethods.includes("api-token");
 
-  // Priority: OAuth launches the external popup; api-token opens the modal so
-  // the user can enter credentials.
-  if (!hasOAuth && hasApiToken) {
+  // Priority: auth-code OAuth launches the external popup; api-token opens the
+  // modal so the user can enter credentials.
+  if (!hasOAuthAuthCode && hasApiToken) {
     params.openTokenDialog();
     return;
   }
   // Defensive fallback for the degenerate empty-authMethods case — the
   // contract disallows it today, so in practice this is unreachable after
   // the api-token branch above.
-  if (!hasOAuth) {
+  if (!hasOAuthAuthCode) {
     params.openTokenDialog();
     return;
   }
@@ -261,8 +264,8 @@ function DirectedConnectCard() {
   const type = useGet(directedConnectType$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
-  const pollingType = useGet(pollingConnectorType$);
-  const connect = useSet(connectConnector$);
+  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
   const justConnected = useGet(justConnectedTypes$);

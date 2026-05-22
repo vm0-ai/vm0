@@ -7,9 +7,9 @@ import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
-  connectConnector$,
+  connectConnectorOAuthAuthCode$,
   justConnectedTypes$,
-  pollingConnectorType$,
+  pollingOAuthAuthCodeConnectorType$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -68,8 +68,8 @@ function DirectedAuthorizeCard() {
   const type = useGet(directedAuthorizeType$);
   const agentId = useGet(directedAuthorizeAgentId$);
   const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
-  const pollingType = useGet(pollingConnectorType$);
-  const connect = useSet(connectConnector$);
+  const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
   const justConnected = useGet(justConnectedTypes$);
