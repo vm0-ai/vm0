@@ -222,7 +222,7 @@ def _query_pair_key(pair: _QueryPair) -> str:
 
 
 def _query_pair_keys(pairs: list[_QueryPair]) -> set[str]:
-    return {_query_pair_key(pair) for pair in pairs}
+    return {_query_pair_key(pair) for pair in pairs if pair[1]}
 
 
 def _filter_query_pairs(
@@ -234,12 +234,14 @@ def _filter_query_pairs(
     filtered: list[_QueryPair] = []
     removed_since_last_kept = False
     for separator, raw_pair in pairs:
+        if not raw_pair:
+            if not removed_since_last_kept:
+                filtered.append((separator, raw_pair))
+            continue
         if _query_pair_key((separator, raw_pair)) in blocked_keys:
             while filtered and not filtered[-1][1]:
                 filtered.pop()
             removed_since_last_kept = True
-            continue
-        if removed_since_last_kept and not raw_pair:
             continue
         if removed_since_last_kept and filtered:
             separator = "&"
