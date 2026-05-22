@@ -446,6 +446,32 @@ describe("computer use desktop runtime", () => {
     });
   });
 
+  it("reports app open as a background target preparation", async () => {
+    const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.open", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: false },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({ openApp }),
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        app: "Safari",
+        dispatchMode: "background_app_open",
+        dispatchTarget: "target_app",
+        inputRisk: "background_target_prepare",
+      },
+    });
+    expect(openApp).toHaveBeenCalledWith("Safari");
+  });
+
   it("renders model-readable accessibility state", () => {
     const snapshot = {
       app: "Safari",

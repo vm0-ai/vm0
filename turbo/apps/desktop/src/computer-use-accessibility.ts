@@ -1462,9 +1462,9 @@ async function openApp(
     status: "succeeded",
     result: {
       app,
-      dispatchMode: "app_activation",
+      dispatchMode: "background_app_open",
       dispatchTarget: "target_app",
-      inputRisk: "activates_app",
+      inputRisk: "background_target_prepare",
       text: `Opened ${app}`,
     },
   };
