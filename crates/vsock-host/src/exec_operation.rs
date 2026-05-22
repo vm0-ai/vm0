@@ -2796,19 +2796,28 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+    use std::fmt;
     use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
     use tracing::{Event, Level, Subscriber};
     use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
 
+    #[derive(Clone, Debug)]
+    struct CapturedEvent {
+        level: Level,
+        fields: BTreeMap<String, String>,
+    }
+
     #[derive(Clone, Default)]
     struct CapturedEvents {
-        levels: Arc<Mutex<Vec<Level>>>,
+        events: Arc<Mutex<Vec<CapturedEvent>>>,
     }
 
     impl CapturedEvents {
-        fn levels(&self) -> Vec<Level> {
-            self.levels.lock().unwrap().clone()
+        fn events(&self) -> Vec<CapturedEvent> {
+            self.events.lock().unwrap().clone()
         }
     }
 
@@ -2817,7 +2826,39 @@ mod tests {
         S: Subscriber,
     {
         fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-            self.levels.lock().unwrap().push(*event.metadata().level());
+            let mut visitor = CapturedFields::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(CapturedEvent {
+                level: *event.metadata().level(),
+                fields: visitor.fields,
+            });
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields {
+        fields: BTreeMap<String, String>,
+    }
+
+    impl Visit for CapturedFields {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_bool(&mut self, field: &Field, value: bool) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
         }
     }
 
@@ -2882,6 +2923,25 @@ mod tests {
         result: &vsock_proto::DecodedExecResult<'_>,
         stream_overflowed: bool,
     ) -> Vec<Level> {
+        capture_terminal_log_events_with_context(
+            lifecycle,
+            slow,
+            expected_exit_codes,
+            result,
+            stream_overflowed,
+        )
+        .into_iter()
+        .map(|event| event.level)
+        .collect()
+    }
+
+    fn capture_terminal_log_events_with_context(
+        lifecycle: ExecTerminalLogLifecycle,
+        slow: bool,
+        expected_exit_codes: &[i32],
+        result: &vsock_proto::DecodedExecResult<'_>,
+        stream_overflowed: bool,
+    ) -> Vec<CapturedEvent> {
         let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log", expected_exit_codes);
         if slow {
             diagnostic.registered_at =
@@ -2893,7 +2953,15 @@ mod tests {
             tracing::callsite::rebuild_interest_cache();
             diagnostic.log_terminal(lifecycle, result, stream_overflowed);
         });
-        captured.levels()
+        captured.events()
+    }
+
+    fn assert_terminal_log_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let value = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(value, expected, "field {field} mismatch; event={event:#?}");
     }
 
     #[test]
@@ -2940,6 +3008,61 @@ mod tests {
             capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &notable),
             vec![Level::WARN]
         );
+    }
+
+    #[test]
+    fn exec_operation_diagnostic_preserves_terminal_log_fields() {
+        let clean = clean_terminal_result();
+        let info_events = capture_terminal_log_events_with_context(
+            ExecTerminalLogLifecycle::Supervised,
+            true,
+            &[],
+            &clean,
+            false,
+        );
+        assert_eq!(info_events.len(), 1, "captured events: {info_events:#?}");
+        let info_event = &info_events[0];
+        assert_eq!(info_event.level, Level::INFO);
+        assert_terminal_log_field(info_event, "seq", "7");
+        assert_terminal_log_field(info_event, "label", "terminal-log");
+        assert_terminal_log_field(info_event, "guest_duration_ms", "10");
+        assert_terminal_log_field(info_event, "termination", "Exited { exit_code: 0 }");
+        assert_terminal_log_field(info_event, "stream_overflowed", "false");
+        assert_terminal_log_field(info_event, "stdout_truncated", "false");
+        assert_terminal_log_field(info_event, "stderr_truncated", "false");
+        assert_terminal_log_field(info_event, "diagnostic_present", "false");
+
+        let warn_result = vsock_proto::DecodedExecResult {
+            termination: ExecTermination::TimedOut,
+            duration_ms: 77,
+            stdout: ExecCapturedOutput::Captured {
+                bytes: b"",
+                truncated: true,
+            },
+            stderr: ExecCapturedOutput::Captured {
+                bytes: b"",
+                truncated: true,
+            },
+            diagnostic: "guest diagnostic",
+        };
+        let warn_events = capture_terminal_log_events_with_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            &[],
+            &warn_result,
+            true,
+        );
+        assert_eq!(warn_events.len(), 1, "captured events: {warn_events:#?}");
+        let warn_event = &warn_events[0];
+        assert_eq!(warn_event.level, Level::WARN);
+        assert_terminal_log_field(warn_event, "seq", "7");
+        assert_terminal_log_field(warn_event, "label", "terminal-log");
+        assert_terminal_log_field(warn_event, "guest_duration_ms", "77");
+        assert_terminal_log_field(warn_event, "termination", "TimedOut");
+        assert_terminal_log_field(warn_event, "stream_overflowed", "true");
+        assert_terminal_log_field(warn_event, "stdout_truncated", "true");
+        assert_terminal_log_field(warn_event, "stderr_truncated", "true");
+        assert_terminal_log_field(warn_event, "diagnostic_present", "true");
     }
 
     #[test]
