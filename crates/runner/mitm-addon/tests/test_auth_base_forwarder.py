@@ -213,6 +213,29 @@ class TestAuthBaseForwarderSecurity:
             skip_accept_encoding=True,
         )
 
+    def test_request_target_preserves_path_params(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn):
+            forwarder._forward_request_sync(
+                "https://example.com/hook;v=1/sub;mode=fast?x=1",
+                "GET",
+                [],
+                None,
+            )
+
+        conn.putrequest.assert_called_once_with(
+            "GET",
+            "/hook;v=1/sub;mode=fast?x=1",
+            skip_host=True,
+            skip_accept_encoding=True,
+        )
+
     def test_https_scheme_uses_https_connection_and_default_port_host(self):
         resp = MagicMock()
         resp.status = 200
