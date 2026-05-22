@@ -34,6 +34,7 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_firewall_matching.py` | Raw firewall request matching and network policy behavior |
 | `test_compiled_firewall_matching.py` | Compiled firewall matcher parity and edge cases |
 | `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
+| `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
 | `test_firewall_rewrite.py` | Firewall auth URL rewrite and query injection |
 | `test_utils.py` | Utility functions |
 
