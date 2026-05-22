@@ -3,7 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
 from mitmproxy import http
@@ -683,6 +683,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
         seed_url=None,
         resolved_base="https://discord.com/api/webhooks/123/abc",
         rel_path="/",
+        method="GET",
+        request_body=None,
+        request_headers=None,
     ):
         # ``seed_url`` lets callers specify a scheme://host/path?query to
         # seed the request. We parse it back into ``real_flow`` kwargs
@@ -693,9 +696,23 @@ class TestAuthBaseUrlRewriteEdgeCases:
             real_path = parsed.path or "/"
             if parsed.query:
                 real_path = f"{real_path}?{parsed.query}"
-            flow = real_flow(with_response=False, host=host, path=real_path)
+            flow = real_flow(
+                with_response=False,
+                host=host,
+                path=real_path,
+                method=method,
+                request_body=request_body,
+                request_headers=request_headers,
+            )
         else:
-            flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path=path)
+            flow = real_flow(
+                with_response=False,
+                host="firewall-placeholder.vm3.ai",
+                path=path,
+                method=method,
+                request_body=request_body,
+                request_headers=request_headers,
+            )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
@@ -799,10 +816,80 @@ class TestAuthBaseUrlRewriteEdgeCases:
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
-        # Auth headers passed to forward_request (in the headers dict)
+        # Auth headers passed to forward_request.
         call_args = mock_forward.call_args
         req_headers = call_args[0][2]
-        assert req_headers["X-Custom"] == "injected-value"
+        assert ("X-Custom", "injected-value") in req_headers
+
+    async def test_forward_request_preserves_duplicate_headers_and_auth_override(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.base forwarding keeps repeated headers unless auth overrides that name."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("X-Repeat", "one"),
+                ("X-Repeat", "two"),
+                ("Authorization", "Bearer agent"),
+                ("Authorization", "Bearer stale"),
+            ),
+        )
+        token_meta["headers"] = {"Authorization": "Bearer real"}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        assert req_headers.count(("X-Repeat", "one")) == 1
+        assert req_headers.count(("X-Repeat", "two")) == 1
+        assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("Authorization", "Bearer stale") not in req_headers
+        assert req_headers.count(("Authorization", "Bearer real")) == 1
+
+    async def test_forward_request_uses_raw_body_for_any_method(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.base forwarding does not drop bodies for non-POST methods."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="DELETE",
+            request_body=b"delete-body",
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert mock_forward.call_args[0][1] == "DELETE"
+        assert mock_forward.call_args[0][3] == b"delete-body"
+
+    async def test_forward_request_preserves_empty_raw_body(self, real_flow, mitm_ctx, tmp_path):
+        """An explicit empty body is distinct from no body for Content-Length."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="POST",
+            request_body=b"",
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert mock_forward.call_args[0][3] == b""
 
     async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
@@ -837,6 +924,34 @@ class TestAuthBaseUrlRewriteEdgeCases:
             lambda: log_path.read_text() if log_path.exists() else ""
         )
         assert "Firewall URL rewrite:" not in log_text
+
+    async def test_forward_failure_does_not_log_resolved_url_secret(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """Forward errors must not leak secret-bearing resolved auth.base URLs."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            resolved_base="https://real.example.com/webhook/super-secret-token",
+        )
+        mock_forward = AsyncMock(
+            side_effect=Exception("failed https://real.example.com/webhook/super-secret-token")
+        )
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.response is not None
+        assert b"super-secret-token" not in flow.response.content
+        log_args = mock_log.call_args.args
+        log_kwargs = mock_log.call_args.kwargs
+        assert "super-secret-token" not in json.dumps(log_args)
+        assert "super-secret-token" not in json.dumps(log_kwargs)
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server is treated as absent — no URL rewrite."""

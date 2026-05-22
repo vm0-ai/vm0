@@ -5,6 +5,7 @@ both standard header injection and auth.base URL rewriting.
 """
 
 import asyncio
+import http.client as http_client
 import json
 import math
 import os
@@ -12,7 +13,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
@@ -298,6 +298,8 @@ HOP_BY_HOP = frozenset(
         "upgrade",
     )
 )
+DEFAULT_HTTP_PORT = 80
+DEFAULT_HTTPS_PORT = 443
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -318,32 +320,125 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
-def _filter_response_headers(raw: Iterable[tuple[str, str]]) -> http.Headers:
-    """Strip hop-by-hop headers from an upstream response.
+def _header_pairs(headers) -> list[tuple[str, str]]:
+    if isinstance(headers, dict):
+        return list(headers.items())
+    if hasattr(headers, "items"):
+        try:
+            return list(headers.items(multi=True))
+        except TypeError:
+            return list(headers.items())
+    return list(headers)
 
-    The response body is fully read (not chunked/compressed from our
-    perspective), so headers like transfer-encoding must not be forwarded.
-    """
-    pairs = list(raw)
-    hop_by_hop: set[str] = set(HOP_BY_HOP)
-    for name, value in pairs:
-        if name.lower() == "connection":
-            hop_by_hop.update(token.strip().lower() for token in value.split(",") if token.strip())
 
+def _connection_header_names(headers: list[tuple[str, str]]) -> set[str]:
+    names: set[str] = set()
+    for header_name, header_value in headers:
+        if header_name.lower() != "connection":
+            continue
+        for token in header_value.split(","):
+            token = token.strip().lower()
+            if token:
+                names.add(token)
+    return names
+
+
+def _filter_header_pairs(
+    headers,
+    *,
+    extra_excluded: set[str] | None = None,
+) -> list[tuple[str, str]]:
+    pairs = _header_pairs(headers)
+    excluded = set(HOP_BY_HOP)
+    excluded.update(_connection_header_names(pairs))
+    if extra_excluded:
+        excluded.update(extra_excluded)
+    return [(name, value) for name, value in pairs if name.lower() not in excluded]
+
+
+def _headers_from_pairs(pairs: list[tuple[str, str]]) -> http.Headers:
     return http.Headers(
         (
             name.encode("utf-8", "surrogateescape"),
             value.encode("utf-8", "surrogateescape"),
         )
         for name, value in pairs
-        if name.lower() not in hop_by_hop
+    )
+
+
+def _filter_response_headers(raw) -> http.Headers:
+    """Strip hop-by-hop headers from an upstream response.
+
+    The response body is fully read (not chunked/compressed from our
+    perspective), so headers like transfer-encoding must not be forwarded.
+    """
+    return _headers_from_pairs(_filter_header_pairs(raw))
+
+
+def _host_header(parsed: urllib.parse.SplitResult) -> str:
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid upstream URL: missing host")
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Invalid upstream URL: invalid port") from exc
+    if (
+        port is None
+        or (parsed.scheme == "https" and port == DEFAULT_HTTPS_PORT)
+        or (parsed.scheme == "http" and port == DEFAULT_HTTP_PORT)
+    ):
+        return host
+    return f"{host}:{port}"
+
+
+def _request_target(parsed: urllib.parse.SplitResult) -> str:
+    path = parsed.path or "/"
+    if parsed.query:
+        return f"{path}?{parsed.query}"
+    return path
+
+
+def _connection_cls(scheme: str):
+    if scheme == "https":
+        return http_client.HTTPSConnection
+    if scheme == "http":
+        return http_client.HTTPConnection
+    raise ValueError(f"Unsupported URL scheme: {scheme}")
+
+
+def _outbound_request_headers(
+    headers: list[tuple[str, str]],
+    parsed: urllib.parse.SplitResult,
+    body: bytes | None,
+) -> list[tuple[str, str]]:
+    filtered = _filter_header_pairs(
+        headers,
+        extra_excluded={"host", "content-length", "transfer-encoding"},
+    )
+    outbound = [("Host", _host_header(parsed)), *filtered]
+    if body is not None:
+        outbound.append(("Content-Length", str(len(body))))
+    return outbound
+
+
+def _merge_auth_headers(
+    headers,
+    auth_headers: dict[str, str],
+) -> list[tuple[str, str]]:
+    pairs = _header_pairs(headers)
+    override_names = {name.lower() for name in auth_headers}
+    return [(name, value) for name, value in pairs if name.lower() not in override_names] + list(
+        auth_headers.items()
     )
 
 
 def _forward_request_sync(
     url: str,
     method: str,
-    headers: dict[str, str],
+    headers: list[tuple[str, str]],
     body: bytes | None,
 ) -> tuple[int, bytes, http.Headers]:
     """Forward an HTTP request to the real URL and return (status, body, headers).
@@ -352,34 +447,43 @@ def _forward_request_sync(
     itself instead of relying on mitmproxy's connection (which would go to
     the placeholder IP in eager mode).
 
-    Security: redirects are disabled (_NoRedirect) to prevent SSRF via open
-    redirects, and only https/http schemes are allowed.
+    Security: only https/http schemes are allowed, and redirects are returned
+    to the sandbox client instead of being followed inside the addon.
     """
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("https", "http"):
-        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-    # S310 is satisfied by the explicit scheme whitelist above: file:, ftp:,
-    # and other schemes S310 warns about are rejected before this point.
-    req = urllib.request.Request(url, data=body, method=method)  # noqa: S310
-    for k, v in headers.items():
-        if k.lower() in HOP_BY_HOP or k.lower() == "host":
-            continue
-        req.add_header(k, v)
+    parsed = urllib.parse.urlsplit(url)
+    conn_cls = _connection_cls(parsed.scheme)
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid upstream URL: missing host")
     try:
-        with _opener.open(req, timeout=30) as resp:
-            return resp.status, resp.read(), _filter_response_headers(resp.headers.items())
-    except urllib.error.HTTPError as e:
-        # HTTPError wraps an open socket; context-manage it or the fd leaks
-        # (sustained auth.base URL-rewrite traffic would eventually exhaust
-        # the mitmproxy process FD limit).
-        with e:
-            return e.code, e.read(), _filter_response_headers(e.headers.items())
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Invalid upstream URL: invalid port") from exc
+    conn = conn_cls(host, port=port, timeout=30)
+    resp = None
+    try:
+        conn.putrequest(
+            method,
+            _request_target(parsed),
+            skip_host=True,
+            skip_accept_encoding=True,
+        )
+        for header_name, header_value in _outbound_request_headers(headers, parsed, body):
+            conn.putheader(header_name, header_value)
+        conn.endheaders(body)
+        resp = conn.getresponse()
+        resp_body = resp.read()
+        return resp.status, resp_body, _filter_response_headers(resp.getheaders())
+    finally:
+        if resp is not None:
+            resp.close()
+        conn.close()
 
 
 async def forward_request(
     url: str,
     method: str,
-    headers: dict[str, str],
+    headers: list[tuple[str, str]],
     body: bytes | None,
 ) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
@@ -670,26 +774,27 @@ async def handle_firewall_request(
         orig_query = urllib.parse.urlparse(flow.request.path).query
         new_url = build_rewrite_url(resolved_base, match_info, orig_query, resolved_query)
 
-        # Merge original request headers with resolved auth headers
-        req_headers = dict(flow.request.headers)
-        for header_name, header_value in headers.items():
-            req_headers[header_name] = header_value
+        # Keep repeated request headers. Resolved auth headers intentionally
+        # replace any client-supplied value with the same name.
+        req_headers = _merge_auth_headers(flow.request.headers, headers)
+        req_body = flow.request.raw_content if flow.request.raw_content is not None else None
 
         try:
             status, resp_body, resp_headers = await forward_request(
                 new_url,
                 flow.request.method,
                 req_headers,
-                flow.request.content if flow.request.method in ("POST", "PUT", "PATCH") else None,
+                req_body,
             )
             flow.response = http.Response.make(status, resp_body, resp_headers)
         except Exception as e:
             log_proxy_entry(
                 proxy_log_path,
                 "error",
-                f"URL rewrite forward failed: {e}",
+                "URL rewrite forward failed",
                 type="firewall",
                 firewall_base=firewall_base,
+                error_type=type(e).__name__,
             )
             flow.metadata["firewall_action"] = "ALLOW"
             flow.metadata["firewall_error"] = "url_rewrite_forward_failed"
