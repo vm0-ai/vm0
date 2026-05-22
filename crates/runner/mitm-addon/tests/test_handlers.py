@@ -5672,7 +5672,9 @@ class TestUsageWebhookDelivery:
             assert isinstance(port, int)
             return host, port
 
-        def start_server(server: ThreadingHTTPServer) -> threading.Thread:
+        def make_server_thread(
+            server: ThreadingHTTPServer,
+        ) -> tuple[threading.Thread, threading.Event]:
             started = threading.Event()
 
             def serve():
@@ -5680,9 +5682,7 @@ class TestUsageWebhookDelivery:
                 server.serve_forever(poll_interval=0.01)
 
             thread = threading.Thread(target=serve, daemon=True)
-            thread.start()
-            assert started.wait(timeout=1)
-            return thread
+            return thread, started
 
         class TargetHandler(BaseHTTPRequestHandler):
             def do_POST(self):
@@ -5694,7 +5694,6 @@ class TestUsageWebhookDelivery:
                 return
 
         target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
-        target_thread = start_server(target_server)
 
         class RedirectHandler(BaseHTTPRequestHandler):
             def do_POST(self):
@@ -5707,8 +5706,18 @@ class TestUsageWebhookDelivery:
                 return
 
         redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
-        redirect_thread = start_server(redirect_server)
+        target_thread, target_started = make_server_thread(target_server)
+        redirect_thread, redirect_started = make_server_thread(redirect_server)
+        target_started_ok = False
+        redirect_started_ok = False
         try:
+            target_thread.start()
+            target_started_ok = target_started.wait(timeout=1)
+            assert target_started_ok
+            redirect_thread.start()
+            redirect_started_ok = redirect_started.wait(timeout=1)
+            assert redirect_started_ok
+
             host, port = server_host_port(redirect_server)
             with pytest.raises(urllib.error.HTTPError) as exc:
                 usage.webhook._post_webhook(
@@ -5720,8 +5729,10 @@ class TestUsageWebhookDelivery:
             assert exc.value.code == 302
             assert redirected_hits == []
         finally:
-            redirect_server.shutdown()
-            target_server.shutdown()
+            if redirect_started_ok:
+                redirect_server.shutdown()
+            if target_started_ok:
+                target_server.shutdown()
             redirect_server.server_close()
             target_server.server_close()
             redirect_thread.join(timeout=5)
