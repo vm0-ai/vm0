@@ -10,6 +10,7 @@ import {
 import {
   connectorTypeSchema,
   type OAuthAuthorizationCodeConnectorType,
+  type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorOAuthCode,
