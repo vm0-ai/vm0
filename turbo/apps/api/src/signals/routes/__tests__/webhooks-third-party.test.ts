@@ -176,6 +176,15 @@ interface CapturedGitHubIssueComment {
   readonly body: string;
 }
 
+interface CapturedRunCallback {
+  readonly callbackId: string;
+  readonly runId: string;
+  readonly status: "completed" | "failed";
+  readonly result?: Record<string, unknown>;
+  readonly error?: string;
+  readonly payload?: unknown;
+}
+
 interface GitHubIssuesPayloadOverrides {
   readonly action?: string;
   readonly labels?: readonly GitHubLabelPayload[];
@@ -464,6 +473,8 @@ async function selectGitHubRuns(fixture: GitHubWebhookFixture) {
   return await db
     .select({
       id: agentRuns.id,
+      status: agentRuns.status,
+      error: agentRuns.error,
       prompt: agentRuns.prompt,
       sessionId: agentRuns.sessionId,
       appendSystemPrompt: agentRuns.appendSystemPrompt,
@@ -1214,6 +1225,84 @@ describe("POST /api/webhooks/github", () => {
     );
     expect(capturedComments[0]?.body).not.toContain("Failed to start");
     await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(0);
+  });
+
+  it("lets failed GitHub trigger runs with callbacks report the failure", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+    });
+
+    const capturedComments: CapturedGitHubIssueComment[] = [];
+    const capturedCallbacks: CapturedRunCallback[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request }) => {
+          const body = (await request.json()) as { readonly body: string };
+          capturedComments.push({ body: body.body });
+          return HttpResponse.json({ id: 9876 });
+        },
+      ),
+      http.post(
+        "http://localhost:3000/api/internal/callbacks/github/issues",
+        async ({ request }) => {
+          const body = (await request.json()) as CapturedRunCallback;
+          capturedCallbacks.push(body);
+          return HttpResponse.json({ ok: true });
+        },
+      ),
+    );
+
+    const db = store.set(writeDb$);
+    const [compose] = await db
+      .select({ name: agentComposes.name })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, fixture.composeId))
+      .limit(1);
+    if (!compose) {
+      throw new Error("GitHub fixture compose not found");
+    }
+    await db
+      .update(agentComposeVersions)
+      .set({
+        content: {
+          version: "1.0",
+          agents: {
+            [compose.name]: {
+              framework: "claude-code",
+              environment: { ANTHROPIC_API_KEY: "test-key" },
+              experimental_runner: { group: "custom/test" },
+            },
+          },
+        },
+      })
+      .where(eq(agentComposeVersions.composeId, fixture.composeId));
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+    expect(capturedComments).toHaveLength(0);
+    expect(capturedCallbacks).toHaveLength(1);
+    expect(capturedCallbacks[0]?.status).toBe("failed");
+    expect(capturedCallbacks[0]?.error).toBe(
+      "Only vm0/* runner groups are supported",
+    );
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.id).toBe(capturedCallbacks[0]?.runId);
+    expect(runs[0]?.status).toBe("failed");
+    expect(runs[0]?.error).toBe("Only vm0/* runner groups are supported");
   });
 
   it("dispatches labeled issues only when the added label is the app slug", async () => {

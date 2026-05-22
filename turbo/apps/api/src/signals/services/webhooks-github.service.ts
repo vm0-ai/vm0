@@ -1094,17 +1094,19 @@ const dispatchGithubAgentRun$ = command(
     });
 
     if (dispatchResult.status === "failed") {
-      await handleDispatchError({
-        message: dispatchResult.response,
-        token,
-        repo: params.repo,
-        issueNumber,
-        commentId: params.commentId,
-        reactionId,
-        commentBody: params.comment?.body,
-        signal,
-      });
-      signal.throwIfAborted();
+      if (!dispatchResult.runId) {
+        await handleDispatchError({
+          message: dispatchResult.response,
+          token,
+          repo: params.repo,
+          issueNumber,
+          commentId: params.commentId,
+          reactionId,
+          commentBody: params.comment?.body,
+          signal,
+        });
+        signal.throwIfAborted();
+      }
       return;
     }
 

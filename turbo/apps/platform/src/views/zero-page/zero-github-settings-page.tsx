@@ -61,6 +61,7 @@ import {
   type GithubLabelTriggerMode,
 } from "../../signals/zero-page/zero-github.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
 
@@ -163,7 +164,7 @@ function GithubListenerList({
             key={listener.id}
             className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3"
           >
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="min-w-0 truncate text-sm font-medium text-foreground">
                 {listener.labelName}
               </span>
@@ -172,6 +173,11 @@ function GithubListenerList({
               >
                 {triggerModeBadge.label}
               </span>
+              {!listener.enabled ? (
+                <span className="shrink-0 rounded border border-muted-foreground/20 bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground">
+                  Disabled
+                </span>
+              ) : null}
             </div>
             {listener.canManage ? (
               <DropdownMenu>
@@ -197,6 +203,7 @@ function GithubListenerList({
                         agentId: listener.agent?.id ?? "",
                         triggerMode: listener.triggerMode,
                         prompt: listener.prompt,
+                        enabled: listener.enabled,
                       });
                       setEditingListenerId(listener.id);
                       setOpen(true);
@@ -364,6 +371,33 @@ function GithubPromptField({
   );
 }
 
+function GithubListenerEnabledField({
+  creating,
+  enabled,
+  setForm,
+}: {
+  readonly creating: boolean;
+  readonly enabled: boolean;
+  readonly setForm: (patch: Partial<GithubLabelListenerForm>) => void;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-4 rounded-lg bg-card px-4 py-3"
+      style={ZERO_BORDER}
+    >
+      <span className="text-sm font-medium text-foreground">Enabled</span>
+      <LoadingSwitch
+        checked={enabled}
+        loading={creating}
+        ariaLabel={enabled ? "Disable listener" : "Enable listener"}
+        onCheckedChange={(nextEnabled) => {
+          setForm({ enabled: nextEnabled });
+        }}
+      />
+    </div>
+  );
+}
+
 function GithubListenerForm({
   agents,
   onCancel,
@@ -411,6 +445,7 @@ function GithubListenerForm({
                 agentId: selectedAgentId,
                 triggerMode: form.triggerMode,
                 prompt,
+                enabled: form.enabled,
               },
             },
             pageSignal,
@@ -422,6 +457,7 @@ function GithubListenerForm({
               agentId: selectedAgentId,
               triggerMode: form.triggerMode,
               prompt,
+              enabled: form.enabled,
             },
             pageSignal,
           );
@@ -445,6 +481,11 @@ function GithubListenerForm({
       <GithubTriggerModeField
         creating={saving}
         triggerMode={form.triggerMode}
+        setForm={setForm}
+      />
+      <GithubListenerEnabledField
+        creating={saving}
+        enabled={form.enabled}
         setForm={setForm}
       />
       <GithubPromptField

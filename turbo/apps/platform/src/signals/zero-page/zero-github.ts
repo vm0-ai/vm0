@@ -33,6 +33,7 @@ export interface GithubLabelListenerForm {
   readonly agentId: string;
   readonly triggerMode: GithubLabelTriggerMode;
   readonly prompt: string;
+  readonly enabled: boolean;
 }
 
 interface UpdateGithubLabelListenerInput {
@@ -56,6 +57,7 @@ const internalLabelListenerForm$ = state<GithubLabelListenerForm>({
   agentId: "",
   triggerMode: "created_by_me",
   prompt: "",
+  enabled: true,
 });
 
 const GITHUB_CHANGED_TOPIC = "github:changed";
@@ -187,6 +189,7 @@ export const resetGithubLabelListenerForm$ = command(({ set }) => {
     agentId: "",
     triggerMode: "created_by_me",
     prompt: "",
+    enabled: true,
   });
 });
 

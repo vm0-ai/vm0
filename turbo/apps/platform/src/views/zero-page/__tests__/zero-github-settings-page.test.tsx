@@ -162,6 +162,7 @@ describe("github settings page", () => {
       const integration = getMockGithubIntegration();
       expect(integration?.labelListeners).toHaveLength(1);
       expect(integration?.labelListeners[0]?.triggerMode).toBe("anyone");
+      expect(integration?.labelListeners[0]?.enabled).toBeTruthy();
     });
     expect(screen.getByText("ready-for-zero")).toBeInTheDocument();
     expect(screen.getByText("Any author")).toBeInTheDocument();
@@ -179,7 +180,7 @@ describe("github settings page", () => {
             labelName: "ready-for-zero",
             triggerMode: "created_by_me",
             prompt: "Review the labeled issue or pull request.",
-            enabled: true,
+            enabled: false,
             canManage: true,
             agent: {
               id: "c0000000-0000-4000-a000-000000000001",
@@ -197,12 +198,20 @@ describe("github settings page", () => {
       screen.findByText("ready-for-zero"),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("Created by me")).toBeInTheDocument();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
 
     click(screen.getByLabelText("Actions for ready-for-zero"));
     click(await screen.findByText("Edit"));
 
     const editDialog = await screen.findByRole("dialog");
+    const enableSwitch = within(editDialog).getByRole("switch", {
+      name: "Enable listener",
+    });
+    expect(enableSwitch).not.toBeChecked();
+    click(enableSwitch);
+    expect(
+      within(editDialog).getByRole("switch", { name: "Disable listener" }),
+    ).toBeChecked();
     await fill(within(editDialog).getByLabelText("Label"), "needs-agent");
     await fill(
       within(editDialog).getByLabelText("Prompt"),
@@ -213,7 +222,9 @@ describe("github settings page", () => {
     await waitFor(() => {
       const integration = getMockGithubIntegration();
       expect(integration?.labelListeners[0]?.labelName).toBe("needs-agent");
+      expect(integration?.labelListeners[0]?.enabled).toBeTruthy();
       expect(screen.getByText("needs-agent")).toBeInTheDocument();
+      expect(screen.queryByText("Disabled")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Actions for needs-agent"));
