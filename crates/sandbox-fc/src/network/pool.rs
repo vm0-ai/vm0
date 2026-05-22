@@ -3546,6 +3546,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_release_keeps_lease_when_namespace_already_queued() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        pool.proxy_port = Some(8080);
+        let info = test_info("test-ns");
+        let mut lease = Some(pool.checkout(info.clone()).unwrap());
+        pool.proxy_queue.push_back(info);
+
+        let err = pool.release(&mut lease).await.unwrap_err();
+
+        assert!(matches!(err, NetworkError::InvalidLease(_)));
+        assert!(lease.is_some());
+        assert!(pool.plain_queue.is_empty());
+        assert_eq!(pool.proxy_queue.len(), 1);
+        assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+
+        let _ = lease.take().unwrap().into_info_for_test();
+        pool.in_flight.clear();
+        pool.proxy_queue.clear();
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn release_keeps_lease_on_wrong_pool_instance() {
         let mut pool = NetnsPool::inactive_for_test();
         pool.active = true;
