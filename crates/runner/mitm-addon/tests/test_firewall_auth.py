@@ -312,6 +312,34 @@ class TestGetFirewallHeaders:
         mock_fetch.assert_called_once()
         assert require_cached_headers(cache_key).query == cached_query
 
+    async def test_base_and_query_are_cached_together(self):
+        """auth.base and auth.query survive the same cache entry."""
+        cache_key = ("run-1", "api-1")
+        cached_base = "https://example.com/webhook/secret"
+        cached_query = {"api_key": "cached-key", "empty_auth": ""}
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": {},
+                "base": cached_base,
+                "query": cached_query,
+            }
+        )
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            first = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            second = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert first["base"] == cached_base
+        assert first["query"] == cached_query
+        assert first["cache_hit"] is False
+        assert second["base"] == cached_base
+        assert second["query"] == cached_query
+        assert second["cache_hit"] is True
+        mock_fetch.assert_called_once()
+        cached = require_cached_headers(cache_key)
+        assert cached.base == cached_base
+        assert cached.query == cached_query
+
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
         cache_key = ("run-1", "api-1")
@@ -868,6 +896,37 @@ class TestFetchFirewallHeaders:
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
+
+    def test_includes_auth_base_and_query_in_request_body(self, headers):
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {
+                "headers": {},
+                "base": "https://example.com/webhook/secret",
+                "query": {"api_key": "resolved-key"},
+            }
+        ).encode()
+
+        with (
+            patch("auth.urllib.request.Request") as mock_req_cls,
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                "https://api.vm0.ai",
+                auth_base="${{ secrets.WEBHOOK_URL }}",
+                auth_query={"api_key": "${{ secrets.API_KEY }}"},
+            )
+
+        assert result["base"] == "https://example.com/webhook/secret"
+        assert result["query"] == {"api_key": "resolved-key"}
+        body = json.loads(mock_req_cls.call_args[1]["data"])
+        assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
+        assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
 
     def test_includes_billable_firewall_flag_in_request_body(self, headers):
         mock_resp = MagicMock()
