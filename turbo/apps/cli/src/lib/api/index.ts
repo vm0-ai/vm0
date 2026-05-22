@@ -142,6 +142,10 @@ export {
   downloadGithubFile,
   initGithubFileUpload,
   completeGithubFileUpload,
+  getGithubInstallation,
+  createGithubLabelListener,
+  updateGithubLabelListener,
+  deleteGithubLabelListener,
 } from "./domains/integrations-github";
 
 // Domain modules - Integrations Phone
