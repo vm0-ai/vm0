@@ -443,6 +443,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret&wait=true"
 
+    def test_original_duplicate_of_encoded_trusted_base_query_key_dropped(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?to%6ben=secret",
+            {"rel_path": "/"},
+            "token=attacker&wait=true",
+        )
+        assert url == "https://example.com/hook?to%6ben=secret&wait=true"
+
     def test_original_semicolon_duplicate_query_key_dropped(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",
@@ -496,6 +504,15 @@ class TestBuildRewriteUrl:
             "https://example.com/hook?api_key=base&region=us",
             {"rel_path": "/"},
             "api_key=agent&q=test",
+            {"api_key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
+
+    def test_auth_query_overrides_encoded_base_and_original_query_keys(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?api%5Fkey=base&region=us",
+            {"rel_path": "/"},
+            "api%5fkey=agent&q=test",
             {"api_key": "trusted key"},
         )
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
