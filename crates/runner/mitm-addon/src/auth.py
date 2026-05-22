@@ -287,7 +287,7 @@ async def fetch_firewall_headers(
     )
 
 
-HOP_BY_HOP = frozenset(
+HOP_BY_HOP: frozenset[str] = frozenset(
     (
         "connection",
         "keep-alive",

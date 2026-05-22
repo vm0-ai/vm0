@@ -1017,15 +1017,15 @@ class TestForwardRequestSecurity:
 
     def test_rejects_file_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            auth._forward_request_sync("file:///etc/passwd", "GET", {}, None)
+            auth._forward_request_sync("file:///etc/passwd", "GET", [], None)
 
     def test_rejects_ftp_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            auth._forward_request_sync("ftp://evil.com/file", "GET", {}, None)
+            auth._forward_request_sync("ftp://evil.com/file", "GET", [], None)
 
     def test_rejects_empty_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            auth._forward_request_sync("//no-scheme.com/path", "GET", {}, None)
+            auth._forward_request_sync("//no-scheme.com/path", "GET", [], None)
 
     def test_filters_hop_by_hop_from_response(self):
         filtered = auth._filter_response_headers(
@@ -1224,7 +1224,7 @@ class TestForwardRequestResourceCleanup:
         conn = MagicMock()
         conn.getresponse.return_value = resp
         with patch.object(auth.http_client, "HTTPSConnection", return_value=conn):
-            status, body, _ = auth._forward_request_sync("https://example.com", "GET", {}, None)
+            status, body, _ = auth._forward_request_sync("https://example.com", "GET", [], None)
         assert status == 200
         assert body == b"ok"
         resp.close.assert_called_once()
@@ -1244,7 +1244,7 @@ class TestForwardRequestResourceCleanup:
 
         with patch.object(auth.http_client, "HTTPSConnection", return_value=conn):
             status, body, headers = auth._forward_request_sync(
-                "https://example.com", "GET", {}, None
+                "https://example.com", "GET", [], None
             )
 
         assert status == 429
@@ -1265,7 +1265,7 @@ class TestForwardRequestResourceCleanup:
             patch.object(auth.http_client, "HTTPSConnection", return_value=conn),
             pytest.raises(OSError, match="socket closed"),
         ):
-            auth._forward_request_sync("https://example.com", "GET", {}, None)
+            auth._forward_request_sync("https://example.com", "GET", [], None)
         resp.close.assert_called_once()
         conn.close.assert_called_once()
 
@@ -1276,5 +1276,5 @@ class TestForwardRequestResourceCleanup:
             patch.object(auth.http_client, "HTTPSConnection", return_value=conn),
             pytest.raises(ConnectionError, match="connect failed"),
         ):
-            auth._forward_request_sync("https://example.com", "GET", {}, None)
+            auth._forward_request_sync("https://example.com", "GET", [], None)
         conn.close.assert_called_once()
