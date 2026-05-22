@@ -238,6 +238,20 @@ def _join_query_pairs(pairs: list[_QueryPair]) -> str:
     return "".join(query_parts)
 
 
+def _drop_leading_separator(pairs: list[_QueryPair]) -> list[_QueryPair]:
+    if not pairs:
+        return []
+    _, raw_pair = pairs[0]
+    return [("", raw_pair), *pairs[1:]]
+
+
+def _join_query_sources(*sources: list[_QueryPair]) -> str:
+    source_queries = [
+        _join_query_pairs(_drop_leading_separator(source)) for source in sources if source
+    ]
+    return "&".join(query for query in source_queries if query)
+
+
 def _encode_query_pairs(query: dict[str, str] | None) -> list[_QueryPair]:
     if not query:
         return []
@@ -258,7 +272,7 @@ def _merge_rewrite_query(
     filtered_orig_pairs = _filter_query_pairs(orig_pairs, blocked_orig_keys)
     auth_pairs = _encode_query_pairs(resolved_query)
 
-    return _join_query_pairs([*filtered_base_pairs, *filtered_orig_pairs, *auth_pairs])
+    return _join_query_sources(filtered_base_pairs, filtered_orig_pairs, auth_pairs)
 
 
 def build_rewrite_url(

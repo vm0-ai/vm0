@@ -451,6 +451,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret&wait=true"
 
+    def test_original_semicolon_duplicate_before_kept_pair_uses_source_separator(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "token=attacker;wait=true",
+        )
+        assert url == "https://example.com/hook?token=secret&wait=true"
+
     def test_duplicate_trusted_base_query_keys_preserved(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=first&token=second",
@@ -480,6 +488,15 @@ class TestBuildRewriteUrl:
             "https://example.com/hook?api_key=base&region=us",
             {"rel_path": "/"},
             "api_key=agent&q=test",
+            {"api_key": "trusted key"},
+        )
+        assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
+
+    def test_auth_query_overrides_semicolon_base_without_prefixing_kept_pair(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?api_key=base;region=us",
+            {"rel_path": "/"},
+            "q=test",
             {"api_key": "trusted key"},
         )
         assert url == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
