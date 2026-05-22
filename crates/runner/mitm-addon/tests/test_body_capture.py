@@ -593,6 +593,27 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "base64"
         assert base64.b64decode(entry["response_body"]) == response_body
 
+    def test_large_non_utf8_text_bodies_capture_truncated_base64(self, real_flow):
+        request_body = b"\xff" + b"r" * STREAM_BUFFER_LIMIT
+        response_body = b"\xfe" + b"s" * STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_body=request_body,
+            request_content_type="text/plain",
+            response_body=response_body,
+            response_content_type="text/plain",
+            include_request_id=True,
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == request_body[:STREAM_BUFFER_LIMIT]
+        assert entry["request_body_truncated"] is True
+        assert entry["response_body_encoding"] == "base64"
+        assert base64.b64decode(entry["response_body"]) == response_body[:STREAM_BUFFER_LIMIT]
+        assert entry["response_body_truncated"] is True
+
     def test_captures_response_body_from_stream_buffer(self, real_flow):
         """When stream_buffer is present, response body should be read from it."""
         flow = real_flow(
