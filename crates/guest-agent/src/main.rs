@@ -1001,6 +1001,23 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_leaves_unrelated_diagnostic_unchanged() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(2)
+        .with_failure_detail_source(FailureDetailSource::Stderr);
+        let unchanged = with_cli_failure_reason(
+            diagnostic.clone(),
+            "permission denied while running command",
+        );
+
+        assert_eq!(unchanged, diagnostic);
+    }
+
+    #[test]
     fn cli_failure_reason_is_attached_without_changing_failure_class() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
