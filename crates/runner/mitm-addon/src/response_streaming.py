@@ -1,6 +1,7 @@
 """Response streaming setup and parser state for the mitmproxy addon."""
 
 import urllib.parse
+from collections.abc import Callable
 
 from mitmproxy import http
 
@@ -21,38 +22,34 @@ _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _X_JSON_RESPONSE_FINISH = "x_json_response_finish"
 
+_ResponseChunkParser = Callable[[bytes], None]
+
 
 def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
     return flow.metadata.get("cli_agent_type") == "codex"
 
 
-def configure_response_stream(flow: http.HTTPFlow) -> None:
-    """
-    Enable response streaming with body buffering.
+def _make_response_chunk_parser(
+    feed: _ResponseChunkParser,
+    headers: http.Headers,
+) -> _ResponseChunkParser:
+    decompressor = body_utils.create_stream_decompressor(headers)
+    if decompressor is None:
+        return feed
 
-    Uses a callback to stream response data to the client immediately
-    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
-    Once the limit is exceeded, buffering stops but streaming continues
-    uninterrupted.  The buffered body is available in the ``response()``
-    hook via ``flow.metadata["stream_buffer"]``.
-    """
-    if not flow.response:
-        return
+    def parse_chunk(chunk: bytes) -> None:
+        feed(decompressor(chunk))
 
-    buf = bytearray()
-    state = {"truncated": False, "total_bytes": 0}
+    return parse_chunk
 
+
+def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParser | None:
     # Set up usage extraction for billable response classes that need body
     # inspection. The forensic stream_buffer remains capped; billing parsers
     # consume chunks separately so a large response cannot grow that buffer.
-    sse_parser = None
-    sse_decompressor = None
-    model_json_parser = None
-    model_json_decompressor = None
-    ndjson_parser = None
-    ndjson_decompressor = None
-    x_json_parser = None
-    x_json_decompressor = None
+    if not flow.response:
+        return None
+
     firewall_name = flow.metadata.get("firewall_name", "")
     is_model_provider = firewall_name.startswith("model-provider:")
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
@@ -92,42 +89,59 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     ):
         flow.metadata["model_provider_usage"] = {}
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
-    elif is_billable_model_provider:
+        return None
+    if is_billable_model_provider:
         content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             if uses_openai_responses_usage_protocol(flow):
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor()
             else:
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor()
-            sse_parser = parser_fn
             flow.metadata["model_provider_usage"] = usage_dict
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = parser_fn.finish
-            sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+            return _make_response_chunk_parser(parser_fn, flow.response.headers)
+
+        if uses_openai_responses_usage_protocol(flow):
+            extractor = usage.create_openai_responses_json_usage_extractor()
         else:
-            if uses_openai_responses_usage_protocol(flow):
-                extractor = usage.create_openai_responses_json_usage_extractor()
-            else:
-                extractor = usage.create_anthropic_messages_json_usage_extractor()
-            model_json_parser = extractor.feed
-            flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
-            model_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
-    elif is_x_stream:
+            extractor = usage.create_anthropic_messages_json_usage_extractor()
+        flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
+        return _make_response_chunk_parser(extractor.feed, flow.response.headers)
+    if is_x_stream:
         parser_fn, ndjson_state = usage.x.create_ndjson_extractor()
-        ndjson_parser = parser_fn
         # Deliberately NOT "model_provider_usage" — that key would route through
         # report_model_provider_usage and trigger the model-provider webhook.
         # x_ndjson_state is only consumed by report_connector_usage.
         flow.metadata["x_ndjson_state"] = ndjson_state
-        ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
-    elif (
+        return _make_response_chunk_parser(parser_fn, flow.response.headers)
+    if (
         is_x_flow
         and is_billable_flow
         and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
     ):
         extractor = usage.x.create_json_response_extractor()
-        x_json_parser = extractor.feed
         flow.metadata[_X_JSON_RESPONSE_FINISH] = extractor.finish
-        x_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+        return _make_response_chunk_parser(extractor.feed, flow.response.headers)
+
+    return None
+
+
+def configure_response_stream(flow: http.HTTPFlow) -> None:
+    """
+    Enable response streaming with body buffering.
+
+    Uses a callback to stream response data to the client immediately
+    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
+    Once the limit is exceeded, buffering stops but streaming continues
+    uninterrupted.  The buffered body is available in the ``response()``
+    hook via ``flow.metadata["stream_buffer"]``.
+    """
+    if not flow.response:
+        return
+
+    buf = bytearray()
+    state = {"truncated": False, "total_bytes": 0}
+    active_parser = _configure_response_usage_parser(flow)
 
     # Buffer cap policy:
     # - stream_buffer is only for forensic logging / capture and is always
@@ -144,18 +158,8 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
             else:
                 buf.extend(chunk[:remaining])
                 state["truncated"] = True
-        if sse_parser is not None:
-            plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
-            sse_parser(plaintext)
-        elif model_json_parser is not None:
-            plaintext = model_json_decompressor(chunk) if model_json_decompressor else chunk
-            model_json_parser(plaintext)
-        elif ndjson_parser is not None:
-            plaintext = ndjson_decompressor(chunk) if ndjson_decompressor else chunk
-            ndjson_parser(plaintext)
-        elif x_json_parser is not None:
-            plaintext = x_json_decompressor(chunk) if x_json_decompressor else chunk
-            x_json_parser(plaintext)
+        if active_parser is not None:
+            active_parser(chunk)
         return chunk
 
     flow.response.stream = stream_and_buffer
