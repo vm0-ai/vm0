@@ -696,6 +696,20 @@ class TestAddCaptureFields:
         with pytest.raises(KeyError, match="truncated"):
             add_capture_fields(flow, entry)
 
+    def test_non_empty_compressed_stream_buffer_requires_state(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            response_encoding="gzip",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray(gzip.compress(b""))
+        entry = {}
+        with pytest.raises(KeyError, match="truncated"):
+            add_capture_fields(flow, entry)
+
     def test_non_empty_stream_buffer_requires_truncated_state(self, real_flow):
         body = b'{"ok": true}'
         flow = real_flow(
