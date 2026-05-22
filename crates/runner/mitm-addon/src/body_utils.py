@@ -357,10 +357,14 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         res_ct = flow.response.headers.get("content-type", "")
         # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
         # Also check decompressed size in case it expanded beyond the limit.
+        already_truncated = bool(
+            stream_state
+            and (stream_state["truncated"] if body else stream_state.get("truncated", False))
+        )
         _set_body_fields(
             log_entry,
             "response",
             body,
             res_ct,
-            already_truncated=bool(stream_state and stream_state.get("truncated", False)),
+            already_truncated=already_truncated,
         )
