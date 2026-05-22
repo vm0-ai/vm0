@@ -21,7 +21,7 @@ use super::super::support::{
 use super::start_capture_operation;
 use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
-use crate::{SupervisedExecControl, SupervisedExecRequest};
+use crate::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
 
 fn supervised_request(command: &str) -> SupervisedExecRequest<'_> {
     SupervisedExecRequest {
@@ -647,6 +647,56 @@ async fn supervised_exec_cancel_handle_timeout_before_write_does_not_poison_conn
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(is_connected(&host));
     assert_eq!(operation_count(&host), 0);
+}
+
+#[tokio::test]
+async fn supervised_exec_cancel_handle_after_terminal_result_preserves_wait_and_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-handle-after-result"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let mut handle = task.await.unwrap().unwrap();
+    let cancel_handle = handle
+        .take_cancel_handle()
+        .expect("supervised handle should expose a cancel handle");
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+    wait_for_operation_count(&host, 0).await;
+
+    cancel_handle.cancel(Duration::from_secs(5)).await.unwrap();
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
+    vsock_proto::decode_exec_cancel(&cancel.payload).unwrap();
+
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(
+        result.stdout,
+        ExecOwnedCapturedOutput::Captured {
+            bytes: b"done".to_vec(),
+            truncated: false,
+        }
+    );
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
