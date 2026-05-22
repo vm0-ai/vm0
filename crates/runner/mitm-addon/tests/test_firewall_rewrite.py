@@ -4,7 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from mitmproxy import http
 
@@ -1159,6 +1159,61 @@ class TestAuthQueryInjection:
         forwarded_url = call_args[0][0]
         assert "api_key=resolved-key-456" in forwarded_url
         assert forwarded_url.startswith("https://real-api.com/webhook/secret")
+
+    async def test_query_params_overwrite_existing_rewrite_url_keys(
+        self, real_flow, headers, mitm_ctx
+    ):
+        """auth.query overwrites duplicate keys from base and original query in rewrite path."""
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/hook?api_key=agent-key&q=test",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
+            "auth": {
+                "headers": {},
+                "base": "${{ secrets.WEBHOOK }}",
+                "query": {"api_key": "${{ secrets.KEY }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+            "billableFirewalls": [],
+        }
+        match_info = {
+            "name": "test",
+            "permission": "send",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://real-api.com/webhook/secret?api_key=base-key&mode=fast",
+            "resolved_secrets": ["WEBHOOK", "KEY"],
+            "cache_hit": False,
+            "query": {"api_key": "resolved-key-456"},
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        forwarded = urlparse(mock_forward.call_args[0][0])
+        query = parse_qs(forwarded.query, keep_blank_values=True)
+        assert forwarded.scheme == "https"
+        assert forwarded.netloc == "real-api.com"
+        assert forwarded.path == "/webhook/secret"
+        assert query["api_key"] == ["resolved-key-456"]
+        assert query["mode"] == ["fast"]
+        assert query["q"] == ["test"]
 
     async def test_no_query_injection_when_absent(self, real_flow, headers, mitm_ctx):
         """No query modification when auth.query is not present."""
