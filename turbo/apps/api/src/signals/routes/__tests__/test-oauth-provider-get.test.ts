@@ -504,7 +504,7 @@ describe("/api/test/oauth-provider/*", () => {
 
       expect(response.status).toBe(200);
       const body = await readJson<TokenBody>(response);
-      expect(body.expires_in).toBe(30);
+      expect(body.expires_in).toBe(55);
     });
   });
 

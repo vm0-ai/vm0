@@ -23,7 +23,7 @@ import {
 
 const DEFAULT_EXPIRES_IN = 3600;
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
-const SHORT_LIVED_EXPIRES_IN = 30;
+const SHORT_LIVED_EXPIRES_IN = 55;
 
 function mintTokensForScenario(
   scenario: TestOAuthScenario,

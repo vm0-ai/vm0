@@ -101,9 +101,10 @@ EOF
 }
 
 append_test_oauth_bypass_headers() {
+    local -n headers_ref="$1"
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-        curl_args+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        headers_ref+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        headers_ref+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
 }
 
@@ -130,7 +131,7 @@ connect_test_oauth_via_authorization_code() {
     local authorize_headers="$BATS_FILE_TMPDIR/test-oauth-authorize.headers"
     local authorize_body="$BATS_FILE_TMPDIR/test-oauth-authorize.body"
     local curl_args=(-sS -D "$authorize_headers" -o "$authorize_body" -w "%{http_code}")
-    append_test_oauth_bypass_headers
+    append_test_oauth_bypass_headers curl_args
     local authorize_status
     authorize_status=$(curl "${curl_args[@]}" "$authorization_url")
     if [[ "$authorize_status" != "302" ]]; then
@@ -150,7 +151,7 @@ connect_test_oauth_via_authorization_code() {
     local callback_headers="$BATS_FILE_TMPDIR/test-oauth-callback.headers"
     local callback_body="$BATS_FILE_TMPDIR/test-oauth-callback.body"
     curl_args=(-sS -D "$callback_headers" -o "$callback_body" -w "%{http_code}")
-    append_test_oauth_bypass_headers
+    append_test_oauth_bypass_headers curl_args
     local callback_status
     callback_status=$(curl "${curl_args[@]}" "$callback_url")
     if [[ "$callback_status" != "307" ]]; then
