@@ -815,9 +815,44 @@ pub struct SupervisedExecHandle {
     seq: Option<u32>,
     pid: u32,
     diagnostic: ExecOperationDiagnostic,
+    cancel_handle_taken: bool,
     result_rx: Option<oneshot::Receiver<io::Result<ExecOperationResult>>>,
     stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
     control: Option<ExecControlHandle>,
+}
+
+/// One-shot handle that sends `MSG_EXEC_CANCEL` for a supervised exec operation.
+pub struct SupervisedExecCancelHandle {
+    shared: Arc<Shared>,
+    seq: u32,
+    diagnostic: ExecOperationDiagnostic,
+}
+
+impl SupervisedExecCancelHandle {
+    /// Send the cancel frame without consuming the terminal exec result.
+    ///
+    /// The paired [`SupervisedExecHandle`] still owns the result receiver and must
+    /// be waited or abandoned by its caller.
+    pub async fn cancel(self, timeout: Duration) -> io::Result<()> {
+        tokio::time::timeout(
+            timeout,
+            send_supervised_exec_cancel_frame(&self.shared, self.seq, &self.diagnostic),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            tracing::warn!(
+                seq = self.seq,
+                label = %self.diagnostic.label_log,
+                elapsed_ms = self.diagnostic.elapsed_ms(),
+                "supervised exec operation cancel write timed out"
+            );
+            self.shared.poison_connection();
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "supervised exec cancel write timed out",
+            ))
+        })
+    }
 }
 
 impl SupervisedExecHandle {
@@ -829,6 +864,21 @@ impl SupervisedExecHandle {
     /// Return a cloneable exec-control handle when control was enabled.
     pub fn control_handle(&self) -> Option<ExecControlHandle> {
         self.control.clone()
+    }
+
+    /// Take a one-shot handle that can send `MSG_EXEC_CANCEL` without consuming
+    /// this handle's terminal result receiver.
+    pub fn take_cancel_handle(&mut self) -> Option<SupervisedExecCancelHandle> {
+        if self.cancel_handle_taken {
+            return None;
+        }
+        let seq = self.seq?;
+        self.cancel_handle_taken = true;
+        Some(SupervisedExecCancelHandle {
+            shared: Arc::clone(&self.shared),
+            seq,
+            diagnostic: self.diagnostic.clone(),
+        })
     }
 
     /// Send an exec-control request for this supervised operation.
@@ -919,23 +969,7 @@ impl SupervisedExecHandle {
                 "supervised exec operation closed",
             )
         })?;
-        let payload = vsock_proto::encode_exec_cancel();
-        write_frame(
-            &self.shared,
-            MSG_EXEC_CANCEL,
-            seq,
-            &payload,
-            Some(self.diagnostic.frame("cancel")),
-            None,
-            FrameWriteObserver::default(),
-        )
-        .await?;
-        tracing::info!(
-            seq = seq,
-            label = %self.diagnostic.label_log,
-            elapsed_ms = self.diagnostic.elapsed_ms(),
-            "supervised exec operation cancel sent"
-        );
+        send_supervised_exec_cancel_frame(&self.shared, seq, &self.diagnostic).await?;
 
         let result = self.wait_with_timeout(timeout, true).await?;
         Ok(ExecCancelWaitResult {
@@ -1165,6 +1199,31 @@ impl Drop for ExecOperationCancelOnDropGuard {
 
 fn exec_operation_protocol_error(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
+}
+
+async fn send_supervised_exec_cancel_frame(
+    shared: &Arc<Shared>,
+    seq: u32,
+    diagnostic: &ExecOperationDiagnostic,
+) -> io::Result<()> {
+    let payload = vsock_proto::encode_exec_cancel();
+    write_frame(
+        shared,
+        MSG_EXEC_CANCEL,
+        seq,
+        &payload,
+        Some(diagnostic.frame("cancel")),
+        None,
+        FrameWriteObserver::default(),
+    )
+    .await?;
+    tracing::info!(
+        seq = seq,
+        label = %diagnostic.label_log,
+        elapsed_ms = diagnostic.elapsed_ms(),
+        "supervised exec operation cancel sent"
+    );
+    Ok(())
 }
 
 fn exec_control_status_error(status: ExecControlStatus, diagnostic: &str) -> io::Error {
@@ -2366,6 +2425,7 @@ where
         seq: Some(seq),
         pid,
         diagnostic,
+        cancel_handle_taken: false,
         result_rx: Some(result_rx),
         stream_rx,
         control: control_nonce.map(|control_nonce| ExecControlHandle {

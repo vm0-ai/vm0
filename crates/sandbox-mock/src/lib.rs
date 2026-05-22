@@ -58,6 +58,11 @@ pub struct StartProcessCall {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessCancelCall {
+    pub timeout: Duration,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WriteFileCall {
     pub path: String,
     pub content: Vec<u8>,
@@ -317,6 +322,15 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
+    /// Whether factory-created sandboxes expose a process cancel handle.
+    process_cancel_supported: Mutex<bool>,
+    /// Recorded process cancel calls across all sandboxes built from this
+    /// override set.
+    process_cancel_calls: Mutex<Vec<ProcessCancelCall>>,
+    /// Wakes tests waiting for process cancel calls to be recorded.
+    process_cancel_notify: tokio::sync::Notify,
+    /// FIFO queue of process cancel errors consumed by cancel handles.
+    process_cancel_errors: Mutex<VecDeque<String>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -345,6 +359,10 @@ impl MockSandboxOverrides {
             destroy_behaviors: Mutex::new(VecDeque::new()),
             start_process_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
+            process_cancel_supported: Mutex::new(true),
+            process_cancel_calls: Mutex::new(Vec::new()),
+            process_cancel_notify: tokio::sync::Notify::new(),
+            process_cancel_errors: Mutex::new(VecDeque::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
             destroy_calls: Mutex::new(0),
@@ -536,6 +554,39 @@ impl MockSandboxOverrides {
         self.start_process_stdout_chunks
             .lock_ignoring_poison()
             .push_back(chunks);
+    }
+
+    /// Configure whether future `start_process` handles include a cancel handle.
+    pub fn set_process_cancel_supported(&self, supported: bool) {
+        *self.process_cancel_supported.lock_ignoring_poison() = supported;
+    }
+
+    /// Recorded process cancel calls across all sandboxes built from this
+    /// override set, in call order.
+    pub fn process_cancel_calls(&self) -> Vec<ProcessCancelCall> {
+        self.process_cancel_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Wait until at least `expected` process cancel calls have been recorded.
+    pub async fn wait_for_process_cancel_calls(&self, expected: usize, timeout: Duration) -> bool {
+        tokio::time::timeout(timeout, async {
+            loop {
+                let notified = self.process_cancel_notify.notified();
+                if self.process_cancel_calls.lock_ignoring_poison().len() >= expected {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .is_ok()
+    }
+
+    /// Queue a process cancel send error consumed by the next cancel handle.
+    pub fn push_process_cancel_error(&self, message: impl Into<String>) {
+        self.process_cancel_errors
+            .lock_ignoring_poison()
+            .push_back(message.into());
     }
 }
 
@@ -969,15 +1020,45 @@ impl Sandbox for MockSandbox {
                 Box::pin(async move { Ok(ProcessControlAck { message_id }) })
             })
         });
+        let process_cancel = self.overrides.as_ref().and_then(|overrides| {
+            if !*overrides.process_cancel_supported.lock_ignoring_poison() {
+                return None;
+            }
+            let overrides = Arc::clone(overrides);
+            Some(GuestProcessCancelHandle::new(move |timeout| {
+                Box::pin(async move {
+                    overrides
+                        .process_cancel_calls
+                        .lock_ignoring_poison()
+                        .push(ProcessCancelCall { timeout });
+                    overrides.process_cancel_notify.notify_waiters();
+                    if let Some(message) = overrides
+                        .process_cancel_errors
+                        .lock_ignoring_poison()
+                        .pop_front()
+                    {
+                        return Err(std::io::Error::other(message));
+                    }
+                    if let Some(gate) = &overrides.wait_process_gate {
+                        gate.notify_one();
+                    }
+                    Ok(())
+                })
+            }))
+        });
 
-        Ok(GuestProcessHandle::new(
+        let mut handle = GuestProcessHandle::new(
             1,
             rx,
             control,
             GuestProcessWaiter::new(|_timeout| {
                 Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
             }),
-        ))
+        );
+        if let Some(process_cancel) = process_cancel {
+            handle = handle.with_cancel_handle(process_cancel);
+        }
+        Ok(handle)
     }
 
     async fn wait_process(

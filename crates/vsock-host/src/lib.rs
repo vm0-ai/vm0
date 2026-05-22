@@ -51,8 +51,8 @@ use vsock_proto::{
 pub use exec_operation::{
     ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
     ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
-    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecControl,
-    SupervisedExecHandle, SupervisedExecRequest,
+    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecCancelHandle,
+    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
 

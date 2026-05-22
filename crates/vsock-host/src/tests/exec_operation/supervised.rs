@@ -570,6 +570,46 @@ async fn supervised_exec_cancel_and_wait_sends_cancel_and_waits_for_cancelled_re
 }
 
 #[tokio::test]
+async fn supervised_exec_cancel_handle_sends_cancel_without_consuming_wait() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-handle"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let mut handle = task.await.unwrap().unwrap();
+    let cancel_handle = handle
+        .take_cancel_handle()
+        .expect("supervised handle should expose a cancel handle");
+    assert!(handle.take_cancel_handle().is_none());
+
+    let cancel_task =
+        tokio::spawn(async move { cancel_handle.cancel(Duration::from_secs(5)).await });
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
+    vsock_proto::decode_exec_cancel(&cancel.payload).unwrap();
+
+    cancel_task.await.unwrap().unwrap();
+    assert_eq!(operation_count(&host), 1);
+
+    send_exec_result(&mut guest, start.seq, ExecTermination::Cancelled, b"", b"").await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn supervised_exec_cancel_after_terminal_result_returns_result_without_cancel_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

@@ -194,6 +194,33 @@ impl GuestProcessWaiter {
     }
 }
 
+/// Backend-owned future that resolves after a best-effort process cancel request
+/// has been sent to the guest.
+pub type GuestProcessCancelFuture =
+    Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + 'static>>;
+
+type GuestProcessCancelFn = dyn FnOnce(Duration) -> GuestProcessCancelFuture + Send + 'static;
+
+/// One-shot handle for asking the backend to cancel a started guest process.
+pub struct GuestProcessCancelHandle {
+    cancel: Box<GuestProcessCancelFn>,
+}
+
+impl GuestProcessCancelHandle {
+    pub fn new<F>(cancel: F) -> Self
+    where
+        F: FnOnce(Duration) -> GuestProcessCancelFuture + Send + 'static,
+    {
+        Self {
+            cancel: Box::new(cancel),
+        }
+    }
+
+    pub async fn cancel(self, timeout: Duration) -> std::io::Result<()> {
+        (self.cancel)(timeout).await
+    }
+}
+
 /// Backend-owned future that resolves when a process-control message is acknowledged.
 pub type GuestProcessControlFuture =
     Pin<Box<dyn Future<Output = std::io::Result<ProcessControlAck>> + Send + 'static>>;
@@ -245,6 +272,7 @@ pub struct GuestProcessHandle {
     /// `None` when the backend does not support streaming.
     stdout_rx: Option<ProcessOutputReceiver>,
     control: Option<GuestProcessControlHandle>,
+    cancel: Option<GuestProcessCancelHandle>,
     wait: Option<GuestProcessWaiter>,
     close_unclaimed_stdout: Option<Box<dyn FnOnce() + Send + 'static>>,
 }
@@ -261,6 +289,7 @@ impl GuestProcessHandle {
             pid,
             stdout_rx,
             control,
+            cancel: None,
             wait: Some(wait),
             close_unclaimed_stdout: None,
         }
@@ -285,6 +314,12 @@ impl GuestProcessHandle {
         self
     }
 
+    /// Attach a one-shot process cancel handle provided by the backend.
+    pub fn with_cancel_handle(mut self, cancel: GuestProcessCancelHandle) -> Self {
+        self.cancel = Some(cancel);
+        self
+    }
+
     /// Return a cloneable control handle when this process was started with a
     /// control sink.
     pub fn control_handle(&self) -> Option<GuestProcessControlHandle> {
@@ -298,6 +333,11 @@ impl GuestProcessHandle {
     /// pass the handle to that trait method instead.
     pub fn take_waiter(&mut self) -> Option<GuestProcessWaiter> {
         self.wait.take()
+    }
+
+    /// Consume the backend process cancel handle, if supported.
+    pub fn take_cancel_handle(&mut self) -> Option<GuestProcessCancelHandle> {
+        self.cancel.take()
     }
 
     /// Drop a stdout receiver that the caller did not take before waiting.

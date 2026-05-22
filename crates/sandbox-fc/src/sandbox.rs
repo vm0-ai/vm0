@@ -9,11 +9,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessControlHandle,
-    GuestProcessHandle, GuestProcessWaiter, ProcessControlAck, ProcessControlMode, ProcessExit,
-    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxError,
-    SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
-    StartProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
+    GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
+    ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
+    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
+    SandboxOperationReason, StartProcessRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -2013,13 +2013,22 @@ impl Sandbox for FirecrackerSandbox {
                 } else {
                     (None, None)
                 };
+                let process_cancel = handle.take_cancel_handle().map(|cancel| {
+                    GuestProcessCancelHandle::new(move |timeout| {
+                        Box::pin(async move { cancel.cancel(timeout).await })
+                    })
+                });
                 let wait = GuestProcessWaiter::new(move |timeout| {
                     Box::pin(async move {
                         let result = handle.wait(timeout).await?;
                         Ok(supervised_exec_result_to_process_exit(pid, result))
                     })
                 });
-                let public_handle = GuestProcessHandle::new(pid, stdout_rx, process_control, wait);
+                let mut public_handle =
+                    GuestProcessHandle::new(pid, stdout_rx, process_control, wait);
+                if let Some(process_cancel) = process_cancel {
+                    public_handle = public_handle.with_cancel_handle(process_cancel);
+                }
                 Ok(match close_stdout {
                     Some(close_stdout) => public_handle.with_unclaimed_stdout_cleanup(close_stdout),
                     None => public_handle,
