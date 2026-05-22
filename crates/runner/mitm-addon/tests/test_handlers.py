@@ -12,13 +12,13 @@ from collections.abc import Callable, Iterable
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mitmproxy import http
+from mitmproxy import http, websocket
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
+from wsproto.frame_protocol import Opcode
 
 import auth
 import body_utils
@@ -93,15 +93,25 @@ def _openai_model_websocket_flow(
     return flow
 
 
-def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes | str) -> None:
-    flow.websocket = SimpleNamespace(
+def _set_websocket_message(
+    flow: http.HTTPFlow,
+    *,
+    from_client: bool,
+    content: bytes,
+) -> None:
+    flow.websocket = websocket.WebSocketData(
         messages=[
-            SimpleNamespace(
-                from_client=False,
+            websocket.WebSocketMessage(
+                Opcode.TEXT,
+                from_client=from_client,
                 content=content,
             )
         ]
     )
+
+
+def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
+    _set_websocket_message(flow, from_client=False, content=content)
     mitm_addon.websocket_message(flow)
 
 
@@ -3342,26 +3352,23 @@ class TestResponseUsageReporting:
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
 
-        flow.websocket = SimpleNamespace(
-            messages=[
-                SimpleNamespace(
-                    from_client=False,
-                    content=json.dumps(
-                        {
-                            "type": "response.completed",
-                            "response": {
-                                "id": "resp_ws_1",
-                                "model": "gpt-5.5",
-                                "usage": {
-                                    "input_tokens": 50,
-                                    "output_tokens": 20,
-                                    "input_tokens_details": {"cached_tokens": 10},
-                                },
-                            },
-                        }
-                    ).encode(),
-                )
-            ]
+        _set_websocket_message(
+            flow,
+            from_client=False,
+            content=json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 50,
+                            "output_tokens": 20,
+                            "input_tokens_details": {"cached_tokens": 10},
+                        },
+                    },
+                }
+            ).encode(),
         )
 
         with (
@@ -3510,7 +3517,7 @@ class TestResponseUsageReporting:
     def test_model_websocket_accepts_text_frame_content(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 
-        _feed_websocket_server_message(
+        response_streaming.feed_model_websocket_usage(
             flow,
             json.dumps(
                 {
@@ -3615,22 +3622,19 @@ class TestResponseUsageReporting:
         )
 
         mitm_addon.responseheaders(flow)
-        flow.websocket = SimpleNamespace(
-            messages=[
-                SimpleNamespace(
-                    from_client=True,
-                    content=json.dumps(
-                        {
-                            "type": "response.completed",
-                            "response": {
-                                "id": "resp_ws_1",
-                                "model": "gpt-5.5",
-                                "usage": {"input_tokens": 50, "output_tokens": 20},
-                            },
-                        }
-                    ).encode(),
-                )
-            ]
+        _set_websocket_message(
+            flow,
+            from_client=True,
+            content=json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 50, "output_tokens": 20},
+                    },
+                }
+            ).encode(),
         )
 
         with (
