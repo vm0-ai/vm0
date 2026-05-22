@@ -2939,11 +2939,19 @@ mod tests {
             slow: true,
             ..fast_expected
         };
+        let slow_one_shot_expected = ExecTerminalLogContext {
+            lifecycle: ExecTerminalLogLifecycle::OneShot,
+            ..slow_expected
+        };
 
         assert_eq!(exec_terminal_log_severity(fast_expected), None);
         assert_eq!(
             exec_terminal_log_severity(slow_expected),
             Some(ExecTerminalLogSeverity::Info)
+        );
+        assert_eq!(
+            exec_terminal_log_severity(slow_one_shot_expected),
+            Some(ExecTerminalLogSeverity::Warn)
         );
     }
 
@@ -2959,6 +2967,46 @@ mod tests {
             exec_terminal_log_severity(context),
             Some(ExecTerminalLogSeverity::Warn)
         );
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_warns_for_notable_slow_supervised_result() {
+        let clean_slow = clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            true,
+            ExecTermination::Exited { exit_code: 0 },
+        );
+        for context in [
+            ExecTerminalLogContext {
+                termination: ExecTermination::Exited { exit_code: 1 },
+                ..clean_slow
+            },
+            ExecTerminalLogContext {
+                stdout_truncated: true,
+                ..clean_slow
+            },
+            ExecTerminalLogContext {
+                stderr_truncated: true,
+                ..clean_slow
+            },
+            ExecTerminalLogContext {
+                stream_overflowed: true,
+                ..clean_slow
+            },
+            ExecTerminalLogContext {
+                diagnostic_present: true,
+                ..clean_slow
+            },
+            ExecTerminalLogContext {
+                termination: ExecTermination::TimedOut,
+                ..clean_slow
+            },
+        ] {
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Warn)
+            );
+        }
     }
 
     #[test]
