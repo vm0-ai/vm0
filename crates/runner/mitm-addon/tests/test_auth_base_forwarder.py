@@ -28,6 +28,17 @@ class TestAuthBaseForwarderSecurity:
         with pytest.raises(ValueError, match="Invalid upstream URL: invalid port"):
             forwarder._forward_request_sync("https://example.com:bad/path", "GET", [], None)
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://user@example.com/path",
+            "https://user:pass@example.com/path",
+        ],
+    )
+    def test_rejects_userinfo_authority(self, url):
+        with pytest.raises(ValueError, match="Unsupported URL authority"):
+            forwarder._forward_request_sync(url, "GET", [], None)
+
     def test_filters_hop_by_hop_from_response(self):
         filtered = forwarder._filter_response_headers(
             [

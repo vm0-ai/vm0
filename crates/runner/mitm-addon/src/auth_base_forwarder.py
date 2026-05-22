@@ -132,6 +132,11 @@ def _connection_cls(scheme: str):
     raise ValueError(f"Unsupported URL scheme: {scheme}")
 
 
+def _reject_userinfo(parsed: urllib.parse.SplitResult) -> None:
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Unsupported URL authority: userinfo is not allowed")
+
+
 def _outbound_request_headers(
     headers: list[tuple[str, str]],
     parsed: urllib.parse.SplitResult,
@@ -157,6 +162,7 @@ def _forward_request_sync(
     """
     parsed = urllib.parse.urlsplit(url)
     conn_cls = _connection_cls(parsed.scheme)
+    _reject_userinfo(parsed)
     host = parsed.hostname
     if not host:
         raise ValueError("Invalid upstream URL: missing host")
