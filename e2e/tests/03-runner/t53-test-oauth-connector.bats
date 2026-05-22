@@ -41,6 +41,8 @@ setup_file() {
     export ARTIFACT_NAME="e2e-test-oauth-artifact-${UNIQUE_ID}"
     export TEST_OAUTH_PROVIDER_URL="${VM0_API_URL/-www./-api.}"
 
+    enable_test_oauth_feature_switch
+
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
     $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
@@ -64,6 +66,14 @@ encode_test_email() {
         return 1
     fi
     printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g'
+}
+
+enable_test_oauth_feature_switch() {
+    local response
+    response=$(zero_curl "/api/zero/feature-switches" \
+        -X POST \
+        -d '{"switches":{"testOauthConnector":true}}') || return 1
+    printf '%s' "$response" | jq -e '.switches.testOauthConnector == true' >/dev/null
 }
 
 # Enable the test-oauth connector for a specific compose (user_connectors row).
