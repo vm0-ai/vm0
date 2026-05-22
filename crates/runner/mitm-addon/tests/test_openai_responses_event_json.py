@@ -174,6 +174,25 @@ def test_merge_preserves_positive_quantities_when_source_has_zero():
     }
 
 
+def test_merge_stores_zero_quantities_when_target_is_missing_category():
+    target = {}
+
+    merge_openai_responses_usage_result(
+        target,
+        {
+            "tokens.input": 0,
+            "tokens.output": 0,
+            "tokens.cache_read": 0,
+        },
+    )
+
+    assert target == {
+        "tokens.input": 0,
+        "tokens.output": 0,
+        "tokens.cache_read": 0,
+    }
+
+
 def test_merge_updates_with_positive_quantities():
     target = {
         "tokens.input": 0,
