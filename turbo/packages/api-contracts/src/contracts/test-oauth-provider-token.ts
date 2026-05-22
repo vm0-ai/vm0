@@ -11,7 +11,7 @@ export const testOAuthProviderTokenErrorSchema = z.object({
 
 export const testOAuthProviderTokenResponseSchema = z.object({
   access_token: z.string(),
-  refresh_token: z.string(),
+  refresh_token: z.string().nullable().optional(),
   token_type: z.literal("Bearer"),
   expires_in: z.number(),
   scope: z.string(),

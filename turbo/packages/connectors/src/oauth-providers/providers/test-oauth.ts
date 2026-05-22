@@ -34,7 +34,10 @@ interface UserInfo {
   email: string | null;
 }
 
-function resolveUrl(field: string, path: string): string {
+export function resolveTestOAuthProviderUrl(
+  field: string,
+  path: string,
+): string {
   if (!path) {
     throw new Error(`Test OAuth URL missing: ${field} is not set`);
   }
@@ -115,7 +118,7 @@ function runtimeBaseUrl(): string {
   return "http://localhost:3000";
 }
 
-function previewBypassHeaders(): Record<string, string> {
+export function testOAuthPreviewBypassHeaders(): Record<string, string> {
   return process.env.VERCEL_AUTOMATION_BYPASS_SECRET
     ? {
         "x-vercel-protection-bypass":
@@ -127,11 +130,17 @@ function previewBypassHeaders(): Record<string, string> {
 }
 
 function getAuthorizationUrl(): string {
-  return resolveUrl("authorizationUrl", TEST_OAUTH_AUTHORIZATION_URL);
+  return resolveTestOAuthProviderUrl(
+    "authorizationUrl",
+    TEST_OAUTH_AUTHORIZATION_URL,
+  );
 }
 
-function getTokenUrl(): string {
-  return resolveUrl("tokenUrl", getConnectorOAuthConfig("test-oauth").tokenUrl);
+function getTestOAuthTokenUrl(): string {
+  return resolveTestOAuthProviderUrl(
+    "tokenUrl",
+    getConnectorOAuthConfig("test-oauth").tokenUrl,
+  );
 }
 
 export function buildTestOAuthAuthorizationUrl(
@@ -161,11 +170,11 @@ async function postToken(
   body: URLSearchParams,
   operation: "exchange" | "refresh",
 ): Promise<TokenResponse> {
-  const response = await fetch(getTokenUrl(), {
+  const response = await fetch(getTestOAuthTokenUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      ...previewBypassHeaders(),
+      ...testOAuthPreviewBypassHeaders(),
     },
     body,
   });
@@ -228,7 +237,7 @@ export async function fetchTestOAuthUserInfo(
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        ...previewBypassHeaders(),
+        ...testOAuthPreviewBypassHeaders(),
       },
     },
   );

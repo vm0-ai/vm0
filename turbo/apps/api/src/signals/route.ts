@@ -167,6 +167,7 @@ import { storagesDownloadRoutes } from "./routes/storages-download";
 import { storagesListRoutes } from "./routes/storages-list";
 import { storagesPrepareRoutes } from "./routes/storages-prepare";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
+import { testOAuthProviderDeviceAuthorizationRoutes } from "./routes/test-oauth-provider-device-authorization";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
 import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
@@ -353,6 +354,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...runnersRoutes,
   ...testOAuthProviderAuthorizeRoutes,
+  ...testOAuthProviderDeviceAuthorizationRoutes,
   ...testOAuthProviderEchoRoutes,
   ...testOAuthProviderTokenRoutes,
   ...testOAuthProviderUserinfoRoutes,

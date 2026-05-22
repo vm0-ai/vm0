@@ -9,10 +9,12 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { nowDate } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
   decryptSecretValue,
@@ -26,6 +28,11 @@ const mocks = createZeroRouteMocks(context);
 const testOauthDeviceProvider = CONNECTOR_OAUTH_PROVIDERS["test-oauth-device"];
 const originalPollDeviceAuthorization =
   testOauthDeviceProvider.pollDeviceAuthorization;
+const TEST_OAUTH_DEVICE_CODE_URL =
+  "http://localhost:3000/api/test/oauth-provider/device/code";
+const TEST_OAUTH_TOKEN_URL =
+  "http://localhost:3000/api/test/oauth-provider/token";
+const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 function sessionTokenHash(sessionToken: string): string {
   return createHash("sha256").update(sessionToken).digest("hex");
@@ -77,6 +84,77 @@ function encryptedProviderState(deviceCode: string): string {
     JSON.stringify({
       connectorType: "test-oauth-device",
       deviceCode,
+    }),
+  );
+}
+
+function mockTestOAuthDeviceProvider(): void {
+  server.use(
+    http.post(TEST_OAUTH_DEVICE_CODE_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      return HttpResponse.json({
+        device_code: `test-device:${body.get("client_id")}:${body.get("scope")}`,
+        user_code: "TEST-DEVICE",
+        verification_uri: "https://oauth-device.test/device",
+        verification_uri_complete:
+          "https://oauth-device.test/device?user_code=TEST-DEVICE",
+        expires_in: 600,
+        interval: 5,
+      });
+    }),
+    http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      if (body.get("grant_type") !== DEVICE_CODE_GRANT_TYPE) {
+        return HttpResponse.json(
+          { error: "unsupported_grant_type" },
+          { status: 400 },
+        );
+      }
+
+      const deviceCode = body.get("device_code");
+      if (deviceCode === "pending") {
+        return HttpResponse.json(
+          { error: "authorization_pending" },
+          { status: 400 },
+        );
+      }
+      if (deviceCode === "slow-down") {
+        return HttpResponse.json({ error: "slow_down" }, { status: 400 });
+      }
+      if (deviceCode === "denied") {
+        return HttpResponse.json(
+          {
+            error: "access_denied",
+            error_description: "User denied the device authorization request",
+          },
+          { status: 400 },
+        );
+      }
+      if (deviceCode === "expired") {
+        return HttpResponse.json(
+          {
+            error: "expired_token",
+            error_description: "Device authorization expired",
+          },
+          { status: 400 },
+        );
+      }
+      if (deviceCode === "error") {
+        return HttpResponse.json(
+          {
+            error: "invalid_request",
+            error_description: "Synthetic device authorization error",
+          },
+          { status: 400 },
+        );
+      }
+
+      return HttpResponse.json({
+        access_token: `test-device-access:${body.get("client_id")}:${deviceCode}`,
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: "read",
+      });
     }),
   );
 }
@@ -169,6 +247,7 @@ describe("OAuth device authorization connector routes", () => {
   });
 
   async function setupUser() {
+    mockTestOAuthDeviceProvider();
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     users.push({ userId, orgId });

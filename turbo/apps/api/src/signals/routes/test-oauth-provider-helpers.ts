@@ -5,6 +5,10 @@ import { now } from "../../lib/time";
 
 export const TEST_OAUTH_CLIENT_ID = "test-oauth-client";
 export const TEST_OAUTH_CLIENT_SECRET = "test-oauth-secret";
+export const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
+export const TEST_OAUTH_DEVICE_USER_CODE = "TEST-DEVICE";
+export const TEST_OAUTH_DEVICE_VERIFICATION_URI =
+  "https://oauth-device.test/device";
 
 const TEST_OAUTH_SCENARIOS = [
   "success",

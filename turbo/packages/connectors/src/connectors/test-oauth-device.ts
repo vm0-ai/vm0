@@ -26,8 +26,11 @@ export const testOauthDevice = {
     defaultAuthMethod: "oauth",
     oauth: {
       flow: "device-authorization",
-      deviceAuthorizationUrl: "https://oauth-device.test/device/code",
-      tokenUrl: "https://oauth-device.test/token",
+      // Relative paths — the provider resolves them against the concrete
+      // app/API URL because the fake provider lives inside this same app and
+      // the preview URL host changes per deploy.
+      deviceAuthorizationUrl: "/api/test/oauth-provider/device/code",
+      tokenUrl: "/api/test/oauth-provider/token",
       client: {
         clientRegistration: "static",
         clientType: "public",

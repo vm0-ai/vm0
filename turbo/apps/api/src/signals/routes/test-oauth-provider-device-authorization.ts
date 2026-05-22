@@ -1,0 +1,74 @@
+import { command } from "ccstate";
+import { testOAuthProviderDeviceAuthorizationContract } from "@vm0/api-contracts/contracts/test-oauth-provider-device-authorization";
+
+import { request$ } from "../context/hono";
+import type { RouteEntry } from "../route";
+import {
+  isTestEndpointAllowed,
+  TEST_OAUTH_DEVICE_CLIENT_ID,
+  TEST_OAUTH_DEVICE_USER_CODE,
+  TEST_OAUTH_DEVICE_VERIFICATION_URI,
+  testEndpointNotFoundResponse,
+} from "./test-oauth-provider-helpers";
+
+const DEFAULT_EXPIRES_IN = 600;
+const DEFAULT_INTERVAL = 5;
+
+function errorResponse(
+  status: 400 | 401,
+  error: string,
+  errorDescription?: string,
+) {
+  return {
+    status,
+    body: errorDescription
+      ? { error, error_description: errorDescription }
+      : { error },
+  };
+}
+
+const deviceAuthorization$ = command(async ({ get }, signal: AbortSignal) => {
+  const request = get(request$);
+  const contentType = request.header("content-type") ?? "";
+  if (!contentType.includes("application/x-www-form-urlencoded")) {
+    if (!isTestEndpointAllowed(request)) {
+      return testEndpointNotFoundResponse();
+    }
+    return errorResponse(400, "invalid_request", "expected form body");
+  }
+
+  const text = await request.text();
+  signal.throwIfAborted();
+
+  if (!isTestEndpointAllowed(request)) {
+    return testEndpointNotFoundResponse();
+  }
+
+  const body = new URLSearchParams(text);
+  const clientId = body.get("client_id");
+  if (clientId !== TEST_OAUTH_DEVICE_CLIENT_ID) {
+    return errorResponse(401, "invalid_client");
+  }
+
+  const scope = body.get("scope") ?? "";
+  const deviceCode = `test-device:${clientId}:${scope}`;
+  return {
+    status: 200 as const,
+    body: {
+      device_code: deviceCode,
+      user_code: TEST_OAUTH_DEVICE_USER_CODE,
+      verification_uri: TEST_OAUTH_DEVICE_VERIFICATION_URI,
+      verification_uri_complete: `${TEST_OAUTH_DEVICE_VERIFICATION_URI}?user_code=${TEST_OAUTH_DEVICE_USER_CODE}`,
+      expires_in: DEFAULT_EXPIRES_IN,
+      interval: DEFAULT_INTERVAL,
+    },
+  };
+});
+
+export const testOAuthProviderDeviceAuthorizationRoutes: readonly RouteEntry[] =
+  [
+    {
+      route: testOAuthProviderDeviceAuthorizationContract.deviceAuthorization,
+      handler: deviceAuthorization$,
+    },
+  ];

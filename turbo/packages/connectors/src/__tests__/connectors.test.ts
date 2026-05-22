@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
@@ -252,99 +252,174 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
   });
 
   it("starts and polls the test OAuth device provider", async () => {
-    const credentials = getConnectorOAuthCredentials(
-      "test-oauth-device",
-      () => {
-        return undefined;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init: RequestInit | undefined) => {
+        const url = input.toString();
+        const body = new URLSearchParams(String(init?.body ?? ""));
+
+        if (url.endsWith("/api/test/oauth-provider/device/code")) {
+          return Response.json({
+            device_code: `test-device:${body.get("client_id")}:${body.get("scope")}`,
+            user_code: "TEST-DEVICE",
+            verification_uri: "https://oauth-device.test/device",
+            verification_uri_complete:
+              "https://oauth-device.test/device?user_code=TEST-DEVICE",
+            expires_in: 600,
+            interval: 5,
+          });
+        }
+
+        if (url.endsWith("/api/test/oauth-provider/token")) {
+          const deviceCode = body.get("device_code");
+          if (deviceCode === "pending") {
+            return Response.json(
+              { error: "authorization_pending" },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "slow-down") {
+            return Response.json({ error: "slow_down" }, { status: 400 });
+          }
+          if (deviceCode === "denied") {
+            return Response.json(
+              {
+                error: "access_denied",
+                error_description:
+                  "User denied the device authorization request",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "expired") {
+            return Response.json(
+              {
+                error: "expired_token",
+                error_description: "Device authorization expired",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "error") {
+            return Response.json(
+              {
+                error: "invalid_request",
+                error_description: "Synthetic device authorization error",
+              },
+              { status: 400 },
+            );
+          }
+
+          return Response.json({
+            access_token: `test-device-access:${body.get("client_id")}:${deviceCode}`,
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "read",
+          });
+        }
+
+        throw new Error(`Unexpected test OAuth device request: ${url}`);
       },
     );
-    expect(credentials?.configured).toBe(true);
+    vi.stubGlobal("fetch", fetchMock);
 
-    if (!credentials?.configured) {
-      throw new Error("Expected test-oauth-device OAuth credentials");
-    }
-
-    const startResult = await startConnectorOAuthDeviceAuthorization({
-      type: "test-oauth-device",
-      credentials,
-    });
-    expect(startResult).toStrictEqual({
-      deviceCode: "test-device:test-oauth-device-client:read",
-      userCode: "TEST-DEVICE",
-      verificationUri: "https://oauth-device.test/device",
-      verificationUriComplete:
-        "https://oauth-device.test/device?user_code=TEST-DEVICE",
-      expiresIn: 600,
-      interval: 5,
-    });
-
-    await expect(
-      pollConnectorOAuthDeviceAuthorization({
-        type: "test-oauth-device",
-        credentials,
-        deviceCode: "pending",
-      }),
-    ).resolves.toStrictEqual({ status: "pending" });
-    await expect(
-      pollConnectorOAuthDeviceAuthorization({
-        type: "test-oauth-device",
-        credentials,
-        deviceCode: "slow-down",
-      }),
-    ).resolves.toStrictEqual({ status: "slow_down" });
-    await expect(
-      pollConnectorOAuthDeviceAuthorization({
-        type: "test-oauth-device",
-        credentials,
-        deviceCode: "denied",
-      }),
-    ).resolves.toStrictEqual({
-      status: "denied",
-      error: "access_denied",
-      errorDescription: "User denied the device authorization request",
-    });
-    await expect(
-      pollConnectorOAuthDeviceAuthorization({
-        type: "test-oauth-device",
-        credentials,
-        deviceCode: "expired",
-      }),
-    ).resolves.toStrictEqual({
-      status: "expired",
-      error: "expired_token",
-      errorDescription: "Device authorization expired",
-    });
-    await expect(
-      pollConnectorOAuthDeviceAuthorization({
-        type: "test-oauth-device",
-        credentials,
-        deviceCode: "error",
-      }),
-    ).resolves.toStrictEqual({
-      status: "error",
-      error: "invalid_request",
-      errorDescription: "Synthetic device authorization error",
-    });
-    await expect(
-      pollConnectorOAuthDeviceAuthorization({
-        type: "test-oauth-device",
-        credentials,
-        deviceCode: startResult.deviceCode,
-      }),
-    ).resolves.toStrictEqual({
-      status: "complete",
-      token: {
-        accessToken:
-          "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
-        refreshToken: null,
-        scopes: ["read"],
-        userInfo: {
-          id: "test-oauth-device-user",
-          username: "test-oauth-device-user",
-          email: "test-oauth-device@example.com",
+    try {
+      const credentials = getConnectorOAuthCredentials(
+        "test-oauth-device",
+        () => {
+          return undefined;
         },
-      },
-    });
+      );
+      expect(credentials?.configured).toBe(true);
+
+      if (!credentials?.configured) {
+        throw new Error("Expected test-oauth-device OAuth credentials");
+      }
+
+      const startResult = await startConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+      });
+      expect(startResult).toStrictEqual({
+        deviceCode: "test-device:test-oauth-device-client:read",
+        userCode: "TEST-DEVICE",
+        verificationUri: "https://oauth-device.test/device",
+        verificationUriComplete:
+          "https://oauth-device.test/device?user_code=TEST-DEVICE",
+        expiresIn: 600,
+        interval: 5,
+      });
+
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: "pending",
+        }),
+      ).resolves.toStrictEqual({ status: "pending" });
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: "slow-down",
+        }),
+      ).resolves.toStrictEqual({ status: "slow_down" });
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: "denied",
+        }),
+      ).resolves.toStrictEqual({
+        status: "denied",
+        error: "access_denied",
+        errorDescription: "User denied the device authorization request",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: "expired",
+        }),
+      ).resolves.toStrictEqual({
+        status: "expired",
+        error: "expired_token",
+        errorDescription: "Device authorization expired",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: "error",
+        }),
+      ).resolves.toStrictEqual({
+        status: "error",
+        error: "invalid_request",
+        errorDescription: "Synthetic device authorization error",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuthorization({
+          type: "test-oauth-device",
+          credentials,
+          deviceCode: startResult.deviceCode,
+        }),
+      ).resolves.toStrictEqual({
+        status: "complete",
+        token: {
+          accessToken:
+            "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+          expiresIn: 3600,
+          refreshToken: null,
+          scopes: ["read"],
+          userInfo: {
+            id: "test-oauth-device-user",
+            username: "test-oauth-device-user",
+            email: "test-oauth-device@example.com",
+          },
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -909,8 +984,8 @@ describe("connector OAuth device authorization config", () => {
       getConnectorOAuthDeviceAuthorizationConfig("test-oauth-device"),
     ).toMatchObject({
       flow: "device-authorization",
-      deviceAuthorizationUrl: "https://oauth-device.test/device/code",
-      tokenUrl: "https://oauth-device.test/token",
+      deviceAuthorizationUrl: "/api/test/oauth-provider/device/code",
+      tokenUrl: "/api/test/oauth-provider/token",
       client: {
         clientRegistration: "static",
         clientType: "public",

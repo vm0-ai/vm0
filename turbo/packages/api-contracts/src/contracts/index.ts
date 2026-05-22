@@ -320,6 +320,13 @@ export {
   type TestOAuthProviderTokenResponse,
 } from "./test-oauth-provider-token";
 export {
+  testOAuthProviderDeviceAuthorizationContract,
+  testOAuthProviderDeviceAuthorizationErrorSchema,
+  testOAuthProviderDeviceAuthorizationResponseSchema,
+  type TestOAuthProviderDeviceAuthorizationContract,
+  type TestOAuthProviderDeviceAuthorizationResponse,
+} from "./test-oauth-provider-device-authorization";
+export {
   testOAuthProviderUserinfoContract,
   testOAuthProviderUserinfoErrorSchema,
   testOAuthProviderUserinfoResponseSchema,

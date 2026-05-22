@@ -11,6 +11,7 @@ import {
 
 const context = testContext();
 const AUTHORIZE_ROUTE = "/api/test/oauth-provider/authorize";
+const DEVICE_AUTHORIZATION_ROUTE = "/api/test/oauth-provider/device/code";
 const TOKEN_ROUTE = "/api/test/oauth-provider/token";
 const USERINFO_ROUTE = "/api/test/oauth-provider/userinfo";
 const ECHO_ROUTE = "/api/test/oauth-provider/echo";
@@ -33,10 +34,19 @@ interface UserinfoBody {
 
 interface TokenBody {
   readonly access_token: string;
-  readonly refresh_token: string;
+  readonly refresh_token?: string | null;
   readonly token_type: "Bearer";
   readonly expires_in: number;
   readonly scope: string;
+}
+
+interface DeviceAuthorizationBody {
+  readonly device_code: string;
+  readonly user_code: string;
+  readonly verification_uri: string;
+  readonly verification_uri_complete: string;
+  readonly expires_in: number;
+  readonly interval: number;
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
@@ -101,6 +111,21 @@ describe("/api/test/oauth-provider/*", () => {
     const response = await requestApp(
       TOKEN_ROUTE,
       tokenRequest({ grant_type: "authorization_code" }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("returns 404 for the device authorization route in production", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp(
+      DEVICE_AUTHORIZATION_ROUTE,
+      tokenRequest({
+        client_id: "test-oauth-device-client",
+        scope: "read",
+      }),
     );
 
     expect(response.status).toBe(404);
@@ -210,6 +235,93 @@ describe("/api/test/oauth-provider/*", () => {
       expect(response.status).toBe(400);
       await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
         error: "invalid_scenario",
+      });
+    });
+  });
+
+  describe("device authorization", () => {
+    it("starts a device authorization session", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        DEVICE_AUTHORIZATION_ROUTE,
+        tokenRequest({
+          client_id: "test-oauth-device-client",
+          scope: "read",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(
+        readJson<DeviceAuthorizationBody>(response),
+      ).resolves.toStrictEqual({
+        device_code: "test-device:test-oauth-device-client:read",
+        user_code: "TEST-DEVICE",
+        verification_uri: "https://oauth-device.test/device",
+        verification_uri_complete:
+          "https://oauth-device.test/device?user_code=TEST-DEVICE",
+        expires_in: 600,
+        interval: 5,
+      });
+    });
+
+    it("requires the preview bypass secret", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const denied = await requestApp(
+        DEVICE_AUTHORIZATION_ROUTE,
+        tokenRequest({
+          client_id: "test-oauth-device-client",
+          scope: "read",
+        }),
+      );
+      const allowed = await requestApp(DEVICE_AUTHORIZATION_ROUTE, {
+        ...tokenRequest({
+          client_id: "test-oauth-device-client",
+          scope: "read",
+        }),
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-vm0-test-endpoint-bypass": "preview-secret",
+        },
+      });
+
+      expect(denied.status).toBe(404);
+      await expect(denied.text()).resolves.toBe("Not found");
+      expect(allowed.status).toBe(200);
+    });
+
+    it("rejects requests without a form body", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(DEVICE_AUTHORIZATION_ROUTE, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+
+      expect(response.status).toBe(400);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_request",
+        error_description: "expected form body",
+      });
+    });
+
+    it("rejects an invalid client_id", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        DEVICE_AUTHORIZATION_ROUTE,
+        tokenRequest({
+          client_id: "wrong",
+          scope: "read",
+        }),
+      );
+
+      expect(response.status).toBe(401);
+      await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
+        error: "invalid_client",
       });
     });
   });
@@ -389,6 +501,10 @@ describe("/api/test/oauth-provider/*", () => {
         }),
       );
       const first = await readJson<TokenBody>(firstResponse);
+      const refreshToken = first.refresh_token;
+      if (!refreshToken) {
+        throw new Error("Expected refresh token");
+      }
 
       const response = await requestApp(
         TOKEN_ROUTE,
@@ -396,7 +512,7 @@ describe("/api/test/oauth-provider/*", () => {
           grant_type: "refresh_token",
           client_id: "test-oauth-client",
           client_secret: "test-oauth-secret",
-          refresh_token: first.refresh_token,
+          refresh_token: refreshToken,
         }),
       );
 
@@ -517,6 +633,101 @@ describe("/api/test/oauth-provider/*", () => {
       expect(response.status).toBe(400);
       await expect(readJson<ErrorBody>(response)).resolves.toStrictEqual({
         error: "unsupported_grant_type",
+      });
+    });
+  });
+
+  describe("token device_code", () => {
+    it("exchanges a valid device code for an access token", async () => {
+      mockEnv("ENV", "development");
+
+      const device = await requestApp(
+        DEVICE_AUTHORIZATION_ROUTE,
+        tokenRequest({
+          client_id: "test-oauth-device-client",
+          scope: "read",
+        }),
+      );
+      const deviceBody = await readJson<DeviceAuthorizationBody>(device);
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "test-oauth-device-client",
+          device_code: deviceBody.device_code,
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson<TokenBody>(response)).resolves.toStrictEqual({
+        access_token:
+          "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: "read",
+      });
+    });
+
+    it("returns standard pending and terminal device-code errors", async () => {
+      mockEnv("ENV", "development");
+
+      const pending = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "test-oauth-device-client",
+          device_code: "pending",
+        }),
+      );
+      const denied = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "test-oauth-device-client",
+          device_code: "denied",
+        }),
+      );
+
+      expect(pending.status).toBe(400);
+      await expect(readJson<ErrorBody>(pending)).resolves.toStrictEqual({
+        error: "authorization_pending",
+      });
+      expect(denied.status).toBe(400);
+      await expect(readJson<ErrorBody>(denied)).resolves.toStrictEqual({
+        error: "access_denied",
+        error_description: "User denied the device authorization request",
+      });
+    });
+
+    it("rejects invalid device grant requests", async () => {
+      mockEnv("ENV", "development");
+
+      const invalidClient = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "wrong",
+          device_code: "test-device:test-oauth-device-client:read",
+        }),
+      );
+      const missingDeviceCode = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "test-oauth-device-client",
+        }),
+      );
+
+      expect(invalidClient.status).toBe(401);
+      await expect(readJson<ErrorBody>(invalidClient)).resolves.toStrictEqual({
+        error: "invalid_client",
+      });
+      expect(missingDeviceCode.status).toBe(400);
+      await expect(
+        readJson<ErrorBody>(missingDeviceCode),
+      ).resolves.toStrictEqual({
+        error: "invalid_request",
+        error_description: "device_code required",
       });
     });
   });
