@@ -3300,6 +3300,10 @@ class TestResponseUsageReporting:
         )
 
         mitm_addon.responseheaders(flow)
+        assert flow.metadata["model_websocket_usage_enabled"] is True
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
+
         flow.websocket = SimpleNamespace(
             messages=[
                 SimpleNamespace(
