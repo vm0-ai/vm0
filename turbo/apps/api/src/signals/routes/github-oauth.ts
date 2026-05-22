@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
+import {
+  githubOauthContract,
+  type GithubOauthConnectQuery,
+} from "@vm0/api-contracts/contracts/github-oauth";
 import {
   getConnectorOAuthConfig,
   getConnectorOAuthCredentials,
@@ -13,6 +16,7 @@ import {
 } from "@vm0/connectors/auth-providers/oauth/providers/github";
 
 import { authRoute } from "../auth/auth-route";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -34,6 +38,7 @@ import {
   resolveGithubOauthOrgId,
   tryLinkGithubFromLocalRecord,
   tryLinkGithubFromRemoteInstallations,
+  verifyGithubConnectSignature,
 } from "../services/github-oauth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
@@ -109,6 +114,12 @@ function worksErrorRedirect(message: string): Response {
   return redirectResponse(
     appUrl(`/works?error=${encodeURIComponent(message)}`),
   );
+}
+
+function hasGithubConnectSignatureQuery(
+  query: GithubOauthConnectQuery,
+): boolean {
+  return Boolean(query.installation || query.ghUser || query.ts || query.sig);
 }
 
 function errorMessageFromUnknown(error: unknown): string {
@@ -569,18 +580,82 @@ const installGithubOauth$ = command(
   },
 );
 
-const connectGithubUserOauth$ = command(({ get }, _signal: AbortSignal) => {
-  const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return noStoreRedirect(canonicalRedirectUrl);
-  }
-
-  const origin = getOAuthWebOrigin(request);
-  return noStoreRedirect(
-    new URL("/api/zero/connectors/github/authorize", origin).toString(),
+function invalidGithubConnectLinkRedirect(): Response {
+  return worksErrorRedirect(
+    "Invalid or expired GitHub connect link. Ask the bot for a new link.",
   );
-});
+}
+
+const connectGithubUserOauth$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$).raw;
+    const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
+    if (canonicalRedirectUrl) {
+      return noStoreRedirect(canonicalRedirectUrl);
+    }
+
+    const query = get(queryOf(githubOauthContract.connect));
+    if (hasGithubConnectSignatureQuery(query)) {
+      if (!query.installation || !query.ghUser || !query.ts || !query.sig) {
+        return invalidGithubConnectLinkRedirect();
+      }
+
+      if (
+        !verifyGithubConnectSignature({
+          installationId: query.installation,
+          githubUserId: query.ghUser,
+          githubUsername: query.ghLogin,
+          timestamp: query.ts,
+          signature: query.sig,
+          secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+        })
+      ) {
+        return invalidGithubConnectLinkRedirect();
+      }
+
+      const auth = get(organizationAuthContext$);
+      const db = set(writeDb$);
+      const installation = await findGithubInstallationByInstallationId({
+        db,
+        installationId: query.installation,
+        orgId: auth.orgId,
+        signal,
+      });
+      signal.throwIfAborted();
+
+      if (!installation) {
+        return worksErrorRedirect(
+          "No GitHub installation found for this workspace",
+        );
+      }
+
+      const githubUserId = await linkGithubVm0User({
+        db,
+        installRecordId: installation.id,
+        vm0UserId: auth.userId,
+        knownGithubUserId: query.ghUser,
+        signal,
+      });
+      signal.throwIfAborted();
+
+      if (!githubUserId) {
+        return worksErrorRedirect(
+          "This GitHub account is already linked to the installation",
+        );
+      }
+
+      await publishUserSignal([auth.userId], "github:changed");
+      signal.throwIfAborted();
+
+      return redirectResponse(appUrl("/works?github=connected"));
+    }
+
+    const origin = getOAuthWebOrigin(request);
+    return noStoreRedirect(
+      new URL("/api/zero/connectors/github/authorize", origin).toString(),
+    );
+  },
+);
 
 const callbackGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {

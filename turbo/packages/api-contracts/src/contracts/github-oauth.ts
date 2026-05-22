@@ -13,6 +13,14 @@ export const githubOauthInstallQuerySchema = z.object({
   composeId: z.string().optional(),
 });
 
+export const githubOauthConnectQuerySchema = z.object({
+  installation: z.string().optional(),
+  ghUser: z.string().optional(),
+  ghLogin: z.string().optional(),
+  ts: z.coerce.number().optional(),
+  sig: z.string().optional(),
+});
+
 export const githubOauthConnectCallbackQuerySchema = z.object({
   code: z.string().optional(),
   state: z.string().optional(),
@@ -45,6 +53,7 @@ export const githubOauthContract = c.router({
   connect: {
     method: "GET",
     path: "/api/zero/github/oauth/connect",
+    query: githubOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
       401: apiErrorSchema,
@@ -75,6 +84,9 @@ export const githubOauthContract = c.router({
 export type GithubOauthContract = typeof githubOauthContract;
 export type GithubOauthInstallQuery = z.infer<
   typeof githubOauthInstallQuerySchema
+>;
+export type GithubOauthConnectQuery = z.infer<
+  typeof githubOauthConnectQuerySchema
 >;
 export type GithubOauthConnectCallbackQuery = z.infer<
   typeof githubOauthConnectCallbackQuerySchema

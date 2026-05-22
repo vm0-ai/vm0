@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { createSign, timingSafeEqual } from "node:crypto";
+import { createHmac, createSign, timingSafeEqual } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -17,6 +17,7 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
+const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
 
 interface AppInstallation {
   readonly id: number;
@@ -248,6 +249,56 @@ function signaturesMatch(actual: string | null, expected: string): boolean {
     actual.length === expected.length &&
     timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
   );
+}
+
+function normalizeGithubUsername(
+  githubUsername: string | null | undefined,
+): string | null {
+  const normalized = githubUsername?.trim().replace(/^@+/, "");
+  return normalized || null;
+}
+
+function githubConnectSignaturePayload(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly githubUsername?: string | null;
+}): string {
+  return [
+    args.installationId,
+    args.githubUserId,
+    String(args.timestamp),
+    normalizeGithubUsername(args.githubUsername) ?? "",
+  ].join(":");
+}
+
+export function signGithubConnectParams(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly secretsEncryptionKey: string;
+  readonly githubUsername?: string | null;
+}): string {
+  return createHmac("sha256", args.secretsEncryptionKey)
+    .update(githubConnectSignaturePayload(args))
+    .digest("hex");
+}
+
+export function verifyGithubConnectSignature(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly signature: string;
+  readonly secretsEncryptionKey: string;
+  readonly githubUsername?: string | null;
+}): boolean {
+  const nowSeconds = Math.floor(now() / 1000);
+  if (nowSeconds - args.timestamp > MAX_GITHUB_CONNECT_AGE_SECONDS) {
+    return false;
+  }
+
+  const expected = signGithubConnectParams(args);
+  return signaturesMatch(args.signature, expected);
 }
 
 export async function buildGithubOauthState(args: {

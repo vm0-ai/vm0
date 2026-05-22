@@ -17,11 +17,12 @@ import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { decryptSecretValue } from "../../services/crypto.utils";
+import { signGithubConnectParams } from "../../services/github-oauth.service";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -514,6 +515,58 @@ describe("GitHub OAuth API routes", () => {
     const location = new URL(response.headers.get("location")!);
     expect(location.origin).toBe(WEB_ORIGIN);
     expect(location.pathname).toBe("/api/zero/connectors/github/authorize");
+  });
+
+  it("links a GitHub integration user from a signed mention connect link", async () => {
+    const fixture = await seedComposeFixture(cleanup);
+    const remoteInstallationId = "987650099";
+    const githubUserId = newGithubUserId();
+    const [installation] = await store
+      .set(writeDb$)
+      .insert(githubInstallations)
+      .values({
+        installationId: remoteInstallationId,
+        status: "active",
+        orgId: fixture.orgId,
+        defaultComposeId: fixture.composeId,
+      })
+      .returning({ id: githubInstallations.id });
+    expect(installation).toBeDefined();
+    cleanup.installationRowIds.push(installation!.id);
+    mockSession(fixture.userId, fixture.orgId);
+    const timestamp = Math.floor(now() / 1000);
+    const signature = signGithubConnectParams({
+      installationId: remoteInstallationId,
+      githubUserId,
+      githubUsername: "octocat",
+      timestamp,
+      secretsEncryptionKey: "a".repeat(64),
+    });
+    const params = new URLSearchParams({
+      installation: remoteInstallationId,
+      ghUser: githubUserId,
+      ghLogin: "octocat",
+      ts: String(timestamp),
+      sig: signature,
+    });
+
+    const response = await appRequest(
+      `/api/zero/github/oauth/connect?${params.toString()}`,
+      { headers: { authorization: "Bearer clerk-session" } },
+    );
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin).toBe(APP_ORIGIN);
+    expect(location.pathname).toBe("/works");
+    expect(location.searchParams.get("github")).toBe("connected");
+    const links = await findLinksForUser(fixture.userId);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      installationId: installation!.id,
+      githubUserId,
+      vm0UserId: fixture.userId,
+    });
   });
 
   it("links a GitHub integration user from OAuth and connects the GitHub connector", async () => {

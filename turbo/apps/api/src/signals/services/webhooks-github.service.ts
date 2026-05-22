@@ -30,6 +30,7 @@ import {
   type GithubIssueComment,
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
+import { signGithubConnectParams } from "./github-oauth.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import {
   resolveIntegrationModelRouteForUser$,
@@ -58,6 +59,7 @@ const gitHubIssueSchema = z.object({
   body: z.string().nullable(),
   labels: z.array(gitHubLabelSchema),
   user: gitHubUserSchema,
+  pull_request: z.unknown().optional(),
 });
 
 const gitHubCommentSchema = z.object({
@@ -144,7 +146,8 @@ interface DispatchParams {
   readonly vm0UserId: string;
   readonly composeId: string;
   readonly prompt: string;
-  readonly matchedLabelName: string;
+  readonly matchedLabelName?: string;
+  readonly triggerDescription?: string;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
   readonly apiStartTime: number;
@@ -194,6 +197,41 @@ function githubAppBotUsername(): string | undefined {
   return `@${appSlug}[bot]`;
 }
 
+function githubAppMentionHandles(): readonly string[] {
+  const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim().replace(/^@+/, "");
+  if (!appSlug) {
+    return [];
+  }
+  const normalizedSlug = appSlug.replace(/\[bot\]$/iu, "");
+  return [`@${normalizedSlug}[bot]`, `@${normalizedSlug}`];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+}
+
+function githubCommentMentionsBot(body: string): boolean {
+  const lowerBody = body.toLowerCase();
+  return githubAppMentionHandles().some((handle) => {
+    return lowerBody.includes(handle.toLowerCase());
+  });
+}
+
+function stripGithubBotMention(body: string): string {
+  return [...githubAppMentionHandles()]
+    .sort((left, right) => {
+      return right.length - left.length;
+    })
+    .reduce((text, handle) => {
+      return text.replace(new RegExp(escapeRegExp(handle), "giu"), "");
+    }, body)
+    .trim();
+}
+
+function githubIssueCommentSubjectKind(issue: GitHubIssue): GitHubTriggerKind {
+  return issue.pull_request === undefined ? "issue" : "pull_request";
+}
+
 function buildIntegrationPrompt(): string {
   const headerParts = [
     "# Current Integration",
@@ -240,6 +278,36 @@ function buildPromptParts(
   const appendSystemPrompt = buildGitHubPrompt(args) || undefined;
 
   return { prompt, appendSystemPrompt };
+}
+
+function buildGithubMentionConnectUrl(args: {
+  readonly ghInstallationId: string;
+  readonly githubUserId: string;
+  readonly githubUsername: string;
+}): string {
+  const timestamp = Math.floor(nowDate().getTime() / 1000);
+  const params = new URLSearchParams({
+    installation: args.ghInstallationId,
+    ghUser: args.githubUserId,
+    ghLogin: args.githubUsername,
+    ts: String(timestamp),
+    sig: signGithubConnectParams({
+      installationId: args.ghInstallationId,
+      githubUserId: args.githubUserId,
+      githubUsername: args.githubUsername,
+      timestamp,
+      secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+    }),
+  });
+
+  return `${env("VM0_WEB_URL").replace(/\/$/u, "")}/api/zero/github/oauth/connect?${params.toString()}`;
+}
+
+function formatGithubConnectPrompt(args: {
+  readonly agentName: string;
+  readonly connectUrl: string;
+}): string {
+  return `To use ${args.agentName}, connect your GitHub account first.\n\n[Connect GitHub](${args.connectUrl})`;
 }
 
 function formatGithubContextSender(args: {
@@ -406,7 +474,8 @@ function formatIssueContext(args: {
   readonly issue: GitHubIssue;
   readonly subjectKind: GitHubTriggerKind;
   readonly repo: string;
-  readonly matchedLabelName: string;
+  readonly matchedLabelName: string | undefined;
+  readonly triggerDescription: string | undefined;
   readonly comments: readonly GithubIssueComment[];
   readonly currentCommentId: string | undefined;
 }): string {
@@ -441,7 +510,9 @@ function formatIssueContext(args: {
       issueNumber: args.issue.number,
       subjectKind: args.subjectKind,
     })}`,
-    `Matched label: ${args.matchedLabelName}`,
+    args.matchedLabelName
+      ? `Matched label: ${args.matchedLabelName}`
+      : `Matched trigger: ${args.triggerDescription ?? "GitHub event"}`,
     "",
     "The messages below are from the GitHub issue conversation. Messages closer to RELATIVE_INDEX 0 are more recent.",
     "",
@@ -738,6 +809,21 @@ async function loadGitHubRunTarget(args: {
   };
 }
 
+async function loadGitHubAgentDisplayName(args: {
+  readonly db: Db;
+  readonly composeId: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const [agent] = await args.db
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, args.composeId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return agent?.displayName ?? agent?.name ?? "this agent";
+}
+
 async function buildIssueContextForRun(args: {
   readonly token: string | undefined;
   readonly params: DispatchParams;
@@ -761,6 +847,7 @@ async function buildIssueContextForRun(args: {
     subjectKind: args.params.subjectKind,
     repo: args.params.repo,
     matchedLabelName: args.params.matchedLabelName,
+    triggerDescription: args.params.triggerDescription,
     comments,
     currentCommentId: args.params.commentId,
   });
@@ -960,6 +1047,27 @@ async function issueAuthorMatchesListenerCreator(args: {
   return link?.githubUserId === args.authorGithubUserId;
 }
 
+async function loadGithubUserLink(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly vm0UserId: string } | null> {
+  const [link] = await args.db
+    .select({ vm0UserId: githubUserLinks.vm0UserId })
+    .from(githubUserLinks)
+    .where(
+      and(
+        eq(githubUserLinks.installationId, args.installationId),
+        eq(githubUserLinks.githubUserId, args.githubUserId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return link ?? null;
+}
+
 interface LabelTriggerEventParams {
   readonly payload: {
     readonly action: string;
@@ -1096,19 +1204,103 @@ export const handleGithubPullRequestEvent$ = command(
 );
 
 export const handleGithubIssueCommentEvent$ = command(
-  (
-    _ctx,
+  async (
+    { set },
     args: {
       readonly payload: GitHubIssueCommentEvent;
       readonly apiStartTime: number;
     },
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ): Promise<void> => {
-    L.debug("Ignoring GitHub issue_comment event: mention triggers disabled", {
-      action: args.payload.action,
-      apiStartTime: args.apiStartTime,
+    const { payload } = args;
+    if (payload.action !== "created") {
+      L.debug("Ignoring GitHub issue_comment event", {
+        action: payload.action,
+      });
+      return;
+    }
+
+    if (payload.sender.type === "Bot" || payload.comment.user.type === "Bot") {
+      L.debug("Ignoring GitHub bot issue_comment event", {
+        sender: payload.sender.login,
+        commentUser: payload.comment.user.login,
+      });
+      return;
+    }
+
+    if (!githubCommentMentionsBot(payload.comment.body)) {
+      L.debug("Ignoring GitHub issue_comment without bot mention", {
+        commentId: payload.comment.id,
+      });
+      return;
+    }
+
+    const db = set(writeDb$);
+    const installation = await loadActiveInstallation({
+      db,
+      ghInstallationId: String(payload.installation.id),
+      signal,
     });
-    return Promise.resolve();
+    const token = await getGitHubTokenForInstallation({ installation, signal });
+    signal.throwIfAborted();
+
+    const githubUserId = String(payload.sender.id);
+    const link = await loadGithubUserLink({
+      db,
+      installationId: installation.id,
+      githubUserId,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!link) {
+      if (!token) {
+        return;
+      }
+
+      const agentName = await loadGitHubAgentDisplayName({
+        db,
+        composeId: installation.defaultComposeId,
+        signal,
+      });
+      const connectUrl = buildGithubMentionConnectUrl({
+        ghInstallationId: String(payload.installation.id),
+        githubUserId,
+        githubUsername: payload.sender.login,
+      });
+      await postGithubIssueCommentBestEffort({
+        token,
+        repo: payload.repository.full_name,
+        issueNumber: payload.issue.number,
+        body: formatGithubConnectPrompt({ agentName, connectUrl }),
+        signal,
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const prompt =
+      stripGithubBotMention(payload.comment.body) ||
+      payload.comment.body.trim() ||
+      payload.issue.title;
+
+    await set(
+      dispatchGithubAgentRun$,
+      {
+        ghInstallationId: String(payload.installation.id),
+        repo: payload.repository.full_name,
+        issue: payload.issue,
+        subjectKind: githubIssueCommentSubjectKind(payload.issue),
+        vm0UserId: link.vm0UserId,
+        composeId: installation.defaultComposeId,
+        prompt,
+        triggerDescription: `${githubAppBotUsername() ?? "GitHub App"} mention`,
+        commentId: String(payload.comment.id),
+        comment: payload.comment,
+        apiStartTime: args.apiStartTime,
+      },
+      signal,
+    );
   },
 );
 
