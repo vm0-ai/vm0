@@ -460,6 +460,21 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "binary"
         assert "response_body_truncated" not in entry
 
+    def test_large_binary_response_body_marks_truncated(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+            response_body=b"\x00" * (STREAM_BUFFER_LIMIT + 1),
+            response_content_type="application/octet-stream",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+        assert entry["response_body_truncated"] is True
+
     def test_request_body_exactly_at_limit_not_truncated(self, real_flow):
         body = b"x" * STREAM_BUFFER_LIMIT
         flow = real_flow(
