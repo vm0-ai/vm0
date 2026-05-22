@@ -28,11 +28,11 @@ use crate::executor::{self, ExecutorConfig};
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_logs;
-use crate::provider::JobProvider;
+use crate::provider::{ClaimedJob, JobProvider};
 use crate::resource_budget::BudgetLease;
 use crate::status::StatusTracker;
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::SandboxReuseResult;
 
 /// Per-job profile parameters resolved from the profile config.
 pub(super) struct JobProfile {
@@ -81,7 +81,7 @@ pub(super) struct SpawnContext {
 /// After a successful execution with a session ID available, the sandbox
 /// is parked in the idle pool instead of being destroyed.
 pub(super) fn spawn_job(
-    context: ExecutionContext,
+    claimed: ClaimedJob,
     sandbox_id: SandboxId,
     job_profile: JobProfile,
     reuse_entry: Option<ReusableIdleSandbox>,
@@ -89,6 +89,7 @@ pub(super) fn spawn_job(
     ctx: &SpawnContext,
     jobs: &mut JoinSet<Option<RunId>>,
 ) {
+    let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
     let vcpu = job_profile.vcpu;
@@ -257,7 +258,14 @@ pub(super) fn spawn_job(
             }
 
             let completion_payload =
-                CompletionPayload::new(run_id, exit_code, err, sandbox_id, reuse_result);
+                CompletionPayload::new(
+                    run_id,
+                    exit_code,
+                    err,
+                    sandbox_id,
+                    reuse_result,
+                    completion_auth,
+                );
             // Cancellation can arrive after terminal logging or while
             // `sandbox.park()` is in flight. Pass the live token so finalization
             // can re-check immediately before idle-pool ownership transfer.

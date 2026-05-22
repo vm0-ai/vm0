@@ -28,6 +28,8 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
+#[cfg(test)]
+use crate::provider::CompletionAuth;
 use crate::status::StatusTracker;
 
 pub(super) struct FinalizeContext {
@@ -565,7 +567,14 @@ mod tests {
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("network-log-park"))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
             fixture.finalize_context(
                 run_id,
                 sandbox_id,
@@ -602,7 +611,14 @@ mod tests {
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("network-log-cancel"))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
             fixture.finalize_context(
                 run_id,
                 sandbox_id,

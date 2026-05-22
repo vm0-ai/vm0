@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::ids::RunId;
-use crate::provider::JobProvider;
+use crate::provider::{CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
 use crate::types::SandboxReuseResult;
 
@@ -118,6 +118,7 @@ pub(super) struct CompletionPayload {
     error: Option<String>,
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
+    completion_auth: CompletionAuth,
 }
 
 impl CompletionPayload {
@@ -127,6 +128,7 @@ impl CompletionPayload {
         error: Option<String>,
         sandbox_id: SandboxId,
         reuse_result: SandboxReuseResult,
+        completion_auth: CompletionAuth,
     ) -> Self {
         Self {
             run_id,
@@ -134,6 +136,7 @@ impl CompletionPayload {
             error,
             sandbox_id,
             reuse_result,
+            completion_auth,
         }
     }
 }
@@ -163,6 +166,7 @@ impl CompletionReady {
             error,
             sandbox_id,
             reuse_result,
+            completion_auth,
         } = payload;
 
         provider
@@ -172,6 +176,7 @@ impl CompletionReady {
                 error.as_deref(),
                 Some(sandbox_id),
                 Some(reuse_result),
+                completion_auth,
             )
             .await;
         ownership
@@ -192,10 +197,10 @@ mod tests {
     use sandbox::SandboxId;
 
     use crate::ids::RunId;
-    use crate::provider::{JobCandidate, JobProvider};
+    use crate::provider::{ClaimedJob, JobCandidate, JobProvider};
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
-    use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+    use crate::types::{HeartbeatState, SandboxReuseResult};
 
     use super::super::ownership::OwnershipTransitions;
 
@@ -205,7 +210,14 @@ mod tests {
         (budget, lease)
     }
     fn test_completion_payload(run_id: RunId, sandbox_id: SandboxId) -> CompletionPayload {
-        CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss)
+        CompletionPayload::new(
+            run_id,
+            0,
+            None,
+            sandbox_id,
+            SandboxReuseResult::PoolMiss,
+            CompletionAuth::local(),
+        )
     }
 
     async fn status_active_run_count(path: &std::path::Path) -> usize {
@@ -243,7 +255,7 @@ mod tests {
             None
         }
 
-        async fn claim(&self, _candidate: JobCandidate) -> Option<ExecutionContext> {
+        async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
             None
         }
 
@@ -254,6 +266,7 @@ mod tests {
             _error: Option<&str>,
             _sandbox_id: Option<SandboxId>,
             _reuse_result: Option<SandboxReuseResult>,
+            _completion_auth: CompletionAuth,
         ) {
             self.budget_count_at_complete
                 .store(self.budget.allocated().2, Ordering::SeqCst);

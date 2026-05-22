@@ -59,6 +59,82 @@ impl JobCandidate {
     }
 }
 
+/// Job claim result with the context and auth required for terminal completion.
+pub struct ClaimedJob {
+    context: ExecutionContext,
+    completion_auth: CompletionAuth,
+}
+
+impl ClaimedJob {
+    pub(crate) fn new(context: ExecutionContext, completion_auth: CompletionAuth) -> Self {
+        Self {
+            context,
+            completion_auth,
+        }
+    }
+
+    pub(crate) fn api(context: ExecutionContext) -> Self {
+        let completion_auth =
+            CompletionAuth::sandbox_token(context.run_id, context.sandbox_token.clone());
+        Self::new(context, completion_auth)
+    }
+
+    pub(crate) fn local(context: ExecutionContext) -> Self {
+        Self::new(context, CompletionAuth::local())
+    }
+
+    pub(crate) fn into_parts(self) -> (ExecutionContext, CompletionAuth) {
+        (self.context, self.completion_auth)
+    }
+
+    pub(crate) fn context(&self) -> &ExecutionContext {
+        &self.context
+    }
+}
+
+/// Auth material needed by a provider to report terminal completion.
+pub struct CompletionAuth {
+    kind: CompletionAuthKind,
+}
+
+enum CompletionAuthKind {
+    Sandbox { run_id: RunId, token: String },
+    Local,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CompletionAuthError {
+    NotSandbox,
+    RunIdMismatch { auth_run_id: RunId },
+}
+
+impl CompletionAuth {
+    pub(crate) fn sandbox_token(run_id: RunId, token: String) -> Self {
+        Self {
+            kind: CompletionAuthKind::Sandbox { run_id, token },
+        }
+    }
+
+    pub(crate) fn local() -> Self {
+        Self {
+            kind: CompletionAuthKind::Local,
+        }
+    }
+
+    pub(crate) fn into_sandbox_token(
+        self,
+        expected_run_id: RunId,
+    ) -> Result<String, CompletionAuthError> {
+        match self.kind {
+            CompletionAuthKind::Sandbox { run_id, token } if run_id == expected_run_id => Ok(token),
+            CompletionAuthKind::Sandbox { run_id, .. } => Err(CompletionAuthError::RunIdMismatch {
+                auth_run_id: run_id,
+            }),
+            CompletionAuthKind::Local => Err(CompletionAuthError::NotSandbox),
+        }
+    }
+}
+
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.
 ///
 /// The runner main loop calls [`discover()`](JobProvider::discover) to find work,
@@ -89,7 +165,7 @@ pub trait JobProvider: Send + Sync {
     /// Callers **must** invoke this from a non-cancellable context (e.g.
     /// inside a `select!` branch handler) to guarantee that a successful
     /// claim is always paired with a later [`complete()`](JobProvider::complete).
-    async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext>;
+    async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob>;
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///
@@ -98,7 +174,8 @@ pub trait JobProvider: Send + Sync {
     /// before the run started. Both are `Option` so non-runner callers
     /// (tests, future transports) can omit them.
     ///
-    /// Implementations manage auth tokens and retry logic internally.
+    /// `completion_auth` is returned by [`claim()`](JobProvider::claim) and
+    /// carried by the claimed job lifecycle until completion.
     async fn complete(
         &self,
         run_id: RunId,
@@ -106,6 +183,7 @@ pub trait JobProvider: Send + Sync {
         error: Option<&str>,
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
+        completion_auth: CompletionAuth,
     );
 
     /// Report runner state to the server. Fire-and-forget — failures are

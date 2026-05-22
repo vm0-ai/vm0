@@ -84,7 +84,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     }
     // claim() runs in the branch handler: non-interruptible, so a successful
     // claim is always paired with complete().
-    let Some(context) = ctx.spawn_ctx.provider.claim(candidate).await else {
+    let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancel token so the runner can continue.
@@ -95,14 +95,14 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
         ctx.spawn_ctx.device_rate_limits.as_ref(),
-        &context,
+        claimed.context(),
     );
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot) = try_reuse_from_pool(
         run_id,
         &profile_name,
         &device_rate_limits,
-        &context,
+        claimed.context(),
         job_lease,
         &mut ctx,
     )
@@ -132,7 +132,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         cancel: job_cancel,
     };
     spawn_job(
-        context,
+        claimed,
         sandbox_id,
         job_profile,
         reuse_entry,

@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::{JobCandidate, JobProvider, local_queue};
+use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider, local_queue};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
@@ -568,7 +568,7 @@ impl JobProvider for LocalProvider {
         }
     }
 
-    async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext> {
+    async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
         let partition_profile = candidate.profile_name().to_owned();
         let Some(job_file) = candidate.local_job_path().map(std::path::Path::to_path_buf) else {
@@ -673,7 +673,7 @@ impl JobProvider for LocalProvider {
 
         self.cancel_scanner.mark_owned_claim(run_id).await;
         info!(run_id = %run_id, "local: job claimed");
-        Some(ExecutionContext {
+        Some(ClaimedJob::local(ExecutionContext {
             run_id,
             prompt: req.prompt,
             append_system_prompt: None,
@@ -707,7 +707,7 @@ impl JobProvider for LocalProvider {
             feature_flags: req.feature_flags,
             billable_firewalls: vec![],
             model_usage_provider: None,
-        })
+        }))
     }
 
     async fn complete(
@@ -717,6 +717,7 @@ impl JobProvider for LocalProvider {
         error: Option<&str>,
         _sandbox_id: Option<SandboxId>,
         _reuse_result: Option<SandboxReuseResult>,
+        _completion_auth: CompletionAuth,
     ) {
         self.cancel_scanner.remove_owned_claim(run_id).await;
         if !self.write_result(run_id, exit_code, error) {
@@ -867,11 +868,14 @@ mod tests {
         assert_eq!(candidate.run_id(), job_id);
         assert_eq!(candidate.profile_name(), crate::profile::DEFAULT_PROFILE);
 
-        let ctx = provider.claim(candidate).await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+        let ctx = claimed.context();
         assert_eq!(ctx.run_id, job_id);
         assert_eq!(ctx.prompt, "hello world");
 
-        provider.complete(job_id, 0, None, None, None).await;
+        provider
+            .complete(job_id, 0, None, None, None, CompletionAuth::local())
+            .await;
 
         let resp = read_result(dir.path(), job_id);
         assert_eq!(resp.exit_code, 0);
@@ -958,10 +962,13 @@ mod tests {
 
         let candidate = provider.discover().await.unwrap();
         assert_eq!(candidate.run_id(), job_id);
-        let ctx = provider.claim(candidate).await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+        let ctx = claimed.context();
         assert_eq!(ctx.prompt, "retry me");
 
-        provider.complete(job_id, 0, None, None, None).await;
+        provider
+            .complete(job_id, 0, None, None, None, CompletionAuth::local())
+            .await;
         let resp = read_result(dir.path(), job_id);
         assert_eq!(resp.exit_code, 0);
     }
@@ -1000,20 +1007,31 @@ mod tests {
 
         let candidate1 = provider.discover().await.unwrap();
         let run_id1 = candidate1.run_id();
-        let ctx1 = provider.claim(candidate1).await.unwrap();
+        let claimed1 = provider.claim(candidate1).await.unwrap();
+        let ctx1 = claimed1.context();
         assert_eq!(ctx1.prompt, "job1");
 
         write_job(dir.path(), job2, "job2");
 
         let candidate2 = provider.discover().await.unwrap();
         let run_id2 = candidate2.run_id();
-        let ctx2 = provider.claim(candidate2).await.unwrap();
+        let claimed2 = provider.claim(candidate2).await.unwrap();
+        let ctx2 = claimed2.context();
         assert_eq!(ctx2.prompt, "job2");
         assert_ne!(run_id1, run_id2);
 
-        provider.complete(run_id1, 0, None, None, None).await;
         provider
-            .complete(run_id2, 1, Some("test error"), None, None)
+            .complete(run_id1, 0, None, None, None, CompletionAuth::local())
+            .await;
+        provider
+            .complete(
+                run_id2,
+                1,
+                Some("test error"),
+                None,
+                None,
+                CompletionAuth::local(),
+            )
             .await;
 
         let resp1 = read_result(dir.path(), job1);
@@ -1064,7 +1082,8 @@ mod tests {
         assert_eq!(candidate.run_id(), job_id);
         assert_eq!(candidate.profile_name(), "vm0/default");
 
-        let ctx = provider.claim(candidate).await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+        let ctx = claimed.context();
         assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/default"));
     }
 
@@ -1086,7 +1105,8 @@ mod tests {
         let candidate = provider.discover().await.unwrap();
         assert_eq!(candidate.run_id(), job_id);
         assert_eq!(candidate.profile_name(), crate::profile::DEFAULT_PROFILE);
-        let ctx = provider.claim(candidate).await.unwrap();
+        let claimed = provider.claim(candidate).await.unwrap();
+        let ctx = claimed.context();
         assert_eq!(
             ctx.experimental_profile.as_deref(),
             Some(crate::profile::DEFAULT_PROFILE)
@@ -1542,7 +1562,9 @@ mod tests {
         std::fs::write(&cancel_path, b"").unwrap();
         std::fs::write(&claim_path, b"").unwrap();
 
-        provider.complete(run_id, 0, None, None, None).await;
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
 
         assert!(
             !cancel_path.exists(),
@@ -1575,7 +1597,9 @@ mod tests {
         std::fs::write(&cancel_path, b"").unwrap();
         std::fs::write(&result_dir, b"not a directory").unwrap();
 
-        provider.complete(run_id, 0, None, None, None).await;
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
 
         assert!(
             !job_path.exists(),

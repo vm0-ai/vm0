@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use super::{JobCandidate, JobProvider};
+use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
@@ -268,13 +268,14 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn claim(&self, candidate: JobCandidate) -> Option<ExecutionContext> {
+    async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
         self.claim_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&run_id)
             .flatten()
+            .map(ClaimedJob::local)
     }
 
     async fn complete(
@@ -284,6 +285,7 @@ impl JobProvider for MockJobProvider {
         error: Option<&str>,
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
+        _completion_auth: CompletionAuth,
     ) {
         self.completions
             .lock()
