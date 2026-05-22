@@ -29,6 +29,7 @@ import {
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
+import { resetSignal } from "../../../utils.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -697,6 +698,69 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(clearConnectorOAuthDeviceAuth$);
     await expect(connectPromise).resolves.toBeFalsy();
     expect(context.store.get(pollingOAuthDeviceAuthConnectorType$)).toBeNull();
+  });
+
+  it("clears active device auth state when the owning signal aborts", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    server.use(
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.create,
+        ({ params, respond }) => {
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000127",
+            sessionToken: "device-session-token",
+            type: params.type,
+            status: "pending",
+            userCode: "VM0-DEVICE",
+            verificationUri: "https://oauth.test/device",
+            verificationUriComplete:
+              "https://oauth.test/device?user_code=VM0-DEVICE",
+            expiresIn: 300,
+            interval: 1,
+          });
+        },
+      ),
+      mockApi(zeroConnectorOauthDeviceAuthSessionContract.poll, ({ never }) => {
+        return never();
+      }),
+    );
+
+    const flowReset$ = resetSignal();
+    const flowSignal = context.store.set(flowReset$, context.signal);
+    const connectPromise = (async () => {
+      try {
+        return await context.store.set(
+          connectConnectorOAuthDeviceAuth$,
+          "test-oauth-device",
+          {},
+          flowSignal,
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+    await vi.waitFor(() => {
+      expect(context.store.get(connectorOAuthDeviceAuthState$).status).toBe(
+        "pending",
+      );
+    });
+
+    context.store.set(flowReset$, context.signal);
+
+    await expect(connectPromise).resolves.toBeFalsy();
+    await vi.waitFor(() => {
+      expect(context.store.get(connectorOAuthDeviceAuthState$)).toStrictEqual({
+        status: "idle",
+        connectorType: "test-oauth-device",
+      });
+    });
   });
 });
 

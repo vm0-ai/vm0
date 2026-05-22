@@ -1877,9 +1877,10 @@ export const connectConnectorOAuthDeviceAuth$ = command(
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
+    let requestId: string | null = null;
     return await withCleanup(
       (async () => {
-        const requestId = createConnectorOAuthDeviceAuthRequestId(type);
+        requestId = createConnectorOAuthDeviceAuthRequestId(type);
         const flowSignal = set(
           resetConnectorOAuthDeviceAuthFlowSignal$,
           signal,
@@ -1955,6 +1956,20 @@ export const connectConnectorOAuthDeviceAuth$ = command(
       () => {
         set(internalConnectFlowState$, (current) => {
           return current?.id === flow.id ? null : current;
+        });
+        set(internalConnectorOAuthDeviceAuthState$, (current) => {
+          if (
+            !signal.aborted ||
+            requestId === null ||
+            current.connectorType !== type ||
+            (current.status !== "starting" &&
+              current.status !== "pending" &&
+              current.status !== "polling") ||
+            current.requestId !== requestId
+          ) {
+            return current;
+          }
+          return createIdleConnectorOAuthDeviceAuthState(type);
         });
       },
     );
