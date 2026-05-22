@@ -1,9 +1,10 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -141,6 +142,65 @@ describe("zero desktop Computer Use page", () => {
     expect(screen.getByText("targeted_mouse_event")).toBeInTheDocument();
     expect(screen.getByText("targeted_app_pointer")).toBeInTheDocument();
     expect(screen.getByText("Approve")).toBeInTheDocument();
+  });
+
+  it("keeps previous runtime content mounted while a bridge refresh is loading", async () => {
+    const state = computerUseState();
+    const pendingReload = createDeferredPromise<TestDesktopComputerUseState>(
+      context.signal,
+    );
+    const getState = vi.fn((): Promise<TestDesktopComputerUseState> => {
+      return Promise.resolve(state);
+    });
+    let notifyComputerUseChange: (() => void) | null = null;
+    installDesktopComputerUseApi({
+      getState,
+      start() {
+        return Promise.resolve(state);
+      },
+      requestAccessibilityPermission() {
+        return Promise.resolve(state);
+      },
+      openAccessibilitySettings() {
+        return Promise.resolve();
+      },
+      openScreenRecordingSettings() {
+        return Promise.resolve();
+      },
+      decideCommand() {
+        return Promise.resolve(state);
+      },
+      subscribe(callback) {
+        notifyComputerUseChange = callback;
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await screen.findByRole("heading", { name: "Computer Use" });
+    expect(screen.getByText("Recent command history")).toBeInTheDocument();
+    getState.mockImplementation(() => {
+      return pendingReload.promise;
+    });
+
+    expect(notifyComputerUseChange).not.toBeNull();
+    act(() => {
+      notifyComputerUseChange?.();
+    });
+
+    await waitFor(() => {
+      expect(getState).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByText("host-1")).toBeInTheDocument();
+    expect(screen.getByText("Recent command history")).toBeInTheDocument();
+    expect(screen.getAllByText("element.click")[0]).toBeInTheDocument();
   });
 
   it("submits pending approval decisions through the native bridge", async () => {

@@ -1,4 +1,4 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useGet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertCircle,
@@ -492,7 +492,7 @@ function DesktopComputerUseHeader() {
 }
 
 function DesktopComputerUsePageBody() {
-  const dataLoadable = useLoadable(desktopComputerUseData$);
+  const dataLoadable = useLastLoadable(desktopComputerUseData$);
   return (
     <main className="shrink-0 px-4 pb-16 pt-3 sm:px-6">
       <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
