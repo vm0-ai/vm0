@@ -433,6 +433,30 @@ enum ExecOperationTracking<'a> {
     Untracked,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExecTerminalLogLifecycle {
+    OneShot,
+    Supervised,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExecTerminalLogSeverity {
+    Info,
+    Warn,
+}
+
+#[derive(Clone, Copy)]
+struct ExecTerminalLogContext<'a> {
+    lifecycle: ExecTerminalLogLifecycle,
+    slow: bool,
+    termination: ExecTermination,
+    expected_exit_codes: &'a [i32],
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+    stream_overflowed: bool,
+    diagnostic_present: bool,
+}
+
 #[derive(Clone)]
 struct ExecOperationDiagnostic {
     seq: u32,
@@ -587,29 +611,60 @@ impl ExecOperationDiagnostic {
         None
     }
 
-    fn log_terminal(&self, result: &vsock_proto::DecodedExecResult<'_>, stream_overflowed: bool) {
+    fn log_terminal(
+        &self,
+        lifecycle: ExecTerminalLogLifecycle,
+        result: &vsock_proto::DecodedExecResult<'_>,
+        stream_overflowed: bool,
+    ) {
         let elapsed_ms = self.elapsed_ms();
         let slow = elapsed_ms >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD.as_millis();
-        let notable = exec_termination_is_notable(result.termination, &self.expected_exit_codes)
-            || exec_result_has_truncation(result)
-            || stream_overflowed
-            || !result.diagnostic.is_empty();
-        if !slow && !notable {
-            return;
-        }
-
-        tracing::warn!(
-            seq = self.seq,
-            label = %self.label_log,
-            elapsed_ms,
-            guest_duration_ms = result.duration_ms,
-            termination = ?result.termination,
+        let stdout_truncated = exec_operation_captured_output_truncated(result.stdout);
+        let stderr_truncated = exec_operation_captured_output_truncated(result.stderr);
+        let diagnostic_present = !result.diagnostic.is_empty();
+        let Some(severity) = exec_terminal_log_severity(ExecTerminalLogContext {
+            lifecycle,
+            slow,
+            termination: result.termination,
+            expected_exit_codes: &self.expected_exit_codes,
+            stdout_truncated,
+            stderr_truncated,
             stream_overflowed,
-            stdout_truncated = exec_operation_captured_output_truncated(result.stdout),
-            stderr_truncated = exec_operation_captured_output_truncated(result.stderr),
-            diagnostic_present = !result.diagnostic.is_empty(),
-            "exec operation terminal result"
-        );
+            diagnostic_present,
+        }) else {
+            return;
+        };
+
+        match severity {
+            ExecTerminalLogSeverity::Info => {
+                tracing::info!(
+                    seq = self.seq,
+                    label = %self.label_log,
+                    elapsed_ms,
+                    guest_duration_ms = result.duration_ms,
+                    termination = ?result.termination,
+                    stream_overflowed,
+                    stdout_truncated,
+                    stderr_truncated,
+                    diagnostic_present,
+                    "exec operation terminal result"
+                );
+            }
+            ExecTerminalLogSeverity::Warn => {
+                tracing::warn!(
+                    seq = self.seq,
+                    label = %self.label_log,
+                    elapsed_ms,
+                    guest_duration_ms = result.duration_ms,
+                    termination = ?result.termination,
+                    stream_overflowed,
+                    stdout_truncated,
+                    stderr_truncated,
+                    diagnostic_present,
+                    "exec operation terminal result"
+                );
+            }
+        }
     }
 
     fn log_error_response(&self, error: &io::Error) {
@@ -1280,6 +1335,34 @@ fn exec_termination_is_notable(termination: ExecTermination, expected_exit_codes
     )
 }
 
+fn exec_terminal_log_lifecycle(lifecycle: &ExecOperationLifecycle) -> ExecTerminalLogLifecycle {
+    match lifecycle {
+        ExecOperationLifecycle::OneShot => ExecTerminalLogLifecycle::OneShot,
+        ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+        | ExecOperationLifecycle::SupervisedStarted { .. } => ExecTerminalLogLifecycle::Supervised,
+    }
+}
+
+fn exec_terminal_log_severity(
+    context: ExecTerminalLogContext<'_>,
+) -> Option<ExecTerminalLogSeverity> {
+    let notable = exec_termination_is_notable(context.termination, context.expected_exit_codes)
+        || context.stdout_truncated
+        || context.stderr_truncated
+        || context.stream_overflowed
+        || context.diagnostic_present;
+    if notable {
+        return Some(ExecTerminalLogSeverity::Warn);
+    }
+    if !context.slow {
+        return None;
+    }
+    match context.lifecycle {
+        ExecTerminalLogLifecycle::OneShot => Some(ExecTerminalLogSeverity::Warn),
+        ExecTerminalLogLifecycle::Supervised => Some(ExecTerminalLogSeverity::Info),
+    }
+}
+
 fn exec_operation_label_log(label: &str) -> String {
     if label.len() <= EXEC_OPERATION_LABEL_LOG_PREFIX_MAX_BYTES {
         return label.to_string();
@@ -1300,11 +1383,6 @@ fn exec_operation_captured_output_truncated(output: ExecCapturedOutput<'_>) -> b
             ..
         }
     )
-}
-
-fn exec_result_has_truncation(result: &vsock_proto::DecodedExecResult<'_>) -> bool {
-    exec_operation_captured_output_truncated(result.stdout)
-        || exec_operation_captured_output_truncated(result.stderr)
 }
 
 pub(crate) fn log_operations_closed(reason: &'static str, snapshot: &ExecOperationCloseSnapshot) {
@@ -1635,7 +1713,7 @@ fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
 }
 
 fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let Some((diagnostic, result_tx, start_tx, stream_overflowed, decoded)) = ({
+    let Some((diagnostic, result_tx, start_tx, log_lifecycle, stream_overflowed, decoded)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
@@ -1657,6 +1735,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
                     stream_overflowed,
                     ..
                 } = operation;
+                let log_lifecycle = exec_terminal_log_lifecycle(&lifecycle);
                 let start_tx = match &mut lifecycle {
                     ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => {
                         start_tx.take()
@@ -1667,7 +1746,14 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
                 if let Some(normal_operation) = normal_operation {
                     normal_operation.complete()?;
                 }
-                Some((diagnostic, result_tx, start_tx, stream_overflowed, decoded))
+                Some((
+                    diagnostic,
+                    result_tx,
+                    start_tx,
+                    log_lifecycle,
+                    stream_overflowed,
+                    decoded,
+                ))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed => None,
         }
@@ -1675,7 +1761,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
         return Ok(());
     };
 
-    diagnostic.log_terminal(&decoded, stream_overflowed);
+    diagnostic.log_terminal(log_lifecycle, &decoded, stream_overflowed);
     let result = owned_result(decoded, stream_overflowed);
     if let Some(start_tx) = start_tx {
         let message = if result.diagnostic.is_empty() {
@@ -2750,6 +2836,182 @@ mod tests {
             ExecTermination::TimedOut,
             &[124]
         ));
+    }
+
+    #[test]
+    fn exec_terminal_log_lifecycle_maps_supervised_states() {
+        let (start_tx, _start_rx) = oneshot::channel();
+        let awaiting_start = ExecOperationLifecycle::SupervisedAwaitingStart {
+            start_tx: Some(start_tx),
+            control_nonce: None,
+        };
+        let started = ExecOperationLifecycle::SupervisedStarted {
+            pid: 42,
+            control_nonce: None,
+        };
+
+        assert_eq!(
+            exec_terminal_log_lifecycle(&ExecOperationLifecycle::OneShot),
+            ExecTerminalLogLifecycle::OneShot
+        );
+        assert_eq!(
+            exec_terminal_log_lifecycle(&awaiting_start),
+            ExecTerminalLogLifecycle::Supervised
+        );
+        assert_eq!(
+            exec_terminal_log_lifecycle(&started),
+            ExecTerminalLogLifecycle::Supervised
+        );
+    }
+
+    fn clean_terminal_log_context(
+        lifecycle: ExecTerminalLogLifecycle,
+        slow: bool,
+        termination: ExecTermination,
+    ) -> ExecTerminalLogContext<'static> {
+        ExecTerminalLogContext {
+            lifecycle,
+            slow,
+            termination,
+            expected_exit_codes: &[],
+            stdout_truncated: false,
+            stderr_truncated: false,
+            stream_overflowed: false,
+            diagnostic_present: false,
+        }
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_demotes_slow_clean_supervised_result() {
+        let context = clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            true,
+            ExecTermination::Exited { exit_code: 0 },
+        );
+
+        assert_eq!(
+            exec_terminal_log_severity(context),
+            Some(ExecTerminalLogSeverity::Info)
+        );
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_warns_for_slow_clean_one_shot_result() {
+        let context = clean_terminal_log_context(
+            ExecTerminalLogLifecycle::OneShot,
+            true,
+            ExecTermination::Exited { exit_code: 0 },
+        );
+
+        assert_eq!(
+            exec_terminal_log_severity(context),
+            Some(ExecTerminalLogSeverity::Warn)
+        );
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_suppresses_clean_fast_results() {
+        for lifecycle in [
+            ExecTerminalLogLifecycle::OneShot,
+            ExecTerminalLogLifecycle::Supervised,
+        ] {
+            let context = clean_terminal_log_context(
+                lifecycle,
+                false,
+                ExecTermination::Exited { exit_code: 0 },
+            );
+
+            assert_eq!(exec_terminal_log_severity(context), None);
+        }
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_respects_expected_nonzero_exit_codes() {
+        let fast_expected = ExecTerminalLogContext {
+            expected_exit_codes: &[66],
+            ..clean_terminal_log_context(
+                ExecTerminalLogLifecycle::Supervised,
+                false,
+                ExecTermination::Exited { exit_code: 66 },
+            )
+        };
+        let slow_expected = ExecTerminalLogContext {
+            slow: true,
+            ..fast_expected
+        };
+
+        assert_eq!(exec_terminal_log_severity(fast_expected), None);
+        assert_eq!(
+            exec_terminal_log_severity(slow_expected),
+            Some(ExecTerminalLogSeverity::Info)
+        );
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_warns_for_unexpected_nonzero_exit_code() {
+        let context = clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::Exited { exit_code: 1 },
+        );
+
+        assert_eq!(
+            exec_terminal_log_severity(context),
+            Some(ExecTerminalLogSeverity::Warn)
+        );
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_warns_for_notable_result_metadata() {
+        let clean = clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::Exited { exit_code: 0 },
+        );
+        for context in [
+            ExecTerminalLogContext {
+                stdout_truncated: true,
+                ..clean
+            },
+            ExecTerminalLogContext {
+                stderr_truncated: true,
+                ..clean
+            },
+            ExecTerminalLogContext {
+                stream_overflowed: true,
+                ..clean
+            },
+            ExecTerminalLogContext {
+                diagnostic_present: true,
+                ..clean
+            },
+        ] {
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Warn)
+            );
+        }
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_warns_for_non_exit_terminations() {
+        for termination in [
+            ExecTermination::TimedOut,
+            ExecTermination::Cancelled,
+            ExecTermination::StartFailed,
+            ExecTermination::WaitFailed,
+        ] {
+            let context = clean_terminal_log_context(
+                ExecTerminalLogLifecycle::Supervised,
+                false,
+                termination,
+            );
+
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Warn)
+            );
+        }
     }
 
     #[test]
