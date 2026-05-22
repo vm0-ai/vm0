@@ -65,7 +65,7 @@ def _filter_header_pairs(
 
 
 def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
-    """Return client headers that are safe to forward before adding trusted headers."""
+    """Return request headers that are safe to forward to the auth.base target."""
     return _filter_header_pairs(
         headers,
         extra_excluded={"host", "content-length", "transfer-encoding"},

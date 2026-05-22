@@ -287,24 +287,6 @@ async def fetch_firewall_headers(
     )
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Disable automatic redirect following to prevent SSRF via open redirects."""
-
-    def redirect_request(
-        self,
-        req: urllib.request.Request,
-        fp: object,
-        code: int,
-        msg: str,
-        headers: object,
-        newurl: str,
-    ) -> None:
-        return None
-
-
-_opener = urllib.request.build_opener(_NoRedirect)
-
-
 def _merge_auth_headers(
     headers,
     auth_headers: dict[str, str],
@@ -600,8 +582,10 @@ async def handle_firewall_request(
         orig_query = urllib.parse.urlparse(flow.request.path).query
         new_url = build_rewrite_url(resolved_base, match_info, orig_query, resolved_query)
 
-        # Keep repeated request headers. Resolved auth headers intentionally
-        # replace any client-supplied value with the same name.
+        # Filter client-controlled hop-by-hop headers before adding trusted
+        # auth headers, so Connection tokens cannot suppress injected auth.
+        # Repeated request headers are preserved; resolved auth headers
+        # intentionally replace any client-supplied value with the same name.
         req_headers = _merge_auth_headers(
             forwarded_request_header_pairs(flow.request.headers), headers
         )

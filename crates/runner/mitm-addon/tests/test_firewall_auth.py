@@ -1005,11 +1005,3 @@ class TestFetchFirewallHeaders:
         # Verify the URL was built from the ctx-provided api_url
         call_args = mock_req_cls.call_args
         assert call_args[0][0] == "https://ctx-url.vm0.ai/api/webhooks/agent/firewall/auth"
-
-
-class TestNoRedirect:
-    def test_no_redirect_following(self):
-        """_NoRedirect handler returns None to stop redirect chain."""
-        handler = auth._NoRedirect()
-        result = handler.redirect_request(MagicMock(), None, 302, "Found", {}, "https://evil.com")
-        assert result is None
