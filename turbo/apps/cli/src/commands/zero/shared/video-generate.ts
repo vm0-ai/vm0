@@ -67,7 +67,7 @@ export function createVideoGenerateCommand(
     .option("--prompt <text>", "Video prompt; can also be piped via stdin")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0, dreamina-seedance-2.0-fast, seedance-1.5-pro, seedance-1.0-pro, or seedance-1.0-pro-fast",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, or kling-v3-4k",
       "dreamina-seedance-2.0-fast",
     )
     .option(
@@ -119,18 +119,20 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
-  - Uses BytePlus ModelArk video models with configured usage pricing
+  - Uses BytePlus ModelArk and fal.ai video models with configured usage pricing
 
 Models:
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
     dreamina-seedance-2.0-fast (default). Supports 4s-15s,
-    480p/720p, seed, optional audio, first/last frames, and
-    image/video/audio references. The non-fast model also supports 1080p.
+    480p/720p, seed, optional audio, image references, and first/last
+    frames. The non-fast model also supports 1080p and video/audio references.
   - Seedance 1.5 Pro: seedance-1.5-pro. Supports 4s-12s,
-    480p/720p/1080p, seed, optional audio, and first/last frames.
-  - Seedance 1.0 Pro: seedance-1.0-pro, seedance-1.0-pro-fast.
-    Supports 2s-12s, 480p/720p/1080p, seed, and first frame.
-    The non-fast model also supports last frame.`,
+    480p/720p/1080p, seed, optional audio, image references, and
+    first/last frames.
+  - fal.ai: veo3.1-fast and kling-v3-4k. veo3.1-fast supports
+    4s/6s/8s, 720p/1080p/4k, negative prompts, seed, auto-fix,
+    safety tolerance, and optional audio. kling-v3-4k supports 3s-15s,
+    4k output, negative prompts, and optional audio.`,
     )
     .action(
       withErrorHandler(async (options: VideoOptions) => {

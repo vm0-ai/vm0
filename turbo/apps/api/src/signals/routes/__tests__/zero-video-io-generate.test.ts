@@ -45,6 +45,20 @@ const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
 const BYTEPLUS_VIDEO_URL =
   "https://ark-content.byteplus.example/files/video-output.mp4";
+const FAL_VEO_FAST_MODEL = "fal-ai/veo3.1/fast";
+const FAL_VEO_FAST_QUEUE_URL = `https://queue.fal.run/${FAL_VEO_FAST_MODEL}`;
+const FAL_STATUS_URL =
+  "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/status";
+const FAL_RESPONSE_URL =
+  "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/response";
+const FAL_VIDEO_URL = "https://v3b.fal.media/files/video-output.mp4";
+const KLING_V3_4K_MODEL = "fal-ai/kling-video/v3/4k/text-to-video";
+const KLING_V3_4K_QUEUE_URL = `https://queue.fal.run/${KLING_V3_4K_MODEL}`;
+const KLING_STATUS_URL =
+  "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/status";
+const KLING_RESPONSE_URL =
+  "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
+const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
 const WEB_ORIGIN = "https://www.vm0.test";
 
 const VIDEO_PRICING_DEFAULTS = [
@@ -97,16 +111,40 @@ const VIDEO_PRICING_DEFAULTS = [
     unitSize: 1_000_000,
   },
   {
-    provider: "seedance-1-0-pro-250528",
-    category: "output_video_tokens",
-    unitPrice: 5000,
-    unitSize: 1_000_000,
+    provider: FAL_VEO_FAST_MODEL,
+    category: "output_video_seconds.audio",
+    unitPrice: 180,
+    unitSize: 1,
   },
   {
-    provider: "seedance-1-0-pro-fast-251015",
-    category: "output_video_tokens",
-    unitPrice: 2000,
-    unitSize: 1_000_000,
+    provider: FAL_VEO_FAST_MODEL,
+    category: "output_video_seconds.silent",
+    unitPrice: 120,
+    unitSize: 1,
+  },
+  {
+    provider: FAL_VEO_FAST_MODEL,
+    category: "output_video_seconds.audio.4k",
+    unitPrice: 420,
+    unitSize: 1,
+  },
+  {
+    provider: FAL_VEO_FAST_MODEL,
+    category: "output_video_seconds.silent.4k",
+    unitPrice: 360,
+    unitSize: 1,
+  },
+  {
+    provider: KLING_V3_4K_MODEL,
+    category: "output_video_seconds.audio.4k",
+    unitPrice: 504,
+    unitSize: 1,
+  },
+  {
+    provider: KLING_V3_4K_MODEL,
+    category: "output_video_seconds.silent.4k",
+    unitPrice: 504,
+    unitSize: 1,
   },
 ] as const;
 
@@ -171,6 +209,30 @@ async function postBytePlusWebhook(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
+  });
+  expect(response.status).toBe(200);
+}
+
+function readFalWebhookUrl(requestUrl: string | null): string {
+  if (requestUrl) {
+    const webhookUrl = new URL(requestUrl).searchParams.get("fal_webhook");
+    if (webhookUrl) {
+      return webhookUrl;
+    }
+  }
+  throw new Error("Expected Fal request fal_webhook query parameter");
+}
+
+async function postFalWebhook(
+  app: ReturnType<typeof createApp>,
+  requestUrl: string | null,
+  payload: unknown,
+): Promise<void> {
+  const url = new URL(readFalWebhookUrl(requestUrl));
+  const response = await app.request(`${url.pathname}${url.search}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "COMPLETED", payload }),
   });
   expect(response.status).toBe(200);
 }
@@ -782,6 +844,8 @@ describe("POST /api/zero/video-io/generate", () => {
         imageUrls: ["https://example.com/reference.png"],
         videoUrls: ["https://example.com/reference.mp4"],
         audioUrls: ["https://example.com/reference.mp3"],
+        firstFrameImageUrl: "https://example.com/first.png",
+        lastFrameImageUrl: "https://example.com/last.png",
         seed: 42,
       }),
     });
@@ -820,6 +884,16 @@ describe("POST /api/zero/video-io/generate", () => {
         {
           type: "text",
           text: "preserve the character while matching the soundtrack",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/first.png" },
+          role: "first_frame",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/last.png" },
+          role: "last_frame",
         },
         {
           type: "image_url",
@@ -869,6 +943,253 @@ describe("POST /api/zero/video-io/generate", () => {
       category: "output_video_tokens.1080p.with_video",
       quantity: 200_000,
       creditsCharged: 1880,
+      status: "processed",
+      billingError: null,
+    });
+  });
+
+  it("generates video files with the recommended Fal fallback model", async () => {
+    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+
+    let observedAuthorization: string | null = null;
+    let observedBody: unknown = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = await request.json();
+        return HttpResponse.json({
+          request_id: "video-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+      http.get(FAL_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a cinematic tracking shot through a neon market",
+        model: "veo3.1-fast",
+        duration: "8s",
+        resolution: "720p",
+        aspectRatio: "16:9",
+        generateAudio: true,
+        seed: 42,
+        negativePrompt: "low quality",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: FAL_VIDEO_URL,
+        content_type: "video/mp4",
+        file_name: "output.mp4",
+        file_size: VIDEO_BYTES.byteLength,
+      },
+    });
+    await clearAllDetached();
+
+    const webhookUrl = new URL(readFalWebhookUrl(observedRequestUrl));
+    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.pathname).toBe(
+      `/api/webhooks/built-in-generations/fal/${generationId}`,
+    );
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toMatchObject({
+      prompt: "a cinematic tracking shot through a neon market",
+      aspect_ratio: "16:9",
+      duration: "8s",
+      resolution: "720p",
+      generate_audio: true,
+      auto_fix: true,
+      safety_tolerance: "4",
+      negative_prompt: "low quality",
+      seed: 42,
+    });
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "video/mp4",
+      size: VIDEO_BYTES.byteLength,
+      creditsCharged: 1440,
+      model: FAL_VEO_FAST_MODEL,
+      sourceUrl: FAL_VIDEO_URL,
+      requestId: "video-request",
+    });
+
+    const usageRows = await store
+      .set(writeDb$)
+      .select()
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+          eq(usageEvent.kind, "video"),
+          eq(usageEvent.provider, FAL_VEO_FAST_MODEL),
+        ),
+      );
+    expect(usageRows).toHaveLength(1);
+    expect(usageRows[0]).toMatchObject({
+      category: "output_video_seconds.audio",
+      quantity: 8,
+      creditsCharged: 1440,
+      status: "processed",
+      billingError: null,
+    });
+  });
+
+  it("generates video files with the recommended Kling 4K model", async () => {
+    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+
+    let observedBody: unknown = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(KLING_V3_4K_QUEUE_URL, async ({ request }) => {
+        observedRequestUrl = request.url;
+        observedBody = await request.json();
+        return HttpResponse.json({
+          request_id: "kling-video-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.get(KLING_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "kling-v3-4k",
+        duration: "5s",
+        aspectRatio: "9:16",
+        generateAudio: true,
+        negativePrompt: "low quality",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: KLING_VIDEO_URL,
+        content_type: "video/mp4",
+      },
+    });
+    await clearAllDetached();
+
+    expect(observedBody).toMatchObject({
+      prompt: "a vertical concert stage reveal",
+      aspect_ratio: "9:16",
+      duration: "5",
+      generate_audio: true,
+      negative_prompt: "low quality",
+    });
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      creditsCharged: 2520,
+      model: KLING_V3_4K_MODEL,
+      resolution: "4k",
+      sourceUrl: KLING_VIDEO_URL,
+      requestId: "kling-video-request",
+    });
+
+    const usageRows = await store
+      .set(writeDb$)
+      .select()
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+          eq(usageEvent.kind, "video"),
+          eq(usageEvent.provider, KLING_V3_4K_MODEL),
+        ),
+      );
+    expect(usageRows).toHaveLength(1);
+    expect(usageRows[0]).toMatchObject({
+      category: "output_video_seconds.audio.4k",
+      quantity: 5,
+      creditsCharged: 2520,
       status: "processed",
       billingError: null,
     });

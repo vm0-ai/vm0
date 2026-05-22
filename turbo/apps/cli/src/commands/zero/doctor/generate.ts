@@ -125,15 +125,15 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       reason: "available without connector setup",
     },
     {
-      label: "Built-in",
-      model: "seedance-1-0-pro-250528",
-      command: "zero built-in generate video --model seedance-1.0-pro -h",
+      label: "Built-in fal.ai",
+      model: "fal-ai/veo3.1/fast",
+      command: "zero built-in generate video --model veo3.1-fast -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in",
-      model: "seedance-1-0-pro-fast-251015",
-      command: "zero built-in generate video --model seedance-1.0-pro-fast -h",
+      label: "Built-in fal.ai",
+      model: "fal-ai/kling-video/v3/4k/text-to-video",
+      command: "zero built-in generate video --model kling-v3-4k -h",
       reason: "available without connector setup",
     },
   ],
@@ -160,7 +160,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in video generation",
     command: "zero built-in generate video -h",
     models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, seedance-1.0-pro, seedance-1.0-pro-fast",
+      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
   },
   presentation: {
     label: "Built-in presentation generation",

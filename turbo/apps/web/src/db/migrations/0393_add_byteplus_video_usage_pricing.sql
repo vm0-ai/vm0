@@ -8,9 +8,7 @@ VALUES
   ('video', 'dreamina-seedance-2-0-fast-260128', 'output_video_tokens.480p_720p.no_video', 11200, 1000000),
   ('video', 'dreamina-seedance-2-0-fast-260128', 'output_video_tokens.480p_720p.with_video', 6600, 1000000),
   ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.audio', 4800, 1000000),
-  ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.silent', 2400, 1000000),
-  ('video', 'seedance-1-0-pro-250528', 'output_video_tokens', 5000, 1000000),
-  ('video', 'seedance-1-0-pro-fast-251015', 'output_video_tokens', 2000, 1000000)
+  ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.silent', 2400, 1000000)
 ON CONFLICT ("kind", "provider", "category")
 DO UPDATE SET
   "unit_price" = EXCLUDED."unit_price",

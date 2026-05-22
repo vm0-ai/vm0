@@ -229,12 +229,6 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["output_video_tokens.audio", usd(2.4 * 2), 1_000_000],
     ["output_video_tokens.silent", usd(1.2 * 2), 1_000_000],
   ]),
-  ...usageGroup("video", "seedance-1-0-pro-250528", [
-    ["output_video_tokens", usd(2.5 * 2), 1_000_000],
-  ]),
-  ...usageGroup("video", "seedance-1-0-pro-fast-251015", [
-    ["output_video_tokens", usd(1.0 * 2), 1_000_000],
-  ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute cost with 20% gross margin = $0.01875/minute,

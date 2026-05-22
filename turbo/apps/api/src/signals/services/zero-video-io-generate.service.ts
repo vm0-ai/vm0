@@ -24,6 +24,10 @@ export const BYTEPLUS_VIDEO_TASKS_URL =
 const VIDEO_IO_MAX_PROMPT_LENGTH = 32_000;
 
 const USAGE_KIND = "video";
+const VIDEO_AUDIO_CATEGORY = "output_video_seconds.audio";
+const VIDEO_SILENT_CATEGORY = "output_video_seconds.silent";
+const VIDEO_AUDIO_4K_CATEGORY = "output_video_seconds.audio.4k";
+const VIDEO_SILENT_4K_CATEGORY = "output_video_seconds.silent.4k";
 const VIDEO_TOKEN_CATEGORY = "output_video_tokens";
 const VIDEO_TOKEN_480_720_NO_VIDEO_CATEGORY =
   "output_video_tokens.480p_720p.no_video";
@@ -35,6 +39,10 @@ const VIDEO_TOKEN_1080_WITH_VIDEO_CATEGORY =
 const VIDEO_TOKEN_AUDIO_CATEGORY = "output_video_tokens.audio";
 const VIDEO_TOKEN_SILENT_CATEGORY = "output_video_tokens.silent";
 const VIDEO_PRICING_CATEGORIES = [
+  VIDEO_AUDIO_CATEGORY,
+  VIDEO_SILENT_CATEGORY,
+  VIDEO_AUDIO_4K_CATEGORY,
+  VIDEO_SILENT_4K_CATEGORY,
   VIDEO_TOKEN_CATEGORY,
   VIDEO_TOKEN_480_720_NO_VIDEO_CATEGORY,
   VIDEO_TOKEN_480_720_WITH_VIDEO_CATEGORY,
@@ -52,8 +60,25 @@ const VIDEO_ASPECT_RATIOS = [
   "3:4",
   "9:16",
 ] as const;
+const STANDARD_VIDEO_ASPECT_RATIOS = ["16:9", "9:16"] as const;
 const VIDEO_DURATIONS = [
   "2s",
+  "3s",
+  "4s",
+  "5s",
+  "6s",
+  "7s",
+  "8s",
+  "9s",
+  "10s",
+  "11s",
+  "12s",
+  "13s",
+  "14s",
+  "15s",
+] as const;
+const VEO_VIDEO_DURATIONS = ["4s", "6s", "8s"] as const;
+const KLING_VIDEO_DURATIONS = [
   "3s",
   "4s",
   "5s",
@@ -93,53 +118,59 @@ const SEEDANCE_1_5_DURATIONS = [
   "11s",
   "12s",
 ] as const;
-const SEEDANCE_1_0_DURATIONS = [
-  "2s",
-  "3s",
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-] as const;
-const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
+const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p", "4k"] as const;
+const SEEDANCE_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
 const SEEDANCE_FAST_RESOLUTIONS = ["480p", "720p"] as const;
+const VEO_VIDEO_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
+const KLING_4K_VIDEO_RESOLUTIONS = ["4k"] as const;
 
 type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
 type VideoDuration = (typeof VIDEO_DURATIONS)[number];
 type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number];
+type SeedanceResolution = (typeof SEEDANCE_RESOLUTIONS)[number];
 type VideoPricingCategory = (typeof VIDEO_PRICING_CATEGORIES)[number];
-type VideoModelFamily = "seedance-2" | "seedance-1-5" | "seedance-1-0";
-type DimensionFamily = "seedance-2" | "seedance-1";
+type VideoProvider = "byteplus" | "fal";
+type VideoModelFamily = "seedance-2" | "seedance-1-5";
+type FalRequestFormat = "veo" | "kling";
 type VideoDimensions = {
   readonly width: number;
   readonly height: number;
 };
 type DimensionTable = Record<
-  VideoResolution,
+  SeedanceResolution,
   Record<VideoAspectRatio, VideoDimensions>
 >;
 
-interface VideoModelConfig {
+interface BaseVideoModelConfig {
   readonly alias: string;
-  readonly family: VideoModelFamily;
-  readonly dimensionFamily: DimensionFamily;
   readonly aspectRatios: readonly VideoAspectRatio[];
   readonly durations: readonly VideoDuration[];
   readonly resolutions: readonly VideoResolution[];
   readonly defaultResolution: VideoResolution;
   readonly supportsGenerateAudio: boolean;
   readonly supportsSeed: boolean;
+  readonly supportsNegativePrompt: boolean;
+  readonly supportsAutoFix: boolean;
+  readonly supportsSafetyTolerance: boolean;
   readonly supportsReferenceImage: boolean;
   readonly supportsReferenceVideo: boolean;
   readonly supportsReferenceAudio: boolean;
   readonly supportsFirstFrame: boolean;
   readonly supportsLastFrame: boolean;
+  readonly public: boolean;
 }
+
+interface BytePlusVideoModelConfig extends BaseVideoModelConfig {
+  readonly provider: "byteplus";
+  readonly family: VideoModelFamily;
+}
+
+interface FalVideoModelConfig extends BaseVideoModelConfig {
+  readonly provider: "fal";
+  readonly requestFormat: FalRequestFormat;
+}
+
+type VideoModelConfig = BytePlusVideoModelConfig | FalVideoModelConfig;
 
 const SEEDANCE_2_DIMENSIONS = {
   "480p": {
@@ -168,113 +199,106 @@ const SEEDANCE_2_DIMENSIONS = {
   },
 } as const satisfies DimensionTable;
 
-const SEEDANCE_1_DIMENSIONS = {
-  "480p": {
-    "21:9": { width: 960, height: 416 },
-    "16:9": { width: 864, height: 480 },
-    "4:3": { width: 736, height: 544 },
-    "1:1": { width: 640, height: 640 },
-    "3:4": { width: 544, height: 736 },
-    "9:16": { width: 480, height: 864 },
-  },
-  "720p": {
-    "21:9": { width: 1504, height: 640 },
-    "16:9": { width: 1248, height: 704 },
-    "4:3": { width: 1120, height: 832 },
-    "1:1": { width: 960, height: 960 },
-    "3:4": { width: 832, height: 1120 },
-    "9:16": { width: 704, height: 1248 },
-  },
-  "1080p": {
-    "21:9": { width: 2176, height: 928 },
-    "16:9": { width: 1920, height: 1088 },
-    "4:3": { width: 1664, height: 1248 },
-    "1:1": { width: 1440, height: 1440 },
-    "3:4": { width: 1248, height: 1664 },
-    "9:16": { width: 1088, height: 1920 },
-  },
-} as const satisfies DimensionTable;
-
 const VIDEO_MODEL_CONFIGS = {
   "dreamina-seedance-2-0-260128": {
+    provider: "byteplus",
     alias: "dreamina-seedance-2.0",
     family: "seedance-2",
-    dimensionFamily: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
     resolutions: VIDEO_RESOLUTIONS,
     defaultResolution: "720p",
     supportsGenerateAudio: true,
     supportsSeed: true,
+    supportsNegativePrompt: false,
+    supportsAutoFix: false,
+    supportsSafetyTolerance: false,
     supportsReferenceImage: true,
     supportsReferenceVideo: true,
     supportsReferenceAudio: true,
     supportsFirstFrame: true,
     supportsLastFrame: true,
+    public: true,
   },
   "dreamina-seedance-2-0-fast-260128": {
+    provider: "byteplus",
     alias: "dreamina-seedance-2.0-fast",
     family: "seedance-2",
-    dimensionFamily: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
     resolutions: SEEDANCE_FAST_RESOLUTIONS,
     defaultResolution: "720p",
     supportsGenerateAudio: true,
     supportsSeed: true,
+    supportsNegativePrompt: false,
+    supportsAutoFix: false,
+    supportsSafetyTolerance: false,
     supportsReferenceImage: true,
     supportsReferenceVideo: true,
     supportsReferenceAudio: true,
     supportsFirstFrame: true,
     supportsLastFrame: true,
+    public: true,
   },
   "seedance-1-5-pro-251215": {
+    provider: "byteplus",
     alias: "seedance-1.5-pro",
     family: "seedance-1-5",
-    dimensionFamily: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_1_5_DURATIONS,
     resolutions: VIDEO_RESOLUTIONS,
     defaultResolution: "720p",
     supportsGenerateAudio: true,
     supportsSeed: true,
-    supportsReferenceImage: false,
+    supportsNegativePrompt: false,
+    supportsAutoFix: false,
+    supportsSafetyTolerance: false,
+    supportsReferenceImage: true,
     supportsReferenceVideo: false,
     supportsReferenceAudio: false,
     supportsFirstFrame: true,
     supportsLastFrame: true,
+    public: true,
   },
-  "seedance-1-0-pro-250528": {
-    alias: "seedance-1.0-pro",
-    family: "seedance-1-0",
-    dimensionFamily: "seedance-1",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_1_0_DURATIONS,
-    resolutions: VIDEO_RESOLUTIONS,
+  "fal-ai/veo3.1/fast": {
+    provider: "fal",
+    alias: "veo3.1-fast",
+    requestFormat: "veo",
+    aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
+    durations: VEO_VIDEO_DURATIONS,
+    resolutions: VEO_VIDEO_RESOLUTIONS,
     defaultResolution: "720p",
-    supportsGenerateAudio: false,
+    supportsGenerateAudio: true,
     supportsSeed: true,
+    supportsNegativePrompt: true,
+    supportsAutoFix: true,
+    supportsSafetyTolerance: true,
     supportsReferenceImage: false,
     supportsReferenceVideo: false,
     supportsReferenceAudio: false,
-    supportsFirstFrame: true,
-    supportsLastFrame: true,
-  },
-  "seedance-1-0-pro-fast-251015": {
-    alias: "seedance-1.0-pro-fast",
-    family: "seedance-1-0",
-    dimensionFamily: "seedance-1",
-    aspectRatios: VIDEO_ASPECT_RATIOS,
-    durations: SEEDANCE_1_0_DURATIONS,
-    resolutions: VIDEO_RESOLUTIONS,
-    defaultResolution: "720p",
-    supportsGenerateAudio: false,
-    supportsSeed: true,
-    supportsReferenceImage: false,
-    supportsReferenceVideo: false,
-    supportsReferenceAudio: false,
-    supportsFirstFrame: true,
+    supportsFirstFrame: false,
     supportsLastFrame: false,
+    public: true,
+  },
+  "fal-ai/kling-video/v3/4k/text-to-video": {
+    provider: "fal",
+    alias: "kling-v3-4k",
+    requestFormat: "kling",
+    aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
+    durations: KLING_VIDEO_DURATIONS,
+    resolutions: KLING_4K_VIDEO_RESOLUTIONS,
+    defaultResolution: "4k",
+    supportsGenerateAudio: true,
+    supportsSeed: false,
+    supportsNegativePrompt: true,
+    supportsAutoFix: false,
+    supportsSafetyTolerance: false,
+    supportsReferenceImage: false,
+    supportsReferenceVideo: false,
+    supportsReferenceAudio: false,
+    supportsFirstFrame: false,
+    supportsLastFrame: false,
+    public: true,
   },
 } as const satisfies Record<string, VideoModelConfig>;
 
@@ -289,12 +313,10 @@ const VIDEO_MODEL_ALIASES = {
   "dreamina-seedance-2-0-fast": "dreamina-seedance-2-0-fast-260128",
   "seedance-1.5-pro": "seedance-1-5-pro-251215",
   "seedance-1-5-pro": "seedance-1-5-pro-251215",
-  "seedance-1.0-pro": "seedance-1-0-pro-250528",
-  "seedance-1-0-pro": "seedance-1-0-pro-250528",
-  "seedance-1.0-pro-fast": "seedance-1-0-pro-fast-251015",
-  "seedance-1-0-pro-fast": "seedance-1-0-pro-fast-251015",
   "seedance2.0": "dreamina-seedance-2-0-260128",
   "seedance2.0-fast": "dreamina-seedance-2-0-fast-260128",
+  "veo3.1-fast": "fal-ai/veo3.1/fast",
+  "kling-v3-4k": "fal-ai/kling-video/v3/4k/text-to-video",
 } as const satisfies Readonly<Record<string, VideoModel>>;
 
 type ErrorStatus = 400 | 402 | 500 | 502 | 503 | 504;
@@ -342,6 +364,23 @@ export interface VideoOptions {
 interface BytePlusTaskHandle {
   readonly taskId: string;
   readonly status: string | undefined;
+}
+
+interface FalQueueHandle {
+  readonly requestId: string | undefined;
+  readonly statusUrl: string;
+  readonly responseUrl: string;
+}
+
+interface FalFile {
+  readonly url: string;
+  readonly contentType: string | undefined;
+}
+
+interface FalVideoResult {
+  readonly requestId: string | undefined;
+  readonly sourceUrl: string;
+  readonly falContentType: string | undefined;
 }
 
 interface BytePlusVideoResult {
@@ -569,9 +608,17 @@ function normalizeVideoModel(value: string): VideoModel | null {
 }
 
 function videoModelList(): string {
-  return VIDEO_MODELS.map((model) => {
-    return VIDEO_MODEL_CONFIGS[model].alias;
-  }).join(", ");
+  return VIDEO_MODELS.filter((model) => {
+    return VIDEO_MODEL_CONFIGS[model].public;
+  })
+    .map((model) => {
+      return VIDEO_MODEL_CONFIGS[model].alias;
+    })
+    .join(", ");
+}
+
+export function videoProviderForModel(model: VideoModel): VideoProvider {
+  return VIDEO_MODEL_CONFIGS[model].provider;
 }
 
 function parseDurationSeconds(duration: VideoDuration): number {
@@ -815,6 +862,14 @@ export function videoPricingCategoryForOptions(
   >,
 ): VideoPricingCategory {
   const config = VIDEO_MODEL_CONFIGS[options.model];
+  if (config.provider === "fal") {
+    if (options.resolution === "4k") {
+      return options.generateAudio
+        ? VIDEO_AUDIO_4K_CATEGORY
+        : VIDEO_SILENT_4K_CATEGORY;
+    }
+    return options.generateAudio ? VIDEO_AUDIO_CATEGORY : VIDEO_SILENT_CATEGORY;
+  }
   if (config.family === "seedance-2") {
     const hasInputVideo = options.inputVideoUrls.length > 0;
     if (options.resolution === "1080p") {
@@ -899,6 +954,100 @@ export const checkVideoCredits$ = command(
     return credits - unsettledExpired > 0;
   },
 );
+
+function falHeaders(falKey: string): Record<string, string> {
+  return {
+    Authorization: `Key ${falKey}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function parseFalQueueHandle(value: unknown): FalQueueHandle | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const statusUrl =
+    typeof value.status_url === "string" ? value.status_url : undefined;
+  const responseUrl =
+    typeof value.response_url === "string" ? value.response_url : undefined;
+  if (!statusUrl || !responseUrl) {
+    return null;
+  }
+  return {
+    requestId:
+      typeof value.request_id === "string" ? value.request_id : undefined,
+    statusUrl,
+    responseUrl,
+  };
+}
+
+function falVideoQueueUrl(model: VideoModel): string {
+  return `https://queue.fal.run/${model}`;
+}
+
+function falVideoInput(options: VideoOptions): Record<string, unknown> {
+  const config = VIDEO_MODEL_CONFIGS[options.model];
+  if (config.provider !== "fal") {
+    throw new Error("Expected a Fal video model");
+  }
+
+  if (config.requestFormat === "kling") {
+    return compactObject({
+      prompt: options.prompt,
+      aspect_ratio: options.aspectRatio,
+      duration: String(options.durationSeconds),
+      generate_audio: options.generateAudio,
+      ...(config.supportsNegativePrompt && options.negativePrompt
+        ? { negative_prompt: options.negativePrompt }
+        : {}),
+    });
+  }
+
+  return compactObject({
+    prompt: options.prompt,
+    aspect_ratio: options.aspectRatio,
+    duration: options.duration,
+    resolution: options.resolution,
+    generate_audio: options.generateAudio,
+    ...(config.supportsAutoFix ? { auto_fix: options.autoFix } : {}),
+    ...(config.supportsSafetyTolerance
+      ? { safety_tolerance: options.safetyTolerance }
+      : {}),
+    ...(config.supportsNegativePrompt && options.negativePrompt
+      ? { negative_prompt: options.negativePrompt }
+      : {}),
+    ...(config.supportsSeed && options.seed !== undefined
+      ? { seed: options.seed }
+      : {}),
+  });
+}
+
+export async function submitFalVideoGeneration(
+  options: VideoOptions,
+  falKey: string,
+  signal: AbortSignal,
+  webhookUrl: string,
+): Promise<FalQueueHandle | VideoErrorResponse> {
+  const queueUrl = new URL(falVideoQueueUrl(options.model));
+  queueUrl.searchParams.set("fal_webhook", webhookUrl);
+  const response = await fetch(queueUrl, {
+    method: "POST",
+    headers: falHeaders(falKey),
+    body: JSON.stringify(falVideoInput(options)),
+    signal,
+  });
+
+  if (!response.ok) {
+    return videoInternalError("Video generation failed");
+  }
+
+  const body: unknown = await response.json();
+  const handle = parseFalQueueHandle(body);
+  if (!handle) {
+    return badGateway("Fal returned no queue handle", "NO_QUEUE_HANDLE");
+  }
+  return handle;
+}
 
 function bytePlusHeaders(apiKey: string): Record<string, string> {
   return {
@@ -1117,6 +1266,36 @@ function readCompletionTokens(value: unknown): number | undefined {
   );
 }
 
+function parseFalFile(value: unknown): FalFile | null {
+  if (!isRecord(value) || typeof value.url !== "string") {
+    return null;
+  }
+  return {
+    url: value.url,
+    contentType:
+      typeof value.content_type === "string" ? value.content_type : undefined,
+  };
+}
+
+export function parseFalVideoResult(
+  value: unknown,
+  requestId: string | undefined,
+): FalVideoResult | VideoErrorResponse {
+  if (!isRecord(value)) {
+    return badGateway("Model returned no video data", "NO_VIDEO_RETURNED");
+  }
+  const video = parseFalFile(value.video);
+  const sourceUrl = video?.url ?? readVideoUrl(value.video);
+  if (!sourceUrl) {
+    return badGateway("Model returned no video data", "NO_VIDEO_RETURNED");
+  }
+  return {
+    requestId,
+    sourceUrl,
+    falContentType: video?.contentType ?? readVideoContentType(value.video),
+  };
+}
+
 export function parseBytePlusVideoResult(
   value: unknown,
 ): BytePlusVideoResult | VideoErrorResponse {
@@ -1141,6 +1320,53 @@ export function parseBytePlusVideoResult(
     sourceUrl,
     bytePlusContentType: readVideoContentType(value),
     completionTokens: readCompletionTokens(value),
+  };
+}
+
+export async function downloadFalVideo(
+  result: FalVideoResult,
+  options: VideoOptions,
+  signal: AbortSignal,
+): Promise<ParsedVideoGeneration | VideoErrorResponse> {
+  const response = await fetch(result.sourceUrl, { method: "GET", signal });
+  if (!response.ok) {
+    return badGateway(
+      "Could not download generated video",
+      "VIDEO_DOWNLOAD_FAILED",
+    );
+  }
+
+  const videoBytes = Buffer.from(await response.arrayBuffer());
+  if (videoBytes.byteLength === 0) {
+    return badGateway("Model returned empty video", "NO_VIDEO_RETURNED");
+  }
+
+  const contentType =
+    normalizeVideoContentType(result.falContentType) ??
+    normalizeVideoContentType(response.headers.get("content-type")) ??
+    "video/mp4";
+
+  return {
+    model: options.model,
+    videoBytes,
+    contentType,
+    sourceUrl: result.sourceUrl,
+    requestId: result.requestId,
+    aspectRatio: options.aspectRatio,
+    duration: options.duration,
+    durationSeconds: options.durationSeconds,
+    resolution: options.resolution,
+    generateAudio: options.generateAudio,
+    negativePrompt: options.negativePrompt,
+    seed: options.seed,
+    autoFix: options.autoFix,
+    safetyTolerance: options.safetyTolerance,
+    referenceImageUrls: options.referenceImageUrls,
+    inputVideoUrls: options.inputVideoUrls,
+    referenceAudioUrls: options.referenceAudioUrls,
+    firstFrameImageUrl: options.firstFrameImageUrl,
+    lastFrameImageUrl: options.lastFrameImageUrl,
+    billingQuantity: videoBillingQuantityForOptions(options),
   };
 }
 
@@ -1202,17 +1428,25 @@ function extensionForContentType(contentType: string): string {
   return "mp4";
 }
 
+function isSeedanceResolution(
+  resolution: VideoResolution,
+): resolution is SeedanceResolution {
+  return includesString(SEEDANCE_RESOLUTIONS, resolution);
+}
+
 function seedanceDimensions(
   model: VideoModel,
   resolution: VideoResolution,
   aspectRatio: VideoAspectRatio,
 ): VideoDimensions {
+  if (!isSeedanceResolution(resolution)) {
+    throw new Error("Unsupported Seedance video resolution");
+  }
   const config = VIDEO_MODEL_CONFIGS[model];
-  const dimensions =
-    config.dimensionFamily === "seedance-1"
-      ? SEEDANCE_1_DIMENSIONS
-      : SEEDANCE_2_DIMENSIONS;
-  return dimensions[resolution][aspectRatio];
+  if (config.provider !== "byteplus") {
+    throw new Error("Expected a BytePlus video model");
+  }
+  return SEEDANCE_2_DIMENSIONS[resolution][aspectRatio];
 }
 
 function seedanceOutputTokens(
@@ -1238,6 +1472,9 @@ function videoBillingQuantityForOptions(
     "aspectRatio" | "durationSeconds" | "model" | "resolution"
   >,
 ): number {
+  if (VIDEO_MODEL_CONFIGS[options.model].provider === "fal") {
+    return options.durationSeconds;
+  }
   return seedanceOutputTokens(options);
 }
 

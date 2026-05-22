@@ -169,12 +169,14 @@ describe("zero built-in generate video command", () => {
     expect(helpOutput).toContain("dreamina-seedance-2.0-fast");
     expect(helpOutput).toContain("dreamina-seedance-2.0");
     expect(helpOutput).toContain("seedance-1.5-pro");
-    expect(helpOutput).toContain("seedance-1.0-pro");
-    expect(helpOutput).toContain("seedance-1.0-pro-fast");
+    expect(helpOutput).toContain("veo3.1-fast");
+    expect(helpOutput).toContain("kling-v3-4k");
+    expect(helpOutput).not.toContain("seedance-1.0-pro");
     expect(helpOutput).toContain("4s-15s");
-    expect(helpOutput).toContain("2s-12s");
     expect(helpOutput).toContain("21:9");
     expect(helpOutput).toContain("--image-url");
+    expect(helpOutput).toContain("--first-frame-image-url");
+    expect(helpOutput).toContain("--last-frame-image-url");
   });
 
   it("should surface API errors", async () => {

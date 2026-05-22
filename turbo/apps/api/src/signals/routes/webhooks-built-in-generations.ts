@@ -31,7 +31,9 @@ import {
 } from "../services/zero-run-built-in-admission.service";
 import { verifyBuiltInGenerationProviderWebhookToken } from "../services/built-in-generation-provider-webhooks.service";
 import {
+  downloadFalVideo,
   downloadBytePlusVideo,
+  parseFalVideoResult,
   parseBytePlusVideoResult,
   parseVideoOptions,
   recordGeneratedVideo$,
@@ -390,6 +392,94 @@ const handleBytePlusVideoCompletion$ = command(
   },
 );
 
+const handleFalVideoCompletion$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly job: BuiltInGenerationWebhookJob;
+      readonly payload: unknown;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const options = parseJobVideoOptions(args.job);
+    const videoPricing = await get(videoPricing$);
+    signal.throwIfAborted();
+    const pricing = activeVideoPricing(videoPricing, args.job);
+    if (isErrorResponse(pricing)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: pricing.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    const falResult = parseFalVideoResult(
+      args.payload,
+      readBuiltInGenerationRequestInternal(args.job.request).providerJobId,
+    );
+    if (isErrorResponse(falResult)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: falResult.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    const generation = await downloadFalVideo(falResult, options, signal);
+    signal.throwIfAborted();
+    if (isErrorResponse(generation)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: generation.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    const result = await set(
+      recordGeneratedVideo$,
+      {
+        orgId: args.job.orgId,
+        userId: args.job.userId,
+        runId: args.job.runId ?? undefined,
+        pricing,
+        generation,
+        usageIdempotency: {
+          generationId: args.job.id,
+          scope: "video",
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(
+      completeBuiltInGenerationJob$,
+      { generationId: args.job.id, result },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(completeAdmissionForJob$, {
+      job: args.job,
+      status: "completed",
+    });
+    signal.throwIfAborted();
+  },
+);
+
 const postFalBuiltInGenerationWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<FalWebhookResponse> => {
     const params = get(falWebhookPathParams$);
@@ -467,6 +557,18 @@ const postFalBuiltInGenerationWebhook$ = command(
         signal,
       );
       L.debug("Fal built-in generation image webhook processed", {
+        generationId: job.id,
+        visualKey: query.visualKey,
+      });
+      return okResponse();
+    }
+    if (job.type === "video") {
+      await set(
+        handleFalVideoCompletion$,
+        { job, payload: payload.body },
+        signal,
+      );
+      L.debug("Fal built-in generation video webhook processed", {
         generationId: job.id,
         visualKey: query.visualKey,
       });

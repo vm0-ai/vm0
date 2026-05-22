@@ -223,12 +223,13 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
     expect(text).toContain(
-      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, seedance-1.0-pro, seedance-1.0-pro-fast",
+      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
     );
     expect(text).toContain("Use: zero built-in generate video -h");
     expect(text).not.toContain("Use: zero built-in generate video --model");
     expect(text).not.toContain("Model: dreamina-seedance-2-0-260128");
     expect(text).not.toContain("Model: seedance-1-5-pro-251215");
+    expect(text).not.toContain("Model: seedance-1-0-pro-250528");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
