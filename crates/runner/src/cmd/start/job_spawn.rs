@@ -257,15 +257,14 @@ pub(super) fn spawn_job(
                 (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
             }
 
-            let completion_payload =
-                CompletionPayload::new(
-                    run_id,
-                    exit_code,
-                    err,
-                    sandbox_id,
-                    reuse_result,
-                    completion_auth,
-                );
+            let completion_payload = CompletionPayload::new(
+                run_id,
+                exit_code,
+                err,
+                sandbox_id,
+                reuse_result,
+                completion_auth,
+            );
             // Cancellation can arrive after terminal logging or while
             // `sandbox.park()` is in flight. Pass the live token so finalization
             // can re-check immediately before idle-pool ownership transfer.
