@@ -2,7 +2,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Command } from "commander";
 import type {
-  ComputerUseAuditEvent,
   ComputerUseCommandResponse,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
@@ -10,10 +9,7 @@ import type {
 import {
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
-  deleteComputerUseHost,
   getComputerUseCommand,
-  listComputerUseAuditEvents,
-  listComputerUseHosts,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
@@ -61,13 +57,6 @@ interface ComputerUseTypeTextOptions extends ComputerUseAppOptions {
 
 interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
   readonly key: string;
-}
-
-interface AuditListOptions {
-  readonly limit?: string;
-  readonly commandId?: string;
-  readonly hostId?: string;
-  readonly runId?: string;
 }
 
 const COMPUTER_USE_SCREENSHOT_DIR = "/tmp/vm0/computer-use";
@@ -133,17 +122,6 @@ function parseMouseButton(
     return value;
   }
   throw new Error("button must be left, right, or middle");
-}
-
-function parseLimit(value: string | undefined): number {
-  if (value === undefined) {
-    return 50;
-  }
-  const parsed = parsePositiveInteger(value, "limit");
-  if (parsed > 200) {
-    throw new Error("limit must be 200 or less");
-  }
-  return parsed;
 }
 
 function sanitizeFilenamePart(value: unknown, fallback: string): string {
@@ -322,32 +300,6 @@ function appOption(command: Command): Command {
   return command.requiredOption("--app <name>", "Target app name or bundle id");
 }
 
-function auditMetadataValue(
-  metadata: Record<string, unknown> | null,
-  key: string,
-): string | null {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function formatAuditEvent(event: ComputerUseAuditEvent): string {
-  const dispatchMode = auditMetadataValue(event.redactedResult, "dispatchMode");
-  const inputRisk = auditMetadataValue(event.redactedResult, "inputRisk");
-  return [
-    `${event.createdAt} ${event.event} ${event.kind}`,
-    `command=${event.commandId}`,
-    event.hostId ? `host=${event.hostId}` : null,
-    event.app ? `app=${event.app}` : null,
-    event.approvalOutcome ? `approval=${event.approvalOutcome}` : null,
-    dispatchMode ? `dispatch=${dispatchMode}` : null,
-    inputRisk ? `risk=${inputRisk}` : null,
-  ]
-    .filter((part): part is string => {
-      return part !== null;
-    })
-    .join(" ");
-}
-
 const listAppsCommand = addTargetOptions(
   new Command()
     .name("list-apps")
@@ -519,48 +471,6 @@ const openAppCommand = appOption(
   ),
 );
 
-const hostsCommand = new Command()
-  .name("hosts")
-  .description("List linked Desktop Computer Use hosts")
-  .action(
-    withErrorHandler(async () => {
-      const { hosts } = await listComputerUseHosts();
-      console.log(JSON.stringify({ hosts }, null, 2));
-    }),
-  );
-
-const revokeHostCommand = new Command()
-  .name("revoke-host")
-  .description("Revoke a linked Desktop Computer Use host")
-  .argument("<host-id>")
-  .action(
-    withErrorHandler(async (hostId: string) => {
-      await deleteComputerUseHost(hostId);
-      console.log(`Revoked computer-use host ${hostId}`);
-    }),
-  );
-
-const auditCommand = new Command()
-  .name("audit")
-  .description("List Desktop Computer Use write-command audit events")
-  .option("--limit <count>", "Maximum events to return", "50")
-  .option("--command-id <id>", "Filter by command id")
-  .option("--host-id <id>", "Filter by host id")
-  .option("--run-id <id>", "Filter by run id")
-  .action(
-    withErrorHandler(async (options: AuditListOptions) => {
-      const { auditEvents } = await listComputerUseAuditEvents({
-        limit: parseLimit(options.limit),
-        ...(options.commandId ? { commandId: options.commandId } : {}),
-        ...(options.hostId ? { hostId: options.hostId } : {}),
-        ...(options.runId ? { runId: options.runId } : {}),
-      });
-      for (const event of auditEvents) {
-        console.log(formatAuditEvent(event));
-      }
-    }),
-  );
-
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
   .description("Desktop app computer use through Zero CLI")
@@ -572,7 +482,4 @@ export const zeroComputerUseCommand = new Command()
   .addCommand(typeTextCommand)
   .addCommand(pressKeyCommand)
   .addCommand(performActionCommand)
-  .addCommand(openAppCommand)
-  .addCommand(hostsCommand)
-  .addCommand(revokeHostCommand)
-  .addCommand(auditCommand);
+  .addCommand(openAppCommand);

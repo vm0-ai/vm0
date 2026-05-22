@@ -1,17 +1,12 @@
 import { initClient } from "@ts-rest/core";
 import type {
-  ComputerUseAuditEventListResponse,
   ComputerUseCommandCreateResponse,
   ComputerUseCommandResponse,
-  ComputerUseHostDeleteResponse,
-  ComputerUseHostListResponse,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
-  zeroComputerUseAuditEventsContract,
   zeroComputerUseCommandContract,
-  zeroComputerUseHostsContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
@@ -151,54 +146,4 @@ export async function getComputerUseCommand(
   }
 
   handleError(result, "Failed to get computer-use command");
-}
-
-export async function listComputerUseHosts(): Promise<ComputerUseHostListResponse> {
-  const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseHostsContract, config);
-  const result = await client.list({ headers: {} });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to list computer-use hosts");
-}
-
-export async function deleteComputerUseHost(
-  hostId: string,
-): Promise<ComputerUseHostDeleteResponse> {
-  const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseHostsContract, config);
-  const result = await client.delete({ params: { hostId } });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to revoke computer-use host");
-}
-
-export async function listComputerUseAuditEvents(params: {
-  readonly limit?: number;
-  readonly commandId?: string;
-  readonly hostId?: string;
-  readonly runId?: string;
-}): Promise<ComputerUseAuditEventListResponse> {
-  const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseAuditEventsContract, config);
-  const result = await client.list({
-    query: {
-      limit: params.limit ?? 50,
-      ...(params.commandId ? { commandId: params.commandId } : {}),
-      ...(params.hostId ? { hostId: params.hostId } : {}),
-      ...(params.runId ? { runId: params.runId } : {}),
-    },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to list computer-use audit events");
 }
