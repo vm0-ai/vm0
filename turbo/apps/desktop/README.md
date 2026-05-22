@@ -22,10 +22,22 @@ By default the app opens production:
 pnpm -F @vm0/desktop dev
 ```
 
+From the monorepo root, start the desktop app against the local proxy with:
+
+```bash
+pnpm desktop:dev
+```
+
 The desktop build compiles both Electron entrypoints and the Swift native helper:
 
 ```bash
 pnpm -F @vm0/desktop build
+```
+
+Create a macOS artifact with:
+
+```bash
+pnpm desktop:make
 ```
 
 The helper source lives under `apps/desktop/native/computer-use-helper`. Build
@@ -36,7 +48,7 @@ Point it at a local or staging platform URL with:
 
 ```bash
 VM0_DESKTOP_PLATFORM_URL=https://staging-app.vm6.ai pnpm -F @vm0/desktop dev
-VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai pnpm -F @vm0/desktop dev
+VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev
 VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev
 ```
 
