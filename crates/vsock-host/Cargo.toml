@@ -11,5 +11,8 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 vsock-proto.workspace = true
 
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+
 [lints]
 workspace = true

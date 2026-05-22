@@ -2796,6 +2796,30 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+    use tracing::{Event, Level, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
+
+    #[derive(Clone, Default)]
+    struct CapturedEvents {
+        levels: Arc<Mutex<Vec<Level>>>,
+    }
+
+    impl CapturedEvents {
+        fn levels(&self) -> Vec<Level> {
+            self.levels.lock().unwrap().clone()
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            self.levels.lock().unwrap().push(*event.metadata().level());
+        }
+    }
 
     fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
         let (result_tx, _result_rx) = oneshot::channel();
@@ -2818,6 +2842,35 @@ mod tests {
         }
     }
 
+    fn clean_terminal_result() -> vsock_proto::DecodedExecResult<'static> {
+        vsock_proto::DecodedExecResult {
+            termination: ExecTermination::Exited { exit_code: 0 },
+            duration_ms: 10,
+            stdout: ExecCapturedOutput::Discarded,
+            stderr: ExecCapturedOutput::Discarded,
+            diagnostic: "",
+        }
+    }
+
+    fn capture_terminal_log_levels(
+        lifecycle: ExecTerminalLogLifecycle,
+        slow: bool,
+        result: &vsock_proto::DecodedExecResult<'_>,
+    ) -> Vec<Level> {
+        let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log", &[]);
+        if slow {
+            diagnostic.registered_at =
+                Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
+        }
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            diagnostic.log_terminal(lifecycle, result, false);
+        });
+        captured.levels()
+    }
+
     #[test]
     fn exec_termination_notable_tracks_nonzero_exit() {
         assert!(!exec_termination_is_notable(
@@ -2836,6 +2889,32 @@ mod tests {
             ExecTermination::TimedOut,
             &[124]
         ));
+    }
+
+    #[test]
+    fn exec_operation_diagnostic_logs_terminal_result_at_classified_level() {
+        let clean = clean_terminal_result();
+        assert_eq!(
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &clean),
+            vec![Level::INFO]
+        );
+        assert_eq!(
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::OneShot, true, &clean),
+            vec![Level::WARN]
+        );
+        assert!(
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, false, &clean)
+                .is_empty()
+        );
+
+        let notable = vsock_proto::DecodedExecResult {
+            termination: ExecTermination::Exited { exit_code: 1 },
+            ..clean
+        };
+        assert_eq!(
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &notable),
+            vec![Level::WARN]
+        );
     }
 
     #[test]
