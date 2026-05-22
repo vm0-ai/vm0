@@ -36,8 +36,12 @@ class TestAuthBaseForwarderSecurity:
         ],
     )
     def test_rejects_userinfo_authority(self, url):
-        with pytest.raises(ValueError, match="Unsupported URL authority"):
+        with (
+            patch.object(forwarder.http_client, "HTTPSConnection") as https_conn,
+            pytest.raises(ValueError, match="Unsupported URL authority"),
+        ):
             forwarder._forward_request_sync(url, "GET", [], None)
+        https_conn.assert_not_called()
 
     def test_filters_hop_by_hop_from_response(self):
         filtered = forwarder._filter_response_headers(
