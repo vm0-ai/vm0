@@ -4,26 +4,6 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-
-/**
- * Get the zero_agents UUID by org + agent name.
- */
-export async function getTestZeroAgentId(
-  orgId: string,
-  name: string,
-): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
-    .limit(1);
-  if (!row) {
-    throw new Error(`Zero agent not found: org=${orgId} name=${name}`);
-  }
-  return row.id;
-}
 
 // ---------------------------------------------------------------------------
 // Session / conversation assertions (migrated from api-test-helpers/agents.ts)

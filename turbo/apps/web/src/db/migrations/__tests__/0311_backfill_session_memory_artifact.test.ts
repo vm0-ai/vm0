@@ -9,10 +9,6 @@ import {
 } from "../../../__tests__/db-test-seeders/runs";
 import { findTestRunRecord } from "../../../__tests__/db-test-assertions/runs";
 import { getTestAgentSessionArtifacts } from "../../../__tests__/db-test-assertions/agents";
-import {
-  AUTO_MEMORY_ARTIFACT_NAME,
-  AUTO_MEMORY_MOUNT_PATH,
-} from "../../../lib/zero/memory";
 
 /**
  * Integration test for migration 0311 body.
@@ -30,8 +26,8 @@ import {
 const context = testContext();
 
 const MEMORY_ENTRY = {
-  name: AUTO_MEMORY_ARTIFACT_NAME,
-  mountPath: AUTO_MEMORY_MOUNT_PATH,
+  name: "memory",
+  mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
 };
 
 async function setupSessionAndRun(): Promise<{

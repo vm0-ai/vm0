@@ -61,7 +61,6 @@
     "resend": "^6.9.2",
     "server-only": "^0.0.1",
     "stripe": "^20.4.1",
-    "tar": "^7.5.11",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -96,7 +96,7 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       errors: [{ messageId: "noDbSchemaImport" }],
     },
     {
-      code: 'import { createZeroRun } from "../zero-run-service";',
+      code: 'import { getMessagesByThreadId } from "../chat-thread/chat-message-service";',
       errors: [{ messageId: "noServiceImport" }],
     },
     {

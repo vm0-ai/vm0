@@ -101,7 +101,6 @@ export {
   insertTestConversation,
   insertTestSandboxTelemetry,
   insertTestUsageDaily,
-  enqueueTestRun,
   findTestRunsByUserAndPrompt,
   findTestRunsByUserAndPromptContaining,
   findTestRunRecord,

@@ -62,44 +62,6 @@ export interface UserInfoOptions {
   agentphoneHandle?: string;
 }
 
-/**
- * Build the user info section for agent system prompts.
- */
-export function buildUserInfo(options: UserInfoOptions): string {
-  const lines: string[] = [];
-  if (options.name) {
-    lines.push(`Name: ${options.name}`);
-  }
-  if (options.email) {
-    lines.push(`Email: ${options.email}`);
-  }
-  if (options.timezone) {
-    lines.push(`Timezone: ${options.timezone}`);
-  }
-  if (options.slackDisplayName) {
-    lines.push(`Slack display name: ${options.slackDisplayName}`);
-  }
-  if (options.slackUserId) {
-    lines.push(`Slack user ID: ${options.slackUserId}`);
-  }
-  if (options.telegramDisplayName) {
-    lines.push(`Telegram display name: ${options.telegramDisplayName}`);
-  }
-  if (options.telegramUsername) {
-    lines.push(`Telegram username: ${options.telegramUsername}`);
-  }
-  if (options.telegramUserId) {
-    lines.push(`Telegram user ID: ${options.telegramUserId}`);
-  }
-  if (options.telegramLanguage) {
-    lines.push(`Telegram language: ${options.telegramLanguage}`);
-  }
-  if (options.agentphoneHandle) {
-    lines.push(`Text message handle: ${options.agentphoneHandle}`);
-  }
-  return `# Current User Info\n${lines.join("\n")}`;
-}
-
 // ---------------------------------------------------------------------------
 // Per-integration prompt builders
 // ---------------------------------------------------------------------------

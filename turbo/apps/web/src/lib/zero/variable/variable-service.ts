@@ -63,30 +63,6 @@ export async function listVariables(
 }
 
 /**
- * Get all variable values for an org as a map
- * Used for batch variable resolution during agent execution
- */
-export async function getVariableValues(
-  orgId: string,
-  userId: string,
-): Promise<Record<string, string>> {
-  const result = await globalThis.services.db
-    .select({
-      name: variables.name,
-      value: variables.value,
-    })
-    .from(variables)
-    .where(and(eq(variables.orgId, orgId), eq(variables.userId, userId)));
-
-  const values: Record<string, string> = {};
-  for (const row of result) {
-    values[row.name] = row.value;
-  }
-
-  return values;
-}
-
-/**
  * Create or update a variable (upsert)
  */
 export async function setVariable(

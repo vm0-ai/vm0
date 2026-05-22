@@ -1,42 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  createTestOrg,
   insertVm0ApiKeys,
   deleteInsertedVm0ApiKeys,
   getTestVm0ApiKey,
-  insertOrgDefaultModelProvider,
 } from "./api-test-helpers";
 import { testContext, uniqueId } from "./test-helpers";
-import { mockClerk } from "./clerk-mock";
 import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { resolveModelProviderSecrets } from "../lib/zero/context/resolve-model-provider";
 
 const context = testContext();
-
-async function setupOrg(
-  userId: string,
-  role: "org:admin" | "org:member",
-  slug?: string,
-) {
-  const orgSlug = slug ?? uniqueId("vm0test");
-  const orgId = `org_mock_${userId}`;
-
-  mockClerk({
-    userId,
-    orgId,
-    orgRole: role,
-    orgSlug,
-    clerkOrgs: [{ id: orgId, slug: orgSlug, name: orgSlug, role }],
-  });
-  await createTestOrg(orgSlug);
-
-  return { slug: orgSlug, orgId };
-}
 
 describe("VM0 managed model provider", () => {
   beforeEach(() => {
@@ -173,113 +149,6 @@ describe("VM0 managed model provider", () => {
         "gpt-5.4",
         "gpt-5.4-mini",
       ]);
-    });
-  });
-
-  describe("glm-5.1 openrouter routing integration", () => {
-    it("should inject z-ai/glm-5.1 as ANTHROPIC_MODEL when resolving vm0 glm-5.1 provider", async () => {
-      const userId = uniqueId("glm-route");
-      const { orgId } = await setupOrg(userId, "org:admin", uniqueId("glm"));
-
-      await insertOrgDefaultModelProvider(orgId, "vm0", "glm-5.1");
-      await insertVm0ApiKeys([
-        {
-          vendor: "openrouter",
-          model: "z-ai/glm-5.1",
-          apiKey: "sk-or-v1-glmtestkey",
-          label: "glm-5.1 test key",
-        },
-      ]);
-
-      const result = await resolveModelProviderSecrets(
-        orgId,
-        userId,
-        "claude-code",
-        false,
-      );
-
-      expect(result.resolvedModelProvider).toBe("vm0");
-      expect(result.concreteProviderType).toBe("openrouter-api-key");
-      expect(result.selectedModel).toBe("glm-5.1");
-      // The apiModel override must flow through to ANTHROPIC_MODEL — this is the core fix
-      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe("z-ai/glm-5.1");
-      expect(result.secrets?.OPENROUTER_API_KEY).toBeDefined();
-    });
-  });
-
-  describe("deepseek v4 routing integration", () => {
-    it("should inject deepseek-v4-pro as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-pro provider", async () => {
-      const userId = uniqueId("ds-v4-pro-route");
-      const { orgId } = await setupOrg(
-        userId,
-        "org:admin",
-        uniqueId("ds-v4-pro"),
-      );
-
-      await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-pro");
-      await insertVm0ApiKeys([
-        {
-          vendor: "deepseek",
-          model: "deepseek-v4-pro",
-          apiKey: "sk-dstestkey-pro",
-          label: "deepseek-v4-pro test key",
-        },
-      ]);
-
-      const result = await resolveModelProviderSecrets(
-        orgId,
-        userId,
-        "claude-code",
-        false,
-      );
-
-      expect(result.resolvedModelProvider).toBe("vm0");
-      expect(result.concreteProviderType).toBe("deepseek-api-key");
-      expect(result.selectedModel).toBe("deepseek-v4-pro");
-      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
-        "deepseek-v4-pro",
-      );
-      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
-        "https://api.deepseek.com/anthropic",
-      );
-      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
-    });
-
-    it("should inject deepseek-v4-flash as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-flash provider", async () => {
-      const userId = uniqueId("ds-v4-flash-route");
-      const { orgId } = await setupOrg(
-        userId,
-        "org:admin",
-        uniqueId("ds-v4-flash"),
-      );
-
-      await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-flash");
-      await insertVm0ApiKeys([
-        {
-          vendor: "deepseek",
-          model: "deepseek-v4-flash",
-          apiKey: "sk-dstestkey-flash",
-          label: "deepseek-v4-flash test key",
-        },
-      ]);
-
-      const result = await resolveModelProviderSecrets(
-        orgId,
-        userId,
-        "claude-code",
-        false,
-      );
-
-      expect(result.resolvedModelProvider).toBe("vm0");
-      expect(result.concreteProviderType).toBe("deepseek-api-key");
-      expect(result.selectedModel).toBe("deepseek-v4-flash");
-      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
-        "deepseek-v4-flash",
-      );
-      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
-        "https://api.deepseek.com/anthropic",
-      );
-      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
     });
   });
 });

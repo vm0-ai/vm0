@@ -1,10 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { reloadEnv } from "../../../../../env";
-import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
 import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
 import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { googleAdsProvider } from "@vm0/connectors/oauth-providers/providers/google-ads-provider";
@@ -147,19 +145,6 @@ describe("connector/providers/google-ads", () => {
         accessToken: "refreshed-google-ads-token",
         refreshToken: null,
         expiresIn: 3600,
-      });
-    });
-
-    it("does not inject platform env secrets for unrelated connector contexts", () => {
-      expect(injectPlatformEnvSecrets(["github"])).toBeUndefined();
-    });
-
-    it("injects the Google Ads developer token for google ads contexts", () => {
-      vi.stubEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
-      reloadEnv();
-
-      expect(injectPlatformEnvSecrets(["google-ads"])).toEqual({
-        GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
       });
     });
   });

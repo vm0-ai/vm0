@@ -189,26 +189,6 @@ export async function setTestModelProviderNeedsReconnect(
     );
 }
 
-/**
- * Look up the uuid of a model provider by org + type. Useful for tests that
- * need to reference a provider they just seeded via insertOrgDefaultModelProvider.
- */
-export async function getTestModelProviderIdByType(
-  orgId: string,
-  type: string,
-): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ id: modelProviders.id })
-    .from(modelProviders)
-    .where(and(eq(modelProviders.orgId, orgId), eq(modelProviders.type, type)))
-    .limit(1);
-  if (!row) {
-    throw new Error(`No model provider of type "${type}" for org ${orgId}`);
-  }
-  return row.id;
-}
-
 export async function findTestOrgModelProviderByType(
   orgId: string,
   type: string,

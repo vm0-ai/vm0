@@ -5,20 +5,6 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
-
-    // Sync skills cache on startup (only in dev — production uses cron at /api/cron/sync-skills)
-    if (process.env.NODE_ENV === "development") {
-      const { initServices } = await import("./src/lib/init-services");
-      initServices();
-      const { logger } = await import("./src/lib/shared/logger");
-      const log = logger("instrumentation");
-      const { syncSkills } = await import("./src/lib/zero/skills/sync-skills");
-      syncSkills().catch((error: unknown) => {
-        log.error("Failed to sync skills on startup", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    }
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

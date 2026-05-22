@@ -2,68 +2,7 @@ import { initServices } from "../../lib/init-services";
 import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
-
-/**
- * Insert an org-sentinel model-provider secret directly in the database.
- *
- * Used by tests that exercise multi-auth model-provider resolution: the
- * resolver reads secrets of type "model-provider" via `getSecretValues`,
- * and seeding them through the user-secret API would store them under the
- * wrong type (`user`) and userId (real user, not ORG_SENTINEL_USER_ID).
- *
- * @why-db-direct Org-sentinel + type="model-provider" is not reachable
- * via the public secrets API.
- */
-export async function insertTestOrgModelProviderSecret(params: {
-  orgId: string;
-  name: string;
-  value: string;
-}): Promise<void> {
-  initServices();
-  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const encrypted = encryptSecretValue(params.value, SECRETS_ENCRYPTION_KEY);
-  await globalThis.services.db.insert(secrets).values({
-    name: params.name,
-    encryptedValue: encrypted,
-    type: "model-provider",
-    userId: ORG_SENTINEL_USER_ID,
-    orgId: params.orgId,
-    description: "test seed",
-  });
-}
-
-/**
- * Insert a user-level (personal) model-provider secret directly in the
- * database. Resolver tests use this to verify that `secretUserId` is
- * derived from the resolved row's owner — they assert the resolved secret
- * value matches the personal row's stored value rather than the org's
- * (Epic #11868 — personal model providers).
- *
- * @why-db-direct Personal-tier secrets are upsert-routed through the API
- * which couples them to a model provider's lifecycle; tests need an
- * id-scoped writer to set up scenarios where personal and org secrets
- * have distinct values for the same name.
- */
-export async function insertTestUserModelProviderSecret(params: {
-  orgId: string;
-  userId: string;
-  name: string;
-  value: string;
-}): Promise<void> {
-  initServices();
-  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const encrypted = encryptSecretValue(params.value, SECRETS_ENCRYPTION_KEY);
-  await globalThis.services.db.insert(secrets).values({
-    name: params.name,
-    encryptedValue: encrypted,
-    type: "model-provider",
-    userId: params.userId,
-    orgId: params.orgId,
-    description: "test seed",
-  });
-}
 
 /**
  * Insert a user-level secret directly in the database.

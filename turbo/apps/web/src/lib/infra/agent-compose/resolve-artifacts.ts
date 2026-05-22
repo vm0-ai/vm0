@@ -2,7 +2,7 @@ import {
   expandMountPath,
   WORKING_DIR_TEMPLATE,
 } from "@vm0/core/variable-expander";
-import { extractWorkingDir } from "../run/utils/extract-working-dir";
+import { extractWorkingDir } from "./working-dir";
 import { badRequest } from "@vm0/api-services/errors";
 import type { AgentComposeYaml } from "./types";
 

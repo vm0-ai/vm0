@@ -1,10 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { type SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { secrets } from "@vm0/db/schema/secret";
-import {
-  decryptStoredSecretValue,
-  encryptStoredSecretValue,
-} from "../../shared/crypto/kms-secrets-encryption";
+import { encryptStoredSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
@@ -70,103 +67,6 @@ export async function listSecrets(
       type: row.type as SecretType,
     };
   });
-}
-
-/**
- * Get decrypted secret value by name
- * Used internally for variable expansion during agent execution
- * @param type - Optional type filter to isolate user vs model-provider secrets
- */
-export async function getSecretValue(
-  orgId: string,
-  userId: string,
-  name: string,
-  type?: SecretType,
-): Promise<string | null> {
-  const conditions = [
-    eq(secrets.orgId, orgId),
-    eq(secrets.userId, userId),
-    eq(secrets.name, name),
-  ];
-  if (type) {
-    conditions.push(eq(secrets.type, type));
-  }
-
-  const result = await globalThis.services.db
-    .select({
-      encryptedValue: secrets.encryptedValue,
-    })
-    .from(secrets)
-    .where(and(...conditions))
-    .limit(1);
-
-  if (!result[0]) {
-    return null;
-  }
-
-  return await decryptStoredSecretValue(result[0].encryptedValue);
-}
-
-/**
- * Get all secret values for an org as a map
- * Used for batch secret resolution during variable expansion
- * @param type - Optional type filter to isolate user vs model-provider secrets
- */
-export async function getSecretValues(
-  orgId: string,
-  userId: string,
-  type?: SecretType,
-): Promise<Record<string, string>> {
-  const conditions = [eq(secrets.orgId, orgId), eq(secrets.userId, userId)];
-  if (type) {
-    conditions.push(eq(secrets.type, type));
-  }
-
-  const result = await globalThis.services.db
-    .select({
-      name: secrets.name,
-      encryptedValue: secrets.encryptedValue,
-    })
-    .from(secrets)
-    .where(and(...conditions));
-
-  const values: Record<string, string> = {};
-
-  for (const row of result) {
-    values[row.name] = await decryptStoredSecretValue(row.encryptedValue);
-  }
-
-  return values;
-}
-
-/**
- * Upsert a secret by org ID, name, and type.
- * Used internally by connector services for managing connector/model-provider secrets.
- */
-export async function upsertSecretByOrg(
-  orgId: string,
-  userId: string,
-  name: string,
-  value: string,
-  type: SecretType,
-  description: string,
-): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(value);
-
-  await globalThis.services.db
-    .insert(secrets)
-    .values({
-      userId,
-      name,
-      encryptedValue,
-      type,
-      description,
-      orgId,
-    })
-    .onConflictDoUpdate({
-      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-      set: { encryptedValue, description, updatedAt: new Date() },
-    });
 }
 
 /**

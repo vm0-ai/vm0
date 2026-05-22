@@ -19,7 +19,7 @@ import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:model-provider");
 
-export interface ModelProviderInfo {
+interface ModelProviderInfo {
   id: string;
   /**
    * Owner of the row: ORG_SENTINEL_USER_ID for org-tier rows, real userId

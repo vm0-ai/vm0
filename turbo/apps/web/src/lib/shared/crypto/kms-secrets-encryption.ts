@@ -309,7 +309,7 @@ export async function encryptStoredSecretValue(
   );
 }
 
-export async function decryptStoredSecretValue(
+async function decryptStoredSecretValue(
   encrypted: string,
   ctx: FeatureSwitchContext = {},
 ): Promise<string> {
@@ -332,16 +332,6 @@ export async function decryptStoredSecretsMap(
   );
 }
 
-export async function encryptPersistentSecretValue(
-  plaintext: string,
-  ctx: FeatureSwitchContext = {},
-): Promise<string> {
-  return await encryptSecretValueWithMode(
-    plaintext,
-    storedSecretWriteMode(FeatureSwitchKey.PersistentSecretKmsWrite, ctx),
-  );
-}
-
 export async function decryptPersistentSecretValue(
   encrypted: string,
   ctx: FeatureSwitchContext = {},
@@ -349,31 +339,5 @@ export async function decryptPersistentSecretValue(
   return await decryptSecretValueWithMode(
     encrypted,
     storedSecretReadMode(FeatureSwitchKey.PersistentSecretKmsRead, ctx),
-  );
-}
-
-export async function encryptPersistentSecretsMap(
-  secrets: Record<string, string> | null | undefined,
-  ctx: FeatureSwitchContext = {},
-): Promise<string | null> {
-  if (!secrets || Object.keys(secrets).length === 0) {
-    return null;
-  }
-
-  return await encryptPersistentSecretValue(JSON.stringify(secrets), ctx);
-}
-
-export async function decryptPersistentSecretsMap(
-  encryptedData: string | null,
-  ctx: FeatureSwitchContext = {},
-): Promise<Record<string, string> | null> {
-  if (!encryptedData) {
-    return null;
-  }
-
-  return secretsMapSchema.parse(
-    JSON.parse(
-      await decryptPersistentSecretValue(encryptedData, ctx),
-    ) as unknown,
   );
 }

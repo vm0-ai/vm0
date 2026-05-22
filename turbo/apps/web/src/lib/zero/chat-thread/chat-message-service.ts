@@ -3,9 +3,7 @@ import {
   chatMessages,
   type ChatMessageAttachFiles,
 } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
 
 function effectiveChatMessageRunId() {
@@ -45,49 +43,6 @@ type MessageRow = {
   goalRemainingTurns: number | null;
   goalOriginMessageId: string | null;
 };
-
-/**
- * Resolve the chat_thread_id and owner user_id for a run from the zero_runs
- * table. Returns null when the run is not tied to a chat thread (e.g.,
- * non-chat triggers like cron/schedule), so event consumers can silently skip it.
- */
-async function getChatThreadIdForRun(
-  runId: string,
-): Promise<{ chatThreadId: string; userId: string } | null> {
-  const [row] = await globalThis.services.db
-    .select({
-      chatThreadId: zeroRuns.chatThreadId,
-      userId: chatThreads.userId,
-    })
-    .from(zeroRuns)
-    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  if (!row?.chatThreadId) return null;
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
-}
-
-/**
- * Emit the `chatThreadRunUpdated:${threadId}` realtime signal so chat
- * subscribers reload the thread when a run transitions to a terminal state.
- *
- * Reads the authoritative `zero_runs.chatThreadId` mapping rather than
- * reverse-looking-up `chat_messages`, so the signal fires even when no
- * assistant row has been written yet (e.g., cancel before the first token).
- *
- * No-op for non-chat runs (cron / schedule triggers).
- */
-export async function publishChatThreadRunUpdated(
-  runId: string,
-): Promise<void> {
-  const chatThread = await getChatThreadIdForRun(runId);
-  if (!chatThread) return;
-  await publishUserSignal(
-    [chatThread.userId],
-    `chatThreadRunUpdated:${chatThread.chatThreadId}`,
-  );
-  await publishThreadListChanged(chatThread.userId);
-}
 
 /**
  * Fire the user-level "thread list shape changed" signal. The sidebar

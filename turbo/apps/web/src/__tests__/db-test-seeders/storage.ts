@@ -1,18 +1,37 @@
 import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../lib/init-services";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import {
-  computeContentHashFromHashes,
-  hashFileContent,
-} from "../../lib/infra/storage/content-hash";
 import { uniqueId } from "../test-helpers";
 
 interface TestStorageFile {
   readonly path: string;
   readonly hash: string;
   readonly size: number;
+}
+
+function hashFileContent(content: Buffer): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function computeContentHashFromHashes(
+  storageId: string,
+  files: readonly TestStorageFile[],
+): string {
+  if (files.length === 0) {
+    return createHash("sha256").update(`storage:${storageId}\n`).digest("hex");
+  }
+
+  const entries = files
+    .map((file) => {
+      return `${file.path}:${file.hash}`;
+    })
+    .sort();
+
+  return createHash("sha256")
+    .update(`storage:${storageId}\n${entries.join("\n")}`)
+    .digest("hex");
 }
 
 /**

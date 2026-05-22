@@ -3,6 +3,16 @@
  */
 
 /**
+ * Artifact entry persisted on agent sessions and checkpoints.
+ * Version is optional for session context and concrete on checkpoint payloads.
+ */
+export interface ContextArtifact {
+  name: string;
+  version?: string;
+  mountPath: string;
+}
+
+/**
  * Artifact snapshot payload sent by the writer. Each entry's `version` is
  * always a resolved concrete string — distinct from `ContextArtifact`
  * (execution-context type) where `version` is optional and defaults to
@@ -13,18 +23,6 @@ export type ArtifactSnapshotsPayload = Array<{
   version: string;
   mountPath: string;
 }>;
-
-/**
- * Agent compose snapshot stored in checkpoint
- * Uses version ID for reproducibility (content-addressed versioning)
- * Note: Environment is re-expanded from vars/secrets on resume, not stored
- * Note: Secrets values are never persisted - only names for validation
- */
-export interface AgentComposeSnapshot {
-  agentComposeVersionId: string; // SHA-256 hash of compose content
-  vars?: Record<string, string>;
-  secretNames?: string[]; // Secret names only (for validation), values never stored
-}
 
 /**
  * Volume versions snapshot for checkpoint

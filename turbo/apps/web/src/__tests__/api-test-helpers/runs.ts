@@ -5,11 +5,10 @@ import type {
 import { getAuthContext } from "../../lib/auth/get-auth-context";
 import { resolveOrg } from "../../lib/zero/org/resolve-org";
 import {
-  createDispatchedTestRun,
   markTestRunCompletedFromCheckpoint,
   markTestRunFailed,
+  seedTestRun,
   seedTestCheckpointForRun,
-  type CreateDispatchedTestRunOptions,
 } from "../db-test-seeders/runs";
 import { findTestRunRecord } from "../db-test-assertions/runs";
 
@@ -29,7 +28,6 @@ export {
   insertTestConversation,
   insertTestSandboxTelemetry,
   insertTestUsageDaily,
-  enqueueTestRun,
 } from "../db-test-seeders/runs";
 
 // Re-exports: read-only assertions
@@ -46,24 +44,31 @@ export {
   findTestSandboxTelemetry,
 } from "../db-test-assertions/runs";
 
+type CreateTestRunOptions = Omit<
+  NonNullable<Parameters<typeof seedTestRun>[2]>,
+  "prompt"
+>;
+
 export async function createTestRun(
   agentComposeId: string,
   prompt: string,
-  options?: CreateDispatchedTestRunOptions,
+  options?: CreateTestRunOptions,
 ): Promise<{ runId: string; status: string; sessionId?: string }> {
   const authCtx = await getAuthContext();
   if (!authCtx) {
     throw new Error("Failed to create test run: not authenticated");
   }
   const { org } = await resolveOrg(authCtx);
-  return createDispatchedTestRun({
-    userId: authCtx.userId,
-    orgId: org.orgId,
-    orgTier: org.tier,
-    agentComposeId,
+  const { runId } = await seedTestRun(authCtx.userId, agentComposeId, {
+    ...options,
+    orgId: options?.orgId ?? org.orgId,
     prompt,
-    options,
   });
+  const run = await findTestRunRecord(runId);
+  if (!run) {
+    throw new Error(`Failed to create test run: ${runId}`);
+  }
+  return { runId, status: run.status, sessionId: run.sessionId };
 }
 
 /**
