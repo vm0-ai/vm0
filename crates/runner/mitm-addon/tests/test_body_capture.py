@@ -6,6 +6,7 @@ import json
 import zlib
 
 import brotli
+import pytest
 import zstandard
 from mitmproxy import http
 
@@ -665,6 +666,21 @@ class TestAddCaptureFields:
         assert "response_body" not in entry
         assert "response_body_encoding" not in entry
         assert "response_headers" in entry
+
+    def test_non_empty_stream_buffer_requires_truncated_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"total_bytes": len(body)}
+        entry = {}
+        with pytest.raises(KeyError, match="truncated"):
+            add_capture_fields(flow, entry)
 
     def test_stream_buffer_truncated_marks_truncation(self, real_flow):
         """When stream_buffer was truncated, response_body_truncated should be set."""
