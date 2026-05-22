@@ -3461,6 +3461,48 @@ class TestResponseUsageReporting:
             "tokens.output": 4,
         }
 
+    def test_model_websocket_partial_frame_preserves_existing_categories(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 0,
+                            "input_tokens_details": {"cached_tokens": 25},
+                        },
+                    },
+                }
+            ).encode(),
+        )
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"output_tokens": 40},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 75,
+            "tokens.output": 40,
+            "tokens.cache_read": 25,
+        }
+
     def test_model_websocket_accepts_text_frame_content(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 
