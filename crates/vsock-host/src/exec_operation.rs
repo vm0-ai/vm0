@@ -2857,7 +2857,7 @@ mod tests {
         slow: bool,
         result: &vsock_proto::DecodedExecResult<'_>,
     ) -> Vec<Level> {
-        capture_terminal_log_levels_with_expected_exit_codes(lifecycle, slow, &[], result)
+        capture_terminal_log_levels_with_context(lifecycle, slow, &[], result, false)
     }
 
     fn capture_terminal_log_levels_with_expected_exit_codes(
@@ -2865,6 +2865,22 @@ mod tests {
         slow: bool,
         expected_exit_codes: &[i32],
         result: &vsock_proto::DecodedExecResult<'_>,
+    ) -> Vec<Level> {
+        capture_terminal_log_levels_with_context(
+            lifecycle,
+            slow,
+            expected_exit_codes,
+            result,
+            false,
+        )
+    }
+
+    fn capture_terminal_log_levels_with_context(
+        lifecycle: ExecTerminalLogLifecycle,
+        slow: bool,
+        expected_exit_codes: &[i32],
+        result: &vsock_proto::DecodedExecResult<'_>,
+        stream_overflowed: bool,
     ) -> Vec<Level> {
         let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log", expected_exit_codes);
         if slow {
@@ -2875,7 +2891,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            diagnostic.log_terminal(lifecycle, result, false);
+            diagnostic.log_terminal(lifecycle, result, stream_overflowed);
         });
         captured.levels()
     }
@@ -2924,6 +2940,47 @@ mod tests {
             capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &notable),
             vec![Level::WARN]
         );
+    }
+
+    #[test]
+    fn exec_operation_diagnostic_warns_for_terminal_result_metadata() {
+        let clean = clean_terminal_result();
+        let stdout_truncated = vsock_proto::DecodedExecResult {
+            stdout: ExecCapturedOutput::Captured {
+                bytes: b"",
+                truncated: true,
+            },
+            ..clean
+        };
+        let stderr_truncated = vsock_proto::DecodedExecResult {
+            stderr: ExecCapturedOutput::Captured {
+                bytes: b"",
+                truncated: true,
+            },
+            ..clean
+        };
+        let diagnostic_present = vsock_proto::DecodedExecResult {
+            diagnostic: "guest diagnostic",
+            ..clean
+        };
+
+        for (result, stream_overflowed) in [
+            (stdout_truncated, false),
+            (stderr_truncated, false),
+            (diagnostic_present, false),
+            (clean, true),
+        ] {
+            assert_eq!(
+                capture_terminal_log_levels_with_context(
+                    ExecTerminalLogLifecycle::Supervised,
+                    false,
+                    &[],
+                    &result,
+                    stream_overflowed,
+                ),
+                vec![Level::WARN]
+            );
+        }
     }
 
     #[test]
