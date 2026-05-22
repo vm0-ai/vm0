@@ -169,6 +169,29 @@ class TestAuthBaseForwarderSecurity:
             skip_accept_encoding=True,
         )
 
+    def test_request_target_preserves_encoded_path_and_duplicate_query(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn):
+            forwarder._forward_request_sync(
+                "https://example.com/%2Fsecret/a%20b?x=a%2Fb&x=&space=a+b",
+                "GET",
+                [],
+                None,
+            )
+
+        conn.putrequest.assert_called_once_with(
+            "GET",
+            "/%2Fsecret/a%20b?x=a%2Fb&x=&space=a+b",
+            skip_host=True,
+            skip_accept_encoding=True,
+        )
+
     def test_https_scheme_uses_https_connection_and_default_port_host(self):
         resp = MagicMock()
         resp.status = 200
