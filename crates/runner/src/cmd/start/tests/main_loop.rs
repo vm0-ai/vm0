@@ -1065,6 +1065,58 @@ async fn claim_failure_rolls_back_budget() {
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test]
+async fn claim_run_id_mismatch_rolls_back_local_state() {
+    // Budget for exactly 1 job, so a leaked lease would block the follow-up job.
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let candidate_run_id = RunId::new_v4();
+    let context_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        candidate_run_id,
+        "vm0/default",
+        Some(minimal_context(context_run_id)),
+    );
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, candidate_run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    {
+        let completions = env.handle.completions.lock().unwrap();
+        assert!(
+            !completions
+                .iter()
+                .any(|completion| completion.run_id == candidate_run_id
+                    || completion.run_id == context_run_id),
+            "mismatched claim should not produce a completion for either run id"
+        );
+    }
+
+    let followup_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        followup_run_id,
+        "vm0/default",
+        Some(minimal_context(followup_run_id)),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(followup_run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "follow-up job should complete after mismatched claim is rejected"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
 // -----------------------------------------------------------------------
 // Test 5: Shutdown drains running jobs before exiting
 // -----------------------------------------------------------------------

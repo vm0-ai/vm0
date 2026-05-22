@@ -92,6 +92,16 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         drop(job_lease);
         return;
     };
+    if claimed.context().run_id != run_id {
+        warn!(
+            run_id = %run_id,
+            context_run_id = %claimed.context().run_id,
+            "claimed job run_id mismatch, skipping"
+        );
+        ctx.cancel_tokens.lock().await.remove(&run_id);
+        drop(job_lease);
+        return;
+    }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
         ctx.spawn_ctx.device_rate_limits.as_ref(),
