@@ -6,13 +6,6 @@ import { env } from "../../../env";
 import { computeHmacSignature } from "./hmac";
 
 /**
- * Get the API base URL for internal callbacks
- */
-export function getApiUrl(): string {
-  return env().VM0_API_URL ?? "http://localhost:3000";
-}
-
-/**
  * In local dev, rewrite self-referencing tunnel URLs to localhost to avoid
  * hairpin (server fetching its own tunnel URL times out via cloudflare).
  */

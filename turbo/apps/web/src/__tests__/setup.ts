@@ -229,61 +229,6 @@ vi.mock("@slack/web-api", () => {
   };
 });
 
-// Mock Svix webhook verification (used by Resend inbound webhooks)
-vi.mock("svix", () => {
-  return {
-    Webhook: vi.fn().mockImplementation(function () {
-      return {
-        verify: vi.fn().mockImplementation((payload: string) => {
-          return JSON.parse(payload);
-        }),
-      };
-    }),
-  };
-});
-
-// Mock Resend email service
-vi.mock("resend", () => {
-  const mockResend = {
-    emails: {
-      send: vi.fn().mockResolvedValue({ data: { id: "mock-email-id" } }),
-      get: vi.fn().mockResolvedValue({
-        data: { id: "mock-email-id", message_id: "<mock-message-id@vm7.bot>" },
-      }),
-      receiving: {
-        get: vi.fn().mockResolvedValue({
-          data: {
-            from: "user@example.com",
-            to: ["reply+token@vm7.bot"],
-            subject: "Re: test",
-            text: "Hello from email",
-            html: "<p>Hello from email</p>",
-            headers: {
-              "authentication-results":
-                "mx.resend.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=example.com; dmarc=pass header.from=example.com",
-              "message-id": "<default-msg-id@example.com>",
-            },
-            attachments: [],
-          },
-        }),
-        attachments: {
-          list: vi.fn().mockResolvedValue({
-            data: { object: "list", has_more: false, data: [] },
-          }),
-        },
-      },
-    },
-    webhooks: {
-      verify: vi.fn().mockReturnValue(true),
-    },
-  };
-  return {
-    Resend: vi.fn().mockImplementation(function () {
-      return mockResend;
-    }),
-  };
-});
-
 // Mock Axiom packages
 // The @axiomhq/logging Logger class needs proper method implementations
 vi.mock("@axiomhq/js", () => {
