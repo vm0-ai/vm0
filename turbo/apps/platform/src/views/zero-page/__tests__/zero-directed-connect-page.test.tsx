@@ -17,6 +17,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -353,6 +354,42 @@ describe("directed connect page", () => {
         "https://oauth.test/gmail/authorize",
       );
     });
+  });
+
+  it("does not enable connect for device-auth OAuth connectors", async () => {
+    const openSpy = vi.spyOn(window, "open");
+    let startCalled = false;
+    server.use(
+      mockApi(zeroConnectorOauthStartContract.start, ({ respond }) => {
+        startCalled = true;
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/test-oauth-device/authorize",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/test-oauth-device/connect",
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Test OAuth Device (internal) to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    const connectButton = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Connect";
+    });
+    expect(connectButton).toBeDefined();
+    expect(connectButton).toBeDisabled();
+    click(connectButton!);
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(startCalled).toBeFalsy();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("save button submits the api token to the server (CONN-I-049)", async () => {

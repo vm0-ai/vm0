@@ -69,11 +69,9 @@ function runDirectedConnect(params: {
     params.openTokenDialog();
     return;
   }
-  // Defensive fallback for the degenerate empty-authMethods case — the
-  // contract disallows it today, so in practice this is unreachable after
-  // the api-token branch above.
+  // Device-auth OAuth needs a separate UI and must not fall through to the
+  // api-token dialog when no api-token method exists.
   if (!hasOAuthAuthCode) {
-    params.openTokenDialog();
     return;
   }
   detach(
@@ -222,10 +220,12 @@ function ApiTokenDialog({
 function ConnectActions({
   isConnected,
   isConnecting,
+  disabled,
   onConnect,
 }: {
   isConnected: boolean;
   isConnecting: boolean;
+  disabled: boolean;
   onConnect: () => void;
 }) {
   if (isConnected) {
@@ -237,7 +237,7 @@ function ConnectActions({
         </div>
         <button
           type="button"
-          disabled={isConnecting}
+          disabled={isConnecting || disabled}
           onClick={onConnect}
           className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60 inline-flex items-center gap-1.5"
         >
@@ -250,7 +250,7 @@ function ConnectActions({
   return (
     <button
       type="button"
-      disabled={isConnecting}
+      disabled={isConnecting || disabled}
       onClick={onConnect}
       className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
     >
@@ -292,6 +292,12 @@ function DirectedConnectCard() {
   });
   const isConnected =
     justConnected.has(connectorType) || (item?.connected ?? false);
+  const authMethods =
+    item?.availableAuthMethods ?? Object.keys(config.authMethods);
+  const canConnect =
+    authMethods.includes("api-token") ||
+    (authMethods.includes("oauth") &&
+      isOAuthAuthCodeConnectorType(connectorType));
 
   const runPostConnectActions = async () => {
     if (agentId) {
@@ -300,9 +306,11 @@ function DirectedConnectCard() {
   };
 
   const handleConnect = () => {
+    if (!canConnect) {
+      return;
+    }
     runDirectedConnect({
-      authMethods:
-        item?.availableAuthMethods ?? Object.keys(config.authMethods),
+      authMethods,
       connectorType,
       signal,
       connect,
@@ -349,6 +357,7 @@ function DirectedConnectCard() {
                 <ConnectActions
                   isConnected={isConnected}
                   isConnecting={isConnecting}
+                  disabled={!canConnect}
                   onConnect={handleConnect}
                 />
               </div>
