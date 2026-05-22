@@ -123,6 +123,27 @@ class TestAuthBaseForwarderSecurity:
         )
         assert call("Content-Length", "0") not in conn.putheader.call_args_list
 
+    def test_absent_body_strips_stale_content_length(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn):
+            forwarder._forward_request_sync(
+                "https://example.com/path",
+                "POST",
+                [("Content-Length", "999"), ("X-Keep", "ok")],
+                None,
+            )
+
+        header_names = [args[0].lower() for args, _ in conn.putheader.call_args_list]
+        assert "content-length" not in header_names
+        assert call("X-Keep", "ok") in conn.putheader.call_args_list
+        conn.endheaders.assert_called_once_with(None)
+
     def test_root_request_target_preserves_query(self):
         resp = MagicMock()
         resp.status = 200
