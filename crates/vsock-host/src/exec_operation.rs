@@ -3208,8 +3208,10 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn dispatch_result_logs_supervised_terminal_result_with_supervised_lifecycle() {
+    fn capture_dispatch_terminal_log_events_with_lifecycle(
+        lifecycle: ExecOperationLifecycle,
+        label: &str,
+    ) -> (Vec<CapturedEvent>, ExecOperationResult) {
         let (result_tx, mut result_rx) = oneshot::channel();
         let (_read_stream, write_stream) = tokio::net::UnixStream::pair().unwrap();
         let fd = write_stream.as_raw_fd();
@@ -3225,7 +3227,7 @@ mod tests {
             normal_operations: crate::operation_tracker::NormalOperationTracker::new(),
             close_notify: tokio::sync::Notify::new(),
         });
-        let mut diagnostic = ExecOperationDiagnostic::new(7, "dispatch-terminal-log", &[]);
+        let mut diagnostic = ExecOperationDiagnostic::new(7, label, &[]);
         diagnostic.registered_at =
             Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
         {
@@ -3237,10 +3239,7 @@ mod tests {
                 7,
                 ExecOperation {
                     normal_operation: None,
-                    lifecycle: ExecOperationLifecycle::SupervisedStarted {
-                        pid: 42,
-                        control_nonce: None,
-                    },
+                    lifecycle,
                     diagnostic,
                     result_tx,
                     stream_tx: None,
@@ -3276,11 +3275,56 @@ mod tests {
         });
 
         let events = captured.events();
-        assert_eq!(events.len(), 1, "captured events: {events:#?}");
-        assert_eq!(events[0].level, Level::INFO);
-        assert_terminal_log_field(&events[0], "label", "dispatch-terminal-log");
         let result = result_rx.try_recv().unwrap().unwrap();
-        assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+        (events, result)
+    }
+
+    #[tokio::test]
+    async fn dispatch_result_logs_terminal_result_with_operation_lifecycle() {
+        let (supervised_events, supervised_result) =
+            capture_dispatch_terminal_log_events_with_lifecycle(
+                ExecOperationLifecycle::SupervisedStarted {
+                    pid: 42,
+                    control_nonce: None,
+                },
+                "dispatch-supervised-terminal-log",
+            );
+        assert_eq!(
+            supervised_events.len(),
+            1,
+            "captured events: {supervised_events:#?}"
+        );
+        assert_eq!(supervised_events[0].level, Level::INFO);
+        assert_terminal_log_field(
+            &supervised_events[0],
+            "label",
+            "dispatch-supervised-terminal-log",
+        );
+        assert_eq!(
+            supervised_result.termination,
+            ExecTermination::Exited { exit_code: 0 }
+        );
+
+        let (one_shot_events, one_shot_result) =
+            capture_dispatch_terminal_log_events_with_lifecycle(
+                ExecOperationLifecycle::OneShot,
+                "dispatch-one-shot-terminal-log",
+            );
+        assert_eq!(
+            one_shot_events.len(),
+            1,
+            "captured events: {one_shot_events:#?}"
+        );
+        assert_eq!(one_shot_events[0].level, Level::WARN);
+        assert_terminal_log_field(
+            &one_shot_events[0],
+            "label",
+            "dispatch-one-shot-terminal-log",
+        );
+        assert_eq!(
+            one_shot_result.termination,
+            ExecTermination::Exited { exit_code: 0 }
+        );
     }
 
     #[test]
