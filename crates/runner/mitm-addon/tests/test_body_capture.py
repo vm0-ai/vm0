@@ -667,6 +667,35 @@ class TestAddCaptureFields:
         assert "response_body_encoding" not in entry
         assert "response_headers" in entry
 
+    def test_non_empty_stream_buffer_requires_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray(body)
+        entry = {}
+        with pytest.raises(KeyError, match="truncated"):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_stream_buffer_requires_non_empty_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {}
+        entry = {}
+        with pytest.raises(KeyError, match="truncated"):
+            add_capture_fields(flow, entry)
+
     def test_non_empty_stream_buffer_requires_truncated_state(self, real_flow):
         body = b'{"ok": true}'
         flow = real_flow(
