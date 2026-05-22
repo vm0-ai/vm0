@@ -785,6 +785,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_provider_claimed_jobs_complete_out_of_order_with_their_own_tokens() {
+        let server = MockServer::start_async().await;
+        let run_id_a: RunId = "00000000-0000-0000-0000-000000000101".parse().unwrap();
+        let run_id_b: RunId = "00000000-0000-0000-0000-000000000102".parse().unwrap();
+        let claim_path_a = format!("/api/runners/jobs/{run_id_a}/claim");
+        let claim_path_b = format!("/api/runners/jobs/{run_id_b}/claim");
+        let claim_mock_a = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path_a.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id_a,
+                    "prompt": "first",
+                    "sandboxToken": "sandbox-token-a",
+                    "workingDir": "/home/user",
+                    "cliAgentType": "claude_code",
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let claim_mock_b = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path_b.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id_b,
+                    "prompt": "second",
+                    "sandboxToken": "sandbox-token-b",
+                    "workingDir": "/home/user",
+                    "cliAgentType": "claude_code",
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let complete_mock_a = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token-a")
+                    .json_body(serde_json::json!({
+                        "runId": run_id_a,
+                        "exitCode": 0
+                    }));
+                then.status(200);
+            })
+            .await;
+        let complete_mock_b = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token-b")
+                    .json_body(serde_json::json!({
+                        "runId": run_id_b,
+                        "exitCode": 0
+                    }));
+                then.status(200);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed_a = provider
+            .claim(JobCandidate::new(
+                run_id_a,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("first claim should succeed");
+        let claimed_b = provider
+            .claim(JobCandidate::new(
+                run_id_b,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("second claim should succeed");
+        let (context_a, completion_auth_a) = claimed_a.into_parts();
+        let (context_b, completion_auth_b) = claimed_b.into_parts();
+
+        provider
+            .complete(context_b.run_id, 0, None, None, None, completion_auth_b)
+            .await;
+        provider
+            .complete(context_a.run_id, 0, None, None, None, completion_auth_a)
+            .await;
+
+        claim_mock_a.assert_calls_async(1).await;
+        claim_mock_b.assert_calls_async(1).await;
+        complete_mock_a.assert_calls_async(1).await;
+        complete_mock_b.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
     async fn api_provider_complete_uses_sandbox_token_from_completion_auth() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
