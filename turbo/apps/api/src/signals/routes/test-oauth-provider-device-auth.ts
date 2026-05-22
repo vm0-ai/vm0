@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { testOAuthProviderDeviceAuthContract } from "@vm0/api-contracts/contracts/test-oauth-provider-device-authorization";
+import { testOAuthProviderDeviceAuthContract } from "@vm0/api-contracts/contracts/test-oauth-provider-device-auth";
 
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route";

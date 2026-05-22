@@ -8,7 +8,7 @@ import type { RouteEntry } from "../route";
 import {
   pollConnectorOauthDeviceAuthSession$,
   startConnectorOauthDeviceAuthSession$,
-} from "../services/connector-oauth-device-authorization.service";
+} from "../services/connector-oauth-device-auth.service";
 
 const connectorWriteAuth = {
   requireOrganization: true,

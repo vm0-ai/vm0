@@ -325,7 +325,7 @@ export {
   testOAuthProviderDeviceAuthResponseSchema,
   type TestOAuthProviderDeviceAuthContract,
   type TestOAuthProviderDeviceAuthResponse,
-} from "./test-oauth-provider-device-authorization";
+} from "./test-oauth-provider-device-auth";
 export {
   testOAuthProviderUserinfoContract,
   testOAuthProviderUserinfoErrorSchema,
