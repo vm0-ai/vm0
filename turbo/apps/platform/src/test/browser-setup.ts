@@ -1,5 +1,4 @@
 import "@testing-library/jest-dom/vitest";
-import { isCommonAssetRequest } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { worker } from "../mocks/browser.ts";
@@ -19,21 +18,6 @@ vi.hoisted(() => {
   vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.vm7.io");
 });
 
-function shouldFailUnhandledRequest(request: Request): boolean {
-  const url = new URL(request.url);
-  const apiUrl = import.meta.env.VITE_API_URL as string;
-  if (url.pathname.startsWith("/api/")) {
-    return true;
-  }
-  if (url.origin === apiUrl) {
-    return true;
-  }
-  if (url.origin !== location.origin && !isCommonAssetRequest(request)) {
-    return true;
-  }
-  return false;
-}
-
 beforeAll(async () => {
   // Match the happy-dom setup: remove animation timing from UI tests.
   const style = document.createElement("style");
@@ -46,11 +30,7 @@ beforeAll(async () => {
     serviceWorker: {
       url: "/mockServiceWorker.js",
     },
-    onUnhandledRequest(request, print) {
-      if (shouldFailUnhandledRequest(request)) {
-        print.error();
-      }
-    },
+    onUnhandledRequest: "error",
   });
 });
 
