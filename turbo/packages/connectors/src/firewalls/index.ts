@@ -58,6 +58,7 @@ import { aviationstackFirewall } from "./aviationstack.generated";
 // mathpix/nyne/openrouter/openweather/reducto were added in the same
 // Sponge-catalog batch and are wired below.
 import { axiomFirewall } from "./axiom.generated";
+import { base44Firewall } from "./base44.generated";
 import { bentomlFirewall } from "./bentoml.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
@@ -285,6 +286,7 @@ const CONNECTOR_FIREWALLS = {
   atlassian: atlassianFirewall,
   atlascloud: atlascloudFirewall,
   axiom: axiomFirewall,
+  base44: base44Firewall,
   bentoml: bentomlFirewall,
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,

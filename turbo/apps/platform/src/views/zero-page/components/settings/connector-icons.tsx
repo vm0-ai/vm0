@@ -72,6 +72,7 @@ const CONNECTOR_ICON_COLORFUL = {
   apify: true,
   asana: true,
   azure: true,
+  base44: true,
   bedrock: true,
   bentoml: true,
   bitrix: true,

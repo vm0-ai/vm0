@@ -31,6 +31,9 @@ const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
   "http://localhost:3000/api/test/oauth-provider/token";
+const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
+const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
+const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 function sessionTokenHash(sessionToken: string): string {
@@ -49,6 +52,21 @@ async function enableTestOauthDevice(userId: string, orgId: string) {
     .onConflictDoUpdate({
       target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
       set: { switches: { [FeatureSwitchKey.TestOauthConnector]: true } },
+    });
+}
+
+async function enableBase44(userId: string, orgId: string) {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.Base44Connector]: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: { switches: { [FeatureSwitchKey.Base44Connector]: true } },
     });
 }
 
@@ -167,6 +185,49 @@ function mockTestOAuthDeviceProvider(): void {
   );
 }
 
+function mockBase44OAuthProvider(): void {
+  server.use(
+    http.post(BASE44_DEVICE_CODE_URL, async ({ request }) => {
+      await expect(request.json()).resolves.toStrictEqual({
+        client_id: "base44_cli",
+        scope: "apps:read apps:write offline",
+      });
+      return HttpResponse.json({
+        device_code: "base44-device-code",
+        user_code: "BASE-44",
+        verification_uri: "https://app.base44.com/device",
+        verification_uri_complete:
+          "https://app.base44.com/device?user_code=BASE-44",
+        expires_in: 600,
+        interval: 0,
+      });
+    }),
+    http.post(BASE44_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      expect(body.get("grant_type")).toBe(DEVICE_CODE_GRANT_TYPE);
+      expect(body.get("client_id")).toBe("base44_cli");
+      expect(body.get("device_code")).toBe("base44-device-code");
+      return HttpResponse.json({
+        access_token: "base44-access-token",
+        refresh_token: "base44-refresh-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: "apps:read apps:write offline",
+      });
+    }),
+    http.get(BASE44_USERINFO_URL, ({ request }) => {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer base44-access-token",
+      );
+      return HttpResponse.json({
+        sub: "base44-user-id",
+        name: "Base44 User",
+        email: "base44@example.com",
+      });
+    }),
+  );
+}
+
 async function createSession(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -226,6 +287,18 @@ async function onlySession(id: string) {
 }
 
 async function connectorAccessToken(userId: string, orgId: string) {
+  return await connectorSecretValue(
+    userId,
+    orgId,
+    "TEST_OAUTH_DEVICE_ACCESS_TOKEN",
+  );
+}
+
+async function connectorSecretValue(
+  userId: string,
+  orgId: string,
+  name: string,
+) {
   const [secret] = await store
     .set(writeDb$)
     .select({ encryptedValue: secrets.encryptedValue })
@@ -234,7 +307,7 @@ async function connectorAccessToken(userId: string, orgId: string) {
       and(
         eq(secrets.orgId, orgId),
         eq(secrets.userId, userId),
-        eq(secrets.name, "TEST_OAUTH_DEVICE_ACCESS_TOKEN"),
+        eq(secrets.name, name),
       ),
     );
   return secret ? decryptSecretValue(secret.encryptedValue) : null;
@@ -570,6 +643,87 @@ describe("OAuth device authorization connector routes", () => {
       { authMethod: "oauth", oauthScopes: JSON.stringify(["read", "granted"]) },
     ]);
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
+  });
+
+  it("completes a Base44 session and stores OAuth access and refresh secrets", async () => {
+    mockBase44OAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    await enableBase44(userId, orgId);
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const start = await accept(
+      client.create({
+        params: { type: "base44" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(start.body).toMatchObject({
+      type: "base44",
+      status: "pending",
+      userCode: "BASE-44",
+      verificationUri: "https://app.base44.com/device",
+      verificationUriComplete:
+        "https://app.base44.com/device?user_code=BASE-44",
+      expiresIn: 600,
+      interval: 0,
+    });
+    expect(JSON.stringify(start.body)).not.toContain("base44-device-code");
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "base44",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain("base44-access-token");
+    expect(JSON.stringify(response.body)).not.toContain("base44-refresh-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "BASE44_ACCESS_TOKEN"),
+    ).resolves.toBe("base44-access-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "BASE44_REFRESH_TOKEN"),
+    ).resolves.toBe("base44-refresh-token");
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "base44"),
+        ),
+      );
+    expect(stored).toStrictEqual([
+      {
+        authMethod: "oauth",
+        externalId: "base44-user-id",
+        externalUsername: "Base44 User",
+        externalEmail: "base44@example.com",
+        oauthScopes: JSON.stringify(["apps:read", "apps:write", "offline"]),
+      },
+    ]);
   });
 
   it("returns terminal denied, expired, and error states", async () => {

@@ -1252,6 +1252,78 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
+  it("injects authorized Base44 OAuth token through the runtime firewall", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "base44",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "base44",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "BASE44_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("base44-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "BASE44_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("base44-refresh"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "base44 connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth?: { readonly headers?: Record<string, string> };
+        }[];
+      }[];
+    };
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    expect(decrypted).toMatchObject({ BASE44_TOKEN: "base44-access" });
+    expect(decrypted).not.toHaveProperty("BASE44_REFRESH_TOKEN");
+    expect(executionContext.secretConnectorMap).toMatchObject({
+      BASE44_ACCESS_TOKEN: "base44",
+      BASE44_TOKEN: "base44",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "base44";
+    });
+    expect(firewall?.apis[0]?.base).toBe("https://app.base44.com/mcp");
+    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+      ["Bearer $", "{{ secrets.BASE44_TOKEN }}"].join(""),
+    );
+  });
+
   it("adds the Google Ads developer token for authorized OAuth connector runs", async () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
     const fx = await fixture();

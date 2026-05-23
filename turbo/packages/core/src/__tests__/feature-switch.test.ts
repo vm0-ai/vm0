@@ -83,6 +83,22 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
   });
+
+  it("should enable Base44 connector for staff orgs only", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.Base44Connector, {})).toBe(false);
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Base44Connector, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Base44Connector, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("getAllFeatureStates", () => {
@@ -117,6 +133,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.Base44Connector]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexDeviceAuth]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
@@ -128,6 +145,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.Base44Connector]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexDeviceAuth]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
   });

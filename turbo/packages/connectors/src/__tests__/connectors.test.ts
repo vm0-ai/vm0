@@ -36,6 +36,7 @@ import {
   isOAuthConnectorType,
   CONNECTOR_OAUTH_PROVIDERS,
   pollConnectorOAuthDeviceAuth,
+  refreshConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
 } from "../oauth-providers/provider-registry";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
@@ -443,6 +444,232 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("starts, polls, and refreshes the Base44 OAuth device provider", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init: RequestInit | undefined) => {
+        const url = input.toString();
+        const rawBody = String(init?.body ?? "");
+
+        if (url === "https://app.base44.com/oauth/device/code") {
+          expect(JSON.parse(rawBody)).toStrictEqual({
+            client_id: "base44_cli",
+            scope: "apps:read apps:write offline",
+          });
+          return Response.json({
+            device_code: "base44-device-code",
+            user_code: "BASE-44",
+            verification_uri: "https://app.base44.com/device",
+            verification_uri_complete:
+              "https://app.base44.com/device?user_code=BASE-44",
+            expires_in: 600,
+            interval: 5,
+          });
+        }
+
+        const body = new URLSearchParams(rawBody);
+        if (url === "https://app.base44.com/oauth/token") {
+          if (body.get("grant_type") === "refresh_token") {
+            expect(body.get("client_id")).toBe("base44_cli");
+            if (body.get("refresh_token") === "base44-refresh-rotation") {
+              return Response.json({
+                access_token: "base44-access-refreshed",
+                refresh_token: "base44-refresh-rotated",
+                expires_in: 3600,
+              });
+            }
+            return Response.json({
+              access_token: "base44-access-refreshed",
+              expires_in: 3600,
+            });
+          }
+
+          expect(body.get("grant_type")).toBe(
+            "urn:ietf:params:oauth:grant-type:device_code",
+          );
+          expect(body.get("client_id")).toBe("base44_cli");
+          const deviceCode = body.get("device_code");
+          if (deviceCode === "pending") {
+            return Response.json(
+              { error: "authorization_pending" },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "slow-down") {
+            return Response.json({ error: "slow_down" }, { status: 400 });
+          }
+          if (deviceCode === "denied") {
+            return Response.json(
+              {
+                error: "access_denied",
+                error_description: "User denied Base44 access",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "expired") {
+            return Response.json(
+              {
+                error: "expired_token",
+                error_description: "Base44 device authorization expired",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "temporarily-unavailable") {
+            return Response.json(
+              {
+                error: "temporarily_unavailable",
+                error_description: "Base44 is temporarily unavailable",
+              },
+              { status: 400 },
+            );
+          }
+
+          return Response.json({
+            access_token: "base44-access-token",
+            refresh_token: "base44-refresh-token",
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "apps:read apps:write offline",
+          });
+        }
+
+        if (url === "https://app.base44.com/oauth/userinfo") {
+          expect(init?.headers).toMatchObject({
+            Authorization: "Bearer base44-access-token",
+          });
+          return Response.json({
+            sub: "base44-user-id",
+            name: "Base44 User",
+            email: "base44@example.com",
+          });
+        }
+
+        throw new Error(`Unexpected Base44 OAuth request: ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const credentials = getConnectorOAuthCredentials("base44", () => {
+        return undefined;
+      });
+      expect(credentials?.configured).toBe(true);
+
+      if (!credentials?.configured) {
+        throw new Error("Expected base44 OAuth credentials");
+      }
+
+      await expect(
+        startConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+        }),
+      ).resolves.toStrictEqual({
+        deviceCode: "base44-device-code",
+        userCode: "BASE-44",
+        verificationUri: "https://app.base44.com/device",
+        verificationUriComplete:
+          "https://app.base44.com/device?user_code=BASE-44",
+        expiresIn: 600,
+        interval: 5,
+      });
+
+      await expect(
+        pollConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+          deviceCode: "pending",
+        }),
+      ).resolves.toStrictEqual({ status: "pending" });
+      await expect(
+        pollConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+          deviceCode: "slow-down",
+        }),
+      ).resolves.toStrictEqual({ status: "slow_down" });
+      await expect(
+        pollConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+          deviceCode: "denied",
+        }),
+      ).resolves.toStrictEqual({
+        status: "denied",
+        error: "access_denied",
+        errorDescription: "User denied Base44 access",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+          deviceCode: "expired",
+        }),
+      ).resolves.toStrictEqual({
+        status: "expired",
+        error: "expired_token",
+        errorDescription: "Base44 device authorization expired",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+          deviceCode: "temporarily-unavailable",
+        }),
+      ).resolves.toStrictEqual({
+        status: "error",
+        error: "temporarily_unavailable",
+        errorDescription: "Base44 is temporarily unavailable",
+      });
+      await expect(
+        pollConnectorOAuthDeviceAuth({
+          type: "base44",
+          credentials,
+          deviceCode: "base44-device-code",
+        }),
+      ).resolves.toStrictEqual({
+        status: "complete",
+        token: {
+          accessToken: "base44-access-token",
+          refreshToken: "base44-refresh-token",
+          expiresIn: 3600,
+          scopes: ["apps:read", "apps:write", "offline"],
+          userInfo: {
+            id: "base44-user-id",
+            username: "Base44 User",
+            email: "base44@example.com",
+          },
+        },
+      });
+
+      await expect(
+        refreshConnectorOAuthToken({
+          type: "base44",
+          credentials,
+          refreshToken: "base44-refresh-rotation",
+        }),
+      ).resolves.toStrictEqual({
+        accessToken: "base44-access-refreshed",
+        refreshToken: "base44-refresh-rotated",
+        expiresIn: 3600,
+      });
+      await expect(
+        refreshConnectorOAuthToken({
+          type: "base44",
+          credentials,
+          refreshToken: "base44-refresh-without-rotation",
+        }),
+      ).resolves.toStrictEqual({
+        accessToken: "base44-access-refreshed",
+        refreshToken: null,
+        expiresIn: 3600,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("getAvailableConnectorAuthMethods", () => {
@@ -464,6 +691,15 @@ describe("getAvailableConnectorAuthMethods", () => {
         [FeatureSwitchKey.BentomlConnector]: true,
       }),
     ).toStrictEqual(["api-token"]);
+  });
+
+  it("exposes Base44 OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethods("base44", {
+        [FeatureSwitchKey.Base44Connector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {
@@ -560,6 +796,12 @@ describe("getConnectorEnvironmentMapping", () => {
     expect(getConnectorEnvironmentMapping("github")).toEqual({
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+    });
+  });
+
+  it("returns correct mapping for Base44", () => {
+    expect(getConnectorEnvironmentMapping("base44")).toEqual({
+      BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
     });
   });
 
@@ -1013,6 +1255,23 @@ describe("connector OAuth device authorization config", () => {
         clientId: "test-oauth-device-client",
       },
       scopes: ["read"],
+    });
+  });
+
+  it("declares the Base44 connector as a device authorization flow", () => {
+    expect(isOAuthDeviceAuthConnectorType("base44")).toBe(true);
+    expect(getConnectorOAuthFlow("base44")).toBe("device-authorization");
+    expect(getConnectorOAuthDeviceAuthConfig("base44")).toMatchObject({
+      flow: "device-authorization",
+      deviceAuthUrl: "https://app.base44.com/oauth/device/code",
+      tokenUrl: "https://app.base44.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientId: "base44_cli",
+      },
+      scopes: ["apps:read", "apps:write", "offline"],
     });
   });
 });

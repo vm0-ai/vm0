@@ -44,6 +44,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
+  [FeatureSwitchKey.Base44Connector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Base44 connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.BentomlConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the BentoML model serving connector",
