@@ -39,7 +39,7 @@ export const base44 = {
         tokenEndpointAuthMethod: "none",
         clientId: "base44_cli",
       },
-      scopes: ["apps:read", "apps:write"],
+      scopes: ["apps:read", "apps:write", "offline"],
     },
   },
 } as const satisfies Record<string, ConnectorConfig>;

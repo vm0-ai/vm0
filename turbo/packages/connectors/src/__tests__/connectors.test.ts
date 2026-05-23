@@ -454,7 +454,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         if (url === "https://app.base44.com/oauth/device/code") {
           expect(JSON.parse(rawBody)).toStrictEqual({
             client_id: "base44_cli",
-            scope: "apps:read apps:write",
+            scope: "apps:read apps:write offline",
           });
           return Response.json({
             device_code: "base44-device-code",
@@ -531,7 +531,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
             refresh_token: "base44-refresh-token",
             token_type: "Bearer",
             expires_in: 3600,
-            scope: "apps:read apps:write",
+            scope: "apps:read apps:write offline",
           });
         }
 
@@ -635,7 +635,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
           accessToken: "base44-access-token",
           refreshToken: "base44-refresh-token",
           expiresIn: 3600,
-          scopes: ["apps:read", "apps:write"],
+          scopes: ["apps:read", "apps:write", "offline"],
           userInfo: {
             id: "base44-user-id",
             username: "Base44 User",
@@ -1271,7 +1271,7 @@ describe("connector OAuth device authorization config", () => {
         tokenEndpointAuthMethod: "none",
         clientId: "base44_cli",
       },
-      scopes: ["apps:read", "apps:write"],
+      scopes: ["apps:read", "apps:write", "offline"],
     });
   });
 });

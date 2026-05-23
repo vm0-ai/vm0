@@ -2,7 +2,9 @@
  * Generate Base44 firewall config.
  *
  * Source: https://app.base44.com/.well-known/oauth-authorization-server
- * Runtime endpoint: https://app.base44.com/mcp
+ * Runtime endpoints:
+ * - https://app.base44.com/mcp
+ * - https://app.base44.com/api/apps
  */
 
 import { writeOutput } from "./codegen";
@@ -19,13 +21,22 @@ function generateTypeScript(): string {
     "",
     "export const base44Firewall = {",
     '  name: "base44",',
-    '  description: "Base44 MCP",',
+    '  description: "Base44 MCP and app API",',
     "  placeholders: {",
     `    BASE44_TOKEN: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
     "    {",
     '      base: "https://app.base44.com/mcp",',
+    "      auth: {",
+    "        headers: {",
+    '          Authorization: "Bearer ${{ secrets.BASE44_TOKEN }}",',
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    '      base: "https://app.base44.com/api/apps",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.BASE44_TOKEN }}",',

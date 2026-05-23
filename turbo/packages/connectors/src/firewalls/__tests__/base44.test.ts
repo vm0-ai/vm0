@@ -8,14 +8,23 @@ import {
 } from "../index";
 
 describe("base44 firewall", () => {
-  it("registers the Base44 MCP firewall with OAuth placeholder expansion", () => {
+  it("registers the Base44 firewall with OAuth placeholder expansion", () => {
     expect(isFirewallConnectorType("base44")).toBe(true);
     const firewall = getConnectorFirewall("base44");
 
     expect(firewall.name).toBe("base44");
-    expect(firewall.apis).toHaveLength(1);
+    expect(firewall.apis).toHaveLength(2);
     expect(firewall.apis[0]).toMatchObject({
       base: "https://app.base44.com/mcp",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.BASE44_TOKEN }}",
+        },
+      },
+      permissions: [],
+    });
+    expect(firewall.apis[1]).toMatchObject({
+      base: "https://app.base44.com/api/apps",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.BASE44_TOKEN }}",
