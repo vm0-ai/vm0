@@ -5,6 +5,7 @@ import {
   IconLayoutGrid,
   IconList,
   IconLoader2,
+  IconLock,
   IconPlus,
   IconWand,
 } from "@tabler/icons-react";
@@ -546,6 +547,7 @@ type AgentProps = {
     id: string;
     displayName?: string | null;
     description?: string | null;
+    visibility?: "public" | "private" | null;
   };
 };
 
@@ -553,6 +555,7 @@ function AgentCard({ agent }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
+  const isPrivate = agent.visibility === "private";
   const description = defaultAgentId
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
     : "";
@@ -565,9 +568,19 @@ function AgentCard({ agent }: AgentProps) {
           className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate block">
-            {displayName}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-medium text-foreground truncate">
+              {displayName}
+            </span>
+            {isPrivate && (
+              <IconLock
+                size={12}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+                aria-label="Private agent"
+              />
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
@@ -582,6 +595,7 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
   const lead = agent.id === defaultAgentId;
 
   const displayName = agent.displayName ?? agent.id;
+  const isPrivate = agent.visibility === "private";
   const description = defaultAgentId
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
     : "";
@@ -595,9 +609,19 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
           className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
         />
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate block">
-            {displayName}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-medium text-foreground truncate">
+              {displayName}
+            </span>
+            {isPrivate && (
+              <IconLock
+                size={12}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+                aria-label="Private agent"
+              />
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
