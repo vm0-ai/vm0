@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.11](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.10...vsock-host-v0.17.11) (2026-05-23)
+
+
+### Bug Fixes
+
+* **vsock-host:** demote clean supervised terminal logs ([#14564](https://github.com/vm0-ai/vm0/issues/14564)) ([65165dd](https://github.com/vm0-ai/vm0/commit/65165ddf38dc66174de8af1236f1d56d41f98efd))
+
 ## [0.17.10](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.9...vsock-host-v0.17.10) (2026-05-22)
 
 

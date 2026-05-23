@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.384.2](https://github.com/vm0-ai/vm0/compare/web-v12.384.1...web-v12.384.2) (2026-05-23)
+
+
+### Refactoring
+
+* remove goal feature switch and codex-style goal mode ([#14581](https://github.com/vm0-ai/vm0/issues/14581)) ([56bd3a1](https://github.com/vm0-ai/vm0/commit/56bd3a1978ff3e47c3326c913a23856ab3084194))
+* remove unused member credit cap feature ([#14582](https://github.com/vm0-ai/vm0/issues/14582)) ([59abd6d](https://github.com/vm0-ai/vm0/commit/59abd6dbc26cacd7ecfa4bd66472880d2a1a179d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.1
+    * @vm0/connectors bumped to 1.29.0
+    * @vm0/core bumped to 8.290.0
+    * @vm0/db bumped to 1.18.2
+
 ## [12.384.1](https://github.com/vm0-ai/vm0/compare/web-v12.384.0...web-v12.384.1) (2026-05-23)
 
 

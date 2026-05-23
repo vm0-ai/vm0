@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.290.0](https://github.com/vm0-ai/vm0/compare/core-v8.289.1...core-v8.290.0) (2026-05-23)
+
+
+### Features
+
+* **connectors:** gate local-agent connector entry behind staff-org switch ([#14579](https://github.com/vm0-ai/vm0/issues/14579)) ([a3f95e4](https://github.com/vm0-ai/vm0/commit/a3f95e400753ee8fdaf3779cbeff4613086f71a9))
+
+
+### Refactoring
+
+* remove goal feature switch and codex-style goal mode ([#14581](https://github.com/vm0-ai/vm0/issues/14581)) ([56bd3a1](https://github.com/vm0-ai/vm0/commit/56bd3a1978ff3e47c3326c913a23856ab3084194))
+* remove unused member credit cap feature ([#14582](https://github.com/vm0-ai/vm0/issues/14582)) ([59abd6d](https://github.com/vm0-ai/vm0/commit/59abd6dbc26cacd7ecfa4bd66472880d2a1a179d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.1
+    * @vm0/connectors bumped to 1.29.0
+
 ## [8.289.1](https://github.com/vm0-ai/vm0/compare/core-v8.289.0...core-v8.289.1) (2026-05-22)
 
 
