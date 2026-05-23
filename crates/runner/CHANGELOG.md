@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.103.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.10...runner-rs-v0.103.11) (2026-05-23)
+
+
+### Refactoring
+
+* **mitm-addon:** extract auth base forwarder test helper ([#14603](https://github.com/vm0-ai/vm0/issues/14603)) ([337d456](https://github.com/vm0-ai/vm0/commit/337d4566d366bc05e0a5bcf46b45f1b8698b7f57))
+* **mitm-addon:** split handler tests by subsystem ([#14597](https://github.com/vm0-ai/vm0/issues/14597)) ([ae64e4c](https://github.com/vm0-ai/vm0/commit/ae64e4c4aae2ce5001aa398503fb797c74f13c0c))
+
 ## [0.103.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.9...runner-rs-v0.103.10) (2026-05-23)
 
 ## [0.103.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.8...runner-rs-v0.103.9) (2026-05-23)

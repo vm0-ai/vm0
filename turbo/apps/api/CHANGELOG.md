@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.69.0](https://github.com/vm0-ai/vm0/compare/api-v1.68.1...api-v1.69.0) (2026-05-23)
+
+
+### Features
+
+* add Base44 OAuth device connector ([#14586](https://github.com/vm0-ai/vm0/issues/14586)) ([76ffda5](https://github.com/vm0-ai/vm0/commit/76ffda5b97395dddf06f7e7c284ac3db43435058))
+
+
+### Bug Fixes
+
+* **api:** log BytePlus video submit failures ([#14593](https://github.com/vm0-ai/vm0/issues/14593)) ([30e4dbe](https://github.com/vm0-ai/vm0/commit/30e4dbe9c1bb6444a59567598f124a9a6601836e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.2
+    * @vm0/connectors bumped to 1.30.0
+    * @vm0/core bumped to 8.291.0
+    * @vm0/db bumped to 1.18.3
+
 ## [1.68.1](https://github.com/vm0-ai/vm0/compare/api-v1.68.0...api-v1.68.1) (2026-05-23)
 
 

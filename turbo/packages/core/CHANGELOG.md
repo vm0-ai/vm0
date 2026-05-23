@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.291.0](https://github.com/vm0-ai/vm0/compare/core-v8.290.0...core-v8.291.0) (2026-05-23)
+
+
+### Features
+
+* add Base44 OAuth device connector ([#14586](https://github.com/vm0-ai/vm0/issues/14586)) ([76ffda5](https://github.com/vm0-ai/vm0/commit/76ffda5b97395dddf06f7e7c284ac3db43435058))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.2
+    * @vm0/connectors bumped to 1.30.0
+
 ## [8.290.0](https://github.com/vm0-ai/vm0/compare/core-v8.289.1...core-v8.290.0) (2026-05-23)
 
 

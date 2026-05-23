@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.377.0](https://github.com/vm0-ai/vm0/compare/app-v0.376.1...app-v0.377.0) (2026-05-23)
+
+
+### Features
+
+* add Base44 OAuth device connector ([#14586](https://github.com/vm0-ai/vm0/issues/14586)) ([76ffda5](https://github.com/vm0-ai/vm0/commit/76ffda5b97395dddf06f7e7c284ac3db43435058))
+* **lab:** group connector toggles into a separate section ([#14594](https://github.com/vm0-ai/vm0/issues/14594)) ([0c2ca86](https://github.com/vm0-ai/vm0/commit/0c2ca866a43f8cb3bd9ccc9e5b1fd1dbdcc724b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.2
+    * @vm0/connectors bumped to 1.30.0
+    * @vm0/core bumped to 8.291.0
+
 ## [0.376.1](https://github.com/vm0-ai/vm0/compare/app-v0.376.0...app-v0.376.1) (2026-05-23)
 
 
