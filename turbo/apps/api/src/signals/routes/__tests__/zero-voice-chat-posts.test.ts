@@ -36,6 +36,8 @@ const writeDb = store.set(writeDb$);
 const mocks = createZeroRouteMocks(context);
 const OPENAI_REALTIME_CLIENT_SECRETS_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
+const VOICE_CHAT_CALLBACK_URL =
+  "http://localhost:3000/api/internal/callbacks/voice-chat";
 
 const track = createFixtureTracker<VoiceChatFixture>((fixture) => {
   return store.set(deleteVoiceChatFixture$, fixture, context.signal);
@@ -47,6 +49,19 @@ function client() {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function proxyVoiceChatCallbackToApp(): void {
+  server.use(
+    http.post(VOICE_CHAT_CALLBACK_URL, async ({ request }) => {
+      const app = createApp({ signal: context.signal });
+      return await app.request("/api/internal/callbacks/voice-chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: await request.text(),
+      });
+    }),
+  );
 }
 
 async function rawCreateSessionWithoutBody(): Promise<{
@@ -562,6 +577,8 @@ describe("POST /api/zero/voice-chat/:id/tasks (createTask)", () => {
   });
 
   it("creates a task, zero run, and voice-chat callback", async () => {
+    proxyVoiceChatCallbackToApp();
+
     const { fixture, agentId } = await seedEnabledFixture();
     const sessionId = await store.set(
       addVoiceChatSession$,

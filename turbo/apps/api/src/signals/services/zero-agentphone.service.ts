@@ -1423,7 +1423,14 @@ function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
   });
 
   return [
-    "To use Zero by text message, connect this phone number to your VM0 account:",
+    "Hi, I'm Zero, your AI coworker from vm0.",
+    "",
+    "You can text me like a teammate and I'll actually do the work: research something, draft and send emails, summarize long documents, update spreadsheets, triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.",
+    "",
+    "I'm most useful once I'm connected to the tools you already use — GitHub, Gmail, Notion, Google Drive / Sheets / Docs / Calendar, Slack, Sentry, X, and 100+ others.",
+    "",
+    "Click the link below to start to use zero",
+    "",
     connectUrl,
   ].join("\n");
 }

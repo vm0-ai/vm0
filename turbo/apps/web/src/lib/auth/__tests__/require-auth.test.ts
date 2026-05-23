@@ -5,6 +5,7 @@ import { generateSandboxToken, generateZeroToken } from "../sandbox-token";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { clearOrgMembersCacheEntry } from "../../../__tests__/api-test-helpers";
 import { testContext } from "../../../__tests__/test-helpers";
+import { reloadEnv } from "../../../env";
 
 const context = testContext();
 
@@ -12,6 +13,9 @@ describe("requireAuth", () => {
   const mockAuth = vi.mocked(auth);
 
   beforeEach(() => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("VM0_API_BACKEND_URL", undefined);
+    reloadEnv();
     mockAuth.mockResolvedValue({
       userId: null,
     } as Awaited<ReturnType<typeof auth>>);

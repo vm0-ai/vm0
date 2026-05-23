@@ -82,6 +82,12 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
+  http.get("https://www.vm0.ai/api/zero/connectors", () => {
+    return HttpResponse.json(
+      { connectors: [], configuredTypes: [], connectorProvidedSecretNames: [] },
+      { status: 200 },
+    );
+  }),
 
   // GET /api/zero/connectors/search - searchZeroConnectors
   http.get("http://localhost:3000/api/zero/connectors/search", () => {

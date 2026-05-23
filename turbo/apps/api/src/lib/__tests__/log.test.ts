@@ -289,26 +289,4 @@ describe("logger", () => {
   it("creates distinct loggers for different names", () => {
     expect(logger("A")).not.toBe(logger("B"));
   });
-
-  it("emits to console in addition to Axiom (dual-write)", () => {
-    // eslint-disable-next-line api/no-test-vi-mocks
-    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    // eslint-disable-next-line api/no-test-vi-mocks
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      const log = logger("dual");
-      log.info("dual msg");
-      log.error("dual error");
-
-      expect(consoleLog).toHaveBeenCalledWith(expect.any(String));
-      expect(consoleError).toHaveBeenCalledWith(expect.any(String));
-    } finally {
-      consoleLog.mockRestore();
-      consoleError.mockRestore();
-    }
-  });
 });

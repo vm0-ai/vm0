@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
 import {
   callTelegramApi,
@@ -25,6 +25,16 @@ describe("createTelegramClient", () => {
 });
 
 describe("callTelegramApi", () => {
+  let consoleWarn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleWarn.mockRestore();
+  });
+
   it("should call the Telegram API and return the result", async () => {
     const handler = http.post(
       `https://api.telegram.org/bot${TEST_TOKEN}/getMe`,

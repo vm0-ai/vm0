@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { http, HttpResponse } from "msw";
 import { zeroVoiceChatContract } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { server } from "../../../mocks/server.ts";
@@ -7,6 +15,7 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { detach, Reason } from "../../utils.ts";
+import { getLoggers, Level } from "../../log.ts";
 import {
   startVoiceChat$,
   endVoiceChat$,
@@ -20,6 +29,8 @@ import {
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const voiceChatLogger = getLoggers().VoiceChat;
+const voiceChatLoggerLevel = voiceChatLogger?.level;
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -487,11 +498,20 @@ describe("voice-chat session", () => {
   }
 
   beforeEach(() => {
+    if (voiceChatLogger) {
+      voiceChatLogger.level = Level.Error;
+    }
     stubWebRTC();
   });
 
   afterEach(() => {
     clearWebRTC();
+  });
+
+  afterAll(() => {
+    if (voiceChatLogger && voiceChatLoggerLevel) {
+      voiceChatLogger.level = voiceChatLoggerLevel;
+    }
   });
 
   describe("startVoiceChat$", () => {

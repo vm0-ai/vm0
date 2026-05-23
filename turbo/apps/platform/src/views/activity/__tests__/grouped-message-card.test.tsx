@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -7,10 +7,25 @@ import {
   setInspectStepSearch$,
   type InspectLogData,
 } from "../../../signals/activity-page/inspect-log-signals.ts";
+import { getLoggers, Level } from "../../../signals/log.ts";
 import type { InspectLogMeta } from "../../../signals/activity-page/inspect-log-parser.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 
 const context = testContext();
+const inspectLogger = getLoggers().InspectLogSignals;
+const inspectLoggerLevel = inspectLogger?.level;
+
+beforeEach(() => {
+  if (inspectLogger) {
+    inspectLogger.level = Level.Warn;
+  }
+});
+
+afterAll(() => {
+  if (inspectLogger && inspectLoggerLevel) {
+    inspectLogger.level = inspectLoggerLevel;
+  }
+});
 
 function makeInspectData(events: AgentEvent[]): InspectLogData {
   return {

@@ -361,6 +361,7 @@ const trackFixture = createFixtureTracker<TelegramPostFixture>(
 beforeEach(() => {
   context.mocks.s3.send.mockResolvedValue({});
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  server.use(telegramOauthHead("1001"));
 });
 
 afterEach(() => {

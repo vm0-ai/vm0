@@ -917,6 +917,7 @@ describe("POST /api/zero/chat/messages", () => {
 
   it("interrupts and cancels an active chat run", async () => {
     const fixture = await track(seedFixture());
+    proxyChatCallbackToApp();
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
     await clearAllDetached();
 
