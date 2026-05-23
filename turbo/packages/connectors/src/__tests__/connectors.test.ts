@@ -449,11 +449,13 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init: RequestInit | undefined) => {
         const url = input.toString();
-        const body = new URLSearchParams(String(init?.body ?? ""));
+        const rawBody = String(init?.body ?? "");
 
         if (url === "https://app.base44.com/oauth/device/code") {
-          expect(body.get("client_id")).toBe("base44_cli");
-          expect(body.get("scope")).toBe("apps:read apps:write offline");
+          expect(JSON.parse(rawBody)).toStrictEqual({
+            client_id: "base44_cli",
+            scope: "apps:read apps:write",
+          });
           return Response.json({
             device_code: "base44-device-code",
             user_code: "BASE-44",
@@ -465,6 +467,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
           });
         }
 
+        const body = new URLSearchParams(rawBody);
         if (url === "https://app.base44.com/oauth/token") {
           if (body.get("grant_type") === "refresh_token") {
             expect(body.get("client_id")).toBe("base44_cli");
@@ -528,7 +531,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
             refresh_token: "base44-refresh-token",
             token_type: "Bearer",
             expires_in: 3600,
-            scope: "apps:read apps:write offline",
+            scope: "apps:read apps:write",
           });
         }
 
@@ -632,7 +635,7 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
           accessToken: "base44-access-token",
           refreshToken: "base44-refresh-token",
           expiresIn: 3600,
-          scopes: ["apps:read", "apps:write", "offline"],
+          scopes: ["apps:read", "apps:write"],
           userInfo: {
             id: "base44-user-id",
             username: "Base44 User",
@@ -1268,7 +1271,7 @@ describe("connector OAuth device authorization config", () => {
         tokenEndpointAuthMethod: "none",
         clientId: "base44_cli",
       },
-      scopes: ["apps:read", "apps:write", "offline"],
+      scopes: ["apps:read", "apps:write"],
     });
   });
 });

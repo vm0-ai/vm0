@@ -110,9 +110,9 @@ export async function startBase44DeviceAuth(args: {
   const response = await fetch(base44OauthConfig().deviceAuthUrl, {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/json",
     },
-    body: new URLSearchParams({
+    body: JSON.stringify({
       client_id: args.clientId,
       scope: args.scopes.join(" "),
     }),

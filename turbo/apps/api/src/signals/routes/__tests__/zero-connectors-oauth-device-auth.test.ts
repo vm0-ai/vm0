@@ -188,9 +188,10 @@ function mockTestOAuthDeviceProvider(): void {
 function mockBase44OAuthProvider(): void {
   server.use(
     http.post(BASE44_DEVICE_CODE_URL, async ({ request }) => {
-      const body = new URLSearchParams(await request.text());
-      expect(body.get("client_id")).toBe("base44_cli");
-      expect(body.get("scope")).toBe("apps:read apps:write offline");
+      await expect(request.json()).resolves.toStrictEqual({
+        client_id: "base44_cli",
+        scope: "apps:read apps:write",
+      });
       return HttpResponse.json({
         device_code: "base44-device-code",
         user_code: "BASE-44",
@@ -211,7 +212,7 @@ function mockBase44OAuthProvider(): void {
         refresh_token: "base44-refresh-token",
         token_type: "Bearer",
         expires_in: 3600,
-        scope: "apps:read apps:write offline",
+        scope: "apps:read apps:write",
       });
     }),
     http.get(BASE44_USERINFO_URL, ({ request }) => {
@@ -720,7 +721,7 @@ describe("OAuth device authorization connector routes", () => {
         externalId: "base44-user-id",
         externalUsername: "Base44 User",
         externalEmail: "base44@example.com",
-        oauthScopes: JSON.stringify(["apps:read", "apps:write", "offline"]),
+        oauthScopes: JSON.stringify(["apps:read", "apps:write"]),
       },
     ]);
   });
