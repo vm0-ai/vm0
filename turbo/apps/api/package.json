@@ -20,7 +20,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1048.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
-    "@clerk/backend": "^3.4.1",
+    "@clerk/backend": "^3.4.13",
     "@google/genai": "^1.50.1",
     "@hono/node-server": "^1.19.14",
     "@hono/otel": "^1.1.1",
