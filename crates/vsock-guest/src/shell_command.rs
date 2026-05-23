@@ -86,7 +86,7 @@ impl EnvScriptGuard {
         self.path.as_deref()
     }
 
-    pub(crate) fn cleanup(&mut self) {
+    fn cleanup(&mut self) {
         if let Some(path) = self.path.take() {
             let _ = fs::remove_file(path);
         }
@@ -400,19 +400,10 @@ fn create_env_script_in_dir(
         }
 
         let path = script_dir.join(format!("run{ENV_SCRIPT_SUFFIX}"));
-        let mut guard = EnvScriptGuard::new(path.clone(), script_dir.clone());
-        if let Err(e) = fs::set_permissions(&script_dir, fs::Permissions::from_mode(0o700)) {
-            guard.cleanup();
-            return Err(e);
-        }
+        let guard = EnvScriptGuard::new(path.clone(), script_dir.clone());
+        fs::set_permissions(&script_dir, fs::Permissions::from_mode(0o700))?;
 
-        let script = match build_env_script_content(&script_dir, &path, command, env) {
-            Ok(script) => script,
-            Err(e) => {
-                guard.cleanup();
-                return Err(e);
-            }
-        };
+        let script = build_env_script_content(&script_dir, &path, command, env)?;
 
         let mut options = OpenOptions::new();
         options
@@ -422,14 +413,8 @@ fn create_env_script_in_dir(
             .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
         let mut file = match options.open(&path) {
             Ok(file) => file,
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                guard.cleanup();
-                continue;
-            }
-            Err(e) => {
-                guard.cleanup();
-                return Err(e);
-            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
         };
 
         let result = (|| -> io::Result<()> {
@@ -452,10 +437,7 @@ fn create_env_script_in_dir(
             Ok(())
         })();
 
-        if let Err(e) = result {
-            guard.cleanup();
-            return Err(e);
-        }
+        result?;
         drop(file);
         return Ok(guard);
     }
