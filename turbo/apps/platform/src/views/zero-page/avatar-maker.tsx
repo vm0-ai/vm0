@@ -4,6 +4,7 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   Tooltip,
@@ -341,6 +342,9 @@ function AvatarMakerDialogBody({
     <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden">
       <DialogHeader className="sr-only">
         <DialogTitle>Give your agent a face</DialogTitle>
+        <DialogDescription>
+          Customize the agent avatar style, color, and facial details.
+        </DialogDescription>
       </DialogHeader>
 
       {/* Preview section */}

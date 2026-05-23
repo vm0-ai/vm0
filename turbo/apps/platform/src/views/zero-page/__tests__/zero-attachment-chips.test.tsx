@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -23,11 +23,17 @@ import {
   publicAttachmentUrl,
 } from "../zero-attachment-chips.tsx";
 import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
+import { getLoggers, Level } from "../../../signals/log.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const attachmentLogger = getLoggers()["zero-attachment-chips"];
+const attachmentLoggerLevel = attachmentLogger?.level;
 
 beforeEach(() => {
+  if (attachmentLogger) {
+    attachmentLogger.level = Level.Error;
+  }
   vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
   vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
   // Pin a vision-capable model — the workspace default model does not accept
@@ -36,6 +42,12 @@ beforeEach(() => {
     selectedModel: "claude-sonnet-4-6",
     updatedAt: "2026-03-10T00:00:00Z",
   });
+});
+
+afterAll(() => {
+  if (attachmentLogger && attachmentLoggerLevel) {
+    attachmentLogger.level = attachmentLoggerLevel;
+  }
 });
 
 function mockChatAPI() {

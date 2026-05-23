@@ -14,6 +14,7 @@ import {
   CardContent,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   Button,
@@ -323,6 +324,9 @@ function CreateTeammateDialogContent({
     <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
       <DialogHeader className="sr-only">
         <DialogTitle>Create a new agent</DialogTitle>
+        <DialogDescription>
+          Name the new agent, choose its visibility, and customize its avatar.
+        </DialogDescription>
       </DialogHeader>
 
       {/* Avatar preview */}

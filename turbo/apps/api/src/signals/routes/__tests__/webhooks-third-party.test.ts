@@ -288,6 +288,12 @@ function setupGitHubApiMocks(args: {
       },
     ),
     http.post(
+      "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+      () => {
+        return HttpResponse.json({ id: 9876 });
+      },
+    ),
+    http.post(
       "https://api.github.com/repos/:owner/:repo/issues/comments/:commentId/reactions",
       () => {
         return HttpResponse.json({ id: 2468 });
@@ -1480,6 +1486,7 @@ describe("POST /api/webhooks/github", () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
+    await seedGitHubModelRoute({ fixture });
     mockGitHubWebhookEnv();
     const otherGithubUserId = remoteGitHubId();
 
@@ -1555,6 +1562,7 @@ describe("POST /api/webhooks/github", () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
+    await seedGitHubModelRoute({ fixture });
     mockGitHubWebhookEnv();
     mockGitHubAppCredentials();
     setupGitHubApiMocks({

@@ -1,10 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import {
   buildUsageEventUrl,
   createUsageReporter,
   type UsageReportPayload,
 } from "../usage-reporter";
+import { getLoggers, Level } from "../../../signals/log";
 
 const API_BASE = "https://api.test.example";
 const SESSION_ID = "00000000-0000-0000-0000-000000000123";
@@ -45,13 +54,24 @@ async function flushMicrotasks(): Promise<void> {
 
 describe("createUsageReporter", () => {
   let originalFetch: typeof fetch;
+  const usageLogger = getLoggers().VoiceChatUsageReporter;
+  const usageLoggerLevel = usageLogger?.level;
 
   beforeEach(() => {
+    if (usageLogger) {
+      usageLogger.level = Level.Error;
+    }
     originalFetch = globalThis.fetch;
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  afterAll(() => {
+    if (usageLogger && usageLoggerLevel) {
+      usageLogger.level = usageLoggerLevel;
+    }
   });
 
   it("buildUsageEventUrl strips trailing slash from apiBase", () => {

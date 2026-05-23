@@ -29,6 +29,20 @@ describe("auth login: proxy configuration", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
+  const emitWarningOriginal = process.emitWarning.bind(process);
+  const emitWarning = vi
+    .spyOn(process, "emitWarning")
+    .mockImplementation((warning, options) => {
+      if (
+        typeof options === "object" &&
+        options !== null &&
+        "code" in options &&
+        options.code === "UNDICI-EHPA"
+      ) {
+        return;
+      }
+      return emitWarningOriginal(warning as string, options as never);
+    });
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -39,6 +53,7 @@ describe("auth login: proxy configuration", () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    emitWarning.mockClear();
     chalk.level = 0;
 
     vi.stubEnv("http_proxy", undefined);
