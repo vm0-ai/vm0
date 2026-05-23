@@ -69,34 +69,6 @@ export const chatMessages = pgTable(
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
-    /**
-     * Goal-mode columns. NULL on every non-goal message.
-     *
-     * `goalRemainingTurns` is inclusive of the current turn — when it equals
-     * 1, this is the last turn of the goal chain. `goalOriginMessageId` points
-     * to the original `/go` row of the chain (the origin row points to itself).
-     */
-    goalRemainingTurns: integer("goal_remaining_turns"),
-    goalOriginMessageId: uuid("goal_origin_message_id").references(
-      (): AnyPgColumn => {
-        return chatMessages.id;
-      },
-      { onDelete: "set null" },
-    ),
-    /**
-     * Idempotency key for goal continuation rows. Set to the id of the
-     * just-completed run that the continuation was inserted in response to.
-     * `chat_messages_goal_continuation_run_unique` ensures at-least-once
-     * callback delivery cannot produce two continuation rows for the same
-     * source run — the second insert hits the constraint and `onConflictDoNothing`
-     * turns it into a no-op.
-     */
-    goalContinuationOfRunId: uuid("goal_continuation_of_run_id").references(
-      () => {
-        return agentRuns.id;
-      },
-      { onDelete: "set null" },
-    ),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -116,10 +88,6 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
-      ),
-      index("idx_chat_messages_goal_origin").on(table.goalOriginMessageId),
-      uniqueIndex("chat_messages_goal_continuation_run_unique").on(
-        table.goalContinuationOfRunId,
       ),
     ];
   },

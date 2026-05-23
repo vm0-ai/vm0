@@ -2759,6 +2759,13 @@
       "when": 1779435569055,
       "tag": "0393_add_byteplus_video_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 394,
+      "version": "7",
+      "when": 1779800000000,
+      "tag": "0394_drop_chat_messages_goal",
+      "breakpoints": true
     }
   ]
 }

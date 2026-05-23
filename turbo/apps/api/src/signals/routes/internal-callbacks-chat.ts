@@ -57,7 +57,6 @@ import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { settle, tapError } from "../utils";
 
 const log = logger("callback:chat");
-const GOAL_DONE_SENTINEL = "[GOAL_DONE]";
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 
@@ -122,8 +121,6 @@ interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
-  readonly goalRemainingTurns: number | null;
-  readonly goalOriginMessageId: string | null;
 }
 
 interface AgentForAutoSend {
@@ -140,10 +137,6 @@ interface ChatRunInfo {
   readonly prompt: string;
   readonly error: string | null;
   readonly lastEventSequence: number | null;
-}
-
-interface GoalContext {
-  readonly remainingTurns: number;
 }
 
 interface CreateQueuedChatRunInput {
@@ -549,35 +542,8 @@ function buildWebAttachFilesPrompt(
     .join("\n");
 }
 
-function buildWebChatGoalPrompt(context: GoalContext): string {
-  const turnLabel = context.remainingTurns === 1 ? "turn" : "turns";
-  return [
-    "# Goal Mode",
-    "",
-    "You are operating in goal mode. The user message that triggered this run",
-    "may be a continuation of an earlier `/go` objective -- the same message body",
-    "will repeat verbatim each turn until the goal is satisfied. Treat each",
-    "repetition as the signal to continue working on the objective, not as a",
-    "fresh request to start over.",
-    "",
-    `You have ${String(context.remainingTurns)} ${turnLabel} remaining (this one included).`,
-    "",
-    "When you believe the goal is satisfied, include the literal text `[GOAL_DONE]`",
-    "somewhere in your final assistant message. The runtime detects this",
-    "sentinel and stops the goal chain. Only emit it after verifying concrete",
-    "deliverables -- do not declare completion prematurely.",
-  ].join("\n");
-}
-
-function buildAppendSystemPrompt(
-  incompleteContext: string,
-  goalContext: GoalContext | null,
-): string {
-  return [
-    buildWebChatPrompt(),
-    goalContext ? buildWebChatGoalPrompt(goalContext) : "",
-    incompleteContext,
-  ]
+function buildAppendSystemPrompt(incompleteContext: string): string {
+  return [buildWebChatPrompt(), incompleteContext]
     .filter((part) => {
       return part.length > 0;
     })
@@ -789,8 +755,6 @@ async function nextQueuedUserMessage(
       modelProviderType: sql<null>`NULL`,
       modelProviderCredentialScope: sql<null>`NULL`,
       selectedModel: chatThreads.selectedModel,
-      goalRemainingTurns: chatMessages.goalRemainingTurns,
-      goalOriginMessageId: chatMessages.goalOriginMessageId,
     })
     .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
@@ -907,86 +871,6 @@ async function latestSessionIdForThreadFromDb(
   return null;
 }
 
-function containsGoalDoneSentinel(content: string | null): boolean {
-  return content !== null && content.includes(GOAL_DONE_SENTINEL);
-}
-
-async function maybeInsertGoalContinuation(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly terminalStatus: "completed" | "failed";
-}): Promise<void> {
-  if (args.terminalStatus !== "completed") {
-    return;
-  }
-
-  const [trigger] = await args.db
-    .select({
-      threadId: chatMessages.chatThreadId,
-      content: chatMessages.content,
-      attachFiles: chatMessages.attachFiles,
-      goalRemainingTurns: chatMessages.goalRemainingTurns,
-      goalOriginMessageId: chatMessages.goalOriginMessageId,
-    })
-    .from(chatMessages)
-    .where(
-      and(eq(chatMessages.runId, args.runId), eq(chatMessages.role, "user")),
-    )
-    .limit(1);
-
-  if (
-    !trigger ||
-    trigger.goalRemainingTurns === null ||
-    trigger.goalOriginMessageId === null ||
-    trigger.goalRemainingTurns <= 1
-  ) {
-    return;
-  }
-
-  const [interrupt] = await args.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(eq(chatMessages.interruptsRunId, args.runId))
-    .limit(1);
-  if (interrupt) {
-    return;
-  }
-
-  const [lastAssistant] = await args.db
-    .select({ content: chatMessages.content })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
-        isNotNull(chatMessages.content),
-      ),
-    )
-    .orderBy(desc(chatMessages.sequenceNumber), desc(chatMessages.createdAt))
-    .limit(1);
-  if (lastAssistant && containsGoalDoneSentinel(lastAssistant.content)) {
-    log.debug("Goal chain stopped by sentinel", {
-      runId: args.runId,
-      goalOriginMessageId: trigger.goalOriginMessageId,
-    });
-    return;
-  }
-
-  await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: trigger.threadId,
-      role: "user",
-      content: trigger.content,
-      runId: null,
-      attachFiles: trigger.attachFiles,
-      goalRemainingTurns: trigger.goalRemainingTurns - 1,
-      goalOriginMessageId: trigger.goalOriginMessageId,
-      goalContinuationOfRunId: args.runId,
-    })
-    .onConflictDoNothing({ target: chatMessages.goalContinuationOfRunId });
-}
-
 async function loadAgentForAutoSend(
   db: Db,
   agentId: string,
@@ -1036,19 +920,12 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   readonly db: Db;
   readonly runId: string;
   readonly agentId: string;
-  readonly terminalStatus: "completed" | "failed";
 }): Promise<void> {
   const chatThread = await chatThreadForRunFromDb(args.db, args.runId);
   if (!chatThread) {
     return;
   }
   const { chatThreadId: threadId, userId } = chatThread;
-
-  await maybeInsertGoalContinuation({
-    db: args.db,
-    runId: args.runId,
-    terminalStatus: args.terminalStatus,
-  });
 
   const queuedMessage = await nextQueuedUserMessage(args.db, threadId);
   if (!queuedMessage) {
@@ -1095,18 +972,13 @@ async function autoSendQueuedMessageOnRunComplete(args: {
       ? content
       : `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
 
-  const goalContext =
-    resolvedQueuedMessage.goalRemainingTurns !== null
-      ? { remainingTurns: resolvedQueuedMessage.goalRemainingTurns }
-      : null;
-
   const run = await args.createRun({
     orgId: agent.orgId,
     userId,
     agentId: agent.id,
     prompt: fullPrompt,
     sessionId,
-    appendSystemPrompt: buildAppendSystemPrompt(incompleteContext, goalContext),
+    appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
     threadId,
     queuedMessage: resolvedQueuedMessage,
   });
@@ -1125,8 +997,6 @@ async function autoSendQueuedMessageOnRunComplete(args: {
         ? [...queuedMessage.attachFiles]
         : null,
       revokesMessageId: queuedMessage.id,
-      goalRemainingTurns: queuedMessage.goalRemainingTurns,
-      goalOriginMessageId: queuedMessage.goalOriginMessageId,
     })
     .onConflictDoNothing({ target: chatMessages.revokesMessageId })
     .returning({ id: chatMessages.id });
@@ -1318,7 +1188,6 @@ const handleChatCallback$ = command(
       db,
       runId: callback.runId,
       agentId: payload.data.agentId,
-      terminalStatus: callback.status === "completed" ? "completed" : "failed",
       getResolvedAttachFiles: (userId, fileIds) => {
         return get(resolveAttachFileUrls(userId, fileIds));
       },

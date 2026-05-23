@@ -326,7 +326,6 @@ const onboardingContinueWeb$ = command(
               agentId: agentId,
               prompt,
               modelSelection,
-              goal: false,
             },
             rootSignal,
           );

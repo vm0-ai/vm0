@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
 import {
@@ -6,8 +6,6 @@ import {
   type AttachFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -48,7 +46,6 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { ensureOrgModelPolicies } from "../services/zero-model-policy.service";
 import {
   generateAndPersistChatThreadTitle,
@@ -74,7 +71,6 @@ interface NormalSendBody {
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
   readonly clientMessageId?: string;
-  readonly goal?: boolean;
   readonly forceNewSession?: boolean;
   readonly debugNoMockClaude?: boolean;
   readonly debugNoMockCodex?: boolean;
@@ -133,20 +129,6 @@ interface ResolvedThread {
   readonly isNewThread: boolean;
 }
 
-interface GoalOriginRow {
-  readonly messageId: string;
-  readonly remainingTurns: number;
-}
-
-interface GoalSetup {
-  readonly goalContext: WebChatGoalContext | null;
-  readonly goalOriginRow: GoalOriginRow | null;
-}
-
-interface WebChatGoalContext {
-  readonly remainingTurns: number;
-}
-
 interface WebChatPriorMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
@@ -176,11 +158,6 @@ interface IncompleteRoundRow extends WebChatIncompleteRoundMessage {
 type IncomingModelSelection = NormalSendBody["modelSelection"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
-type SignalGetter = {
-  <T>(signal: import("ccstate").Computed<T>): T;
-  <T>(signal: import("ccstate").Computed<Promise<T>>): Promise<T>;
-};
-
 interface NormalSendArgs {
   readonly body: NormalSendBody;
   readonly auth: OrganizationAuthContext;
@@ -193,7 +170,6 @@ interface PreparedNormalSend {
   readonly db: Db;
   readonly agent: AgentForChatSend;
   readonly forceNewSession: boolean;
-  readonly goalSetup: GoalSetup;
   readonly thread: ResolvedThread;
   readonly priorContext: string;
   readonly persistedExplicitSelection: boolean;
@@ -226,7 +202,6 @@ type AppendMessageResult =
     };
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
-const GOAL_DEFAULT_BUDGET = 10;
 // Existing web chat threads always carry a small recent-message window in the
 // system prompt. Session compatibility is handled separately by forceNewSession.
 const RECENT_CHAT_MESSAGE_LIMIT = 10;
@@ -302,37 +277,11 @@ function buildWebAttachFilesPrompt(
     .join("\n");
 }
 
-function buildWebChatGoalPrompt(ctx: WebChatGoalContext): string {
-  const turnLabel = ctx.remainingTurns === 1 ? "turn" : "turns";
-  return [
-    "# Goal Mode",
-    "",
-    "You are operating in goal mode. The user message that triggered this run",
-    "may be a continuation of an earlier `/go` objective -- the same message body",
-    "will repeat verbatim each turn until the goal is satisfied. Treat each",
-    "repetition as the signal to continue working on the objective, not as a",
-    "fresh request to start over.",
-    "",
-    `You have ${String(ctx.remainingTurns)} ${turnLabel} remaining (this one included).`,
-    "",
-    "When you believe the goal is satisfied, include the literal text `[GOAL_DONE]`",
-    "somewhere in your final assistant message. The runtime detects this",
-    "sentinel and stops the goal chain. Only emit it after verifying concrete",
-    "deliverables -- do not declare completion prematurely.",
-  ].join("\n");
-}
-
 function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
-  goalContext: WebChatGoalContext | null,
 ): string {
-  return [
-    buildWebChatPrompt(),
-    goalContext ? buildWebChatGoalPrompt(goalContext) : "",
-    priorContext,
-    incompleteContext,
-  ]
+  return [buildWebChatPrompt(), priorContext, incompleteContext]
     .filter((part) => {
       return part.length > 0;
     })
@@ -686,41 +635,6 @@ async function activeRunExistsForThread(
     )
     .limit(1);
   return run !== undefined;
-}
-
-async function goalEnabled(
-  get: SignalGetter,
-  orgId: string,
-  userId: string,
-): Promise<boolean> {
-  const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-  return isFeatureEnabled(FeatureSwitchKey.Goal, {
-    orgId,
-    userId,
-    overrides,
-  });
-}
-
-async function resolveGoalSetup(
-  get: SignalGetter,
-  body: NormalSendBody,
-  orgId: string,
-  userId: string,
-): Promise<GoalSetup | ReturnType<typeof forbidden>> {
-  if (body.goal !== true) {
-    return { goalContext: null, goalOriginRow: null };
-  }
-  if (!(await goalEnabled(get, orgId, userId))) {
-    return forbidden("Goal mode is not available for this account");
-  }
-  const messageId = body.clientMessageId ?? randomUUID();
-  return {
-    goalContext: { remainingTurns: GOAL_DEFAULT_BUDGET },
-    goalOriginRow: {
-      messageId,
-      remainingTurns: GOAL_DEFAULT_BUDGET,
-    },
-  };
 }
 
 async function defaultModelFirstPin(
@@ -1257,7 +1171,6 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
-  readonly goalOrigin: GoalOriginRow | null;
 }): Promise<{ readonly createdAt: Date }> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1270,8 +1183,7 @@ function appendUnassociatedUserMessage(params: {
         ),
       );
 
-    const explicitId =
-      params.goalOrigin?.messageId ?? params.clientMessageId ?? undefined;
+    const explicitId = params.clientMessageId ?? undefined;
     const attachFileIds = params.attachFiles?.map((file) => {
       return file.id;
     });
@@ -1285,8 +1197,6 @@ function appendUnassociatedUserMessage(params: {
         runId: null,
         attachFiles:
           attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
-        goalRemainingTurns: params.goalOrigin?.remainingTurns ?? null,
-        goalOriginMessageId: params.goalOrigin?.messageId ?? null,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -1325,7 +1235,6 @@ async function appendAssociatedUserMessage(params: {
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
-  readonly goalOrigin: GoalOriginRow | null;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     await tx
@@ -1337,8 +1246,7 @@ async function appendAssociatedUserMessage(params: {
           eq(chatThreads.userId, params.userId),
         ),
       );
-    const explicitId =
-      params.goalOrigin?.messageId ?? params.clientMessageId ?? undefined;
+    const explicitId = params.clientMessageId ?? undefined;
     const attachFileIds = params.attachFiles?.map((file) => {
       return file.id;
     });
@@ -1352,8 +1260,6 @@ async function appendAssociatedUserMessage(params: {
         runId: params.runId,
         attachFiles:
           attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
-        goalRemainingTurns: params.goalOrigin?.remainingTurns ?? null,
-        goalOriginMessageId: params.goalOrigin?.messageId ?? null,
       })
       .onConflictDoNothing({ target: chatMessages.id });
   });
@@ -1665,7 +1571,7 @@ const handleInterruptSend$ = command(
 
 const prepareNormalSend$ = command(
   async (
-    { get, set },
+    { set },
     args: NormalSendArgs,
     signal: AbortSignal,
   ): Promise<PreparedNormalSend | NormalSendFailure> => {
@@ -1691,17 +1597,6 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     if (modelError) {
       return modelError;
-    }
-
-    const goalSetup = await resolveGoalSetup(
-      get,
-      args.body,
-      args.orgId,
-      args.userId,
-    );
-    signal.throwIfAborted();
-    if ("status" in goalSetup) {
-      return goalSetup;
     }
 
     const thread = await resolveThread({
@@ -1748,7 +1643,6 @@ const prepareNormalSend$ = command(
       db,
       agent,
       forceNewSession,
-      goalSetup,
       thread,
       priorContext,
       persistedExplicitSelection,
@@ -1768,7 +1662,6 @@ async function queueUnassociatedNormalMessage(params: {
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
-    goalOrigin: params.prepared.goalSetup.goalOriginRow,
   });
   await publishChatMessageCreated(
     params.userId,
@@ -1814,7 +1707,6 @@ function scheduleAssociatedUserMessage(params: {
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
-  readonly goalOrigin: GoalOriginRow | null;
 }): void {
   waitUntil(
     (async () => {
@@ -1825,10 +1717,7 @@ function scheduleAssociatedUserMessage(params: {
         prompt: params.body.prompt,
         runId: params.runId,
         attachFiles: params.body.attachFiles,
-        clientMessageId: params.goalOrigin
-          ? undefined
-          : params.body.clientMessageId,
-        goalOrigin: params.goalOrigin,
+        clientMessageId: params.body.clientMessageId,
       });
       await publishUserSignal(
         [params.userId],
@@ -1972,7 +1861,6 @@ const createNormalChatRun$ = command(
         appendSystemPrompt: buildAppendSystemPrompt(
           prepared.thread.incompleteContext,
           prepared.priorContext,
-          prepared.goalSetup.goalContext,
         ),
       },
       signal,
@@ -2005,7 +1893,6 @@ const createNormalChatRun$ = command(
       threadId: prepared.thread.threadId,
       userId: args.userId,
       runId: runResult.body.runId,
-      goalOrigin: prepared.goalSetup.goalOriginRow,
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {

@@ -42,7 +42,6 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
-import { goalEnabled$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
@@ -227,7 +226,7 @@ export interface ChatThreadSignals {
   setModelSelection$: Command<void, [ModelProviderSelection | null]>;
   sendMessage$: Command<
     Promise<void>,
-    [string, ModelSelectionRequest | null, SendMessageOptions, AbortSignal]
+    [string, ModelSelectionRequest | null, AbortSignal]
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
@@ -1416,17 +1415,6 @@ interface SendMessageDeps {
   scrollToBottom$: Command<void, []>;
 }
 
-/**
- * Per-send options. `goal: true` flags this send as starting a Codex-style
- * goal chain — the API stamps the user row with `goal_remaining_turns` and
- * the run-completion callback auto-continues until the agent emits
- * `[GOAL_DONE]`, the run fails, the user interrupts, or the budget runs out.
- * Gated by the `Goal` feature switch via `goalEnabled$`.
- */
-export interface SendMessageOptions {
-  goal?: boolean;
-}
-
 function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
@@ -1441,7 +1429,6 @@ function createSendMessage(deps: SendMessageDeps) {
       { get, set },
       prompt: string,
       modelSelection: ModelSelectionRequest | null,
-      options: SendMessageOptions,
       signal: AbortSignal,
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
@@ -1452,10 +1439,6 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
-      // Goal mode is opt-in per send (driven by the composer's "Send as goal"
-      // dropdown item). The Goal feature switch gates that UI affordance, so
-      // the explicit `options.goal` flag is the source of truth here.
-      const isGoal = options.goal === true && get(goalEnabled$);
       const hasVisualAttachments = get(draft.attachments$).some(
         (attachment) => {
           return isVisualAttachment(attachment);
@@ -1539,7 +1522,6 @@ function createSendMessage(deps: SendMessageDeps) {
               clientMessageId,
               modelSelection,
               attachFiles: result.attachFiles,
-              ...(isGoal ? { goal: true } : {}),
               ...(forceNewSession ? { forceNewSession: true } : {}),
             },
             fetchOptions: { signal },

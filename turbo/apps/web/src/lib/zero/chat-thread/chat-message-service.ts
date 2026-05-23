@@ -23,8 +23,6 @@ const messageRowProjection = {
   attachFiles: chatMessages.attachFiles,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  goalRemainingTurns: chatMessages.goalRemainingTurns,
-  goalOriginMessageId: chatMessages.goalOriginMessageId,
 } as const;
 
 type MessageRow = {
@@ -40,8 +38,6 @@ type MessageRow = {
   attachFiles: ChatMessageAttachFiles | null;
   revokesMessageId: string | null;
   interruptsRunId: string | null;
-  goalRemainingTurns: number | null;
-  goalOriginMessageId: string | null;
 };
 
 /**

@@ -255,13 +255,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
-  [FeatureSwitchKey.Goal]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable Codex-style goal mode in web chat: typing `/go <objective>` starts a self-continuing chain that runs up to 10 turns until the agent emits the [GOAL_DONE] sentinel, the budget is exhausted, the run fails, or the user interrupts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
     description:

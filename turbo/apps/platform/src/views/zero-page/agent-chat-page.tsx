@@ -544,7 +544,7 @@ export function AgentChatPage() {
   } = useAgentChatComposerModel(pageSignal);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
 
-  const handleSendMessage = (message: string, options?: { goal?: boolean }) => {
+  const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
       return;
     }
@@ -555,7 +555,6 @@ export function AgentChatPage() {
           agentId: currentChatAgentId,
           prompt: message,
           modelSelection,
-          goal: options?.goal,
         },
         rootSignal,
       ),
@@ -580,10 +579,10 @@ export function AgentChatPage() {
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
-  const handleSend = (text: string, options?: { goal?: boolean }) => {
+  const handleSend = (text: string) => {
     startTiming();
     setInput("");
-    handleSendMessage(text, options);
+    handleSendMessage(text);
     resetModelSelection();
   };
 
