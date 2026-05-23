@@ -10,13 +10,13 @@ import { MODELS, type ModelEntry, vendorIconPath } from "./data";
 const MAX_WIDTH = 1200;
 const PAGE_PADDING = 24;
 
-type FilterKey = "all" | "recommended" | "multimodal" | "cost-saving";
+type FilterKey = "all" | "reasoning" | "image" | "video";
 
 const FILTER_LABEL_MAP: Record<FilterKey, string> = {
   all: "filterAll",
-  recommended: "filterRecommended",
-  multimodal: "filterMultimodal",
-  "cost-saving": "filterCostSaving",
+  reasoning: "filterReasoning",
+  image: "filterImage",
+  video: "filterVideo",
 };
 
 const FILTERS: {
@@ -30,23 +30,21 @@ const FILTERS: {
     },
   },
   {
-    key: "recommended",
+    key: "reasoning",
     match: (m) => {
-      return m.vm0Tier === "core";
+      return m.category === "reasoning";
     },
   },
   {
-    key: "multimodal",
+    key: "image",
     match: (m) => {
-      return m.modalities.some((mod) => {
-        return ["Vision", "Image", "Video"].includes(mod);
-      });
+      return m.category === "image";
     },
   },
   {
-    key: "cost-saving",
+    key: "video",
     match: (m) => {
-      return m.vm0Tier === "cost-saving";
+      return m.category === "video";
     },
   },
 ];

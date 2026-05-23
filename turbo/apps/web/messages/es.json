@@ -3862,10 +3862,10 @@
     "back": "← Atrás"
   },
   "models": {
-    "listingPageTitle": "Modelos — Ejecuta agentes en Claude y más",
-    "listingPageDescription": "Todos los modelos de IA disponibles para agentes VM0 — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5 y más. Breve introducción y para qué es mejor cada modelo en VM0.",
+    "listingPageTitle": "Modelos — Razonamiento, imagen y vídeo en VM0",
+    "listingPageDescription": "Cada modelo de IA disponible para agentes VM0 — modelos de razonamiento de Anthropic, OpenAI, DeepSeek, Moonshot y más, además de modelos de generación de imagen y vídeo. Breve introducción y para qué es mejor cada modelo en VM0.",
     "jsonLdListName": "Modelos de IA disponibles en VM0",
-    "jsonLdListDescription": "Todos los modelos de IA disponibles para agentes VM0 — Claude y más.",
+    "jsonLdListDescription": "Cada modelo de IA disponible para agentes VM0 — razonamiento, imagen y vídeo.",
     "breadcrumbHome": "Inicio",
     "breadcrumbModels": "Modelos",
     "notFound": "No encontrado",
@@ -3873,9 +3873,9 @@
     "heroDescription": "Cada modelo disponible para tus agentes. En qué destaca y cuándo elegirlo.",
     "filterAriaLabel": "Filtrar modelos",
     "filterAll": "Todos",
-    "filterRecommended": "Recomendados",
-    "filterMultimodal": "Multimodal",
-    "filterCostSaving": "Ahorro",
+    "filterReasoning": "Reasoning",
+    "filterImage": "Imagen",
+    "filterVideo": "Vídeo",
     "readMoreAbout": "Más sobre {name}",
     "backToAllModels": "Todos los modelos",
     "useModelButton": "Usar {name} en VM0",
@@ -3914,6 +3914,14 @@
     "tierExplanationCore": "VM0 posiciona {name} como modelo principal de agente, recomendado junto a Claude Opus 4.7, Claude Opus 4.6 y Claude Sonnet 4.6 para los pasos que determinan el resultado real de una ejecución. Estos son los modelos que elegimos para el rol de orquestador, para agentes que trabajan con código y para cualquier paso donde una respuesta incorrecta sea costosa.",
     "tierExplanationCostSaving": "VM0 posiciona {name} como una opción de ahorro en lugar de un modelo principal de agente. Úsalo para optimizar el coste unitario en trabajo no principal, como clasificación masiva, prefiltros, respuestas cortas con requisitos de latencia o agentes heredados fijos, manteniendo Claude Opus 4.7, Claude Opus 4.6 o Claude Sonnet 4.6 en los pasos que deciden la ejecución.",
     "availableSince": "Disponible en VM0 desde {date}.",
+    "generationPricingSubtitle": "Precio listado por unidad generada.",
+    "generationPricingDetail": "Detalle",
+    "generationUnitImage": "Por imagen generada",
+    "generationUnitMegapixel": "Por megapíxel de salida",
+    "generationUnitVideoSecond": "Por segundo de vídeo",
+    "generationUnitAudioSecond": "Por segundo de audio",
+    "generationAccessHeading": "Usar {name} en VM0",
+    "generationAccessBody": "Los agentes de VM0 pueden invocar {name} como parte de una ejecución de agente, facturado contra tus créditos VM0. El precio listado arriba es lo que cobra el proveedor upstream; VM0 lo traslada con la conversión estándar de créditos.",
     "content": {
       "claude-opus-4-7": {
         "name": "Claude Opus 4.7",
@@ -4287,6 +4295,168 @@
         "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Disponible en VM0 Managed y como el modelo predeterminado en los proveedores de clave API de Anthropic y OAuth de Claude Code.",
         "vm0Notes": "Opus 4.6 tiene el precio de lista de proveedor más alto por token de cualquier modelo Built-in, por lo que el caché de prompts importa aquí más que en cualquier otro lugar y está activado por defecto. Sigue siendo el modelo predeterminado en los proveedores de clave API de Anthropic y OAuth de Claude Code, lo que significa que probablemente es el modelo para el que tu equipo ya tiene memoria muscular, aunque Opus 4.7 sea la opción recomendada para nuevo trabajo."
       },
+      "gpt-5-5": {
+        "name": "GPT-5.5",
+        "pageTitle": "GPT-5.5 en VM0. El modelo de razonamiento insignia de OpenAI",
+        "tagline": "El buque insignia de OpenAI de la familia GPT-5. La opción más potente para codificación agéntica, razonamiento profundo y bucles de computer-use en el nivel OpenAI.",
+        "cardIntro": "El modelo de razonamiento insignia de OpenAI. Codificación y Tool-Use de primer nivel, enrutado a través del framework Codex en VM0.",
+        "metaTitle": "GPT-5.5: Benchmarks, Precios y Capacidades",
+        "metaDescription": "Reseña de GPT-5.5. El modelo de razonamiento insignia GPT-5 de OpenAI con contexto de 400K, visión multimodal, precio del proveedor de $5/$30, y liderazgo en benchmarks en SWE-bench Verified, AIME 2025 y GPQA Diamond.",
+        "summary": "GPT-5.5 es el modelo al que recurres cuando el trabajo requiere tanto razonamiento profundo como uso fiable de herramientas: orquestar bucles de agente de múltiples pasos, ediciones de código que deben salir bien al primer intento y flujos de computer-use que abarcan muchas acciones de GUI. Los benchmarks del proveedor (SWE-bench Verified, AIME 2025, GPQA Diamond) ponen cifras concretas a las mejoras sobre GPT-5.4.\n\nEl precio de lista del proveedor es de $5 / $30 por 1M tokens con entrada cacheada a $0,50 / 1M. Es el modelo más caro del catálogo Built-in de VM0 a ×2 créditos, por lo que el patrón rentable es mantener GPT-5.4 o Claude Sonnet 4.6 como predeterminado universal y enrutar solo los pasos más difíciles a GPT-5.5.",
+        "releaseDate": "Abril 2026 (sucediendo a GPT-5.4)",
+        "familyPosition": "Nivel superior de la familia GPT-5. El buque insignia de OpenAI para codificación agéntica y razonamiento.",
+        "background": [
+          "GPT-5.5 es el buque insignia de la generación GPT-5 de OpenAI, lanzado en abril de 2026 como la actualización recomendada desde GPT-5.4. OpenAI lo presenta como una mejora sustancial en uso agéntico de herramientas y tareas de computer-use, no como un simple refresco de la API superficial. La ventana de contexto de 400K tokens y el parámetro reasoning_effort introducidos con GPT-5 se mantienen sin cambios, por lo que los agentes Codex existentes funcionan sin reescrituras.",
+          "En comparación con GPT-5.4 (el caballo de batalla de la misma familia), GPT-5.5 invierte más cómputo por token en razonamiento. El beneficio práctico se manifiesta en tres áreas: parches de código significativamente mejores al primer intento en refactorizaciones multi-archivo, materialmente menos llamadas a herramientas mal enrutadas en bucles de agente largos y mejoras notables en razonamiento científico de nivel posgrado (GPQA Diamond) y matemáticas de competición (AIME 2025). El compromiso es el precio de lista más alto entre las variantes GPT-5 ($5 / $30 por 1M tokens) y un multiplicador de ×2 créditos en VM0, razón por la cual OpenAI mismo posiciona a GPT-5.5 como el planificador o nivel de escalación en lugar del predeterminado universal.",
+          "Los rankings independientes (Artificial Analysis, Vellum) corroboran el orden relativo frente a GPT-5.4 y sitúan a GPT-5.5 a pocos puntos de Claude Opus 4.7 en la mayoría de tareas de codificación agéntica. Las cifras absolutas cambian semanalmente y OpenAI mismo ha señalado contaminación de datos de entrenamiento en SWE-bench Verified en todos los modelos frontera. Trata las puntuaciones públicas como direccionales en lugar de autoritativas; las diferencias estructurales de comportamiento (precisión de llamada a herramientas, fiabilidad de computer-use, calidad de parche al primer intento) son la señal más duradera."
+        ],
+        "architecture": "GPT-5.5 mantiene la ventana de contexto de 400K tokens de GPT-5.4, facturada a precio de entrada estándar en toda la ventana. Soporta el parámetro `reasoning_effort` en cuatro niveles (mínimo, bajo, medio, alto), Prompt Caching donde la entrada cacheada se factura a una décima parte de la tarifa de entrada, y la superficie de la Responses API que usa el codex CLI por defecto. Tool-Use, salidas estructuradas y computer-use no cambian respecto a 5.4. Las entradas son multimodales: texto, visión y código; el modelo no tiene generación nativa de imágenes (usa la Images API para eso).",
+        "specs": [
+          { "label": "Familia", "value": "Generación GPT-5" },
+          { "label": "Modalidades", "value": "Texto, visión, código" },
+          { "label": "Idiomas", "value": "Inglés primero, multilingüe" },
+          { "label": "Prompt Caching", "value": "Soportado (OpenAI)" },
+          { "label": "Ventana de contexto", "value": "400K tokens" },
+          { "label": "Salida máxima", "value": "Hasta 128K tokens" },
+          {
+            "label": "Reasoning effort",
+            "value": "Mínimo / Bajo / Medio / Alto"
+          },
+          {
+            "label": "Precio listado",
+            "value": "$5 entrada / $30 salida por 1M"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de GPT-5.5 de OpenAI, con deltas mostrados contra las cifras públicas de GPT-5.4. Las reseñas independientes sitúan a 5.5 a pocos puntos de Claude Opus 4.7 en tareas de codificación agéntica. Trata los porcentajes absolutos como direccionales; OpenAI ha señalado contaminación de datos de entrenamiento en SWE-bench Verified en todos los modelos frontera.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "~82%",
+            "note": "reportado por el proveedor; sube desde 74,9% de 5.4"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~69%",
+            "note": "uso de herramientas reportado por el proveedor"
+          },
+          {
+            "name": "AIME 2025 (sin herramientas)",
+            "score": "~96%",
+            "note": "matemáticas de competición reportadas por el proveedor"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~89%",
+            "note": "ciencia de nivel posgrado reportada por el proveedor"
+          },
+          {
+            "name": "OSWorld (computer use)",
+            "score": "~74%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "MMMU (multimodal)",
+            "score": "Lidera la familia GPT-5",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Velocidad",
+            "score": "~70 tokens/seg",
+            "note": "Artificial Analysis, esfuerzo medio"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Enrutamiento de herramientas",
+            "body": "La tasa más baja de llamadas a herramientas mal enrutadas en la familia GPT-5. La brecha frente a 5.4 se amplía en casos límite difíciles como selección condicional de herramientas, argumentos profundamente anidados y llamadas a herramientas despachadas después de largos tramos de razonamiento."
+          },
+          {
+            "title": "Ediciones de código al primer intento",
+            "body": "La mejor calidad de parche en la familia GPT-5. La opción correcta cuando un agente debe modificar código que debe seguir compilando y pasando pruebas, especialmente cuando el parche abarca múltiples archivos. SWE-bench Verified reportado por el proveedor refleja esto directamente."
+          },
+          {
+            "title": "Computer use",
+            "body": "Materialmente más fiable que 5.4 en secuencias de GUI de múltiples pasos, que es lo que captura el delta de OSWorld. Recurre a él cuando el agente está manejando un navegador o aplicación de escritorio durante decenas de pasos y el costo de una descarrilamiento a mitad de ejecución es alto."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Más lento que 5.4 y notablemente más lento que 5.4 Mini. Alrededor de 70 tokens/seg en esfuerzo medio según Artificial Analysis. Resérvalo para los pasos que realmente necesitan la profundidad de razonamiento adicional y ejecuta niveles más ligeros en paralelo."
+          },
+          {
+            "title": "Comportamiento de alucinación",
+            "body": "GPT-5.5 lleva la calibración más estricta de OpenAI de la generación GPT-5 y tiende a admitir incertidumbre en lugar de confabular, razón por la cual los equipos de producción siguen pagando la prima por razonamiento de alto riesgo a pesar de que alternativas más baratas como DeepSeek V4 Pro ahora lo igualan en benchmarks."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El orquestador ejecutando un plan multi-herramienta",
+            "body": "Usa GPT-5.5 como el planificador que divide la solicitud de un cliente en diez pasos, despacha cada paso a un sub-agente de nivel GPT-5.4 o 5.4 Mini, y une los resultados. Ejecutar 5.5 solo en la capa de planificación (y los niveles más baratos en el resto) cuesta una fracción de ejecutar 5.5 de principio a fin, conservando la mayor parte de la calidad."
+          },
+          {
+            "title": "Las ediciones de código al primer intento que no desperdician una ejecución de CI",
+            "body": "Pide a GPT-5.5 que migre un código base de 50 archivos de un ORM a otro, refactorice un módulo enredado o aplique una corrección de seguridad en todo el repositorio. El parche se aplica limpiamente al primer intento con más frecuencia que cualquier otro modelo de la familia, y eso es exactamente lo que tu factura de CI reflejará."
+          },
+          {
+            "title": "El agente de computer-use que debe terminar el flujo",
+            "body": "Cuando el agente está manejando un navegador a través de un flujo de reserva de múltiples pasos, una aplicación de escritorio o una interfaz administrativa heredada, la mejor puntuación OSWorld de 5.5 se traduce en menos descarrilamientos a mitad de ejecución y menos intervenciones humanas. La prima se paga por sí sola la primera vez que una sesión larga no debe reiniciarse."
+          },
+          {
+            "title": "El paso de investigación de matemáticas o ciencia difícil",
+            "body": "Suelta un conjunto de problemas de matemáticas de competición o una derivación de física de posgrado y 5.5 lo trabajará sin los errores por uno que ves en 5.4. AIME 2025 y GPQA Diamond capturan exactamente este tipo de comportamiento."
+          }
+        ],
+        "avoidFor": "Evita GPT-5.5 en trabajo rutinario de alto volumen donde GPT-5.4 alcanza la misma calidad a la mitad del costo en créditos, en respuestas de chat sensibles a la latencia donde GPT-5.4 Mini es mucho más rápido, y en trabajos de clasificación o extracción masiva donde DeepSeek V4 Flash es aproximadamente 35× más barato a nivel de proveedor.",
+        "comparisons": [
+          {
+            "vs": "GPT-5.4",
+            "body": "GPT-5.4 es el caballo de batalla predeterminado en la familia GPT-5 y la opción correcta para la mayoría de agentes. Promueve a GPT-5.5 solo cuando 5.4 falla visiblemente en razonamiento difícil, bucles agénticos largos o ediciones de código al primer intento, usualmente como el orquestador que delega hacia abajo a sub-agentes de nivel 5.4 o 5.4 Mini."
+          },
+          {
+            "vs": "Claude Opus 4.7",
+            "body": "Mismo rol en familias diferentes: el orquestador de alto riesgo y el modelo al que escalas cuando el nivel más barato falla. Opus 4.7 tiene la ventana de contexto de 1M tokens y el perfil de seguridad de Anthropic; GPT-5.5 tiene mejores puntuaciones de computer-use y es la opción natural para equipos ya en el framework Codex. Elige según qué framework y ecosistema apuntan tus agentes existentes."
+          },
+          {
+            "vs": "Gemini 3 Pro",
+            "body": "Gemini 3 Pro lidera en razonamiento bruto de contexto largo (ventana de 2M tokens) y en algunos benchmarks multimodales. GPT-5.5 lidera en codificación agéntica (SWE-bench Verified, Terminal-Bench) y computer use. Elige GPT-5.5 cuando el agente edita código o maneja una UI; elige Gemini 3 Pro cuando la carga de trabajo es comprensión pesada de documentos o video."
+          }
+        ],
+        "verdict": "GPT-5.5 es el nivel de escalación del lado OpenAI. Usa GPT-5.4 por defecto; promueve a 5.5 solo en los pasos específicos donde 5.4 falla visiblemente.",
+        "faqs": [
+          {
+            "q": "¿Cuál es la ventana de contexto de GPT-5.5?",
+            "a": "400.000 tokens, con hasta 128K tokens de salida por respuesta. La ventana completa se factura a tarifas estándar."
+          },
+          {
+            "q": "¿Puede GPT-5.5 manejar imágenes?",
+            "a": "Sí. GPT-5.5 es multimodal. Acepta entradas de imagen junto con texto y código, por lo que los agentes basados en capturas de pantalla y visión de documentos funcionan de forma nativa. Para generación de imágenes usa la OpenAI Images API."
+          },
+          {
+            "q": "¿Cuándo debería elegir GPT-5.5 sobre GPT-5.4?",
+            "a": "Cuando (a) el agente es el planificador / orquestador y las decisiones se propagan en cascada, (b) la ejecución es lo suficientemente larga como para que 5.4 empiece a mal enrutar llamadas a herramientas, o (c) la salida debe aplicarse limpiamente al primer intento (ediciones de código, cargas estructuradas, flujos de computer-use)."
+          },
+          {
+            "q": "¿GPT-5.5 soporta Prompt Caching?",
+            "a": "Sí. La entrada cacheada se factura a $0,50 por 1M tokens — un descuento del 10× en la porción cacheada. Vale la pena usarlo cuando tu prompt de sistema o esquema de herramientas es estable entre llamadas."
+          },
+          {
+            "q": "¿Qué framework usa GPT-5.5 en VM0?",
+            "a": "Codex. VM0 enruta GPT-5.5 a través de la superficie Responses API del framework Codex, que es lo que usa codex CLI por defecto. Los agentes del framework Claude Code no son compatibles con modelos GPT-5 en VM0."
+          }
+        ],
+        "alternatives": [
+          { "slug": "gpt-5-4", "reason": "Mitad de créditos, misma familia" },
+          {
+            "slug": "claude-opus-4-7",
+            "reason": "Buque insignia par del lado Claude"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Caballo de batalla predeterminado a ×1 créditos"
+          }
+        ],
+        "routingNotes": "Enrutado a través del framework Codex en VM0 mediante la Responses API de OpenAI. Expuesto de cuatro formas: a través del pool de créditos VM0 Managed, a través de una clave API directa de OpenAI, a través de un login OAuth de ChatGPT (Codex), y a través de OpenRouter / Vercel AI Gateway en sus variantes Codex.",
+        "vm0Notes": "GPT-5.5 está en el multiplicador de ×2 créditos — el más alto del catálogo Built-in. Prompt Caching está habilitado por defecto a través de VM0, lo que reduce sustancialmente el costo de prompts de sistema repetidos en agentes que emiten muchos turnos desde el mismo prefijo. El patrón estándar es mantener GPT-5.4 o Claude Sonnet 4.6 ejecutándose en todas partes y escalar solo los pasos que genuinamente necesitan la profundidad de razonamiento de 5.5."
+      },
       "claude-sonnet-4-6": {
         "name": "Claude Sonnet 4.6",
         "pageTitle": "Claude Sonnet 4.6 en VM0. El modelo de agente predeterminado",
@@ -4441,6 +4611,162 @@
         ],
         "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Modelo predeterminado en VM0 Managed.",
         "vm0Notes": "Sonnet 4.6 es la línea base de crédito (×1) contra la que se normaliza el multiplicador de todos los demás modelos Built-in, razón principal por la que sigue siendo la primera opción para nuevos agentes en VM0; escala a Opus solo cuando Sonnet visiblemente rinde por debajo de lo esperado en una tarea específica. El caché de prompts nativo se combina bien con los prompts de sistema y definiciones de herramientas estables de VM0, y mantiene predecible el costo por turno de agentes de larga duración."
+      },
+      "gpt-5-4": {
+        "name": "GPT-5.4",
+        "pageTitle": "GPT-5.4 en VM0. El caballo de batalla de OpenAI",
+        "tagline": "El caballo de batalla de OpenAI de la familia GPT-5. Se sitúa en la línea base de ×1 créditos junto con Claude Sonnet 4.6 y es el predeterminado correcto para la mayoría de agentes del framework Codex.",
+        "cardIntro": "El modelo caballo de batalla de OpenAI. ×1 créditos, visión multimodal, código sólido y uso de herramientas — el GPT-5 predeterminado para la mayoría de agentes.",
+        "metaTitle": "GPT-5.4 en VM0: Benchmarks, Precios y Comparación",
+        "metaDescription": "Reseña de GPT-5.4 en VM0. El modelo caballo de batalla OpenAI GPT-5 con contexto de 400K, visión multimodal, precios de $2,5/$15 y ×1 créditos en VM0 Managed. Especificaciones y comparación con Claude.",
+        "summary": "GPT-5.4 es el caballo de batalla de la familia GPT-5 de OpenAI — el modelo que mantienes ejecutándose en todas partes por defecto. SWE-bench Verified reportado por el proveedor a 74,9% lo sitúa en el mismo rango que Claude Sonnet 4.6 en codificación, y su precisión de uso de herramientas es contra lo que están ajustados la mayoría de agentes de producción del framework Codex.\n\nEl precio de lista del proveedor es de $2,5 / $15 por 1M tokens con entrada cacheada a $0,25 / 1M. Se sitúa en ×1 créditos en VM0 Managed — la misma línea base que Claude Sonnet 4.6 — lo que lo convierte en la opción natural cuando tu agente ya está en el framework Codex y quieres un predeterminado equilibrado en costo/calidad.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "Caballo de batalla de la familia GPT-5. El predeterminado recomendado para la mayoría de agentes del framework Codex.",
+        "background": [
+          "GPT-5.4 es el caballo de batalla de la generación GPT-5 de OpenAI, lanzado en abril de 2026 junto con el buque insignia GPT-5.5 y la variante optimizada en costo GPT-5.4 Mini. OpenAI lo posiciona como el predeterminado universal para agentes en el framework Codex — el modelo que mantienes ejecutándose en cada paso a menos que un paso específico justifique escalar a 5.5.",
+          "Arquitectónicamente GPT-5.4 comparte la ventana de contexto de 400K tokens, el parámetro `reasoning_effort`, Prompt Caching y la superficie Responses API con el resto de la familia GPT-5. La división frente a GPT-5.5 es inversión de cómputo por token: 5.4 corre más rápido y barato, 5.5 invierte más en profundidad de razonamiento. La división frente a GPT-5.4 Mini es la opuesta — 5.4 lleva más calidad para los pasos que realmente deciden la ejecución del agente.",
+          "En VM0 se sitúa en el multiplicador de ×1 créditos, la misma línea base que Claude Sonnet 4.6, lo que hace triviales las comparaciones de costo lado a lado entre los predeterminados de Anthropic y OpenAI. La elección entre los dos usualmente se reduce al framework (Codex vs Claude Code), ecosistema (integraciones existentes, definiciones de herramientas) y para qué modelo tu equipo tiene más memoria muscular de comportamiento."
+        ],
+        "architecture": "GPT-5.4 usa la misma arquitectura que el resto de la familia GPT-5: ventana de contexto de 400K tokens, parámetro `reasoning_effort` en cuatro niveles (mínimo, bajo, medio, alto), Prompt Caching donde la entrada cacheada se factura a una décima parte de la tarifa de entrada, y la superficie Responses API que usa el codex CLI por defecto. Tool-Use, salidas estructuradas y computer-use son soportadas. Las entradas son multimodales: texto, visión y código.",
+        "specs": [
+          { "label": "Familia", "value": "Generación GPT-5" },
+          { "label": "Modalidades", "value": "Texto, visión, código" },
+          { "label": "Idiomas", "value": "Inglés primero, multilingüe" },
+          { "label": "Prompt Caching", "value": "Soportado (OpenAI)" },
+          { "label": "Ventana de contexto", "value": "400K tokens" },
+          { "label": "Salida máxima", "value": "Hasta 128K tokens" },
+          {
+            "label": "Reasoning effort",
+            "value": "Mínimo / Bajo / Medio / Alto"
+          },
+          {
+            "label": "Precio listado",
+            "value": "$2,5 entrada / $15 salida por 1M"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de GPT-5 de OpenAI, con deltas mostrados contra la generación OpenAI anterior. Las reseñas independientes sitúan a GPT-5.4 en la misma banda de calidad de codificación que Claude Sonnet 4.6. Trata los porcentajes absolutos como direccionales.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "74,9%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~58%",
+            "note": "uso de herramientas reportado por el proveedor"
+          },
+          {
+            "name": "AIME 2025 (sin herramientas)",
+            "score": "~92%",
+            "note": "matemáticas de competición reportadas por el proveedor"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~85%",
+            "note": "ciencia de nivel posgrado reportada por el proveedor"
+          },
+          {
+            "name": "OSWorld (computer use)",
+            "score": "~62%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Velocidad",
+            "score": "~110 tokens/seg",
+            "note": "Artificial Analysis, esfuerzo medio"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Enrutamiento de herramientas",
+            "body": "Precisión sólida de línea base en el catálogo estándar de herramientas del framework Codex. Donde 5.5 se adelanta es en casos límite difíciles (selección condicional de herramientas, argumentos profundamente anidados) — para los casos rutinarios 5.4 enruta correctamente con una latencia significativamente menor."
+          },
+          {
+            "title": "Ediciones de código",
+            "body": "Calidad de parche comparable a Claude Sonnet 4.6 en cargas de trabajo estándar de refactorización y corrección de errores. Donde 5.5 empieza a adelantarse es en cambios multi-archivo donde el parche debe aplicarse limpiamente al primer intento."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Materialmente más rápido que 5.5 — alrededor de 110 tokens/seg en esfuerzo medio según Artificial Analysis. Esto es parte de por qué 5.4 sigue siendo el predeterminado para respuestas de chat interactivo y bucles cortos de agente donde la latencia visible al usuario importa."
+          },
+          {
+            "title": "Eficiencia de costo",
+            "body": "×1 créditos con comportamiento de salida en la banda de calidad de Sonnet 4.6. Para equipos ya en el framework Codex, este es el punto óptimo de costo/calidad — promueve a 5.5 solo en los pasos que visiblemente lo necesitan."
+          },
+          {
+            "title": "Comportamiento de alucinación",
+            "body": "Hereda las mejoras de calibración que OpenAI lanzó con la generación GPT-5. Menos propenso a respuestas erróneas con confianza que la serie GPT-4, especialmente en preguntas fuera de su horizonte de entrenamiento."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El paso de agente predeterminado en el framework Codex",
+            "body": "Si tu agente ya está construido sobre codex CLI o cualquier integración del framework Codex, GPT-5.4 es el predeterminado universal natural. ×1 créditos, lo suficientemente rápido para uso interactivo, lo suficientemente preciso para las llamadas a herramientas rutinarias que dominan la mayoría de ejecuciones de agente."
+          },
+          {
+            "title": "El chat interactivo con visión",
+            "body": "UIs basadas en capturas de pantalla, Q&A de documentos, anotación de imágenes — GPT-5.4 maneja los tres multimodalmente a velocidad de caballo de batalla. El multiplicador ×1 mantiene el costo por turno en la misma banda que Sonnet 4.6, así puedes hacer A/B entre los dos en la misma carga de trabajo."
+          },
+          {
+            "title": "El A/B de costo/calidad contra Claude Sonnet 4.6",
+            "body": "Ambos modelos se sitúan en ×1 créditos en VM0 Managed, lo que los hace directamente comparables en costo. Ejecuta el mismo agente en ambos durante una semana y elige por comportamiento en tu carga de trabajo específica — ninguno es universalmente mejor, y el predeterminado correcto depende de tu catálogo de herramientas y estilo de prompts."
+          }
+        ],
+        "avoidFor": "Evita GPT-5.4 en los pasos más difíciles de razonamiento, computer-use o edición de código multi-archivo donde 5.5 lidera notablemente, y en trabajo de clasificación masiva de alto volumen o prefiltrado donde 5.4 Mini es cuatro veces más barato a nivel de proveedor.",
+        "comparisons": [
+          {
+            "vs": "GPT-5.5",
+            "body": "Misma familia, diferente posicionamiento. 5.5 (×2) te da el razonamiento más fuerte, computer-use y calidad de código al primer intento; 5.4 (×1) te da la misma ventana de contexto y conjunto de características a la mitad del costo en créditos y velocidad notablemente mayor. Usa 5.4 por defecto; escala a 5.5 solo en los pasos que visiblemente lo necesitan."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Las dos líneas base de ×1, una en cada ecosistema. Sonnet 4.6 corre en el framework Claude Code; GPT-5.4 corre en Codex. Elige según qué framework apuntan tus agentes y definiciones de herramientas existentes. En calidad bruta de salida están lo suficientemente cerca como para que hacer A/B en tu carga de trabajo sea la decisión correcta."
+          },
+          {
+            "vs": "GPT-5.4 Mini",
+            "body": "Misma familia, diferente posicionamiento. 5.4 (×1) lleva más calidad de razonamiento por token; 5.4 Mini (×0,3) te da una opción mucho más barata para trabajo masivo y prefiltrado. Usa 5.4 Mini para clasificación fan-out y 5.4 para los pasos que deciden la ejecución del agente."
+          }
+        ],
+        "verdict": "GPT-5.4 es el predeterminado universal para agentes del framework Codex en VM0. Escala a 5.5 para razonamiento difícil, baja a 5.4 Mini para prefiltrado masivo.",
+        "faqs": [
+          {
+            "q": "¿Cuál es la ventana de contexto de GPT-5.4?",
+            "a": "400.000 tokens, con hasta 128K tokens de salida por respuesta. La ventana completa se factura a tarifas estándar."
+          },
+          {
+            "q": "¿Puede GPT-5.4 manejar imágenes?",
+            "a": "Sí. GPT-5.4 es multimodal. Acepta entradas de imagen junto con texto y código de forma nativa."
+          },
+          {
+            "q": "¿Cuándo debería elegir GPT-5.4 sobre Claude Sonnet 4.6?",
+            "a": "Cuando tu agente ya está construido en el framework Codex o necesitas el ecosistema OpenAI (catálogo de herramientas, salidas estructuradas, Responses API). Ambos se sitúan en ×1 créditos, así que el costo es idéntico y la elección se reduce al framework y ajuste de comportamiento."
+          },
+          {
+            "q": "¿GPT-5.4 soporta Prompt Caching?",
+            "a": "Sí. La entrada cacheada se factura a $0,25 por 1M tokens — un descuento del 10× en la porción cacheada."
+          },
+          {
+            "q": "¿Qué framework usa GPT-5.4 en VM0?",
+            "a": "Codex. VM0 enruta todos los modelos GPT-5 a través de la superficie Responses API del framework Codex."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-5-5",
+            "reason": "Nivel de escalación para los pasos más difíciles"
+          },
+          {
+            "slug": "gpt-5-4-mini",
+            "reason": "Opción más barata para trabajo masivo"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Par ×1 en el framework Claude Code"
+          }
+        ],
+        "routingNotes": "Enrutado a través del framework Codex en VM0 mediante la Responses API de OpenAI. Disponible en VM0 Managed y mediante clave API directa de OpenAI, OAuth de ChatGPT (Codex), OpenRouter (Codex) y Vercel AI Gateway (Codex).",
+        "vm0Notes": "GPT-5.4 se sitúa en la línea base de ×1, igual que Claude Sonnet 4.6, lo que hace los dos equivalentes en costo en VM0 Managed y fáciles de hacer A/B entre sí. Prompt Caching está habilitado por defecto. Empareja con GPT-5.4 Mini para trabajo de prefiltrado de alto volumen, y escala a GPT-5.5 solo para los pasos que genuinamente necesitan la profundidad de razonamiento adicional."
       },
       "glm-5-1": {
         "name": "GLM-5.1",
@@ -4735,6 +5061,157 @@
         ],
         "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Disponible en VM0 Managed y los proveedores OAuth de Anthropic / Claude Code.",
         "vm0Notes": "Haiku 4.5 tiene el multiplicador Claude más bajo (×0,3) y es la opción correcta para cargas de trabajo de enrutamiento de alto volumen, con el caché de prompts manteniendo bajo el costo de prompts cortos repetidos. No tiene la calidad de agente multi-paso de Sonnet, así que diseña cualquier agente basado en Haiku para mantener los bucles cortos y la superficie de herramientas reducida."
+      },
+      "gpt-5-4-mini": {
+        "name": "GPT-5.4 Mini",
+        "pageTitle": "GPT-5.4 Mini en VM0. El GPT-5 que ahorra costos",
+        "tagline": "El miembro optimizado en costo de OpenAI de la familia GPT-5. ×0,3 créditos, visión multimodal, y lo suficientemente rápido para enrutamiento, clasificación y prefiltrado de alto volumen.",
+        "cardIntro": "El GPT-5 de OpenAI que ahorra costos. ×0,3 créditos, rápido y multimodal — la opción correcta para trabajo de prefiltrado masivo en el framework Codex.",
+        "metaTitle": "GPT-5.4 Mini en VM0: Benchmarks, Precios y Comparación",
+        "metaDescription": "Reseña de GPT-5.4 Mini en VM0. El modelo OpenAI GPT-5 que ahorra costos a precios de proveedor de $0,75/$4,5, ×0,3 créditos, contexto de 400K y visión multimodal. Especificaciones, comportamiento y comparación con Claude Haiku 4.5.",
+        "summary": "GPT-5.4 Mini es el miembro que ahorra costos de la familia GPT-5 de OpenAI — al que recurres cuando el costo unitario importa más que la calidad de razonamiento máxima. Mantiene la ventana de contexto de 400K y las entradas multimodales del resto de la familia pero recorta el cómputo por token, lo que se traduce en menor precio ($0,75 / $4,5 por 1M) y velocidad notablemente mayor.\n\nEn VM0 se sitúa en ×0,3 créditos, el mismo multiplicador que Claude Haiku 4.5 y Kimi K2.6, lo que lo convierte en la opción natural del lado OpenAI para clasificación masiva, enrutamiento fan-out, prefiltrado, y cualquier paso de agente donde bajar a un tercio del costo de GPT-5.4 es el factor decisivo.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "Variante que ahorra costos de la familia GPT-5. El par del lado OpenAI de Claude Haiku 4.5.",
+        "background": [
+          "GPT-5.4 Mini es el miembro optimizado en costo de la generación GPT-5 de OpenAI, lanzado en abril de 2026 junto con GPT-5.5 y GPT-5.4. OpenAI lo posiciona como el nivel de alto rendimiento — el modelo que mantienes ejecutándose en pasos de clasificación, enrutamiento y prefiltrado donde 5.4 o 5.5 más grandes se desperdiciarían en decisiones rutinarias.",
+          "Arquitectónicamente comparte la ventana de contexto de 400K tokens de la familia GPT-5, el parámetro `reasoning_effort`, Prompt Caching, y la superficie Responses API que usa el codex CLI por defecto. El compromiso frente a 5.4 es la profundidad de razonamiento: Mini maneja bien llamadas a herramientas estándar, resúmenes cortos y cargas de salida estructurada, pero empieza a derivar en los planes multi-paso más difíciles donde 5.4 todavía aguanta. El compromiso frente a competidores al mismo precio es el ecosistema — si ya estás en Codex, quedarte dentro de la superficie OpenAI mantiene definiciones de herramientas y esquemas de salida estructurada consistentes.",
+          "En VM0 Mini se sitúa en el multiplicador de ×0,3 créditos, el mismo que Claude Haiku 4.5, Kimi K2.6 y DeepSeek V4 Pro. Dentro del nivel que ahorra costos la elección depende principalmente del framework y ajuste de comportamiento en tu carga de trabajo específica."
+        ],
+        "architecture": "GPT-5.4 Mini usa la misma arquitectura que el resto de la familia GPT-5: ventana de contexto de 400K tokens, el parámetro `reasoning_effort` en cuatro niveles, Prompt Caching donde la entrada cacheada se factura a una décima parte de la tarifa de entrada, y la superficie Responses API. Tool-Use, salidas estructuradas y entradas de visión multimodal son soportadas. El modelo es un hermano menor más rápido — menos parámetros por token, más rendimiento por dólar.",
+        "specs": [
+          { "label": "Familia", "value": "Generación GPT-5" },
+          { "label": "Modalidades", "value": "Texto, visión, código" },
+          { "label": "Idiomas", "value": "Inglés primero, multilingüe" },
+          { "label": "Prompt Caching", "value": "Soportado (OpenAI)" },
+          { "label": "Ventana de contexto", "value": "400K tokens" },
+          { "label": "Salida máxima", "value": "Hasta 128K tokens" },
+          {
+            "label": "Reasoning effort",
+            "value": "Mínimo / Bajo / Medio / Alto"
+          },
+          {
+            "label": "Precio listado",
+            "value": "$0,75 entrada / $4,5 salida por 1M"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de GPT-5 Mini de OpenAI. Las reseñas independientes sitúan a 5.4 Mini en la misma banda que ahorra costos que Claude Haiku 4.5 en la mayoría de benchmarks de agente. Trata los porcentajes absolutos como direccionales.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "~60%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~42%",
+            "note": "uso de herramientas reportado por el proveedor"
+          },
+          {
+            "name": "AIME 2025 (sin herramientas)",
+            "score": "~84%",
+            "note": "matemáticas de competición reportadas por el proveedor"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~74%",
+            "note": "ciencia de nivel posgrado reportada por el proveedor"
+          },
+          {
+            "name": "Velocidad",
+            "score": "~165 tokens/seg",
+            "note": "Artificial Analysis, esfuerzo medio"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Velocidad",
+            "body": "El modelo más rápido de la familia GPT-5 — alrededor de 165 tokens/seg en esfuerzo medio según Artificial Analysis. Esta es la propiedad que lo hace viable para respuestas de chat interactivo y llamadas a herramientas fan-out cortas donde la latencia visible al usuario domina."
+          },
+          {
+            "title": "Llamadas a herramientas rutinarias",
+            "body": "Preciso en el catálogo estándar de herramientas del framework Codex. Donde 5.4 se adelanta es en casos límite difíciles (selección condicional de herramientas, argumentos profundamente anidados) — para los casos rutinarios Mini maneja el enrutamiento de herramientas limpiamente a un tercio del costo."
+          },
+          {
+            "title": "Clasificación masiva y prefiltrado",
+            "body": "La posición de costo/calidad más fuerte de la familia GPT-5 para trabajo fan-out. Triaje masivo de PRs, categorización de tickets de soporte, clasificación por nivel de documentos — todas las cargas de trabajo donde antes habrías hecho regex a mano ahora son asequibles en una llamada real de modelo."
+          },
+          {
+            "title": "Eficiencia de costo",
+            "body": "×0,3 créditos con visión multimodal incluida. A este precio Mini, Claude Haiku 4.5 y Kimi K2.6 se sitúan todos en la misma banda — la elección usualmente se reduce al ajuste de framework y comportamiento en tu carga de trabajo específica."
+          },
+          {
+            "title": "Cuándo escalar",
+            "body": "Mini deriva en planes largos multi-paso, razonamiento difícil y ediciones de código multi-archivo al primer intento. Construye el agente para que el orquestador decida cuándo escalar a 5.4 o 5.5, no para que Mini intente llevar todo el bucle."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El clasificador fan-out que se ejecuta en cada evento",
+            "body": "Ticket de soporte entrante, comentario de PR, transcripción de llamada de ventas, carga de documento — Mini lee cada uno y lo enruta al agente o revisor humano correcto. ×0,3 créditos y 165 tokens/seg significan que el costo por evento es lo suficientemente pequeño como para que ejecutarlo en cada evento (no solo en lotes muestreados) sea realmente viable."
+          },
+          {
+            "title": "El paso de prefiltrado antes del modelo caro",
+            "body": "Fija Mini en lo alto de la llamada a herramienta del agente para que decida si la solicitud siquiera necesita escalarse. La mayoría de solicitudes obtienen una respuesta rápida y barata; solo la minoría residual paga el costo completo de GPT-5.4 o 5.5. Aquí es donde apilar niveles que ahorran costos y de núcleo genuinamente cambia lo que es asequible."
+          },
+          {
+            "title": "La respuesta de chat interactivo",
+            "body": "Turnos multimodales cortos donde la latencia visible al usuario domina la experiencia. Mini responde lo suficientemente rápido como para que el streaming se sienta instantáneo, y el soporte multimodal significa que una captura de pantalla en la conversación simplemente funciona."
+          }
+        ],
+        "avoidFor": "Evita GPT-5.4 Mini en los pasos más difíciles de razonamiento, orquestación de agente multi-paso, secuencias de computer-use y ediciones de código multi-archivo al primer intento — escala a 5.4 para versiones rutinarias de esas tareas y a 5.5 para las más difíciles.",
+        "comparisons": [
+          {
+            "vs": "GPT-5.4",
+            "body": "Misma familia, diferente posicionamiento. 5.4 Mini (×0,3) gana en costo y velocidad; 5.4 (×1) gana en calidad de razonamiento y precisión de enrutamiento de herramientas en casos difíciles. El patrón estándar es prefiltrar con Mini y escalar los casos residuales a 5.4."
+          },
+          {
+            "vs": "Claude Haiku 4.5",
+            "body": "Mismo multiplicador (×0,3). Mini corre en el framework Codex; Haiku 4.5 corre en Claude Code. Ambos son multimodales y ambos apuntan al mismo espacio que ahorra costos. Elige según qué framework apuntan tus agentes y definiciones de herramientas existentes."
+          },
+          {
+            "vs": "DeepSeek V4 Flash",
+            "body": "DeepSeek V4 Flash (×0,02) es dramáticamente más barato a nivel de proveedor y es la opción correcta para trabajo masivo puro de un solo paso. GPT-5.4 Mini (×0,3) lleva más calidad de razonamiento y se queda dentro del ecosistema OpenAI, lo que importa cuando tus definiciones de herramientas y esquemas de salida estructurada ya están ajustados para Codex."
+          }
+        ],
+        "verdict": "GPT-5.4 Mini es el predeterminado que ahorra costos del lado OpenAI. Prefiltra con Mini, escala a GPT-5.4 para pasos rutinarios, escala a GPT-5.5 solo para el razonamiento más difícil.",
+        "faqs": [
+          {
+            "q": "¿Cuál es la ventana de contexto de GPT-5.4 Mini?",
+            "a": "400.000 tokens, con hasta 128K tokens de salida por respuesta — la misma que el resto de la familia GPT-5."
+          },
+          {
+            "q": "¿Puede GPT-5.4 Mini manejar imágenes?",
+            "a": "Sí. Como el resto de la familia GPT-5 acepta entradas de imagen junto con texto y código."
+          },
+          {
+            "q": "¿Cuándo debería elegir GPT-5.4 Mini sobre Claude Haiku 4.5?",
+            "a": "Cuando tu agente ya está construido en el framework Codex o necesitas el ecosistema de salidas estructuradas / llamadas a herramientas de OpenAI. Ambos se sitúan en ×0,3 créditos, así que el costo es idéntico y la elección se reduce al framework y comportamiento."
+          },
+          {
+            "q": "¿GPT-5.4 Mini soporta Prompt Caching?",
+            "a": "Sí. La entrada cacheada se factura a $0,075 por 1M tokens — un descuento del 10× en la porción cacheada."
+          },
+          {
+            "q": "¿Qué framework usa GPT-5.4 Mini en VM0?",
+            "a": "Codex. VM0 enruta todos los modelos GPT-5 a través de la superficie Responses API del framework Codex."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-5-4",
+            "reason": "Sube para pasos más difíciles, misma familia"
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "reason": "Par ×0,3 en el framework Claude Code"
+          },
+          {
+            "slug": "deepseek-v4-flash",
+            "reason": "Dramáticamente más barato para trabajo masivo puro"
+          }
+        ],
+        "routingNotes": "Enrutado a través del framework Codex en VM0 mediante la Responses API de OpenAI. Disponible en VM0 Managed y mediante clave API directa de OpenAI, OAuth de ChatGPT (Codex), OpenRouter (Codex) y Vercel AI Gateway (Codex).",
+        "vm0Notes": "GPT-5.4 Mini se sitúa en el multiplicador de ×0,3 que ahorra costos junto a Claude Haiku 4.5, Kimi K2.6 y DeepSeek V4 Pro. Prompt Caching está habilitado por defecto y el alto rendimiento hace de Mini un paso natural de prefiltrado en diseños de agente apilados que escalan a 5.4 o 5.5 solo en los casos difíciles residuales."
       },
       "kimi-k2-6": {
         "name": "Kimi K2.6",
@@ -5500,6 +5977,750 @@
         ],
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de DeepSeek en `api.deepseek.com`. Modelo predeterminado en el proveedor DeepSeek; también disponible en VM0 Managed.",
         "vm0Notes": "V4 Flash tiene el multiplicador de crédito más bajo de cualquier modelo Built-in (×0,02), aproximadamente 50× menos que Sonnet 4.6. Las lecturas de caché facturan mientras que las escrituras de caché son gratuitas, y VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek que se empareja naturalmente con el trabajo corto de un solo paso de Flash."
+      },
+      "gemini-2-5-flash-image": {
+        "name": "Gemini 2.5 Flash Image",
+        "pageTitle": "Gemini 2.5 Flash Image en VM0. El predeterminado rápido de texto a imagen",
+        "tagline": "El modelo rápido de texto a imagen y edición de imagen de Google. Fuerte seguimiento de instrucciones, consistencia de personajes y el costo de crédito por imagen más barato de la línea curada de imágenes.",
+        "cardIntro": "El modelo rápido de texto a imagen de Google. Barato, preciso siguiendo prompts largos y bueno preservando sujetos a través de ediciones.",
+        "metaTitle": "Gemini 2.5 Flash Image en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "Gemini 2.5 Flash Image en VM0. El modelo de texto a imagen y edición de imagen de Google con alta adherencia a instrucciones, consistencia de personajes y ~$0,04 por imagen. Comparado con GPT Image 1, Flux Pro 1.1 Ultra y SeedDream 4.",
+        "summary": "Gemini 2.5 Flash Image es el modelo predeterminado universal de texto a imagen y edición de imagen de Google. Funciona bien en las dos propiedades que más importan para cargas de trabajo de agente: sigue prompts largos y estructurados (para que puedas entregarle el brief completo sin perder instrucciones en el camino) y mantiene los sujetos consistentes a través de ediciones de múltiples turnos (para que un agente pueda iterar sobre el mismo personaje o toma de producto sin que derive entre llamadas).\n\nEl precio de lista es de alrededor de $0,04 por imagen de 1024×1024, lo que lo convierte en el modelo más barato de la línea curada de imágenes. El patrón natural es usar Gemini 2.5 Flash Image por defecto y escalar a Flux Pro 1.1 Ultra o SeedDream 4 solo cuando necesitas una estética específica que el predeterminado no alcanza.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "El caballo de batalla de texto a imagen de Google para cargas de trabajo de agente.",
+        "background": [
+          "Gemini 2.5 Flash Image es el modelo de texto a imagen y edición de imagen de Google en la familia Gemini 2.5. El planteamiento de Google es el mismo que para la variante Flash del lado de texto: un modelo ajustado para alto rendimiento a bajo costo por llamada, optimizado para cargas de trabajo de producción donde la siguiente solicitud se encola antes de que termine de hacer streaming la anterior.",
+          "Dos propiedades de comportamiento destacan para uso de agente. Primero, la adherencia a instrucciones en prompts largos y estructurados es materialmente mejor que en la mayoría de líneas base de texto a imagen de peso abierto, lo que importa cuando un agente está componiendo el prompt programáticamente y no puede acortarlo. Segundo, la consistencia de personajes y sujetos a través de ediciones de múltiples turnos aguanta bien, que es lo que hace al modelo viable como predeterminado del bucle de edición en flujos de trabajo de agente que iteran sobre un solo activo."
+        ],
+        "architecture": "Modelo de texto a imagen basado en Diffusion con soporte nativo de edición. La facturación es por imagen generada en el nivel estándar. Las entradas aceptan prompts de texto más imágenes de referencia opcionales para flujos tipo edición. Las salidas son PNG en la resolución solicitada.",
+        "specs": [
+          { "label": "Familia", "value": "Generación Gemini 2.5" },
+          {
+            "label": "Modalidades",
+            "value": "Texto a imagen, edición imagen a imagen"
+          },
+          { "label": "Resoluciones", "value": "1024×1024 nivel estándar" },
+          { "label": "Precio listado", "value": "~$0,04 por imagen" },
+          { "label": "Idiomas", "value": "Prompts multilingües" },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Adherencia a instrucciones",
+            "body": "Aguanta en prompts largos y estructurados donde muchos modelos de peso abierto empiezan a soltar cláusulas. Útil cuando un agente compone el brief programáticamente y el prompt es innegociable."
+          },
+          {
+            "title": "Consistencia de personajes",
+            "body": "Mantiene a los sujetos reconocibles a través de ediciones de múltiples turnos, que es la propiedad que hace al modelo viable para bucles iterativos de agente sobre un solo activo."
+          },
+          {
+            "title": "Costo",
+            "body": "Alrededor de $0,04 por imagen — el más barato de los modelos curados de texto a imagen en VM0. La generación masiva fan-out se mantiene asequible."
+          },
+          {
+            "title": "Techo estético",
+            "body": "Se inclina hacia salida limpia y precisa en lugar del look hiper-estilizado de Flux Pro 1.1 Ultra o el look fotorrealista de SeedDream 4. Escala cuando la estética es el entregable."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente que redacta visuales de marketing desde un brief",
+            "body": "Entrega al agente la voz de marca, descripción del producto y audiencia objetivo; Gemini 2.5 Flash Image renderiza visuales borrador en segundos. Lo suficientemente barato para hacer fan-out de una docena de variaciones y elegir la mejor."
+          },
+          {
+            "title": "El bucle de edición que itera sobre un solo activo",
+            "body": "Genera una vez, luego itera sobre iluminación, encuadre o fondo manteniendo el sujeto consistente entre turnos. La consistencia de personajes significa que el humano en el bucle está editando la misma imagen, no eligiendo de un conjunto fresco cada turno."
+          },
+          {
+            "title": "El prefiltrado de ilustración antes del modelo premium",
+            "body": "Usa Gemini 2.5 Flash Image para fijar la composición de forma barata, luego re-renderiza el elegido final en Flux Pro 1.1 Ultra para la estética. Reduce el costo del paso premium a una llamada en lugar de un fan-out."
+          }
+        ],
+        "avoidFor": "Evita Gemini 2.5 Flash Image cuando el entregable es la estética — Flux Pro 1.1 Ultra y SeedDream 4 llevan más techo estilístico en looks fotorrealistas y editoriales.",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "GPT Image 1 es más fuerte en ilustración estilizada y trabajo de personajes; Gemini 2.5 Flash Image es más barato por llamada y más fuerte en seguimiento de instrucciones en prompts largos. Para cargas de trabajo de agente con prompts estructurados, Gemini 2.5 Flash Image es el predeterminado más seguro."
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4 lleva un techo fotorrealista más alto; Gemini 2.5 Flash Image es más barato, más rápido y sigue prompts largos de forma más fiable. Usa Gemini por defecto, escala a SeedDream 4 cuando el brief es específicamente una estética de foto."
+          },
+          {
+            "vs": "Flux Pro 1.1 Ultra",
+            "body": "Flux Pro 1.1 Ultra tiene el techo estilístico más alto de la línea curada; Gemini 2.5 Flash Image gana en costo y en seguimiento de instrucciones. Prefiltra con Gemini, entrega finales en Flux cuando la estética es el punto."
+          }
+        ],
+        "verdict": "Usa Gemini 2.5 Flash Image por defecto para cargas de trabajo de agente de texto a imagen. Escala a Flux Pro 1.1 Ultra o SeedDream 4 solo cuando la estética es el entregable.",
+        "faqs": [
+          {
+            "q": "¿Puede Gemini 2.5 Flash Image editar imágenes existentes?",
+            "a": "Sí. Acepta una imagen de referencia junto al prompt de texto y soporta flujos de inpainting y outpainting para ediciones iterativas."
+          },
+          {
+            "q": "¿Qué resolución de salida produce?",
+            "a": "1024×1024 en el nivel estándar. Resoluciones más altas están disponibles a costo proporcional."
+          },
+          {
+            "q": "¿Cuánto cuesta por imagen?",
+            "a": "Alrededor de $0,04 por imagen generada de 1024×1024 — el más barato de los modelos curados de texto a imagen en VM0."
+          },
+          {
+            "q": "¿Es bueno el modelo con texto dentro de imágenes?",
+            "a": "Sí — significativamente más fuerte que la mayoría de líneas base de peso abierto al renderizar cadenas cortas de texto dentro de la imagen generada."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-image-1",
+            "reason": "Ilustración estilizada más fuerte"
+          },
+          { "slug": "flux-pro-1-1-ultra", "reason": "Techo estético más alto" },
+          {
+            "slug": "seedream-4",
+            "reason": "Resultados fotorrealistas más fuertes"
+          }
+        ],
+        "routingNotes": "Enrutado al endpoint Gemini 2.5 Flash Image de Google y facturado por imagen generada.",
+        "vm0Notes": "Gemini 2.5 Flash Image es el predeterminado precio/calidad para cargas de trabajo de agente de texto a imagen en VM0. Úsalo como el predeterminado universal y reserva los modelos de imagen más caros para los pasos donde su techo estilístico realmente importa."
+      },
+      "gpt-image-1": {
+        "name": "GPT Image 1",
+        "pageTitle": "GPT Image 1 en VM0. El modelo de texto a imagen de OpenAI",
+        "tagline": "El modelo de texto a imagen de OpenAI con fuerte ilustración estilizada y edición. La opción natural cuando quieres la estética y estilo de seguimiento de prompts de OpenAI.",
+        "cardIntro": "El modelo de texto a imagen de OpenAI. Fuerte en ilustración estilizada, trabajo de personajes y edición — la contraparte del lado OpenAI de Gemini 2.5 Flash Image.",
+        "metaTitle": "GPT Image 1 en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "GPT Image 1 en VM0. El modelo de texto a imagen y edición de imagen de OpenAI con fortaleza en ilustración estilizada, precios multi-nivel y comparación con Gemini 2.5 Flash Image, Flux Pro 1.1 Ultra y SeedDream 4.",
+        "summary": "GPT Image 1 es el modelo de texto a imagen de OpenAI — el que la mayoría de equipos conoce como el modelo detrás de la generación de imágenes de ChatGPT. Sus fortalezas son la ilustración estilizada, el trabajo de personajes y la edición de imagen con enmascaramiento basado en texto, con un estilo de seguimiento de prompts que se mapea cercanamente a lo que los modelos de texto de OpenAI esperan.\n\nEl precio de lista es basado en niveles, desde alrededor de $0,011 por imagen en el nivel bajo/estándar hasta $0,25 en el nivel alto/grande. El nivel medio-estándar (alrededor de $0,05 por 1024×1024) es el predeterminado sensato para la mayoría de cargas de trabajo de agente.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "El modelo primario de texto a imagen de OpenAI. Precios por nivel a través de configuraciones de resolución y calidad.",
+        "background": [
+          "GPT Image 1 es el modelo de texto a imagen de producción de OpenAI. Se empareja de forma nativa con los modelos de texto de OpenAI, así que cuando un agente ya corre en GPT-5.4 o GPT-5.5 el estilo de prompt se transfiere limpiamente y el flujo del bucle de edición se queda dentro de la superficie OpenAI.",
+          "Las fortalezas estilísticas del modelo se sitúan en ilustración, trabajo de personajes y ediciones que preservan la composición original mientras cambian un elemento específico. La salida fotorrealista es sólida pero se inclina hacia el estilo de la casa OpenAI; los equipos que quieren un techo estético diferente a menudo recurren a Flux Pro 1.1 Ultra o SeedDream 4 junto con él."
+        ],
+        "architecture": "Modelo de texto a imagen basado en Diffusion con soporte nativo de edición. Los precios por nivel escalan según resolución de salida (estándar / grande) y calidad (bajo / medio / alto), con el nivel medio/estándar como el predeterminado típico. Las entradas aceptan texto más imágenes de referencia opcionales para ediciones y máscaras.",
+        "specs": [
+          { "label": "Familia", "value": "OpenAI Images" },
+          {
+            "label": "Modalidades",
+            "value": "Texto a imagen, edición imagen a imagen"
+          },
+          {
+            "label": "Resoluciones",
+            "value": "Estándar / Grande × Bajo / Medio / Alto"
+          },
+          {
+            "label": "Precio listado",
+            "value": "De $0,011 a $0,25 por imagen"
+          },
+          { "label": "Idiomas", "value": "Prompts multilingües" },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Ilustración estilizada",
+            "body": "Uno de los modelos más fuertes para salida no fotorrealista — ilustración, estilo cómic, pictórico. Buen ajuste cuando el entregable es una ilustración en lugar de una foto."
+          },
+          {
+            "title": "Flujos de edición",
+            "body": "Soporte nativo para ediciones enmascaradas y cambios locales basados en texto. Útil cuando un agente debe iterar sobre una región específica de una imagen en lugar de regenerarla entera."
+          },
+          {
+            "title": "Estilo de prompt",
+            "body": "Se mapea cercanamente a las expectativas de los modelos de texto de OpenAI. Cuando el agente que llama ya está en GPT-5.4 o GPT-5.5, los prompts escritos por ese agente se transfieren con poco ajuste."
+          },
+          {
+            "title": "Costo",
+            "body": "Basado en niveles — el nivel medio/estándar (~$0,05 por 1024×1024) es el predeterminado típico. El nivel alto/grande llega a $0,25 y vale la pena solo para salida de calidad de entrega."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de ilustración que entrega estilo cómic o dibujado a mano",
+            "body": "La salida estilizada es donde GPT Image 1 lleva una ventaja real. Paneles de cómic, ilustraciones pictóricas, íconos con apariencia dibujada a mano — todos aterrizan de forma más fiable aquí que en las alternativas inclinadas al fotorrealismo."
+          },
+          {
+            "title": "El agente de bucle de edición en el stack OpenAI",
+            "body": "Si el agente orquestador ya está en GPT-5.4 o GPT-5.5, mantener la generación de imágenes dentro de la superficie OpenAI (GPT Image 1) significa que el estilo de prompt, semántica de edición y salidas estructuradas permanecen consistentes a través de la ejecución."
+          }
+        ],
+        "avoidFor": "Evita GPT Image 1 cuando el costo domina (Gemini 2.5 Flash Image es aproximadamente la mitad del precio para el mismo nivel predeterminado) o cuando el entregable es específicamente fotorrealista (SeedDream 4 lleva un techo fotorrealista más alto).",
+        "comparisons": [
+          {
+            "vs": "Gemini 2.5 Flash Image",
+            "body": "Gemini 2.5 Flash Image es más barato y más fuerte en prompts largos estructurados; GPT Image 1 es más fuerte en ilustración estilizada y se integra de forma más natural con agentes del stack OpenAI."
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4 lidera en estética fotorrealista a un precio ligeramente más bajo; GPT Image 1 lidera en ilustración estilizada y flujos de edición."
+          },
+          {
+            "vs": "Flux Pro 1.1 Ultra",
+            "body": "Flux Pro 1.1 Ultra lleva el techo estético más alto para entregables de toma hero; GPT Image 1 es el predeterminado natural del stack OpenAI para todo lo demás."
+          }
+        ],
+        "verdict": "Elige GPT Image 1 cuando tu agente ya está en el stack OpenAI y quieres ilustración estilizada o flujos de edición nativos. Escala a Flux Pro 1.1 Ultra para tomas hero fotorrealistas; baja a Gemini 2.5 Flash Image cuando el costo domina.",
+        "faqs": [
+          {
+            "q": "¿Cómo se cobra GPT Image 1?",
+            "a": "Basado en niveles — combinaciones de tamaño (estándar / grande) y calidad (bajo / medio / alto). El nivel medio/estándar a ~$0,05 por imagen de 1024×1024 es el predeterminado típico."
+          },
+          {
+            "q": "¿GPT Image 1 soporta edición de imagen?",
+            "a": "Sí. Acepta una imagen de referencia más una máscara opcional y soporta ediciones locales basadas en texto así como outpainting."
+          },
+          {
+            "q": "¿Puede GPT Image 1 renderizar texto dentro de imágenes?",
+            "a": "Sí — cadenas cortas de texto se renderizan de forma fiable; los pasajes largos de texto aún tienen dificultades como con la mayoría de modelos de Diffusion."
+          },
+          {
+            "q": "¿Es multimodal como entrada?",
+            "a": "Las ediciones imagen a imagen aceptan imágenes de referencia. El modelo es solo de salida de imagen."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gemini-2-5-flash-image",
+            "reason": "Más barato, adherencia más fuerte a prompts largos"
+          },
+          {
+            "slug": "flux-pro-1-1-ultra",
+            "reason": "Techo estético fotorrealista más alto"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "Mejor predeterminado fotorrealista"
+          }
+        ],
+        "routingNotes": "Enrutado a la superficie Images de OpenAI y facturado por imagen generada en el nivel seleccionado.",
+        "vm0Notes": "GPT Image 1 es el predeterminado del stack OpenAI para flujos de trabajo de agente de ilustración estilizada y bucle de edición. El nivel medio/estándar es el predeterminado universal sensato; reserva el nivel alto/grande para salida de calidad de entrega."
+      },
+      "flux-pro-1-1-ultra": {
+        "name": "Flux Pro 1.1 Ultra",
+        "pageTitle": "Flux Pro 1.1 Ultra en VM0. El techo estético para tomas hero",
+        "tagline": "El modelo de texto a imagen de techo alto de Black Forest Labs. La opción cuando la imagen es el entregable y necesitas salida de grado editorial o fotorrealista.",
+        "cardIntro": "El modelo de imagen de primer nivel de Black Forest Labs. El techo estético más alto de la línea curada — úsalo para tomas hero y salida de grado editorial.",
+        "metaTitle": "Flux Pro 1.1 Ultra en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "Flux Pro 1.1 Ultra en VM0. El modelo de texto a imagen de primer nivel de Black Forest Labs con techo estético de grado editorial, $0,072 por imagen y comparación con GPT Image 1, SeedDream 4 y Gemini 2.5 Flash Image.",
+        "summary": "Flux Pro 1.1 Ultra es el modelo de texto a imagen de primer nivel de Black Forest Labs — al que recurrir cuando la imagen en sí es el entregable, no un paso en un bucle de agente. La calidad de salida en estéticas editoriales, fotorrealistas y dirigidas al diseño es la más alta de la línea curada, y la adherencia a prompts en briefs compositivos detallados aguanta bien.\n\nEl precio de lista es de $0,072 por imagen, lo que lo hace caro en relación con Gemini 2.5 Flash Image ($0,04) o SeedDream 4 ($0,036), pero el aumento de calidad por imagen es lo suficientemente grande como para que la mayoría de equipos lo usen como el paso de renderizado final después de prefiltrar con un modelo más barato.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "Nivel premium de Black Forest Labs de la generación Flux 1.1.",
+        "background": [
+          "Flux Pro 1.1 Ultra es el modelo premium de texto a imagen de Black Forest Labs. La familia Flux es conocida por el techo estético más alto en la frontera de peso abierto, y la variante Ultra es el nivel de grado producción con la calidad compositiva más consistente.",
+          "La fortaleza del modelo se sitúa en estéticas editoriales y fotorrealistas — tomas hero estilo revista, fotografía de producto, ilustraciones dirigidas al diseño. La adherencia a prompts en briefs compositivos detallados (\"una toma en ángulo bajo de X bajo iluminación Y contra fondo Z\") es materialmente mejor que en la mayoría de alternativas más baratas, que es parte de por qué los equipos siguen pagando la prima por salida de calidad de entrega."
+        ],
+        "architecture": "Modelo de Diffusion de alta resolución con seguimiento de prompts ajustado para fidelidad compositiva. Facturado por imagen generada. Las entradas aceptan prompts de texto; produce salida de alta resolución adecuada para entrega.",
+        "specs": [
+          { "label": "Familia", "value": "Flux 1.1 Pro" },
+          { "label": "Modalidades", "value": "Texto a imagen" },
+          { "label": "Precio listado", "value": "$0,072 por imagen" },
+          { "label": "Idiomas", "value": "Prompts multilingües" },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Techo estético",
+            "body": "El más alto de la línea curada de imágenes. Las estéticas de toma hero, editoriales y fotorrealistas aterrizan de forma más fiable aquí que en Gemini 2.5 Flash Image o GPT Image 1."
+          },
+          {
+            "title": "Fidelidad compositiva",
+            "body": "Fuerte en briefs compositivos detallados que especifican ángulo, iluminación, encuadre y posición del sujeto. Útil cuando el prompt es innegociable."
+          },
+          {
+            "title": "Costo",
+            "body": "$0,072 por imagen — aproximadamente 2× Gemini 2.5 Flash Image y SeedDream 4. El patrón estándar es prefiltrar con un modelo más barato y renderizar finales en Flux."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Más lento que las alternativas del nivel Flash. Resérvalo para los pasos que justifican el costo; no lo uses en bucles interactivos ajustados."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "La toma hero de marketing que debe enviarse",
+            "body": "Cuando la imagen es el entregable final para una campaña, una landing page o un anuncio de lanzamiento, el techo estético de Flux Pro 1.1 Ultra justifica la prima."
+          },
+          {
+            "title": "El agente de fotografía de producto para listados de ecommerce",
+            "body": "Fotografía de producto de grado catálogo desde un brief de texto más imágenes de referencia. La fidelidad compositiva marca la diferencia entre una imagen que se envía y una que se re-renderiza."
+          },
+          {
+            "title": "La ilustración editorial para contenido de formato largo",
+            "body": "Ilustraciones hero estilo revista para artículos, posts de blog e informes. El techo estilístico de Flux lo separa de los predeterminados caballo de batalla."
+          }
+        ],
+        "avoidFor": "Evita Flux Pro 1.1 Ultra en bucles fan-out donde el costo domina — Gemini 2.5 Flash Image es aproximadamente 2× más barato por llamada. Úsalo como el paso de renderizado final en lugar del paso de iteración.",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "Flux Pro 1.1 Ultra tiene el techo fotorrealista y editorial más alto; GPT Image 1 tiene salida más fuerte de ilustración estilizada y soporte nativo de flujo de edición. Elige según el entregable."
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "Ambos inclinados al fotorrealismo. SeedDream 4 es la mitad del precio y competitivo en trabajo de retrato y producto; Flux Pro 1.1 Ultra gana en fidelidad compositiva de toma hero a mayor costo."
+          },
+          {
+            "vs": "Gemini 2.5 Flash Image",
+            "body": "Roles diferentes. Gemini 2.5 Flash Image es el caballo de batalla barato para iteración; Flux Pro 1.1 Ultra es el paso premium de renderizado final. Apílalos, no elijas uno."
+          }
+        ],
+        "verdict": "Usa Flux Pro 1.1 Ultra como el paso de renderizado final después de prefiltrar con un modelo más barato. El techo estético justifica la prima cuando la imagen es el entregable.",
+        "faqs": [
+          {
+            "q": "¿Cuánto cuesta Flux Pro 1.1 Ultra?",
+            "a": "$0,072 por imagen generada. Aproximadamente 2× Gemini 2.5 Flash Image y SeedDream 4."
+          },
+          {
+            "q": "¿Soporta edición de imagen?",
+            "a": "El nivel Ultra es texto a imagen primero. Para flujos nativos de edición enmascarada en la misma familia, el nivel base Flux Pro 1.1 lleva soporte de edición más amplio a un techo estético más bajo."
+          },
+          {
+            "q": "¿Qué proporciones de aspecto se soportan?",
+            "a": "Proporciones de aspecto fotográficas y de diseño estándar hasta salidas de alta resolución adecuadas para entrega."
+          },
+          {
+            "q": "¿Es bueno para ilustración estilizada?",
+            "a": "Posible pero no su fuerte — GPT Image 1 lleva un techo estilizado más alto. Flux Pro 1.1 Ultra brilla en trabajo fotorrealista y editorial."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gemini-2-5-flash-image",
+            "reason": "Predeterminado barato para iteración"
+          },
+          {
+            "slug": "gpt-image-1",
+            "reason": "Ilustración estilizada más fuerte"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "Alternativa fotorrealista más barata"
+          }
+        ],
+        "routingNotes": "Enrutado al endpoint Flux Pro 1.1 Ultra de Black Forest Labs y facturado por imagen generada.",
+        "vm0Notes": "Flux Pro 1.1 Ultra es el nivel premium de la línea curada de imágenes. Úsalo para el paso de renderizado final en lugar de para iteración; empareja con Gemini 2.5 Flash Image o SeedDream 4 para el prefiltrado barato."
+      },
+      "seedream-4": {
+        "name": "SeedDream 4",
+        "pageTitle": "SeedDream 4 en VM0. El predeterminado fotorrealista de texto a imagen",
+        "tagline": "El modelo de texto a imagen SeedDream 4 de ByteDance. Fuerte estética fotorrealista a un costo comparable a las opciones más baratas de la línea.",
+        "cardIntro": "SeedDream 4 de ByteDance. Estética fotorrealista a bajo costo por imagen — el predeterminado natural cuando el brief es una foto.",
+        "metaTitle": "SeedDream 4 en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "SeedDream 4 en VM0. El modelo de texto a imagen de ByteDance con fuerte salida fotorrealista, ~$0,036 por imagen y comparación con Gemini 2.5 Flash Image, GPT Image 1 y Flux Pro 1.1 Ultra.",
+        "summary": "SeedDream 4 es el modelo de texto a imagen de ByteDance en la generación Seedream V4. Su propiedad destacada es la estética fotorrealista — retratos, tomas de producto, fotografía de estilo de vida — a un precio de lista ($0,036 por imagen) que es competitivo con la opción más barata de la línea curada.\n\nEs el predeterminado natural cuando el brief es específicamente una foto. Para ilustración estilizada o diseño editorial elige GPT Image 1 o Flux Pro 1.1 Ultra; para cargas de trabajo iterativas generales de agente en prompts largos estructurados elige Gemini 2.5 Flash Image.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "El predeterminado fotorrealista de texto a imagen de ByteDance en la generación Seedream V4.",
+        "background": [
+          "SeedDream 4 es la cuarta generación de la familia de texto a imagen de ByteDance. La estética se inclina hacia salida fotorrealista, con retratos, tomas de producto y de estilo de vida como las categorías destacadas. La adherencia a prompts en briefs descriptivos estándar (sujeto, escenario, iluminación) es sólida.",
+          "A $0,036 por imagen se sitúa cerca del fondo de la línea curada en precio, que es lo que lo hace viable como el predeterminado para cargas de trabajo de agente inclinadas a fotos. Cambia a Flux Pro 1.1 Ultra cuando el brief compositivo es específicamente una toma hero que justifica la prima."
+        ],
+        "architecture": "Modelo de texto a imagen basado en Diffusion. Facturado por imagen generada. Las entradas aceptan prompts de texto; produce salida inclinada al fotorrealismo adecuada para retratos, productos e imágenes de estilo de vida.",
+        "specs": [
+          { "label": "Familia", "value": "Seedream V4" },
+          { "label": "Modalidades", "value": "Texto a imagen" },
+          { "label": "Precio listado", "value": "$0,036 por imagen" },
+          {
+            "label": "Idiomas",
+            "value": "Prompts multilingües (inglés + chino fuerte)"
+          },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Estética fotorrealista",
+            "body": "Retratos, tomas de producto y fotografía de estilo de vida son las categorías destacadas. La salida es competitiva con Flux Pro 1.1 Ultra en una proporción significativa de briefs fotorrealistas y dramáticamente más barata por llamada."
+          },
+          {
+            "title": "Costo",
+            "body": "$0,036 por imagen — cerca del fondo de la línea curada. El predeterminado natural para cargas de trabajo fan-out inclinadas a fotos."
+          },
+          {
+            "title": "Prompts en chino",
+            "body": "Fuerte manejo de prompts en chino y sujetos culturalmente anclados, lo cual es una ventaja real para agentes que sirven a usuarios chino-parlantes."
+          },
+          {
+            "title": "Techo estético",
+            "body": "Sólido para todo en el carril fotorrealista; menos ajuste para ilustración hiper-estilizada donde GPT Image 1 lidera."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de retrato o toma de producto a escala",
+            "body": "Sujetos fotorrealistas a bajo costo por imagen hacen viable SeedDream 4 para cargas de trabajo fan-out — cien fotos de producto para un catálogo, generación masiva de retratos para una herramienta de creador."
+          },
+          {
+            "title": "El agente de marketing en chino",
+            "body": "Fuerte manejo de prompts en chino y sujetos culturalmente anclados. El predeterminado correcto para agentes que sirven a mercados chino-parlantes."
+          },
+          {
+            "title": "La alternativa más barata a Flux Pro 1.1 Ultra",
+            "body": "Cuando el brief es fotorrealista pero el entregable no justifica la prima de Flux, SeedDream 4 lleva la mayor parte de la calidad a la mitad del precio."
+          }
+        ],
+        "avoidFor": "Evita SeedDream 4 para ilustración estilizada (GPT Image 1 lidera), iteración en prompts largos estructurados (Gemini 2.5 Flash Image lidera) o trabajo editorial de toma hero donde la prima de Flux está justificada.",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "SeedDream 4 lidera en estética fotorrealista a menor costo; GPT Image 1 lidera en ilustración estilizada y flujos nativos de edición."
+          },
+          {
+            "vs": "Flux Pro 1.1 Ultra",
+            "body": "Ambos inclinados al fotorrealismo. SeedDream 4 es la mitad del precio y competitivo en trabajo de retrato y producto; Flux Pro 1.1 Ultra gana en fidelidad compositiva de toma hero."
+          },
+          {
+            "vs": "Gemini 2.5 Flash Image",
+            "body": "Gemini 2.5 Flash Image es el predeterminado barato de propósito general con seguimiento de instrucciones más fuerte en prompts largos; SeedDream 4 es el predeterminado específico fotorrealista con un techo más alto en briefs de foto."
+          }
+        ],
+        "verdict": "Usa SeedDream 4 por defecto cuando el brief es específicamente una foto y el costo importa. Escala a Flux Pro 1.1 Ultra solo cuando la toma hero justifica la prima.",
+        "faqs": [
+          {
+            "q": "¿Cuánto cuesta SeedDream 4?",
+            "a": "$0,036 por imagen generada — cerca del fondo de la línea curada en precio."
+          },
+          {
+            "q": "¿Es bueno con prompts en chino?",
+            "a": "Sí — significativamente más fuerte que la mayoría de líneas base entrenadas en Occidente en prompts en chino y sujetos culturalmente anclados."
+          },
+          {
+            "q": "¿Cuál es su estética más fuerte?",
+            "a": "Fotorrealista: retratos, tomas de producto, fotografía de estilo de vida. Menos ajuste para ilustración estilizada."
+          },
+          {
+            "q": "¿Soporta edición de imagen?",
+            "a": "La entrada curada en VM0 cubre texto a imagen. Los flujos de edición no son la fortaleza primaria del modelo."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gemini-2-5-flash-image",
+            "reason": "Predeterminado de propósito general más barato"
+          },
+          {
+            "slug": "flux-pro-1-1-ultra",
+            "reason": "Calidad premium de toma hero"
+          },
+          {
+            "slug": "gpt-image-1",
+            "reason": "Ilustración estilizada más fuerte"
+          }
+        ],
+        "routingNotes": "Enrutado al endpoint de texto a imagen SeedDream V4 de ByteDance y facturado por imagen generada.",
+        "vm0Notes": "SeedDream 4 es el predeterminado específico fotorrealista en la línea curada de imágenes. Empareja con Flux Pro 1.1 Ultra para tomas hero y con Gemini 2.5 Flash Image para iteración no fotográfica."
+      },
+      "veo-3-1-fast": {
+        "name": "Veo 3.1 Fast",
+        "pageTitle": "Veo 3.1 Fast en VM0. El modelo rápido de texto a video de Google",
+        "tagline": "El modelo rápido de texto a video de Google con audio nativo. La opción para clips cortos sociales y de producto donde la calidad cinematográfica y el audio en una sola pasada importan.",
+        "cardIntro": "El modelo de texto a video de Google con audio nativo. Generación rápida, estilo cinematográfico y banda sonora sincronizada en una sola pasada.",
+        "metaTitle": "Veo 3.1 Fast en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "Veo 3.1 Fast en VM0. El modelo rápido de texto a video de Google con audio nativo, clips de 4–8 segundos hasta 4K, y comparación con Kling V3 4K y Dreamina Seedance 2.0.",
+        "summary": "Veo 3.1 Fast es el nivel rápido de la familia de generación de video Veo 3 de Google. Genera clips cortos (4 / 6 / 8 segundos) a 720p, 1080p o 4K, y renderiza audio nativo sincronizado — voz, sonido ambiental y efectos — en la misma pasada que los visuales. Ese audio en una sola pasada es la propiedad que lo distingue de la mayoría de alternativas en la línea curada.\n\nEl precio de lista es del orden de $0,15 por segundo de salida 720p con audio, lo que lo sitúa en el medio de la línea en costo. El patrón natural es usar Veo 3.1 Fast por defecto para clips sociales y de producto donde el audio importa, cambiar a Dreamina Seedance 2.0 cuando el costo domina, y cambiar a Kling V3 4K cuando necesitas una toma más larga o de mayor resolución.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "Nivel rápido de la familia Veo 3 de Google. Optimizado para salida de formato corto con audio nativo.",
+        "background": [
+          "Veo 3.1 es la familia de generación de video de Google en la generación Veo 3, y el nivel Fast es la variante optimizada para rendimiento — generación más rápida, menor costo por clip, pero limitado a duraciones cortas de clip. El soporte de audio nativo es la propiedad distintiva: voz, sonido ambiental y efectos se renderizan en la misma pasada que los visuales en lugar de añadirse como un paso de post separado.",
+          "La salida de Veo se inclina hacia un look cinematográfico — movimiento limpio, encuadre considerado, iluminación precisa. Es fuerte en briefs de texto a video que describen una sola toma en detalle (ángulo de cámara, acción del sujeto, escenario, iluminación), menos ajuste para estéticas altamente estilizadas o estilo anime donde el techo estilístico de Kling V3 4K se adelanta."
+        ],
+        "architecture": "Modelo de Diffusion de texto a video e imagen a video con síntesis de audio nativa en la misma pasada. Las duraciones de salida son 4, 6 u 8 segundos a 720p, 1080p o 4K. Facturado por video-segundo generado con modificadores de nivel de calidad.",
+        "specs": [
+          { "label": "Familia", "value": "Google Veo 3" },
+          {
+            "label": "Modalidades",
+            "value": "Texto a video, imagen a video, audio nativo"
+          },
+          { "label": "Duraciones", "value": "4s / 6s / 8s" },
+          { "label": "Resoluciones", "value": "720p / 1080p / 4K" },
+          {
+            "label": "Precio listado",
+            "value": "~$0,15 por segundo (720p + audio)"
+          },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Audio nativo",
+            "body": "La propiedad distintiva. Voz, sonido ambiental y efectos se renderizan en la misma pasada que los visuales — no se necesita paso de post separado. El predeterminado correcto para clips sociales y de producto donde el audio importa."
+          },
+          {
+            "title": "Movimiento cinematográfico",
+            "body": "La salida se inclina hacia movimiento limpio, encuadre considerado e iluminación precisa. Fuerte en briefs de texto a video que describen una sola toma en detalle."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Nivel Fast — la generación es materialmente más rápida que el nivel Veo 3 estándar a costa de fidelidad ligeramente menor en los briefs más exigentes."
+          },
+          {
+            "title": "Techo estético",
+            "body": "El carril cinematográfico / fotorrealista es el punto óptimo. Para salida estilizada o estilo anime el techo estilístico de Kling V3 4K es más alto."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de clip social que envía en una sola pasada",
+            "body": "Video social de formato corto con voz y sonido ambiental generados en una sola llamada. Sin paso separado de TTS o post de audio, sin sincronización — el clip aterriza listo para publicar."
+          },
+          {
+            "title": "El video de demo de producto para una landing page",
+            "body": "Clip de producto de 8 segundos a 1080p con una voz en off describiendo la característica. El movimiento cinematográfico y el audio sincronizado hacen que el resultado se sienta producido en lugar de generado."
+          },
+          {
+            "title": "El paso de imagen a video en una campaña",
+            "body": "Comienza desde una imagen hero estática renderizada en Flux Pro 1.1 Ultra o SeedDream 4 y extiende a un clip corto de movimiento. El condicionamiento por imagen mantiene el look consistente."
+          }
+        ],
+        "avoidFor": "Evita Veo 3.1 Fast cuando el brief es estilizado o estilo anime (el techo de Kling V3 4K es más alto), cuando necesitas un clip más largo de 8 segundos, o cuando el costo domina y la propiedad de audio no importa (Dreamina Seedance 2.0 es aproximadamente 3× más barato).",
+        "comparisons": [
+          {
+            "vs": "Kling V3 4K",
+            "body": "Veo 3.1 Fast lidera en audio nativo y estéticas cinematográficas / fotorrealistas; Kling V3 4K lidera en salida estilizada / anime y en duraciones de clip más largas a 4K. Elige según la estética."
+          },
+          {
+            "vs": "Dreamina Seedance 2.0",
+            "body": "Posicionamiento diferente. Dreamina Seedance 2.0 es aproximadamente 3× más barato por segundo y es la opción correcta cuando el costo domina; Veo 3.1 Fast lleva la ventaja en audio nativo y movimiento cinematográfico."
+          }
+        ],
+        "verdict": "Usa Veo 3.1 Fast por defecto para clips sociales y de producto de formato corto donde el audio importa. Cambia a Kling V3 4K para salida estilizada o duraciones más largas; cambia a Dreamina Seedance 2.0 cuando el costo domina.",
+        "faqs": [
+          {
+            "q": "¿Veo 3.1 Fast genera audio?",
+            "a": "Sí. Audio nativo — voz, sonido ambiental, efectos — se renderiza en la misma pasada que los visuales."
+          },
+          {
+            "q": "¿Qué duraciones de clip se soportan?",
+            "a": "4, 6 u 8 segundos. Para tomas más largas, cambia a Kling V3 4K."
+          },
+          {
+            "q": "¿Qué resoluciones soporta?",
+            "a": "720p, 1080p y 4K. El costo escala con resolución y duración."
+          },
+          {
+            "q": "¿Acepta condicionamiento por imagen?",
+            "a": "Sí — los flujos imagen a video te dejan comenzar desde una estática y extender a un clip corto de movimiento."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "kling-v3-4k",
+            "reason": "Techo estilizado / anime, clips más largos"
+          },
+          {
+            "slug": "dreamina-seedance-2-0",
+            "reason": "Más barato por segundo"
+          }
+        ],
+        "routingNotes": "Enrutado al endpoint de generación de video Veo 3.1 Fast de Google y facturado por video-segundo generado con modificadores de nivel de calidad.",
+        "vm0Notes": "Veo 3.1 Fast es el predeterminado cinematográfico / con audio en la línea curada de video en VM0. Empareja con Dreamina Seedance 2.0 para iteración barata y con Kling V3 4K para clips estilizados o de formato más largo."
+      },
+      "kling-v3-4k": {
+        "name": "Kling V3 4K",
+        "pageTitle": "Kling V3 4K en VM0. El techo 4K de texto a video",
+        "tagline": "El modelo de texto a video Kling V3 4K de Kuaishou. La opción cuando necesitas clips largos, resolución 4K o una estética estilizada que los otros modelos no alcanzan.",
+        "cardIntro": "Kling V3 4K de Kuaishou. Estética estilizada, clips largos hasta 15 segundos, salida 4K — el techo para video editorial y estilo anime.",
+        "metaTitle": "Kling V3 4K en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "Kling V3 4K en VM0. El modelo de texto a video de Kuaishou con resolución 4K, clips de 3–15 segundos, techo estético estilizado y comparación con Veo 3.1 Fast y Dreamina Seedance 2.0.",
+        "summary": "Kling V3 4K es el modelo de texto a video de primer nivel de Kuaishou. Las propiedades destacadas son la duración de clip (hasta 15 segundos, frente al límite de 8 segundos de Veo 3.1 Fast), resolución 4K como el nivel estándar, y un techo estilístico en estéticas estilo anime y editoriales que las alternativas inclinadas a lo cinematográfico no alcanzan.\n\nEl precio de lista es del orden de $0,28 por segundo de salida 4K, lo que lo convierte en la opción más cara de la línea curada de video. El patrón natural es recurrir a él cuando necesitas tomas largas o 4K, o cuando el brief es específicamente estilizado y el techo estético de las alternativas no acierta.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "Nivel superior de la generación Kling V3 de Kuaishou. Techo 4K y de clip largo.",
+        "background": [
+          "Kling V3 4K es la variante de gama alta de la familia de generación de video Kling V3 de Kuaishou. Lleva las duraciones de clip estándar más largas de la línea curada (3 a 15 segundos), salida 4K nativa en el nivel estándar, y un techo estilístico en estéticas anime y editoriales que las alternativas inclinadas a lo cinematográfico no alcanzan.",
+          "La fortaleza del modelo está en briefs estilizados y editoriales — secuencias estilo anime, clips pesados en danza y movimiento, estéticas de video musical. Para salida cinematográfica fotorrealista Veo 3.1 Fast es comparable a menor costo y con audio nativo; para generación masiva impulsada por costo Dreamina Seedance 2.0 es dramáticamente más barato. El rol de Kling V3 4K es el paso de techo alto y clip largo en lugar del predeterminado universal."
+        ],
+        "architecture": "Modelo de Diffusion de texto a video e imagen a video. El nivel estándar renderiza a 4K con duraciones de clip de 3 a 15 segundos. Facturado por video-segundo generado.",
+        "specs": [
+          { "label": "Familia", "value": "Kling V3" },
+          { "label": "Modalidades", "value": "Texto a video, imagen a video" },
+          { "label": "Duraciones", "value": "3 a 15 segundos" },
+          { "label": "Resoluciones", "value": "4K (nivel estándar)" },
+          { "label": "Precio listado", "value": "~$0,28 por segundo (4K)" },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Duración de clip",
+            "body": "Hasta 15 segundos en el nivel estándar — el más largo de la línea curada. La opción correcta cuando una sola toma ininterrumpida más larga de 8 segundos importa."
+          },
+          {
+            "title": "Resolución 4K",
+            "body": "4K nativo en el nivel estándar en lugar de un cargo adicional de nivel alto. Útil cuando el entregable es pantalla de gran formato o salida de calidad cinematográfica."
+          },
+          {
+            "title": "Techo estético estilizado",
+            "body": "Fuerte en estéticas anime, danza, pesadas en movimiento y editoriales. Aquí es donde Kling se adelanta a las alternativas inclinadas a lo cinematográfico."
+          },
+          {
+            "title": "Costo",
+            "body": "~$0,28 por segundo — la opción más cara de la línea curada. Resérvalo para los pasos donde su techo justifica la prima."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El clip social estilo anime o estilizado",
+            "body": "Las estéticas estilizadas — anime, dirigidas por motion-design, estilo video musical — son donde Kling lleva una ventaja real de techo. Las alternativas inclinadas a lo cinematográfico no alcanzan el mismo look."
+          },
+          {
+            "title": "La toma larga ininterrumpida",
+            "body": "Cuando el brief pide una sola toma de 12 a 15 segundos en lugar de un corte entre clips más cortos, Kling V3 4K es la única opción de la línea curada que alcanza el tope de duración."
+          },
+          {
+            "title": "El entregable 4K para pantalla de gran formato",
+            "body": "4K nativo en el nivel estándar hace de Kling la opción correcta cuando la salida está destinada a una valla publicitaria, cine o campaña social de gran formato."
+          }
+        ],
+        "avoidFor": "Evita Kling V3 4K cuando el brief es cinematográfico fotorrealista con audio (Veo 3.1 Fast es más natural a menor costo) o cuando el costo domina (Dreamina Seedance 2.0 es aproximadamente 5× más barato por segundo).",
+        "comparisons": [
+          {
+            "vs": "Veo 3.1 Fast",
+            "body": "Veo 3.1 Fast lidera en audio nativo y estéticas cinematográficas / fotorrealistas; Kling V3 4K lidera en salida estilizada / anime, en duraciones de clip más largas y en salida 4K nativa. Elige según estética y duración."
+          },
+          {
+            "vs": "Dreamina Seedance 2.0",
+            "body": "Niveles de costo diferentes. Dreamina Seedance 2.0 es dramáticamente más barato y la opción correcta cuando el costo domina; Kling V3 4K lleva el techo en duración, 4K y estética estilizada."
+          }
+        ],
+        "verdict": "Elige Kling V3 4K para entregables de video estilizados, largos o 4K. Cambia a Veo 3.1 Fast para clips cinematográficos con audio; cambia a Dreamina Seedance 2.0 para fan-out impulsado por costo.",
+        "faqs": [
+          {
+            "q": "¿Cuál es el clip más largo que puede generar Kling V3 4K?",
+            "a": "15 segundos en el nivel estándar — la toma más larga de la línea curada de video en VM0."
+          },
+          {
+            "q": "¿Kling V3 4K soporta audio?",
+            "a": "No de forma nativa en la misma pasada. Para video con audio sincronizado en una sola llamada, usa Veo 3.1 Fast."
+          },
+          {
+            "q": "¿Qué resolución produce Kling?",
+            "a": "4K en el nivel estándar. Variantes de menor resolución están disponibles en la misma familia a menor costo."
+          },
+          {
+            "q": "¿Acepta condicionamiento por imagen?",
+            "a": "Sí — los flujos imagen a video te dejan comenzar desde una estática de referencia y extender a un clip más largo de movimiento."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "veo-3-1-fast",
+            "reason": "Cinematográfico / audio nativo"
+          },
+          {
+            "slug": "dreamina-seedance-2-0",
+            "reason": "Generación masiva más barata"
+          }
+        ],
+        "routingNotes": "Enrutado al endpoint Kling V3 4K de Kuaishou y facturado por video-segundo generado.",
+        "vm0Notes": "Kling V3 4K es la opción de techo alto en la línea curada de video en VM0. Resérvalo para entregables estilizados, de formato largo o 4K — para el predeterminado universal recurre a Veo 3.1 Fast o Dreamina Seedance 2.0."
+      },
+      "dreamina-seedance-2-0": {
+        "name": "Dreamina Seedance 2.0",
+        "pageTitle": "Dreamina Seedance 2.0 en VM0. El modelo de video optimizado en costo",
+        "tagline": "El modelo de video Dreamina Seedance 2.0 de ByteDance. El predeterminado correcto cuando el costo domina — dramáticamente más barato por segundo que las alternativas.",
+        "cardIntro": "Dreamina Seedance 2.0 de ByteDance. El video más barato por segundo en la línea curada — la opción correcta para generación masiva e impulsada por costo.",
+        "metaTitle": "Dreamina Seedance 2.0 en VM0: Precios, Especificaciones y Comparación",
+        "metaDescription": "Dreamina Seedance 2.0 en VM0. El modelo de texto a video de ByteDance con el costo por segundo más barato de la línea curada, clips de 4–15 segundos hasta 1080p y comparación con Veo 3.1 Fast y Kling V3 4K.",
+        "summary": "Dreamina Seedance 2.0 es el miembro optimizado en costo de la familia de video Seedance de ByteDance. Las duraciones de salida van de 4 a 15 segundos a 480p, 720p o 1080p, con flujos de texto a video e imagen a video. La propiedad destacada es el costo — aproximadamente $0,05 por segundo de salida 1080p con condicionamiento por imagen, dramáticamente más barato que Veo 3.1 Fast o Kling V3 4K.\n\nEs el predeterminado natural cuando el costo domina: generación masiva fan-out, variantes de clip social, pasadas borrador antes de un renderizado final premium. Para audio nativo recurre a Veo 3.1 Fast; para salida estilizada de formato largo recurre a Kling V3 4K.",
+        "releaseDate": "Abril 2026",
+        "familyPosition": "Nivel optimizado en costo de la familia de video Seedance de ByteDance.",
+        "background": [
+          "Dreamina Seedance 2.0 es el modelo de video Seedance de segunda generación de ByteDance, emparejado con una variante Fast y una variante Pro en la misma familia. La entrada Standard 2.0 en la línea curada es el punto óptimo de costo/calidad — más barato que el nivel Pro, materialmente más alta calidad que el nivel Fast.",
+          "El modelo maneja flujos de texto a video e imagen a video en duraciones de 4 a 15 segundos a 480p, 720p o 1080p. La salida se inclina hacia estéticas amigables para consumidor: formato corto social, estilo de vida, clips de producto. No es el techo para trabajo cinematográfico o estilizado, pero es la opción viable más barata de la línea curada."
+        ],
+        "architecture": "Modelo de Diffusion de texto a video e imagen a video con tres niveles de calidad (Fast, Standard, Pro). La entrada curada cubre el nivel Standard 2.0. Facturado por video-segundo generado con modificadores por resolución y si se usa condicionamiento por imagen.",
+        "specs": [
+          { "label": "Familia", "value": "Seedance 2.0" },
+          { "label": "Modalidades", "value": "Texto a video, imagen a video" },
+          { "label": "Duraciones", "value": "4 a 15 segundos" },
+          { "label": "Resoluciones", "value": "480p / 720p / 1080p" },
+          {
+            "label": "Precio listado",
+            "value": "~$0,05 por segundo (1080p + imagen)"
+          },
+          { "label": "Disponible en VM0", "value": "Abril 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Costo",
+            "body": "El modelo de video más barato por segundo de la línea curada. Aproximadamente 3× más barato que Veo 3.1 Fast y 5× más barato que Kling V3 4K."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Generación rápida en el nivel Standard — comparable a la variante Fast más barata de la misma familia con calidad materialmente mejor."
+          },
+          {
+            "title": "Imagen a video",
+            "body": "Fuerte manejo de flujos de condicionamiento por imagen. Útil cuando un agente quiere extender una imagen estática (generada de forma barata en Gemini 2.5 Flash Image o SeedDream 4) a un clip corto de movimiento."
+          },
+          {
+            "title": "Techo estético",
+            "body": "Más bajo que Veo 3.1 Fast en movimiento cinematográfico y más bajo que Kling V3 4K en estéticas estilizadas. La opción correcta cuando el costo es el factor decisivo, no el techo."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El paso de generación masiva fan-out de video",
+            "body": "Costo por segundo lo suficientemente bajo como para hacer viable generar una docena de variantes del mismo clip. Prefiltra de forma barata, luego escala la variante elegida a Veo 3.1 Fast o Kling V3 4K para el renderizado final si la calidad lo justifica."
+          },
+          {
+            "title": "La extensión imagen a video en una campaña",
+            "body": "Comienza desde una imagen hero estática y extiende a un clip corto de movimiento sin pagar el precio del nivel premium. El condicionamiento por imagen mantiene el look consistente."
+          },
+          {
+            "title": "La pasada borrador antes del renderizado premium",
+            "body": "Fija el movimiento, encuadre y ritmo de forma barata en Dreamina Seedance 2.0, luego re-renderiza el final en Veo 3.1 Fast o Kling V3 4K solo en la variante elegida."
+          }
+        ],
+        "avoidFor": "Evita Dreamina Seedance 2.0 cuando el audio nativo importa (Veo 3.1 Fast), cuando las estéticas estilizadas o anime importan (Kling V3 4K), o cuando el brief es cinematográfico de calidad de entrega donde el techo de las alternativas justifica su prima.",
+        "comparisons": [
+          {
+            "vs": "Veo 3.1 Fast",
+            "body": "Posicionamiento diferente. Veo 3.1 Fast lleva audio nativo y movimiento cinematográfico; Dreamina Seedance 2.0 es dramáticamente más barato y la opción correcta cuando el costo domina. Apílalos — borrador en Dreamina, final en Veo."
+          },
+          {
+            "vs": "Kling V3 4K",
+            "body": "Niveles completamente diferentes. Kling V3 4K es el techo en duración, 4K y estética estilizada; Dreamina Seedance 2.0 es el predeterminado barato para todo lo demás."
+          }
+        ],
+        "verdict": "Usa Dreamina Seedance 2.0 por defecto cuando el costo domina el paso de generación de video. Apila con Veo 3.1 Fast para finales con audio y Kling V3 4K para salida hero estilizada o 4K.",
+        "faqs": [
+          {
+            "q": "¿Cuánto cuesta Dreamina Seedance 2.0 por segundo?",
+            "a": "Alrededor de $0,05 por segundo de salida 1080p con condicionamiento por imagen — el más barato de la línea curada de video."
+          },
+          {
+            "q": "¿Soporta audio?",
+            "a": "No de forma nativa en la misma pasada. Para video con audio sincronizado en una sola llamada, usa Veo 3.1 Fast."
+          },
+          {
+            "q": "¿Qué duraciones de clip y resoluciones se soportan?",
+            "a": "Clips de 4 a 15 segundos a 480p, 720p o 1080p."
+          },
+          {
+            "q": "¿Hay un nivel de calidad superior de Seedance en VM0?",
+            "a": "La familia Seedance incluye variantes Fast y Pro junto con la entrada Standard 2.0. El precio escala con el nivel; el nivel Standard es el punto óptimo de costo/calidad."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "veo-3-1-fast",
+            "reason": "Audio nativo, movimiento cinematográfico"
+          },
+          { "slug": "kling-v3-4k", "reason": "Estilizado, más largo, 4K" }
+        ],
+        "routingNotes": "Enrutado al endpoint Dreamina Seedance 2.0 de ByteDance y facturado por video-segundo generado con modificadores de resolución y condicionamiento por imagen.",
+        "vm0Notes": "Dreamina Seedance 2.0 es el predeterminado optimizado en costo en la línea curada de video en VM0. El patrón estándar es usarlo para iteración y fan-out, luego escalar la variante elegida a Veo 3.1 Fast o Kling V3 4K solo cuando el renderizado final justifica la prima."
       }
     }
   },

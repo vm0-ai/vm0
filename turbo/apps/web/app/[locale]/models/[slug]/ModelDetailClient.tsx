@@ -6,7 +6,13 @@ import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";
 import { Particles } from "../../../components/Particles";
 import { getAppUrl } from "../../../../src/lib/zero/url";
-import { MODELS, type ModelEntry, vendorIconPath } from "../data";
+import {
+  MODELS,
+  type GenerationPricingUnit,
+  type ModelEntry,
+  isReasoningModel,
+  vendorIconPath,
+} from "../data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
@@ -20,6 +26,19 @@ function formatUsd(n: number): string {
 function formatContextWindow(k: number): string {
   if (k >= 1000) return `${(k / 1000).toFixed(0)}M tokens`;
   return `${k}K tokens`;
+}
+
+function generationUnitKey(unit: GenerationPricingUnit): string {
+  switch (unit) {
+    case "image":
+      return "generationUnitImage";
+    case "megapixel":
+      return "generationUnitMegapixel";
+    case "video-second":
+      return "generationUnitVideoSecond";
+    case "audio-second":
+      return "generationUnitAudioSecond";
+  }
 }
 
 function Section({
@@ -133,11 +152,13 @@ export function ModelDetailClient({ model, related }: Props) {
     return `content.${slug}.${key}`;
   };
 
-  const heroMeta = [
-    formatContextWindow(model.contextWindowK),
-    model.modalities.join(" / "),
-    model.promptCaching ? "Prompt cache" : null,
-  ].filter(Boolean);
+  const heroMeta = isReasoningModel(model)
+    ? [
+        formatContextWindow(model.contextWindowK),
+        model.modalities.join(" / "),
+        model.promptCaching ? "Prompt cache" : null,
+      ].filter(Boolean)
+    : [model.modalities.join(" / ")];
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
@@ -305,34 +326,56 @@ export function ModelDetailClient({ model, related }: Props) {
           )}
 
           {/* Pricing */}
-          <Section
-            title={t("pricingHeading", { name: model.name })}
-            subtitle={t("pricingSubtitle")}
-          >
-            <Card>
-              <DataRow
-                label={t("labelInput")}
-                value={formatUsd(model.pricing.inputUsd)}
-              />
-              <DataRow
-                label={t("labelOutput")}
-                value={formatUsd(model.pricing.outputUsd)}
-              />
-              <DataRow
-                label={t("labelCacheRead")}
-                value={formatUsd(model.pricing.cacheReadUsd)}
-              />
-              <DataRow
-                label={t("labelCacheWrite")}
-                value={
-                  model.pricing.cacheWriteUsd === null
-                    ? t("labelNotBilled")
-                    : formatUsd(model.pricing.cacheWriteUsd)
-                }
-                last
-              />
-            </Card>
-          </Section>
+          {isReasoningModel(model) ? (
+            <Section
+              title={t("pricingHeading", { name: model.name })}
+              subtitle={t("pricingSubtitle")}
+            >
+              <Card>
+                <DataRow
+                  label={t("labelInput")}
+                  value={formatUsd(model.pricing.inputUsd)}
+                />
+                <DataRow
+                  label={t("labelOutput")}
+                  value={formatUsd(model.pricing.outputUsd)}
+                />
+                <DataRow
+                  label={t("labelCacheRead")}
+                  value={formatUsd(model.pricing.cacheReadUsd)}
+                />
+                <DataRow
+                  label={t("labelCacheWrite")}
+                  value={
+                    model.pricing.cacheWriteUsd === null
+                      ? t("labelNotBilled")
+                      : formatUsd(model.pricing.cacheWriteUsd)
+                  }
+                  last
+                />
+              </Card>
+            </Section>
+          ) : (
+            <Section
+              title={t("pricingHeading", { name: model.name })}
+              subtitle={t("generationPricingSubtitle")}
+            >
+              <Card>
+                <DataRow
+                  label={t(generationUnitKey(model.generationPricing.unit))}
+                  value={formatUsd(model.generationPricing.priceUsd)}
+                  last={!model.generationPricing.note}
+                />
+                {model.generationPricing.note && (
+                  <DataRow
+                    label={t("generationPricingDetail")}
+                    value={model.generationPricing.note}
+                    last
+                  />
+                )}
+              </Card>
+            </Section>
+          )}
 
           {/* Performance */}
           <Section
@@ -479,51 +522,66 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* Using on VM0 */}
           <Section title={t("usingOnVm0Heading", { name: model.name })}>
             <div className="flex flex-col gap-5">
-              <div>
-                <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  {t("twoWaysToAccessHeading", { name: model.name })}
-                </h3>
-                <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t("twoWaysToAccessBody", {
-                    name: model.name,
-                    byoKey: model.byoKeyLabel,
-                  })}
-                </p>
-              </div>
+              {isReasoningModel(model) && (
+                <>
+                  <div>
+                    <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                      {t("twoWaysToAccessHeading", { name: model.name })}
+                    </h3>
+                    <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                      {t("twoWaysToAccessBody", {
+                        name: model.name,
+                        byoKey: model.byoKeyLabel,
+                      })}
+                    </p>
+                  </div>
 
-              <div>
-                <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  {t("vm0RecommendationHeading")}
-                </h3>
-                <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t(
-                    model.vm0Tier === "core"
-                      ? "tierExplanationCore"
-                      : "tierExplanationCostSaving",
-                    { name: model.name },
-                  )}
-                </p>
-              </div>
+                  <div>
+                    <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                      {t("vm0RecommendationHeading")}
+                    </h3>
+                    <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                      {t(
+                        model.vm0Tier === "core"
+                          ? "tierExplanationCore"
+                          : "tierExplanationCostSaving",
+                        { name: model.name },
+                      )}
+                    </p>
+                  </div>
 
-              <div>
-                <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  {t("creditsMultiplierHeading", {
-                    multiplier: model.multiplier,
-                  })}
-                </h3>
-                <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t("creditsMultiplierBodyP1", {
-                    name: model.name,
-                    multiplier: model.multiplier,
-                  })}
-                </p>
-                <p className="mt-3 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t(getMultiplierKey(model.multiplier), {
-                    name: model.name,
-                    multiplier: model.multiplier,
-                  })}
-                </p>
-              </div>
+                  <div>
+                    <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                      {t("creditsMultiplierHeading", {
+                        multiplier: model.multiplier,
+                      })}
+                    </h3>
+                    <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                      {t("creditsMultiplierBodyP1", {
+                        name: model.name,
+                        multiplier: model.multiplier,
+                      })}
+                    </p>
+                    <p className="mt-3 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                      {t(getMultiplierKey(model.multiplier), {
+                        name: model.name,
+                        multiplier: model.multiplier,
+                      })}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {!isReasoningModel(model) && (
+                <div>
+                  <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                    {t("generationAccessHeading", { name: model.name })}
+                  </h3>
+                  <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                    {t("generationAccessBody", { name: model.name })}
+                  </p>
+                </div>
+              )}
 
               <p className="text-[14px] text-[hsl(var(--muted-foreground))]">
                 {t("availableSince", { date: model.releasedToVm0 })}

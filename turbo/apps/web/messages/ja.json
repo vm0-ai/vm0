@@ -3862,10 +3862,10 @@
     "back": "← 戻る"
   },
   "models": {
-    "listingPageTitle": "Models — Claudeなどのエージェントを実行",
-    "listingPageDescription": "VM0エージェントで利用可能なすべてのAIモデル — Claude Opus 4.7、Sonnet 4.6、Haiku 4.5など。各モデルの概要とVM0での最適な用途。",
+    "listingPageTitle": "モデル — VM0 の推論・画像・動画モデル",
+    "listingPageDescription": "VM0 エージェントで利用可能なすべての AI モデル — Anthropic、OpenAI、DeepSeek、Moonshot などの推論モデルに加え、画像・動画生成モデルも。各モデルの概要と VM0 での最適な用途。",
     "jsonLdListName": "VM0で利用可能なAIモデル",
-    "jsonLdListDescription": "VM0エージェントで利用可能なすべてのAIモデル — Claudeなど。",
+    "jsonLdListDescription": "VM0 エージェントで利用可能なすべての AI モデル — 推論・画像・動画。",
     "breadcrumbHome": "ホーム",
     "breadcrumbModels": "Models",
     "notFound": "見つかりません",
@@ -3873,9 +3873,9 @@
     "heroDescription": "エージェントが利用できるすべてのモデル。各モデルの得意分野と選択のタイミング。",
     "filterAriaLabel": "モデルを絞り込む",
     "filterAll": "すべて",
-    "filterRecommended": "推奨",
-    "filterMultimodal": "マルチモーダル",
-    "filterCostSaving": "コスト削減",
+    "filterReasoning": "推論",
+    "filterImage": "画像",
+    "filterVideo": "動画",
     "readMoreAbout": "{name}の詳細を見る",
     "backToAllModels": "すべてのモデル",
     "useModelButton": "VM0で{name}を使う",
@@ -3914,6 +3914,14 @@
     "tierExplanationCore": "VM0は{name}をコアエージェントモデルとして位置付けており、Claude Opus 4.7、Claude Opus 4.6、Claude Sonnet 4.6と並んで、エージェント実行の実際の成果を左右するステップに推奨されます。これらは、オーケストレーター役、コードを扱うエージェント、誤った回答のコストが高いステップに選ぶモデルです。",
     "tierExplanationCostSaving": "VM0は{name}をコアエージェントモデルではなく、コスト削減オプションとして位置付けています。一括分類、プレフィルター、レイテンシが重要な短い返信、固定のレガシーエージェントなど、非コア作業の単価最適化に使用し、実行を左右するステップにはClaude Opus 4.7、Claude Opus 4.6、またはClaude Sonnet 4.6を維持します。",
     "availableSince": "VM0で{date}から利用可能。",
+    "generationPricingSubtitle": "生成単位ごとのベンダー定価。",
+    "generationPricingDetail": "詳細",
+    "generationUnitImage": "生成画像 1 枚あたり",
+    "generationUnitMegapixel": "出力メガピクセルあたり",
+    "generationUnitVideoSecond": "動画 1 秒あたり",
+    "generationUnitAudioSecond": "音声 1 秒あたり",
+    "generationAccessHeading": "VM0 で {name} を使う",
+    "generationAccessBody": "VM0 のエージェントはエージェント実行の一部として {name} を呼び出すことができ、VM0 クレジットで請求されます。上記の定価はアップストリーム・プロバイダーが課金する金額で、VM0 は標準のクレジット換算で透過的に転送します。",
     "content": {
       "claude-opus-4-7": {
         "name": "Claude Opus 4.7",
@@ -4283,6 +4291,165 @@
         "routingNotes": "Routed directly to Anthropic's Messages API. Available on VM0 Managed and as the default model on the Anthropic API-key and Claude Code OAuth providers.",
         "vm0Notes": "Opus 4.6 carries the highest vendor list price per token of any Built-in model, so prompt caching matters here more than anywhere else and is on by default. It's still the default model on the Anthropic API-key and Claude Code OAuth providers, which means it's likely the model your team already has muscle memory for, even though Opus 4.7 is the recommended choice for new work."
       },
+      "gpt-5-5": {
+        "name": "GPT-5.5",
+        "pageTitle": "GPT-5.5 on VM0. OpenAIのフラッグシップ推論モデル",
+        "tagline": "OpenAIのGPT-5ファミリーのフラッグシップ。OpenAIティアにおけるエージェントコーディング、深い推論、コンピュータ使用ループに最強の選択肢。",
+        "cardIntro": "OpenAIのフラッグシップ推論モデル。トップクラスのコーディングとツール使用、VM0上のCodexフレームワーク経由でルーティング。",
+        "metaTitle": "GPT-5.5: ベンチマーク、価格、性能",
+        "metaDescription": "GPT-5.5のレビュー。OpenAIのフラッグシップGPT-5推論モデル。400Kコンテキスト、マルチモーダルビジョン、$5/$30ベンダー価格、SWE-bench Verified、AIME 2025、GPQA Diamondでベンチマークリード。",
+        "summary": "GPT-5.5は、深い推論と信頼性の高いツール使用の両方が必要な作業に手を伸ばすモデルです。マルチステップのエージェントループのオーケストレーション、一発で着地しなければならないコード編集、多数のGUIアクションにまたがるコンピュータ使用ワークフローに対応します。ベンダーベンチマーク（SWE-bench Verified、AIME 2025、GPQA Diamond）がGPT-5.4からの向上を具体的な数字で示しています。\n\nベンダー定価は$5/$30/1Mトークン、キャッシュ入力は$0.50/1M。VM0のBuilt-inカタログで最も高額な×2クレジットのモデルであるため、コスト効率の良いパターンは、GPT-5.4またはClaude Sonnet 4.6をどこでもデフォルトに保ち、最も難しいステップのみGPT-5.5にルーティングすることです。",
+        "releaseDate": "2026年4月（GPT-5.4の後継）",
+        "familyPosition": "GPT-5ファミリーの最上位ティア。OpenAIのエージェントコーディングと推論のフラッグシップ。",
+        "background": [
+          "GPT-5.5はOpenAIのGPT-5世代のフラッグシップで、2026年4月にGPT-5.4からの推奨アップグレードとしてリリースされました。OpenAIは、表面APIのリフレッシュではなく、エージェントツール使用とコンピュータ使用タスクにおける段階的な改善として位置付けています。GPT-5で導入された400Kトークンコンテキストウィンドウとreasoning_effortパラメーターは変更なしで引き継がれているため、既存のCodexエージェントは書き換えなしで導入できます。",
+          "GPT-5.4（同ファミリーのワークホース）と比較して、GPT-5.5はトークンあたりにより多くの計算を推論に投資します。その行動的な見返りは3点に現れます：マルチファイルリファクタリングでの初回コードパッチの強化、長いエージェントループでのツール呼び出しの誤ルーティングの大幅な減少、大学院レベルの科学的推論（GPQA Diamond）と競技数学（AIME 2025）での顕著な向上です。トレードオフはGPT-5バリアント中で最高額の定価（$5/$30/1Mトークン）とVM0上の×2クレジット乗数で、これがOpenAI自身がGPT-5.5をどこでもデフォルトではなくプランナーまたはエスカレーションティアとして位置付けている理由です。",
+          "独立系リーダーボード（Artificial Analysis、Vellum）はGPT-5.4に対する相対的な順位を裏付け、GPT-5.5を多くのエージェントコーディングタスクでClaude Opus 4.7の数ポイント以内に位置付けています。絶対値は週ごとに変動し、OpenAI自身がフロンティアモデル全体でSWE-bench Verifiedのトレーニングデータ汚染を指摘しています。公開スコアを権威ではなく方向性として捉え、構造化された行動の違い（ツール呼び出しの正確性、コンピュータ使用の信頼性、初回パッチ品質）こそがより持続的なシグナルです。"
+        ],
+        "architecture": "GPT-5.5はGPT-5.4から400Kトークンコンテキストウィンドウを継承し、ウィンドウ全体が標準入力価格で課金されます。`reasoning_effort`パラメーターを4レベル（minimal、low、medium、high）でサポートし、プロンプトキャッシュではキャッシュ入力が入力レートの10分の1で課金され、codex CLIがデフォルトで使用するResponses APIサーフェスを使用します。ツール使用、構造化出力、コンピュータ使用は5.4から変更ありません。入力はテキスト、ビジョン、コードにわたってマルチモーダル。モデルにはネイティブな画像生成はありません（それにはImages APIを使用）。",
+        "specs": [
+          { "label": "ファミリー", "value": "GPT-5世代" },
+          { "label": "モダリティ", "value": "テキスト、ビジョン、コード" },
+          { "label": "言語", "value": "英語中心、多言語対応" },
+          { "label": "プロンプトキャッシュ", "value": "サポート（OpenAI）" },
+          { "label": "コンテキストウィンドウ", "value": "400Kトークン" },
+          { "label": "最大出力", "value": "最大128Kトークン" },
+          {
+            "label": "推論努力レベル",
+            "value": "Minimal / Low / Medium / High"
+          },
+          { "label": "ベンダー定価", "value": "入力$5 / 出力$30 /1M" }
+        ],
+        "benchmarksNote": "OpenAIのGPT-5.5リリース資料からのベンダー報告スコア、公開されているGPT-5.4の数字に対するデルタを示しています。独立レビューは、エージェントコーディングタスクで5.5をClaude Opus 4.7の数ポイント以内に位置付けています。絶対パーセンテージは方向性として捉えてください。OpenAIは全フロンティアモデルでSWE-bench Verifiedのトレーニングデータ汚染を指摘しています。",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "~82%",
+            "note": "ベンダー報告。5.4の74.9%から向上"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~69%",
+            "note": "ベンダー報告のツール使用"
+          },
+          {
+            "name": "AIME 2025（ツールなし）",
+            "score": "~96%",
+            "note": "ベンダー報告の競技数学"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~89%",
+            "note": "ベンダー報告の大学院科学"
+          },
+          {
+            "name": "OSWorld（コンピュータ使用）",
+            "score": "~74%",
+            "note": "ベンダー報告"
+          },
+          {
+            "name": "MMMU（マルチモーダル）",
+            "score": "GPT-5ファミリーをリード",
+            "note": "ベンダー報告"
+          },
+          {
+            "name": "速度",
+            "score": "~70トークン/秒",
+            "note": "Artificial Analysis、中努力"
+          }
+        ],
+        "performance": [
+          {
+            "title": "ツールルーティング",
+            "body": "GPT-5ファミリーで最も低いツール呼び出しの誤ルーティング率。5.4との差は、条件付きツール選択、深くネストされた引数、長い推論の後に発行されるツール呼び出しなど、難しいエッジケースで広がります。"
+          },
+          {
+            "title": "初回コード編集",
+            "body": "GPT-5ファミリーで最強のパッチ品質。エージェントがコンパイルとテストを通り続ける必要があるコードを修正する場合、特にパッチが複数ファイルにまたがる場合の正しい選択肢です。ベンダー報告のSWE-bench Verifiedがこれを直接反映しています。"
+          },
+          {
+            "title": "コンピュータ使用",
+            "body": "マルチステップGUIシーケンスにおいて5.4よりも大幅に信頼性が高く、OSWorldのデルタが捉えているのはこれです。エージェントがブラウザやデスクトップアプリを数十ステップにわたって駆動し、途中での脱線コストが高い場合に手を伸ばしてください。"
+          },
+          {
+            "title": "速度",
+            "body": "5.4より遅く、5.4 Miniよりも顕著に遅い。Artificial Analysisによれば中努力で約70トークン/秒。実際に追加の推論深度を必要とするステップのために予約し、より軽いティアを並列で実行してください。"
+          },
+          {
+            "title": "ハルシネーション挙動",
+            "body": "GPT-5.5はGPT-5世代からのOpenAIのより厳格なキャリブレーションを引き継ぎ、作話するよりも不確実性を認める傾向があります。これが、DeepSeek V4 Proのようなより安価な代替がベンチマークで同等になった現在でも、プロダクションチームが高リスクの推論にプレミアムを払い続ける理由です。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "マルチツールプランを実行するオーケストレーター",
+            "body": "GPT-5.5を、顧客のリクエストを10ステップに分割し、各ステップをGPT-5.4または5.4 Miniティアのサブエージェントにディスパッチし、結果を再びつなぎ合わせるプランナーとして使用してください。プランナーレイヤーのみ5.5を実行する（その他はすべてより安価なティア）と、5.5をエンドツーエンドで実行するよりも一部のコストで済み、ほとんどの品質が保持されます。"
+          },
+          {
+            "title": "CI実行を無駄にしない初回コード編集",
+            "body": "GPT-5.5に、50ファイルのコードベースをあるORMから別のORMに移行する、絡まったモジュールをリファクタリングする、またはリポジトリ全体にセキュリティ修正を適用するよう依頼してください。パッチは他のどのファミリーモデルよりも初回でクリーンに適用されることが多く、それこそがあなたのCI請求書に反映されます。"
+          },
+          {
+            "title": "ワークフローを完了しなければならないコンピュータ使用エージェント",
+            "body": "エージェントがマルチステップ予約フロー、デスクトップアプリ、レガシー管理UIをブラウザで駆動している場合、5.5のより強力なOSWorldスコアが、途中での脱線の減少と人間による引き継ぎの減少に翻訳されます。長いセッションを再起動する必要がなくなった最初の一回でプレミアムは元が取れます。"
+          },
+          {
+            "title": "難しい数学または難しい科学のリサーチステップ",
+            "body": "競技グレードの数学問題セットや大学院物理学の導出を投げ込むと、5.5は5.4で見られる1つずれのミスなしで作業を進めます。AIME 2025とGPQA Diamondがまさにこの種の挙動を捉えています。"
+          }
+        ],
+        "avoidFor": "GPT-5.4が半分のクレジットコストで同じ品質バーに達する高ボリュームのルーティン作業、GPT-5.4 Miniがはるかに高速なレイテンシ感応型チャット返信、DeepSeek V4 Flashがベンダーレベルで約35倍安価な大量分類または抽出ジョブではGPT-5.5をスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "GPT-5.4",
+            "body": "GPT-5.4はGPT-5ファミリーのワークホースデフォルトであり、ほとんどのエージェントに対する正しい選択です。GPT-5.5への昇格は、5.4が難しい推論、長いエージェントループ、初回コード編集で目に見えて失敗する場合のみ、通常は5.4または5.4 Miniティアのサブエージェントに下方委任するオーケストレーターとして行ってください。"
+          },
+          {
+            "vs": "Claude Opus 4.7",
+            "body": "異なるファミリーで同じ役割：高リスクオーケストレーター、より安価なティアが失敗したときにエスカレートするモデル。Opus 4.7は1MトークンコンテキストウィンドウとAnthropicの安全性プロファイルを持ち、GPT-5.5はより強力なコンピュータ使用スコアを持ち、既にCodexフレームワークを使用しているチームの自然な選択です。既存のエージェントが対象とするフレームワークとエコシステムで選択してください。"
+          },
+          {
+            "vs": "Gemini 3 Pro",
+            "body": "Gemini 3 Proは生の長文コンテキスト推論（2Mトークンウィンドウ）と一部のマルチモーダルベンチマークでリードします。GPT-5.5はエージェントコーディング（SWE-bench Verified、Terminal-Bench）とコンピュータ使用でリードします。エージェントがコードを編集したりUIを駆動したりするときはGPT-5.5を選び、ワークロードが重いドキュメントまたは動画理解の場合はGemini 3 Proを選んでください。"
+          }
+        ],
+        "verdict": "GPT-5.5はOpenAI側のエスカレーションティアです。GPT-5.4をデフォルトにし、5.4が目に見えて失敗する特定のステップにのみ5.5に昇格してください。",
+        "faqs": [
+          {
+            "q": "GPT-5.5のコンテキストウィンドウは？",
+            "a": "400,000トークン、レスポンスあたり最大128Kトークンの出力。ウィンドウ全体が標準レートで課金されます。"
+          },
+          {
+            "q": "GPT-5.5は画像を処理できますか？",
+            "a": "はい。GPT-5.5はマルチモーダルです。テキストとコードと並んで画像入力を受け付けるため、スクリーンショット駆動およびドキュメントビジョンエージェントがネイティブに動作します。画像生成にはOpenAI Images APIを使用してください。"
+          },
+          {
+            "q": "GPT-5.5とGPT-5.4のどちらを選ぶべき？",
+            "a": "（a）エージェントがプランナー/オーケストレーターで意思決定が連鎖する場合、（b）実行が十分に長く5.4がツール呼び出しの誤ルーティングを始める場合、または（c）出力が初回でクリーンに適用される必要がある場合（コード編集、構造化ペイロード、コンピュータ使用ワークフロー）。"
+          },
+          {
+            "q": "GPT-5.5はプロンプトキャッシュをサポートしていますか？",
+            "a": "はい。キャッシュ入力は$0.50/1Mトークン — キャッシュ部分で10倍の割引。システムプロンプトまたはツールスキーマが呼び出し間で安定している場合に使う価値があります。"
+          },
+          {
+            "q": "GPT-5.5はVM0上でどのフレームワークを使用しますか？",
+            "a": "Codex。VM0はGPT-5.5をCodexフレームワークのResponses APIサーフェス経由でルーティングし、これはcodex CLIがデフォルトで使用するものです。Claude Codeフレームワークエージェントは、VM0上でGPT-5モデルと互換性がありません。"
+          }
+        ],
+        "alternatives": [
+          { "slug": "gpt-5-4", "reason": "半分のクレジット、同じファミリー" },
+          {
+            "slug": "claude-opus-4-7",
+            "reason": "Claude側の同等フラッグシップ"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "×1クレジットでのワークホースデフォルト"
+          }
+        ],
+        "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Exposed four ways: through the VM0 Managed credit pool, through a direct OpenAI API key, through a ChatGPT (Codex) OAuth login, and through OpenRouter / Vercel AI Gateway in their Codex variants.",
+        "vm0Notes": "GPT-5.5 sits at the ×2 credit multiplier — the highest in the Built-in catalogue. Prompt caching is enabled by default through VM0, which substantially cuts the cost of repeated system prompts on agents that issue many turns from the same prefix. The standard pattern is to keep GPT-5.4 or Claude Sonnet 4.6 running everywhere and escalate only the steps that genuinely need 5.5's reasoning depth."
+      },
       "claude-sonnet-4-6": {
         "name": "Claude Sonnet 4.6",
         "pageTitle": "Claude Sonnet 4.6 on VM0. The default agent model",
@@ -4437,6 +4604,159 @@
         ],
         "routingNotes": "Routed directly to Anthropic's Messages API. Default model on VM0 Managed.",
         "vm0Notes": "Sonnet 4.6 is the credit baseline (×1) that every other Built-in model's multiplier is normalised against, which is the main reason it stays the first choice for new agents on VM0; escalate to Opus only when Sonnet visibly underperforms on a specific task. Native prompt caching pairs well with VM0's stable system prompts and tool definitions, and keeps the per-turn cost of long-running agents predictable."
+      },
+      "gpt-5-4": {
+        "name": "GPT-5.4",
+        "pageTitle": "GPT-5.4 on VM0. OpenAIのワークホース",
+        "tagline": "OpenAIのGPT-5ファミリーのワークホース。Claude Sonnet 4.6と並んで×1クレジット基準に位置し、ほとんどのCodexフレームワークエージェントに対する正しいデフォルトです。",
+        "cardIntro": "OpenAIのワークホースモデル。×1クレジット、マルチモーダルビジョン、強力なコードとツール使用 — ほとんどのエージェントに対するデフォルトGPT-5。",
+        "metaTitle": "GPT-5.4 on VM0: ベンチマーク、価格、比較",
+        "metaDescription": "VM0上のGPT-5.4レビュー。OpenAIのワークホースGPT-5モデル、400Kコンテキスト、マルチモーダルビジョン、$2.5/$15価格、VM0 Managedで×1クレジット。仕様とClaudeとの比較。",
+        "summary": "GPT-5.4はOpenAIのGPT-5ファミリーのワークホース — デフォルトでどこでも実行し続けるモデルです。ベンダー報告のSWE-bench Verifiedは74.9%で、コーディングではClaude Sonnet 4.6と同じ範囲に位置し、そのツール使用の正確性は、ほとんどのプロダクションCodexフレームワークエージェントが調整される対象です。\n\nベンダー定価は$2.5/$15/1Mトークン、キャッシュ入力は$0.25/1M。VM0 Managedでは×1クレジット — Claude Sonnet 4.6と同じ基準 — に位置し、エージェントが既にCodexフレームワーク上にあり、バランスの取れたコスト/品質デフォルトが欲しい場合の自然な選択です。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "GPT-5ファミリーのワークホース。ほとんどのCodexフレームワークエージェントに対する推奨デフォルト。",
+        "background": [
+          "GPT-5.4はOpenAIのGPT-5世代のワークホースで、2026年4月にフラッグシップGPT-5.5とコスト最適化されたGPT-5.4 Miniと一緒にリリースされました。OpenAIは、Codexフレームワーク上のエージェントに対するどこでもデフォルトとして位置付けています — 特定のステップが5.5へのエスカレーションを正当化しない限り、すべてのステップで実行し続けるモデルです。",
+          "アーキテクチャ的にGPT-5.4は、GPT-5ファミリーの残りと400Kトークンコンテキストウィンドウ、`reasoning_effort`パラメーター、プロンプトキャッシュ、Responses APIサーフェスを共有しています。GPT-5.5との分岐は、トークンあたりの計算投資です：5.4はより高速かつ安価に実行され、5.5は推論深度により多く投資します。GPT-5.4 Miniとの分岐はその逆 — 5.4はエージェント実行を実際に決定するステップに対してより多くの品質を運びます。",
+          "VM0上では×1クレジット乗数に位置し、Claude Sonnet 4.6と同じ基準なので、AnthropicとOpenAIのデフォルト間の横並びのコスト比較が簡単になります。両者の選択は通常、フレームワーク（Codex対Claude Code）、エコシステム（既存の統合、ツール定義）、およびチームがどちらのモデルにより多くの行動的筋肉記憶を持っているかに帰着します。"
+        ],
+        "architecture": "GPT-5.4はGPT-5ファミリーの残りと同じアーキテクチャを使用します：400Kトークンコンテキストウィンドウ、4レベル（minimal、low、medium、high）の`reasoning_effort`パラメーター、キャッシュ入力が入力レートの10分の1で課金されるプロンプトキャッシュ、codex CLIがデフォルトで使用するResponses APIサーフェス。ツール使用、構造化出力、コンピュータ使用がサポートされています。入力はテキスト、ビジョン、コードにわたってマルチモーダル。",
+        "specs": [
+          { "label": "ファミリー", "value": "GPT-5世代" },
+          { "label": "モダリティ", "value": "テキスト、ビジョン、コード" },
+          { "label": "言語", "value": "英語中心、多言語対応" },
+          { "label": "プロンプトキャッシュ", "value": "サポート（OpenAI）" },
+          { "label": "コンテキストウィンドウ", "value": "400Kトークン" },
+          { "label": "最大出力", "value": "最大128Kトークン" },
+          {
+            "label": "推論努力レベル",
+            "value": "Minimal / Low / Medium / High"
+          },
+          { "label": "ベンダー定価", "value": "入力$2.5 / 出力$15 /1M" }
+        ],
+        "benchmarksNote": "OpenAIのGPT-5リリース資料からのベンダー報告スコア、前世代のOpenAIに対するデルタを示しています。独立レビューはGPT-5.4をClaude Sonnet 4.6と同じコーディング品質帯に位置付けています。絶対パーセンテージは方向性として捉えてください。",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "74.9%",
+            "note": "ベンダー報告"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~58%",
+            "note": "ベンダー報告のツール使用"
+          },
+          {
+            "name": "AIME 2025（ツールなし）",
+            "score": "~92%",
+            "note": "ベンダー報告の競技数学"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~85%",
+            "note": "ベンダー報告の大学院科学"
+          },
+          {
+            "name": "OSWorld（コンピュータ使用）",
+            "score": "~62%",
+            "note": "ベンダー報告"
+          },
+          {
+            "name": "速度",
+            "score": "~110トークン/秒",
+            "note": "Artificial Analysis、中努力"
+          }
+        ],
+        "performance": [
+          {
+            "title": "ツールルーティング",
+            "body": "標準的なCodexフレームワークのツールカタログ全体で確実な基準精度。5.5が先んじるのは難しいエッジケース（条件付きツール選択、深くネストされた引数）であり、ルーチンケースでは5.4は大幅に低いレイテンシで正しくルーティングします。"
+          },
+          {
+            "title": "コード編集",
+            "body": "標準的なリファクタリングとバグ修正ワークロードにおいて、Claude Sonnet 4.6と同等のパッチ品質。5.5が先んじ始めるのは、パッチが初回でクリーンに適用される必要があるマルチファイル変更です。"
+          },
+          {
+            "title": "速度",
+            "body": "5.5よりも大幅に高速 — Artificial Analysisによれば中努力で約110トークン/秒。これが、ユーザーに見えるレイテンシが重要なインタラクティブチャット返信と短いエージェントループに対して5.4がデフォルトのままである理由の一部です。"
+          },
+          {
+            "title": "コスト効率",
+            "body": "Sonnet 4.6品質帯の出力挙動で×1クレジット。既にCodexフレームワーク上にあるチームにとって、これがコスト/品質のスイートスポット — 目に見えて必要なステップのみ5.5に昇格してください。"
+          },
+          {
+            "title": "ハルシネーション挙動",
+            "body": "OpenAIがGPT-5世代で出荷したキャリブレーション改善を継承。特にトレーニング範囲外の質問について、GPT-4シリーズよりも自信のある誤答に陥りにくくなっています。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "Codexフレームワーク上のデフォルトエージェントステップ",
+            "body": "エージェントが既にcodex CLIまたは任意のCodexフレームワーク統合上に構築されている場合、GPT-5.4は自然などこでもデフォルトです。×1クレジット、インタラクティブな使用に十分な速度、ほとんどのエージェント実行を支配するルーチンツール呼び出しに十分な正確性。"
+          },
+          {
+            "title": "ビジョン付きインタラクティブチャット",
+            "body": "スクリーンショット駆動UI、ドキュメントQ&A、画像アノテーション — GPT-5.4は3つすべてをワークホース速度でマルチモーダルに処理します。×1乗数によりターンあたりのコストがSonnet 4.6と同じ帯に保たれるため、同じワークロードで両者をA/Bテストできます。"
+          },
+          {
+            "title": "Claude Sonnet 4.6に対するコスト/品質A/B",
+            "body": "両モデルともVM0 Managedで×1クレジットに位置し、コストで直接比較可能です。同じエージェントを両方で1週間実行し、特定のワークロードでの挙動で選んでください — どちらも普遍的に優れているわけではなく、正しいデフォルトはツールカタログとプロンプトスタイルに依存します。"
+          }
+        ],
+        "avoidFor": "5.5が顕著にリードする最も難しい推論、コンピュータ使用、マルチファイルコード編集ステップ、および5.4 Miniがベンダーレベルで4倍安価な大量分類または事前フィルタ作業ではGPT-5.4をスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "GPT-5.5",
+            "body": "同じファミリー、異なるポジショニング。5.5（×2）は最強の推論、コンピュータ使用、初回コード品質を提供。5.4（×1）は同じコンテキストウィンドウと機能セットを半分のクレジットコストと顕著に高い速度で提供。5.4をデフォルトにし、目に見えて必要なステップのみ5.5にエスカレートしてください。"
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "各エコシステムに1つずつの×1基準。Sonnet 4.6はClaude Codeフレームワーク上で実行、GPT-5.4はCodex上で実行。既存のエージェントとツール定義が対象とするフレームワークで選んでください。生の出力品質では両者は十分に近く、ワークロードでA/Bテストすることが正しい判断です。"
+          },
+          {
+            "vs": "GPT-5.4 Mini",
+            "body": "同じファミリー、異なるポジショニング。5.4（×1）はトークンあたりにより多くの推論品質を運び、5.4 Mini（×0.3）はバルクと事前フィルタ作業のためのはるかに安価なオプションを提供します。ファンアウト分類には5.4 Mini、エージェント実行を決定するステップには5.4を使用してください。"
+          }
+        ],
+        "verdict": "GPT-5.4はVM0上のCodexフレームワークエージェントに対するどこでもデフォルト。難しい推論には5.5にエスカレート、バルク事前フィルタリングには5.4 Miniに降格してください。",
+        "faqs": [
+          {
+            "q": "GPT-5.4のコンテキストウィンドウは？",
+            "a": "400,000トークン、レスポンスあたり最大128Kトークンの出力。ウィンドウ全体が標準レートで課金されます。"
+          },
+          {
+            "q": "GPT-5.4は画像を処理できますか？",
+            "a": "はい。GPT-5.4はマルチモーダルです。テキストとコードと並んで画像入力をネイティブに受け付けます。"
+          },
+          {
+            "q": "GPT-5.4とClaude Sonnet 4.6のどちらを選ぶべき？",
+            "a": "エージェントが既にCodexフレームワーク上に構築されている場合、またはOpenAIエコシステム（ツールカタログ、構造化出力、Responses API）が必要な場合。両者とも×1クレジットなのでコストは同一で、選択はフレームワークと挙動の適合性に帰着します。"
+          },
+          {
+            "q": "GPT-5.4はプロンプトキャッシュをサポートしていますか？",
+            "a": "はい。キャッシュ入力は$0.25/1Mトークン — キャッシュ部分で10倍の割引。"
+          },
+          {
+            "q": "GPT-5.4はVM0上でどのフレームワークを使用しますか？",
+            "a": "Codex。VM0はすべてのGPT-5モデルをCodexフレームワークのResponses APIサーフェス経由でルーティングします。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-5-5",
+            "reason": "最も難しいステップのためのエスカレーションティア"
+          },
+          {
+            "slug": "gpt-5-4-mini",
+            "reason": "バルク作業のためのより安価なオプション"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Claude Codeフレームワーク上の×1同等"
+          }
+        ],
+        "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
+        "vm0Notes": "GPT-5.4 sits at the ×1 baseline, same as Claude Sonnet 4.6, which makes the two cost-equivalent on VM0 Managed and easy to A/B against each other. Prompt caching is enabled by default. Pair with GPT-5.4 Mini for high-volume pre-filter work, and escalate to GPT-5.5 only for the steps that genuinely need the extra reasoning depth."
       },
       "glm-5-1": {
         "name": "GLM-5.1",
@@ -4731,6 +5051,154 @@
         ],
         "routingNotes": "Routed directly to Anthropic's Messages API. Available on VM0 Managed and the Anthropic / Claude Code OAuth providers.",
         "vm0Notes": "Haiku 4.5 carries the lowest Claude multiplier (×0.3) and is the right pick for high-volume routing workloads, with prompt caching keeping the cost of repeated short prompts down. It doesn't carry Sonnet's multi-step agent quality, so design any Haiku-based agent to keep loops short and the tool surface narrow."
+      },
+      "gpt-5-4-mini": {
+        "name": "GPT-5.4 Mini",
+        "pageTitle": "GPT-5.4 Mini on VM0. コスト削減型GPT-5",
+        "tagline": "OpenAIのGPT-5ファミリーのコスト最適化メンバー。×0.3クレジット、マルチモーダルビジョン、大量のルーティング、分類、事前フィルタ作業に十分な速度。",
+        "cardIntro": "OpenAIのコスト削減型GPT-5。×0.3クレジット、高速かつマルチモーダル — Codexフレームワーク上のバルク事前フィルタ作業に対する正しい選択。",
+        "metaTitle": "GPT-5.4 Mini on VM0: ベンチマーク、価格、比較",
+        "metaDescription": "VM0上のGPT-5.4 Miniレビュー。コスト削減型OpenAI GPT-5モデル、$0.75/$4.5ベンダー価格、×0.3クレジット、400Kコンテキスト、マルチモーダルビジョン。仕様、挙動、Claude Haiku 4.5との比較。",
+        "summary": "GPT-5.4 MiniはOpenAIのGPT-5ファミリーのコスト削減メンバー — ピーク推論品質よりもユニットコストが重要な場合に手を伸ばすモデルです。ファミリーの残りと同じ400Kコンテキストウィンドウとマルチモーダル入力を維持しますが、トークンあたりの計算を削減しており、それがより低い価格（$0.75/$4.5/1M）と顕著に高い速度に翻訳されます。\n\nVM0では×0.3クレジット — Claude Haiku 4.5やKimi K2.6と同じ乗数 — に位置し、バルク分類、ファンアウトルーティング、事前フィルタ、およびGPT-5.4のコストの3分の1に落とすことが決定要因となるエージェントステップに対する自然なOpenAI側の選択です。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "GPT-5ファミリーのコスト削減バリアント。Claude Haiku 4.5のOpenAI側の同等。",
+        "background": [
+          "GPT-5.4 MiniはOpenAIのGPT-5世代のコスト最適化メンバーで、2026年4月にGPT-5.5とGPT-5.4と一緒にリリースされました。OpenAIは、高スループットティアとして位置付けています — より大きな5.4や5.5がルーチンな決定では無駄になる、分類、ルーティング、事前フィルタステップで実行し続けるモデルです。",
+          "アーキテクチャ的にはGPT-5ファミリーの400Kトークンコンテキストウィンドウ、`reasoning_effort`パラメーター、プロンプトキャッシュ、codex CLIがデフォルトで使用するResponses APIサーフェスを共有しています。5.4とのトレードオフは推論深度です：Miniは標準的なツール呼び出し、短い要約、構造化出力ワークロードを十分に処理しますが、5.4がまだ持ちこたえるより難しいマルチステッププランでドリフトし始めます。同じ価格帯の競合とのトレードオフはエコシステム — 既にCodex上にいる場合、OpenAIサーフェス内に留まることでツール定義と構造化出力スキーマが一貫したまま保たれます。",
+          "VM0上ではMiniは×0.3クレジット乗数に位置し、Claude Haiku 4.5、Kimi K2.6、DeepSeek V4 Proと同じです。コスト削減ティア内では、選択は主にフレームワークと特定のワークロードでの挙動の適合性に依存します。"
+        ],
+        "architecture": "GPT-5.4 MiniはGPT-5ファミリーの残りと同じアーキテクチャを使用します：400Kトークンコンテキストウィンドウ、4レベルの`reasoning_effort`パラメーター、キャッシュ入力が入力レートの10分の1で課金されるプロンプトキャッシュ、Responses APIサーフェス。ツール使用、構造化出力、マルチモーダルビジョン入力がサポートされています。モデルはより小さく高速な兄弟 — トークンあたり少ないパラメーター、ドルあたりより多くのスループット。",
+        "specs": [
+          { "label": "ファミリー", "value": "GPT-5世代" },
+          { "label": "モダリティ", "value": "テキスト、ビジョン、コード" },
+          { "label": "言語", "value": "英語中心、多言語対応" },
+          { "label": "プロンプトキャッシュ", "value": "サポート（OpenAI）" },
+          { "label": "コンテキストウィンドウ", "value": "400Kトークン" },
+          { "label": "最大出力", "value": "最大128Kトークン" },
+          {
+            "label": "推論努力レベル",
+            "value": "Minimal / Low / Medium / High"
+          },
+          { "label": "ベンダー定価", "value": "入力$0.75 / 出力$4.5 /1M" }
+        ],
+        "benchmarksNote": "OpenAIのGPT-5 Miniリリース資料からのベンダー報告スコア。独立レビューはほとんどのエージェントベンチマークで5.4 MiniをClaude Haiku 4.5と同じコスト削減帯に位置付けています。絶対パーセンテージは方向性として捉えてください。",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "~60%",
+            "note": "ベンダー報告"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~42%",
+            "note": "ベンダー報告のツール使用"
+          },
+          {
+            "name": "AIME 2025（ツールなし）",
+            "score": "~84%",
+            "note": "ベンダー報告の競技数学"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~74%",
+            "note": "ベンダー報告の大学院科学"
+          },
+          {
+            "name": "速度",
+            "score": "~165トークン/秒",
+            "note": "Artificial Analysis、中努力"
+          }
+        ],
+        "performance": [
+          {
+            "title": "速度",
+            "body": "GPT-5ファミリーで最速のモデル — Artificial Analysisによれば中努力で約165トークン/秒。これが、ユーザーに見えるレイテンシが支配的なインタラクティブチャット返信と短いファンアウトツール呼び出しに対して実行可能にする性質です。"
+          },
+          {
+            "title": "ルーチンツール呼び出し",
+            "body": "標準的なCodexフレームワークのツールカタログで正確。5.4が先んじるのは難しいエッジケース（条件付きツール選択、深くネストされた引数）。ルーチンケースではMiniはコストの3分の1でツールルーティングをクリーンに処理します。"
+          },
+          {
+            "title": "バルク分類と事前フィルタ",
+            "body": "GPT-5ファミリーでファンアウト作業に対する最強のコスト/品質ポジション。バルクPRトリアージ、サポートチケット分類、ドキュメントティア分類 — 以前は手書きの正規表現を使っていたすべてのワークロードが、今では実際のモデル呼び出しで手頃な価格になります。"
+          },
+          {
+            "title": "コスト効率",
+            "body": "マルチモーダルビジョンを含む×0.3クレジット。この価格帯では、Mini、Claude Haiku 4.5、Kimi K2.6はすべて同じ帯にあり、選択は通常フレームワークの適合性と特定のワークロードでの挙動に帰着します。"
+          },
+          {
+            "title": "エスカレートするタイミング",
+            "body": "Miniは長いマルチステッププラン、難しい推論、初回マルチファイルコード編集でドリフトします。Miniがループ全体を運ぼうとするのではなく、オーケストレーターが5.4や5.5にエスカレートするタイミングを決定するようにエージェントを設計してください。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "すべてのイベントで実行されるファンアウト分類器",
+            "body": "受信サポートチケット、PRコメント、セールスコール文字起こし、ドキュメントアップロード — Miniは各々を読み取り、正しいダウンストリームエージェントまたはレビューアにルーティングします。×0.3クレジットと165トークン/秒はイベントあたりのコストを十分に小さくし、サンプルバッチだけでなくすべてのイベントで実行することが実際に実行可能にします。"
+          },
+          {
+            "title": "高価なモデルの前の事前フィルタステップ",
+            "body": "Miniをエージェントのツール呼び出しの先頭に固定して、リクエストがエスカレートする必要があるかどうかを決定させます。ほとんどのリクエストは高速で安価な回答を得て、残りの少数のみがフルGPT-5.4または5.5のコストを支払います。これが、コスト削減ティアとコアティアをスタックすることが、実際に手頃な価格を変える場所です。"
+          },
+          {
+            "title": "インタラクティブチャット返信",
+            "body": "ユーザーに見えるレイテンシが体験を支配する短いマルチモーダルターン。Miniはストリーミングを瞬時に感じさせるほど高速に答え、マルチモーダルサポートによって会話中のスクリーンショットがそのまま動作します。"
+          }
+        ],
+        "avoidFor": "最も難しい推論、マルチステップエージェントオーケストレーション、コンピュータ使用シーケンス、初回マルチファイルコード編集ではGPT-5.4 Miniをスキップしてください — それらのタスクのルーチンバージョンには5.4にエスカレート、最も難しいものには5.5にエスカレートしてください。",
+        "comparisons": [
+          {
+            "vs": "GPT-5.4",
+            "body": "同じファミリー、異なるポジショニング。5.4 Mini（×0.3）はコストと速度で勝ち、5.4（×1）は難しいケースでの推論品質とツールルーティング精度で勝ちます。標準パターンはMiniで事前フィルタし、残りのケースを5.4にエスカレートすることです。"
+          },
+          {
+            "vs": "Claude Haiku 4.5",
+            "body": "同じ乗数（×0.3）。MiniはCodexフレームワーク上で実行、Haiku 4.5はClaude Code上で実行。両方ともマルチモーダルで、両方とも同じコスト削減スロットを対象としています。既存のエージェントとツール定義が対象とするフレームワークで選んでください。"
+          },
+          {
+            "vs": "DeepSeek V4 Flash",
+            "body": "DeepSeek V4 Flash（×0.02）はベンダーレベルで劇的に安価で、純粋なバルク単発作業に対する正しい選択です。GPT-5.4 Mini（×0.3）はより多くの推論品質を運び、OpenAIエコシステム内に留まるため、ツール定義と構造化出力スキーマが既にCodex向けに調整されている場合に重要です。"
+          }
+        ],
+        "verdict": "GPT-5.4 MiniはOpenAI側のコスト削減デフォルト。Miniで事前フィルタし、ルーチンステップにはGPT-5.4にエスカレート、最も難しい推論にのみGPT-5.5にエスカレートしてください。",
+        "faqs": [
+          {
+            "q": "GPT-5.4 Miniのコンテキストウィンドウは？",
+            "a": "400,000トークン、レスポンスあたり最大128Kトークンの出力 — GPT-5ファミリーの残りと同じ。"
+          },
+          {
+            "q": "GPT-5.4 Miniは画像を処理できますか？",
+            "a": "はい。GPT-5ファミリーの残りと同様にテキストとコードと並んで画像入力を受け付けます。"
+          },
+          {
+            "q": "GPT-5.4 MiniとClaude Haiku 4.5のどちらを選ぶべき？",
+            "a": "エージェントが既にCodexフレームワーク上に構築されている場合、またはOpenAI構造化出力/ツール呼び出しエコシステムが必要な場合。両者とも×0.3クレジットなのでコストは同一で、選択はフレームワークと挙動に帰着します。"
+          },
+          {
+            "q": "GPT-5.4 Miniはプロンプトキャッシュをサポートしていますか？",
+            "a": "はい。キャッシュ入力は$0.075/1Mトークン — キャッシュ部分で10倍の割引。"
+          },
+          {
+            "q": "GPT-5.4 MiniはVM0上でどのフレームワークを使用しますか？",
+            "a": "Codex。VM0はすべてのGPT-5モデルをCodexフレームワークのResponses APIサーフェス経由でルーティングします。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-5-4",
+            "reason": "より難しいステップへのステップアップ、同じファミリー"
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "reason": "Claude Codeフレームワーク上の×0.3同等"
+          },
+          {
+            "slug": "deepseek-v4-flash",
+            "reason": "純粋なバルク作業に劇的に安価"
+          }
+        ],
+        "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
+        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Claude Haiku 4.5, Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
       },
       "kimi-k2-6": {
         "name": "Kimi K2.6",
@@ -5496,6 +5964,735 @@
         ],
         "routingNotes": "DeepSeekのAnthropic互換エンドポイント`api.deepseek.com`経由でルーティング。DeepSeekプロバイダーのデフォルトモデル。VM0 Managedでも利用可能。",
         "vm0Notes": "V4 FlashはBuilt-inモデル中最低のクレジットマルチプライヤー（×0.02）を持ち、Sonnet 4.6の約50分の1です。キャッシュ読み取りは課金、キャッシュ書き込みは無料。VM0はDeepSeekプロバイダーに10分のAPIタイムアウトを設定しており、Flashの短い単発作業と自然に適合します。"
+      },
+      "gemini-2-5-flash-image": {
+        "name": "Gemini 2.5 Flash Image",
+        "pageTitle": "Gemini 2.5 Flash Image on VM0. 高速テキストツーイメージのデフォルト",
+        "tagline": "Googleの高速テキストツーイメージおよび画像編集モデル。強力な指示追従、キャラクター一貫性、キュレーション済み画像ラインナップで画像あたり最も安いクレジットコスト。",
+        "cardIntro": "Googleの高速テキストツーイメージモデル。安価で、長いプロンプトの追従が正確、編集にわたって被写体を保持するのが得意。",
+        "metaTitle": "Gemini 2.5 Flash Image on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のGemini 2.5 Flash Image。Googleのテキストツーイメージおよび画像編集モデル、高い指示遵守、キャラクター一貫性、画像あたり約$0.04。GPT Image 1、Flux Pro 1.1 Ultra、SeedDream 4と比較。",
+        "summary": "Gemini 2.5 Flash ImageはGoogleのどこでもデフォルトのテキストツーイメージおよび画像編集モデルです。エージェントワークロードに最も重要な2つの特性で優れています：長く構造化されたプロンプトに従う（途中で指示を失うことなくフルブリーフを渡せます）、そしてマルチターン編集にわたって被写体を一貫させる（呼び出し間でドリフトすることなく、エージェントが同じキャラクターまたは製品ショットを反復できます）。\n\n定価は1024×1024画像あたり約$0.04で、キュレーション済み画像ラインナップで最も安いモデルです。自然なパターンは、Gemini 2.5 Flash Imageをデフォルトにし、デフォルトが届かない特定のアスペクトレシオまたはアスペクトが必要なときのみFlux Pro 1.1 UltraまたはSeedDream 4にエスカレートすることです。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "エージェントワークロードのためのGoogleのテキストツーイメージワークホース。",
+        "background": [
+          "Gemini 2.5 Flash ImageはGemini 2.5ファミリーにおけるGoogleのテキストツーイメージおよび画像編集モデルです。Googleのフレーミングはテキスト側のFlashバリアントと同じです：低いコールあたりコストで高スループットに調整され、最後のリクエストがストリーミングを終える前に次のリクエストがキューに入るプロダクションワークロード向けに最適化されたモデル。",
+          "エージェント使用において2つの行動的特性が際立ちます。第一に、長く構造化されたプロンプトに対する指示遵守が、ほとんどのオープンウェイトテキストツーイメージのベースラインよりも大幅に優れています。これはエージェントがプログラム的にプロンプトを構成し、短縮できない場合に重要です。第二に、マルチターン編集にわたるキャラクターと被写体の一貫性がよく保たれます。これが、単一のアセットを反復するエージェントワークフローにおける編集ループのデフォルトとしてモデルを実行可能にしているものです。"
+        ],
+        "architecture": "ネイティブ編集サポート付きのディフュージョンベースのテキストツーイメージモデル。標準ティアで生成画像あたり課金。入力はテキストプロンプトと、編集スタイルフロー用のオプションのリファレンス画像を受け付けます。出力は要求された解像度のPNG。",
+        "specs": [
+          { "label": "ファミリー", "value": "Gemini 2.5世代" },
+          {
+            "label": "モダリティ",
+            "value": "テキストツーイメージ、イメージツーイメージ編集"
+          },
+          { "label": "出力解像度", "value": "1024×1024標準ティア" },
+          { "label": "ベンダー定価", "value": "画像あたり約$0.04" },
+          { "label": "言語", "value": "多言語プロンプト" },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "指示遵守",
+            "body": "多くのオープンウェイトモデルが節を脱落させ始める長く構造化されたプロンプトで持ちこたえます。エージェントがブリーフをプログラム的に構成し、プロンプトが交渉不可能な場合に有用です。"
+          },
+          {
+            "title": "キャラクター一貫性",
+            "body": "マルチターン編集にわたって被写体を認識可能に保ち、これが単一アセット上の反復的エージェントループに対してモデルを実行可能にしている特性です。"
+          },
+          {
+            "title": "コスト",
+            "body": "画像あたり約$0.04 — VM0上のキュレーション済みテキストツーイメージモデルで最安。バルクファンアウト生成が手頃なまま。"
+          },
+          {
+            "title": "アスペクト天井",
+            "body": "Flux Pro 1.1 Ultraのハイパースタイライズドな見た目やSeedDream 4のフォトリアルな見た目ではなく、クリーンで正確な出力に偏っています。アスペクトが成果物の場合はエスカレートしてください。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "ブリーフからマーケティングビジュアルをドラフトするエージェント",
+            "body": "ブランドボイス、製品説明、ターゲットオーディエンスをエージェントに渡してください。Gemini 2.5 Flash Imageは数秒でドラフトビジュアルをレンダリングします。十数のバリエーションをファンアウトして最良を選ぶのに十分安価。"
+          },
+          {
+            "title": "単一アセットを反復する編集ループ",
+            "body": "一度生成して、ターン間で被写体を一貫させながら照明、フレーミング、または背景を反復します。キャラクター一貫性は、ループ内の人間が同じ画像を編集していることを意味し、毎ターン新しいセットから選ぶわけではありません。"
+          },
+          {
+            "title": "プレミアムモデルの前のイラスト事前フィルタ",
+            "body": "Gemini 2.5 Flash Imageを使って構図を安価にロックし、最終選択をFlux Pro 1.1 Ultraでアスペクトのために再レンダリングします。プレミアムステップのコストをファンアウトではなく1回の呼び出しに削減します。"
+          }
+        ],
+        "avoidFor": "成果物がアスペクトの場合はGemini 2.5 Flash Imageをスキップしてください — Flux Pro 1.1 UltraとSeedDream 4はフォトリアルおよびエディトリアルな見た目でより多くのスタイリスティック天井を運びます。",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "GPT Image 1はスタイライズドイラストとキャラクター作業でより強く、Gemini 2.5 Flash Imageはコールあたり安価で長いプロンプトの指示追従でより強い。構造化プロンプトを持つエージェントワークロードには、Gemini 2.5 Flash Imageがより安全なデフォルトです。"
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4はより高いフォトリアル天井を運び、Gemini 2.5 Flash Imageはより安価、高速、長いプロンプトをより信頼性高く追従します。Geminiをデフォルトに、ブリーフが特にフォト的アスペクトの場合のみSeedDream 4にエスカレートしてください。"
+          },
+          {
+            "vs": "Flux Pro 1.1 Ultra",
+            "body": "Flux Pro 1.1 Ultraはキュレーション済みラインナップで最高のスタイリスティック天井を持ち、Gemini 2.5 Flash Imageはコストと指示追従で勝ちます。Geminiで事前フィルタし、アスペクトがポイントのときFluxで最終を提供してください。"
+          }
+        ],
+        "verdict": "テキストツーイメージエージェントワークロードにはGemini 2.5 Flash Imageをデフォルトに。アスペクトが成果物の場合のみFlux Pro 1.1 UltraまたはSeedDream 4にエスカレートしてください。",
+        "faqs": [
+          {
+            "q": "Gemini 2.5 Flash Imageは既存の画像を編集できますか？",
+            "a": "はい。テキストプロンプトと並んでリファレンス画像を受け付け、反復編集のためのインペインティングとアウトペインティングフローをサポートしています。"
+          },
+          {
+            "q": "どの出力解像度を生成しますか？",
+            "a": "標準ティアで1024×1024。より高い解像度は比例コストで利用可能。"
+          },
+          {
+            "q": "画像あたりのコストは？",
+            "a": "生成された1024×1024画像あたり約$0.04 — VM0上のキュレーション済みテキストツーイメージモデルで最安。"
+          },
+          {
+            "q": "モデルは画像内のテキストが得意ですか？",
+            "a": "はい — 生成された画像内に短いテキスト文字列をレンダリングする点で、ほとんどのオープンウェイトベースラインよりも大幅に強力です。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-image-1",
+            "reason": "より強力なスタイライズドイラスト"
+          },
+          { "slug": "flux-pro-1-1-ultra", "reason": "より高いアスペクト天井" },
+          { "slug": "seedream-4", "reason": "より強力なフォトリアル結果" }
+        ],
+        "routingNotes": "Routed to Google's Gemini 2.5 Flash Image endpoint and billed per generated image.",
+        "vm0Notes": "Gemini 2.5 Flash Image is the price/quality default for text-to-image agent workloads on VM0. Use it as the everywhere-default and reserve the more expensive image models for the steps where their stylistic ceiling actually matters."
+      },
+      "gpt-image-1": {
+        "name": "GPT Image 1",
+        "pageTitle": "GPT Image 1 on VM0. OpenAIのテキストツーイメージモデル",
+        "tagline": "強力なスタイライズドイラストと編集を持つOpenAIのテキストツーイメージモデル。OpenAIのアスペクトとプロンプト追従スタイルが欲しいときの自然な選択。",
+        "cardIntro": "OpenAIのテキストツーイメージモデル。スタイライズドイラスト、キャラクター作業、編集に強い — Gemini 2.5 Flash ImageのOpenAI側の対応物。",
+        "metaTitle": "GPT Image 1 on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のGPT Image 1。OpenAIのテキストツーイメージおよび画像編集モデル、スタイライズドイラストの強み、マルチティア価格、Gemini 2.5 Flash Image、Flux Pro 1.1 Ultra、SeedDream 4との比較。",
+        "summary": "GPT Image 1はOpenAIのテキストツーイメージモデル — ほとんどのチームがChatGPTの画像生成の背後にあるモデルとして知っているものです。その強みは、テキスト駆動マスキングによるスタイライズドイラスト、キャラクター作業、画像編集であり、OpenAIのテキストモデルが期待するものに密接にマッピングするプロンプト追従スタイルです。\n\n定価はティアベースで、低/標準ティアで画像あたり約$0.011から、高/大ティアで$0.25まで。中標準ティア（1024×1024で約$0.05）はほとんどのエージェントワークロードに対する賢明なデフォルトです。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "OpenAIの主要なテキストツーイメージモデル。解像度と品質設定にわたるティア価格。",
+        "background": [
+          "GPT Image 1はOpenAIのプロダクションテキストツーイメージモデルです。OpenAIのテキストモデルとネイティブにペアリングするため、エージェントが既にGPT-5.4またはGPT-5.5上で実行されている場合、プロンプトスタイルがクリーンに転送され、編集ループフローがOpenAIサーフェス内に留まります。",
+          "モデルのスタイリスティックな強みはイラスト、キャラクター作業、特定の要素を変更しながら元の構図を保持する編集にあります。フォトリアル出力はしっかりしていますが、OpenAIハウススタイルに偏っています。異なるアスペクト天井が欲しいチームは、しばしばFlux Pro 1.1 UltraまたはSeedDream 4を一緒に手を伸ばします。"
+        ],
+        "architecture": "ネイティブ編集サポート付きのディフュージョンベースのテキストツーイメージ。ティア価格は出力解像度（標準/大）と品質（低/中/高）でスケールし、中/標準ティアが典型的なデフォルト。入力は編集とマスク用のテキストとオプションのリファレンス画像を受け付けます。",
+        "specs": [
+          { "label": "ファミリー", "value": "OpenAI Images" },
+          {
+            "label": "モダリティ",
+            "value": "テキストツーイメージ、イメージツーイメージ編集"
+          },
+          { "label": "出力ティア", "value": "標準/大 × 低/中/高" },
+          { "label": "ベンダー定価", "value": "画像あたり$0.011から$0.25" },
+          { "label": "言語", "value": "多言語プロンプト" },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "スタイライズドイラスト",
+            "body": "非フォトリアル出力 — イラスト、コミックスタイル、絵画調 — に対する最強のモデルの一つ。成果物が写真ではなくイラストの場合に適合します。"
+          },
+          {
+            "title": "編集フロー",
+            "body": "マスク編集とテキスト駆動の局所変更のネイティブサポート。エージェントが全体を再生成するのではなく、画像の特定領域を反復する必要がある場合に有用です。"
+          },
+          {
+            "title": "プロンプトスタイル",
+            "body": "OpenAIのテキストモデルの期待に密接にマッピング。呼び出し側のエージェントが既にGPT-5.4またはGPT-5.5上にある場合、そのエージェントが書いたプロンプトはほとんど調整なしで転送されます。"
+          },
+          {
+            "title": "コスト",
+            "body": "ティアベース — 中/標準ティア（1024×1024あたり約$0.05）が典型的なデフォルト。高/大ティアは$0.25に達し、配信グレードの出力にのみ価値があります。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "コミックまたは手描きスタイルを配信するイラストエージェント",
+            "body": "スタイライズド出力はGPT Image 1が真のエッジを運ぶ場所です。コミックパネル、絵画調イラスト、手描き風アイコン — すべてフォトリアル傾向の代替よりもここでより信頼性高く着地します。"
+          },
+          {
+            "title": "OpenAIスタック上の編集ループエージェント",
+            "body": "オーケストレーションエージェントが既にGPT-5.4またはGPT-5.5上にある場合、画像生成をOpenAIサーフェス内（GPT Image 1）に保つことで、プロンプトスタイル、編集セマンティクス、構造化出力が実行全体で一貫したまま保たれます。"
+          }
+        ],
+        "avoidFor": "コストが支配的な場合（Gemini 2.5 Flash Imageは同じデフォルトティアで約半分の価格）、または成果物が特にフォトリアルな場合（SeedDream 4はより高いフォトリアル天井を運びます）はGPT Image 1をスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "Gemini 2.5 Flash Image",
+            "body": "Gemini 2.5 Flash Imageはより安価で長い構造化プロンプトで強く、GPT Image 1はスタイライズドイラストで強く、OpenAIスタックエージェントとより自然に統合します。"
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4はわずかに低い価格でフォトリアルアスペクトでリードし、GPT Image 1はスタイライズドイラストと編集フローでリードします。"
+          },
+          {
+            "vs": "Flux Pro 1.1 Ultra",
+            "body": "Flux Pro 1.1 Ultraはヒーローショット成果物で最高のアスペクト天井を運び、GPT Image 1はその他すべての自然なOpenAIスタックデフォルトです。"
+          }
+        ],
+        "verdict": "エージェントが既にOpenAIスタック上にあり、スタイライズドイラストまたはネイティブ編集フローが欲しい場合はGPT Image 1を選んでください。フォトリアルヒーローショットにはFlux Pro 1.1 Ultraにエスカレート、コストが支配する場合はGemini 2.5 Flash Imageに降格してください。",
+        "faqs": [
+          {
+            "q": "GPT Image 1の価格は？",
+            "a": "ティアベース — サイズ（標準/大）と品質（低/中/高）の組み合わせ。1024×1024画像あたり約$0.05の中/標準ティアが典型的なデフォルト。"
+          },
+          {
+            "q": "GPT Image 1は画像編集をサポートしていますか？",
+            "a": "はい。リファレンス画像とオプションのマスクを受け付け、テキスト駆動の局所編集とアウトペインティングをサポートしています。"
+          },
+          {
+            "q": "GPT Image 1は画像内にテキストをレンダリングできますか？",
+            "a": "はい — 短いテキスト文字列は信頼性高くレンダリングされます。長いテキスト箇所はほとんどのディフュージョンモデルと同様にまだ困難です。"
+          },
+          {
+            "q": "入力としてマルチモーダルですか？",
+            "a": "イメージツーイメージ編集はリファレンス画像を受け付けます。モデルは画像出力のみ。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gemini-2-5-flash-image",
+            "reason": "より安価、より強力な長プロンプト遵守"
+          },
+          {
+            "slug": "flux-pro-1-1-ultra",
+            "reason": "より高いフォトリアルアスペクト天井"
+          },
+          { "slug": "seedream-4", "reason": "より良いフォトリアルデフォルト" }
+        ],
+        "routingNotes": "Routed to OpenAI's Images surface and billed per generated image at the selected tier.",
+        "vm0Notes": "GPT Image 1 is the OpenAI-stack default for stylised illustration and edit-loop agent workflows. The medium/standard tier is the sensible everywhere-default; reserve the high/large tier for delivery-grade output."
+      },
+      "flux-pro-1-1-ultra": {
+        "name": "Flux Pro 1.1 Ultra",
+        "pageTitle": "Flux Pro 1.1 Ultra on VM0. ヒーローショットのアスペクト天井",
+        "tagline": "Black Forest Labsのハイ天井テキストツーイメージモデル。画像が成果物で、エディトリアルまたはフォトリアルグレードの出力が必要なときの選択。",
+        "cardIntro": "Black Forest Labsのトップティア画像モデル。キュレーション済みラインナップで最高のアスペクト天井 — ヒーローショットとエディトリアルグレードの出力に使用。",
+        "metaTitle": "Flux Pro 1.1 Ultra on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のFlux Pro 1.1 Ultra。Black Forest Labsのトップティアテキストツーイメージモデル、エディトリアルグレードのアスペクト天井、画像あたり$0.072、GPT Image 1、SeedDream 4、Gemini 2.5 Flash Imageとの比較。",
+        "summary": "Flux Pro 1.1 UltraはBlack Forest Labsのトップティアテキストツーイメージモデル — 画像自体がエージェントループのステップではなく成果物のときに手を伸ばすものです。エディトリアル、フォトリアル、デザイン主導のアスペクトでの出力品質はキュレーション済みラインナップで最高であり、詳細な構図ブリーフでのプロンプト遵守がよく保たれます。\n\n定価は画像あたり$0.072で、Gemini 2.5 Flash Image（$0.04）やSeedDream 4（$0.036）に対して高価ですが、画像あたりの品質リフトは十分に大きく、ほとんどのチームは安価なモデルで事前フィルタした後の最終レンダリングステップとして使用します。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "Black Forest LabsのFlux 1.1世代のプレミアムティア。",
+        "background": [
+          "Flux Pro 1.1 UltraはBlack Forest Labsのプレミアムテキストツーイメージモデルです。Fluxファミリーはオープンウェイトフロンティアで最高のアスペクト天井で知られ、Ultraバリアントは最も一貫した構図品質を持つプロダクショングレードのティアです。",
+          "モデルの強みはエディトリアルとフォトリアルのアスペクト — マガジンスタイルのヒーローショット、製品写真、デザイン主導のイラスト — にあります。詳細な構図ブリーフ（「X のローアングルショット、Y の光で Z の背景に対して」）に対するプロンプト遵守は、ほとんどの安価な代替よりも大幅に優れています。これが、チームが配信グレードの出力にプレミアムを払い続ける理由の一部です。"
+        ],
+        "architecture": "構図忠実度に調整されたプロンプト追従を持つ高解像度ディフュージョンモデル。生成画像あたり課金。入力はテキストプロンプトを受け付け、配信に適した高解像度出力を生成します。",
+        "specs": [
+          { "label": "ファミリー", "value": "Flux 1.1 Pro" },
+          { "label": "モダリティ", "value": "テキストツーイメージ" },
+          { "label": "ベンダー定価", "value": "画像あたり$0.072" },
+          { "label": "言語", "value": "多言語プロンプト" },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "アスペクト天井",
+            "body": "キュレーション済み画像ラインナップで最高。ヒーローショット、エディトリアル、フォトリアルなアスペクトがGemini 2.5 Flash ImageやGPT Image 1よりもここで信頼性高く着地します。"
+          },
+          {
+            "title": "構図忠実度",
+            "body": "角度、照明、フレーミング、被写体の配置を指定する詳細な構図ブリーフで強い。プロンプトが交渉不可能な場合に有用です。"
+          },
+          {
+            "title": "コスト",
+            "body": "画像あたり$0.072 — Gemini 2.5 Flash ImageとSeedDream 4の約2倍。標準パターンは安価なモデルで事前フィルタし、Fluxで最終をレンダリングすることです。"
+          },
+          {
+            "title": "速度",
+            "body": "Flashティアの代替より遅い。コストを正当化するステップのために予約してください。タイトなインタラクティブループでは使わないでください。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "出荷しなければならないマーケティングヒーローショット",
+            "body": "画像がキャンペーン、ランディングページ、または発表の最終成果物の場合、Flux Pro 1.1 Ultraのアスペクト天井はプレミアムを正当化します。"
+          },
+          {
+            "title": "eコマースリスティング用の製品撮影エージェント",
+            "body": "テキストブリーフとリファレンス画像からのカタロググレードの製品撮影。構図忠実度が、出荷される画像と再レンダリングされる画像の違いを生みます。"
+          },
+          {
+            "title": "長文コンテンツ用エディトリアルイラスト",
+            "body": "記事、ブログ投稿、レポート用のマガジンスタイルのヒーローイラスト。Fluxのスタイリスティック天井がワークホースデフォルトと一線を画します。"
+          }
+        ],
+        "avoidFor": "コストが支配的なファンアウトループではFlux Pro 1.1 Ultraをスキップしてください — Gemini 2.5 Flash Imageはコールあたり約2倍安価です。反復ステップではなく、最終レンダリングステップとして使用してください。",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "Flux Pro 1.1 Ultraはより高いフォトリアルとエディトリアル天井を持ち、GPT Image 1はより強力なスタイライズドイラスト出力とネイティブ編集フローサポートを持ちます。成果物で選んでください。"
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "両方ともフォトリアル傾向。SeedDream 4はより安価でポートレートと製品作業で競争力があり、Flux Pro 1.1 Ultraはより高いコストでヒーローショットの構図忠実度で勝ちます。"
+          },
+          {
+            "vs": "Gemini 2.5 Flash Image",
+            "body": "異なる役割。Gemini 2.5 Flash Imageは反復用の安価なワークホースで、Flux Pro 1.1 Ultraはプレミアム最終レンダリングステップ。スタックしてください、1つを選ばないで。"
+          }
+        ],
+        "verdict": "Flux Pro 1.1 Ultraを安価なモデルで事前フィルタした後の最終レンダリングステップとして使用してください。画像が成果物のとき、アスペクト天井がプレミアムを正当化します。",
+        "faqs": [
+          {
+            "q": "Flux Pro 1.1 Ultraのコストは？",
+            "a": "生成画像あたり$0.072。Gemini 2.5 Flash ImageとSeedDream 4の約2倍。"
+          },
+          {
+            "q": "画像編集をサポートしていますか？",
+            "a": "Ultraティアはテキストツーイメージ優先。同ファミリーでのネイティブマスク編集フローには、ベースのFlux Pro 1.1ティアがより低いアスペクト天井でより広い編集サポートを運びます。"
+          },
+          {
+            "q": "どのアスペクトレシオがサポートされていますか？",
+            "a": "配信に適した高解像度出力までの標準的な写真とデザインのアスペクトレシオ。"
+          },
+          {
+            "q": "スタイライズドイラストに適していますか？",
+            "a": "可能ですが、その最強の強みではありません — GPT Image 1がより高いスタイライズド天井を運びます。Flux Pro 1.1 Ultraはフォトリアルとエディトリアルの作業で輝きます。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gemini-2-5-flash-image",
+            "reason": "安価な反復デフォルト"
+          },
+          {
+            "slug": "gpt-image-1",
+            "reason": "より強力なスタイライズドイラスト"
+          },
+          { "slug": "seedream-4", "reason": "より安価なフォトリアル代替" }
+        ],
+        "routingNotes": "Routed to Black Forest Labs' Flux Pro 1.1 Ultra endpoint and billed per generated image.",
+        "vm0Notes": "Flux Pro 1.1 Ultra is the premium tier of the curated image lineup. Use it for the final-render step rather than for iteration; pair it with Gemini 2.5 Flash Image or SeedDream 4 for the cheap pre-filter."
+      },
+      "seedream-4": {
+        "name": "SeedDream 4",
+        "pageTitle": "SeedDream 4 on VM0. フォトリアルテキストツーイメージのデフォルト",
+        "tagline": "ByteDanceのSeedDream 4テキストツーイメージモデル。ラインナップで最も安いオプションに匹敵するコストで強力なフォトリアルアスペクト。",
+        "cardIntro": "ByteDanceのSeedDream 4。低い画像あたりコストでのフォトリアルアスペクト — ブリーフが写真のときの自然なデフォルト。",
+        "metaTitle": "SeedDream 4 on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のSeedDream 4。ByteDanceのテキストツーイメージモデル、強力なフォトリアル出力、画像あたり約$0.036、Gemini 2.5 Flash Image、GPT Image 1、Flux Pro 1.1 Ultraとの比較。",
+        "summary": "SeedDream 4はByteDanceのSeedream V4世代のテキストツーイメージモデルです。その際立った特性はフォトリアルアスペクト — ポートレート、製品ショット、ライフスタイル写真 — であり、定価（画像あたり$0.036）はキュレーション済みラインナップで最も安いオプションと競争力があります。\n\nブリーフが特に写真の場合の自然なデフォルトです。スタイライズドイラストやエディトリアルデザインにはGPT Image 1またはFlux Pro 1.1 Ultraを、長く構造化されたプロンプトでの一般的な反復エージェントワークロードにはGemini 2.5 Flash Imageを選んでください。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "ByteDanceのSeedream V4世代のフォトリアルテキストツーイメージデフォルト。",
+        "background": [
+          "SeedDream 4はByteDanceのテキストツーイメージファミリーの第4世代です。アスペクトはフォトリアル出力に偏り、ポートレート、製品、ライフスタイルショットが際立ったカテゴリです。標準的な記述ブリーフ（被写体、設定、照明）でのプロンプト遵守はしっかりしています。",
+          "画像あたり$0.036でキュレーション済みラインナップの価格の底近くに位置し、これが写真傾向のエージェントワークロードのデフォルトとして実行可能にしているものです。構図ブリーフが特にプレミアムを正当化するヒーローショットの場合はFlux Pro 1.1 Ultraに切り替えてください。"
+        ],
+        "architecture": "ディフュージョンベースのテキストツーイメージモデル。生成画像あたり課金。入力はテキストプロンプトを受け付け、ポートレート、製品、ライフスタイル画像に適したフォトリアル傾向の出力を生成します。",
+        "specs": [
+          { "label": "ファミリー", "value": "Seedream V4" },
+          { "label": "モダリティ", "value": "テキストツーイメージ" },
+          { "label": "ベンダー定価", "value": "画像あたり$0.036" },
+          {
+            "label": "言語",
+            "value": "多言語プロンプト（英語＋中国語が強い）"
+          },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "フォトリアルアスペクト",
+            "body": "ポートレート、製品ショット、ライフスタイル写真が際立ったカテゴリ。出力はフォトリアルブリーフの意味のあるシェアでFlux Pro 1.1 Ultraと競争力があり、コールあたり劇的に安価です。"
+          },
+          {
+            "title": "コスト",
+            "body": "画像あたり$0.036 — キュレーション済みラインナップの底近く。写真傾向のファンアウトワークロードに対する自然なデフォルト。"
+          },
+          {
+            "title": "中国語プロンプト",
+            "body": "中国語プロンプトと文化的に根ざした被写体の強力な処理。これは中国語を話すユーザーにサービスを提供するエージェントにとって本当のアドバンテージです。"
+          },
+          {
+            "title": "アスペクト天井",
+            "body": "フォトリアルレーン内のすべてに対してしっかりしている。GPT Image 1がリードするハイパースタイライズドイラストには適合性が低い。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "大規模なポートレートまたは製品ショットエージェント",
+            "body": "低い画像あたりコストのフォトリアル被写体は、SeedDream 4をファンアウトワークロードに対して実行可能にします — カタログ用の100枚の製品写真、クリエイターツールのバッチポートレート生成。"
+          },
+          {
+            "title": "中国語マーケティングエージェント",
+            "body": "中国語プロンプトと文化的に根ざした被写体の強力な処理。中国語を話す市場にサービスを提供するエージェントに対する正しいデフォルト。"
+          },
+          {
+            "title": "Flux Pro 1.1 Ultraのより安価な代替",
+            "body": "ブリーフがフォトリアルだが成果物がFluxプレミアムを正当化しない場合、SeedDream 4は半分の価格でほとんどの品質を運びます。"
+          }
+        ],
+        "avoidFor": "スタイライズドイラスト（GPT Image 1がリード）、長い構造化プロンプト反復（Gemini 2.5 Flash Imageがリード）、またはFluxプレミアムが正当化されるヒーローショットエディトリアル作業ではSeedDream 4をスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "SeedDream 4はより低いコストでフォトリアルアスペクトでリードし、GPT Image 1はスタイライズドイラストとネイティブ編集フローでリードします。"
+          },
+          {
+            "vs": "Flux Pro 1.1 Ultra",
+            "body": "両方ともフォトリアル傾向。SeedDream 4は半分の価格でポートレートと製品作業で競争力があり、Flux Pro 1.1 Ultraはヒーローショットの構図忠実度で勝ちます。"
+          },
+          {
+            "vs": "Gemini 2.5 Flash Image",
+            "body": "Gemini 2.5 Flash Imageは長プロンプトの指示追従がより強い安価な汎用デフォルトで、SeedDream 4は写真ブリーフでより高い天井を持つフォトリアル特化デフォルトです。"
+          }
+        ],
+        "verdict": "ブリーフが特に写真でコストが重要なときはSeedDream 4をデフォルトに。ヒーローショットがプレミアムを正当化する場合のみFlux Pro 1.1 Ultraにエスカレートしてください。",
+        "faqs": [
+          {
+            "q": "SeedDream 4のコストは？",
+            "a": "生成画像あたり$0.036 — 価格でキュレーション済みラインナップの底近く。"
+          },
+          {
+            "q": "中国語プロンプトに適していますか？",
+            "a": "はい — 中国語プロンプトと文化的に根ざした被写体において、ほとんどの西洋トレーニングのベースラインよりも大幅に強力です。"
+          },
+          {
+            "q": "最強のアスペクトは？",
+            "a": "フォトリアル：ポートレート、製品ショット、ライフスタイル写真。スタイライズドイラストには適合性が低い。"
+          },
+          {
+            "q": "画像編集をサポートしていますか？",
+            "a": "VM0上のキュレーション済みエントリはテキストツーイメージをカバーします。編集フローはモデルの主要な強みではありません。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gemini-2-5-flash-image",
+            "reason": "より安価な汎用デフォルト"
+          },
+          {
+            "slug": "flux-pro-1-1-ultra",
+            "reason": "プレミアムヒーローショット品質"
+          },
+          {
+            "slug": "gpt-image-1",
+            "reason": "より強力なスタイライズドイラスト"
+          }
+        ],
+        "routingNotes": "Routed to ByteDance's SeedDream V4 text-to-image endpoint and billed per generated image.",
+        "vm0Notes": "SeedDream 4 is the photoreal-specific default in the curated image lineup. Pair it with Flux Pro 1.1 Ultra for hero shots and with Gemini 2.5 Flash Image for non-photo iteration."
+      },
+      "veo-3-1-fast": {
+        "name": "Veo 3.1 Fast",
+        "pageTitle": "Veo 3.1 Fast on VM0. Googleの高速テキストツービデオモデル",
+        "tagline": "ネイティブオーディオ付きGoogleの高速テキストツービデオモデル。シネマティック品質とオーディオを1パスで重要にする短尺ソーシャルおよび製品クリップの選択。",
+        "cardIntro": "ネイティブオーディオ付きGoogleのテキストツービデオモデル。1回のパスで高速生成、シネマティックスタイル、同期サウンドトラック。",
+        "metaTitle": "Veo 3.1 Fast on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のVeo 3.1 Fast。ネイティブオーディオ付きGoogleの高速テキストツービデオモデル、4Kまで4〜8秒クリップ、Kling V3 4KとDreamina Seedance 2.0との比較。",
+        "summary": "Veo 3.1 FastはGoogleのVeo 3ビデオ生成ファミリーの高速ティアです。720p、1080p、または4Kで短いクリップ（4/6/8秒）を生成し、ビジュアルと同じパスで同期ネイティブオーディオ — 声、環境音、エフェクト — をレンダリングします。その単一パスオーディオが、キュレーション済みラインナップでほとんどの代替と一線を画す特性です。\n\n定価は720pオーディオ付き出力1秒あたり約$0.15のオーダーで、コストでラインナップの中程度に位置付けられます。自然なパターンは、オーディオが重要なソーシャルおよび製品クリップに対してVeo 3.1 Fastをデフォルトにし、コストが支配する場合はDreamina Seedance 2.0に切り替え、より長いまたは高解像度のショットが必要な場合はKling V3 4Kに切り替えることです。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "GoogleのVeo 3ファミリーの高速ティア。ネイティブオーディオ付き短尺出力に最適化。",
+        "background": [
+          "Veo 3.1はGoogleのVeo 3世代のビデオ生成ファミリーで、Fastティアはスループット最適化バリアントです — より高速な生成、クリップあたりより低いコスト、ただし短いクリップ時間でキャップされます。ネイティブオーディオサポートは特徴的な特性です：声、環境音、エフェクトがビジュアルと同じパスでレンダリングされ、別のポストステップとして追加されることはありません。",
+          "Veoの出力はシネマティックな見た目に偏ります — クリーンなモーション、考慮されたフレーミング、正確な照明。詳細な単一ショットを記述するテキストツービデオブリーフ（カメラアングル、被写体のアクション、設定、照明）で強く、Kling V3 4Kのスタイリスティック天井が先んじるハイスタイライズドまたはアニメスタイルのアスペクトには適合性が低い。"
+        ],
+        "architecture": "同じパスでネイティブオーディオ合成を持つテキストツービデオおよびイメージツービデオディフュージョンモデル。出力時間は720p、1080p、または4Kで4、6、または8秒。品質ティアモディファイア付きで生成ビデオ秒あたり課金。",
+        "specs": [
+          { "label": "ファミリー", "value": "Google Veo 3" },
+          {
+            "label": "モダリティ",
+            "value": "テキストツービデオ、イメージツービデオ、ネイティブオーディオ"
+          },
+          { "label": "クリップ長", "value": "4秒 / 6秒 / 8秒" },
+          { "label": "出力解像度", "value": "720p / 1080p / 4K" },
+          {
+            "label": "ベンダー定価",
+            "value": "秒あたり約$0.15（720p＋オーディオ）"
+          },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "ネイティブオーディオ",
+            "body": "特徴的な特性。声、環境音、エフェクトがビジュアルと同じパスでレンダリングされる — 別のポストステップは必要ありません。オーディオが重要なソーシャルおよび製品クリップに対する正しいデフォルト。"
+          },
+          {
+            "title": "シネマティックモーション",
+            "body": "出力はクリーンなモーション、考慮されたフレーミング、正確な照明に偏ります。詳細な単一ショットを記述するテキストツービデオブリーフで強い。"
+          },
+          {
+            "title": "速度",
+            "body": "高速ティア — 最も要求の厳しいブリーフでわずかに低い忠実度のコストで、生成は標準Veo 3ティアよりも大幅に高速。"
+          },
+          {
+            "title": "アスペクト天井",
+            "body": "シネマティック/フォトリアルレーンがスイートスポット。スタイライズドまたはアニメスタイルの出力にはKling V3 4Kのスタイリスティック天井がより高い。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "1パスで出荷するソーシャルクリップエージェント",
+            "body": "1回の呼び出しで生成される声と環境音を持つ短尺ソーシャルビデオ。別のTTSやオーディオポストステップ、同期は不要 — クリップは公開準備完了で着地します。"
+          },
+          {
+            "title": "ランディングページの製品デモビデオ",
+            "body": "機能を説明する声優付き1080pの8秒製品クリップ。シネマティックモーションと同期オーディオが、結果を生成されたものではなく制作されたものに感じさせます。"
+          },
+          {
+            "title": "キャンペーンでのイメージツービデオステップ",
+            "body": "Flux Pro 1.1 UltraまたはSeedDream 4でレンダリングされた静止ヒーロー画像から始めて、短いモーションクリップに拡張します。画像条件付けが見た目を一貫させ続けます。"
+          }
+        ],
+        "avoidFor": "ブリーフがスタイライズドまたはアニメスタイル（Kling V3 4Kの天井がより高い）、8秒より長いクリップが必要、またはコストが支配しオーディオ特性が重要でない場合（Dreamina Seedance 2.0は約3倍安価）はVeo 3.1 Fastをスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "Kling V3 4K",
+            "body": "Veo 3.1 Fastはネイティブオーディオとシネマティック/フォトリアルアスペクトでリードし、Kling V3 4Kはスタイライズド/アニメ出力と4Kでのより長いクリップ時間でリードします。アスペクトで選んでください。"
+          },
+          {
+            "vs": "Dreamina Seedance 2.0",
+            "body": "異なるポジショニング。Dreamina Seedance 2.0は秒あたり約3倍安価で、コストが支配する場合の正しい選択です。Veo 3.1 Fastはネイティブオーディオとシネマティックモーションのリードを運びます。"
+          }
+        ],
+        "verdict": "オーディオが重要な短尺ソーシャルおよび製品クリップにはVeo 3.1 Fastをデフォルトに。スタイライズド出力またはより長い時間にはKling V3 4Kに切り替え、コストが支配する場合はDreamina Seedance 2.0に切り替えてください。",
+        "faqs": [
+          {
+            "q": "Veo 3.1 Fastはオーディオを生成しますか？",
+            "a": "はい。ネイティブオーディオ — 声、環境音、エフェクト — がビジュアルと同じパスでレンダリングされます。"
+          },
+          {
+            "q": "サポートされているクリップ長は？",
+            "a": "4、6、または8秒。より長いショットにはKling V3 4Kに切り替えてください。"
+          },
+          {
+            "q": "どの解像度をサポートしていますか？",
+            "a": "720p、1080p、4K。コストは解像度と時間に応じてスケールします。"
+          },
+          {
+            "q": "画像条件付けを受け付けますか？",
+            "a": "はい — イメージツービデオフローにより、静止から始めて短いモーションクリップに拡張できます。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "kling-v3-4k",
+            "reason": "スタイライズド/アニメ天井、より長いクリップ"
+          },
+          { "slug": "dreamina-seedance-2-0", "reason": "秒あたりより安価" }
+        ],
+        "routingNotes": "Routed to Google's Veo 3.1 Fast video generation endpoint and billed per generated video-second with quality-tier modifiers.",
+        "vm0Notes": "Veo 3.1 Fast is the cinematic / audio-bearing default in the curated video lineup on VM0. Pair it with Dreamina Seedance 2.0 for cheap iteration and with Kling V3 4K for stylised or longer-form clips."
+      },
+      "kling-v3-4k": {
+        "name": "Kling V3 4K",
+        "pageTitle": "Kling V3 4K on VM0. 4Kテキストツービデオの天井",
+        "tagline": "KuaishouのKling V3 4Kテキストツービデオモデル。長いクリップ、4K解像度、または他のモデルが届かないスタイライズドアスペクトが必要なときの選択。",
+        "cardIntro": "KuaishouのKling V3 4K。スタイライズドアスペクト、15秒までの長いクリップ、4K出力 — エディトリアルとアニメスタイルビデオの天井。",
+        "metaTitle": "Kling V3 4K on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のKling V3 4K。Kuaishouのテキストツービデオモデル、4K解像度、3〜15秒クリップ、スタイライズドアスペクト天井、Veo 3.1 FastとDreamina Seedance 2.0との比較。",
+        "summary": "Kling V3 4KはKuaishouのトップティアテキストツービデオモデルです。際立った特性は、クリップ時間（Veo 3.1 Fastの8秒キャップに対して最大15秒）、標準ティアとしての4K解像度、そしてシネマティック傾向の代替が届かないアニメスタイルとエディトリアルアスペクトのスタイリスティック天井です。\n\n定価は4K出力1秒あたり約$0.28のオーダーで、これがキュレーション済みビデオラインナップで最も高価なオプションにしています。自然なパターンは、長いまたは4Kショットが必要なとき、またはブリーフが特にスタイライズドで代替のアスペクト天井が届かないときに手を伸ばすことです。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "KuaishouのKling V3世代のトップティア。4Kと長クリップ天井。",
+        "background": [
+          "Kling V3 4KはKuaishouのKling V3ビデオ生成ファミリーのハイエンドバリアントです。キュレーション済みラインナップで最も長い標準クリップ時間（3〜15秒）、標準ティアでのネイティブ4K出力、シネマティック傾向の代替が届かないアニメとエディトリアルアスペクトのスタイリスティック天井を運びます。",
+          "モデルの強みはスタイライズドおよびエディトリアルブリーフ — アニメスタイルシーケンス、ダンスとモーション重視のクリップ、ミュージックビデオアスペクト — にあります。シネマティックフォトリアル出力にはVeo 3.1 Fastがより低いコストとネイティブオーディオで匹敵し、バルクコスト駆動生成にはDreamina Seedance 2.0が劇的に安価です。Kling V3 4Kの役割はどこでもデフォルトではなく、ハイ天井、長クリップステップです。"
+        ],
+        "architecture": "テキストツービデオおよびイメージツービデオディフュージョンモデル。標準ティアは3〜15秒のクリップ時間で4Kでレンダリング。生成ビデオ秒あたり課金。",
+        "specs": [
+          { "label": "ファミリー", "value": "Kling V3" },
+          {
+            "label": "モダリティ",
+            "value": "テキストツービデオ、イメージツービデオ"
+          },
+          { "label": "クリップ長", "value": "3〜15秒" },
+          { "label": "出力解像度", "value": "4K（標準ティア）" },
+          { "label": "ベンダー定価", "value": "秒あたり約$0.28（4K）" },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "クリップ長",
+            "body": "標準ティアで最大15秒 — キュレーション済みラインナップで最長。8秒より長い単一の中断されないショットが重要なときの正しい選択。"
+          },
+          {
+            "title": "4K解像度",
+            "body": "高ティアの追加料金ではなく、標準ティアでネイティブ4K。成果物が大判ディスプレイまたは映画品質出力の場合に有用。"
+          },
+          {
+            "title": "スタイライズドアスペクト天井",
+            "body": "アニメ、ダンス、モーション重視、エディトリアルアスペクトで強い。これがKlingがシネマティック傾向の代替より先んじる場所です。"
+          },
+          {
+            "title": "コスト",
+            "body": "秒あたり約$0.28 — キュレーション済みラインナップで最も高価なオプション。その天井がプレミアムを正当化するステップのために予約してください。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "アニメスタイルまたはスタイライズドソーシャルクリップ",
+            "body": "スタイライズドアスペクト — アニメ、モーションデザイン主導、ミュージックビデオスタイル — はKlingが真の天井アドバンテージを運ぶ場所です。シネマティック傾向の代替は同じ見た目に届きません。"
+          },
+          {
+            "title": "長い中断されないショット",
+            "body": "ブリーフがより短いクリップ間のカットではなく、単一の12〜15秒のショットを要求する場合、Kling V3 4Kはキュレーション済みラインナップで時間キャップに達する唯一のオプションです。"
+          },
+          {
+            "title": "大判ディスプレイ用の4K成果物",
+            "body": "標準ティアでのネイティブ4Kは、出力が広告板、シネマ、または大判ソーシャルキャンペーン向けのときKlingを正しい選択にします。"
+          }
+        ],
+        "avoidFor": "ブリーフがオーディオ付きシネマティックフォトリアル（Veo 3.1 Fastがより低いコストでより自然）またはコストが支配する場合（Dreamina Seedance 2.0は秒あたり約5倍安価）はKling V3 4Kをスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "Veo 3.1 Fast",
+            "body": "Veo 3.1 Fastはネイティブオーディオとシネマティック/フォトリアルアスペクトでリードし、Kling V3 4Kはスタイライズド/アニメ出力、より長いクリップ時間、ネイティブ4K出力でリードします。アスペクトと時間で選んでください。"
+          },
+          {
+            "vs": "Dreamina Seedance 2.0",
+            "body": "異なるコストティア。Dreamina Seedance 2.0は劇的に安価で、コストが支配する場合の正しい選択です。Kling V3 4Kは時間、4K、スタイライズドアスペクトの天井を運びます。"
+          }
+        ],
+        "verdict": "スタイライズド、長い、または4Kビデオ成果物にはKling V3 4Kを選んでください。オーディオ付きシネマティッククリップにはVeo 3.1 Fastに切り替え、コスト駆動ファンアウトにはDreamina Seedance 2.0に切り替えてください。",
+        "faqs": [
+          {
+            "q": "Kling V3 4Kが生成できる最長クリップは？",
+            "a": "標準ティアで15秒 — VM0上のキュレーション済みビデオラインナップで最長の単一ショット。"
+          },
+          {
+            "q": "Kling V3 4Kはオーディオをサポートしていますか？",
+            "a": "同じパスではネイティブではありません。1回の呼び出しで同期オーディオ付きビデオには、Veo 3.1 Fastを使用してください。"
+          },
+          {
+            "q": "Klingが生成する解像度は？",
+            "a": "標準ティアで4K。より低い解像度バリアントは同ファミリーでより低いコストで利用可能。"
+          },
+          {
+            "q": "画像条件付けを受け付けますか？",
+            "a": "はい — イメージツービデオフローにより、リファレンス静止から始めて、より長いモーションクリップに拡張できます。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "veo-3-1-fast",
+            "reason": "シネマティック/ネイティブオーディオ"
+          },
+          { "slug": "dreamina-seedance-2-0", "reason": "より安価なバルク生成" }
+        ],
+        "routingNotes": "Routed to Kuaishou's Kling V3 4K endpoint and billed per generated video-second.",
+        "vm0Notes": "Kling V3 4K is the high-ceiling option in the curated video lineup on VM0. Reserve it for stylised, long-form or 4K deliverables — for the everywhere-default reach for Veo 3.1 Fast or Dreamina Seedance 2.0."
+      },
+      "dreamina-seedance-2-0": {
+        "name": "Dreamina Seedance 2.0",
+        "pageTitle": "Dreamina Seedance 2.0 on VM0. コスト最適化されたビデオモデル",
+        "tagline": "ByteDanceのDreamina Seedance 2.0ビデオモデル。コストが支配するときの正しいデフォルト — 代替よりも秒あたり劇的に安価。",
+        "cardIntro": "ByteDanceのDreamina Seedance 2.0。キュレーション済みラインナップで秒あたり最安のビデオ — バルクおよびコスト駆動生成に対する正しい選択。",
+        "metaTitle": "Dreamina Seedance 2.0 on VM0: 価格、仕様、比較",
+        "metaDescription": "VM0上のDreamina Seedance 2.0。ByteDanceのテキストツービデオモデル、キュレーション済みラインナップで秒あたり最安コスト、1080pまで4〜15秒クリップ、Veo 3.1 FastとKling V3 4Kとの比較。",
+        "summary": "Dreamina Seedance 2.0はByteDanceのSeedanceビデオファミリーのコスト最適化メンバーです。出力時間は480p、720p、または1080pで4〜15秒で、テキストツービデオとイメージツービデオフローを持ちます。際立った特性はコスト — 画像条件付き1080p出力1秒あたり約$0.05で、Veo 3.1 FastまたはKling V3 4Kよりも劇的に安価です。\n\nコストが支配するときの自然なデフォルト：バルクファンアウト生成、ソーシャルクリップバリアント、プレミアム最終レンダリング前のドラフトパス。ネイティブオーディオにはVeo 3.1 Fastに、スタイライズド長尺出力にはKling V3 4Kに手を伸ばしてください。",
+        "releaseDate": "2026年4月",
+        "familyPosition": "ByteDanceのSeedanceビデオファミリーのコスト最適化ティア。",
+        "background": [
+          "Dreamina Seedance 2.0はByteDanceからの第2世代Seedanceビデオモデルで、同ファミリーのFastバリアントとProバリアントとペアになっています。キュレーション済みラインナップのStandard 2.0エントリはコスト/品質のスイートスポット — Proティアよりも安く、Fastティアよりも大幅に高品質。",
+          "モデルは480p、720p、または1080pで4〜15秒の時間でテキストツービデオとイメージツービデオフローを処理します。出力はコンシューマーフレンドリーなアスペクトに偏ります：短尺ソーシャル、ライフスタイル、製品クリップ。シネマティックまたはスタイライズド作業の天井ではありませんが、キュレーション済みラインナップで最も安い実行可能なオプション。"
+        ],
+        "architecture": "3つの品質ティア（Fast、Standard、Pro）を持つテキストツービデオおよびイメージツービデオディフュージョンモデル。キュレーション済みエントリはStandard 2.0ティアをカバーします。解像度と画像条件付けが使用されているかどうかのモディファイア付きで生成ビデオ秒あたり課金。",
+        "specs": [
+          { "label": "ファミリー", "value": "Seedance 2.0" },
+          {
+            "label": "モダリティ",
+            "value": "テキストツービデオ、イメージツービデオ"
+          },
+          { "label": "クリップ長", "value": "4〜15秒" },
+          { "label": "出力解像度", "value": "480p / 720p / 1080p" },
+          {
+            "label": "ベンダー定価",
+            "value": "秒あたり約$0.05（1080p＋画像）"
+          },
+          { "label": "VM0 提供開始", "value": "2026年4月" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "コスト",
+            "body": "キュレーション済みラインナップで秒あたり最安のビデオモデル。Veo 3.1 Fastより約3倍安価、Kling V3 4Kより約5倍安価。"
+          },
+          {
+            "title": "速度",
+            "body": "Standardティアでの高速生成 — 同ファミリーのより安価なFastバリアントと同等で、大幅に優れた品質。"
+          },
+          {
+            "title": "イメージツービデオ",
+            "body": "画像条件付けフローの強力な処理。エージェントが静止画像（Gemini 2.5 Flash ImageまたはSeedDream 4で安価に生成）を短いモーションクリップに拡張したい場合に有用。"
+          },
+          {
+            "title": "アスペクト天井",
+            "body": "シネマティックモーションではVeo 3.1 Fastよりも低く、スタイライズドアスペクトではKling V3 4Kよりも低い。天井ではなくコストが決定要因のときの正しい選択。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "バルクファンアウトビデオ生成ステップ",
+            "body": "秒あたりコストが十分に低く、同じクリップの十数のバリアントを生成することを実行可能にします。安価に事前フィルタし、品質が正当化する場合は最終レンダリングのために選択したバリアントをVeo 3.1 FastまたはKling V3 4Kにエスカレートしてください。"
+          },
+          {
+            "title": "キャンペーンでのイメージツービデオ拡張",
+            "body": "プレミアムティア価格を支払うことなく、静止ヒーロー画像から始めて短いモーションクリップに拡張します。画像条件付けが見た目を一貫させ続けます。"
+          },
+          {
+            "title": "プレミアムレンダリング前のドラフトパス",
+            "body": "Dreamina Seedance 2.0でモーション、フレーミング、ペーシングを安価にロックし、選択したバリアントでのみVeo 3.1 FastまたはKling V3 4Kで最終を再レンダリングします。"
+          }
+        ],
+        "avoidFor": "ネイティブオーディオが重要（Veo 3.1 Fast）、スタイライズドまたはアニメアスペクトが重要（Kling V3 4K）、またはブリーフが代替の天井がプレミアムを正当化する配信グレードシネマティックな場合はDreamina Seedance 2.0をスキップしてください。",
+        "comparisons": [
+          {
+            "vs": "Veo 3.1 Fast",
+            "body": "異なるポジショニング。Veo 3.1 Fastはネイティブオーディオとシネマティックモーションを運び、Dreamina Seedance 2.0は劇的に安価で、コストが支配する場合の正しい選択です。スタックしてください — Dreaminaでドラフト、Veoで最終。"
+          },
+          {
+            "vs": "Kling V3 4K",
+            "body": "全く異なるティア。Kling V3 4Kは時間、4K、スタイライズドアスペクトの天井で、Dreamina Seedance 2.0はその他すべての安価なデフォルトです。"
+          }
+        ],
+        "verdict": "ビデオ生成ステップでコストが支配するときはDreamina Seedance 2.0をデフォルトに。オーディオ最終にはVeo 3.1 Fast、スタイライズドまたは4Kヒーロー出力にはKling V3 4Kとスタックしてください。",
+        "faqs": [
+          {
+            "q": "Dreamina Seedance 2.0の秒あたりコストは？",
+            "a": "画像条件付き1080p出力1秒あたり約$0.05 — キュレーション済みビデオラインナップで最安。"
+          },
+          {
+            "q": "オーディオをサポートしていますか？",
+            "a": "同じパスではネイティブではありません。1回の呼び出しで同期オーディオ付きビデオには、Veo 3.1 Fastを使用してください。"
+          },
+          {
+            "q": "サポートされているクリップ長と解像度は？",
+            "a": "480p、720p、または1080pで4〜15秒のクリップ。"
+          },
+          {
+            "q": "VM0上にSeedanceの高品質ティアはありますか？",
+            "a": "SeedanceファミリーにはStandard 2.0エントリと並んでFastとProバリアントが含まれます。価格はティアに応じてスケールします。Standardティアがコスト/品質のスイートスポットです。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "veo-3-1-fast",
+            "reason": "ネイティブオーディオ、シネマティックモーション"
+          },
+          { "slug": "kling-v3-4k", "reason": "スタイライズド、より長い、4K" }
+        ],
+        "routingNotes": "Routed to ByteDance's Dreamina Seedance 2.0 endpoint and billed per generated video-second with resolution and image-conditioning modifiers.",
+        "vm0Notes": "Dreamina Seedance 2.0 is the cost-optimised default in the curated video lineup on VM0. The standard pattern is to use it for iteration and fan-out, then escalate the chosen variant to Veo 3.1 Fast or Kling V3 4K only when the final render justifies the premium."
       }
     }
   },
