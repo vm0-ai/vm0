@@ -35,6 +35,7 @@ import {
 import { ahrefsProvider } from "./providers/ahrefs-provider";
 import { airtableProvider } from "./providers/airtable-provider";
 import { asanaProvider } from "./providers/asana-provider";
+import { base44Provider } from "./providers/base44-provider";
 import { canvaProvider } from "./providers/canva-provider";
 import { closeProvider } from "./providers/close-provider";
 import { deelProvider } from "./providers/deel-provider";
@@ -136,6 +137,7 @@ export const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
   ahrefs: ahrefsProvider,
   airtable: airtableProvider,
   asana: asanaProvider,
+  base44: base44Provider,
   canva: canvaProvider,
   close: closeProvider,
   deel: deelProvider,

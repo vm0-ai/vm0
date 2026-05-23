@@ -38,6 +38,7 @@
     "generate:atlassian": "tsx src/index.ts atlassian",
     "generate:atlascloud": "tsx src/index.ts atlascloud",
     "generate:axiom": "tsx src/index.ts axiom",
+    "generate:base44": "tsx src/index.ts base44",
     "generate:bentoml": "tsx src/index.ts bentoml",
     "generate:bitrix": "tsx src/index.ts bitrix",
     "generate:brave-search": "tsx src/index.ts brave-search",

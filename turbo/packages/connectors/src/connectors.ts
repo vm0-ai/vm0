@@ -39,6 +39,7 @@ import { attio } from "./connectors/attio";
 import { atlascloud } from "./connectors/atlascloud";
 import { aviationstack } from "./connectors/aviationstack";
 import { axiom } from "./connectors/axiom";
+import { base44 } from "./connectors/base44";
 import { bentoml } from "./connectors/bentoml";
 import { bitrix } from "./connectors/bitrix";
 import { braveSearch } from "./connectors/brave-search";
@@ -597,6 +598,7 @@ const CONNECTOR_TYPES_DEF = {
   ...atlascloud,
   ...aviationstack,
   ...axiom,
+  ...base44,
   ...bentoml,
   ...bitrix,
   ...braveSearch,
