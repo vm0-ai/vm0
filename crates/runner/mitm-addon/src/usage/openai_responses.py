@@ -131,8 +131,6 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
 
     if target_has_positive_quantity and not source_has_positive_quantity:
         return
-    if not stored_quantity and target_has_positive_quantity:
-        return
 
     model = source.get("model")
     if isinstance(model, str) and model:
