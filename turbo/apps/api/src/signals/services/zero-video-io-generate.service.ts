@@ -8,8 +8,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
+import { settle } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
@@ -21,7 +23,9 @@ export const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
 export const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 
+const L = logger("ZeroVideoIoGenerate");
 const VIDEO_IO_MAX_PROMPT_LENGTH = 32_000;
+const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
 
 const USAGE_KIND = "video";
 const VIDEO_AUDIO_CATEGORY = "output_video_seconds.audio";
@@ -1138,6 +1142,18 @@ function bytePlusVideoInput(
   });
 }
 
+async function readBytePlusErrorBodyForLog(
+  response: Response,
+): Promise<string | undefined> {
+  const result = await settle(response.text());
+  if (!result.ok || !result.value) {
+    return undefined;
+  }
+  return result.value.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
+    ? `${result.value.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
+    : result.value;
+}
+
 export async function submitBytePlusVideoGeneration(
   options: VideoOptions,
   apiKey: string,
@@ -1152,6 +1168,19 @@ export async function submitBytePlusVideoGeneration(
   });
 
   if (!response.ok) {
+    const responseBody = await readBytePlusErrorBodyForLog(response);
+    L.warn("BytePlus video generation task creation failed", {
+      provider: "byteplus",
+      model: options.model,
+      status: response.status,
+      statusText: response.statusText,
+      responseBody,
+      hasFirstFrameImage: Boolean(options.firstFrameImageUrl),
+      hasLastFrameImage: Boolean(options.lastFrameImageUrl),
+      referenceImageCount: options.referenceImageUrls.length,
+      referenceVideoCount: options.inputVideoUrls.length,
+      referenceAudioCount: options.referenceAudioUrls.length,
+    });
     return videoInternalError("Video generation failed");
   }
 
