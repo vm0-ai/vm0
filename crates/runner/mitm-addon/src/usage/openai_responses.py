@@ -129,7 +129,9 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
         stored_quantity = _store_quantity(target, category, source.get(category)) or stored_quantity
 
-    if not stored_quantity or (target_has_positive_quantity and not source_has_positive_quantity):
+    if target_has_positive_quantity and not source_has_positive_quantity:
+        return
+    if not stored_quantity and target_has_positive_quantity:
         return
 
     model = source.get("model")
@@ -159,7 +161,9 @@ def _store_sse_result_values(
         return
 
     prefix = ("response",) if _has_response_wrapper_values(values) else ()
-    _store_response_values(values, target, prefix)
+    source: dict = {}
+    _store_response_values(values, source, prefix)
+    merge_openai_responses_usage_result(target, source)
 
 
 def create_openai_responses_sse_usage_extractor() -> tuple[SseUsageParser, dict]:

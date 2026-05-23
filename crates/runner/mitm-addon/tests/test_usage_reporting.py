@@ -360,6 +360,60 @@ class TestResponseUsageReporting:
         }
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
+    def test_full_pipeline_model_sse_zero_event_preserves_billed_usage_and_id(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-type": "text/event-stream"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        _response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
+            b'"usage":{"input_tokens":100,"output_tokens":40}}}\n\n'
+            b"event: response.failed\n"
+            b'data: {"response":{"id":"resp_sse_empty","model":"gpt-5.4",'
+            b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
+        assert by_category == {
+            "tokens.input": 100,
+            "tokens.output": 40,
+        }
+        assert idempotency_by_category == {
+            "tokens.input": _model_usage_idempotency_key(
+                "run-abc-123", "resp_sse_1", "tokens.input"
+            ),
+            "tokens.output": _model_usage_idempotency_key(
+                "run-abc-123", "resp_sse_1", "tokens.output"
+            ),
+        }
+        assert {event["provider"] for event in events} == {"gpt-5.5"}
+
     def test_full_pipeline_model_websocket_reports_usage(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
