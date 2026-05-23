@@ -22,7 +22,6 @@ import {
   IconCreditCard,
   IconFileInvoice,
   IconKey,
-  IconUserCircle,
   IconUsers,
 } from "@tabler/icons-react";
 
@@ -33,7 +32,6 @@ import {
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/zero-page/settings/settings-dialog.ts";
-import { AccountSection } from "./sections/account-section.tsx";
 import { PreferenceSection } from "./sections/preference-section.tsx";
 import { ApiKeysSection } from "./sections/api-keys-section.tsx";
 import { ModelSection } from "./sections/model-section.tsx";
@@ -52,10 +50,6 @@ interface SettingsDialogProps {
 }
 
 const SECTION_META = {
-  account: {
-    title: "Account",
-    description: "Manage your personal profile and security settings.",
-  },
   preference: {
     title: "Preference",
     description: "Personalize how the app looks and behaves.",
@@ -113,7 +107,6 @@ interface SidebarGroup {
 const PERSONAL_GROUP = {
   label: null,
   items: [
-    { id: "account", label: "Account", icon: IconUserCircle },
     {
       id: "preference",
       label: "Preference",
@@ -143,9 +136,6 @@ const BILLING_GROUP = {
 } as const satisfies SidebarGroup;
 
 const SECTION_COMPONENTS = {
-  account: () => {
-    return <AccountSection />;
-  },
   preference: () => {
     return <PreferenceSection />;
   },
@@ -195,7 +185,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
     !isAdmin && isAdminOnlySettingsSection(activeSection)
-      ? "account"
+      ? "preference"
       : activeSection;
   const meta = SECTION_META[resolvedSection];
 
