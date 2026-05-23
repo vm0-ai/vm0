@@ -69,10 +69,7 @@ export function LabPage() {
               return !key.endsWith("Connector");
             });
 
-            const renderGroup = (
-              title: string,
-              keys: FeatureSwitchKey[],
-            ) => {
+            const renderGroup = (title: string, keys: FeatureSwitchKey[]) => {
               return (
                 <section>
                   <h2 className="mb-2 px-1 text-sm font-medium text-muted-foreground">
