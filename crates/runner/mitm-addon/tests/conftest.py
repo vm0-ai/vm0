@@ -25,6 +25,7 @@ from mitmproxy import http, tcp
 from mitmproxy.test import tflow, tutils
 
 import auth
+import auth_base_forwarder as forwarder
 import mitm_addon
 import registry
 import usage
@@ -53,6 +54,32 @@ def _reset_module_state() -> None:
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:
     return http.Headers([(k.encode(), v.encode()) for k, v in pairs])
+
+
+def _mock_forwarder_conn() -> tuple[MagicMock, MagicMock]:
+    resp = MagicMock()
+    resp.status = 200
+    resp.read.return_value = b"ok"
+    resp.getheaders.return_value = []
+    conn = MagicMock()
+    conn.getresponse.return_value = resp
+    return conn, resp
+
+
+@pytest.fixture
+def mock_https_conn() -> Iterator[tuple[MagicMock, MagicMock, MagicMock]]:
+    """Stub ``HTTPSConnection`` with a 200/``b"ok"``/no-headers response."""
+    conn, resp = _mock_forwarder_conn()
+    with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn) as cls:
+        yield conn, resp, cls
+
+
+@pytest.fixture
+def mock_http_conn() -> Iterator[tuple[MagicMock, MagicMock, MagicMock]]:
+    """Stub ``HTTPConnection`` with a 200/``b"ok"``/no-headers response."""
+    conn, resp = _mock_forwarder_conn()
+    with patch.object(forwarder.http_client, "HTTPConnection", return_value=conn) as cls:
+        yield conn, resp, cls
 
 
 @pytest.fixture
