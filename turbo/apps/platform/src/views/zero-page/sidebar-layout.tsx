@@ -50,6 +50,10 @@ import {
   orgManageDialogOpen$,
   setOrgManageDialogOpen$,
 } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import {
+  settingsDialogOpen$,
+  setSettingsDialogOpen$,
+} from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -58,6 +62,7 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
+import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import {
   InstallBanner,
   IosInstallModal,
@@ -266,6 +271,21 @@ function OrgManageDialogMount() {
   );
 }
 
+function SettingsDialogMount() {
+  const dialogOpen = useGet(settingsDialogOpen$);
+  const setDialogOpen = useSet(setSettingsDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
+
+  return (
+    <SettingsDialog
+      open={dialogOpen}
+      onOpenChange={(open) => {
+        detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
+      }}
+    />
+  );
+}
+
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const showAboutPage = useGet(zeroShowAboutPage$);
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
@@ -283,6 +303,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       className="zero-app flex h-dvh w-full bg-background"
     >
       <OrgManageDialogMount />
+      <SettingsDialogMount />
       <QueueDrawer />
       <ZeroSidebar />
       <div

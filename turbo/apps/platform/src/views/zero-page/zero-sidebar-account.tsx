@@ -1,12 +1,13 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useLoadable, useLastResolved } from "ccstate-react";
+import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
 import {
   IconAdjustmentsHorizontal,
   IconUser,
   IconLogout,
   IconPlus,
   IconChevronRight,
+  IconSettings,
   IconSwitchHorizontal,
   IconDatabaseExport,
   IconKey,
@@ -32,6 +33,8 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import type { ZeroAccountAction } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 
 interface SessionAccount {
@@ -243,6 +246,44 @@ function PreferencesGroup({
   );
 }
 
+function UnifiedSettingsGroup({
+  labEnabled,
+  onAccountAction,
+  onOpenSettings,
+}: {
+  labEnabled: boolean;
+  onAccountAction: (action: ZeroAccountAction) => void;
+  onOpenSettings: () => void;
+}) {
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={onOpenSettings}
+        className="gap-3 px-3 py-2.5 rounded-lg"
+      >
+        <IconSettings
+          size={18}
+          stroke={1.5}
+          className="text-muted-foreground"
+        />
+        <span>Settings</span>
+      </DropdownMenuItem>
+      {labEnabled && (
+        <DropdownMenuItem
+          onClick={() => {
+            return onAccountAction("lab");
+          }}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
+          <span>Lab</span>
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
 function AccountManagementGroup({
   others,
   onSwitchSession,
@@ -320,26 +361,30 @@ function AccountManagementGroup({
 function ExtraAccountActions({
   apiKeysEnabled,
   showExportData,
+  hideManageAndApiKeys,
   apiBase,
   onAccountAction,
 }: {
   apiKeysEnabled: boolean;
   showExportData: boolean;
+  hideManageAndApiKeys: boolean;
   apiBase: string | undefined;
   onAccountAction: (action: ZeroAccountAction) => void;
 }) {
   return (
     <>
-      <DropdownMenuItem
-        onClick={() => {
-          return onAccountAction("manage");
-        }}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
-        <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
-        <span>Manage account</span>
-      </DropdownMenuItem>
-      {apiKeysEnabled && (
+      {!hideManageAndApiKeys && (
+        <DropdownMenuItem
+          onClick={() => {
+            return onAccountAction("manage");
+          }}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
+          <span>Manage account</span>
+        </DropdownMenuItem>
+      )}
+      {!hideManageAndApiKeys && apiKeysEnabled && (
         <DropdownMenuItem
           onClick={() => {
             return onAccountAction("apiKeys");
@@ -409,6 +454,9 @@ export function AccountDropdown({
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const apiKeysEnabled = features?.[FeatureSwitchKey.ApiKeys] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const unifiedSettings = features?.[FeatureSwitchKey.UnifiedSettings] ?? false;
+  const openSettings = useSet(openSettingsDialogAt$);
+  const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -454,6 +502,10 @@ export function AccountDropdown({
     detach(clerk?.openSignIn(), Reason.DomCallback);
   };
 
+  const handleOpenSettings = () => {
+    detach(openSettings("account", pageSignal), Reason.DomCallback);
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -470,11 +522,21 @@ export function AccountDropdown({
           display={accountDisplay}
           visible={current !== undefined || user !== undefined}
         />
-        <PreferencesGroup
-          hidePreferences={hidePreferences}
-          labEnabled={labEnabled}
-          onAccountAction={handleAccountAction}
-        />
+        {unifiedSettings ? (
+          !hidePreferences && (
+            <UnifiedSettingsGroup
+              labEnabled={labEnabled}
+              onAccountAction={handleAccountAction}
+              onOpenSettings={handleOpenSettings}
+            />
+          )
+        ) : (
+          <PreferencesGroup
+            hidePreferences={hidePreferences}
+            labEnabled={labEnabled}
+            onAccountAction={handleAccountAction}
+          />
+        )}
         <AccountManagementGroup
           others={others}
           onSwitchSession={handleSwitchSession}
@@ -483,6 +545,7 @@ export function AccountDropdown({
         <ExtraAccountActions
           apiKeysEnabled={apiKeysEnabled}
           showExportData={showExportData}
+          hideManageAndApiKeys={unifiedSettings}
           apiBase={apiBase}
           onAccountAction={handleAccountAction}
         />

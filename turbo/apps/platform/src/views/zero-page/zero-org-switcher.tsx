@@ -17,6 +17,7 @@ import {
   IconPlus,
   IconMail,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import {
   bestEffort,
@@ -25,6 +26,8 @@ import {
   Reason,
 } from "../../signals/utils.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { org$ } from "../../signals/org.ts";
 import {
@@ -204,17 +207,24 @@ function OtherMembershipsList() {
 
 function OrgDropdownContent() {
   const openManage = useSet(setOrgManageDialogOpen$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
   const clerkLoadable = useLastLoadable(clerk$);
   const orgData = useLastResolved(org$);
   const pendingInvitations = useLastResolved(userInvitations$);
   const currentOrg = useLastResolved(currentOrgInfo$);
+  const features = useLastResolved(featureSwitch$);
+  const unifiedSettings = features?.[FeatureSwitchKey.UnifiedSettings] ?? false;
 
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const orgName = currentOrg?.name ?? "Organization";
   const orgSlug = orgData?.slug;
 
   const handleManage = () => {
+    if (unifiedSettings) {
+      detach(openSettings("general", pageSignal), Reason.DomCallback);
+      return;
+    }
     detach(openManage(true, pageSignal), Reason.DomCallback);
   };
 
