@@ -4,17 +4,20 @@ import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { initProfileName$ } from "./org-manage-tabs-state.ts";
 
-export type SettingsSection =
-  | "account"
-  | "preference"
-  | "api-keys"
-  | "model"
-  | "debug"
-  | "general"
-  | "people"
-  | "billing"
-  | "usage"
-  | "invoices";
+export const SETTINGS_SECTIONS = [
+  "account",
+  "preference",
+  "api-keys",
+  "model",
+  "debug",
+  "general",
+  "people",
+  "billing",
+  "usage",
+  "invoices",
+] as const;
+
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 const ADMIN_ONLY_SETTINGS_SECTIONS_LIST = [
   "general",
@@ -58,6 +61,7 @@ export const setSettingsDialogOpen$ = command(
     set(internalSettingsDialogOpen$, open);
     if (open) {
       await set(initProfileName$, signal);
+      signal.throwIfAborted();
       set(reloadBillingStatus$);
       const params = new URLSearchParams(get(searchParams$));
       const section = get(internalActiveSection$);
@@ -86,10 +90,15 @@ export const openSettingsDialogAt$ = command(
   },
 );
 
+function isSettingsSection(value: string): value is SettingsSection {
+  return (SETTINGS_SECTIONS as readonly string[]).includes(value);
+}
+
 /**
  * Check URL for `?settings=<section>` and auto-open the dialog on that section.
  * Falls back to the closest non-admin section if the user lacks workspace
- * admin and the URL points at an admin-only section.
+ * admin and the URL points at an admin-only section. Strips the param from
+ * the URL after consuming it so reloads don't re-pin the dialog.
  */
 export const checkUnifiedSettingsParam$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -98,27 +107,19 @@ export const checkUnifiedSettingsParam$ = command(
     if (!value) {
       return;
     }
-    const known = new Set<SettingsSection>([
-      "account",
-      "preference",
-      "api-keys",
-      "model",
-      "debug",
-      "general",
-      "people",
-      "billing",
-      "usage",
-      "invoices",
-    ]);
-    if (!known.has(value as SettingsSection)) {
-      return;
+    if (isSettingsSection(value)) {
+      const section = value;
+      const isAdmin = await get(isOrgAdmin$);
+      signal.throwIfAborted();
+      const resolved =
+        !isAdmin && isAdminOnlySettingsSection(section) ? "account" : section;
+      set(internalActiveSection$, resolved);
+      await set(setSettingsDialogOpen$, true, signal);
     }
-    const section = value as SettingsSection;
-    const isAdmin = await get(isOrgAdmin$);
-    signal.throwIfAborted();
-    const resolved =
-      !isAdmin && isAdminOnlySettingsSection(section) ? "account" : section;
-    set(internalActiveSection$, resolved);
-    await set(setSettingsDialogOpen$, true, signal);
+
+    // Strip the param so a reload doesn't re-pin the dialog on this section
+    const next = new URLSearchParams(get(searchParams$));
+    next.delete("settings");
+    set(updateSearchParams$, next);
   },
 );

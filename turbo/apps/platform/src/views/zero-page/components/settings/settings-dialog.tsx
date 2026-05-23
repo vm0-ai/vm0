@@ -113,32 +113,32 @@ interface SidebarGroup {
 const PERSONAL_GROUP = {
   label: null,
   items: [
-    { id: "account", label: "Account", icon: IconUserCircle as NavIcon },
+    { id: "account", label: "Account", icon: IconUserCircle },
     {
       id: "preference",
       label: "Preference",
-      icon: IconAdjustmentsHorizontal as NavIcon,
+      icon: IconAdjustmentsHorizontal,
     },
-    { id: "api-keys", label: "API Keys", icon: IconKey as NavIcon },
-    { id: "model", label: "Model", icon: IconCpu as NavIcon },
-    { id: "debug", label: "Debug", icon: IconBug as NavIcon },
+    { id: "api-keys", label: "API Keys", icon: IconKey },
+    { id: "model", label: "Model", icon: IconCpu },
+    { id: "debug", label: "Debug", icon: IconBug },
   ],
 } as const satisfies SidebarGroup;
 
 const WORKSPACE_GROUP = {
   label: "Workspace",
   items: [
-    { id: "general", label: "General", icon: IconBuilding as NavIcon },
-    { id: "people", label: "People", icon: IconUsers as NavIcon },
+    { id: "general", label: "General", icon: IconBuilding },
+    { id: "people", label: "People", icon: IconUsers },
   ],
 } as const satisfies SidebarGroup;
 
 const BILLING_GROUP = {
   label: "Billing & pricing",
   items: [
-    { id: "billing", label: "Billing", icon: IconCreditCard as NavIcon },
-    { id: "usage", label: "Credit balance", icon: IconCoins as NavIcon },
-    { id: "invoices", label: "Invoices", icon: IconFileInvoice as NavIcon },
+    { id: "billing", label: "Billing", icon: IconCreditCard },
+    { id: "usage", label: "Credit balance", icon: IconCoins },
+    { id: "invoices", label: "Invoices", icon: IconFileInvoice },
   ],
 } as const satisfies SidebarGroup;
 
