@@ -5,7 +5,6 @@ export const base44 = {
   base44: {
     label: "Base44",
     category: "ai-agent-apps",
-    tags: ["apps", "builder", "mcp", "firewall"],
     environmentMapping: {
       BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
     },
