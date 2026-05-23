@@ -74,11 +74,11 @@ importers:
         specifier: ^20.5.0
         version: 20.5.0(@types/node@24.3.0)(conventional-commits-parser@6.3.0)(typescript@5.9.3)
       '@vitest/coverage-v8':
-        specifier: ^4.1.6
-        version: 4.1.6(@vitest/browser@4.1.6)(vitest@4.1.6)
+        specifier: ^4.1.7
+        version: 4.1.7(@vitest/browser@4.1.7)(vitest@4.1.7)
       '@vitest/ui':
-        specifier: ^4.1.6
-        version: 4.1.6(vitest@4.1.6)
+        specifier: ^4.1.7
+        version: 4.1.7(vitest@4.1.7)
       '@vm0/firewalls-generator':
         specifier: workspace:*
         version: link:packages/firewalls-generator
@@ -104,20 +104,20 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   apps/api:
     dependencies:
       '@aws-sdk/client-kms':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1053.0
+        version: 3.1053.0
       '@aws-sdk/client-s3':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1053.0
+        version: 3.1053.0
       '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1053.0
+        version: 3.1053.0
       '@axiomhq/js':
         specifier: ^1.5.0
         version: 1.5.0
@@ -125,8 +125,8 @@ importers:
         specifier: ^0.1.6
         version: 0.1.7(@axiomhq/js@1.5.0)
       '@clerk/backend':
-        specifier: ^3.4.1
-        version: 3.4.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        specifier: ^3.4.13
+        version: 3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@google/genai':
         specifier: ^1.50.1
         version: 1.50.1
@@ -159,7 +159,7 @@ importers:
         version: 5.12.1
       '@vercel/functions':
         specifier: ^3.4.4
-        version: 3.4.4(@aws-sdk/credential-provider-web-identity@3.972.41)
+        version: 3.4.4(@aws-sdk/credential-provider-web-identity@3.972.43)
       '@vercel/oidc':
         specifier: ^3.4.1
         version: 3.4.1
@@ -267,11 +267,11 @@ importers:
         specifier: ^3.6.4
         version: 3.6.4
       '@typescript-eslint/rule-tester':
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/utils':
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
@@ -289,10 +289,10 @@ importers:
         version: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
@@ -303,8 +303,8 @@ importers:
         specifier: ^8.0.10
         version: 8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   apps/cli:
     dependencies:
@@ -368,10 +368,10 @@ importers:
         version: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       prompts:
         specifier: ^2.4.2
         version: 2.4.2
@@ -394,8 +394,8 @@ importers:
         specifier: ^6.24.0
         version: 6.24.1
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
       yaml:
         specifier: '>=2.8.3'
         version: 2.8.3
@@ -422,7 +422,7 @@ importers:
         version: 42.1.0
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.15.21(@swc/helpers@0.5.20))(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
@@ -430,8 +430,8 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   apps/host-worker:
     devDependencies:
@@ -446,7 +446,7 @@ importers:
         version: 9.39.4(jiti@2.6.1)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -572,17 +572,17 @@ importers:
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
       '@typescript-eslint/rule-tester':
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/utils':
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
       '@vitest/browser-playwright':
-        specifier: 4.1.6
-        version: 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(playwright@1.59.1)(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.6)
+        specifier: 4.1.7
+        version: 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(playwright@1.59.1)(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.7)
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
@@ -606,10 +606,10 @@ importers:
         version: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       playwright:
         specifier: 1.59.1
         version: 1.59.1
@@ -620,26 +620,26 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       vite:
         specifier: ^8.0.0
         version: 8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   apps/web:
     dependencies:
       '@aws-sdk/client-kms':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1053.0
+        version: 3.1053.0
       '@aws-sdk/client-s3':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1053.0
+        version: 3.1053.0
       '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1053.0
+        version: 3.1053.0
       '@axiomhq/js':
         specifier: ^1.3.1
         version: 1.5.0
@@ -647,8 +647,8 @@ importers:
         specifier: ^0.1.6
         version: 0.1.7(@axiomhq/js@1.5.0)
       '@clerk/backend':
-        specifier: ^3.4.1
-        version: 3.4.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        specifier: ^3.4.13
+        version: 3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/nextjs':
         specifier: ^7.2.7
         version: 7.2.7(next@16.2.6(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -675,7 +675,7 @@ importers:
         version: 3.41.0(react@19.2.6)
       '@vercel/functions':
         specifier: ^3.4.4
-        version: 3.4.4(@aws-sdk/credential-provider-web-identity@3.972.41)
+        version: 3.4.4(@aws-sdk/credential-provider-web-identity@3.972.43)
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
@@ -771,11 +771,11 @@ importers:
         specifier: ^19.1.9
         version: 19.2.3(@types/react@19.2.14)
       '@typescript-eslint/rule-tester':
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@typescript-eslint/utils':
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
@@ -799,10 +799,10 @@ importers:
         version: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       postcss:
         specifier: '>=8.5.10'
         version: 8.5.10
@@ -813,8 +813,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/api-contracts:
     dependencies:
@@ -842,10 +842,10 @@ importers:
         version: 9.39.4(jiti@2.6.1)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -853,8 +853,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/api-services:
     devDependencies:
@@ -869,16 +869,16 @@ importers:
         version: 9.39.4(jiti@2.6.1)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/connectors:
     dependencies:
@@ -906,16 +906,16 @@ importers:
         version: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/core:
     dependencies:
@@ -940,16 +940,16 @@ importers:
         version: 9.39.4(jiti@2.6.1)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/db:
     dependencies:
@@ -977,16 +977,16 @@ importers:
         version: 9.39.4(jiti@2.6.1)
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/eslint-config:
     devDependencies:
@@ -1004,7 +1004,7 @@ importers:
         version: 10.1.8(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint@1.57.0(oxlint-tsgolint@0.21.1))
+        version: 1.57.0(oxlint@1.57.0(oxlint-tsgolint@0.23.0))
       eslint-plugin-react:
         specifier: ^7.37.5
         version: 7.37.5(eslint@9.39.4(jiti@2.6.1))
@@ -1021,8 +1021,8 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.59.3
-        version: 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
 
   packages/firewalls-generator:
     devDependencies:
@@ -1039,8 +1039,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
       yaml:
         specifier: '>=2.8.3'
         version: 2.8.3
@@ -1135,10 +1135,10 @@ importers:
         version: 20.9.0
       oxlint:
         specifier: ^1.57.0
-        version: 1.57.0(oxlint-tsgolint@0.21.1)
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
       oxlint-tsgolint:
-        specifier: 0.21.1
-        version: 0.21.1
+        specifier: 0.23.0
+        version: 0.23.0
       postcss:
         specifier: '>=8.5.10'
         version: 8.5.10
@@ -1149,8 +1149,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
 packages:
 
@@ -1190,104 +1190,104 @@ packages:
   '@aws-crypto/util@5.2.0':
     resolution: {integrity: sha512-4RkU9EsI6ZpBve5fseQlGNUWKMa1RLPQ1dnjnQoe07ldfIzcsGb5hC5W0Dm7u423KWzawlrpbjXBrXCEv9zazQ==}
 
-  '@aws-sdk/client-kms@3.1048.0':
-    resolution: {integrity: sha512-pJznSdKl1Sw5vmsN8PkTFF+Ic+JmUflJ4/V2IVMMO9ZIA1A8ifa0Fmno/C93ChXmuxcwmyELkdLAM+XS4OQb4w==}
+  '@aws-sdk/client-kms@3.1053.0':
+    resolution: {integrity: sha512-U7dr+jGnAV2UpQesHBan4lgI8TAgFyWhvcWAon8Ub4UjIQz5RDbP5eyU7DU2qjmgGe7iL0U0/jYvQpBj2TkelA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1048.0':
-    resolution: {integrity: sha512-SrJn5FteqqtcDBgQIvqLKk3Qn/2vSsi5XR03I53EDDR4CbCdLysVSNgUnjVncEECMua9Pz+nxO0/lEx3TP+6mA==}
+  '@aws-sdk/client-s3@3.1053.0':
+    resolution: {integrity: sha512-/oGxoB6p1Nqs935Blt+v1o+anSCEf2n3RjIrcLz84i4cn2Gr+Z7JpDdUkG5+74r5ctqEPG7k/phTGbJ9fNKnHg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/core@3.974.11':
-    resolution: {integrity: sha512-QpnINq5FZH6EOaDEkmHdT7eUunbvD27pDNQypaWjFyYz7Zl1q3UCMQErBZxpmfGfI7MvI2TlK8KTkgNpv8b1ug==}
+  '@aws-sdk/core@3.974.13':
+    resolution: {integrity: sha512-+Y5/4tHki0uYgyx8eun146DegRVQBpdKGK5RbV0FTKJPpaKTchvqVxrrRFK6Wk0JksO4iAZKw3eqxGEIwtO98w==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/crc64-nvme@3.972.8':
-    resolution: {integrity: sha512-fVfUCL/Xh2zINYMPZvj+iBn6XWouQf0DAnjaWCI9MkmqXzL2Iy5FoQB8O7syFe6gN6AH1ecDDU58T51Ou0kFkA==}
+  '@aws-sdk/crc64-nvme@3.972.9':
+    resolution: {integrity: sha512-P+QGozmXn2mZZI7sDgk+aUm+RTI61MPSFB+Ir2vjEjEbEsE4e7hYtzrDvAUxZy9ko81h53e11+F/GYlvwDkaOQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-env@3.972.37':
-    resolution: {integrity: sha512-/jpPvEh6f7ntmIzf7dNxoNX6Q8vt8UpesCjbW6mFfk4V1NW6bIy9qxcQ6WbA8As5yQhsZOe+xeNd4xHX8kdY2Q==}
+  '@aws-sdk/credential-provider-env@3.972.39':
+    resolution: {integrity: sha512-29wX9zpAvEt1vcj0psha+y6ygBHy2V/S72mp6e7q0KARLWXq+pwE/lR6qGkwknQvruh52lXvlqZIga8Hdxkucw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-http@3.972.39':
-    resolution: {integrity: sha512-pIgTpisWyWg7X1bUbzSjuUYosYTD0Ghz2M0hkSTmb3a6i3qV3uU+NYJPI/E2XSC0HcsZh5rsLPzeXrkb2DS0Cg==}
+  '@aws-sdk/credential-provider-http@3.972.41':
+    resolution: {integrity: sha512-IA3CQTjtJkb6u1H4mE4936c8OPBMa9Jggtwe8U2Mqw/vvb/tZ5Ebd0mcZcX0uKWQhOyYo/+qNIwkV5Xh+FeJJA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-ini@3.972.41':
-    resolution: {integrity: sha512-u2tyjaxJJzW8UtW4SM1ZcPMDwO6y+kV+llvou+Adts0FAKyzes5jG4izQN+KX3yE8ZROpS5y1LJ//xL2iSf76w==}
+  '@aws-sdk/credential-provider-ini@3.972.43':
+    resolution: {integrity: sha512-4mzII+3mZEVXXE1xzrLQrCJL7/r62A63bA6SVzZoNL5rqCJghpf+xgGltVrIBBs0n+mOZBKrQl2tRREtvZ5l6A==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-login@3.972.41':
-    resolution: {integrity: sha512-0LBitxXiAiaE5nlFPfpNIww/8FRY/I7WIndWsc9GmNFOM7cE1wNpVNQEGEk9Outg5l8xl+3vybxFyUy4l9q/LQ==}
+  '@aws-sdk/credential-provider-login@3.972.43':
+    resolution: {integrity: sha512-HG7kQCwXtbv3oBV61Ins0oNX8KKyvrMqqRkb6ZiAfQHbMuHaiNaEb2KnpKLPkNpqImSBK82UkVE/kaY6IfWikA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-node@3.972.42':
-    resolution: {integrity: sha512-D4oon2zbqqsWOJUM99Gm3/ZyJ0IJvTXVN3PyloGb3kQEyI36fjCZheZj422lAgTWWd6TSHgiImLt3RIaLdv3dQ==}
+  '@aws-sdk/credential-provider-node@3.972.44':
+    resolution: {integrity: sha512-sDaBIT0yrNNIPfvlsiTCmANm07zKju+ipWODjEXgZlsjMeIJR3LVp7RDyAOzUoAsTbDfYKDWp+i5WrFiQP6rmQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-process@3.972.37':
-    resolution: {integrity: sha512-7nVaHBUaWIddASYfVaA9O4D5ZVjewU3sCol9WqZPGfW0nR+0WqE0xHZnD/U2L33PlOB8KNXGKZ6wOES/QijKzg==}
+  '@aws-sdk/credential-provider-process@3.972.39':
+    resolution: {integrity: sha512-2k/amBifLd75eXNwgvPw/2lKYSQ3NhvHQgkVKVjfUq13/eJ3JRtHmznuFenn74OK3sSfp4SMy1YB2w+UVXoKqA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-sso@3.972.41':
-    resolution: {integrity: sha512-IOWAWEHe5LkjSKkkUUX9ciV6Y1scHTsnfEkdt5yyC4Slrc7AGbkLPrpntjqh18ksJAMOaVhoBsO8p2WyTcY2wQ==}
+  '@aws-sdk/credential-provider-sso@3.972.43':
+    resolution: {integrity: sha512-LPc3+Y4vhH1T4x6CMqwCM6hk5+SRf/Lwmgm8INm95wxTtIRHcMwQUVkDzWu4Iw/RSncxYM2BC01OrYbxOPZvyg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-web-identity@3.972.41':
-    resolution: {integrity: sha512-mbACk9Yypa8nm4iGZLs0PofOXEcTDOUw6wDnsPXNDNSd2WNXs1tSo+6nc/fh0jLYdfVZThhBL98PHW4aXFsG5A==}
+  '@aws-sdk/credential-provider-web-identity@3.972.43':
+    resolution: {integrity: sha512-wQtL34lUD/09VXjwAUo2T+I3aEXRDxMB3DKmTJL/Zj0Gi6sLDTrVhae1XVt01yzkquOWajI/sZW72JGDZ1ciTw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-bucket-endpoint@3.972.13':
-    resolution: {integrity: sha512-JDaukix+kt5KwF7FzNSkfZHpqiPJajVkKJLJexF6z5B44+CN70BXGiQaCEAiCtKtRZNvC16eF3SY9L0bDJPlbA==}
+  '@aws-sdk/middleware-bucket-endpoint@3.972.15':
+    resolution: {integrity: sha512-O2HDANa+MrvbxpaRVQDiH3T13uAa9AkMjKyZmDygwauAmmvqZ5B0iRmKW+fuVGW6NPXuyXurFgIx69lSvmAWGA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-expect-continue@3.972.12':
-    resolution: {integrity: sha512-dA5pKTom/Ls9mgeyeaRBNQrRIVOLVjv4AmKOB0/e4yaiXEUy0gSz2d3liP8JHtYoCAEWySU1jWnyzwLOREN+4g==}
+  '@aws-sdk/middleware-expect-continue@3.972.13':
+    resolution: {integrity: sha512-sHiqIFg8o2ipT7t40B89Vj0ubSUtY6OSt/+Ee/OXhHch5K4+81zP2+QX8Lkc/nJ2QSmCySxOke7TEbmX69fe2g==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-flexible-checksums@3.974.19':
-    resolution: {integrity: sha512-GLciZVIvWM3C+ffuqnUqlAZwRjQdLt+KXiqr9+aRwZyKVyF2J5lrJAzzSqwweNl9hUWBN00BhilWXdMI5DjNcw==}
+  '@aws-sdk/middleware-flexible-checksums@3.974.21':
+    resolution: {integrity: sha512-alAu9heyiBK/OmRNXVxq8mmPTgeW2AQ6EYjRsI38kPZa1MZvt2Jh+BlGq7/GG9OVXOaEgD7DlGj/Lzfy5OmuEg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-location-constraint@3.972.10':
-    resolution: {integrity: sha512-rI3NZvJcEvjoD0+0PI0iUAwlPw2IlSlhyvgBK/3WkKJQE/YiKFedd9dMN2lVacdNxPNhxL/jzQaKQdrGtQagjQ==}
+  '@aws-sdk/middleware-location-constraint@3.972.11':
+    resolution: {integrity: sha512-hkfspNUP4criAH6ton6BGKgnm5dZx+7bUOy1YqlTfejDeUPAM23D81q/IX+hdlS3KUsfwGz5ADTqZWKBEUpf4A==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-sdk-s3@3.972.40':
-    resolution: {integrity: sha512-vyFY4EsAGySqqd87Z7n4qcCYXJO3QArB8VIJzuupY5XuLHIp579HTZldIUGGABvAOzLptfPb9+lJBJcB+3/cvA==}
+  '@aws-sdk/middleware-sdk-s3@3.972.42':
+    resolution: {integrity: sha512-/xNqNGXv9LaxZd25L9VV4pnSOw9OdDNO4rAHamM+h3KQBSITljIH9vk3dveGga1I2j36lQd0rdG3gjNEXvtNew==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-ssec@3.972.10':
-    resolution: {integrity: sha512-Gli9A0u8EVVb+5bFDGS/QbSVg28w/wpEidg1ggVcSj65BDTdGR6punsOcVjqdiu1i42WHWo51MCvARPIIz9juw==}
+  '@aws-sdk/middleware-ssec@3.972.11':
+    resolution: {integrity: sha512-7PQvGNhtveKlvVqNahqWx5yrwxP7ecwAoB1dYBf8eKwfo2tzzCbNnW+q2nO3N066ktQaB4iBQbDRWtizm+amoQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/nested-clients@3.997.9':
-    resolution: {integrity: sha512-jPR3rnmRI4hWYyzfmTGBr7NblMp8QYYeflHXba1H6+7CGrWVqWKQzaXFQ4qbExqPRsXN3T3L3JxFhr6aouXUGQ==}
+  '@aws-sdk/nested-clients@3.997.11':
+    resolution: {integrity: sha512-nWXXJ1r/r8N2Gw1pWolRgED38/A9A8DHR2ETWIv220zh4PZHcybbR4hUVWWktmNXTRHzDJwRluapHn0rZxuoqA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/s3-request-presigner@3.1048.0':
-    resolution: {integrity: sha512-7/yZh562OhKvwBFS/nVL+7qMecUGO91XfaPfqisWiswtlgoQ4gt4zHn9MuUwoPcIYgdkOO0RucOzcD13u7uJEg==}
+  '@aws-sdk/s3-request-presigner@3.1053.0':
+    resolution: {integrity: sha512-F2424BizKG4Jg/I7kr9bNCRqE1fo8ZnHBad+s3KalL20SwI1KCk7KnVJRdIpNVHbHqrhg/UZaLxaAjY7vLUUYw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/signature-v4-multi-region@3.996.27':
-    resolution: {integrity: sha512-0Phbz4t6HI3D3skxvG2uI+VWU034/nSIw1T8d+FPzzQG9EQTrw94o9mOKO2Gv3n3Oc8P7JD7RAUxkoneLWv5Eg==}
+  '@aws-sdk/signature-v4-multi-region@3.996.28':
+    resolution: {integrity: sha512-qs9z5LqXO/CZC2Lg9SGKpoLU8Rhi+m2pFKZqfO9pytX1clc0katqtsDNupJxFy0xT9wsZSPzM2v1y+/H/zfp5Q==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/token-providers@3.1048.0':
-    resolution: {integrity: sha512-k0y/GcuesuSfWyUM0WamrGyeZmltRYaPbHO82UDA6mZ/doB+FOHKutikPAtSXMn/hDz970cF+iRuuiYO9VEbAA==}
+  '@aws-sdk/token-providers@3.1052.0':
+    resolution: {integrity: sha512-QqZNB3so7UIDxZtroc85TQaLVxdZRFm0eWM1CSR2N+b06as9TOrilvrlTZuj3guYlxMs6yLOgGxnklJ5qMYtTw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/types@3.973.8':
-    resolution: {integrity: sha512-gjlAdtHMbtR9X5iIhVUvbVcy55KnznpC6bkDUWW9z915bi0ckdUr5cjf16Kp6xq0bP5HBD2xzgbL9F9Quv5vUw==}
+  '@aws-sdk/types@3.973.9':
+    resolution: {integrity: sha512-kuBfgQVdcz5Bmapc4A13YbpVw/pXkesfhetcFYwbntqas8sF41OHyd4o28+/TG2ZQdHBsv90Lsu5y6oitvYCdg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/util-locate-window@3.965.5':
     resolution: {integrity: sha512-WhlJNNINQB+9qtLtZJcpQdgZw3SCDCpXdUJP7cToGwHbCWCnRckGlc6Bx/OhWwIYFNAn+FIydY8SZ0QmVu3xTQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/xml-builder@3.972.24':
-    resolution: {integrity: sha512-V8z5YcDPfsvzrBlj0xR1vhRtocblhYbqdreCJB/voGd4Sr5zjNAeWxexbnqVtskTJe0vFb5KMqbSL++ePl+zRw==}
+  '@aws-sdk/xml-builder@3.972.25':
+    resolution: {integrity: sha512-GH+Kjz4nPKWKHnsiQpnhP1MJdTGIcK4rAka6tzakgjjUkVgNsmPeEbbRAf09SzS1hjGu6duGHCBsxYke0BhHjQ==}
     engines: {node: '>=20.0.0'}
 
   '@aws/lambda-invoke-store@0.2.4':
@@ -1391,8 +1391,8 @@ packages:
   '@bufbuild/protobuf@2.11.0':
     resolution: {integrity: sha512-sBXGT13cpmPR5BMgHE6UEEfEaShh5Ror6rfN3yEK5si7QVrtZg8LEPQb0VVhiLRUslD2yLnXtnRzG035J/mZXQ==}
 
-  '@clerk/backend@3.4.1':
-    resolution: {integrity: sha512-+Tgo1uPEFpBRvyFW3JtPbrTMRgiP+pWBo9gi2tTB0AxEqR2I/kSYy5l3+KqWciUpbVZtVvLXm1j+NEE2WEG+jg==}
+  '@clerk/backend@3.4.13':
+    resolution: {integrity: sha512-3BABnKE1YZpQqJ/S8QD5FpzE7jq+mgaMrO7rLiWTI8Bfs/xk11XYSp1lMEf3BTo/rzEtaUsXaVDGvccYogKapg==}
     engines: {node: '>=20.9.0'}
 
   '@clerk/clerk-js@5.125.10':
@@ -1431,6 +1431,18 @@ packages:
   '@clerk/shared@3.47.5':
     resolution: {integrity: sha512-rDVe73/VN2NZXhtrLRHshkUpQDrevAqDRxeXUl2M0IBEBkcl+VMHlV7fep53cVWo0b3gIqLk82pmmi+WoyF/xg==}
     engines: {node: '>=18.17.0'}
+    peerDependencies:
+      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
+  '@clerk/shared@4.13.1':
+    resolution: {integrity: sha512-DyUtvNHgMmqjtTM0q285jKaAXUmCDSyItiGQTt1dNL0M6DZ3bxqsJz7wXPjh9zezmU4BAnLpwhj5gsM3OuNPzA==}
+    engines: {node: '>=20.9.0'}
     peerDependencies:
       react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
       react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
@@ -3303,33 +3315,33 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@oxlint-tsgolint/darwin-arm64@0.21.1':
-    resolution: {integrity: sha512-7TLjyWe4wG9saJc992VWmaHq2hwKfOEEVTjheReXJXaDhavMZI4X9a6nKhbEng4IVkYtzjD2jw16vw2WFXLYLw==}
+  '@oxlint-tsgolint/darwin-arm64@0.23.0':
+    resolution: {integrity: sha512-gOs9PVr2wEg4ox9z0aJo+RKhhImW86YL5N6yav8BK/rgPsIrwN/igSZ+pbRr723NFvUNKde9fgMhRA6JrXAOZw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@oxlint-tsgolint/darwin-x64@0.21.1':
-    resolution: {integrity: sha512-7wf9Wf75nTzA7zpL9myhFe2RKvfuqGUOADNvUooCjEWvh7hmPz3lSEqTMh5Z/VQhzsG04mM9ACyghxhRzq7zFw==}
+  '@oxlint-tsgolint/darwin-x64@0.23.0':
+    resolution: {integrity: sha512-kjJ8B+7n4tB9VJdxS5A9GdJt6/bYpzbu4lXp2uO1S3sRmCB5gDEABlGoiePNApRWaW+xqL4b4xgiE727jSLhuA==}
     cpu: [x64]
     os: [darwin]
 
-  '@oxlint-tsgolint/linux-arm64@0.21.1':
-    resolution: {integrity: sha512-IPuQN/Vd0Rjklg/cCGBbQyUuRBp2f6LQXpZYwk5ivOR6V/+CgiYsv8pn/PVY7gjeyoNvPQrXB7xMjHUO2YZbdw==}
+  '@oxlint-tsgolint/linux-arm64@0.23.0':
+    resolution: {integrity: sha512-6dCZuKNu135seMXilkRk9SpCx6i1XgmiipYGalLij5WVRX6ZYS8c4xI7preN/zv9fCXhsQclTIMDu2Y/cytTjw==}
     cpu: [arm64]
     os: [linux]
 
-  '@oxlint-tsgolint/linux-x64@0.21.1':
-    resolution: {integrity: sha512-d1niGuTbh2qiv7dR7tqkbOcM5cIR63of0lMBFdEQavL1KrJV8zuRdwdi68K7MNGdgoR+J5A9ajpGGvsHwp1bPg==}
+  '@oxlint-tsgolint/linux-x64@0.23.0':
+    resolution: {integrity: sha512-3bdilnyA7kmSTjK27rvjIjSxL5SIg3wt7vwNiRkouWB83ytssyKnuGvxSYJxgMEmFpSutzaBzcCUM2jDtPGcgA==}
     cpu: [x64]
     os: [linux]
 
-  '@oxlint-tsgolint/win32-arm64@0.21.1':
-    resolution: {integrity: sha512-ICu9y2JLnFPvFqstnWPPNqBM8LK8BWw2OTeaR0UgEMm4hOSbrZAKv1/hwZYyiLqnCNjBL87AGSQIgTHCYlsipw==}
+  '@oxlint-tsgolint/win32-arm64@0.23.0':
+    resolution: {integrity: sha512-j+OEp44SVYiQ+ZD+uttsX7u6L9SvmbbQ77SO1pSFCcJlsVMeCk8qZsjhKfGKuT/jIA+ipOJMVs/+pqUfObBWNw==}
     cpu: [arm64]
     os: [win32]
 
-  '@oxlint-tsgolint/win32-x64@0.21.1':
-    resolution: {integrity: sha512-cTEFCFjCj6iXfrSHcvajSPNqhEA4TxSzU3gFxbdGSAUTNXGToU99IbdhWAPSbhcucoym0XE4Zl7E41NiSkNTug==}
+  '@oxlint-tsgolint/win32-x64@0.23.0':
+    resolution: {integrity: sha512-5MyjFuqf+g8OUPJBSGWHJtmoWnzFJYyOg4To9WMQshZYEWig/vtu7JtJ03VWnzHv9LJkAUeApY0gVCOywFR/iQ==}
     cpu: [x64]
     os: [win32]
 
@@ -4519,10 +4531,6 @@ packages:
     resolution: {integrity: sha512-53+75QuPl6DL+ct6vVEB51FDO5oulXr20TPV46VvJZg76lIlXNWfxi8j+G2V/t0I2qxCBOa3vX/8bmjrpFVo9g==}
     engines: {node: '>=18.0.0'}
 
-  '@smithy/types@4.14.1':
-    resolution: {integrity: sha512-59b5HtSVrVR/eYNei3BUj3DCPKD/G7EtDDe7OEJE7i7FtQFugYo6MxbotS8mVJkLNVf8gYaAlEBwwtJ9HzhWSg==}
-    engines: {node: '>=18.0.0'}
-
   '@smithy/types@4.14.2':
     resolution: {integrity: sha512-P+otAxbV4CqBybp7EkcJCrig63yE2E7PuNVOmilVMRcx/O+QDzGULTrKsq4DV13gSfak9ObPrWaHl/9bL5YcWw==}
     engines: {node: '>=18.0.0'}
@@ -4890,6 +4898,9 @@ packages:
     resolution: {integrity: sha512-mEiF5HO1QqCLXoNEfXVA1Tzo+cYsrqV7w9Juj2wdUFyW07JRenqMG225MvPwr3ZD9N1bFQj46X7r33iHxLUW0w==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
+
+  '@tanstack/query-core@5.100.14':
+    resolution: {integrity: sha512-5X41dGpxgeaHISCRW2oYwcSycZeULZzAunaudXT9ov1KOTj9xwt0CH6hbwqP1/z74ZWF7rYFnDpyYH07XFcZew==}
 
   '@tanstack/query-core@5.87.4':
     resolution: {integrity: sha512-uNsg6zMxraEPDVO2Bn+F3/ctHi+Zsk+MMpcN8h6P7ozqD088F6mFY5TfGM7zuyIrL7HKpDyu6QHfLWiDxh3cuw==}
@@ -5276,70 +5287,70 @@ packages:
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
 
-  '@typescript-eslint/eslint-plugin@8.59.3':
-    resolution: {integrity: sha512-PwFvSKsXGShKGW6n5bZOhGHEcCZXM8HofLK9fNsEwZXzFRjoY+XT1Vsf1zgyXdwTr0ZYz1/2tkZ0DBTT9jZjhw==}
+  '@typescript-eslint/eslint-plugin@8.59.4':
+    resolution: {integrity: sha512-PegsU+XfyJJNjd4+u/k6f9yTyp0lEXXiPopUNobZcIAUJFGICFLN+sP0Rb3JehVmiij1Ph0dFGYqODoRo/2+6A==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
-      '@typescript-eslint/parser': ^8.59.3
+      '@typescript-eslint/parser': ^8.59.4
       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
       typescript: '>=4.8.4 <6.1.0'
 
-  '@typescript-eslint/parser@8.59.3':
-    resolution: {integrity: sha512-HPwA+hVkfcriajbNvTmZv4VRauibay+cWArYUYq7u7W7PmGShMxbPxLvrwDme55a6d5alG3nrYfhyJ/G28XlLg==}
-    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
-    peerDependencies:
-      eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
-      typescript: '>=4.8.4 <6.1.0'
-
-  '@typescript-eslint/project-service@8.59.3':
-    resolution: {integrity: sha512-ECiUWa/KYRGDFUqTNehaRgzDshnJfkTABJxVemHk4ko22gcr0ukloKjWvyQ64g8YCV/UI47kN1dbmjf/GaQYng==}
-    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
-    peerDependencies:
-      typescript: '>=4.8.4 <6.1.0'
-
-  '@typescript-eslint/rule-tester@8.59.3':
-    resolution: {integrity: sha512-GH5g42Dt0IvM/G4ojD4JoOJaZCmogsQBGTSNExRa1ND+sDLI1SVppzYX66+xLIX/jFhcJRpYhiBOhHJEpLtgkA==}
+  '@typescript-eslint/parser@8.59.4':
+    resolution: {integrity: sha512-zORHqO/tuhxY1zWuTvMUqddRxpiFJ72xVfcNoWpqdLjs6lfPbuQBJuW4pk+49/uBMy7Ssr4bzgjiKmmDB1UbZQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
       typescript: '>=4.8.4 <6.1.0'
 
-  '@typescript-eslint/scope-manager@8.59.3':
-    resolution: {integrity: sha512-t2LvZnoEfzKtnPjgeEu41xw5gxq9mQVfYy4OoZ4Vlt0sk3JwxmhCca/AR7DwOiHrjWgjAj6as4AhRLKSDfvZIA==}
-    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
-
-  '@typescript-eslint/tsconfig-utils@8.59.3':
-    resolution: {integrity: sha512-PcIJHjmaREXLgIAIzLnSY9VucEzz8FKXsRgFa1DmdGCK/5tJpW03TKJF01Q6VZd1lLdz2sIKPWaDUZN9dp//dw==}
+  '@typescript-eslint/project-service@8.59.4':
+    resolution: {integrity: sha512-Ly00Vu4oAacfDeHp2Zg85ioNG6l8HG+tN1D7J+xTHSxu9y0awYKJ2zH1rFBn8ZSfuGK+7FxK3Cgl3uAz0aZZLg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       typescript: '>=4.8.4 <6.1.0'
 
-  '@typescript-eslint/type-utils@8.59.3':
-    resolution: {integrity: sha512-g71d8QD8UaiHGvrJwyIS1hCX5r63w6Jll+4VEYhEAHXTDIqX1JgxhTAbEHtKntL9kuc4jRo7/GWw5xfCepSccQ==}
+  '@typescript-eslint/rule-tester@8.59.4':
+    resolution: {integrity: sha512-kEhAUFyaLGuxk3LQVyLjeFwJeIoFEgMEAco89Ma9r3CD75W+fICWLW/2NG3O0TpnMivl5/XKbi2Ok0YJcQPwKA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
       typescript: '>=4.8.4 <6.1.0'
 
-  '@typescript-eslint/types@8.59.3':
-    resolution: {integrity: sha512-ePFoH0g4ludssdRFqqDxQePCxU4WQyRa9+XVwjm7yLn0FKhMeoetC+qBEEI1Eyb1pGSDveTIT09Bvw2WhlGayg==}
+  '@typescript-eslint/scope-manager@8.59.4':
+    resolution: {integrity: sha512-mUeR/3H1WrTAddJrwut8OoPjfauaztMQmRwV5fQTUyNVJCLiUXXe4lGEyYIL2oFDpP7UtgbGJXCt72wT0z2S3Q==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@typescript-eslint/typescript-estree@8.59.3':
-    resolution: {integrity: sha512-CbRjVRAf7Lr9Kr8RopKcbY45p2VfmmHrm0ygOCYFi7oU8q19m0Fs/6iHS7kNOmwpp+ob07ZVcAqlxUod9lYdmg==}
+  '@typescript-eslint/tsconfig-utils@8.59.4':
+    resolution: {integrity: sha512-DLCpnKgD4alVxTBSKulK+gU1KCqOgUXfDRDXh2mZgzokQKa/70ax93I2uVO3m/LLvIAtWZIFoiifudmIqAxpMA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       typescript: '>=4.8.4 <6.1.0'
 
-  '@typescript-eslint/utils@8.59.3':
-    resolution: {integrity: sha512-JAvT14goBzRzzzZyqq3P9BLArIxTtQURUtFgQ/V7FO+eU+Gg6ES+5ymOPP1wRxXcxAYeivCk4uS3jCKWI1K8Zg==}
+  '@typescript-eslint/type-utils@8.59.4':
+    resolution: {integrity: sha512-uonTuPAAKr9XaBGqJ3LjYTh72zy5DyGesljO9gtmk/eFW0W1fRHjnwVYKB35Lm8d5Q5CluEW3gPHjTvZTmgrfA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
       typescript: '>=4.8.4 <6.1.0'
 
-  '@typescript-eslint/visitor-keys@8.59.3':
-    resolution: {integrity: sha512-f1UQF7ggd42YiwI5wGrRaPsa+P0CINBlrkLPmGfpq/u/I/oVtecoEIfFR9ag/oa1sLOsRNZ6xehf6qMZhQGBDg==}
+  '@typescript-eslint/types@8.59.4':
+    resolution: {integrity: sha512-F1o7WJcCq+bc8dwcO/YsSEOudAH8RDtaOhM6wcAQhcUsFhnWQl81JKy48q1hoxAU0qrzM89+31GYh1515Zde3Q==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@typescript-eslint/typescript-estree@8.59.4':
+    resolution: {integrity: sha512-F+RuOmcDXo4+TPdfd/TCLS3m2nw8gE9XXyZLrA3JBfaA5tz9TtdkyD3YJFmPxulyc2cKbEok/CvFE3MgSLWnag==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      typescript: '>=4.8.4 <6.1.0'
+
+  '@typescript-eslint/utils@8.59.4':
+    resolution: {integrity: sha512-cYXeNAUsG4lJo5dbc1FcKm+JwIWrj1/UpTORsC6tGMjEZ81DYcvIr9/ueikhMa/Y/gDQYGp+YX9/xQrXje5BJw==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    peerDependencies:
+      eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
+      typescript: '>=4.8.4 <6.1.0'
+
+  '@typescript-eslint/visitor-keys@8.59.4':
+    resolution: {integrity: sha512-U3gxVaDVnuZKhSspW/MzMxE1kq7zOdc072FcSNoqA1I9p8HyKbBFfEHoWckBAMgNMph4MamwS5iTVzFmrnt8TQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@uiw/copy-to-clipboard@1.0.20':
@@ -5404,31 +5415,31 @@ packages:
       babel-plugin-react-compiler:
         optional: true
 
-  '@vitest/browser-playwright@4.1.6':
-    resolution: {integrity: sha512-4csoeyl/qwHyxU2zNL0++WaoDr8YJDXOQPwWPNJoTZ+QzcdO3INYKgF5Zfz730Io7zbkuv914aZmfQ+QE+1Hvw==}
+  '@vitest/browser-playwright@4.1.7':
+    resolution: {integrity: sha512-OlTlJej7YN6VwV7zJJoNeaCsctF+JXpzpZ4oBHUbrQFfIq+0KW2f07rprCLh9N/zRIZ0v4Mchn1QDDmWMUhPKw==}
     peerDependencies:
       playwright: '*'
-      vitest: 4.1.6
+      vitest: 4.1.7
 
-  '@vitest/browser@4.1.6':
-    resolution: {integrity: sha512-ynsspTubXGSpa58JFJ24xIQt4z4A25epSbugEyaTmmrV1//Wec9EgE/LtoaC6yxUrXi5P7erGHRrkdZIHaVQuA==}
+  '@vitest/browser@4.1.7':
+    resolution: {integrity: sha512-N2JFGfXoEGVAut+kHeru9dD4BUMq/q5xDvBARNl0tUsly3m5KglLOu8VO/6MkDfOlgxXTycojkt6gBKsuyR+IQ==}
     peerDependencies:
-      vitest: 4.1.6
+      vitest: 4.1.7
 
-  '@vitest/coverage-v8@4.1.6':
-    resolution: {integrity: sha512-36l628fQ/9a/8ihy97eOtEnvWQEdqULQOJtcaxtoNq0G1w3Mxd4szSahOaMM9/NGyZ+hyKcMtIW/WIxq0XQViQ==}
+  '@vitest/coverage-v8@4.1.7':
+    resolution: {integrity: sha512-qsYPeXc5Q9dFLd1i8Ap+Bx8sQgcp+rFVQo4R0dDsWNBzl26ldVF1qOO+RL24K7FDrR6pA+50XedRLSoSG24bVQ==}
     peerDependencies:
-      '@vitest/browser': 4.1.6
-      vitest: 4.1.6
+      '@vitest/browser': 4.1.7
+      vitest: 4.1.7
     peerDependenciesMeta:
       '@vitest/browser':
         optional: true
 
-  '@vitest/expect@4.1.6':
-    resolution: {integrity: sha512-7EHDquPthALSV0jhhjgEW8FXaviMx7rSqu8W6oqCoAuOhKov814P99QDV1pxMA3QPv21YudvJngIhjrNI4opLg==}
+  '@vitest/expect@4.1.7':
+    resolution: {integrity: sha512-1R+tw0ortHEbZDGMymm+pN7/AFQ/RkFFdtd7EN+VBpynKmLbP8A3rpEXdshBJ7+8hQ9zBJh/i1s0yKNtxAnU7w==}
 
-  '@vitest/mocker@4.1.6':
-    resolution: {integrity: sha512-MCFc63czMjEInOlcY2cpQCvCN+KgbAn+60xu9cMgP4sKaLC5JNAKw7JH8QdAnoAC88hW1IiSNZ+GgVXlN1UcMQ==}
+  '@vitest/mocker@4.1.7':
+    resolution: {integrity: sha512-vY7nuamKgfvpA1Koa3oYIw/k7D6kZnpGyNMZW8loow2bsBYla1TFdqTaXncWdRn4pgwNs+90RhnXhJScDwQeJA==}
     peerDependencies:
       msw: ^2.4.9
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -5438,25 +5449,25 @@ packages:
       vite:
         optional: true
 
-  '@vitest/pretty-format@4.1.6':
-    resolution: {integrity: sha512-h5SxD/IzNhZYnrSZRsUZQIC+vD0GY8cUvq0iwsmkFKixRCKLLWqCXa/FIQ4S1R+sI+PGoojkHsdNrbZiM9Qpgw==}
+  '@vitest/pretty-format@4.1.7':
+    resolution: {integrity: sha512-umgCarTOYQWIaDMvGDRZij+6b9oVeLIyJzfN+AS88e0ZOU3QTgNNSTtjQOpcvWr3np1N0j4WgZj+sb3oYBDscw==}
 
-  '@vitest/runner@4.1.6':
-    resolution: {integrity: sha512-nOPCmn2+yD0ZNmKdsXGv/UxMMWbMuKeD6GyYncNwdkYDxpQvrPSKYj2rWuDjC2Y4b6w6hjip5dBKFzEUuZe3vA==}
+  '@vitest/runner@4.1.7':
+    resolution: {integrity: sha512-BapjmAQ2aI78WdMEfeUWivnfVzB+VPGwWRQcJE0OUq7qEeEcBsCSf+0T5iREBNE5nBb4wA5Ya0W6IA+sghdEFw==}
 
-  '@vitest/snapshot@4.1.6':
-    resolution: {integrity: sha512-YhsdE6xAVfTDmzjxL2ZDUvjj+ZsgyOKe+TdQzqkD72wIOmHka8NuGQ6NpTNZv9D2Z63fbwWKJPeVpEw4EQgYxw==}
+  '@vitest/snapshot@4.1.7':
+    resolution: {integrity: sha512-ZacLzja+TmJeZ1h14xW2FB/WpeimUD3haBXQPyJqxvo8jQTmfeA8zv58mtjN2C7EHXZDYVcVYdYmAxjkWVvKCw==}
 
-  '@vitest/spy@4.1.6':
-    resolution: {integrity: sha512-JFKxMx6udhwKh/Ldo270e17QX710vgunMkuPAvXjHSvC6oqLWAHhVhjg/I71q0u0CBSErIODV1Kjv0FQNSWjdg==}
+  '@vitest/spy@4.1.7':
+    resolution: {integrity: sha512-kbkI5LMWakyuTIvs6fUJ5qdIVb1XVKsYJAT4OJ938cHMROYMSfmoQdZy0aaAnjbbc8F61vkoTqz/Az+/HiIu5Q==}
 
-  '@vitest/ui@4.1.6':
-    resolution: {integrity: sha512-wiu5em68DfGv/2HFvI1Njr7JI2CHcBlQvereSzVG8my53PRxjTNOCsD9VOkRKrsJBDHmyuXvosxWZw7T91a2mw==}
+  '@vitest/ui@4.1.7':
+    resolution: {integrity: sha512-TP6utB2yX6rsJNVRo2qAlsi48i1YwFTrLV2tnTtWqJaYX7m4lRCCLirZBjU6xC5m0RsPHr+L2+N+eIPhgEzFfw==}
     peerDependencies:
-      vitest: 4.1.6
+      vitest: 4.1.7
 
-  '@vitest/utils@4.1.6':
-    resolution: {integrity: sha512-FxIY+U81R3LGKCxaHHFRQ5+g6/iRgGLmeHWdp2Amj4ljQRrEIWHmZyDfDYBRZlpyqA7qKxtS9DD1dhk8RnRIVQ==}
+  '@vitest/utils@4.1.7':
+    resolution: {integrity: sha512-T532WBu791cBxJlCl6SO+J14l81DQx6uQHm1bQbmCDY7nqlEIgkza/UFnSBNaUtSf41unldDFjdOBYEQC4b5Hw==}
 
   '@vscode/sudo-prompt@9.3.2':
     resolution: {integrity: sha512-gcXoCN00METUNFeQOFJ+C9xUI0DKB+0EGMVg7wbVYRHBw2Eq3fKisDZOkRdOz3kqXRKOENMfShPOmypw1/8nOw==}
@@ -8360,8 +8371,8 @@ packages:
   oxc-resolver@11.19.1:
     resolution: {integrity: sha512-qE/CIg/spwrTBFt5aKmwe3ifeDdLfA2NESN30E42X/lII5ClF8V7Wt6WIJhcGZjp0/Q+nQ+9vgxGk//xZNX2hg==}
 
-  oxlint-tsgolint@0.21.1:
-    resolution: {integrity: sha512-O2hxiT14C2HJkwzBU6CQBFPoagSd/IcV+Tt3e3UUaXFwbW4BO5DSDPSSboc3UM5MIDY+MLyepvtQwBQafNxWdw==}
+  oxlint-tsgolint@0.23.0:
+    resolution: {integrity: sha512-3mBv3CoPbh8dFbzfDGIWa2ytZjn2v+3EX4aKRXjIhsoGFzG8GCjfRirz3rwZf1wYbZzsNLTSgpw8VjQuWdp/jA==}
     hasBin: true
 
   oxlint@1.57.0:
@@ -9677,8 +9688,8 @@ packages:
     resolution: {integrity: sha512-3KS2b+kL7fsuk/eJZ7EQdnEmQoaho/r6KUef7hxvltNA5DR8NAUM+8wJMbJyZ4G9/7i3v5zPBIMN5aybAh2/Jg==}
     engines: {node: '>= 0.4'}
 
-  typescript-eslint@8.59.3:
-    resolution: {integrity: sha512-KgusgyDgG4LI8Ih/sWaCtZ06tckLAS5CvT5A4D1Q7bYVoAAyzwiZvE4BmwDHkhRVkvhRBepKeASoFzQetha7Fg==}
+  typescript-eslint@8.59.4:
+    resolution: {integrity: sha512-Rw6+44QNFaXtgHSjPy+Kw8hrJniMYzR85E9yLmOLcfZ91/rz+JXQbDTCmc6ccxMPY6K6PgAq26f0JCBfR7LIPQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
@@ -9892,20 +9903,20 @@ packages:
       yaml:
         optional: true
 
-  vitest@4.1.6:
-    resolution: {integrity: sha512-6lvjbS3p9b4CrdCmguzbh2/4uoXhGE2q71R4OX5sqF9R1bo9Xd6fGrMAfvp5wnCzlBnFVdCOp6onuTQVbo8iUQ==}
+  vitest@4.1.7:
+    resolution: {integrity: sha512-flYyaFd2CgoCoU+0UKt3pxksgC+S02iTDN0n3LtqaMeXsI9SBcdNujc2k0DeFLzUn/0k538yNjOSdwgCqcrwJA==}
     engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
       '@types/node': 24.3.0
-      '@vitest/browser-playwright': 4.1.6
-      '@vitest/browser-preview': 4.1.6
-      '@vitest/browser-webdriverio': 4.1.6
-      '@vitest/coverage-istanbul': 4.1.6
-      '@vitest/coverage-v8': 4.1.6
-      '@vitest/ui': 4.1.6
+      '@vitest/browser-playwright': 4.1.7
+      '@vitest/browser-preview': 4.1.7
+      '@vitest/browser-webdriverio': 4.1.7
+      '@vitest/coverage-istanbul': 4.1.7
+      '@vitest/coverage-v8': 4.1.7
+      '@vitest/ui': 4.1.7
       happy-dom: '*'
       jsdom: '*'
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -10194,20 +10205,20 @@ snapshots:
   '@aws-crypto/crc32@5.2.0':
     dependencies:
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       tslib: 2.8.1
 
   '@aws-crypto/crc32c@5.2.0':
     dependencies:
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       tslib: 2.8.1
 
   '@aws-crypto/sha1-browser@5.2.0':
     dependencies:
       '@aws-crypto/supports-web-crypto': 5.2.0
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@aws-sdk/util-locate-window': 3.965.5
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
@@ -10217,7 +10228,7 @@ snapshots:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-crypto/supports-web-crypto': 5.2.0
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@aws-sdk/util-locate-window': 3.965.5
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
@@ -10225,7 +10236,7 @@ snapshots:
   '@aws-crypto/sha256-js@5.2.0':
     dependencies:
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       tslib: 2.8.1
 
   '@aws-crypto/supports-web-crypto@5.2.0':
@@ -10234,245 +10245,245 @@ snapshots:
 
   '@aws-crypto/util@5.2.0':
     dependencies:
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/types': 3.973.9
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
 
-  '@aws-sdk/client-kms@3.1048.0':
+  '@aws-sdk/client-kms@3.1053.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/credential-provider-node': 3.972.42
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/credential-provider-node': 3.972.44
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/fetch-http-handler': 5.4.3
       '@smithy/node-http-handler': 4.7.3
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/client-s3@3.1048.0':
+  '@aws-sdk/client-s3@3.1053.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/credential-provider-node': 3.972.42
-      '@aws-sdk/middleware-bucket-endpoint': 3.972.13
-      '@aws-sdk/middleware-expect-continue': 3.972.12
-      '@aws-sdk/middleware-flexible-checksums': 3.974.19
-      '@aws-sdk/middleware-location-constraint': 3.972.10
-      '@aws-sdk/middleware-sdk-s3': 3.972.40
-      '@aws-sdk/middleware-ssec': 3.972.10
-      '@aws-sdk/signature-v4-multi-region': 3.996.27
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/credential-provider-node': 3.972.44
+      '@aws-sdk/middleware-bucket-endpoint': 3.972.15
+      '@aws-sdk/middleware-expect-continue': 3.972.13
+      '@aws-sdk/middleware-flexible-checksums': 3.974.21
+      '@aws-sdk/middleware-location-constraint': 3.972.11
+      '@aws-sdk/middleware-sdk-s3': 3.972.42
+      '@aws-sdk/middleware-ssec': 3.972.11
+      '@aws-sdk/signature-v4-multi-region': 3.996.28
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/fetch-http-handler': 5.4.3
       '@smithy/node-http-handler': 4.7.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/core@3.974.11':
+  '@aws-sdk/core@3.974.13':
     dependencies:
-      '@aws-sdk/types': 3.973.8
-      '@aws-sdk/xml-builder': 3.972.24
+      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/xml-builder': 3.972.25
       '@aws/lambda-invoke-store': 0.2.4
       '@smithy/core': 3.24.3
       '@smithy/signature-v4': 5.4.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       bowser: 2.14.1
       tslib: 2.8.1
 
-  '@aws-sdk/crc64-nvme@3.972.8':
+  '@aws-sdk/crc64-nvme@3.972.9':
     dependencies:
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-env@3.972.37':
+  '@aws-sdk/credential-provider-env@3.972.39':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/types': 3.973.8
-      '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
-      tslib: 2.8.1
-
-  '@aws-sdk/credential-provider-http@3.972.39':
-    dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/types': 3.973.8
-      '@smithy/core': 3.24.3
-      '@smithy/fetch-http-handler': 5.4.3
-      '@smithy/node-http-handler': 4.7.3
-      '@smithy/types': 4.14.1
-      tslib: 2.8.1
-
-  '@aws-sdk/credential-provider-ini@3.972.41':
-    dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/credential-provider-env': 3.972.37
-      '@aws-sdk/credential-provider-http': 3.972.39
-      '@aws-sdk/credential-provider-login': 3.972.41
-      '@aws-sdk/credential-provider-process': 3.972.37
-      '@aws-sdk/credential-provider-sso': 3.972.41
-      '@aws-sdk/credential-provider-web-identity': 3.972.41
-      '@aws-sdk/nested-clients': 3.997.9
-      '@aws-sdk/types': 3.973.8
-      '@smithy/core': 3.24.3
-      '@smithy/credential-provider-imds': 4.3.3
-      '@smithy/types': 4.14.1
-      tslib: 2.8.1
-
-  '@aws-sdk/credential-provider-login@3.972.41':
-    dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/nested-clients': 3.997.9
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-node@3.972.42':
+  '@aws-sdk/credential-provider-http@3.972.41':
     dependencies:
-      '@aws-sdk/credential-provider-env': 3.972.37
-      '@aws-sdk/credential-provider-http': 3.972.39
-      '@aws-sdk/credential-provider-ini': 3.972.41
-      '@aws-sdk/credential-provider-process': 3.972.37
-      '@aws-sdk/credential-provider-sso': 3.972.41
-      '@aws-sdk/credential-provider-web-identity': 3.972.41
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.3
+      '@smithy/fetch-http-handler': 5.4.3
+      '@smithy/node-http-handler': 4.7.3
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
+  '@aws-sdk/credential-provider-ini@3.972.43':
+    dependencies:
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/credential-provider-env': 3.972.39
+      '@aws-sdk/credential-provider-http': 3.972.41
+      '@aws-sdk/credential-provider-login': 3.972.43
+      '@aws-sdk/credential-provider-process': 3.972.39
+      '@aws-sdk/credential-provider-sso': 3.972.43
+      '@aws-sdk/credential-provider-web-identity': 3.972.43
+      '@aws-sdk/nested-clients': 3.997.11
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/credential-provider-imds': 4.3.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-process@3.972.37':
+  '@aws-sdk/credential-provider-login@3.972.43':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/nested-clients': 3.997.11
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-sso@3.972.41':
+  '@aws-sdk/credential-provider-node@3.972.44':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/nested-clients': 3.997.9
-      '@aws-sdk/token-providers': 3.1048.0
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/credential-provider-env': 3.972.39
+      '@aws-sdk/credential-provider-http': 3.972.41
+      '@aws-sdk/credential-provider-ini': 3.972.43
+      '@aws-sdk/credential-provider-process': 3.972.39
+      '@aws-sdk/credential-provider-sso': 3.972.43
+      '@aws-sdk/credential-provider-web-identity': 3.972.43
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/credential-provider-imds': 4.3.3
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/credential-provider-web-identity@3.972.41':
+  '@aws-sdk/credential-provider-process@3.972.39':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/nested-clients': 3.997.9
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-bucket-endpoint@3.972.13':
+  '@aws-sdk/credential-provider-sso@3.972.43':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/nested-clients': 3.997.11
+      '@aws-sdk/token-providers': 3.1052.0
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-expect-continue@3.972.12':
+  '@aws-sdk/credential-provider-web-identity@3.972.43':
     dependencies:
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/nested-clients': 3.997.11
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-flexible-checksums@3.974.19':
+  '@aws-sdk/middleware-bucket-endpoint@3.972.15':
+    dependencies:
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.3
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
+  '@aws-sdk/middleware-expect-continue@3.972.13':
+    dependencies:
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.3
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
+  '@aws-sdk/middleware-flexible-checksums@3.974.21':
     dependencies:
       '@aws-crypto/crc32': 5.2.0
       '@aws-crypto/crc32c': 5.2.0
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/crc64-nvme': 3.972.8
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/crc64-nvme': 3.972.9
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-location-constraint@3.972.10':
+  '@aws-sdk/middleware-location-constraint@3.972.11':
     dependencies:
-      '@aws-sdk/types': 3.973.8
-      '@smithy/types': 4.14.1
+      '@aws-sdk/types': 3.973.9
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-sdk-s3@3.972.40':
+  '@aws-sdk/middleware-sdk-s3@3.972.42':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/signature-v4-multi-region': 3.996.27
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/signature-v4-multi-region': 3.996.28
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/signature-v4': 5.4.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/middleware-ssec@3.972.10':
+  '@aws-sdk/middleware-ssec@3.972.11':
     dependencies:
-      '@aws-sdk/types': 3.973.8
-      '@smithy/types': 4.14.1
+      '@aws-sdk/types': 3.973.9
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/nested-clients@3.997.9':
+  '@aws-sdk/nested-clients@3.997.11':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/signature-v4-multi-region': 3.996.27
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/signature-v4-multi-region': 3.996.28
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/fetch-http-handler': 5.4.3
       '@smithy/node-http-handler': 4.7.3
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/s3-request-presigner@3.1048.0':
+  '@aws-sdk/s3-request-presigner@3.1053.0':
     dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/signature-v4-multi-region': 3.996.27
-      '@aws-sdk/types': 3.973.8
-      '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
-      tslib: 2.8.1
-
-  '@aws-sdk/signature-v4-multi-region@3.996.27':
-    dependencies:
-      '@aws-sdk/types': 3.973.8
-      '@smithy/core': 3.24.3
-      '@smithy/signature-v4': 5.4.3
-      '@smithy/types': 4.14.1
-      tslib: 2.8.1
-
-  '@aws-sdk/token-providers@3.1048.0':
-    dependencies:
-      '@aws-sdk/core': 3.974.11
-      '@aws-sdk/nested-clients': 3.997.9
-      '@aws-sdk/types': 3.973.8
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/signature-v4-multi-region': 3.996.28
+      '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.3
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/types@3.973.8':
+  '@aws-sdk/signature-v4-multi-region@3.996.28':
     dependencies:
-      '@smithy/types': 4.14.1
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.3
+      '@smithy/signature-v4': 5.4.3
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
+  '@aws-sdk/token-providers@3.1052.0':
+    dependencies:
+      '@aws-sdk/core': 3.974.13
+      '@aws-sdk/nested-clients': 3.997.11
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.3
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
+  '@aws-sdk/types@3.973.9':
+    dependencies:
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
   '@aws-sdk/util-locate-window@3.965.5':
     dependencies:
       tslib: 2.8.1
 
-  '@aws-sdk/xml-builder@3.972.24':
+  '@aws-sdk/xml-builder@3.972.25':
     dependencies:
       '@nodable/entities': 2.1.0
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       fast-xml-parser: 5.7.2
       tslib: 2.8.1
 
@@ -10614,9 +10625,9 @@ snapshots:
 
   '@bufbuild/protobuf@2.11.0': {}
 
-  '@clerk/backend@3.4.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@clerk/backend@3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
-      '@clerk/shared': 4.8.5(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@clerk/shared': 4.13.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       standardwebhooks: 1.0.0
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -10684,7 +10695,7 @@ snapshots:
 
   '@clerk/nextjs@7.2.7(next@16.2.6(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
-      '@clerk/backend': 3.4.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@clerk/backend': 3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/react': 6.4.5(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/shared': 4.8.5(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       next: 16.2.6(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -10708,6 +10719,17 @@ snapshots:
       js-cookie: 3.0.7
       std-env: 3.10.0
       swr: 2.3.4(react@19.2.6)
+    optionalDependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
+  '@clerk/shared@4.13.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@tanstack/query-core': 5.100.14
+      dequal: 2.0.3
+      glob-to-regexp: 0.4.1
+      js-cookie: 3.0.7
+      std-env: 3.10.0
     optionalDependencies:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
@@ -12693,22 +12715,22 @@ snapshots:
   '@oxc-resolver/binding-win32-x64-msvc@11.19.1':
     optional: true
 
-  '@oxlint-tsgolint/darwin-arm64@0.21.1':
+  '@oxlint-tsgolint/darwin-arm64@0.23.0':
     optional: true
 
-  '@oxlint-tsgolint/darwin-x64@0.21.1':
+  '@oxlint-tsgolint/darwin-x64@0.23.0':
     optional: true
 
-  '@oxlint-tsgolint/linux-arm64@0.21.1':
+  '@oxlint-tsgolint/linux-arm64@0.23.0':
     optional: true
 
-  '@oxlint-tsgolint/linux-x64@0.21.1':
+  '@oxlint-tsgolint/linux-x64@0.23.0':
     optional: true
 
-  '@oxlint-tsgolint/win32-arm64@0.21.1':
+  '@oxlint-tsgolint/win32-arm64@0.23.0':
     optional: true
 
-  '@oxlint-tsgolint/win32-x64@0.21.1':
+  '@oxlint-tsgolint/win32-x64@0.23.0':
     optional: true
 
   '@oxlint/binding-android-arm-eabi@1.57.0':
@@ -13810,10 +13832,6 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@smithy/types@4.14.1':
-    dependencies:
-      tslib: 2.8.1
-
   '@smithy/types@4.14.2':
     dependencies:
       tslib: 2.8.1
@@ -14173,6 +14191,8 @@ snapshots:
       '@tailwindcss/oxide': 4.2.2
       tailwindcss: 4.2.2
       vite: 8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)
+
+  '@tanstack/query-core@5.100.14': {}
 
   '@tanstack/query-core@5.87.4': {}
 
@@ -14602,14 +14622,14 @@ snapshots:
       '@types/node': 24.3.0
     optional: true
 
-  '@typescript-eslint/eslint-plugin@8.59.3(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/eslint-plugin@8.59.4(@typescript-eslint/parser@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
-      '@typescript-eslint/parser': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/scope-manager': 8.59.3
-      '@typescript-eslint/type-utils': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/visitor-keys': 8.59.3
+      '@typescript-eslint/parser': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/scope-manager': 8.59.4
+      '@typescript-eslint/type-utils': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/visitor-keys': 8.59.4
       eslint: 9.39.4(jiti@2.6.1)
       ignore: 7.0.5
       natural-compare: 1.4.0
@@ -14618,32 +14638,32 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/parser@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/scope-manager': 8.59.3
-      '@typescript-eslint/types': 8.59.3
-      '@typescript-eslint/typescript-estree': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/visitor-keys': 8.59.3
+      '@typescript-eslint/scope-manager': 8.59.4
+      '@typescript-eslint/types': 8.59.4
+      '@typescript-eslint/typescript-estree': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/visitor-keys': 8.59.4
       debug: 4.4.3
       eslint: 9.39.4(jiti@2.6.1)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/project-service@8.59.3(typescript@5.9.3)':
+  '@typescript-eslint/project-service@8.59.4(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/types': 8.59.3
+      '@typescript-eslint/tsconfig-utils': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/types': 8.59.4
       debug: 4.4.3
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/rule-tester@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/rule-tester@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/parser': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/typescript-estree': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/parser': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       ajv: 6.15.0
       eslint: 9.39.4(jiti@2.6.1)
       json-stable-stringify-without-jsonify: 1.0.1
@@ -14653,20 +14673,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/scope-manager@8.59.3':
+  '@typescript-eslint/scope-manager@8.59.4':
     dependencies:
-      '@typescript-eslint/types': 8.59.3
-      '@typescript-eslint/visitor-keys': 8.59.3
+      '@typescript-eslint/types': 8.59.4
+      '@typescript-eslint/visitor-keys': 8.59.4
 
-  '@typescript-eslint/tsconfig-utils@8.59.3(typescript@5.9.3)':
+  '@typescript-eslint/tsconfig-utils@8.59.4(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
 
-  '@typescript-eslint/type-utils@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/type-utils@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/types': 8.59.3
-      '@typescript-eslint/typescript-estree': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/types': 8.59.4
+      '@typescript-eslint/typescript-estree': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       debug: 4.4.3
       eslint: 9.39.4(jiti@2.6.1)
       ts-api-utils: 2.5.0(typescript@5.9.3)
@@ -14674,14 +14694,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/types@8.59.3': {}
+  '@typescript-eslint/types@8.59.4': {}
 
-  '@typescript-eslint/typescript-estree@8.59.3(typescript@5.9.3)':
+  '@typescript-eslint/typescript-estree@8.59.4(typescript@5.9.3)':
     dependencies:
-      '@typescript-eslint/project-service': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/tsconfig-utils': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/types': 8.59.3
-      '@typescript-eslint/visitor-keys': 8.59.3
+      '@typescript-eslint/project-service': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/tsconfig-utils': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/types': 8.59.4
+      '@typescript-eslint/visitor-keys': 8.59.4
       debug: 4.4.3
       minimatch: 10.2.5
       semver: 7.8.0
@@ -14691,20 +14711,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/utils@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/utils@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.4(jiti@2.6.1))
-      '@typescript-eslint/scope-manager': 8.59.3
-      '@typescript-eslint/types': 8.59.3
-      '@typescript-eslint/typescript-estree': 8.59.3(typescript@5.9.3)
+      '@typescript-eslint/scope-manager': 8.59.4
+      '@typescript-eslint/types': 8.59.4
+      '@typescript-eslint/typescript-estree': 8.59.4(typescript@5.9.3)
       eslint: 9.39.4(jiti@2.6.1)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/visitor-keys@8.59.3':
+  '@typescript-eslint/visitor-keys@8.59.4':
     dependencies:
-      '@typescript-eslint/types': 8.59.3
+      '@typescript-eslint/types': 8.59.4
       eslint-visitor-keys: 5.0.1
 
   '@uiw/copy-to-clipboard@1.0.20': {}
@@ -14732,11 +14752,11 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vercel/functions@3.4.4(@aws-sdk/credential-provider-web-identity@3.972.41)':
+  '@vercel/functions@3.4.4(@aws-sdk/credential-provider-web-identity@3.972.43)':
     dependencies:
       '@vercel/oidc': 3.2.1
     optionalDependencies:
-      '@aws-sdk/credential-provider-web-identity': 3.972.41
+      '@aws-sdk/credential-provider-web-identity': 3.972.43
 
   '@vercel/oidc@3.2.0': {}
 
@@ -14775,29 +14795,29 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.7
       vite: 8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)
 
-  '@vitest/browser-playwright@4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(playwright@1.59.1)(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.6)':
+  '@vitest/browser-playwright@4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(playwright@1.59.1)(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.7)':
     dependencies:
-      '@vitest/browser': 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.6)
-      '@vitest/mocker': 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      '@vitest/browser': 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.7)
+      '@vitest/mocker': 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
       playwright: 1.59.1
       tinyrainbow: 3.1.0
-      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.6)':
+  '@vitest/browser@4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.7)':
     dependencies:
       '@blazediff/core': 1.9.1
-      '@vitest/mocker': 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
-      '@vitest/utils': 4.1.6
+      '@vitest/mocker': 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      '@vitest/utils': 4.1.7
       magic-string: 0.30.21
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.1.0
-      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
       ws: 8.20.1
     transitivePeerDependencies:
       - bufferutil
@@ -14805,10 +14825,10 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/coverage-v8@4.1.6(@vitest/browser@4.1.6)(vitest@4.1.6)':
+  '@vitest/coverage-v8@4.1.7(@vitest/browser@4.1.7)(vitest@4.1.7)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
-      '@vitest/utils': 4.1.6
+      '@vitest/utils': 4.1.7
       ast-v8-to-istanbul: 1.0.0
       istanbul-lib-coverage: 3.2.2
       istanbul-lib-report: 3.0.1
@@ -14817,60 +14837,60 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
     optionalDependencies:
-      '@vitest/browser': 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.6)
+      '@vitest/browser': 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.7)
 
-  '@vitest/expect@4.1.6':
+  '@vitest/expect@4.1.7':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.6
-      '@vitest/utils': 4.1.6
+      '@vitest/spy': 4.1.7
+      '@vitest/utils': 4.1.7
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))':
+  '@vitest/mocker@4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))':
     dependencies:
-      '@vitest/spy': 4.1.6
+      '@vitest/spy': 4.1.7
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
       msw: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       vite: 8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)
 
-  '@vitest/pretty-format@4.1.6':
+  '@vitest/pretty-format@4.1.7':
     dependencies:
       tinyrainbow: 3.1.0
 
-  '@vitest/runner@4.1.6':
+  '@vitest/runner@4.1.7':
     dependencies:
-      '@vitest/utils': 4.1.6
+      '@vitest/utils': 4.1.7
       pathe: 2.0.3
 
-  '@vitest/snapshot@4.1.6':
+  '@vitest/snapshot@4.1.7':
     dependencies:
-      '@vitest/pretty-format': 4.1.6
-      '@vitest/utils': 4.1.6
+      '@vitest/pretty-format': 4.1.7
+      '@vitest/utils': 4.1.7
       magic-string: 0.30.21
       pathe: 2.0.3
 
-  '@vitest/spy@4.1.6': {}
+  '@vitest/spy@4.1.7': {}
 
-  '@vitest/ui@4.1.6(vitest@4.1.6)':
+  '@vitest/ui@4.1.7(vitest@4.1.7)':
     dependencies:
-      '@vitest/utils': 4.1.6
+      '@vitest/utils': 4.1.7
       fflate: 0.8.2
       flatted: 3.4.2
       pathe: 2.0.3
       sirv: 3.0.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vitest: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
-  '@vitest/utils@4.1.6':
+  '@vitest/utils@4.1.7':
     dependencies:
-      '@vitest/pretty-format': 4.1.6
+      '@vitest/pretty-format': 4.1.7
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
@@ -16119,10 +16139,10 @@ snapshots:
     dependencies:
       eslint: 9.39.4(jiti@2.6.1)
 
-  eslint-plugin-oxlint@1.57.0(oxlint@1.57.0(oxlint-tsgolint@0.21.1)):
+  eslint-plugin-oxlint@1.57.0(oxlint@1.57.0(oxlint-tsgolint@0.23.0)):
     dependencies:
       jsonc-parser: 3.3.1
-      oxlint: 1.57.0(oxlint-tsgolint@0.21.1)
+      oxlint: 1.57.0(oxlint-tsgolint@0.23.0)
 
   eslint-plugin-react-hooks@7.0.1(eslint@9.39.4(jiti@2.6.1)):
     dependencies:
@@ -18236,16 +18256,16 @@ snapshots:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  oxlint-tsgolint@0.21.1:
+  oxlint-tsgolint@0.23.0:
     optionalDependencies:
-      '@oxlint-tsgolint/darwin-arm64': 0.21.1
-      '@oxlint-tsgolint/darwin-x64': 0.21.1
-      '@oxlint-tsgolint/linux-arm64': 0.21.1
-      '@oxlint-tsgolint/linux-x64': 0.21.1
-      '@oxlint-tsgolint/win32-arm64': 0.21.1
-      '@oxlint-tsgolint/win32-x64': 0.21.1
+      '@oxlint-tsgolint/darwin-arm64': 0.23.0
+      '@oxlint-tsgolint/darwin-x64': 0.23.0
+      '@oxlint-tsgolint/linux-arm64': 0.23.0
+      '@oxlint-tsgolint/linux-x64': 0.23.0
+      '@oxlint-tsgolint/win32-arm64': 0.23.0
+      '@oxlint-tsgolint/win32-x64': 0.23.0
 
-  oxlint@1.57.0(oxlint-tsgolint@0.21.1):
+  oxlint@1.57.0(oxlint-tsgolint@0.23.0):
     optionalDependencies:
       '@oxlint/binding-android-arm-eabi': 1.57.0
       '@oxlint/binding-android-arm64': 1.57.0
@@ -18266,7 +18286,7 @@ snapshots:
       '@oxlint/binding-win32-arm64-msvc': 1.57.0
       '@oxlint/binding-win32-ia32-msvc': 1.57.0
       '@oxlint/binding-win32-x64-msvc': 1.57.0
-      oxlint-tsgolint: 0.21.1
+      oxlint-tsgolint: 0.23.0
 
   p-cancelable@2.1.1: {}
 
@@ -19763,12 +19783,12 @@ snapshots:
       possible-typed-array-names: 1.1.0
       reflect.getprototypeof: 1.0.10
 
-  typescript-eslint@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3):
+  typescript-eslint@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3):
     dependencies:
-      '@typescript-eslint/eslint-plugin': 8.59.3(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/parser': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/typescript-estree': 8.59.3(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.59.3(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/eslint-plugin': 8.59.4(@typescript-eslint/parser@8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/parser': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.59.4(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.59.4(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.3)
       eslint: 9.39.4(jiti@2.6.1)
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -19975,15 +19995,15 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.3
 
-  vitest@4.1.6(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.6)(@vitest/coverage-v8@4.1.6)(@vitest/ui@4.1.6)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)):
+  vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.7)(@vitest/coverage-v8@4.1.7)(@vitest/ui@4.1.7)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:
-      '@vitest/expect': 4.1.6
-      '@vitest/mocker': 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
-      '@vitest/pretty-format': 4.1.6
-      '@vitest/runner': 4.1.6
-      '@vitest/snapshot': 4.1.6
-      '@vitest/spy': 4.1.6
-      '@vitest/utils': 4.1.6
+      '@vitest/expect': 4.1.7
+      '@vitest/mocker': 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
+      '@vitest/pretty-format': 4.1.7
+      '@vitest/runner': 4.1.7
+      '@vitest/snapshot': 4.1.7
+      '@vitest/spy': 4.1.7
+      '@vitest/utils': 4.1.7
       es-module-lexer: 2.0.0
       expect-type: 1.3.0
       magic-string: 0.30.21
@@ -20000,9 +20020,9 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@types/node': 24.3.0
-      '@vitest/browser-playwright': 4.1.6(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(playwright@1.59.1)(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.6)
-      '@vitest/coverage-v8': 4.1.6(@vitest/browser@4.1.6)(vitest@4.1.6)
-      '@vitest/ui': 4.1.6(vitest@4.1.6)
+      '@vitest/browser-playwright': 4.1.7(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(playwright@1.59.1)(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.7)
+      '@vitest/coverage-v8': 4.1.7(@vitest/browser@4.1.7)(vitest@4.1.7)
+      '@vitest/ui': 4.1.7(vitest@4.1.7)
       happy-dom: 20.9.0
     transitivePeerDependencies:
       - msw

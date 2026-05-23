@@ -220,7 +220,7 @@
     "@vm0/typescript-config": "workspace:*",
     "tsx": "^4.19.4",
     "typescript": "5.9.3",
-    "vitest": "^4.1.6",
+    "vitest": "^4.1.7",
     "yaml": "^2.8.3"
   }
 }
