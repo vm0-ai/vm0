@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@clerk/testing": "^2.0.29",
+    "@clerk/testing": "^2.0.33",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.8.0",
     "dotenv": "^17.4.2"
