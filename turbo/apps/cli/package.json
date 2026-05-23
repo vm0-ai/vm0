@@ -48,7 +48,7 @@
     "json": "^11.0.0",
     "msw": "^2.13.2",
     "oxlint": "^1.57.0",
-    "oxlint-tsgolint": "0.21.1",
+    "oxlint-tsgolint": "0.23.0",
     "prompts": "^2.4.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
