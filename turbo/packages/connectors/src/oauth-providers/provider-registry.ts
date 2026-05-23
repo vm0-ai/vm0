@@ -29,7 +29,6 @@ import {
   providerEnvFromObject,
   isOAuthRefreshProvider,
   type OAuthTokenResult,
-  type OAuthConnectorProvider,
   type ProviderEnv,
 } from "./provider-types";
 import { ahrefsProvider } from "./providers/ahrefs-provider";
@@ -196,15 +195,6 @@ export const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
 
 export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
   return Object.hasOwn(CONNECTOR_OAUTH_PROVIDERS, type);
-}
-
-export function getConnectorOAuthProvider(
-  type: string,
-): OAuthConnectorProvider | undefined {
-  if (!isOAuthConnectorType(type)) {
-    return undefined;
-  }
-  return CONNECTOR_OAUTH_PROVIDERS[type];
 }
 
 export function getConnectorOAuthSecretMetadata(
