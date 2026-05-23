@@ -28,7 +28,11 @@ from .model_tokens import (
 )
 from .sse import SseUsageParser
 
-_RESPONSES_USAGE_EVENTS = frozenset(("response.completed", "response.done"))
+# Terminal Responses events whose Response object may carry usage. Keep this
+# narrow so high-volume delta events stay on the SSE discard path.
+_RESPONSES_TERMINAL_USAGE_EVENTS = frozenset(
+    ("response.completed", "response.done", "response.incomplete", "response.failed")
+)
 
 _OPENAI_RESPONSES_USAGE_CATEGORIES = (
     MODEL_USAGE_CATEGORY_INPUT,
@@ -148,7 +152,10 @@ def _store_sse_result_values(
     event_name: str | None,
 ) -> None:
     data_type = values.get(("type",))
-    if event_name not in _RESPONSES_USAGE_EVENTS and data_type not in _RESPONSES_USAGE_EVENTS:
+    if (
+        event_name not in _RESPONSES_TERMINAL_USAGE_EVENTS
+        and data_type not in _RESPONSES_TERMINAL_USAGE_EVENTS
+    ):
         return
 
     prefix = ("response",) if _has_response_wrapper_values(values) else ()
@@ -172,7 +179,7 @@ class _OpenAIResponsesSseUsageHandler:
         self._extractor: JsonSelectiveExtractor | None = None
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        return event_name is None or event_name in _RESPONSES_USAGE_EVENTS
+        return event_name is None or event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
 
     def on_event_start(self, event_name: str | None) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)

@@ -56,6 +56,54 @@ def test_extracts_usage_from_wrapped_response_done_event():
     }
 
 
+def test_extracts_usage_from_wrapped_response_incomplete_event():
+    body = json.dumps(
+        {
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp_incomplete",
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": 8000,
+                    "output_tokens": 1024,
+                    "input_tokens_details": {"cached_tokens": 2000},
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) == {
+        "message_id": "resp_incomplete",
+        "model": "gpt-5.5",
+        "tokens.input": 6000,
+        "tokens.output": 1024,
+        "tokens.cache_read": 2000,
+    }
+
+
+def test_extracts_usage_from_wrapped_response_failed_event():
+    body = json.dumps(
+        {
+            "type": "response.failed",
+            "response": {
+                "id": "resp_failed",
+                "model": "gpt-5.4",
+                "usage": {
+                    "input_tokens": 12000,
+                    "output_tokens": 0,
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) == {
+        "message_id": "resp_failed",
+        "model": "gpt-5.4",
+        "tokens.input": 12000,
+        "tokens.output": 0,
+    }
+
+
 def test_extracts_usage_from_flat_response_completed_event():
     body = json.dumps(
         {

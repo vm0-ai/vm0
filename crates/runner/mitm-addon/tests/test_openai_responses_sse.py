@@ -39,6 +39,45 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["tokens.output"] == 7
         assert "tokens.cache_read" not in usage
 
+    def test_extracts_usage_from_response_incomplete(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.incomplete\n"
+            b'data: {"type":"response.incomplete","response":{"id":"resp_incomplete",'
+            b'"model":"gpt-5.5","usage":{"input_tokens":8000,'
+            b'"output_tokens":1024,"input_tokens_details":{"cached_tokens":2000}}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "resp_incomplete",
+            "model": "gpt-5.5",
+            "tokens.input": 6000,
+            "tokens.output": 1024,
+            "tokens.cache_read": 2000,
+        }
+
+    def test_extracts_usage_from_response_failed(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.failed\n"
+            b'data: {"type":"response.failed","response":{"id":"resp_failed",'
+            b'"model":"gpt-5.4","usage":{"input_tokens":12000,"output_tokens":0}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "resp_failed",
+            "model": "gpt-5.4",
+            "tokens.input": 12000,
+            "tokens.output": 0,
+        }
+
+    def test_ignores_response_in_progress(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.in_progress\n"
+            b'data: {"type":"response.in_progress","response":{"id":"resp_ignored",'
+            b'"model":"gpt-5.5","usage":{"input_tokens":10,"output_tokens":4}}}\n\n'
+        )
+        assert usage == {}
+
     def test_accepts_data_level_type_without_event_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
