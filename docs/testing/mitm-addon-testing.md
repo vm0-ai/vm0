@@ -13,10 +13,10 @@ cd crates/runner/mitm-addon
 pytest tests/
 
 # Specific file
-pytest tests/test_handlers.py
+pytest tests/test_request_handler.py
 
 # Specific test
-pytest tests/test_handlers.py::TestRequestHandler::test_denied_flow_returns_403
+pytest tests/test_request_handler.py::TestRequestHandler::test_allowed_domain_passes_through
 
 # Verbose
 pytest -v tests/
@@ -28,7 +28,12 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 
 | File | Tests |
 |------|-------|
-| `test_handlers.py` | Request routing, service auth, cache invalidation |
+| `test_addon_configuration.py` | Addon option registration and configuration updates |
+| `test_request_handler.py` | Request routing, service auth, firewall decisions |
+| `test_response_headers_handler.py` | Response-header hook stream setup |
+| `test_response_handler.py` | Response hook logging, cleanup, and cache invalidation |
+| `test_error_handler.py` | Error hook logging and usage cleanup |
+| `test_connection_hooks.py` | Done, TLS, TCP, and TCP logging hooks |
 | `test_registry.py` | Registry loading, caching, file watching |
 | `test_matching_patterns.py` | Low-level firewall URL, host, path, and base matching |
 | `test_firewall_matching.py` | Raw firewall request matching and network policy behavior |
@@ -36,6 +41,15 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
 | `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
 | `test_firewall_rewrite.py` | Firewall auth URL rewrite and query injection |
+| `test_auth_cache.py` | Firewall auth cache behavior |
+| `test_anthropic_messages.py` | Anthropic Messages usage extraction |
+| `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
+| `test_response_streaming.py` | Response streaming parser setup |
+| `test_usage_reporting.py` | Response usage extraction and reporting pipeline |
+| `test_model_provider_usage.py` | Model provider usage reporter |
+| `test_connector_usage.py` | Connector usage reporter and stream-path detection |
+| `test_webhook.py` | Usage webhook delivery |
+| `test_counters.py` | Usage pending counters |
 | `test_utils.py` | Utility functions |
 
 ## Patterns

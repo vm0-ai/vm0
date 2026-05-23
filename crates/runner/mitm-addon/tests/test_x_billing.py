@@ -1,7 +1,7 @@
 """Cross-file static invariants for :mod:`usage.providers.connectors.x_billing`.
 
 End-to-end classifier behaviour (defaults, overrides, body refinement)
-is covered by ``tests/test_handlers.py``.  This module only holds the
+is covered by ``tests/test_connector_usage.py``.  This module only holds the
 consistency suites that can't be expressed at the integration level:
 every firewall scope must be classified or intentionally unmapped,
 every override must exist in the firewall generator output, every
