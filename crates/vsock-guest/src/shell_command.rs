@@ -671,6 +671,9 @@ mod tests {
         let path = script.path().unwrap().to_path_buf();
         let script_dir = path.parent().unwrap().to_path_buf();
 
+        assert!(path.is_file());
+        assert!(script_dir.is_dir());
+
         drop(script);
 
         assert!(!path.exists());
