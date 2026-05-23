@@ -143,7 +143,7 @@ function assertConfiguredConnectorOAuthCredentials(
   }
 }
 
-export const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
+const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
   ahrefs: ahrefsProvider,
   airtable: airtableProvider,
   asana: asanaProvider,

@@ -4,7 +4,7 @@ import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
-import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { isOAuthConnectorType } from "@vm0/connectors/oauth-providers";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
@@ -146,8 +146,8 @@ describe("connector/providers/meta-ads", () => {
   });
 
   describe("metaAdsProvider", () => {
-    it("is registered in CONNECTOR_OAUTH_PROVIDERS under meta-ads key", () => {
-      expect(CONNECTOR_OAUTH_PROVIDERS["meta-ads"]).toBe(metaAdsProvider);
+    it("registers meta-ads as an OAuth connector type", () => {
+      expect(isOAuthConnectorType("meta-ads")).toBe(true);
     });
 
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {

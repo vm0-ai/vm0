@@ -10,7 +10,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorOAuthClientConfig,
 } from "@vm0/connectors/connectors";
-import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { testOauthProvider } from "@vm0/connectors/oauth-providers/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -320,7 +320,7 @@ function configureDynamicTestOAuthRefresh(
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const provider = CONNECTOR_OAUTH_PROVIDERS["test-oauth"];
+  const provider = testOauthProvider;
   const originalRefreshToken = provider.refreshToken;
 
   mutableOAuth.client = dynamicPublicClient;

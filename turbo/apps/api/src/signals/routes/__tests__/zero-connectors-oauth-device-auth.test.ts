@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { testOauthDeviceProvider } from "@vm0/connectors/oauth-providers/providers/test-oauth-device-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { secrets } from "@vm0/db/schema/secret";
@@ -25,7 +25,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const testOauthDeviceProvider = CONNECTOR_OAUTH_PROVIDERS["test-oauth-device"];
 const originalPollDeviceAuth = testOauthDeviceProvider.pollDeviceAuth;
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";

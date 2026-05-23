@@ -313,12 +313,6 @@ export type ConnectorOAuthProviderFor<T extends OAuthConnectorType> =
     (ConnectorOAuthRefreshProvider<T> | OAuthNoRefreshProvider) &
     (ConnectorOAuthRevocationProvider<T> | OAuthNoRevocationProvider);
 
-export type AnyConnectorOAuthProvider = {
-  [Type in OAuthConnectorType]: ConnectorOAuthProviderFor<Type>;
-}[OAuthConnectorType];
-
-export type OAuthConnectorProvider = AnyConnectorOAuthProvider;
-
 export function defineConnectorOAuthProvider<T extends OAuthConnectorType>(
   _type: T,
   provider: ConnectorOAuthProviderFor<T>,

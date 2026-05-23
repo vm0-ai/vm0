@@ -5,7 +5,8 @@ import {
   type ConnectorOAuthClientConfig,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
-import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
+import { testOauthProvider } from "@vm0/connectors/oauth-providers/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -235,7 +236,7 @@ function configureDynamicTestOAuthExchange(
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const provider = CONNECTOR_OAUTH_PROVIDERS["test-oauth"];
+  const provider = testOauthProvider;
   const originalExchangeCode = provider.exchangeCode;
 
   mutableOAuth.client = dynamicPublicClient;
@@ -2189,22 +2190,21 @@ describe("GET /api/connectors/:type/callback", () => {
         needsReconnect: false,
       });
 
+      const secretMetadata = getConnectorOAuthSecretMetadata(providerCase.type);
       await expect(
         findDecryptedSecret({
           orgId,
           userId,
-          name: CONNECTOR_OAUTH_PROVIDERS[providerCase.type].getSecretName(),
+          name: secretMetadata.accessSecretName,
         }),
       ).resolves.toBe(accessToken);
 
-      const refreshSecretName =
-        CONNECTOR_OAUTH_PROVIDERS[providerCase.type].getRefreshSecretName?.();
-      if (refreshSecretName) {
+      if (secretMetadata.isRefreshable) {
         await expect(
           findDecryptedSecret({
             orgId,
             userId,
-            name: refreshSecretName,
+            name: secretMetadata.refreshSecretName,
           }),
         ).resolves.toBe(refreshToken);
         expect(connector?.tokenExpiresAt).toBeInstanceOf(Date);

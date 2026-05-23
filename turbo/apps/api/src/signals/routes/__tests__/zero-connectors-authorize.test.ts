@@ -4,7 +4,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorOAuthClientConfig,
 } from "@vm0/connectors/connectors";
-import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { testOauthProvider } from "@vm0/connectors/oauth-providers/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
@@ -99,7 +99,7 @@ function useDynamicTestOAuthAuthorize(): () => void {
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const provider = CONNECTOR_OAUTH_PROVIDERS["test-oauth"];
+  const provider = testOauthProvider;
   const originalBuildAuthUrl = provider.buildAuthUrl;
 
   mutableOAuth.client = dynamicPublicClient;

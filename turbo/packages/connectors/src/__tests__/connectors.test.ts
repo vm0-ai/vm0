@@ -36,7 +36,6 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorOAuthAuthUrl,
   isOAuthConnectorType,
-  CONNECTOR_OAUTH_PROVIDERS,
   getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
   refreshConnectorOAuthToken,
@@ -211,16 +210,13 @@ describe("connector auth method config", () => {
   });
 });
 
-describe("CONNECTOR_OAUTH_PROVIDERS", () => {
-  it("contains exactly the connector types that declare OAuth auth", () => {
+describe("isOAuthConnectorType", () => {
+  it("matches exactly the connector types that declare OAuth auth", () => {
     const oauthConnectorTypes = connectorTypeSchema.options
       .filter((type) => {
         return "oauth" in CONNECTOR_TYPES[type].authMethods;
       })
       .sort();
-    const providerTypes = Object.keys(CONNECTOR_OAUTH_PROVIDERS).sort();
-
-    expect(providerTypes).toEqual(oauthConnectorTypes);
 
     for (const type of connectorTypeSchema.options) {
       expect(isOAuthConnectorType(type)).toBe(

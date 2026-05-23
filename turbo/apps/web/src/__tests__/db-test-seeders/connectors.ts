@@ -8,10 +8,7 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
-import {
-  isOAuthRefreshProvider,
-  CONNECTOR_OAUTH_PROVIDERS,
-} from "@vm0/connectors/oauth-providers";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for connector test setup.
@@ -87,15 +84,15 @@ export async function createTestOAuthConnectorRecord(options: {
 }): Promise<void> {
   initServices();
 
-  const handler = CONNECTOR_OAUTH_PROVIDERS[options.type];
-  const tokenExpiresAt = isOAuthRefreshProvider(handler)
+  const secretMetadata = getConnectorOAuthSecretMetadata(options.type);
+  const tokenExpiresAt = secretMetadata.isRefreshable
     ? new Date(Date.now() + 60 * 60 * 1000)
     : null;
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   await globalThis.services.db
     .insert(secrets)
     .values({
-      name: handler.getSecretName(),
+      name: secretMetadata.accessSecretName,
       encryptedValue: encryptSecretValue(options.accessToken, encryptionKey),
       type: "connector",
       userId: options.userId,

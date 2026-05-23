@@ -4,7 +4,7 @@ import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
-import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
+import { isOAuthConnectorType } from "@vm0/connectors/oauth-providers";
 import { googleAdsProvider } from "@vm0/connectors/oauth-providers/providers/google-ads-provider";
 
 const context = testContext();
@@ -17,8 +17,8 @@ describe("connector/providers/google-ads", () => {
   });
 
   describe("googleAdsProvider", () => {
-    it("is registered in CONNECTOR_OAUTH_PROVIDERS under google-ads key", () => {
-      expect(CONNECTOR_OAUTH_PROVIDERS["google-ads"]).toBe(googleAdsProvider);
+    it("registers google-ads as an OAuth connector type", () => {
+      expect(isOAuthConnectorType("google-ads")).toBe(true);
     });
 
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
