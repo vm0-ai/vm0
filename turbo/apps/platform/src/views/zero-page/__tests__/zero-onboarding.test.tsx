@@ -13,8 +13,6 @@ import {
   onboardingSetupContract,
   onboardingStatusContract,
 } from "@vm0/api-contracts/contracts/onboarding";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
@@ -131,7 +129,7 @@ describe("zero onboarding - step 2: choose tools", () => {
     });
   });
 
-  it("step 2 is the terminal step — its primary button continues into web", async () => {
+  it("step 2 advances into the Pro trial step", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -144,20 +142,20 @@ describe("zero onboarding - step 2: choose tools", () => {
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
     });
-
     await waitFor(() => {
-      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+        "Next",
+      );
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// Pro trial step (step 4) — gated by the proTrialOnboarding feature switch
+// Pro trial step (step 4)
 // ---------------------------------------------------------------------------
 
-describe("zero onboarding - Pro trial step (proTrialOnboarding)", () => {
-  it("appends the trial step after connectors when the switch is on", async () => {
-    setMockFeatureSwitches({ [FeatureSwitchKey.ProTrialOnboarding]: true });
+describe("zero onboarding - Pro trial step", () => {
+  it("appends the trial step after connectors", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -167,7 +165,7 @@ describe("zero onboarding - Pro trial step (proTrialOnboarding)", () => {
     click(screen.getByText("Next"));
 
     // Step 2: connectors. The trial step adds a third progress segment, and
-    // step 2 is no longer terminal — its primary button advances ("Next").
+    // step 2 advances ("Next") into the terminal trial step.
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
@@ -194,28 +192,6 @@ describe("zero onboarding - Pro trial step (proTrialOnboarding)", () => {
     expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
       "Get Started",
     );
-  });
-
-  it("keeps step 2 terminal when the switch is off", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await fill(input, "Acme");
-    click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-    });
-    // No trial step: two segments, and step 2's button finishes onboarding.
-    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
-    await waitFor(() => {
-      expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
-        "Get Started",
-      );
-    });
   });
 });
 

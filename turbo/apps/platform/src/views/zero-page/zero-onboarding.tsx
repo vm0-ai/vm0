@@ -371,7 +371,7 @@ function UseCasePromptComposer() {
 }
 
 // ---------------------------------------------------------------------------
-// Pro trial step (step 4) — gated by the `proTrialOnboarding` feature switch.
+// Pro trial step (step 4).
 //
 // The benefit list below is a temporary constant. Once billing/Stripe is
 // wired, the entitlements (and the trial dates) should come from the pricing

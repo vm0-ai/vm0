@@ -311,13 +311,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ProTrialOnboarding]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the post-connector Pro features + 7-day trial step in Zero onboarding. Presentational only — not yet wired to billing/Stripe. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
 };
 
 interface ResolvedHashes {
