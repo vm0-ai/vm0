@@ -1,4 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { HttpResponse, http } from "msw";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
@@ -41,6 +43,20 @@ import {
 } from "../oauth-providers/provider-registry";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
 import { buildGoogleAuthorizationUrl } from "../oauth-providers/providers/google-oauth";
+
+const server = setupServer();
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+});
 
 const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   ahrefs: "https://app.ahrefs.com/api/auth",
@@ -253,13 +269,12 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
   });
 
   it("starts and polls the test OAuth device provider", async () => {
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init: RequestInit | undefined) => {
-        const url = input.toString();
-        const body = new URLSearchParams(String(init?.body ?? ""));
-
-        if (url.endsWith("/api/test/oauth-provider/device/code")) {
-          return Response.json({
+    server.use(
+      http.post(
+        /\/api\/test\/oauth-provider\/device\/code$/,
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          return HttpResponse.json({
             device_code: `test-device:${body.get("client_id")}:${body.get("scope")}`,
             user_code: "TEST-DEVICE",
             verification_uri: "https://oauth-device.test/device",
@@ -268,195 +283,183 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
             expires_in: 600,
             interval: 0,
           });
+        },
+      ),
+      http.post(/\/api\/test\/oauth-provider\/token$/, async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        const deviceCode = body.get("device_code");
+        if (deviceCode === "pending") {
+          return HttpResponse.json(
+            { error: "authorization_pending" },
+            { status: 400 },
+          );
+        }
+        if (deviceCode === "slow-down") {
+          return HttpResponse.json({ error: "slow_down" }, { status: 400 });
+        }
+        if (deviceCode === "denied") {
+          return HttpResponse.json(
+            {
+              error: "access_denied",
+              error_description: "User denied the device authorization request",
+            },
+            { status: 400 },
+          );
+        }
+        if (deviceCode === "expired") {
+          return HttpResponse.json(
+            {
+              error: "expired_token",
+              error_description: "Device authorization expired",
+            },
+            { status: 400 },
+          );
+        }
+        if (deviceCode === "error") {
+          return HttpResponse.json(
+            {
+              error: "invalid_request",
+              error_description: "Synthetic device authorization error",
+            },
+            { status: 400 },
+          );
+        }
+        if (!deviceCode?.startsWith(`test-device:${body.get("client_id")}:`)) {
+          return HttpResponse.json(
+            {
+              error: "invalid_grant",
+              error_description: "Unknown device authorization code",
+            },
+            { status: 400 },
+          );
         }
 
-        if (url.endsWith("/api/test/oauth-provider/token")) {
-          const deviceCode = body.get("device_code");
-          if (deviceCode === "pending") {
-            return Response.json(
-              { error: "authorization_pending" },
-              { status: 400 },
-            );
-          }
-          if (deviceCode === "slow-down") {
-            return Response.json({ error: "slow_down" }, { status: 400 });
-          }
-          if (deviceCode === "denied") {
-            return Response.json(
-              {
-                error: "access_denied",
-                error_description:
-                  "User denied the device authorization request",
-              },
-              { status: 400 },
-            );
-          }
-          if (deviceCode === "expired") {
-            return Response.json(
-              {
-                error: "expired_token",
-                error_description: "Device authorization expired",
-              },
-              { status: 400 },
-            );
-          }
-          if (deviceCode === "error") {
-            return Response.json(
-              {
-                error: "invalid_request",
-                error_description: "Synthetic device authorization error",
-              },
-              { status: 400 },
-            );
-          }
-          if (
-            !deviceCode?.startsWith(`test-device:${body.get("client_id")}:`)
-          ) {
-            return Response.json(
-              {
-                error: "invalid_grant",
-                error_description: "Unknown device authorization code",
-              },
-              { status: 400 },
-            );
-          }
+        return HttpResponse.json({
+          access_token: `test-device-access:${body.get("client_id")}:${deviceCode}`,
+          token_type: "Bearer",
+          expires_in: 3600,
+          scope: "read",
+        });
+      }),
+    );
 
-          return Response.json({
-            access_token: `test-device-access:${body.get("client_id")}:${deviceCode}`,
-            token_type: "Bearer",
-            expires_in: 3600,
-            scope: "read",
-          });
-        }
-
-        throw new Error(`Unexpected test OAuth device request: ${url}`);
+    const credentials = getConnectorOAuthCredentials(
+      "test-oauth-device",
+      () => {
+        return undefined;
       },
     );
-    vi.stubGlobal("fetch", fetchMock);
+    expect(credentials?.configured).toBe(true);
 
-    try {
-      const credentials = getConnectorOAuthCredentials(
-        "test-oauth-device",
-        () => {
-          return undefined;
-        },
-      );
-      expect(credentials?.configured).toBe(true);
+    if (!credentials?.configured) {
+      throw new Error("Expected test-oauth-device OAuth credentials");
+    }
 
-      if (!credentials?.configured) {
-        throw new Error("Expected test-oauth-device OAuth credentials");
-      }
+    const startResult = await startConnectorOAuthDeviceAuth({
+      type: "test-oauth-device",
+      credentials,
+    });
+    expect(startResult).toStrictEqual({
+      deviceCode: "test-device:test-oauth-device-client:read",
+      userCode: "TEST-DEVICE",
+      verificationUri: "https://oauth-device.test/device",
+      verificationUriComplete:
+        "https://oauth-device.test/device?user_code=TEST-DEVICE",
+      expiresIn: 600,
+      interval: 0,
+    });
 
-      const startResult = await startConnectorOAuthDeviceAuth({
+    await expect(
+      pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
         credentials,
-      });
-      expect(startResult).toStrictEqual({
-        deviceCode: "test-device:test-oauth-device-client:read",
-        userCode: "TEST-DEVICE",
-        verificationUri: "https://oauth-device.test/device",
-        verificationUriComplete:
-          "https://oauth-device.test/device?user_code=TEST-DEVICE",
-        expiresIn: 600,
-        interval: 0,
-      });
-
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: "pending",
-        }),
-      ).resolves.toStrictEqual({ status: "pending" });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: "slow-down",
-        }),
-      ).resolves.toStrictEqual({ status: "slow_down" });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: "denied",
-        }),
-      ).resolves.toStrictEqual({
-        status: "denied",
-        error: "access_denied",
-        errorDescription: "User denied the device authorization request",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: "expired",
-        }),
-      ).resolves.toStrictEqual({
-        status: "expired",
-        error: "expired_token",
-        errorDescription: "Device authorization expired",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: "error",
-        }),
-      ).resolves.toStrictEqual({
-        status: "error",
-        error: "invalid_request",
-        errorDescription: "Synthetic device authorization error",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: "invalid-grant",
-        }),
-      ).resolves.toStrictEqual({
-        status: "error",
-        error: "invalid_grant",
-        errorDescription: "Unknown device authorization code",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "test-oauth-device",
-          credentials,
-          deviceCode: startResult.deviceCode,
-        }),
-      ).resolves.toStrictEqual({
-        status: "complete",
-        token: {
-          accessToken:
-            "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
-          expiresIn: 3600,
-          refreshToken: null,
-          scopes: ["read"],
-          userInfo: {
-            id: "test-oauth-device-user",
-            username: "test-oauth-device-user",
-            email: "test-oauth-device@example.com",
-          },
+        deviceCode: "pending",
+      }),
+    ).resolves.toStrictEqual({ status: "pending" });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "slow-down",
+      }),
+    ).resolves.toStrictEqual({ status: "slow_down" });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "denied",
+      }),
+    ).resolves.toStrictEqual({
+      status: "denied",
+      error: "access_denied",
+      errorDescription: "User denied the device authorization request",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "expired",
+      }),
+    ).resolves.toStrictEqual({
+      status: "expired",
+      error: "expired_token",
+      errorDescription: "Device authorization expired",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "error",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "invalid_request",
+      errorDescription: "Synthetic device authorization error",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "invalid-grant",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "invalid_grant",
+      errorDescription: "Unknown device authorization code",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: startResult.deviceCode,
+      }),
+    ).resolves.toStrictEqual({
+      status: "complete",
+      token: {
+        accessToken:
+          "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+        expiresIn: 3600,
+        refreshToken: null,
+        scopes: ["read"],
+        userInfo: {
+          id: "test-oauth-device-user",
+          username: "test-oauth-device-user",
+          email: "test-oauth-device@example.com",
         },
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+      },
+    });
   });
 
   it("starts, polls, and refreshes the Base44 OAuth device provider", async () => {
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init: RequestInit | undefined) => {
-        const url = input.toString();
-        const rawBody = String(init?.body ?? "");
-
-        if (url === "https://app.base44.com/oauth/device/code") {
-          expect(JSON.parse(rawBody)).toStrictEqual({
+    server.use(
+      http.post(
+        "https://app.base44.com/oauth/device/code",
+        async ({ request }) => {
+          await expect(request.json()).resolves.toStrictEqual({
             client_id: "base44_cli",
             scope: "apps:read apps:write offline",
           });
-          return Response.json({
+          return HttpResponse.json({
             device_code: "base44-device-code",
             user_code: "BASE-44",
             verification_uri: "https://app.base44.com/device",
@@ -465,210 +468,201 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
             expires_in: 600,
             interval: 5,
           });
-        }
-
-        const body = new URLSearchParams(rawBody);
-        if (url === "https://app.base44.com/oauth/token") {
-          if (body.get("grant_type") === "refresh_token") {
-            expect(body.get("client_id")).toBe("base44_cli");
-            if (body.get("refresh_token") === "base44-refresh-rotation") {
-              return Response.json({
-                access_token: "base44-access-refreshed",
-                refresh_token: "base44-refresh-rotated",
-                expires_in: 3600,
-              });
-            }
-            return Response.json({
+        },
+      ),
+      http.post("https://app.base44.com/oauth/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        if (body.get("grant_type") === "refresh_token") {
+          expect(body.get("client_id")).toBe("base44_cli");
+          if (body.get("refresh_token") === "base44-refresh-rotation") {
+            return HttpResponse.json({
               access_token: "base44-access-refreshed",
+              refresh_token: "base44-refresh-rotated",
               expires_in: 3600,
             });
           }
-
-          expect(body.get("grant_type")).toBe(
-            "urn:ietf:params:oauth:grant-type:device_code",
-          );
-          expect(body.get("client_id")).toBe("base44_cli");
-          const deviceCode = body.get("device_code");
-          if (deviceCode === "pending") {
-            return Response.json(
-              { error: "authorization_pending" },
-              { status: 400 },
-            );
-          }
-          if (deviceCode === "slow-down") {
-            return Response.json({ error: "slow_down" }, { status: 400 });
-          }
-          if (deviceCode === "denied") {
-            return Response.json(
-              {
-                error: "access_denied",
-                error_description: "User denied Base44 access",
-              },
-              { status: 400 },
-            );
-          }
-          if (deviceCode === "expired") {
-            return Response.json(
-              {
-                error: "expired_token",
-                error_description: "Base44 device authorization expired",
-              },
-              { status: 400 },
-            );
-          }
-          if (deviceCode === "temporarily-unavailable") {
-            return Response.json(
-              {
-                error: "temporarily_unavailable",
-                error_description: "Base44 is temporarily unavailable",
-              },
-              { status: 400 },
-            );
-          }
-
-          return Response.json({
-            access_token: "base44-access-token",
-            refresh_token: "base44-refresh-token",
-            token_type: "Bearer",
+          return HttpResponse.json({
+            access_token: "base44-access-refreshed",
             expires_in: 3600,
-            scope: "apps:read apps:write offline",
           });
         }
 
-        if (url === "https://app.base44.com/oauth/userinfo") {
-          expect(init?.headers).toMatchObject({
-            Authorization: "Bearer base44-access-token",
-          });
-          return Response.json({
-            sub: "base44-user-id",
-            name: "Base44 User",
-            email: "base44@example.com",
-          });
+        expect(body.get("grant_type")).toBe(
+          "urn:ietf:params:oauth:grant-type:device_code",
+        );
+        expect(body.get("client_id")).toBe("base44_cli");
+        const deviceCode = body.get("device_code");
+        if (deviceCode === "pending") {
+          return HttpResponse.json(
+            { error: "authorization_pending" },
+            { status: 400 },
+          );
+        }
+        if (deviceCode === "slow-down") {
+          return HttpResponse.json({ error: "slow_down" }, { status: 400 });
+        }
+        if (deviceCode === "denied") {
+          return HttpResponse.json(
+            {
+              error: "access_denied",
+              error_description: "User denied Base44 access",
+            },
+            { status: 400 },
+          );
+        }
+        if (deviceCode === "expired") {
+          return HttpResponse.json(
+            {
+              error: "expired_token",
+              error_description: "Base44 device authorization expired",
+            },
+            { status: 400 },
+          );
+        }
+        if (deviceCode === "temporarily-unavailable") {
+          return HttpResponse.json(
+            {
+              error: "temporarily_unavailable",
+              error_description: "Base44 is temporarily unavailable",
+            },
+            { status: 400 },
+          );
         }
 
-        throw new Error(`Unexpected Base44 OAuth request: ${url}`);
-      },
+        return HttpResponse.json({
+          access_token: "base44-access-token",
+          refresh_token: "base44-refresh-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+          scope: "apps:read apps:write offline",
+        });
+      }),
+      http.get("https://app.base44.com/oauth/userinfo", ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer base44-access-token",
+        );
+        return HttpResponse.json({
+          sub: "base44-user-id",
+          name: "Base44 User",
+          email: "base44@example.com",
+        });
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    try {
-      const credentials = getConnectorOAuthCredentials("base44", () => {
-        return undefined;
-      });
-      expect(credentials?.configured).toBe(true);
+    const credentials = getConnectorOAuthCredentials("base44", () => {
+      return undefined;
+    });
+    expect(credentials?.configured).toBe(true);
 
-      if (!credentials?.configured) {
-        throw new Error("Expected base44 OAuth credentials");
-      }
-
-      await expect(
-        startConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-        }),
-      ).resolves.toStrictEqual({
-        deviceCode: "base44-device-code",
-        userCode: "BASE-44",
-        verificationUri: "https://app.base44.com/device",
-        verificationUriComplete:
-          "https://app.base44.com/device?user_code=BASE-44",
-        expiresIn: 600,
-        interval: 5,
-      });
-
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-          deviceCode: "pending",
-        }),
-      ).resolves.toStrictEqual({ status: "pending" });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-          deviceCode: "slow-down",
-        }),
-      ).resolves.toStrictEqual({ status: "slow_down" });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-          deviceCode: "denied",
-        }),
-      ).resolves.toStrictEqual({
-        status: "denied",
-        error: "access_denied",
-        errorDescription: "User denied Base44 access",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-          deviceCode: "expired",
-        }),
-      ).resolves.toStrictEqual({
-        status: "expired",
-        error: "expired_token",
-        errorDescription: "Base44 device authorization expired",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-          deviceCode: "temporarily-unavailable",
-        }),
-      ).resolves.toStrictEqual({
-        status: "error",
-        error: "temporarily_unavailable",
-        errorDescription: "Base44 is temporarily unavailable",
-      });
-      await expect(
-        pollConnectorOAuthDeviceAuth({
-          type: "base44",
-          credentials,
-          deviceCode: "base44-device-code",
-        }),
-      ).resolves.toStrictEqual({
-        status: "complete",
-        token: {
-          accessToken: "base44-access-token",
-          refreshToken: "base44-refresh-token",
-          expiresIn: 3600,
-          scopes: ["apps:read", "apps:write", "offline"],
-          userInfo: {
-            id: "base44-user-id",
-            username: "Base44 User",
-            email: "base44@example.com",
-          },
-        },
-      });
-
-      await expect(
-        refreshConnectorOAuthToken({
-          type: "base44",
-          credentials,
-          refreshToken: "base44-refresh-rotation",
-        }),
-      ).resolves.toStrictEqual({
-        accessToken: "base44-access-refreshed",
-        refreshToken: "base44-refresh-rotated",
-        expiresIn: 3600,
-      });
-      await expect(
-        refreshConnectorOAuthToken({
-          type: "base44",
-          credentials,
-          refreshToken: "base44-refresh-without-rotation",
-        }),
-      ).resolves.toStrictEqual({
-        accessToken: "base44-access-refreshed",
-        refreshToken: null,
-        expiresIn: 3600,
-      });
-    } finally {
-      vi.unstubAllGlobals();
+    if (!credentials?.configured) {
+      throw new Error("Expected base44 OAuth credentials");
     }
+
+    await expect(
+      startConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+      }),
+    ).resolves.toStrictEqual({
+      deviceCode: "base44-device-code",
+      userCode: "BASE-44",
+      verificationUri: "https://app.base44.com/device",
+      verificationUriComplete:
+        "https://app.base44.com/device?user_code=BASE-44",
+      expiresIn: 600,
+      interval: 5,
+    });
+
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+        deviceCode: "pending",
+      }),
+    ).resolves.toStrictEqual({ status: "pending" });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+        deviceCode: "slow-down",
+      }),
+    ).resolves.toStrictEqual({ status: "slow_down" });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+        deviceCode: "denied",
+      }),
+    ).resolves.toStrictEqual({
+      status: "denied",
+      error: "access_denied",
+      errorDescription: "User denied Base44 access",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+        deviceCode: "expired",
+      }),
+    ).resolves.toStrictEqual({
+      status: "expired",
+      error: "expired_token",
+      errorDescription: "Base44 device authorization expired",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+        deviceCode: "temporarily-unavailable",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "temporarily_unavailable",
+      errorDescription: "Base44 is temporarily unavailable",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "base44",
+        credentials,
+        deviceCode: "base44-device-code",
+      }),
+    ).resolves.toStrictEqual({
+      status: "complete",
+      token: {
+        accessToken: "base44-access-token",
+        refreshToken: "base44-refresh-token",
+        expiresIn: 3600,
+        scopes: ["apps:read", "apps:write", "offline"],
+        userInfo: {
+          id: "base44-user-id",
+          username: "Base44 User",
+          email: "base44@example.com",
+        },
+      },
+    });
+
+    await expect(
+      refreshConnectorOAuthToken({
+        type: "base44",
+        credentials,
+        refreshToken: "base44-refresh-rotation",
+      }),
+    ).resolves.toStrictEqual({
+      accessToken: "base44-access-refreshed",
+      refreshToken: "base44-refresh-rotated",
+      expiresIn: 3600,
+    });
+    await expect(
+      refreshConnectorOAuthToken({
+        type: "base44",
+        credentials,
+        refreshToken: "base44-refresh-without-rotation",
+      }),
+    ).resolves.toStrictEqual({
+      accessToken: "base44-access-refreshed",
+      refreshToken: null,
+      expiresIn: 3600,
+    });
   });
 });
 
