@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.384.1](https://github.com/vm0-ai/vm0/compare/web-v12.384.0...web-v12.384.1) (2026-05-23)
+
+
+### Refactoring
+
+* remove legacy web user preference backend ([#14573](https://github.com/vm0-ai/vm0/issues/14573)) ([d8e46aa](https://github.com/vm0-ai/vm0/commit/d8e46aa1b90d5e11c0498767cd85d96f99d85ea4))
+
 ## [12.384.0](https://github.com/vm0-ai/vm0/compare/web-v12.383.0...web-v12.384.0) (2026-05-22)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.68.0](https://github.com/vm0-ai/vm0/compare/api-v1.67.0...api-v1.68.0) (2026-05-23)
+
+
+### Features
+
+* **agentphone:** rewrite imessage connect prompt as zero intro ([#14576](https://github.com/vm0-ai/vm0/issues/14576)) ([baae64d](https://github.com/vm0-ai/vm0/commit/baae64d47f0fac6e7dbc7843e0fe60e08bb0458c))
+
+
+### Bug Fixes
+
+* **api:** align Seedance first-frame requests ([#14569](https://github.com/vm0-ai/vm0/issues/14569)) ([c79e2eb](https://github.com/vm0-ai/vm0/commit/c79e2ebab05ea0cba609d90571911b57723ba536))
+* log built-in generation failure details ([#14567](https://github.com/vm0-ai/vm0/issues/14567)) ([06ea9b5](https://github.com/vm0-ai/vm0/commit/06ea9b53066db2ade4ae3ca8319e480eedfc7602))
+
+
+### Refactoring
+
+* remove legacy web user preference backend ([#14573](https://github.com/vm0-ai/vm0/issues/14573)) ([d8e46aa](https://github.com/vm0-ai/vm0/commit/d8e46aa1b90d5e11c0498767cd85d96f99d85ea4))
+
 ## [1.67.0](https://github.com/vm0-ai/vm0/compare/api-v1.66.0...api-v1.67.0) (2026-05-22)
 
 

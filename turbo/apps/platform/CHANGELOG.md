@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.376.0](https://github.com/vm0-ai/vm0/compare/app-v0.375.1...app-v0.376.0) (2026-05-23)
+
+
+### Features
+
+* add oauth device authorization connector ui ([#14565](https://github.com/vm0-ai/vm0/issues/14565)) ([74ae35a](https://github.com/vm0-ai/vm0/commit/74ae35a84b699766c3db6085886c9f79cfd80d70))
+* **platform:** add og and twitter card meta to index.html ([#14577](https://github.com/vm0-ai/vm0/issues/14577)) ([7b185a3](https://github.com/vm0-ai/vm0/commit/7b185a352e064d2d139abfafae688b1eea7fd7f4))
+
 ## [0.375.1](https://github.com/vm0-ai/vm0/compare/app-v0.375.0...app-v0.375.1) (2026-05-22)
 
 
