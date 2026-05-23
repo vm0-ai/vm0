@@ -1,6 +1,7 @@
 """Tests for auth.base low-level HTTP forwarding."""
 
 import contextlib
+import threading
 from collections.abc import Iterator
 from typing import Literal, NamedTuple
 from unittest.mock import MagicMock, call, patch
@@ -390,3 +391,112 @@ class TestAuthBaseForwarderResourceCleanup:
             forwarder._forward_request_sync("https://example.com", "GET", [], None)
         upstream.resp.close.assert_not_called()
         upstream.conn.close.assert_called_once()
+
+
+class TestForwardRequestAsyncWrapper:
+    async def test_offloads_request_work_from_event_loop_thread(self):
+        event_loop_thread_id = threading.get_ident()
+        forwarding_thread_ids = []
+
+        def record_forwarding_thread():
+            forwarding_thread_ids.append(threading.get_ident())
+
+        class FakeResponse:
+            status = 200
+
+            def read(self):
+                record_forwarding_thread()
+                return b"ok"
+
+            def getheaders(self):
+                record_forwarding_thread()
+                return [("Content-Type", "text/plain")]
+
+            def close(self):
+                record_forwarding_thread()
+
+        class FakeConnection:
+            def __init__(self, host, *, port, timeout):
+                self.host = host
+                self.port = port
+                self.timeout = timeout
+
+            def putrequest(self, method, target, *, skip_host, skip_accept_encoding):
+                record_forwarding_thread()
+
+            def putheader(self, name, value):
+                record_forwarding_thread()
+
+            def endheaders(self, body):
+                record_forwarding_thread()
+
+            def getresponse(self):
+                record_forwarding_thread()
+                return FakeResponse()
+
+            def close(self):
+                record_forwarding_thread()
+
+        with patch.object(forwarder.http_client, "HTTPSConnection", FakeConnection):
+            status, body, headers = await forwarder.forward_request(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        assert headers["Content-Type"] == "text/plain"
+        assert forwarding_thread_ids
+        assert all(thread_id != event_loop_thread_id for thread_id in forwarding_thread_ids)
+
+    async def test_propagates_validation_errors(self):
+        with pytest.raises(ValueError, match="Unsupported URL scheme"):
+            await forwarder.forward_request("file:///etc/passwd", "GET", [], None)
+
+    async def test_closes_connection_when_request_raises(self):
+        event_loop_thread_id = threading.get_ident()
+        close_thread_ids = []
+
+        def record_close_thread():
+            close_thread_ids.append(threading.get_ident())
+
+        conn = MagicMock()
+        conn.putrequest.side_effect = ConnectionError("connect failed")
+        conn.close.side_effect = record_close_thread
+        with (
+            patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn),
+            pytest.raises(ConnectionError, match="connect failed"),
+        ):
+            await forwarder.forward_request("https://example.com", "GET", [], None)
+        conn.close.assert_called_once()
+        assert close_thread_ids
+        assert all(thread_id != event_loop_thread_id for thread_id in close_thread_ids)
+
+    async def test_closes_response_when_read_raises(self):
+        event_loop_thread_id = threading.get_ident()
+        close_thread_ids = []
+
+        def record_close_thread():
+            close_thread_ids.append(threading.get_ident())
+
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.side_effect = OSError("socket closed")
+        resp.getheaders.return_value = []
+        resp.close.side_effect = record_close_thread
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+        conn.close.side_effect = record_close_thread
+
+        with (
+            patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn),
+            pytest.raises(OSError, match="socket closed"),
+        ):
+            await forwarder.forward_request("https://example.com", "GET", [], None)
+
+        resp.close.assert_called_once()
+        conn.close.assert_called_once()
+        assert close_thread_ids
+        assert all(thread_id != event_loop_thread_id for thread_id in close_thread_ids)
