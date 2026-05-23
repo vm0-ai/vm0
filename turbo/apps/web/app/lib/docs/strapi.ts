@@ -65,7 +65,7 @@ interface StrapiDocsPage {
   createdAt: string;
   updatedAt?: string;
   publishedAt?: string;
-  section?: StrapiDocsSection;
+  section?: string | StrapiDocsSection;
   blocks?: StrapiBlock[];
 }
 
@@ -115,7 +115,16 @@ function resolvePathAndSlug(page: StrapiDocsPage): {
   return { path, slug };
 }
 
-function resolveSection(section: StrapiDocsSection | undefined): DocsSection {
+function resolveSection(
+  section: string | StrapiDocsSection | undefined,
+): DocsSection {
+  if (typeof section === "string") {
+    const title = section.trim();
+    if (!title) {
+      return { title: "Docs", slug: "docs", order: 0 };
+    }
+    return { title, slug: slugify(title), order: 0 };
+  }
   const sectionTitle = section?.title || section?.name || "Docs";
   const sectionSlug = section?.slug || slugify(sectionTitle);
   return {
@@ -174,8 +183,7 @@ function buildBaseDocsParams(locale: string): URLSearchParams {
   const params = new URLSearchParams();
   params.set("locale", locale);
   params.set("pagination[pageSize]", "100");
-  params.append("populate[0]", "section");
-  params.append("populate[1]", "blocks");
+  params.append("populate[0]", "blocks");
   params.append("sort[0]", "order:asc");
   params.append("sort[1]", "title:asc");
   return params;

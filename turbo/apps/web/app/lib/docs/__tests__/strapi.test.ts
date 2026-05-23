@@ -89,6 +89,40 @@ describe("docs/strapi", () => {
     expect(pages[0]?.readTime).toMatch(/\d+ min read/);
   });
 
+  it("derives section metadata when section is a scalar string", async () => {
+    server.use(
+      http.get(`${STRAPI_URL}/api/docs-pages`, () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: 3,
+              documentId: "doc-quickstart",
+              title: "Quickstart",
+              description: "Get started fast.",
+              slug: "quickstart",
+              path: "quickstart",
+              order: 1,
+              createdAt: "2026-05-01T00:00:00.000Z",
+              updatedAt: "2026-05-01T00:00:00.000Z",
+              publishedAt: "2026-05-01T00:00:00.000Z",
+              section: "Getting Started",
+              body: "# Quickstart",
+            },
+          ],
+          meta: {},
+        });
+      }),
+    );
+
+    const pages = await getDocsPagesFromStrapi("en");
+
+    expect(pages[0]?.section).toEqual({
+      title: "Getting Started",
+      slug: "getting-started",
+      order: 0,
+    });
+  });
+
   it("fetches a single docs page by path", async () => {
     let capturedLocale: string | null = null;
     let capturedPath: string | null = null;
