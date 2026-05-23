@@ -14,8 +14,8 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorOAuthCode,
+  getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
-  CONNECTOR_OAUTH_PROVIDERS,
   type OAuthTokenResult,
 } from "@vm0/connectors/oauth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -404,7 +404,7 @@ const completeOAuthCallback$ = command(
     });
     signal.throwIfAborted();
 
-    const provider = CONNECTOR_OAUTH_PROVIDERS[args.connectorType];
+    const secretMetadata = getConnectorOAuthSecretMetadata(args.connectorType);
     const result = await set(
       upsertOAuthConnector$,
       {
@@ -415,7 +415,9 @@ const completeOAuthCallback$ = command(
         userInfo: token.userInfo,
         oauthScopes: getRequestedScopes(args.connectorType),
         refreshToken: token.refreshToken,
-        refreshSecretName: provider.getRefreshSecretName?.(),
+        refreshSecretName: secretMetadata.isRefreshable
+          ? secretMetadata.refreshSecretName
+          : undefined,
         expiresIn: token.expiresIn,
       },
       signal,

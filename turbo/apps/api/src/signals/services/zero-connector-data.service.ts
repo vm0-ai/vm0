@@ -16,10 +16,7 @@ import {
   getScopeDiff,
   isConnectorAuthMethodAvailable,
 } from "@vm0/connectors/connector-utils";
-import {
-  CONNECTOR_OAUTH_PROVIDERS,
-  isOAuthRefreshProvider,
-} from "@vm0/connectors/oauth-providers";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -826,9 +823,9 @@ export const upsertOAuthConnector$ = command(
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
-    const provider = CONNECTOR_OAUTH_PROVIDERS[args.type];
+    const secretMetadata = getConnectorOAuthSecretMetadata(args.type);
     const tokenExpiresAt = connectorTokenExpiresAt({
-      isRefreshable: isOAuthRefreshProvider(provider),
+      isRefreshable: secretMetadata.isRefreshable,
       expiresIn: args.expiresIn,
     });
     const apiTokenFields = getApiTokenFieldsByType(args.type);
@@ -850,7 +847,7 @@ export const upsertOAuthConnector$ = command(
     await upsertConnectorSecret(writeDb, {
       orgId: args.orgId,
       userId: args.userId,
-      name: provider.getSecretName(),
+      name: secretMetadata.accessSecretName,
       value: args.accessToken,
       description: `OAuth token for ${args.type} connector`,
       featureSwitchContext,

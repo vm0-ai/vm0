@@ -35,6 +35,7 @@ import {
   buildConnectorOAuthAuthUrl,
   isOAuthConnectorType,
   CONNECTOR_OAUTH_PROVIDERS,
+  getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
   refreshConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
@@ -210,6 +211,19 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
         oauthConnectorTypes.includes(type),
       );
     }
+  });
+
+  it("exposes connector OAuth secret metadata without provider access", () => {
+    expect(getConnectorOAuthSecretMetadata("test-oauth")).toEqual({
+      accessSecretName: "TEST_OAUTH_ACCESS_TOKEN",
+      refreshSecretName: "TEST_OAUTH_REFRESH_TOKEN",
+      isRefreshable: true,
+    });
+    expect(getConnectorOAuthSecretMetadata("github")).toEqual({
+      accessSecretName: "GITHUB_ACCESS_TOKEN",
+      isRefreshable: false,
+    });
+    expect(getConnectorOAuthSecretMetadata("computer")).toBeUndefined();
   });
 
   it("builds the expected authorization URL base for every OAuth provider", async () => {

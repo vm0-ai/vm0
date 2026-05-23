@@ -9,20 +9,16 @@ import type { OAuthConnectorType } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  getConnectorOAuthProvider,
+  getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
   isOAuthRefreshProvider,
   refreshConnectorOAuthToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
-import type {
-  OAuthProviderMetadata,
-  OAuthRefreshProvider,
-} from "@vm0/connectors/oauth-providers/provider-types";
+import type { OAuthRefreshProvider } from "@vm0/connectors/oauth-providers/provider-types";
 import {
   getModelProviderOAuthProvider,
   isModelProviderOAuthProviderKey,
-  type ModelProviderOAuthProvider,
 } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -48,9 +44,6 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
-type RegisteredOAuthProvider =
-  | OAuthProviderMetadata
-  | ModelProviderOAuthProvider;
 
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
@@ -274,17 +267,6 @@ function resolveRefreshMetadata(
   };
 }
 
-function getOAuthProviderByKey(
-  connectorType: string,
-  sourceType: OAuthSecretSource,
-): RegisteredOAuthProvider | null {
-  if (sourceType === "model-provider") {
-    return getModelProviderOAuthProvider(connectorType) ?? null;
-  }
-
-  return getConnectorOAuthProvider(connectorType) ?? null;
-}
-
 function currentProviderEnv(): ProviderEnv {
   return new Proxy(
     {},
@@ -366,15 +348,43 @@ async function upsertSecretValue(
     });
 }
 
+function getRefreshSecretNameForSource(
+  connectorType: string,
+  sourceType: OAuthSecretSource,
+): string | undefined {
+  if (sourceType === "model-provider") {
+    const provider = getModelProviderOAuthProvider(connectorType);
+    return provider && isOAuthRefreshProvider(provider)
+      ? provider.getRefreshSecretName()
+      : undefined;
+  }
+
+  const metadata = getConnectorOAuthSecretMetadata(connectorType);
+  return metadata?.isRefreshable ? metadata.refreshSecretName : undefined;
+}
+
+function getAccessSecretNameForSource(
+  connectorType: string,
+  sourceType: OAuthSecretSource,
+): string | undefined {
+  if (sourceType === "model-provider") {
+    return getModelProviderOAuthProvider(connectorType)?.getSecretName();
+  }
+
+  return getConnectorOAuthSecretMetadata(connectorType)?.accessSecretName;
+}
+
 async function getConnectorRefreshToken(
   args: SecretTokenLookupArgs,
 ): Promise<{ readonly secretName: string; readonly token: string } | null> {
-  const provider = getOAuthProviderByKey(args.connectorType, args.sourceType);
-  if (!provider || !isOAuthRefreshProvider(provider)) {
+  const secretName = getRefreshSecretNameForSource(
+    args.connectorType,
+    args.sourceType,
+  );
+  if (!secretName) {
     return null;
   }
 
-  const secretName = provider.getRefreshSecretName();
   const token = await getSecretValue({
     db: args.db,
     orgId: args.orgId,
@@ -393,8 +403,11 @@ async function getConnectorRefreshToken(
 async function getConnectorAccessToken(
   args: SecretTokenLookupArgs,
 ): Promise<string | null> {
-  const provider = getOAuthProviderByKey(args.connectorType, args.sourceType);
-  if (!provider) {
+  const secretName = getAccessSecretNameForSource(
+    args.connectorType,
+    args.sourceType,
+  );
+  if (!secretName) {
     return null;
   }
 
@@ -406,7 +419,7 @@ async function getConnectorAccessToken(
       args.userId,
       args.sourceUserId,
     ),
-    name: provider.getSecretName(),
+    name: secretName,
     type: args.sourceType,
     featureSwitchContext: args.featureSwitchContext,
   });
@@ -617,8 +630,8 @@ function prepareRefreshTokenContext(
     L.debug(`${args.connectorType} is not an OAuth connector type, skipping`);
     return null;
   }
-  const provider = getConnectorOAuthProvider(args.connectorType);
-  if (!provider || !isOAuthRefreshProvider(provider)) {
+  const secretMetadata = getConnectorOAuthSecretMetadata(args.connectorType);
+  if (!secretMetadata.isRefreshable) {
     return null;
   }
   const credentials = getConnectorOAuthCredentials(
@@ -634,7 +647,7 @@ function prepareRefreshTokenContext(
     return null;
   }
 
-  const refreshTokenSecret = provider.getRefreshSecretName();
+  const refreshTokenSecret = secretMetadata.refreshSecretName;
   const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
   if (!currentRefreshToken) {
     L.debug(`No ${args.connectorType} refresh token available, skipping`);
@@ -644,7 +657,7 @@ function prepareRefreshTokenContext(
   const context: RefreshTokenContext = {
     refreshTokenSecret,
     currentRefreshToken,
-    accessTokenSecret: provider.getSecretName(),
+    accessTokenSecret: secretMetadata.accessSecretName,
     secretUserId: resolveSecretUserId(
       args.sourceType,
       args.userId,

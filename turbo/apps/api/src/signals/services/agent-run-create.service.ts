@@ -36,7 +36,7 @@ import {
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import {
-  getConnectorOAuthProvider,
+  getConnectorOAuthSecretMetadata,
   isOAuthRefreshProvider,
 } from "@vm0/connectors/oauth-providers";
 import { getModelProviderOAuthProvider } from "@vm0/connectors/oauth-providers/model-provider-registry";
@@ -1472,11 +1472,11 @@ async function loadOauthConnectorContext(
       }
     }
 
-    const provider = getConnectorOAuthProvider(connectorType);
-    if (!provider || !isOAuthRefreshProvider(provider)) {
+    const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
+    if (!secretMetadata?.isRefreshable) {
       continue;
     }
-    const secretName = provider.getSecretName();
+    const secretName = secretMetadata.accessSecretName;
     secretConnectorMap[secretName] = connectorType;
     for (const [envName, valueRef] of Object.entries(mapping)) {
       if (valueRef === `$secrets.${secretName}`) {

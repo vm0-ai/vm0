@@ -103,6 +103,17 @@ type DispatchRefreshProvider = {
   refreshToken(args: OAuthRefreshArgs): Promise<OAuthRefreshResult>;
 };
 
+export type ConnectorOAuthSecretMetadata =
+  | {
+      readonly accessSecretName: string;
+      readonly isRefreshable: false;
+    }
+  | {
+      readonly accessSecretName: string;
+      readonly refreshSecretName: string;
+      readonly isRefreshable: true;
+    };
+
 function connectorProviderFor<T extends OAuthConnectorType>(
   type: T,
 ): ConnectorOAuthProviderFor<T> {
@@ -194,6 +205,35 @@ export function getConnectorOAuthProvider(
     return undefined;
   }
   return CONNECTOR_OAUTH_PROVIDERS[type];
+}
+
+export function getConnectorOAuthSecretMetadata(
+  type: OAuthConnectorType,
+): ConnectorOAuthSecretMetadata;
+export function getConnectorOAuthSecretMetadata(
+  type: string,
+): ConnectorOAuthSecretMetadata | undefined;
+export function getConnectorOAuthSecretMetadata(
+  type: string,
+): ConnectorOAuthSecretMetadata | undefined {
+  if (!isOAuthConnectorType(type)) {
+    return undefined;
+  }
+
+  const provider = connectorProviderFor(type);
+  const accessSecretName = provider.getSecretName();
+  if (!isOAuthRefreshProvider(provider)) {
+    return {
+      accessSecretName,
+      isRefreshable: false,
+    };
+  }
+
+  return {
+    accessSecretName,
+    refreshSecretName: provider.getRefreshSecretName(),
+    isRefreshable: true,
+  };
 }
 
 export async function buildConnectorOAuthAuthUrl<

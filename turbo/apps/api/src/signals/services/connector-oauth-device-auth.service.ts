@@ -16,7 +16,7 @@ import {
   isOAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
-  CONNECTOR_OAUTH_PROVIDERS,
+  getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
@@ -872,7 +872,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       claimStartedAt,
       signal,
       persistConnector: async ({ result }) => {
-        const provider = CONNECTOR_OAUTH_PROVIDERS[resolvedType];
+        const secretMetadata = getConnectorOAuthSecretMetadata(resolvedType);
         const connectorResult = await set(
           upsertOAuthConnector$,
           {
@@ -883,7 +883,9 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
             userInfo: result.token.userInfo,
             oauthScopes: result.token.scopes,
             refreshToken: result.token.refreshToken,
-            refreshSecretName: provider.getRefreshSecretName?.(),
+            refreshSecretName: secretMetadata.isRefreshable
+              ? secretMetadata.refreshSecretName
+              : undefined,
             expiresIn: result.token.expiresIn,
           },
           signal,

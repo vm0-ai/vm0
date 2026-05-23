@@ -8,8 +8,8 @@ import {
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
+  getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
-  CONNECTOR_OAUTH_PROVIDERS,
 } from "@vm0/connectors/oauth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -214,8 +214,10 @@ const createTestConnector$ = command(
     if (!isOAuthConnectorType(connectorType)) {
       return stringError(400, `${connectorType} connector does not use OAuth`);
     }
-    const provider = CONNECTOR_OAUTH_PROVIDERS[connectorType];
-    const refreshSecretName = provider.getRefreshSecretName?.();
+    const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
+    const refreshSecretName = secretMetadata.isRefreshable
+      ? secretMetadata.refreshSecretName
+      : undefined;
     await set(
       upsertOAuthConnector$,
       {
