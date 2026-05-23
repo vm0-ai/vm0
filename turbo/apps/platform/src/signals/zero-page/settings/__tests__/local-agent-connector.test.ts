@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setupPage } from "../../../../__tests__/page-helper.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { setMockLocalAgentHosts } from "../../../../mocks/handlers/api-local-agent.ts";
@@ -34,6 +35,7 @@ describe("local-agent connector", () => {
       context,
       path: "/",
       withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.LocalAgentConnector]: true },
     });
 
     const connectors = await context.store.get(allConnectorTypes$);
