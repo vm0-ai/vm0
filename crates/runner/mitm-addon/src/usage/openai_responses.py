@@ -125,9 +125,8 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
 def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     target_has_positive_quantity = _has_positive_usage_quantity(target)
     source_has_positive_quantity = _has_positive_usage_quantity(source)
-    stored_quantity = False
     for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
-        stored_quantity = _store_quantity(target, category, source.get(category)) or stored_quantity
+        _store_quantity(target, category, source.get(category))
 
     if target_has_positive_quantity and not source_has_positive_quantity:
         return
