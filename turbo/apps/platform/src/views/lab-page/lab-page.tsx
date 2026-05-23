@@ -57,38 +57,67 @@ export function LabPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
-        <div className="mx-auto max-w-[900px]">
-          <div className="zero-card divide-y divide-border">
-            {Object.values(FeatureSwitchKey)
-              .sort((a, b) => {
-                return a.localeCompare(b, undefined, { sensitivity: "base" });
-              })
-              .map((key) => {
-                const enabled = features?.[key] ?? false;
-                return (
-                  <label
-                    key={key}
-                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-sm text-foreground">{key}</span>
-                      {descriptions[key] && (
-                        <span className="text-xs text-muted-foreground">
-                          {descriptions[key]}
-                        </span>
-                      )}
-                    </div>
-                    <Switch
-                      checked={enabled}
-                      disabled={busy}
-                      onCheckedChange={(checked) => {
-                        handleToggle(key, checked);
-                      }}
-                    />
-                  </label>
-                );
-              })}
-          </div>
+        <div className="mx-auto max-w-[900px] space-y-6">
+          {(() => {
+            const sorted = Object.values(FeatureSwitchKey).sort((a, b) => {
+              return a.localeCompare(b, undefined, { sensitivity: "base" });
+            });
+            const connectorKeys = sorted.filter((key) => {
+              return key.endsWith("Connector");
+            });
+            const otherKeys = sorted.filter((key) => {
+              return !key.endsWith("Connector");
+            });
+
+            const renderGroup = (
+              title: string,
+              keys: FeatureSwitchKey[],
+            ) => {
+              return (
+                <section>
+                  <h2 className="mb-2 px-1 text-sm font-medium text-muted-foreground">
+                    {title}
+                  </h2>
+                  <div className="zero-card divide-y divide-border">
+                    {keys.map((key) => {
+                      const enabled = features?.[key] ?? false;
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-sm text-foreground">
+                              {key}
+                            </span>
+                            {descriptions[key] && (
+                              <span className="text-xs text-muted-foreground">
+                                {descriptions[key]}
+                              </span>
+                            )}
+                          </div>
+                          <Switch
+                            checked={enabled}
+                            disabled={busy}
+                            onCheckedChange={(checked) => {
+                              handleToggle(key, checked);
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            };
+
+            return (
+              <>
+                {renderGroup("Other", otherKeys)}
+                {renderGroup("Connectors", connectorKeys)}
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
