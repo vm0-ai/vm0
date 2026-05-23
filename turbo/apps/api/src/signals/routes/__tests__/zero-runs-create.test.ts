@@ -236,7 +236,6 @@ async function setOrgCredits(orgId: string, credits: number): Promise<void> {
 async function setMemberCredits(args: {
   readonly orgId: string;
   readonly userId: string;
-  readonly creditEnabled?: boolean;
 }): Promise<void> {
   const db = store.set(writeDb$);
   await db
@@ -244,12 +243,8 @@ async function setMemberCredits(args: {
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      creditEnabled: args.creditEnabled ?? true,
     })
-    .onConflictDoUpdate({
-      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { creditEnabled: args.creditEnabled ?? true },
-    });
+    .onConflictDoNothing();
 }
 
 async function seedDefaultModelProvider(args: {

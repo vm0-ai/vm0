@@ -416,8 +416,8 @@ async function seedVideoFixture(options: {
     credits: options.credits ?? 10_000,
   });
   await writeDb.execute(sql`
-    INSERT INTO org_members_metadata (org_id, user_id, credit_enabled)
-    VALUES (${orgId}, ${userId}, true)
+    INSERT INTO org_members_metadata (org_id, user_id)
+    VALUES (${orgId}, ${userId})
   `);
 
   if (options.withPricing) {

@@ -1971,7 +1971,6 @@ export const triggerVoiceChatReasoning$ = command(
 );
 
 interface CreditCheckRow extends Record<string, unknown> {
-  readonly credit_enabled: boolean | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
 }
@@ -1979,17 +1978,12 @@ interface CreditCheckRow extends Record<string, unknown> {
 export const checkVoiceChatCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string; readonly userId: string },
+    args: { readonly orgId: string },
     signal: AbortSignal,
   ): Promise<null | ErrorResponse<402, "INSUFFICIENT_CREDITS">> => {
     const writeDb = set(writeDb$);
     const { rows } = await writeDb.execute<CreditCheckRow>(sql`
-      WITH member AS (
-        SELECT credit_enabled FROM org_members_metadata
-        WHERE org_id = ${args.orgId} AND user_id = ${args.userId}
-        LIMIT 1
-      ),
-      org AS (
+      WITH org AS (
         SELECT credits FROM org_metadata
         WHERE org_id = ${args.orgId}
         LIMIT 1
@@ -2002,14 +1996,13 @@ export const checkVoiceChatCredits$ = command(
           AND remaining > 0
       )
       SELECT
-        (SELECT credit_enabled FROM member) AS credit_enabled,
         (SELECT credits FROM org) AS credits,
         (SELECT total FROM expired) AS unsettled_expired
     `);
     signal.throwIfAborted();
 
     const row = rows[0];
-    if (!row || row.credit_enabled === false || row.credits === null) {
+    if (!row || row.credits === null) {
       return insufficientCredits();
     }
 

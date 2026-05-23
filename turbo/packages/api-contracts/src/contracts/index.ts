@@ -1261,10 +1261,6 @@ export {
   type ZeroQueuePositionContract,
 } from "./zero-queue-position";
 export {
-  zeroMemberCreditCapContract,
-  type ZeroMemberCreditCapContract,
-} from "./zero-member-credit-cap";
-export {
   zeroDeveloperSupportContract,
   developerSupportBodySchema,
   consentCodeResponseSchema,

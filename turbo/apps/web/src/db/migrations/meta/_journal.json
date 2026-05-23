@@ -2759,6 +2759,13 @@
       "when": 1779435569055,
       "tag": "0393_add_byteplus_video_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 394,
+      "version": "7",
+      "when": 1779507323604,
+      "tag": "0394_pale_magneto",
+      "breakpoints": true
     }
   ]
 }

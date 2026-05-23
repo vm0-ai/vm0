@@ -310,7 +310,7 @@ const postPresentationInner$ = command(
 
     const hasCredits = await set(
       checkPresentationCredits$,
-      { orgId: auth.orgId, userId: auth.userId },
+      { orgId: auth.orgId },
       signal,
     );
     if (!hasCredits) {

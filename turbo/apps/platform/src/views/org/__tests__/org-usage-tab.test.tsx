@@ -1,9 +1,8 @@
 import { test, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
@@ -11,7 +10,6 @@ import {
   resetMockUsageMembers,
 } from "../../../mocks/handlers/api-usage.ts";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import { zeroMemberCreditCapContract } from "@vm0/api-contracts/contracts/zero-member-credit-cap";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
@@ -25,14 +23,12 @@ interface MockMember {
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
   creditsCharged: number;
-  creditCap: number | null;
 }
 
 function makeMember(
   userId: string,
   email: string,
   creditsCharged: number,
-  creditCap: number | null = null,
 ): MockMember {
   return {
     userId,
@@ -42,7 +38,6 @@ function makeMember(
     cacheReadInputTokens: 0,
     cacheCreationInputTokens: 0,
     creditsCharged,
-    creditCap,
   };
 }
 
@@ -120,8 +115,8 @@ test("shows member email and credits in usage list", async () => {
   });
   setupMockAPIs({
     members: [
-      makeMember("user-a", "alice@example.com", 500, null),
-      makeMember("user-b", "bob@example.com", 1200, null),
+      makeMember("user-a", "alice@example.com", 500),
+      makeMember("user-b", "bob@example.com", 1200),
     ],
   });
   await openUsageTab();
@@ -131,86 +126,6 @@ test("shows member email and credits in usage list", async () => {
   });
   expect(screen.getByText("500")).toBeInTheDocument();
   expect(screen.getByText("1,200")).toBeInTheDocument();
-});
-
-// ORG-C-055 (admin case)
-test("shows editable credit cap input for admins", async () => {
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 20_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-  });
-  setupMockAPIs({
-    members: [makeMember("user-a", "alice@example.com", 500, 3000)],
-  });
-  await openUsageTab();
-  await waitFor(() => {
-    expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
-  });
-});
-
-// ORG-C-055 (non-admin case)
-test("redirects non-admins to general tab when usage tab is requested", async () => {
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 20_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-  });
-  setupMockAPIs({
-    members: [makeMember("user-a", "alice@example.com", 500, 3000)],
-    role: "member",
-  });
-  detachedSetupPage({ context, path: "/?settings=usage" });
-  await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-  // Non-admins are redirected to general tab; usage tab content is never shown
-  await waitFor(() => {
-    // No cap input spinbutton is visible
-    expect(screen.queryByPlaceholderText("No limit")).not.toBeInTheDocument();
-    // Usage tab error/error state is also not present
-    expect(screen.queryByTestId("usage-tab-error")).not.toBeInTheDocument();
-  });
-});
-
-// ORG-I-057
-test("credit cap input accepts value and saves via unsaved bar", async () => {
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 20_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-  });
-  let capturedCap: number | null = null;
-  setupMockAPIs({
-    members: [makeMember("user-a", "alice@example.com", 500, null)],
-  });
-  server.use(
-    mockApi(zeroMemberCreditCapContract.set, ({ body, respond }) => {
-      capturedCap = body.creditCap;
-      return respond(200, {
-        userId: body.userId,
-        creditCap: body.creditCap,
-        creditEnabled: true,
-      });
-    }),
-  );
-  await openUsageTab();
-  await waitFor(() => {
-    expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
-  });
-  const capInput = screen.getByPlaceholderText("No limit");
-  await fill(capInput, "5000");
-  await waitFor(() => {
-    expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
-  });
-  const saveUser = userEvent.setup({ pointerEventsCheck: 0 });
-  await saveUser.click(screen.getByTestId("save-button"));
-  await waitFor(() => {
-    expect(capturedCap).toBe(5000);
-  });
 });
 
 // ORG-S-058

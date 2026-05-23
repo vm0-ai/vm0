@@ -454,13 +454,6 @@ export function PricingPageClient() {
                     team={t("tableValues.unlimited")}
                   />
                   <TableRow
-                    feature={t("tableFeatures.perMemberCreditCaps")}
-                    description={t("tableFeatures.perMemberCreditCapsDesc")}
-                    free={false}
-                    pro={true}
-                    team={true}
-                  />
-                  <TableRow
                     feature={t("tableFeatures.autoRecharge")}
                     description={t("tableFeatures.autoRechargeDesc")}
                     free={false}

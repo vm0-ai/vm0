@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { like } from "drizzle-orm";
@@ -20,32 +19,24 @@ afterEach(async () => {
     .delete(creditExpiresRecord)
     .where(like(creditExpiresRecord.orgId, `${ORG_ID_PREFIX}%`));
   await db
-    .delete(orgMembersMetadata)
-    .where(like(orgMembersMetadata.orgId, `${ORG_ID_PREFIX}%`));
-  await db
     .delete(orgMetadata)
     .where(like(orgMetadata.orgId, `${ORG_ID_PREFIX}%`));
 });
 
 async function withCreditFixture<T>(
-  fn: (fixture: {
-    readonly orgId: string;
-    readonly userId: string;
-  }) => Promise<T>,
+  fn: (fixture: { readonly orgId: string }) => Promise<T>,
 ): Promise<T> {
   const orgId = `${ORG_ID_PREFIX}${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
   const db = store.set(writeDb$);
 
   await db.insert(orgMetadata).values({ orgId, credits: 10_000 });
-  await db.insert(orgMembersMetadata).values({ orgId, userId });
 
-  return await fn({ orgId, userId });
+  return await fn({ orgId });
 }
 
 describe("resolveOrgCreditAvailability", () => {
   it("returns spendable credits after unsettled expired credits", async () => {
-    await withCreditFixture(async ({ orgId, userId }) => {
+    await withCreditFixture(async ({ orgId }) => {
       const db = store.set(writeDb$);
       await db.insert(creditExpiresRecord).values({
         orgId,
@@ -56,7 +47,7 @@ describe("resolveOrgCreditAvailability", () => {
       });
 
       await expect(
-        resolveOrgCreditAvailability({ db, orgId, userId }),
+        resolveOrgCreditAvailability({ db, orgId }),
       ).resolves.toStrictEqual({ spendableCredits: 7500 });
     });
   });

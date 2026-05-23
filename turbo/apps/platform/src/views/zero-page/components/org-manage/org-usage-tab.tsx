@@ -1,35 +1,20 @@
-import { useGet, useLoadable, useSet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
+import { useLoadable } from "ccstate-react";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
 import { IconChevronRight, IconUsers } from "@tabler/icons-react";
-import { Input } from "@vm0/ui";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
-import { UnsavedBar } from "./unsaved-bar.tsx";
-import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
-import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   billingStatusAsync$,
   apiTierToBillingTier,
 } from "../../../../signals/zero-page/billing.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
-import {
-  inlineCapValues$,
-  setInlineCapValue$,
-  usageMembers$,
-  syncUsageMembersFromLoadable$,
-  inlineCapBatchCommit$,
-  inlineCapsDirty$,
-  discardAllInlineCapValues$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -297,33 +282,6 @@ function MemberAvatar({
   );
 }
 
-function InlineCapInput({ member }: { member: MemberUsage }) {
-  const capValues = useGet(inlineCapValues$);
-  const setCapValue = useSet(setInlineCapValue$);
-  const value = capValues.has(member.userId)
-    ? capValues.get(member.userId)!
-    : member.creditCap !== null
-      ? String(member.creditCap)
-      : "";
-
-  return (
-    <Input
-      type="text"
-      inputMode="numeric"
-      placeholder="No limit"
-      value={value}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (v !== "" && !/^\d+$/.test(v)) {
-          return;
-        }
-        setCapValue(member.userId, v);
-      }}
-      className="h-8 w-full text-[13px] tabular-nums placeholder:text-xs"
-    />
-  );
-}
-
 function LoadingSkeleton() {
   return (
     <div className="flex flex-col rounded-xl bg-card zero-border">
@@ -349,11 +307,7 @@ function LoadingSkeleton() {
 function OverviewSection() {
   const usageLoadable = useLoadable(usageMembersAsync$);
   const membersLoadable = useLoadable(orgMembers$);
-  const adminLoadable = useLoadable(isOrgAdmin$);
   const billingLoadable = useLoadable(billingStatusAsync$);
-
-  const isAdmin =
-    adminLoadable.state === "hasData" ? adminLoadable.data : false;
 
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
@@ -374,26 +328,9 @@ function OverviewSection() {
   );
 
   const period = usageData?.period ?? null;
-  const members = useGet(usageMembers$);
-
-  // Sync from loadable to signal state for optimistic cap updates
-  const rawMembers = usageData?.members ?? [];
-  useSet(syncUsageMembersFromLoadable$)(rawMembers);
-
-  const isDirty = useGet(inlineCapsDirty$);
-  const discardAll = useSet(discardAllInlineCapValues$);
-  const pageSignal = useGet(pageSignal$);
-  const [batchLoadable, doBatchCommit] = useLoadableSet(inlineCapBatchCommit$);
-  const batchSaving = batchLoadable.state === "loading";
-
-  const handleSave = () => {
-    detach(
-      (async () => {
-        await doBatchCommit(members, pageSignal);
-      })(),
-      Reason.DomCallback,
-    );
-  };
+  const members = (usageData?.members ?? []).slice().sort((a, b) => {
+    return b.creditsCharged - a.creditsCharged;
+  });
 
   return (
     <div className="flex flex-col gap-8">
@@ -448,21 +385,9 @@ function OverviewSection() {
               </p>
             </div>
           ) : (
-            <MembersTable
-              members={members}
-              memberMap={memberMap}
-              isAdmin={isAdmin}
-            />
+            <MembersTable members={members} memberMap={memberMap} />
           )}
         </section>
-      )}
-
-      {isDirty && (
-        <UnsavedBar
-          onDiscard={discardAll}
-          onSave={handleSave}
-          saving={batchSaving}
-        />
       )}
     </div>
   );
@@ -471,35 +396,27 @@ function OverviewSection() {
 function MembersTable({
   members,
   memberMap,
-  isAdmin,
 }: {
   members: MemberUsage[];
   memberMap: Map<string, OrgMember>;
-  isAdmin: boolean;
 }) {
   return (
     <div className="overflow-hidden rounded-xl bg-card zero-border">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
+      <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
         <span>Member</span>
         <span>Used</span>
-        <span>Remaining</span>
-        <span>Limit cap</span>
       </div>
       {members.map((member) => {
         const orgMember = memberMap.get(member.userId);
         const name = orgMember ? displayName(orgMember) : "";
         const label = name || member.email;
         const initial = label.charAt(0).toUpperCase();
-        const remaining =
-          member.creditCap !== null
-            ? Math.max(0, member.creditCap - member.creditsCharged)
-            : null;
 
         return (
           <div key={member.userId}>
             <div className="h-0 zero-border-t mx-5" />
-            <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-3">
+            <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-3">
               <div className="flex items-center gap-3 min-w-0">
                 <MemberAvatar
                   imageUrl={orgMember?.imageUrl ?? ""}
@@ -526,18 +443,6 @@ function MembersTable({
               <span className="text-[13px] tabular-nums text-foreground whitespace-nowrap">
                 {member.creditsCharged.toLocaleString()}
               </span>
-              <span className="text-[13px] tabular-nums text-muted-foreground/50 whitespace-nowrap">
-                {remaining !== null ? remaining.toLocaleString() : "–"}
-              </span>
-              {isAdmin ? (
-                <InlineCapInput member={member} />
-              ) : (
-                <span className="text-[13px] tabular-nums text-muted-foreground whitespace-nowrap">
-                  {member.creditCap !== null
-                    ? member.creditCap.toLocaleString()
-                    : "—"}
-                </span>
-              )}
             </div>
           </div>
         );

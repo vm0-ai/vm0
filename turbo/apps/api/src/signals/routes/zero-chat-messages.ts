@@ -1890,7 +1890,6 @@ async function resolveProviderAdmission(params: {
   const error = await checkOrgCreditsForRunAdmission({
     db: params.db,
     orgId: params.orgId,
-    userId: params.userId,
     modelProviderType: effectiveModelProvider,
   });
   return { effectiveModelProvider, error };

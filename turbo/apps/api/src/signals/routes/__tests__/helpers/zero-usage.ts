@@ -47,12 +47,6 @@ interface SeedUsageFixtureArgs {
   readonly tier?: string;
 }
 
-interface SetCreditCapArgs {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly creditCap: number | null;
-}
-
 interface InsertUsageEventArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -205,28 +199,6 @@ export const deleteUsageFixture$ = command(
       await db.delete(userCache).where(inArray(userCache.userId, userIds));
       signal.throwIfAborted();
     }
-  },
-);
-
-export const setMemberCreditCap$ = command(
-  async (
-    { set },
-    args: SetCreditCapArgs,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db
-      .insert(orgMembersMetadata)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        creditCap: args.creditCap,
-      })
-      .onConflictDoUpdate({
-        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-        set: { creditCap: args.creditCap },
-      });
-    signal.throwIfAborted();
   },
 );
 

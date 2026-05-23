@@ -236,7 +236,6 @@ async function seedVoiceFixture(options: {
   await writeDb.insert(orgMembersMetadata).values({
     orgId,
     userId,
-    creditEnabled: true,
   });
 
   if (options.audioOutputEnabled) {

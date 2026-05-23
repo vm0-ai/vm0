@@ -16,7 +16,6 @@ import {
   REALTIME_PROVIDER,
   REALTIME_TOKEN_CATEGORIES,
   seedUsageFixture$,
-  setMemberCreditCap$,
   TRANSCRIPTION_PROVIDER,
   TRANSCRIPTION_TOKEN_CATEGORIES,
   type UsageFixture,
@@ -110,11 +109,6 @@ describe("GET /api/zero/usage/members", () => {
       ),
     );
     await store.set(
-      setMemberCreditCap$,
-      { orgId: fixture.orgId, userId: fixture.userId, creditCap: 250 },
-      context.signal,
-    );
-    await store.set(
       insertModelUsage$,
       {
         orgId: fixture.orgId,
@@ -157,7 +151,6 @@ describe("GET /api/zero/usage/members", () => {
       cacheReadInputTokens: 500,
       cacheCreationInputTokens: 250,
       creditsCharged: 150,
-      creditCap: 250,
     });
   });
 

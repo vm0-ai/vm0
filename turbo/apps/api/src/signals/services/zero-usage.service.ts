@@ -10,7 +10,6 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -67,26 +66,6 @@ export const zeroUsageMembers$ = command(
     });
     const emailMap = await resolveEmails(get(clerk$), db, userIds, signal);
 
-    const capRows = await db
-      .select({
-        userId: orgMembersMetadata.userId,
-        creditCap: orgMembersMetadata.creditCap,
-      })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, args.orgId),
-          inArray(orgMembersMetadata.userId, userIds),
-        ),
-      );
-    signal.throwIfAborted();
-
-    const capMap = new Map(
-      capRows.map((row) => {
-        return [row.userId, row.creditCap];
-      }),
-    );
-
     const members: MemberUsage[] = rows.map((row) => {
       return {
         userId: row.userId,
@@ -96,7 +75,6 @@ export const zeroUsageMembers$ = command(
         cacheReadInputTokens: Number(row.cacheReadInputTokens),
         cacheCreationInputTokens: Number(row.cacheCreationInputTokens),
         creditsCharged: Number(row.creditsCharged),
-        creditCap: capMap.get(row.userId) ?? null,
       };
     });
 

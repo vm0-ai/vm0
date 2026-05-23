@@ -167,8 +167,6 @@ export const cancelRun$ = command(
  *  - `dispatchQueuedZeroRun` (drain dispatch path) — Stage 4
  *    run-creation migration.
  *  - `triggerAutoRecharge` (Stripe top-up) — sibling follow-up.
- *  - `evaluateMemberCaps` (per-user cap enforcement) — sibling
- *    follow-up.
  *
  * Fire-and-forget caller: invoke from the route handler via
  * `waitUntil(tapError(set(dispatchCancelSideEffects$, result, signal), log))`.

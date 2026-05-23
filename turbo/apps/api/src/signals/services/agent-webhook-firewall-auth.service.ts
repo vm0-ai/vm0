@@ -134,7 +134,6 @@ async function resolveBillableFirewallCacheExpiry(params: {
   const availability = await resolveOrgCreditAvailability({
     db: params.db,
     orgId: params.auth.orgId,
-    userId: params.auth.userId,
   });
   if (!availability) {
     return insufficientCredits();

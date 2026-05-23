@@ -2,7 +2,6 @@ import {
   pgTable,
   text,
   boolean,
-  bigint,
   integer,
   timestamp,
   primaryKey,
@@ -24,8 +23,6 @@ export const orgMembersMetadata = pgTable(
     sendMode: text("send_mode").notNull().default("enter"),
     selectedModel: varchar("selected_model", { length: 255 }),
     onboardingDone: boolean("onboarding_done").notNull().default(false),
-    creditCap: bigint("credit_cap", { mode: "number" }),
-    creditEnabled: boolean("credit_enabled").notNull().default(true),
     captureNetworkBodiesRemaining: integer(
       "capture_network_bodies_remaining",
     ).default(0),

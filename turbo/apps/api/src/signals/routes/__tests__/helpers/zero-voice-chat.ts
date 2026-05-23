@@ -74,7 +74,6 @@ export const seedVoiceChatFixture$ = command(
       await writeDb.insert(orgMembersMetadata).values({
         orgId,
         userId,
-        creditEnabled: true,
       });
       signal.throwIfAborted();
     }

@@ -121,7 +121,6 @@ async function seedMapsFixture(credits = 1000): Promise<MapsFixture> {
   await writeDb.insert(orgMembersMetadata).values({
     orgId,
     userId,
-    creditEnabled: true,
   });
   await ensureMapsPricing();
 

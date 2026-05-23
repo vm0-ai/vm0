@@ -518,7 +518,6 @@ async function seedPresentationFixture(options: {
   await writeDb.insert(orgMembersMetadata).values({
     orgId,
     userId,
-    creditEnabled: true,
   });
 
   const pricing = options.withPricing

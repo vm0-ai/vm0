@@ -18,11 +18,7 @@ import {
   apiOrgDomainsHandlers,
   resetMockOrgDomains,
 } from "./api-org-domains.ts";
-import {
-  apiUsageHandlers,
-  resetMockUsageMembers,
-  resetMockMemberCreditCaps,
-} from "./api-usage.ts";
+import { apiUsageHandlers, resetMockUsageMembers } from "./api-usage.ts";
 import {
   apiUsageInsightHandlers,
   resetMockUsageInsight,
@@ -165,7 +161,6 @@ export function resetAllMockHandlers(): void {
   resetMockOrgMembers();
   resetMockOrgDomains();
   resetMockUsageMembers();
-  resetMockMemberCreditCaps();
   resetMockUsageInsight();
   resetMockSchedules();
   resetMockTeam();

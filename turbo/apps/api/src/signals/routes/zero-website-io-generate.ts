@@ -200,7 +200,7 @@ const postWebsiteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const hasCredits = await set(
     checkWebsiteCredits$,
-    { orgId: auth.orgId, userId: auth.userId },
+    { orgId: auth.orgId },
     signal,
   );
   if (!hasCredits) {

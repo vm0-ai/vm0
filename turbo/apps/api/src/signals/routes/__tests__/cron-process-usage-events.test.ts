@@ -1,23 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import {
   deleteUsageFixture$,
   insertUsageEvent$,
   seedUsageFixture$,
-  setMemberCreditCap$,
   type UsageFixture,
 } from "./helpers/zero-usage";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -78,24 +75,6 @@ async function findUsageEvent(id: string) {
     .where(eq(usageEvent.id, id))
     .limit(1);
   return row;
-}
-
-async function getMemberCreditEnabled(
-  orgId: string,
-  userId: string,
-): Promise<boolean | undefined> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-  return row?.creditEnabled;
 }
 
 async function getOrgCredits(orgId: string): Promise<number> {
@@ -495,51 +474,5 @@ describe("GET /api/cron/process-usage-events", () => {
       creditsCharged: 10,
       billingError: null,
     });
-  });
-
-  it("disables capped members when processed usage reaches the cap", async () => {
-    const periodEnd = new Date(nowDate().getTime() + 15 * 24 * 60 * 60 * 1000);
-    const fixture = await track(
-      store.set(
-        seedUsageFixture$,
-        { currentPeriodEnd: periodEnd },
-        context.signal,
-      ),
-    );
-    await seedCredits(fixture);
-    await store.set(
-      setMemberCreditCap$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        creditCap: 25,
-      },
-      context.signal,
-    );
-    const provider = `cap-${randomUUID()}`;
-    await insertPricing({ provider, category: "tweet.read", unitPrice: 10 });
-    const eventId = await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        provider,
-        category: "tweet.read",
-        quantity: 3,
-        status: "pending",
-      },
-      context.signal,
-    );
-
-    await accept(apiClient().process({ headers: cronHeaders() }), [200]);
-
-    await expect(findUsageEvent(eventId)).resolves.toStrictEqual({
-      status: "processed",
-      creditsCharged: 30,
-      billingError: null,
-    });
-    await expect(
-      getMemberCreditEnabled(fixture.orgId, fixture.userId),
-    ).resolves.toBeFalsy();
   });
 });

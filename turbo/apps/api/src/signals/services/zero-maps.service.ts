@@ -45,7 +45,6 @@ const PLACE_DETAILS_PRO_FIELD_MASK =
 const DEFAULT_LOCATION_BIAS_RADIUS_METERS = 50_000;
 
 interface CreditCheckRow extends Record<string, unknown> {
-  readonly credit_enabled: boolean | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
   readonly unit_price: string | null;
@@ -276,7 +275,6 @@ const checkMapsCredits$ = command(
     { set },
     args: {
       readonly orgId: string;
-      readonly userId: string;
       readonly category: string;
     },
     signal: AbortSignal,
@@ -288,11 +286,6 @@ const checkMapsCredits$ = command(
         WHERE kind = ${USAGE_KIND}
           AND provider = ${PROVIDER}
           AND category = ${args.category}
-        LIMIT 1
-      ),
-      member AS (
-        SELECT credit_enabled FROM org_members_metadata
-        WHERE org_id = ${args.orgId} AND user_id = ${args.userId}
         LIMIT 1
       ),
       org AS (
@@ -308,7 +301,6 @@ const checkMapsCredits$ = command(
           AND remaining > 0
       )
       SELECT
-        (SELECT credit_enabled FROM member) AS credit_enabled,
         (SELECT credits FROM org) AS credits,
         (SELECT total FROM expired) AS unsettled_expired,
         (SELECT unit_price FROM pricing) AS unit_price,
@@ -324,7 +316,7 @@ const checkMapsCredits$ = command(
       );
     }
 
-    if (!row || row.credit_enabled === false || row.credits === null) {
+    if (!row || row.credits === null) {
       return insufficientCredits();
     }
 
@@ -407,7 +399,6 @@ export const zeroMapsGeocode$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
-        userId: args.auth.userId,
         category: GEOCODING_CATEGORY,
       },
       signal,
@@ -469,7 +460,6 @@ export const zeroMapsReverseGeocode$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
-        userId: args.auth.userId,
         category: GEOCODING_CATEGORY,
       },
       signal,
@@ -534,7 +524,6 @@ export const zeroMapsDirections$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
-        userId: args.auth.userId,
         category: billingCategory,
       },
       signal,
@@ -611,7 +600,6 @@ export const zeroMapsPlacesSearch$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
-        userId: args.auth.userId,
         category: PLACES_TEXT_SEARCH_PRO_CATEGORY,
       },
       signal,
@@ -685,7 +673,6 @@ export const zeroMapsPlacesDetails$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
-        userId: args.auth.userId,
         category: billingCategory,
       },
       signal,

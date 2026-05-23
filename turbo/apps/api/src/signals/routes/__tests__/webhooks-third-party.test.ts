@@ -714,23 +714,6 @@ async function selectStripeCreditExpiresRecords(
     .where(eq(creditExpiresRecord.orgId, fixture.orgId));
 }
 
-async function selectStripeMemberCreditEnabled(
-  fixture: StripeFixture,
-): Promise<boolean | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
-
-  return row?.creditEnabled ?? null;
-}
-
 const deleteGitHubFixture$ = command(
   async (
     { set },
@@ -871,7 +854,6 @@ const seedGitHubWebhookFixture$ = command(
       orgId: fixture.orgId,
       userId: fixture.userId,
       timezone: "UTC",
-      creditEnabled: true,
     });
     signal.throwIfAborted();
 
@@ -952,7 +934,6 @@ const seedStripeFixture$ = command(
     await db.insert(orgMembersMetadata).values({
       orgId,
       userId,
-      creditEnabled: false,
     });
     return { orgId, userId, stripeCustomerId };
   },
@@ -2181,35 +2162,6 @@ describe("POST /api/webhooks/stripe", () => {
       const billing = await selectStripeBilling(fixture);
       expect(billing.credits - creditsBefore).toBe(5000);
       expect(billing.autoRechargePendingAt).toBeNull();
-    });
-
-    it("resets disabled member credit flags on invoice.paid", async () => {
-      const fixture = await trackStripe(
-        store.set(seedStripeFixture$, undefined, context.signal),
-      );
-      mockStripeWebhookEnv();
-      const subId = stripeId("sub");
-      await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
-      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-        id: subId,
-        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
-      });
-
-      const response = await postStripeWebhookEvent({
-        type: "invoice.paid",
-        dataObject: {
-          id: stripeId("inv"),
-          customer: fixture.stripeCustomerId,
-          metadata: null,
-          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
-          parent: { subscription_details: { subscription: subId } },
-        },
-      });
-
-      expect(response.status).toBe(200);
-      await expect(
-        selectStripeMemberCreditEnabled(fixture),
-      ).resolves.toBeTruthy();
     });
   });
 

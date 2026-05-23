@@ -338,7 +338,7 @@ const tokenInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (gates.realtimeBillingEnabled) {
     const credits = await set(
       checkVoiceChatCredits$,
-      { orgId: auth.orgId, userId: auth.userId },
+      { orgId: auth.orgId },
       signal,
     );
     signal.throwIfAborted();

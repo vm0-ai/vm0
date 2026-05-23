@@ -372,7 +372,6 @@ async function seedWebsiteFixture(): Promise<WebsiteFixture> {
   await writeDb.insert(orgMembersMetadata).values({
     orgId,
     userId,
-    creditEnabled: true,
   });
   await writeDb.insert(userFeatureSwitches).values({
     orgId,

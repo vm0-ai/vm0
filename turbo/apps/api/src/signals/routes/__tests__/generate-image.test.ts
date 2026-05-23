@@ -64,7 +64,6 @@ async function seedFixture(credits: number): Promise<GenerateImageFixture> {
   await writeDb.insert(orgMembersMetadata).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    creditEnabled: true,
   });
   mocks.clerk.session(fixture.userId, fixture.orgId);
 

@@ -226,7 +226,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const hasCredits = await set(
     checkVideoCredits$,
-    { orgId: auth.orgId, userId: auth.userId },
+    { orgId: auth.orgId },
     signal,
   );
   if (!hasCredits) {

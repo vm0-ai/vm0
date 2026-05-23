@@ -337,7 +337,6 @@ interface ConnectorRuntimeContext {
 }
 
 interface CreditCheckRow extends Record<string, unknown> {
-  readonly credit_enabled: boolean | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
 }
@@ -1836,15 +1835,10 @@ async function checkRunConcurrencyLimit(
 
 async function checkVm0Credits(
   db: Db,
-  args: { readonly orgId: string; readonly userId: string },
+  args: { readonly orgId: string },
 ): Promise<CreateRunErrorResult | null> {
   const { rows } = await db.execute<CreditCheckRow>(sql`
-    WITH member AS (
-      SELECT credit_enabled FROM org_members_metadata
-      WHERE org_id = ${args.orgId} AND user_id = ${args.userId}
-      LIMIT 1
-    ),
-    org AS (
+    WITH org AS (
       SELECT credits FROM org_metadata
       WHERE org_id = ${args.orgId}
       LIMIT 1
@@ -1857,7 +1851,6 @@ async function checkVm0Credits(
         AND remaining > 0
     )
     SELECT
-      (SELECT credit_enabled FROM member) AS credit_enabled,
       (SELECT credits FROM org) AS credits,
       (SELECT total FROM expired) AS unsettled_expired
   `);
@@ -1865,9 +1858,6 @@ async function checkVm0Credits(
   const row = rows[0];
   if (!row || row.credits === null) {
     return notFound("Org metadata not found");
-  }
-  if (row.credit_enabled === false) {
-    return insufficientCredits();
   }
 
   const credits = Number(row.credits);
@@ -2957,10 +2947,7 @@ async function resolveRunModelProvider(
   }
 
   if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
-    const creditGate = await checkVm0Credits(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-    });
+    const creditGate = await checkVm0Credits(db, { orgId: args.orgId });
     options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
@@ -3407,10 +3394,7 @@ export const createAgentRun$ = command(
     }
 
     if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {
-      const creditGate = await checkVm0Credits(db, {
-        userId: args.userId,
-        orgId: args.orgId,
-      });
+      const creditGate = await checkVm0Credits(db, { orgId: args.orgId });
       signal.throwIfAborted();
       if (creditGate) {
         return creditGate;

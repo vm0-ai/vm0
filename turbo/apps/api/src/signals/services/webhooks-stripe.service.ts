@@ -1,7 +1,6 @@
 import type { Stripe } from "stripe";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
 import { and, eq, gt, lte, sql } from "drizzle-orm";
@@ -185,18 +184,6 @@ async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
 
   L.debug("expired credits settled", { orgId, totalExpired });
   return totalExpired;
-}
-
-async function resetMemberCreditFlags(db: Db, orgId: string): Promise<void> {
-  await db
-    .update(orgMembersMetadata)
-    .set({ creditEnabled: true, updatedAt: nowDate() })
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.creditEnabled, false),
-      ),
-    );
 }
 
 async function handleAutoRechargeInvoicePaid(
@@ -462,7 +449,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
   const expiresAt = new Date(periodEndDate);
   expiresAt.setMonth(expiresAt.getMonth() + 1);
 
-  const granted = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     await expireCredits(tx, org.orgId);
 
     const inserted = await createExpiresRecord(tx, org.orgId, {
@@ -476,7 +463,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
         invoiceId: invoice.id,
         orgId: org.orgId,
       });
-      return false;
+      return;
     }
 
     await grantOrgCredits(tx, org.orgId, credits);
@@ -488,14 +475,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
         updatedAt: nowDate(),
       })
       .where(eq(orgMetadata.orgId, org.orgId));
-    return true;
   });
-
-  if (!granted) {
-    return;
-  }
-
-  await resetMemberCreditFlags(db, org.orgId);
 }
 
 async function handleSubscriptionUpdated(

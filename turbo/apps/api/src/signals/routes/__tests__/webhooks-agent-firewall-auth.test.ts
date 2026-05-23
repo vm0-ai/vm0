@@ -162,7 +162,6 @@ async function seedCreditState(
   fixture: FirewallFixture,
   args: {
     readonly credits: number;
-    readonly creditEnabled?: boolean;
   },
 ): Promise<void> {
   const db = store.set(writeDb$);
@@ -173,7 +172,6 @@ async function seedCreditState(
   await db.insert(orgMembersMetadata).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    creditEnabled: args.creditEnabled ?? true,
   });
 }
 
@@ -983,27 +981,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         code: "INSUFFICIENT_CREDITS",
       },
     });
-  });
-
-  it("denies billable firewall auth when member credit is disabled", async () => {
-    const fixture = await track(seedFixture());
-    await seedCreditState(fixture, { credits: 10_000, creditEnabled: false });
-
-    const response = await accept(
-      firewallClient().resolve({
-        body: {
-          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
-          authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
-          },
-          firewallBillable: true,
-        },
-        headers: authHeaders(fixture),
-      }),
-      [402],
-    );
-
-    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
   it("denies billable firewall auth when credit state is missing", async () => {

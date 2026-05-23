@@ -188,8 +188,6 @@
       "noCredentialExposureDesc": "Secrets werden auf Netzwerkebene injiziert, nie für Agenten-Code sichtbar",
       "teamMembers": "Teammitglieder",
       "teamMembersDesc": "Anzahl der Personen in Ihrem Workspace",
-      "perMemberCreditCaps": "Credit-Limits pro Mitglied",
-      "perMemberCreditCapsDesc": "Ausgabenlimits für einzelne Teammitglieder festlegen",
       "communitySupport": "Community-Support",
       "communitySupportDesc": "Zugang zur Discord-Community und Dokumentation",
       "emailSupport": "E-Mail-Support",

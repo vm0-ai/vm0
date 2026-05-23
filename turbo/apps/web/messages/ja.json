@@ -188,8 +188,6 @@
       "noCredentialExposureDesc": "シークレットはネットワーク層で注入され、エージェントコードには見えません",
       "teamMembers": "チームメンバー",
       "teamMembersDesc": "ワークスペースの人数",
-      "perMemberCreditCaps": "メンバーごとのクレジット上限",
-      "perMemberCreditCapsDesc": "個々のチームメンバーの利用上限を設定",
       "communitySupport": "コミュニティサポート",
       "communitySupportDesc": "Discordコミュニティとドキュメントへのアクセス",
       "emailSupport": "メールサポート",

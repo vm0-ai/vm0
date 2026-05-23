@@ -368,7 +368,6 @@ async function removeComposeFrameworkApiKey(
 async function seedVm0Credits(
   fixture: ChatMessageFixture,
   credits: number,
-  creditEnabled = true,
 ): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
@@ -381,17 +380,6 @@ async function seedVm0Credits(
     .onConflictDoUpdate({
       target: orgMetadata.orgId,
       set: { credits, tier: "free", updatedAt: nowDate() },
-    });
-  await writeDb
-    .insert(orgMembersMetadata)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      creditEnabled,
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { creditEnabled, updatedAt: nowDate() },
     });
 }
 

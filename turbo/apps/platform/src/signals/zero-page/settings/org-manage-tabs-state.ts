@@ -10,14 +10,12 @@ import type {
   OrgEnrollmentMode,
   OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
-import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { refreshOrgDomains$ } from "../../external/org-domains.ts";
-import { setMemberCreditCap$ } from "../member-credit-caps.ts";
 import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
@@ -348,80 +346,6 @@ export const setRemoveDomainDialogTarget$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-usage-tab: InlineCapInput values (keyed by userId)
-// ---------------------------------------------------------------------------
-
-const internalInlineCapValues$ = state(new Map<string, string>());
-
-export const inlineCapValues$ = computed((get) => {
-  return get(internalInlineCapValues$);
-});
-
-export const setInlineCapValue$ = command(
-  ({ get, set }, userId: string, value: string) => {
-    const map = new Map(get(internalInlineCapValues$));
-    map.set(userId, value);
-    set(internalInlineCapValues$, map);
-  },
-);
-
-export const discardAllInlineCapValues$ = command(({ set }) => {
-  set(internalInlineCapValues$, new Map());
-});
-
-export const inlineCapsDirty$ = computed((get) => {
-  const capValues = get(internalInlineCapValues$);
-  if (capValues.size === 0) {
-    return false;
-  }
-  const members = get(internalUsageMembers$);
-  for (const [userId, value] of capValues) {
-    const member = members.find((m) => {
-      return m.userId === userId;
-    });
-    const savedValue =
-      member?.creditCap !== null && member?.creditCap !== undefined
-        ? String(member.creditCap)
-        : "";
-    if (value !== savedValue) {
-      return true;
-    }
-  }
-  return false;
-});
-
-// ---------------------------------------------------------------------------
-// org-usage-tab: members cache for optimistic cap updates
-// ---------------------------------------------------------------------------
-
-const internalUsageMembers$ = state<MemberUsage[]>([]);
-
-export const usageMembers$ = computed((get) => {
-  return get(internalUsageMembers$);
-});
-
-const internalUsagePrevKey$ = state("");
-
-export const syncUsageMembersFromLoadable$ = command(
-  ({ get, set }, rawMembers: MemberUsage[]) => {
-    const rawKey = rawMembers
-      .map((m) => {
-        return `${m.userId}:${m.creditsCharged}`;
-      })
-      .join(",");
-    if (rawKey !== get(internalUsagePrevKey$)) {
-      set(internalUsagePrevKey$, rawKey);
-      set(
-        internalUsageMembers$,
-        rawMembers.slice().sort((a, b) => {
-          return b.creditsCharged - a.creditsCharged;
-        }),
-      );
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
 // org-general-tab: ProfileSection saveError
 // ---------------------------------------------------------------------------
 
@@ -654,53 +578,5 @@ export const setDomainVerified$ = command(
     signal.throwIfAborted();
     toast.success(verified ? "Domain verified" : "Domain unverified");
     set(refreshOrgDomains$);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// org-usage-tab: batch cap commit
-// ---------------------------------------------------------------------------
-
-export const inlineCapBatchCommit$ = command(
-  async ({ get, set }, members: MemberUsage[], signal: AbortSignal) => {
-    const capValues = get(internalInlineCapValues$);
-    const tasks: {
-      userId: string;
-      creditCap: number | null;
-      memberCreditCap: number | null;
-    }[] = [];
-    for (const [userId, raw] of capValues) {
-      const member = members.find((m) => {
-        return m.userId === userId;
-      });
-      if (!member) {
-        continue;
-      }
-      const trimmed = raw.trim();
-      const num = trimmed === "" ? 0 : Number(trimmed);
-      if (!Number.isInteger(num) || num < 0) {
-        continue;
-      }
-      const cap = num === 0 ? null : num;
-      if (cap === member.creditCap) {
-        continue;
-      }
-      tasks.push({ userId, creditCap: cap, memberCreditCap: member.creditCap });
-    }
-    for (const task of tasks) {
-      await set(
-        setMemberCreditCap$,
-        { userId: task.userId, creditCap: task.creditCap },
-        signal,
-      );
-      set(internalUsageMembers$, (prev) => {
-        return prev.map((m) => {
-          return m.userId === task.userId
-            ? { ...m, creditCap: task.creditCap }
-            : m;
-        });
-      });
-    }
-    set(internalInlineCapValues$, new Map());
   },
 );
