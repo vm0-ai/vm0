@@ -9,7 +9,7 @@ import { logger } from "../../lib/log";
 
 const L = logger("OrgBillingPeriod");
 
-export interface OrgBillingPeriod {
+interface OrgBillingPeriod {
   readonly start: Date;
   readonly end: Date;
 }
