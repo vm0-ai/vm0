@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
+import { HttpResponse, http } from "msw";
 import { server } from "../mocks/server";
 import {
   nextAfterArgForms,
@@ -8,6 +9,8 @@ import {
   flushNextAsyncHooks,
   resetNextAfterHooks,
 } from "./next-after-hooks";
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // Stub environment variables before any imports.
 // Using vi.hoisted() ensures stubs run before module imports.
@@ -64,6 +67,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
     // OpenAI (voice-chat ephemeral token minting, STT, TTS) — required env
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    // OpenRouter lightweight model tests mock the network boundary with MSW.
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
     // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake_for_testing");
@@ -285,6 +290,13 @@ beforeEach(() => {
   resetEnv();
   reloadEnv();
   resetNextAfterHooks();
+  server.use(
+    http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json({
+        choices: [{ message: { content: "Default OpenRouter response" } }],
+      });
+    }),
+  );
 });
 
 afterEach(async () => {

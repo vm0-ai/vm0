@@ -37,6 +37,7 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   LocalBrowserUse = "localBrowserUse",
+  LocalAgentConnector = "localAgentConnector",
   DesktopLocalAgent = "desktopLocalAgent",
   Lab = "lab",
   AuditLink = "auditLink",
@@ -46,7 +47,6 @@ export enum FeatureSwitchKey {
   ChatHeaderNewButton = "chatHeaderNewButton",
 
   ChatMessageStartButton = "chatMessageStartButton",
-  Goal = "goal",
   ChatThreadRename = "chatThreadRename",
   DocsSite = "docsSite",
   FreshdeskConnector = "freshdeskConnector",

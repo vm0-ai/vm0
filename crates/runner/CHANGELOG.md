@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.103.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.8...runner-rs-v0.103.9) (2026-05-23)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve auth base request headers ([#14508](https://github.com/vm0-ai/vm0/issues/14508)) ([c251138](https://github.com/vm0-ai/vm0/commit/c2511386377c75d252bbb6cf62bb3968433fad22))
+* preserve openai websocket usage across frames ([#14554](https://github.com/vm0-ai/vm0/issues/14554)) ([784465b](https://github.com/vm0-ai/vm0/commit/784465b75fce7c37e541d8b05cdcb79cb05f84b4))
+
+
+### Refactoring
+
+* **mitm-addon:** consolidate firewall failure responses ([#14563](https://github.com/vm0-ai/vm0/issues/14563)) ([4eabba6](https://github.com/vm0-ai/vm0/commit/4eabba60e61fe7ed3b19f4bdd256a517a4aa08fe))
+* **mitm-addon:** simplify response parser state ([#14559](https://github.com/vm0-ai/vm0/issues/14559)) ([9b70539](https://github.com/vm0-ai/vm0/commit/9b70539d8f503ade2919ba79b86124a53147148c))
+
 ## [0.103.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.7...runner-rs-v0.103.8) (2026-05-22)
 
 

@@ -8,6 +8,9 @@ import {
 
 describe("setLogErrorHandler", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     resetLoggerForTest();
@@ -15,10 +18,16 @@ describe("setLogErrorHandler", () => {
     // This test suite intentionally triggers console.error via the log module,
     // so we suppress it here.
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
     errorSpy.mockRestore();
+    logSpy.mockRestore();
+    infoSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it("should invoke handler on error()", () => {

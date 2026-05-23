@@ -6,7 +6,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -1159,6 +1159,11 @@ describe("POST /api/zero/slack/events", () => {
     );
     expect(fixture.defaultAgentId).toBeTruthy();
     const db = store.set(writeDb$);
+    await db
+      .delete(vm0ApiKeys)
+      .where(
+        and(eq(vm0ApiKeys.vendor, "openai"), eq(vm0ApiKeys.model, "gpt-5.5")),
+      );
     await db.insert(vm0ApiKeys).values({
       vendor: "openai",
       model: "gpt-5.5",

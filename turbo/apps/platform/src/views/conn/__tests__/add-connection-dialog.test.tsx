@@ -298,7 +298,9 @@ describe("connect modal - content by auth method", () => {
   });
 
   it("shows Local Agent connector-specific API content", async () => {
-    await openConnectModal("local-agent");
+    await openConnectModal("local-agent", {
+      featureSwitches: { [FeatureSwitchKey.LocalAgentConnector]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Online hosts")).toBeInTheDocument();
@@ -344,7 +346,9 @@ describe("connect modal - content by auth method", () => {
       }),
     );
 
-    await openConnectModal("github");
+    await openConnectModal("github", {
+      featureSwitches: { [FeatureSwitchKey.LocalAgentConnector]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();

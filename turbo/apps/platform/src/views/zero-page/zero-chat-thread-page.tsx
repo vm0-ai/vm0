@@ -2040,14 +2040,11 @@ function ChatThreadComposer({
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const handleSend = (text: string, options?: { goal?: boolean }) => {
+  const handleSend = (text: string) => {
     setInput("");
     // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
     // cancel the pending send.
-    detach(
-      send(text, modelSelection, options ?? {}, rootSignal),
-      Reason.DomCallback,
-    );
+    detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
   };
 
   const handleQueue = (text: string) => {

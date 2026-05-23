@@ -1,6 +1,6 @@
 {
-  "id": "0f358946-244a-43f8-b2f4-6b42bca68b06",
-  "prevId": "c37a69ec-9e4a-42d3-8dce-8379e32f0011",
+  "id": "758a9f5d-4d65-425d-8673-e83cf557855f",
+  "prevId": "0f358946-244a-43f8-b2f4-6b42bca68b06",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7937,19 +7937,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "credit_cap": {
-          "name": "credit_cap",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "credit_enabled": {
-          "name": "credit_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
         },
         "capture_network_bodies_remaining": {
           "name": "capture_network_bodies_remaining",

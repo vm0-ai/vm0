@@ -121,7 +121,3 @@ export const trinityEnabled$ = computed((get) => {
 export const pwaOfflineCacheEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
 });
-
-export const goalEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.Goal] ?? false;
-});

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
@@ -21,6 +22,7 @@ import {
   type TelegramFixture,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { server } from "../../../mocks/server";
 
 const context = testContext();
 const store = createStore();
@@ -52,6 +54,11 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
       first_name: "Bot",
       username: "x",
     });
+    server.use(
+      http.head("https://oauth.telegram.org/auth", () => {
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
   });
 
   afterEach(async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 
@@ -39,13 +39,23 @@ import {
   ingestSandboxOpLog,
 } from "../client";
 
+let consoleError: ReturnType<typeof vi.spyOn>;
+let consoleWarn: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
+  consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "test-telemetry-token");
   vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-sessions-token");
   reloadEnv();
   mockQuery.mockReset();
   mockIngest.mockReset();
   mockFlush.mockReset();
+});
+
+afterEach(() => {
+  consoleError.mockRestore();
+  consoleWarn.mockRestore();
 });
 
 function axiomResponse(events: Array<Record<string, unknown>>) {

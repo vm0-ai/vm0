@@ -387,8 +387,6 @@ async function insertQueuedMessage(
     readonly content: string | null;
     readonly attachFiles?: readonly string[];
     readonly interruptsRunId?: string;
-    readonly goalRemainingTurns?: number;
-    readonly goalOriginMessageId?: string;
   },
 ): Promise<string> {
   const [message] = await store
@@ -401,59 +399,10 @@ async function insertQueuedMessage(
       runId: null,
       attachFiles: args.attachFiles ? [...args.attachFiles] : null,
       interruptsRunId: args.interruptsRunId,
-      goalRemainingTurns: args.goalRemainingTurns,
-      goalOriginMessageId: args.goalOriginMessageId,
     })
     .returning({ id: chatMessages.id });
   if (!message) {
     throw new Error("queued message insert returned no row");
-  }
-  return message.id;
-}
-
-async function firstUserMessageForRun(
-  fixture: ChatCallbackFixture,
-  runId: string,
-): Promise<{ readonly id: string; readonly content: string | null }> {
-  const [message] = await store
-    .set(writeDb$)
-    .select({ id: chatMessages.id, content: chatMessages.content })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, fixture.threadId),
-        eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "user"),
-      ),
-    )
-    .limit(1);
-  if (!message) {
-    throw new Error("expected user message for run");
-  }
-  return message;
-}
-
-async function markRunMessageAsGoal(
-  fixture: ChatCallbackFixture,
-  args: { readonly remainingTurns: number; readonly prompt?: string },
-): Promise<string> {
-  const message = await firstUserMessageForRun(fixture, fixture.runId);
-  const content = args.prompt ?? message.content;
-  await store
-    .set(writeDb$)
-    .update(chatMessages)
-    .set({
-      content,
-      goalRemainingTurns: args.remainingTurns,
-      goalOriginMessageId: message.id,
-    })
-    .where(eq(chatMessages.id, message.id));
-  if (args.prompt) {
-    await store
-      .set(writeDb$)
-      .update(agentRuns)
-      .set({ prompt: args.prompt })
-      .where(eq(agentRuns.id, fixture.runId));
   }
   return message.id;
 }
@@ -1604,152 +1553,6 @@ describe("POST /api/internal/callbacks/chat", () => {
     await expect(listPushSubscriptions(fixture.userId)).resolves.toStrictEqual(
       [],
     );
-    await clearAllDetached();
-  });
-
-  it("inserts a goal continuation row when a goal-driven run completes", async () => {
-    const fixture = await track(seedChatCallbackFixture());
-    await seedOrgDefaultModelProvider(fixture);
-    const originMessageId = await markRunMessageAsGoal(fixture, {
-      remainingTurns: 5,
-      prompt: "Run a long-horizon refactor",
-    });
-    completedNoOutputEvents();
-
-    const response = await postSignedCallback({
-      callbackId: fixture.callbackId,
-      runId: fixture.runId,
-      status: "completed",
-      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
-    });
-
-    expect(response.status).toBe(200);
-    const continuation = (await listMessages(fixture.threadId)).find(
-      (message) => {
-        return (
-          message.role === "user" &&
-          message.runId === null &&
-          message.goalRemainingTurns === 4
-        );
-      },
-    );
-    expect(continuation).toMatchObject({
-      content: "Run a long-horizon refactor",
-      goalOriginMessageId: originMessageId,
-    });
-    await clearAllDetached();
-  });
-
-  it("does not continue a goal chain when the assistant emitted GOAL_DONE", async () => {
-    const fixture = await track(seedChatCallbackFixture());
-    await markRunMessageAsGoal(fixture, { remainingTurns: 5 });
-    await insertAssistantEventMessages(fixture, fixture.runId, [
-      { sequenceNumber: 0, content: "Done. [GOAL_DONE]" },
-    ]);
-    completedNoOutputEvents();
-
-    const response = await postSignedCallback({
-      callbackId: fixture.callbackId,
-      runId: fixture.runId,
-      status: "completed",
-      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
-    });
-
-    expect(response.status).toBe(200);
-    const continuations = (await listMessages(fixture.threadId)).filter(
-      (message) => {
-        return (
-          message.role === "user" &&
-          message.runId === null &&
-          message.goalRemainingTurns === 4
-        );
-      },
-    );
-    expect(continuations).toHaveLength(0);
-    await clearAllDetached();
-  });
-
-  it("does not continue a goal chain after failed callbacks or interrupt rows", async () => {
-    const failedFixture = await track(seedChatCallbackFixture());
-    await markRunMessageAsGoal(failedFixture, { remainingTurns: 5 });
-    await setRunStatus(failedFixture.runId, "failed", "boom");
-
-    const failed = await postSignedCallback({
-      callbackId: failedFixture.callbackId,
-      runId: failedFixture.runId,
-      status: "failed",
-      error: "boom",
-      payload: {
-        threadId: failedFixture.threadId,
-        agentId: failedFixture.agentId,
-      },
-    });
-    expect(failed.status).toBe(200);
-
-    const interruptedFixture = await track(seedChatCallbackFixture());
-    await markRunMessageAsGoal(interruptedFixture, { remainingTurns: 5 });
-    await insertQueuedMessage(interruptedFixture, {
-      content: null,
-      interruptsRunId: interruptedFixture.runId,
-    });
-    completedNoOutputEvents();
-    const interrupted = await postSignedCallback({
-      callbackId: interruptedFixture.callbackId,
-      runId: interruptedFixture.runId,
-      status: "completed",
-      payload: {
-        threadId: interruptedFixture.threadId,
-        agentId: interruptedFixture.agentId,
-      },
-    });
-
-    expect(interrupted.status).toBe(200);
-    for (const fixture of [failedFixture, interruptedFixture]) {
-      const continuations = (await listMessages(fixture.threadId)).filter(
-        (message) => {
-          return (
-            message.role === "user" &&
-            message.runId === null &&
-            message.goalRemainingTurns === 4
-          );
-        },
-      );
-      expect(continuations).toHaveLength(0);
-    }
-    await clearAllDetached();
-  });
-
-  it("deduplicates goal continuation rows across duplicate callbacks", async () => {
-    const fixture = await track(seedChatCallbackFixture());
-    await seedOrgDefaultModelProvider(fixture);
-    await markRunMessageAsGoal(fixture, { remainingTurns: 5 });
-    context.mocks.axiom.query.mockResolvedValue([
-      { sequenceNumber: 0 },
-      { sequenceNumber: 1 },
-    ]);
-
-    const makeRequest = () => {
-      return postSignedCallback({
-        callbackId: fixture.callbackId,
-        runId: fixture.runId,
-        status: "completed",
-        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
-      });
-    };
-    const [first, second] = await Promise.all([makeRequest(), makeRequest()]);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    const continuations = (await listMessages(fixture.threadId)).filter(
-      (message) => {
-        return (
-          message.role === "user" &&
-          message.runId === null &&
-          message.goalRemainingTurns === 4
-        );
-      },
-    );
-    expect(continuations).toHaveLength(1);
     await clearAllDetached();
   });
 

@@ -242,8 +242,6 @@ async function firstUserMessage(threadId: string) {
       runId: chatMessages.runId,
       revokesMessageId: chatMessages.revokesMessageId,
       interruptsRunId: chatMessages.interruptsRunId,
-      goalRemainingTurns: chatMessages.goalRemainingTurns,
-      goalOriginMessageId: chatMessages.goalOriginMessageId,
       attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)
@@ -905,6 +903,7 @@ describe("POST /api/zero/chat/messages", () => {
 
   it("interrupts and cancels an active chat run", async () => {
     const fixture = await track(seedFixture());
+    proxyChatCallbackToApp();
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
     await clearAllDetached();
 
@@ -1035,48 +1034,6 @@ describe("POST /api/zero/chat/messages", () => {
     expect(prompt).toContain("User: first incomplete");
     expect(prompt).toContain("...[truncated]");
     expect(prompt).not.toContain("retry after two failures");
-  });
-
-  it("returns 403 for goal sends when the feature is disabled", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      client().send({
-        headers: authHeaders(),
-        body: {
-          agentId: fixture.agentId,
-          prompt: "finish the migration",
-          goal: true,
-        },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.code).toBe("FORBIDDEN");
-  });
-
-  it("persists goal columns for goal sends when the feature is enabled", async () => {
-    const fixture = await track(seedFixture());
-    await store
-      .set(writeDb$)
-      .insert(userFeatureSwitches)
-      .values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        switches: { goal: true },
-        updatedAt: nowDate(),
-      });
-
-    const response = await send({
-      agentId: fixture.agentId,
-      prompt: "finish the migration",
-      goal: true,
-    });
-    await clearAllDetached();
-
-    const message = await firstUserMessage(response.body.threadId);
-    expect(message?.goalRemainingTurns).toBe(10);
-    expect(message?.goalOriginMessageId).toBe(message?.id);
   });
 
   it("forceNewSession rewrites the model pin while retaining web chat context", async () => {

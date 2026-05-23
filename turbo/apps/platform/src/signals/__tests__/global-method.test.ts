@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { testContext } from "./test-helpers";
 import { detachedSetupPage } from "../../__tests__/page-helper";
@@ -6,6 +6,19 @@ import { detachedSetupPage } from "../../__tests__/page-helper";
 const context = testContext();
 
 describe("global debug loggers", () => {
+  let consoleLog: ReturnType<typeof vi.spyOn>;
+  let consoleWarn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleLog.mockRestore();
+    consoleWarn.mockRestore();
+  });
+
   it("should has vm0 method after init", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 

@@ -449,15 +449,6 @@ export const chatMessagesContract = c.router({
         // server row by id — no temp-id swap, no React remount.
         clientMessageId: z.string().uuid().optional(),
         /**
-         * Goal mode: when `true`, this message starts a self-continuing chain
-         * that runs up to a server-defined turn budget. Subsequent turns are
-         * appended automatically by the run-completion callback until the
-         * agent emits `[GOAL_DONE]`, the budget is exhausted, the run fails,
-         * or the user interrupts. Server applies the budget; clients cannot
-         * pick it. Gated by the Goal feature switch.
-         */
-        goal: z.boolean().optional(),
-        /**
          * Force a new CLI session for this run instead of resuming the
          * thread's latest session. Set by the web composer when the user
          * picks a different `selectedModel` than the one pinned on the
@@ -492,7 +483,6 @@ export const chatMessagesContract = c.router({
         debugNoMockClaude: z.undefined().optional(),
         debugNoMockCodex: z.undefined().optional(),
         interruptsRunId: z.undefined().optional(),
-        goal: z.undefined().optional(),
         forceNewSession: z.undefined().optional(),
       }),
       z.object({
@@ -509,7 +499,6 @@ export const chatMessagesContract = c.router({
         debugNoMockClaude: z.undefined().optional(),
         debugNoMockCodex: z.undefined().optional(),
         revokesMessageId: z.undefined().optional(),
-        goal: z.undefined().optional(),
         forceNewSession: z.undefined().optional(),
       }),
     ]),
