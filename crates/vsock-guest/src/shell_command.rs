@@ -664,6 +664,20 @@ mod tests {
     }
 
     #[test]
+    fn env_script_guard_drop_removes_file_and_directory() {
+        let (dir, _guard) = temp_dir("drop-cleanup");
+        let script =
+            create_env_script_in_dir(&dir, "echo \"$FOO\"", &[("FOO", "secret")], true).unwrap();
+        let path = script.path().unwrap().to_path_buf();
+        let script_dir = path.parent().unwrap().to_path_buf();
+
+        drop(script);
+
+        assert!(!path.exists());
+        assert!(!script_dir.exists());
+    }
+
+    #[test]
     fn env_script_removes_file_and_directory_when_started() {
         let (dir, _guard) = temp_dir("self-remove");
         let output = dir.join("output");
