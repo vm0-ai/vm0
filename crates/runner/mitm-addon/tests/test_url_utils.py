@@ -4,7 +4,7 @@ import url_utils
 
 
 class TestBuildRewriteUrl:
-    """Unit tests for _build_rewrite_url (pure URL construction)."""
+    """Tests for build_rewrite_url pure URL construction."""
 
     def test_simple_base_no_rel_path(self):
         url = url_utils.build_rewrite_url(

@@ -63,7 +63,7 @@ def make_query_inputs(
 class TestAuthQueryInjection:
     """Tests for query parameter injection via auth.query."""
 
-    async def test_query_params_injected_on_standard_path(self, real_flow, headers, mitm_ctx):
+    async def test_query_params_injected_on_standard_path(self, real_flow, mitm_ctx):
         """Resolved auth.query params are injected into flow.request.query."""
         flow, api_entry, vm_info, match_info, token_meta = make_query_inputs(
             real_flow,
@@ -92,7 +92,7 @@ class TestAuthQueryInjection:
         assert flow.request.query["empty_auth"] == ""
         assert flow.request.query["space"] == "a b"
 
-    async def test_query_param_overwrites_existing_key(self, real_flow, headers, mitm_ctx):
+    async def test_query_param_overwrites_existing_key(self, real_flow, mitm_ctx):
         """auth.query overwrites a query param already present in the original request."""
         flow, api_entry, vm_info, match_info, token_meta = make_query_inputs(
             real_flow,
@@ -118,7 +118,7 @@ class TestAuthQueryInjection:
         assert query_items.count(("repeat", "one")) == 1
         assert query_items.count(("repeat", "two")) == 1
 
-    async def test_query_params_with_headers_simultaneously(self, real_flow, headers, mitm_ctx):
+    async def test_query_params_with_headers_simultaneously(self, real_flow, mitm_ctx):
         """auth.query and auth.headers can coexist on the standard path."""
         flow, api_entry, vm_info, match_info, token_meta = make_query_inputs(
             real_flow,
@@ -142,7 +142,7 @@ class TestAuthQueryInjection:
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.query["key"] == "resolved-query-value"
 
-    async def test_query_params_merged_into_rewrite_url(self, real_flow, headers, mitm_ctx):
+    async def test_query_params_merged_into_rewrite_url(self, real_flow, mitm_ctx):
         """auth.query params are appended to the forwarded URL in the URL rewrite path."""
         flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
         flow.metadata["vm_run_id"] = "test-run"
@@ -188,9 +188,7 @@ class TestAuthQueryInjection:
         assert "api_key=resolved-key-456" in forwarded_url
         assert forwarded_url.startswith("https://real-api.com/webhook/secret")
 
-    async def test_query_params_overwrite_existing_rewrite_url_keys(
-        self, real_flow, headers, mitm_ctx
-    ):
+    async def test_query_params_overwrite_existing_rewrite_url_keys(self, real_flow, mitm_ctx):
         """auth.query overwrites duplicate keys while preserving other query values."""
         flow = real_flow(
             with_response=False,
@@ -256,7 +254,7 @@ class TestAuthQueryInjection:
         assert query["space"] == ["a b"]
         assert query["repeat"] == ["one", "two"]
 
-    async def test_query_params_preserve_rewrite_path_params(self, real_flow, headers, mitm_ctx):
+    async def test_query_params_preserve_rewrite_path_params(self, real_flow, mitm_ctx):
         """auth.query merging must not strip URL path params from the rewrite target."""
         flow = real_flow(
             with_response=False,
@@ -310,7 +308,7 @@ class TestAuthQueryInjection:
             "api_key": ["resolved-key"],
         }
 
-    async def test_no_query_injection_when_absent(self, real_flow, headers, mitm_ctx):
+    async def test_no_query_injection_when_absent(self, real_flow, mitm_ctx):
         """No query modification when auth.query is not present."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"

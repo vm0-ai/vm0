@@ -1,4 +1,4 @@
-"""Tests for firewall auth URL rewrite and query injection."""
+"""Tests for firewall auth URL rewrite."""
 
 import asyncio
 import json
@@ -93,7 +93,7 @@ def make_rewrite_inputs(
 class TestAuthBaseUrlRewrite:
     """Tests for auth.base URL rewriting via forward_request in handle_firewall_request."""
 
-    async def test_url_rewrite_with_rel_path_root(self, real_flow, headers, mitm_ctx, tmp_path):
+    async def test_url_rewrite_with_rel_path_root(self, real_flow, mitm_ctx, tmp_path):
         """When rel_path is '/', resolved base URL is forwarded as-is."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
             real_flow,
@@ -114,7 +114,7 @@ class TestAuthBaseUrlRewrite:
         assert flow.response.status_code == 200
 
     async def test_url_rewrite_response_preserves_duplicate_headers(
-        self, real_flow, headers, mitm_ctx, tmp_path
+        self, real_flow, mitm_ctx, tmp_path
     ):
         """Duplicate upstream response headers survive response construction."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
@@ -145,7 +145,7 @@ class TestAuthBaseUrlRewrite:
         assert flow.response.headers.get_all("Set-Cookie") == ["a=1", "b=2"]
         assert flow.response.headers.get_all("Link") == ["<next>; rel=next", "<prev>; rel=prev"]
 
-    async def test_url_rewrite_with_remaining_path(self, real_flow, headers, mitm_ctx, tmp_path):
+    async def test_url_rewrite_with_remaining_path(self, real_flow, mitm_ctx, tmp_path):
         """When rel_path has content, it's appended to resolved base in forwarded URL."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
             real_flow,
@@ -176,7 +176,7 @@ class TestAuthBaseUrlRewrite:
         )
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    async def test_url_rewrite_preserves_query_string(self, real_flow, headers, mitm_ctx, tmp_path):
+    async def test_url_rewrite_preserves_query_string(self, real_flow, mitm_ctx, tmp_path):
         """Query string from original request is preserved in forwarded URL."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
             real_flow,
@@ -196,7 +196,7 @@ class TestAuthBaseUrlRewrite:
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
 
     async def test_url_rewrite_resolved_base_with_trailing_slash(
-        self, real_flow, headers, mitm_ctx, tmp_path
+        self, real_flow, mitm_ctx, tmp_path
     ):
         """Trailing slash on resolved base is stripped before appending rel_path."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
@@ -226,7 +226,7 @@ class TestAuthBaseUrlRewrite:
             == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
         )
 
-    async def test_url_rewrite_merges_query_strings(self, real_flow, headers, mitm_ctx, tmp_path):
+    async def test_url_rewrite_merges_query_strings(self, real_flow, mitm_ctx, tmp_path):
         """When resolved base has query string and original request also has one, merge with &."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
             real_flow,
@@ -246,7 +246,7 @@ class TestAuthBaseUrlRewrite:
         assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
     async def test_url_rewrite_auth_query_overrides_base_and_original_query(
-        self, real_flow, headers, mitm_ctx, tmp_path
+        self, real_flow, mitm_ctx, tmp_path
     ):
         """auth.query is the highest-priority trusted query source for URL rewrites."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
@@ -275,9 +275,7 @@ class TestAuthBaseUrlRewrite:
             == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
         )
 
-    async def test_no_url_rewrite_when_auth_base_absent(
-        self, real_flow, headers, mitm_ctx, tmp_path
-    ):
+    async def test_no_url_rewrite_when_auth_base_absent(self, real_flow, mitm_ctx, tmp_path):
         """Without auth.base, no URL rewriting happens (existing behavior)."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -338,9 +336,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         call_args = mock_forward.call_args
         assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
 
-    async def test_no_auth_url_rewrite_metadata_when_no_base(
-        self, real_flow, headers, mitm_ctx, tmp_path
-    ):
+    async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -375,9 +371,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
 
-    async def test_forward_request_includes_auth_headers(
-        self, headers, real_flow, mitm_ctx, tmp_path
-    ):
+    async def test_forward_request_includes_auth_headers(self, real_flow, mitm_ctx, tmp_path):
         """auth.headers are included in the forwarded request to the real URL."""
         flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
             real_flow,
