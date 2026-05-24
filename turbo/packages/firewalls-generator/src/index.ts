@@ -192,6 +192,7 @@ import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
 import { generate as generateWeread } from "./weread";
+import { generate as generateWhaleAlert } from "./whale-alert";
 import { generate as generateWix } from "./wix";
 import { generate as generateWorkos } from "./workos";
 import { generate as generateWrike } from "./wrike";
@@ -395,6 +396,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   vercel: generateVercel,
   webflow: generateWebflow,
   weread: generateWeread,
+  "whale-alert": generateWhaleAlert,
   wix: generateWix,
   workos: generateWorkos,
   wrike: generateWrike,

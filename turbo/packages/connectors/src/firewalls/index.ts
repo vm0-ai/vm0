@@ -232,6 +232,7 @@ import { v0Firewall } from "./v0.generated";
 import { wandbFirewall } from "./wandb.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wereadFirewall } from "./weread.generated";
+import { whaleAlertFirewall } from "./whale-alert.generated";
 import { wixFirewall } from "./wix.generated";
 import { workosFirewall } from "./workos.generated";
 import { wrikeFirewall } from "./wrike.generated";
@@ -455,6 +456,7 @@ const CONNECTOR_FIREWALLS = {
   wandb: wandbFirewall,
   webflow: webflowFirewall,
   weread: wereadFirewall,
+  "whale-alert": whaleAlertFirewall,
   wix: wixFirewall,
   workos: workosFirewall,
   wrike: wrikeFirewall,

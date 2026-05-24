@@ -213,6 +213,7 @@ import { v0 } from "./connectors/v0";
 import { wandb } from "./connectors/wandb";
 import { webflow } from "./connectors/webflow";
 import { weread } from "./connectors/weread";
+import { whaleAlert } from "./connectors/whale-alert";
 import { wix } from "./connectors/wix";
 import { workos } from "./connectors/workos";
 import { wrike } from "./connectors/wrike";
@@ -772,6 +773,7 @@ const CONNECTOR_TYPES_DEF = {
   ...wandb,
   ...webflow,
   ...weread,
+  ...whaleAlert,
   ...wix,
   ...workos,
   ...wrike,
