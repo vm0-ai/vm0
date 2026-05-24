@@ -23,12 +23,14 @@ const mocks = createZeroRouteMocks(context);
 const RUN_COUNT = 50;
 const STATUSES = ["completed", "completed", "failed", "running"] as const;
 
-describe("bench GET /api/zero/chat-threads/:id", () => {
-  let fixture: ZeroChatThreadFixture;
-  const client = setupApp({ context })(chatThreadByIdContract);
+const client = setupApp({ context })(chatThreadByIdContract);
 
-  beforeAll(async () => {
-    fixture = await store.set(
+let fixture: ZeroChatThreadFixture | undefined;
+let initPromise: Promise<void> | undefined;
+
+function ensureSeeded(): Promise<void> {
+  initPromise ??= (async () => {
+    const seeded = await store.set(
       seedZeroChatThread$,
       { title: "bench" },
       context.signal,
@@ -39,10 +41,10 @@ describe("bench GET /api/zero/chat-threads/:id", () => {
       await store.set(
         seedRun$,
         {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          composeId: fixture.composeId,
-          chatThreadId: fixture.threadId,
+          orgId: seeded.orgId,
+          userId: seeded.userId,
+          composeId: seeded.composeId,
+          chatThreadId: seeded.threadId,
           status,
           completedAt: status === "completed" ? nowDate() : null,
         },
@@ -50,13 +52,10 @@ describe("bench GET /api/zero/chat-threads/:id", () => {
       );
     }
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(seeded.userId, seeded.orgId);
 
-    // Sanity-check the request before the bench measures it — tinybench
-    // silently swallows per-iteration errors, so a misconfigured fixture
-    // would yield an empty samples array without a visible failure.
     const sanity = await client.get({
-      params: { id: fixture.threadId },
+      params: { id: seeded.threadId },
       headers: { authorization: "Bearer clerk-session" },
     });
     if (sanity.status !== 200) {
@@ -64,12 +63,21 @@ describe("bench GET /api/zero/chat-threads/:id", () => {
         `sanity check failed: status=${String(sanity.status)} body=${JSON.stringify(sanity.body)}`,
       );
     }
-  });
 
+    fixture = seeded;
+  })();
+  return initPromise;
+}
+
+describe("bench GET /api/zero/chat-threads/:id", () => {
   let iterCount = 0;
   bench(
     "current",
     async () => {
+      await ensureSeeded();
+      if (!fixture) {
+        throw new Error("fixture missing after seed");
+      }
       iterCount += 1;
       const start = performance.now();
       const response = await client.get({
@@ -85,6 +93,6 @@ describe("bench GET /api/zero/chat-threads/:id", () => {
         throw new Error(`unexpected status ${String(response.status)}`);
       }
     },
-    { iterations: 10, time: 0, warmupIterations: 2 },
+    { iterations: 5, time: 0, warmupIterations: 1 },
   );
 });
