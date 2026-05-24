@@ -1,14 +1,42 @@
-import { useLoadable } from "ccstate-react";
+import { useLoadable, useSet } from "ccstate-react";
 import { IconUser } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { clerk$, currentUserInfo$ } from "../../../../../signals/auth.ts";
+import { setExternalProfileModalOpen$ } from "../../../../../signals/zero-page/settings/settings-dialog.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
+
+const CLERK_PROFILE_SELECTORS = [
+  "[data-clerk-user-profile]",
+  "[data-clerk-modal]",
+  '[class*="cl-userProfile"]',
+  '[class*="cl-modal"]',
+].join(",");
+
+function watchClerkProfileClose(onClose: () => void): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  let sawProfile = document.querySelector(CLERK_PROFILE_SELECTORS) !== null;
+  const observer = new MutationObserver(() => {
+    const hasProfile = document.querySelector(CLERK_PROFILE_SELECTORS) !== null;
+    if (hasProfile) {
+      sawProfile = true;
+      return;
+    }
+    if (sawProfile) {
+      observer.disconnect();
+      onClose();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
 
 export function AccountSection() {
   const clerkLoadable = useLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const userLoadable = useLoadable(currentUserInfo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const setExternalProfileModalOpen = useSet(setExternalProfileModalOpen$);
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -18,6 +46,10 @@ export function AccountSection() {
     if (!clerk) {
       return;
     }
+    setExternalProfileModalOpen(true);
+    watchClerkProfileClose(() => {
+      setExternalProfileModalOpen(false);
+    });
     detach(
       clerk.openUserProfile({ apiKeysProps: { hide: true } }),
       Reason.DomCallback,

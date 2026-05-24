@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.380.1](https://github.com/vm0-ai/vm0/compare/app-v0.380.0...app-v0.380.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* keep settings open for clerk profile modal ([#14683](https://github.com/vm0-ai/vm0/issues/14683)) ([8b61eeb](https://github.com/vm0-ai/vm0/commit/8b61eeb37b1da87a0ecdc5e9f6d23e842911689c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.6
+    * @vm0/connectors bumped to 1.31.3
+    * @vm0/core bumped to 8.292.3
+
 ## [0.380.0](https://github.com/vm0-ai/vm0/compare/app-v0.379.2...app-v0.380.0) (2026-05-24)
 
 

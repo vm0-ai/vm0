@@ -4,7 +4,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorOAuthClientConfig,
 } from "@vm0/connectors/connectors";
-import { testOauthProvider } from "@vm0/connectors/oauth-providers/providers/test-oauth-provider";
+import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";

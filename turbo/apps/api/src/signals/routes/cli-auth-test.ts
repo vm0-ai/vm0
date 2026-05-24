@@ -10,7 +10,7 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
   getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";

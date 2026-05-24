@@ -13,7 +13,7 @@ import {
   buildConnectorOAuthAuthUrl,
   isOAuthConnectorType,
   type AuthUrlResult,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 

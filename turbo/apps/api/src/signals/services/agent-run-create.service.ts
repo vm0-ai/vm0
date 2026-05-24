@@ -35,8 +35,8 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
-import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
+import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
