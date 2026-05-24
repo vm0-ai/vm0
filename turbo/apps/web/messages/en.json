@@ -3874,7 +3874,7 @@
     "heroDescription": "Every model available to your agents. What it's good at, and when to pick it.",
     "filterAriaLabel": "Filter models",
     "filterAll": "All",
-    "filterReasoning": "Reasoning",
+    "filterReasoning": "LLM",
     "filterImage": "Image",
     "filterVideo": "Video",
     "readMoreAbout": "Read more about {name}",
