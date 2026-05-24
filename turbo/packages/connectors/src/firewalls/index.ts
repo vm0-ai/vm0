@@ -80,6 +80,7 @@ import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
+import { coingeckoFirewall } from "./coingecko.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -307,6 +308,7 @@ const CONNECTOR_FIREWALLS = {
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
   coda: codaFirewall,
+  coingecko: coingeckoFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,

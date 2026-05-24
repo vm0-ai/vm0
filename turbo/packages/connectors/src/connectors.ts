@@ -64,6 +64,7 @@ import { close } from "./connectors/close";
 import { cloudflare } from "./connectors/cloudflare";
 import { cloudinary } from "./connectors/cloudinary";
 import { coda } from "./connectors/coda";
+import { coingecko } from "./connectors/coingecko";
 import { computer } from "./connectors/computer";
 import { cronlytic } from "./connectors/cronlytic";
 import { customerIo } from "./connectors/customer-io";
@@ -623,6 +624,7 @@ const CONNECTOR_TYPES_DEF = {
   ...cloudflare,
   ...cloudinary,
   ...coda,
+  ...coingecko,
   ...computer,
   ...cronlytic,
   ...customerIo,
