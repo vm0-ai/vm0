@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.103.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.14...runner-rs-v0.103.15) (2026-05-24)
+
+
+### Bug Fixes
+
+* guard mitm addon firewall auth error envelope ([#14657](https://github.com/vm0-ai/vm0/issues/14657)) ([df6964e](https://github.com/vm0-ai/vm0/commit/df6964e5fe99c68d69c7d5f8615693b7ee936dbe))
+
 ## [0.103.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.13...runner-rs-v0.103.14) (2026-05-24)
 
 

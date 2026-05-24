@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.3](https://github.com/vm0-ai/vm0/compare/api-v1.69.2...api-v1.69.3) (2026-05-24)
+
+
+### Performance Improvements
+
+* add bench-api workflow with chat-threads baseline ([#14663](https://github.com/vm0-ai/vm0/issues/14663)) ([cfb181a](https://github.com/vm0-ai/vm0/commit/cfb181ab34e5670e4f93c86cbec56088559054d6))
+
 ## [1.69.2](https://github.com/vm0-ai/vm0/compare/api-v1.69.1...api-v1.69.2) (2026-05-24)
 
 
