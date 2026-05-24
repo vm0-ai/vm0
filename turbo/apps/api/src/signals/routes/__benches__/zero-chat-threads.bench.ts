@@ -25,6 +25,7 @@ const STATUSES = ["completed", "completed", "failed", "running"] as const;
 
 describe("bench GET /api/zero/chat-threads/:id", () => {
   let fixture: ZeroChatThreadFixture;
+  const client = setupApp({ context })(chatThreadByIdContract);
 
   beforeAll(async () => {
     fixture = await store.set(
@@ -50,9 +51,20 @@ describe("bench GET /api/zero/chat-threads/:id", () => {
     }
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
-  });
 
-  const client = setupApp({ context })(chatThreadByIdContract);
+    // Sanity-check the request before the bench measures it — tinybench
+    // silently swallows per-iteration errors, so a misconfigured fixture
+    // would yield an empty samples array without a visible failure.
+    const sanity = await client.get({
+      params: { id: fixture.threadId },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    if (sanity.status !== 200) {
+      throw new Error(
+        `sanity check failed: status=${String(sanity.status)} body=${JSON.stringify(sanity.body)}`,
+      );
+    }
+  });
 
   bench(
     "current",
