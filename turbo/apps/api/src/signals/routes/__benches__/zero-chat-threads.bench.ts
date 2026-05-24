@@ -66,17 +66,25 @@ describe("bench GET /api/zero/chat-threads/:id", () => {
     }
   });
 
+  let iterCount = 0;
   bench(
     "current",
     async () => {
+      iterCount += 1;
+      const start = performance.now();
       const response = await client.get({
         params: { id: fixture.threadId },
         headers: { authorization: "Bearer clerk-session" },
       });
+      const elapsed = performance.now() - start;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[bench-iter] ${String(iterCount)} status=${String(response.status)} elapsed=${elapsed.toFixed(2)}ms`,
+      );
       if (response.status !== 200) {
         throw new Error(`unexpected status ${String(response.status)}`);
       }
     },
-    { time: 5000, warmupIterations: 5 },
+    { iterations: 10, time: 0, warmupIterations: 2 },
   );
 });
