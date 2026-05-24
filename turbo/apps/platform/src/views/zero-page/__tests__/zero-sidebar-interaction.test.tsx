@@ -207,7 +207,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     click(screen.getByText("Test User"));
 
     await waitFor(() => {
-      expect(screen.getByText("Preferences")).toBeInTheDocument();
+      expect(screen.getByText("Settings")).toBeInTheDocument();
     });
     expect(screen.getByText("Lab")).toBeInTheDocument();
   });
@@ -227,7 +227,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     click(screen.getByText("Test User"));
 
     await waitFor(() => {
-      expect(screen.getByText("Preferences")).toBeInTheDocument();
+      expect(screen.getByText("Settings")).toBeInTheDocument();
     });
     expect(screen.queryByText("Lab")).not.toBeInTheDocument();
   });
@@ -265,7 +265,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     await waitFor(() => {
       expect(screen.getByText("Sign out")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Preferences")).not.toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Lab")).not.toBeInTheDocument();
   });
 });
@@ -614,8 +614,8 @@ describe("zero sidebar - collapse button closes mobile overlay (SIDEBAR-M-023)",
   });
 });
 
-describe("zero sidebar - preferences click closes mobile overlay (SIDEBAR-M-030)", () => {
-  it("sets sidebarExpanded to false when Preferences is clicked from account dropdown while sidebar is open as mobile overlay", async () => {
+describe("zero sidebar - settings click closes mobile overlay (SIDEBAR-M-030)", () => {
+  it("sets sidebarExpanded to false when Settings is clicked from account dropdown while sidebar is open as mobile overlay", async () => {
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -630,11 +630,11 @@ describe("zero sidebar - preferences click closes mobile overlay (SIDEBAR-M-030)
     // Open account dropdown
     click(screen.getByText("Test User"));
 
-    // Click Preferences
-    const preferencesItem = await waitFor(() => {
-      return screen.getByText("Preferences");
+    // Click Settings
+    const settingsItem = await waitFor(() => {
+      return screen.getByText("Settings");
     });
-    click(preferencesItem);
+    click(settingsItem);
 
     // The sidebar overlay should close when navigating to settings
     expect(context.store.get(sidebarExpanded$)).toBeFalsy();

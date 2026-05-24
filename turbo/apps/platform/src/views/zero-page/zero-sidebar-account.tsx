@@ -27,7 +27,10 @@ import {
   resolveWebOrigin,
 } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import type { ZeroAccountAction } from "../../signals/zero-page/zero-nav.ts";
+import {
+  setSidebarExpanded$,
+  type ZeroAccountAction,
+} from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -365,6 +368,7 @@ export function AccountDropdown({
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
   const openSettings = useSet(openSettingsDialogAt$);
+  const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
@@ -408,6 +412,7 @@ export function AccountDropdown({
   };
 
   const handleOpenSettings = () => {
+    setSidebarExpanded(false);
     detach(openSettings("preference", pageSignal), Reason.DomCallback);
   };
 
