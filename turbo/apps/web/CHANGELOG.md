@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.385.1](https://github.com/vm0-ai/vm0/compare/web-v12.385.0...web-v12.385.1) (2026-05-24)
+
+
+### Refactoring
+
+* keep connector oauth provider map private ([#14613](https://github.com/vm0-ai/vm0/issues/14613)) ([1fa7693](https://github.com/vm0-ai/vm0/commit/1fa7693922f1780c98d940bcb968abb82869cf83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.3
+    * @vm0/connectors bumped to 1.31.0
+    * @vm0/core bumped to 8.292.0
+    * @vm0/db bumped to 1.18.4
+
 ## [12.385.0](https://github.com/vm0-ai/vm0/compare/web-v12.384.3...web-v12.385.0) (2026-05-24)
 
 

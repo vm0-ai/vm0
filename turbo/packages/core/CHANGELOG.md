@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.292.0](https://github.com/vm0-ai/vm0/compare/core-v8.291.0...core-v8.292.0) (2026-05-24)
+
+
+### Features
+
+* **agents-page:** split into Public and Private sections behind feature switch ([#14629](https://github.com/vm0-ai/vm0/issues/14629)) ([bad8d37](https://github.com/vm0-ai/vm0/commit/bad8d3713fcb733facdabab11057fc40885c2b76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.3
+    * @vm0/connectors bumped to 1.31.0
+
 ## [8.291.0](https://github.com/vm0-ai/vm0/compare/core-v8.290.0...core-v8.291.0) (2026-05-23)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.103.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.12...runner-rs-v0.103.13) (2026-05-24)
+
+
+### Bug Fixes
+
+* **mitm-addon:** capture terminal OpenAI Responses usage ([#14598](https://github.com/vm0-ai/vm0/issues/14598)) ([d1939ea](https://github.com/vm0-ai/vm0/commit/d1939ea546adc4bb2ee6d98c01adec5925f93cce))
+
 ## [0.103.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.11...runner-rs-v0.103.12) (2026-05-24)
 
 ## [0.103.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.10...runner-rs-v0.103.11) (2026-05-23)

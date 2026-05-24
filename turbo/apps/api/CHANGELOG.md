@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.69.1](https://github.com/vm0-ai/vm0/compare/api-v1.69.0...api-v1.69.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* **api:** exclude org queue wait from api_to_claim ([#14631](https://github.com/vm0-ai/vm0/issues/14631)) ([ebc150e](https://github.com/vm0-ai/vm0/commit/ebc150eda9f6056bb49e33a373dee63dbf316b04))
+
+
+### Refactoring
+
+* keep connector oauth provider map private ([#14613](https://github.com/vm0-ai/vm0/issues/14613)) ([1fa7693](https://github.com/vm0-ai/vm0/commit/1fa7693922f1780c98d940bcb968abb82869cf83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.3
+    * @vm0/connectors bumped to 1.31.0
+    * @vm0/core bumped to 8.292.0
+    * @vm0/db bumped to 1.18.4
+
 ## [1.69.0](https://github.com/vm0-ai/vm0/compare/api-v1.68.1...api-v1.69.0) (2026-05-23)
 
 
