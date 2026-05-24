@@ -1,4 +1,4 @@
-import { defineConnectorOAuthProvider } from "../provider-types";
+import type { AuthCodeConnectorAuthProvider } from "../../auth-providers/provider-types";
 import {
   buildLinearAuthorizationUrl,
   exchangeLinearCode,
@@ -6,43 +6,56 @@ import {
   refreshLinearToken,
   revokeLinearToken,
 } from "./linear";
-export const linearProvider = defineConnectorOAuthProvider("linear", {
-  buildAuthUrl: (args) => {
-    const { clientId } = args;
-    return buildLinearAuthorizationUrl(clientId, args.redirectUri, args.state);
+export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
+  grant: {
+    kind: "auth-code",
+    buildAuthUrl: (args) => {
+      const { clientId } = args;
+      return buildLinearAuthorizationUrl(
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
+    },
+    exchangeCode: async (args) => {
+      const { clientId, clientSecret } = args;
+      const code = args.code;
+      const redirectUri = args.redirectUri;
+      const result = await exchangeLinearCode(
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      );
+      return {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+        scopes: result.scopes,
+        userInfo: {
+          id: result.userInfo.id,
+          username: result.userInfo.name,
+          email: result.userInfo.email,
+        },
+      };
+    },
   },
-  exchangeCode: async (args) => {
-    const { clientId, clientSecret } = args;
-    const code = args.code;
-    const redirectUri = args.redirectUri;
-    const result = await exchangeLinearCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.userInfo.id,
-        username: result.userInfo.name,
-        email: result.userInfo.email,
-      },
-    };
+  access: {
+    kind: "refresh-token",
+    getAccessSecretName: getLinearSecretName,
+    getRefreshSecretName: () => {
+      return "LINEAR_REFRESH_TOKEN";
+    },
+    refreshToken: (args) => {
+      const { clientId, clientSecret } = args;
+      return refreshLinearToken(clientId, clientSecret, args.refreshToken);
+    },
   },
-  getSecretName: getLinearSecretName,
-  getRefreshSecretName: () => {
-    return "LINEAR_REFRESH_TOKEN";
+  revoke: {
+    kind: "token-revoke",
+    revokeToken: (args) => {
+      const { clientId, clientSecret } = args;
+      return revokeLinearToken(clientId, clientSecret, args.accessToken);
+    },
   },
-  refreshToken: (args) => {
-    const { clientId, clientSecret } = args;
-    return refreshLinearToken(clientId, clientSecret, args.refreshToken);
-  },
-  revokeToken: (args) => {
-    const { clientId, clientSecret } = args;
-    return revokeLinearToken(clientId, clientSecret, args.accessToken);
-  },
-});
+};

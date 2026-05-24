@@ -1,61 +1,66 @@
-import { defineConnectorOAuthProvider } from "../provider-types";
+import type { AuthCodeConnectorAuthProvider } from "../../auth-providers/provider-types";
 import {
   buildMicrosoftAuthorizationUrl,
   exchangeMicrosoftOAuthCode,
   refreshMicrosoftToken,
 } from "./microsoft-oauth";
-export const outlookCalendarProvider = defineConnectorOAuthProvider(
-  "outlook-calendar",
+export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-calendar"> =
   {
-    buildAuthUrl: (args) => {
-      const { clientId } = args;
-      const redirectUri = args.redirectUri;
-      const state = args.state;
-      return buildMicrosoftAuthorizationUrl(
-        "outlook-calendar",
-        clientId,
-        redirectUri,
-        state,
-      );
+    grant: {
+      kind: "auth-code",
+      buildAuthUrl: (args) => {
+        const { clientId } = args;
+        const redirectUri = args.redirectUri;
+        const state = args.state;
+        return buildMicrosoftAuthorizationUrl(
+          "outlook-calendar",
+          clientId,
+          redirectUri,
+          state,
+        );
+      },
+      exchangeCode: async (args) => {
+        const { clientId, clientSecret } = args;
+        const code = args.code;
+        const redirectUri = args.redirectUri;
+        const result = await exchangeMicrosoftOAuthCode(
+          "outlook-calendar",
+          clientId,
+          clientSecret,
+          code,
+          redirectUri,
+        );
+        return {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+          scopes: result.scopes,
+          userInfo: {
+            id: result.userInfo.id,
+            username: result.userInfo.name,
+            email: result.userInfo.email,
+          },
+        };
+      },
     },
-    exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
-      const code = args.code;
-      const redirectUri = args.redirectUri;
-      const result = await exchangeMicrosoftOAuthCode(
-        "outlook-calendar",
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
+    access: {
+      kind: "refresh-token",
+      getAccessSecretName: () => {
+        return "OUTLOOK_CALENDAR_ACCESS_TOKEN";
+      },
+      getRefreshSecretName: () => {
+        return "OUTLOOK_CALENDAR_REFRESH_TOKEN";
+      },
+      refreshToken: (args) => {
+        const { clientId, clientSecret } = args;
+        const refreshToken = args.refreshToken;
+        return refreshMicrosoftToken(
+          "outlook-calendar",
+          clientId,
+          clientSecret,
+          refreshToken,
+        );
+      },
     },
-    getSecretName: () => {
-      return "OUTLOOK_CALENDAR_ACCESS_TOKEN";
-    },
-    getRefreshSecretName: () => {
-      return "OUTLOOK_CALENDAR_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      const refreshToken = args.refreshToken;
-      return refreshMicrosoftToken(
-        "outlook-calendar",
-        clientId,
-        clientSecret,
-        refreshToken,
-      );
-    },
-  },
-);
+    revoke: { kind: "none" },
+  };

@@ -1,7 +1,6 @@
 import type {
   CONNECTOR_TYPES,
   ConnectorOAuthClientConfig,
-  OAuthAuthCodeConnectorType,
   OAuthConnectorType,
   OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
@@ -217,30 +216,6 @@ export type ConnectorOAuthDeviceAuthPollArgs<
 > = OAuthDeviceAuthPollFlowArgs &
   TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
 
-type BuildConnectorAuthUrlFn<T extends OAuthAuthCodeConnectorType> = (
-  args: ConnectorOAuthAuthorizeArgs<T>,
-) => string | AuthUrlResult | Promise<string | AuthUrlResult>;
-
-type ExchangeConnectorCodeFn<T extends OAuthAuthCodeConnectorType> = (
-  args: ConnectorOAuthExchangeArgs<T>,
-) => Promise<OAuthTokenResult>;
-
-type RefreshConnectorTokenFn<T extends OAuthConnectorType> = (
-  args: ConnectorOAuthRefreshArgs<T>,
-) => Promise<OAuthRefreshResult>;
-
-type RevokeConnectorTokenFn<T extends OAuthConnectorType> = (
-  args: ConnectorOAuthRevokeArgs<T>,
-) => Promise<void>;
-
-type StartConnectorDeviceAuthFn<T extends OAuthDeviceAuthConnectorType> = (
-  args: ConnectorOAuthDeviceAuthStartArgs<T>,
-) => Promise<OAuthDeviceAuthStartResult>;
-
-type PollConnectorDeviceAuthFn<T extends OAuthDeviceAuthConnectorType> = (
-  args: ConnectorOAuthDeviceAuthPollArgs<T>,
-) => Promise<OAuthDeviceAuthPollResult>;
-
 export interface OAuthProviderMetadata {
   getSecretName(): string;
 }
@@ -268,57 +243,6 @@ export type OAuthRefreshProvider = OAuthProvider & {
 export type OAuthRevocationProvider = OAuthProvider & {
   revokeToken: RevokeTokenFn;
 };
-
-type OAuthNoRefreshProvider = {
-  getRefreshSecretName?: never;
-  refreshToken?: never;
-};
-
-type OAuthNoRevocationProvider = {
-  revokeToken?: never;
-};
-
-export type ConnectorOAuthAuthCodeProvider<
-  T extends OAuthAuthCodeConnectorType,
-> = OAuthProviderMetadata & {
-  buildAuthUrl: BuildConnectorAuthUrlFn<T>;
-  exchangeCode: ExchangeConnectorCodeFn<T>;
-};
-
-export type ConnectorOAuthDeviceAuthProvider<
-  T extends OAuthDeviceAuthConnectorType,
-> = OAuthProviderMetadata & {
-  startDeviceAuth: StartConnectorDeviceAuthFn<T>;
-  pollDeviceAuth: PollConnectorDeviceAuthFn<T>;
-};
-
-export type ConnectorOAuthRefreshProvider<T extends OAuthConnectorType> = {
-  getRefreshSecretName(): string;
-  refreshToken: RefreshConnectorTokenFn<T>;
-};
-
-export type ConnectorOAuthRevocationProvider<T extends OAuthConnectorType> = {
-  revokeToken: RevokeConnectorTokenFn<T>;
-};
-
-type ConnectorOAuthFlowProvider<T extends OAuthConnectorType> =
-  T extends OAuthAuthCodeConnectorType
-    ? ConnectorOAuthAuthCodeProvider<T>
-    : T extends OAuthDeviceAuthConnectorType
-      ? ConnectorOAuthDeviceAuthProvider<T>
-      : never;
-
-export type ConnectorOAuthProviderFor<T extends OAuthConnectorType> =
-  ConnectorOAuthFlowProvider<T> &
-    (ConnectorOAuthRefreshProvider<T> | OAuthNoRefreshProvider) &
-    (ConnectorOAuthRevocationProvider<T> | OAuthNoRevocationProvider);
-
-export function defineConnectorOAuthProvider<T extends OAuthConnectorType>(
-  _type: T,
-  provider: ConnectorOAuthProviderFor<T>,
-): ConnectorOAuthProviderFor<T> {
-  return provider;
-}
 
 export function isOAuthRefreshProvider(
   provider: OAuthProviderMetadata,

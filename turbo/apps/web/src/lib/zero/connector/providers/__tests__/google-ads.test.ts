@@ -22,7 +22,7 @@ describe("connector/providers/google-ads", () => {
     });
 
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
-      const url = googleAdsProvider.buildAuthUrl({
+      const url = googleAdsProvider.grant.buildAuthUrl({
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -66,17 +66,22 @@ describe("connector/providers/google-ads", () => {
     });
 
     it("getSecretName returns GOOGLE_ADS_ACCESS_TOKEN", () => {
-      expect(googleAdsProvider.getSecretName()).toBe("GOOGLE_ADS_ACCESS_TOKEN");
-    });
-
-    it("getRefreshSecretName returns GOOGLE_ADS_REFRESH_TOKEN", () => {
-      expect(googleAdsProvider.getRefreshSecretName?.()).toBe(
-        "GOOGLE_ADS_REFRESH_TOKEN",
+      expect(googleAdsProvider.access.getAccessSecretName()).toBe(
+        "GOOGLE_ADS_ACCESS_TOKEN",
       );
     });
 
+    it("getRefreshSecretName returns GOOGLE_ADS_REFRESH_TOKEN", () => {
+      const { access } = googleAdsProvider;
+      if (access.kind !== "refresh-token") {
+        throw new Error("Expected Google Ads provider to support refresh");
+      }
+
+      expect(access.getRefreshSecretName()).toBe("GOOGLE_ADS_REFRESH_TOKEN");
+    });
+
     it("refreshToken is defined (uses shared Google token refresh)", () => {
-      expect(googleAdsProvider.refreshToken).toBeDefined();
+      expect(googleAdsProvider.access.kind).toBe("refresh-token");
     });
 
     it("exchangeCode maps Google token and user info response", async () => {
@@ -98,7 +103,7 @@ describe("connector/providers/google-ads", () => {
       });
       server.use(tokenHandler, userInfoHandler);
 
-      const result = await googleAdsProvider.exchangeCode({
+      const result = await googleAdsProvider.grant.exchangeCode({
         clientId: "client-id",
         clientSecret: "client-secret",
         code: "auth-code",
@@ -130,12 +135,12 @@ describe("connector/providers/google-ads", () => {
       });
       server.use(handler);
 
-      const refreshToken = googleAdsProvider.refreshToken;
-      if (!refreshToken) {
+      const { access } = googleAdsProvider;
+      if (access.kind !== "refresh-token") {
         throw new Error("Expected Google Ads provider to support refresh");
       }
 
-      const result = await refreshToken({
+      const result = await access.refreshToken({
         clientId: "client-id",
         clientSecret: "client-secret",
         refreshToken: "refresh-token",

@@ -25,7 +25,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const originalPollDeviceAuth = testOauthDeviceProvider.pollDeviceAuth;
+const originalPollDeviceAuth = testOauthDeviceProvider.grant.pollDeviceAuth;
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
@@ -316,7 +316,7 @@ describe("OAuth device authorization connector routes", () => {
   const users: { readonly userId: string; readonly orgId: string }[] = [];
 
   afterEach(async () => {
-    testOauthDeviceProvider.pollDeviceAuth = originalPollDeviceAuth;
+    testOauthDeviceProvider.grant.pollDeviceAuth = originalPollDeviceAuth;
     while (users.length > 0) {
       const user = users.pop();
       if (user) {
@@ -449,7 +449,7 @@ describe("OAuth device authorization connector routes", () => {
 
     let releaseProviderPoll: (() => void) | undefined;
     const providerPollStarted = new Promise<void>((resolve) => {
-      testOauthDeviceProvider.pollDeviceAuth = async (args) => {
+      testOauthDeviceProvider.grant.pollDeviceAuth = async (args) => {
         resolve();
         await new Promise<void>((resolve) => {
           releaseProviderPoll = resolve;
@@ -601,7 +601,7 @@ describe("OAuth device authorization connector routes", () => {
       }),
       [200],
     );
-    testOauthDeviceProvider.pollDeviceAuth = async (args) => {
+    testOauthDeviceProvider.grant.pollDeviceAuth = async (args) => {
       const result = await originalPollDeviceAuth(args);
       if (result.status !== "complete") {
         return result;
@@ -799,7 +799,7 @@ describe("OAuth device authorization connector routes", () => {
       zeroConnectorOauthDeviceAuthSessionContract,
     );
     let pollCount = 0;
-    testOauthDeviceProvider.pollDeviceAuth = () => {
+    testOauthDeviceProvider.grant.pollDeviceAuth = () => {
       pollCount += 1;
       return originalPollDeviceAuth({
         clientId: "test-oauth-device-client",
@@ -861,7 +861,7 @@ describe("OAuth device authorization connector routes", () => {
     let pollCount = 0;
     let releaseProviderPoll: (() => void) | undefined;
     const providerPollStarted = new Promise<void>((resolve) => {
-      testOauthDeviceProvider.pollDeviceAuth = async () => {
+      testOauthDeviceProvider.grant.pollDeviceAuth = async () => {
         pollCount += 1;
         resolve();
         await new Promise<void>((resolve) => {
@@ -913,7 +913,7 @@ describe("OAuth device authorization connector routes", () => {
       zeroConnectorOauthDeviceAuthSessionContract,
     );
     let pollCount = 0;
-    testOauthDeviceProvider.pollDeviceAuth = () => {
+    testOauthDeviceProvider.grant.pollDeviceAuth = () => {
       pollCount += 1;
       return Promise.resolve({ status: "pending" });
     };
@@ -953,7 +953,7 @@ describe("OAuth device authorization connector routes", () => {
     );
     expect(first.body.status).toBe("complete");
 
-    testOauthDeviceProvider.pollDeviceAuth = () => {
+    testOauthDeviceProvider.grant.pollDeviceAuth = () => {
       return Promise.reject(
         new Error("Provider should not be called for terminal sessions"),
       );

@@ -100,10 +100,10 @@ function useDynamicTestOAuthAuthorize(): () => void {
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
   const provider = testOauthProvider;
-  const originalBuildAuthUrl = provider.buildAuthUrl;
+  const originalBuildAuthUrl = provider.grant.buildAuthUrl;
 
   mutableOAuth.client = dynamicPublicClient;
-  provider.buildAuthUrl = (args) => {
+  provider.grant.buildAuthUrl = (args) => {
     expect(args.clientId).toBeUndefined();
     return {
       url: `https://dynamic-oauth.test/authorize?state=${args.state}`,
@@ -113,7 +113,7 @@ function useDynamicTestOAuthAuthorize(): () => void {
 
   return () => {
     mutableOAuth.client = originalClient;
-    provider.buildAuthUrl = originalBuildAuthUrl;
+    provider.grant.buildAuthUrl = originalBuildAuthUrl;
   };
 }
 
