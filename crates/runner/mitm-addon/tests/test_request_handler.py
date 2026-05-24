@@ -12,51 +12,70 @@ import usage
 from tests.pending_helpers import _assert_pending
 
 
+def _write_registry(
+    tmp_path: Path,
+    *,
+    client_ip: str = "10.200.0.5",
+    vm_info: dict[str, object],
+) -> Path:
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps({"vms": {client_ip: vm_info}}))
+    return path
+
+
+def _single_firewall_vm(
+    tmp_path: Path,
+    *,
+    run_id: str = "run-conn-1",
+    sandbox_marker: str = "tok-conn",
+    firewall_name: str = "github",
+    api_entry: dict[str, object],
+    network_policy: dict[str, object] | None,
+    billable_firewalls: list[str] | None = None,
+    include_encrypted_secrets: bool = True,
+    vm_fields: dict[str, object] | None = None,
+) -> dict[str, object]:
+    vm_info: dict[str, object] = {
+        "runId": run_id,
+        "billableFirewalls": billable_firewalls or [],
+        "sandboxToken": sandbox_marker,
+        "networkLogPath": str(tmp_path / "net.jsonl"),
+        "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+        "firewalls": [{"name": firewall_name, "apis": [api_entry]}],
+    }
+    if network_policy is not None:
+        vm_info["networkPolicies"] = {firewall_name: network_policy}
+    if include_encrypted_secrets:
+        vm_info["encryptedSecrets"] = "iv:tag:data"
+    if vm_fields is not None:
+        vm_info.update(vm_fields)
+    return vm_info
+
+
 def _write_github_firewall_registry(
     tmp_path: Path,
     *,
     client_ip: str = "10.200.0.5",
     base: str = "https://api.github.com",
 ) -> Path:
-    registry = {
-        "vms": {
-            client_ip: {
-                "runId": "run-conn-1",
-                "billableFirewalls": [],
-                "sandboxToken": "tok-conn",
-                "networkLogPath": str(tmp_path / "net.jsonl"),
-                "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                "firewalls": [
-                    {
-                        "name": "github",
-                        "apis": [
-                            {
-                                "base": base,
-                                "auth": {
-                                    "headers": {
-                                        "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                                    }
-                                },
-                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                            },
-                        ],
-                    },
-                ],
-                "networkPolicies": {
-                    "github": {
-                        "allow": ["full-access"],
-                        "deny": [],
-                        "ask": [],
-                        "unknownPolicy": "allow",
-                    },
-                },
-                "encryptedSecrets": "iv:tag:data",
-            }
-        }
-    }
-    path = tmp_path / "registry.json"
-    path.write_text(json.dumps(registry))
-    return path
+    return _write_registry(
+        tmp_path,
+        client_ip=client_ip,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": base,
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
 
 
 class TestRequestHandler:
@@ -89,32 +108,23 @@ class TestRequestHandler:
         carve-out drops these paths into Step 2 so the registered firewall
         runs `handle_firewall_request`.
         """
-        registry = {
-            "vms": {
-                "10.200.0.1": {
-                    "runId": "run-test-oauth",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-test",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "test-oauth",
-                            "apis": [
-                                {
-                                    "base": "https://api.vm0.ai/api/test/oauth-provider",
-                                    "auth": {"headers": {"Authorization": "Bearer x"}},
-                                    "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
-                                }
-                            ],
-                        }
-                    ],
-                }
-            },
-            "updatedAt": 1700000000000,
-        }
-        reg_path = tmp_path / "proxy-registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            client_ip="10.200.0.1",
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                run_id="run-test-oauth",
+                sandbox_marker="tok-test",
+                firewall_name="test-oauth",
+                api_entry={
+                    "base": "https://api.vm0.ai/api/test/oauth-provider",
+                    "auth": {"headers": {"Authorization": "Bearer x"}},
+                    "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+                },
+                network_policy=None,
+                include_encrypted_secrets=False,
+            ),
+        )
 
         flow = real_flow(
             with_response=False, host="api.vm0.ai", path="/api/test/oauth-provider/echo"
@@ -462,45 +472,7 @@ class TestRequestHandler:
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
         """When URL matches a firewall rule, handle_firewall_request is called."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "github",
-                            "apis": [
-                                {
-                                    "base": "https://api.github.com",
-                                    "auth": {
-                                        "headers": {
-                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                                        }
-                                    },
-                                    "permissions": [
-                                        {"name": "full-access", "rules": ["ANY /{path+}"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "github": {
-                            "allow": ["full-access"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "allow",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_github_firewall_registry(tmp_path)
 
         flow = real_flow(
             with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/repos"
@@ -522,49 +494,28 @@ class TestRequestHandler:
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """Firewall with permissions but no matching rule returns 403."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [
                         {
-                            "name": "github",
-                            "apis": [
-                                {
-                                    "base": "https://api.github.com",
-                                    "auth": {
-                                        "headers": {
-                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                                        }
-                                    },
-                                    "permissions": [
-                                        {
-                                            "name": "read-repos",
-                                            "rules": ["GET /repos/{owner}/{repo}"],
-                                        },
-                                    ],
-                                },
-                            ],
+                            "name": "read-repos",
+                            "rules": ["GET /repos/{owner}/{repo}"],
                         },
                     ],
-                    "networkPolicies": {
-                        "github": {
-                            "allow": ["read-repos"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+                },
+                network_policy={
+                    "allow": ["read-repos"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+            ),
+        )
 
         flow = real_flow(
             with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
@@ -596,49 +547,28 @@ class TestRequestHandler:
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """Malformed firewall config blocks fail closed with an explicit reason."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [
                         {
-                            "name": "github",
-                            "apis": [
-                                {
-                                    "base": "https://api.github.com",
-                                    "auth": {
-                                        "headers": {
-                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                                        }
-                                    },
-                                    "permissions": [
-                                        {
-                                            "name": "read-repos",
-                                            "rules": ["GET /repos/{a}literal{b}"],
-                                        },
-                                    ],
-                                },
-                            ],
+                            "name": "read-repos",
+                            "rules": ["GET /repos/{a}literal{b}"],
                         },
                     ],
-                    "networkPolicies": {
-                        "github": {
-                            "allow": ["read-repos"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "allow",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+                },
+                network_policy={
+                    "allow": ["read-repos"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -664,49 +594,28 @@ class TestRequestHandler:
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """Denied permission blocks include the explicit runtime reason."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [
                         {
-                            "name": "github",
-                            "apis": [
-                                {
-                                    "base": "https://api.github.com",
-                                    "auth": {
-                                        "headers": {
-                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                                        }
-                                    },
-                                    "permissions": [
-                                        {
-                                            "name": "read-repos",
-                                            "rules": ["GET /repos/{owner}/{repo}"],
-                                        },
-                                    ],
-                                },
-                            ],
+                            "name": "read-repos",
+                            "rules": ["GET /repos/{owner}/{repo}"],
                         },
                     ],
-                    "networkPolicies": {
-                        "github": {
-                            "allow": [],
-                            "deny": ["read-repos"],
-                            "ask": [],
-                            "unknownPolicy": "allow",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+                },
+                network_policy={
+                    "allow": [],
+                    "deny": ["read-repos"],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -731,48 +640,28 @@ class TestRequestHandler:
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
         """Firewall with permissions and matching rule calls handler with match_info."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewalls": [
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                    "permissions": [
                         {
-                            "name": "github",
-                            "apis": [
-                                {
-                                    "base": "https://api.github.com",
-                                    "auth": {
-                                        "headers": {
-                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                                        }
-                                    },
-                                    "permissions": [
-                                        {
-                                            "name": "read-repos",
-                                            "rules": ["GET /repos/{owner}/{repo}"],
-                                        },
-                                    ],
-                                },
-                            ],
+                            "name": "read-repos",
+                            "rules": ["GET /repos/{owner}/{repo}"],
                         },
                     ],
-                    "networkPolicies": {
-                        "github": {
-                            "allow": ["read-repos"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+                },
+                network_policy={
+                    "allow": ["read-repos"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -804,42 +693,25 @@ class TestRequestHandler:
         usage.counters._pending_reports = 0
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": ["x"],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "x",
-                            "apis": [
-                                {
-                                    "base": "https://api.x.com",
-                                    "auth": {"headers": {"Authorization": "Bearer token"}},
-                                    "permissions": [
-                                        {"name": "read-posts", "rules": ["GET /2/users/by"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "x": {
-                            "allow": ["read-posts"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                firewall_name="x",
+                api_entry={
+                    "base": "https://api.x.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
+                },
+                network_policy={
+                    "allow": ["read-posts"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+                billable_firewalls=["x"],
+            ),
+        )
 
         flow = real_flow(
             with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
@@ -869,41 +741,26 @@ class TestRequestHandler:
         usage.counters._pending_reports = 0
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": ["x"],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "x",
-                            "apis": [
-                                {
-                                    "base": "https://api.x.com",
-                                    "auth": {"headers": {"Authorization": "Bearer token"}},
-                                    "permissions": [
-                                        {"name": "read-posts", "rules": ["GET /2/users/by"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "x": {
-                            "allow": ["read-posts"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                firewall_name="x",
+                api_entry={
+                    "base": "https://api.x.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
+                },
+                network_policy={
+                    "allow": ["read-posts"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+                billable_firewalls=["x"],
+                include_encrypted_secrets=False,
+            ),
+        )
 
         flow = real_flow(
             with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
@@ -931,42 +788,25 @@ class TestRequestHandler:
         usage.counters._pending_reports = 0
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": ["x"],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "x",
-                            "apis": [
-                                {
-                                    "base": "https://api.x.com",
-                                    "auth": {"headers": {"Authorization": "Bearer token"}},
-                                    "permissions": [
-                                        {"name": "read-posts", "rules": ["GET /2/users/by"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "x": {
-                            "allow": ["read-posts"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                firewall_name="x",
+                api_entry={
+                    "base": "https://api.x.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
+                },
+                network_policy={
+                    "allow": ["read-posts"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+                billable_firewalls=["x"],
+            ),
+        )
 
         flow = real_flow(
             with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
@@ -998,42 +838,27 @@ class TestRequestHandler:
         usage.counters._pending_reports = 0
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-model-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-model",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "model-provider:anthropic-api-key",
-                            "apis": [
-                                {
-                                    "base": "https://api.anthropic.com",
-                                    "auth": {"headers": {"x-api-key": "test-key"}},
-                                    "permissions": [
-                                        {"name": "messages", "rules": ["POST /v1/messages"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "model-provider:anthropic-api-key": {
-                            "allow": ["messages"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        firewall_name = "model-provider:anthropic-api-key"
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                run_id="run-model-1",
+                sandbox_marker="tok-model",
+                firewall_name=firewall_name,
+                api_entry={
+                    "base": "https://api.anthropic.com",
+                    "auth": {"headers": {"x-api-key": "test-key"}},
+                    "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+                },
+                network_policy={
+                    "allow": ["messages"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -1050,7 +875,7 @@ class TestRequestHandler:
             ):
                 await mitm_addon.request(flow)
 
-            assert flow.metadata["firewall_name"] == "model-provider:anthropic-api-key"
+            assert flow.metadata["firewall_name"] == firewall_name
             assert flow.metadata["cli_agent_type"] == "claude-code"
             assert flow.metadata["firewall_billable"] is False
             assert "_usage_flow_tracked" not in flow.metadata
@@ -1069,44 +894,31 @@ class TestRequestHandler:
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
         firewall_name = "model-provider:anthropic-api-key"
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-model-1",
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                run_id="run-model-1",
+                sandbox_marker="tok-model",
+                firewall_name=firewall_name,
+                api_entry={
+                    "base": "https://api.anthropic.com",
+                    "auth": {"headers": {"x-api-key": "test-key"}},
+                    "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+                },
+                network_policy={
+                    "allow": ["messages"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+                billable_firewalls=[firewall_name],
+                vm_fields={
                     "cliAgentType": "codex",
-                    "billableFirewalls": [firewall_name],
                     "modelUsageProvider": "claude-opus-4-6",
-                    "sandboxToken": "tok-model",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": firewall_name,
-                            "apis": [
-                                {
-                                    "base": "https://api.anthropic.com",
-                                    "auth": {"headers": {"x-api-key": "test-key"}},
-                                    "permissions": [
-                                        {"name": "messages", "rules": ["POST /v1/messages"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        firewall_name: {
-                            "allow": ["messages"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+                },
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -1143,40 +955,27 @@ class TestRequestHandler:
         usage.counters._pending_reports = 0
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-rewrite-1",
-                    "billableFirewalls": ["webhook"],
-                    "sandboxToken": "tok-rewrite",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "webhook",
-                            "apis": [
-                                {
-                                    "base": "https://placeholder.example.com",
-                                    "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
-                                    "permissions": [{"name": "send", "rules": ["POST /"]}],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "webhook": {
-                            "allow": ["send"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                run_id="run-rewrite-1",
+                sandbox_marker="tok-rewrite",
+                firewall_name="webhook",
+                api_entry={
+                    "base": "https://placeholder.example.com",
+                    "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                    "permissions": [{"name": "send", "rules": ["POST /"]}],
+                },
+                network_policy={
+                    "allow": ["send"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+                billable_firewalls=["webhook"],
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -1242,40 +1041,27 @@ class TestRequestHandler:
         usage.counters._pending_reports = 0
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
 
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-rewrite-1",
-                    "billableFirewalls": ["webhook"],
-                    "sandboxToken": "tok-rewrite",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "webhook",
-                            "apis": [
-                                {
-                                    "base": "https://placeholder.example.com",
-                                    "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
-                                    "permissions": [{"name": "send", "rules": ["POST /"]}],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "webhook": {
-                            "allow": ["send"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "deny",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                run_id="run-rewrite-1",
+                sandbox_marker="tok-rewrite",
+                firewall_name="webhook",
+                api_entry={
+                    "base": "https://placeholder.example.com",
+                    "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                    "permissions": [{"name": "send", "rules": ["POST /"]}],
+                },
+                network_policy={
+                    "allow": ["send"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "deny",
+                },
+                billable_firewalls=["webhook"],
+            ),
+        )
 
         flow = real_flow(
             with_response=False,
@@ -1332,41 +1118,23 @@ class TestRequestHandler:
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """URL not matching any firewall base → pass-through (not block)."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "billableFirewalls": [],
-                    "sandboxToken": "tok-conn",
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewalls": [
-                        {
-                            "name": "github",
-                            "apis": [
-                                {
-                                    "base": "https://api.github.com",
-                                    "auth": {"headers": {}},
-                                    "permissions": [
-                                        {"name": "full-access", "rules": ["ANY /{path+}"]}
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                    "networkPolicies": {
-                        "github": {
-                            "allow": ["full-access"],
-                            "deny": [],
-                            "ask": [],
-                            "unknownPolicy": "allow",
-                        },
-                    },
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
+        reg_path = _write_registry(
+            tmp_path,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry={
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+                network_policy={
+                    "allow": ["full-access"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            ),
+        )
 
         # Request to example.com — not a firewall match, passes through
         flow = real_flow(
