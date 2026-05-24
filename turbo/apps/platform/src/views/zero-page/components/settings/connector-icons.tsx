@@ -123,6 +123,7 @@ const CONNECTOR_ICON_COLORFUL = {
   greenhouse: true,
   helicone: true,
   heygen: true,
+  honcho: true,
   hubspot: true,
   "hugging-face": true,
   imgur: true,
