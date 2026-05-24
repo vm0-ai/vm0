@@ -161,6 +161,7 @@ const CONNECTOR_ICON_COLORFUL = {
   qdrant: true,
   qiita: true,
   reap: true,
+  recraft: true,
   reddit: true,
   reportei: true,
   salesforce: true,
