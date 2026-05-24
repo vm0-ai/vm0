@@ -63,14 +63,7 @@ export async function buildAuthCodeGrantAuthUrl<
   readonly authorizeArgs: ConnectorOAuthAuthorizeArgs<T>;
 }): Promise<string | AuthUrlResult> {
   const grant = args.provider.grant;
-
-  switch (grant.kind) {
-    case "none":
-      throw new Error(`${args.type} does not support auth-code grant`);
-
-    case "auth-code":
-      return await grant.buildAuthUrl(args.authorizeArgs);
-  }
+  return await grant.buildAuthUrl(args.authorizeArgs);
 }
 
 export async function exchangeAuthCodeGrant<
@@ -81,14 +74,7 @@ export async function exchangeAuthCodeGrant<
   readonly exchangeArgs: ConnectorOAuthExchangeArgs<T>;
 }): Promise<OAuthTokenResult> {
   const grant = args.provider.grant;
-
-  switch (grant.kind) {
-    case "none":
-      throw new Error(`${args.type} does not support auth-code grant`);
-
-    case "auth-code":
-      return await grant.exchangeCode(args.exchangeArgs);
-  }
+  return await grant.exchangeCode(args.exchangeArgs);
 }
 
 export async function startDeviceAuthGrant<
@@ -99,14 +85,7 @@ export async function startDeviceAuthGrant<
   readonly startArgs: ConnectorOAuthDeviceAuthStartArgs<T>;
 }): Promise<OAuthDeviceAuthStartResult> {
   const grant = args.provider.grant;
-
-  switch (grant.kind) {
-    case "none":
-      throw new Error(`${args.type} does not support device-auth grant`);
-
-    case "device-auth":
-      return await grant.startDeviceAuth(args.startArgs);
-  }
+  return await grant.startDeviceAuth(args.startArgs);
 }
 
 export async function pollDeviceAuthGrant<
@@ -117,14 +96,7 @@ export async function pollDeviceAuthGrant<
   readonly pollArgs: ConnectorOAuthDeviceAuthPollArgs<T>;
 }): Promise<OAuthDeviceAuthPollResult> {
   const grant = args.provider.grant;
-
-  switch (grant.kind) {
-    case "none":
-      throw new Error(`${args.type} does not support device-auth grant`);
-
-    case "device-auth":
-      return await grant.pollDeviceAuth(args.pollArgs);
-  }
+  return await grant.pollDeviceAuth(args.pollArgs);
 }
 
 export async function refreshTokenAccess<T extends OAuthConnectorType>(args: {

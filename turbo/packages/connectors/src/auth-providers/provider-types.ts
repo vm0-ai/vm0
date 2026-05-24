@@ -18,7 +18,7 @@ import type {
   OAuthTokenResult,
 } from "../oauth-providers/provider-types";
 
-export interface NoneGrantProvider {
+interface NoneGrantProvider {
   readonly kind: "none";
 }
 
@@ -44,9 +44,9 @@ export interface DeviceAuthGrantProvider<
 
 export type ConnectorGrantProvider<T extends ConnectorType> =
   T extends OAuthAuthCodeConnectorType
-    ? NoneGrantProvider | AuthCodeGrantProvider<T>
+    ? AuthCodeGrantProvider<T>
     : T extends OAuthDeviceAuthConnectorType
-      ? NoneGrantProvider | DeviceAuthGrantProvider<T>
+      ? DeviceAuthGrantProvider<T>
       : NoneGrantProvider;
 
 export interface NoneAccessProvider {
@@ -97,7 +97,7 @@ interface BaseConnectorAuthProvider<TGrant, TAccess, TRevoke> {
 export type AuthCodeConnectorAuthProvider<
   T extends OAuthAuthCodeConnectorType,
 > = BaseConnectorAuthProvider<
-  NoneGrantProvider | AuthCodeGrantProvider<T>,
+  AuthCodeGrantProvider<T>,
   OAuthConnectorAccessProvider<T>,
   OAuthConnectorRevokeProvider<T>
 >;
@@ -105,7 +105,7 @@ export type AuthCodeConnectorAuthProvider<
 export type DeviceAuthConnectorAuthProvider<
   T extends OAuthDeviceAuthConnectorType,
 > = BaseConnectorAuthProvider<
-  NoneGrantProvider | DeviceAuthGrantProvider<T>,
+  DeviceAuthGrantProvider<T>,
   OAuthConnectorAccessProvider<T>,
   OAuthConnectorRevokeProvider<T>
 >;
