@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.23](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.22...nbd-cow-v0.4.23) (2026-05-24)
+
+
+### Refactoring
+
+* **nbd-cow:** deduplicate destroy retry loop ([#14670](https://github.com/vm0-ai/vm0/issues/14670)) ([229a05c](https://github.com/vm0-ai/vm0/commit/229a05cc2c219fe8c688afdc23e5b8bf9957c064))
+
 ## [0.4.22](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.21...nbd-cow-v0.4.22) (2026-05-16)
 
 
