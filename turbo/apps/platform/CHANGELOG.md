@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.379.1](https://github.com/vm0-ai/vm0/compare/app-v0.379.0...app-v0.379.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* hide mobile sidebar dropdown icon when other indicator present ([#14655](https://github.com/vm0-ai/vm0/issues/14655)) ([5e1c425](https://github.com/vm0-ai/vm0/commit/5e1c4250277490fdb2daa0d372ffac2f423cdef2)), closes [#14653](https://github.com/vm0-ai/vm0/issues/14653)
+* **ui:** pin running indicator to its 0% keyframe as resting state ([#14662](https://github.com/vm0-ai/vm0/issues/14662)) ([879c0e0](https://github.com/vm0-ai/vm0/commit/879c0e02cd056651e154996b902aa4ddcbfb3824))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.4
+    * @vm0/connectors bumped to 1.31.1
+    * @vm0/core bumped to 8.292.1
+
 ## [0.379.0](https://github.com/vm0-ai/vm0/compare/app-v0.378.0...app-v0.379.0) (2026-05-24)
 
 
