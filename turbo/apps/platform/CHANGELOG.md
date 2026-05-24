@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.380.0](https://github.com/vm0-ai/vm0/compare/app-v0.379.2...app-v0.380.0) (2026-05-24)
+
+
+### Features
+
+* **onboarding:** make connector optional on use-case deep links ([#14681](https://github.com/vm0-ai/vm0/issues/14681)) ([66c1d70](https://github.com/vm0-ai/vm0/commit/66c1d70ef22a6790bde31befd717046c79c08423))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.5
+    * @vm0/connectors bumped to 1.31.2
+    * @vm0/core bumped to 8.292.2
+
 ## [0.379.2](https://github.com/vm0-ai/vm0/compare/app-v0.379.1...app-v0.379.2) (2026-05-24)
 
 

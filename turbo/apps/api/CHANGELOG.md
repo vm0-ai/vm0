@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.69.4](https://github.com/vm0-ai/vm0/compare/api-v1.69.3...api-v1.69.4) (2026-05-24)
+
+
+### Refactoring
+
+* route connector oauth revocation through registry ([#14676](https://github.com/vm0-ai/vm0/issues/14676)) ([67d5b8e](https://github.com/vm0-ai/vm0/commit/67d5b8e288f20571edb364fa390b17c52f5e8e82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.5
+    * @vm0/connectors bumped to 1.31.2
+    * @vm0/core bumped to 8.292.2
+    * @vm0/db bumped to 1.18.6
+
 ## [1.69.3](https://github.com/vm0-ai/vm0/compare/api-v1.69.2...api-v1.69.3) (2026-05-24)
 
 
