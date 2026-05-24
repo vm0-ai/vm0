@@ -158,7 +158,6 @@ interface SeedChatMessageOptions {
   readonly attachFiles?: readonly string[];
   readonly createdAt?: Date;
   readonly sequenceNumber?: number | null;
-  readonly archivedAt?: Date | null;
   readonly runId?: string | null;
 }
 
@@ -180,9 +179,6 @@ export const seedZeroChatMessage$ = command(
       sequenceNumber: options.sequenceNumber ?? null,
       runId: options.runId ?? null,
       createdAt: options.createdAt ?? nowDate(),
-      ...(options.archivedAt !== undefined
-        ? { archivedAt: options.archivedAt }
-        : {}),
     });
     signal.throwIfAborted();
     return id;

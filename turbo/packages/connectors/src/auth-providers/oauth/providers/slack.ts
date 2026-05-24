@@ -1,0 +1,173 @@
+import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { z } from "zod";
+import { throwOAuthError } from "../error";
+
+const SLACK_AUTHORIZATION_URL = "https://slack.com/oauth/v2/authorize";
+
+interface SlackTokenResult {
+  accessToken: string;
+  scopes: string[];
+  userId: string;
+}
+
+interface SlackUserInfo {
+  id: string;
+  username: string;
+  email: string | null;
+}
+
+/**
+ * Build Slack OAuth authorization URL.
+ * Uses user_scope= (not scope=) to request user-level token.
+ */
+export function buildSlackAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const oauthConfig = getConnectorOAuthConfig("slack");
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    user_scope: oauthConfig.scopes.join(","),
+    state,
+  });
+
+  return `${SLACK_AUTHORIZATION_URL}?${params.toString()}`;
+}
+
+/**
+ * Exchange authorization code for Slack user access token.
+ * Extracts authed_user.access_token (xoxp-...), not the bot token.
+ */
+export async function exchangeSlackCode(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<SlackTokenResult> {
+  const oauthConfig = getConnectorOAuthConfig("slack");
+  const response = await fetch(oauthConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri,
+    }),
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("Slack", "exchange", response);
+  }
+
+  const data = z
+    .object({
+      ok: z.boolean(),
+      error: z.string().optional(),
+      authed_user: z
+        .object({
+          id: z.string().optional(),
+          access_token: z.string().optional(),
+          scope: z.string().optional(),
+        })
+        .optional(),
+    })
+    .parse(await response.json());
+
+  if (!data.ok) {
+    throw new Error(data.error ?? "Slack token exchange returned ok=false");
+  }
+
+  if (!data.authed_user?.access_token) {
+    throw new Error("No user access token in Slack response");
+  }
+
+  return {
+    accessToken: data.authed_user.access_token,
+    scopes: data.authed_user.scope?.split(",") ?? [],
+    userId: data.authed_user.id ?? "",
+  };
+}
+
+/**
+ * Fetch Slack user info using user access token
+ */
+export async function fetchSlackUserInfo(
+  userId: string,
+  accessToken: string,
+): Promise<SlackUserInfo> {
+  const response = await fetch(
+    `https://slack.com/api/users.info?user=${userId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Slack users.info API failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      ok: z.boolean(),
+      error: z.string().optional(),
+      user: z
+        .object({
+          id: z.string().optional(),
+          name: z.string().optional(),
+          real_name: z.string().optional(),
+          profile: z.object({ email: z.string().optional() }).optional(),
+        })
+        .optional(),
+    })
+    .parse(await response.json());
+
+  if (!data.ok) {
+    throw new Error(data.error ?? "Slack users.info returned ok=false");
+  }
+
+  return {
+    id: data.user?.id ?? userId,
+    username: data.user?.real_name ?? data.user?.name ?? "",
+    email: data.user?.profile?.email ?? null,
+  };
+}
+
+/**
+ * Revoke a Slack user token.
+ * Ref: https://api.slack.com/methods/auth.revoke
+ */
+export async function revokeSlackToken(
+  _clientId: string,
+  _clientSecret: string,
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch("https://slack.com/api/auth.revoke", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Slack token revocation failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as { ok: boolean; error?: string };
+  if (!data.ok) {
+    throw new Error(data.error ?? "Slack token revocation returned ok=false");
+  }
+}
+
+/**
+ * Get the primary secret name for Slack connector (the user access token).
+ */
+export function getSlackSecretName(): string {
+  return "SLACK_ACCESS_TOKEN";
+}

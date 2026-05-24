@@ -26,7 +26,6 @@ type ThreadFixture = {
   updatedAt: string;
   pinnedAt: string | null;
   isRead: boolean;
-  isArchived: boolean;
   running: boolean;
 };
 
@@ -44,7 +43,6 @@ function makeThread(
     updatedAt: createdAt,
     pinnedAt,
     isRead: true,
-    isArchived: false,
     running: false,
   };
 }

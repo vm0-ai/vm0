@@ -233,6 +233,10 @@ fn start_control_sink_accept_thread(endpoint: &str, sink: Arc<ControlSinkState>)
 
 impl ExecControlGuard {
     pub(crate) fn release(&self) {
+        self.release_once();
+    }
+
+    fn release_once(&self) {
         if !self.released.swap(true, Ordering::AcqRel) {
             self.registry.remove(self.seq);
         }
@@ -241,9 +245,7 @@ impl ExecControlGuard {
 
 impl Drop for ExecControlGuard {
     fn drop(&mut self) {
-        if !self.released.swap(true, Ordering::AcqRel) {
-            self.registry.remove(self.seq);
-        }
+        self.release_once();
     }
 }
 
@@ -879,6 +881,74 @@ mod tests {
     }
 
     #[test]
+    fn dropped_operation_allows_sequence_reuse() {
+        let registry = ExecControlRegistry::default();
+        {
+            let _registration = registry.register(7, NONCE, false).unwrap();
+            assert!(registry.register(7, *b"fedcba9876543210", false).is_err());
+        }
+
+        assert!(registry.register(7, NONCE, false).is_ok());
+    }
+
+    #[test]
+    fn dropped_operation_closes_control_sink() {
+        let nonce = unique_test_nonce(20);
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(20, nonce, true).unwrap();
+        let sink = registry.resolve(20, nonce).unwrap();
+
+        drop(registration);
+
+        assert!(matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Closed
+        ));
+        let (status, diagnostic) = resolve_error(&registry, 20, nonce);
+        assert_eq!(status, ExecControlStatus::Inactive);
+        assert_eq!(diagnostic, "exec operation is not active");
+    }
+
+    #[test]
+    fn dropped_operation_closes_connected_control_sink() {
+        let nonce = unique_test_nonce(19);
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(19, nonce, true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let sink = registry.resolve(19, nonce).unwrap();
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        process_control_ipc::write_hello(&mut stream).unwrap();
+
+        let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !matches!(&*guard, ControlSinkInner::Connected(_)) {
+            let now = Instant::now();
+            assert!(now < deadline, "control sink should connect after hello");
+            let (next_guard, _) = sink
+                .ready
+                .wait_timeout(guard, deadline.duration_since(now))
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+        }
+        drop(guard);
+
+        drop(registration);
+
+        assert!(matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Closed
+        ));
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let error = process_control_ipc::read_request(&mut stream).unwrap_err();
+        assert!(
+            !is_timeout(&error),
+            "operation drop should interrupt the connected control sink stream"
+        );
+    }
+
+    #[test]
     fn valid_operation_without_sink_is_unsupported() {
         let registry = ExecControlRegistry::default();
         let _registration = registry.register(7, NONCE, false).unwrap();
@@ -901,6 +971,36 @@ mod tests {
 
         first.guard.release();
         assert!(registry.register(7, NONCE, false).is_ok());
+    }
+
+    #[test]
+    fn released_guard_drop_does_not_remove_reused_sequence() {
+        let registry = ExecControlRegistry::default();
+        let first = registry.register(7, NONCE, false).unwrap();
+
+        first.guard.release();
+        let _second = registry.register(7, NONCE, false).unwrap();
+        drop(first);
+
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
+        assert_eq!(status, ExecControlStatus::Unsupported);
+        assert_eq!(diagnostic, "exec control sink is not configured");
+        assert!(registry.register(7, *b"fedcba9876543210", false).is_err());
+    }
+
+    #[test]
+    fn second_release_does_not_remove_reused_sequence() {
+        let registry = ExecControlRegistry::default();
+        let first = registry.register(7, NONCE, false).unwrap();
+
+        first.guard.release();
+        let _second = registry.register(7, NONCE, false).unwrap();
+        first.guard.release();
+
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
+        assert_eq!(status, ExecControlStatus::Unsupported);
+        assert_eq!(diagnostic, "exec control sink is not configured");
+        assert!(registry.register(7, *b"fedcba9876543210", false).is_err());
     }
 
     #[test]
@@ -1218,6 +1318,30 @@ mod tests {
     }
 
     #[test]
+    fn pending_exec_control_returns_inactive_when_operation_drops() {
+        let forward_nonce = unique_test_nonce(17);
+
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(17, forward_nonce, true).unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload =
+            vsock_proto::encode_exec_control(17, forward_nonce, "msg-drop", b"payload", 5000)
+                .unwrap();
+
+        handle_exec_control(33, &payload, &registry, &writer).unwrap();
+        drop(registration);
+
+        let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
+        assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
+        assert_eq!(seq, 33);
+        assert_eq!(status, ExecControlStatus::Inactive);
+        assert_eq!(message_id, "msg-drop");
+        assert_eq!(diagnostic, "exec operation is not active");
+    }
+
+    #[test]
     fn exec_control_queue_full_rejects_without_leaking_pending_slots() {
         let sink = Arc::new(ControlSinkState::new());
         let (guest, _host) = UnixStream::pair().unwrap();
@@ -1512,6 +1636,48 @@ mod tests {
         assert!(
             !is_timeout(&error),
             "operation release should interrupt the accepted handshake stream"
+        );
+    }
+
+    #[test]
+    fn operation_drop_interrupts_control_sink_handshake() {
+        let handshake_nonce = unique_test_nonce(18);
+
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(18, handshake_nonce, true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let sink = registry.resolve(18, handshake_nonce).unwrap();
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+
+        let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !matches!(&*guard, ControlSinkInner::Handshaking(_)) {
+            let now = Instant::now();
+            assert!(
+                now < deadline,
+                "control sink should enter handshaking after accept"
+            );
+            let (next_guard, _) = sink
+                .ready
+                .wait_timeout(guard, deadline.duration_since(now))
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+        }
+        drop(guard);
+
+        drop(registration);
+
+        let guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(matches!(*guard, ControlSinkInner::Closed));
+        drop(guard);
+
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let error = process_control_ipc::read_request(&mut stream).unwrap_err();
+        assert!(
+            !is_timeout(&error),
+            "operation drop should interrupt the accepted handshake stream"
         );
     }
 

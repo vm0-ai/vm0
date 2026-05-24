@@ -3,15 +3,15 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   refreshChatgptToken,
   getChatgptSecretName,
   getChatgptRefreshSecretName,
   isChatgptRefreshError,
   type ChatgptRefreshError,
-} from "@vm0/connectors/oauth-providers/providers/codex-oauth";
-import { codexOauthProvider } from "@vm0/connectors/oauth-providers/providers/codex-oauth-provider";
+} from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth";
+import { codexOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth-provider";
 
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";

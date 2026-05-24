@@ -161,7 +161,6 @@ interface ThreadListItem {
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
-  isArchived: boolean;
   running: boolean;
 }
 

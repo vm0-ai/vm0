@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   MODEL_PROVIDER_OAUTH_PROVIDER_KEYS,
   getModelProviderOAuthSecretMetadata,
-} from "@vm0/connectors/oauth-providers/model-provider-registry";
+} from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   OAUTH_PROVIDER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_OAUTH_PROVIDER_KEY,

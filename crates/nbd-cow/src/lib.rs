@@ -731,6 +731,21 @@ async fn abort_server_handles(handles: Vec<JoinHandle<()>>) {
     }
 }
 
+#[derive(Clone, Copy)]
+enum DestroyMode {
+    RemoveCow,
+    KeepCow,
+}
+
+impl DestroyMode {
+    async fn run(self, device: &mut NbdCowDevice) -> Result<()> {
+        match self {
+            Self::RemoveCow => device.destroy().await,
+            Self::KeepCow => device.destroy_keep_cow().await,
+        }
+    }
+}
+
 /// A COW device whose NBD pool ownership is tied to the device lifecycle.
 pub struct PooledNbdCowDevice {
     device: NbdCowDevice,
@@ -814,30 +829,14 @@ impl PooledNbdCowDevice {
             mut lease,
             pool,
         } = self;
-        let attempts = policy.attempts();
-
-        match device.destroy().await {
-            Ok(()) => {
-                Self::release_clean(&pool, &mut lease).await;
-                Ok(())
-            }
-            Err(mut last_err) => {
-                for _ in 1..attempts {
-                    tokio::time::sleep(policy.delay).await;
-                    match device.destroy().await {
-                        Ok(()) => {
-                            Self::release_clean(&pool, &mut lease).await;
-                            return Ok(());
-                        }
-                        Err(e) => last_err = e,
-                    }
-                }
-
-                device.abandon();
-                Self::retire_uncertain(&pool, &mut lease).await;
-                Err(last_err)
-            }
-        }
+        Self::destroy_with_mode(
+            &mut device,
+            &mut lease,
+            &pool,
+            policy,
+            DestroyMode::RemoveCow,
+        )
+        .await
     }
 
     /// Destroy the device while preserving COW data for snapshot persistence.
@@ -865,33 +864,43 @@ impl PooledNbdCowDevice {
         } = self;
         let cow_file = device.cow_file().to_path_buf();
         let bitmap_file = device.bitmap_path();
+        Self::destroy_with_mode(&mut device, &mut lease, &pool, policy, DestroyMode::KeepCow)
+            .await?;
+
+        Ok(KeptCow {
+            cow_file,
+            bitmap_file,
+        })
+    }
+
+    async fn destroy_with_mode(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        policy: DestroyRetryPolicy,
+        mode: DestroyMode,
+    ) -> Result<()> {
         let attempts = policy.attempts();
 
-        match device.destroy_keep_cow().await {
+        match mode.run(device).await {
             Ok(()) => {
-                Self::release_clean(&pool, &mut lease).await;
-                Ok(KeptCow {
-                    cow_file,
-                    bitmap_file,
-                })
+                Self::release_clean(pool, lease).await;
+                Ok(())
             }
             Err(mut last_err) => {
                 for _ in 1..attempts {
                     tokio::time::sleep(policy.delay).await;
-                    match device.destroy_keep_cow().await {
+                    match mode.run(device).await {
                         Ok(()) => {
-                            Self::release_clean(&pool, &mut lease).await;
-                            return Ok(KeptCow {
-                                cow_file,
-                                bitmap_file,
-                            });
+                            Self::release_clean(pool, lease).await;
+                            return Ok(());
                         }
                         Err(e) => last_err = e,
                     }
                 }
 
                 device.abandon();
-                Self::retire_uncertain(&pool, &mut lease).await;
+                Self::retire_uncertain(pool, lease).await;
                 Err(last_err)
             }
         }
@@ -991,6 +1000,99 @@ impl Drop for NbdCowDevice {
 mod tests {
     use super::*;
 
+    const TEST_DEVICE_INDEX: u32 = 1_000_000;
+
+    fn create_test_base_image(path: &Path) {
+        let file = std::fs::File::create(path).expect("create base image");
+        file.set_len(BLOCK_SIZE as u64).expect("size base image");
+    }
+
+    struct PooledDestroyHarness {
+        _tmp: tempfile::TempDir,
+        cow_file: PathBuf,
+        bitmap_file: PathBuf,
+        bitmap_tmp_path: PathBuf,
+        pool: pool::DevicePoolHandle,
+        device: PooledNbdCowDevice,
+    }
+
+    impl PooledDestroyHarness {
+        fn new() -> Self {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let base = tmp.path().join("base.img");
+            let cow_file = tmp.path().join("cow.img");
+            let bitmap_file = cow::bitmap_path_for(&cow_file);
+            let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
+            let lock_dir = tmp.path().join("locks");
+            std::fs::create_dir(&lock_dir).expect("create lock dir");
+            create_test_base_image(&base);
+            std::fs::write(&cow_file, b"cow").expect("write cow file");
+
+            let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+            let cow = cow::CowLayer::new(
+                &base,
+                &cow_file,
+                BLOCK_SIZE as u64,
+                BLOCK_SIZE,
+                DEFAULT_FLUSH_THRESHOLD,
+            )
+            .expect("create cow layer");
+            let device = PooledNbdCowDevice {
+                device: NbdCowDevice {
+                    device_index: TEST_DEVICE_INDEX,
+                    device_path: PathBuf::from(format!("/dev/nbd{TEST_DEVICE_INDEX}")),
+                    cow_file: cow_file.clone(),
+                    cow: Arc::new(RwLock::new(cow)),
+                    server_handles: Vec::new(),
+                    shutdown: CancellationToken::new(),
+                    disconnected: true,
+                    connect_tid: 0,
+                },
+                lease: LeaseGuard::new(
+                    pool::DeviceLease::new_for_test(TEST_DEVICE_INDEX, &lock_dir),
+                    pool.clone(),
+                ),
+                pool: pool.clone(),
+            };
+
+            Self {
+                _tmp: tmp,
+                cow_file,
+                bitmap_file,
+                bitmap_tmp_path,
+                pool,
+                device,
+            }
+        }
+
+        fn write_bitmap_sidecar(&self) {
+            std::fs::write(&self.bitmap_file, b"bitmap").expect("write bitmap file");
+        }
+
+        fn create_blocking_bitmap_tmp_dir(&self) {
+            std::fs::create_dir(&self.bitmap_tmp_path).expect("create bitmap tmp dir");
+        }
+
+        fn create_transient_bitmap_tmp_symlink(&self) {
+            std::os::unix::fs::symlink(
+                self.bitmap_file
+                    .parent()
+                    .expect("bitmap path parent")
+                    .join("missing-parent")
+                    .join("bitmap.tmp"),
+                &self.bitmap_tmp_path,
+            )
+            .expect("create broken bitmap tmp symlink");
+        }
+    }
+
+    fn zero_attempt_destroy_policy() -> DestroyRetryPolicy {
+        DestroyRetryPolicy {
+            attempts: 0,
+            delay: std::time::Duration::from_secs(60),
+        }
+    }
+
     #[tokio::test]
     async fn pooled_finalizer_starts_before_returned_future_is_polled() {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -1027,6 +1129,140 @@ mod tests {
             );
 
         let _ = finalizer.await;
+    }
+
+    #[tokio::test]
+    async fn destroy_with_retries_zero_attempts_runs_once_and_removes_files() {
+        let harness = PooledDestroyHarness::new();
+        harness.write_bitmap_sidecar();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = harness;
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before first attempt")
+        .expect("destroy");
+
+        assert!(!cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_zero_attempts_returns_preserved_paths() {
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = PooledDestroyHarness::new();
+
+        let kept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_keep_cow_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before first attempt")
+        .expect("destroy keep cow");
+
+        assert_eq!(kept.cow_file, cow_file);
+        assert_eq!(kept.bitmap_file, bitmap_file);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_zero_attempts_returns_first_error_without_retry_sleep() {
+        let harness = PooledDestroyHarness::new();
+        harness.create_blocking_bitmap_tmp_dir();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = harness;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_keep_cow_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before returning the first error");
+
+        assert!(result.is_err());
+        assert!(cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_exhausts_retries_and_returns_error() {
+        let harness = PooledDestroyHarness::new();
+        harness.create_blocking_bitmap_tmp_dir();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            bitmap_tmp_path,
+            pool,
+            device,
+        } = harness;
+
+        let result = device
+            .destroy_keep_cow_with_retries(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::ZERO,
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(cow_file.exists());
+        assert!(!bitmap_file.exists());
+        assert!(bitmap_tmp_path.is_dir());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_retries_after_first_error_and_returns_preserved_paths() {
+        let harness = PooledDestroyHarness::new();
+        harness.create_transient_bitmap_tmp_symlink();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            bitmap_tmp_path,
+            pool,
+            device,
+        } = harness;
+
+        let kept = device
+            .destroy_keep_cow_with_retries(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::ZERO,
+            })
+            .await
+            .expect("destroy keep cow should retry after tmp-file failure");
+
+        assert_eq!(kept.cow_file, cow_file);
+        assert_eq!(kept.bitmap_file, bitmap_file);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        assert!(!bitmap_tmp_path.exists());
+        pool.cleanup().await;
     }
 
     #[tokio::test]

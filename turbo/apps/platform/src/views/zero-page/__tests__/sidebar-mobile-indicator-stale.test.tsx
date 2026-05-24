@@ -47,7 +47,6 @@ interface ThreadFixture {
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
-  isArchived: boolean;
   running: boolean;
 }
 
@@ -91,7 +90,6 @@ function fixtures(): ThreadFixture[] {
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:02Z",
       isRead: false,
-      isArchived: false,
       running: true,
     },
     {
@@ -101,7 +99,6 @@ function fixtures(): ThreadFixture[] {
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:01Z",
       isRead: false,
-      isArchived: false,
       running: true,
     },
     {
@@ -111,7 +108,6 @@ function fixtures(): ThreadFixture[] {
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
-      isArchived: false,
       running: false,
     },
   ];
@@ -291,7 +287,6 @@ describe("mobile sidebar: indicator after navigating into a chat", () => {
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
         isRead: false,
-        isArchived: false,
         running: true,
       },
     ];
@@ -368,7 +363,6 @@ describe("mobile sidebar: indicator after navigating into a chat", () => {
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
         isRead: false,
-        isArchived: false,
         running: false,
       },
     ];

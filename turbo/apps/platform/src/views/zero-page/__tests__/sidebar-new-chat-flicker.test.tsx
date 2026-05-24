@@ -153,7 +153,6 @@ describe("sidebar new-chat flicker", () => {
         createdAt: "2026-05-05T00:00:00Z",
         updatedAt: "2026-05-05T00:00:00Z",
         isRead: true,
-        isArchived: false,
         running: false,
       },
     ];

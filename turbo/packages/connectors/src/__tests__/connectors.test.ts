@@ -41,9 +41,9 @@ import {
   refreshConnectorOAuthToken,
   revokeConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
-} from "../oauth-providers/provider-registry";
-import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
-import { buildGoogleAuthorizationUrl } from "../oauth-providers/providers/google-oauth";
+} from "../auth-providers/connector-auth";
+import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../auth-providers/oauth/google-connectors";
+import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
 
 const server = setupServer();
 

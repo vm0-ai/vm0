@@ -8,7 +8,7 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
-import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for connector test setup.

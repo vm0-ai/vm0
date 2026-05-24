@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.386.0](https://github.com/vm0-ai/vm0/compare/web-v12.385.2...web-v12.386.0) (2026-05-24)
+
+
+### Features
+
+* **models:** rename Reasoning filter tab to LLM ([#14677](https://github.com/vm0-ai/vm0/issues/14677)) ([2380950](https://github.com/vm0-ai/vm0/commit/2380950001f77230cc2c7c91d70b9ca2c2a4150c))
+* **web:** replace marketing model CTA with onboarding prompt deep-link ([#14678](https://github.com/vm0-ai/vm0/issues/14678)) ([8a4cbe3](https://github.com/vm0-ai/vm0/commit/8a4cbe3b13f267ea55f805ec0b97e03d65bc47b7))
+
+
+### Refactoring
+
+* migrate model-provider oauth to auth provider ([#14669](https://github.com/vm0-ai/vm0/issues/14669)) ([2631156](https://github.com/vm0-ai/vm0/commit/263115621a0094a118786fe65255ccc6467a49f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.5
+    * @vm0/connectors bumped to 1.31.2
+    * @vm0/core bumped to 8.292.2
+    * @vm0/db bumped to 1.18.6
+
 ## [12.385.2](https://github.com/vm0-ai/vm0/compare/web-v12.385.1...web-v12.385.2) (2026-05-24)
 
 

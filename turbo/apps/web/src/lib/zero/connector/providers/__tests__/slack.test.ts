@@ -9,7 +9,7 @@ import {
   fetchSlackUserInfo,
   revokeSlackToken,
   getSlackSecretName,
-} from "@vm0/connectors/oauth-providers/providers/slack";
+} from "@vm0/connectors/auth-providers/oauth/providers/slack";
 
 const context = testContext();
 

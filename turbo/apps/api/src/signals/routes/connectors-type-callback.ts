@@ -17,7 +17,7 @@ import {
   getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
   type OAuthTokenResult,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { eq } from "drizzle-orm";
 

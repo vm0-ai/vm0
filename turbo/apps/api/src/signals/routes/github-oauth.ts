@@ -6,11 +6,11 @@ import {
   isStaticConfidentialConnectorOAuthCredentials,
   type StaticConfidentialConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
-import { exchangeConnectorOAuthCode } from "@vm0/connectors/oauth-providers";
+import { exchangeConnectorOAuthCode } from "@vm0/connectors/auth-providers";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
-} from "@vm0/connectors/oauth-providers/providers/github";
+} from "@vm0/connectors/auth-providers/oauth/providers/github";
 
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";

@@ -2773,6 +2773,13 @@
       "when": 1779810000000,
       "tag": "0395_pale_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1779810000001,
+      "tag": "0396_jazzy_obadiah_stane",
+      "breakpoints": true
     }
   ]
 }

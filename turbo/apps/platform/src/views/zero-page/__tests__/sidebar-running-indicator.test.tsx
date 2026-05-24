@@ -38,7 +38,6 @@ interface ThreadFixture {
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
-  isArchived: boolean;
   running: boolean;
 }
 
@@ -84,7 +83,6 @@ describe("sidebar running indicator", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: true,
-          isArchived: false,
           running: true,
         },
       ],
@@ -112,7 +110,6 @@ describe("sidebar running indicator", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
-          isArchived: false,
           running: true,
         },
       ],
@@ -142,7 +139,6 @@ describe("sidebar running indicator", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
-          isArchived: false,
           running: false,
         },
       ],
@@ -172,7 +168,6 @@ describe("sidebar running indicator", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
-          isArchived: false,
           running: true,
         },
       ],
@@ -202,7 +197,6 @@ describe("sidebar running indicator", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: true,
-          isArchived: false,
           running: false,
         },
       ],

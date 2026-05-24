@@ -13,15 +13,15 @@ import {
   isOAuthConnectorType,
   refreshConnectorOAuthToken,
   type ProviderEnv,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import {
   getModelProviderOAuthSecretMetadata,
   isModelProviderOAuthRefreshConfigured,
   refreshModelProviderOAuthToken,
   isModelProviderOAuthProviderKey,
   type ModelProviderOAuthProviderKey,
-} from "@vm0/connectors/oauth-providers/model-provider-registry";
-import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
+} from "@vm0/connectors/auth-providers/model-provider-auth";
+import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";

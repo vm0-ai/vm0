@@ -64,7 +64,6 @@ describe("sidebar new-chat keyboard navigation", () => {
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",
               isRead: true,
-              isArchived: false,
               running: false,
             },
           ],

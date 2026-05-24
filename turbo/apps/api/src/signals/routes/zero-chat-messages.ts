@@ -53,7 +53,10 @@ import {
   isChatTitleGenerationConfigured,
 } from "../services/zero-chat-title.service";
 import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
-import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
+import {
+  touchChatThreadLastMessageAt,
+  visibleChatMessageCondition,
+} from "../services/zero-chat-thread.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
 
@@ -1203,6 +1206,7 @@ function appendUnassociatedUserMessage(params: {
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
+      await touchChatThreadLastMessageAt(tx, params.threadId);
       return inserted;
     }
     if (!explicitId) {
@@ -1264,6 +1268,7 @@ async function appendAssociatedUserMessage(params: {
           attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
       })
       .onConflictDoNothing({ target: chatMessages.id });
+    await touchChatThreadLastMessageAt(tx, params.threadId);
   });
 }
 
@@ -1332,6 +1337,7 @@ function appendRecallUserMessage(params: {
       .onConflictDoNothing()
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
+      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
@@ -1420,6 +1426,7 @@ function appendInterruptUserMessage(params: {
       .onConflictDoNothing()
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
+      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx

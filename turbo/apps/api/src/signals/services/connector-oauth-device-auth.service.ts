@@ -20,11 +20,11 @@ import {
   isOAuthConnectorType,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import type {
   OAuthDeviceAuthCompleteResult,
   OAuthDeviceAuthPollResult,
-} from "@vm0/connectors/oauth-providers/provider-types";
+} from "@vm0/connectors/auth-providers/oauth/types";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";

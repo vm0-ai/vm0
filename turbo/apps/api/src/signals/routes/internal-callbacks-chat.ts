@@ -46,6 +46,7 @@ import {
   formatChatRunErrorMessage,
   insertAssistantEventMessages$,
   resolveAttachFileUrls,
+  touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "../services/zero-chat-thread.service";
 import { sendUserPushNotifications } from "../services/zero-push-notifications.service";
@@ -383,6 +384,7 @@ async function insertAssistantErrorMessage(args: {
     runId: args.runId,
     error: displayErrorMessage,
   });
+  await touchChatThreadLastMessageAt(args.db, args.threadId);
 
   await publishUserSignal(
     [args.userId],
@@ -762,7 +764,6 @@ async function nextQueuedUserMessage(
       and(
         eq(chatMessages.chatThreadId, threadId),
         eq(chatMessages.role, "user"),
-        isNull(chatMessages.archivedAt),
         isNull(chatMessages.runId),
         isNull(chatMessages.revokesMessageId),
         isNull(chatMessages.interruptsRunId),
@@ -1013,6 +1014,8 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     });
     return;
   }
+
+  await touchChatThreadLastMessageAt(args.db, threadId);
 
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);

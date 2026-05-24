@@ -27,7 +27,6 @@ function makeThread(
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
-  isArchived: boolean;
   running: boolean;
 } {
   return {
@@ -37,7 +36,6 @@ function makeThread(
     createdAt,
     updatedAt: createdAt,
     isRead: false,
-    isArchived: false,
     running: false,
   };
 }
@@ -68,7 +66,6 @@ function mockAPIs() {
           createdAt: now,
           updatedAt: now,
           isRead: true,
-          isArchived: false,
           running: false,
         },
         ...threads,

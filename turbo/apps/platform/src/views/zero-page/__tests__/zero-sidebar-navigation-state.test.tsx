@@ -42,7 +42,6 @@ function makeThread(
   createdAt: string;
   updatedAt: string;
   isRead: boolean;
-  isArchived: boolean;
   running: boolean;
 } {
   return {
@@ -52,7 +51,6 @@ function makeThread(
     createdAt,
     updatedAt: createdAt,
     isRead: false,
-    isArchived: false,
     running: false,
   };
 }
@@ -89,7 +87,6 @@ function mockBaseAPIs(options?: {
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
-    isArchived: boolean;
     running: boolean;
   }[];
   agents?: {
