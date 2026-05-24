@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.10](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.9...vsock-guest-v0.18.10) (2026-05-24)
+
+
+### Refactoring
+
+* rely on env script guard drop cleanup ([#14602](https://github.com/vm0-ai/vm0/issues/14602)) ([daf52da](https://github.com/vm0-ai/vm0/commit/daf52da3e9dfdd09e8fa0a3464895510097932af))
+
 ## [0.18.9](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.8...vsock-guest-v0.18.9) (2026-05-22)
 
 
