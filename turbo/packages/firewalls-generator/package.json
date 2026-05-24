@@ -183,6 +183,7 @@
     "generate:supermemory": "tsx src/index.ts supermemory",
     "generate:tavily": "tsx src/index.ts tavily",
     "generate:test-oauth": "tsx src/index.ts test-oauth",
+    "generate:ticketmaster": "tsx src/index.ts ticketmaster",
     "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
     "generate:twenty": "tsx src/index.ts twenty",

@@ -204,6 +204,7 @@ import { tavily } from "./connectors/tavily";
 import { testOauth } from "./connectors/test-oauth";
 import { testOauthDevice } from "./connectors/test-oauth-device";
 import { testrail } from "./connectors/testrail";
+import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
 import { twenty } from "./connectors/twenty";
@@ -763,6 +764,7 @@ const CONNECTOR_TYPES_DEF = {
   ...testOauth,
   ...testOauthDevice,
   ...testrail,
+  ...ticketmaster,
   ...tldv,
   ...together,
   ...twenty,

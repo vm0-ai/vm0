@@ -223,6 +223,7 @@ import { supadataFirewall } from "./supadata.generated";
 import { supermemoryFirewall } from "./supermemory.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
+import { ticketmasterFirewall } from "./ticketmaster.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
@@ -445,6 +446,7 @@ const CONNECTOR_FIREWALLS = {
   supermemory: supermemoryFirewall,
   tavily: tavilyFirewall,
   "test-oauth": testOauthFirewall,
+  ticketmaster: ticketmasterFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   together: togetherFirewall,
