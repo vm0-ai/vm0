@@ -245,8 +245,8 @@ describe("zero sidebar - billing button opens billing dialog (SIDEBAR-D-024)", (
   });
 });
 
-describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)", () => {
-  it("navigates to /settings when Preferences is clicked in account dropdown", async () => {
+describe("zero sidebar - settings button opens settings dialog (SIDEBAR-D-025)", () => {
+  it("opens the settings dialog when Settings is clicked in account dropdown", async () => {
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
@@ -257,14 +257,14 @@ describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)",
     // Open account dropdown
     click(screen.getByText("Test User"));
 
-    // Click Preferences
-    const preferencesItem = await waitFor(() => {
-      return screen.getByText("Preferences");
+    // Click Settings
+    const settingsItem = await waitFor(() => {
+      return screen.getByText("Settings");
     });
-    click(preferencesItem);
+    click(settingsItem);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/settings");
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
   });
 });

@@ -21,6 +21,8 @@ import {
   zeroOrgDeleteContract,
 } from "@vm0/api-contracts/contracts/zero-org";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =
@@ -70,7 +72,9 @@ function stubImageDimensions(width: number, height: number): void {
 }
 
 async function openGeneralTab() {
-  detachedSetupPage({ context, path: "/?settings=general" });
+  detachedSetupPage({ context, path: "/" });
+  context.store.set(setActiveOrgManageTab$, "general");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
