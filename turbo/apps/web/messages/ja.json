@@ -3873,7 +3873,7 @@
     "heroDescription": "エージェントが利用できるすべてのモデル。各モデルの得意分野と選択のタイミング。",
     "filterAriaLabel": "モデルを絞り込む",
     "filterAll": "すべて",
-    "filterReasoning": "推論",
+    "filterReasoning": "LLM",
     "filterImage": "画像",
     "filterVideo": "動画",
     "readMoreAbout": "{name}の詳細を見る",

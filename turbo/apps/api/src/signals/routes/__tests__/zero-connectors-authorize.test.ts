@@ -9,7 +9,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -624,6 +624,60 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       `Basic ${Buffer.from("test-client-id:test-client-secret").toString("base64")}`,
     );
     expect(revokeBody).toContain('"access_token":"gh-access-token"');
+  });
+
+  it("skips provider revoke for OAuth connectors without revoke support", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    const db = store.set(writeDb$);
+    const [connector] = await db
+      .insert(connectors)
+      .values({ orgId, userId, type: "notion", authMethod: "oauth" })
+      .returning({ id: connectors.id });
+    expect(connector).toBeDefined();
+    await db.insert(secrets).values({
+      orgId,
+      userId,
+      name: "NOTION_ACCESS_TOKEN",
+      type: "connector",
+      encryptedValue: "invalid-encrypted-token",
+    });
+
+    let revokeCalled = false;
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/revoke", () => {
+        revokeCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    mocks.clerk.session(userId, orgId);
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("notion"), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+
+    expect(response.status).toBe(307);
+    expect(revokeCalled).toBeFalsy();
+    const survivors = await db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.id, connector!.id));
+    expect(survivors).toHaveLength(0);
+    const secretSurvivors = await db
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, "NOTION_ACCESS_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+    expect(secretSurvivors).toHaveLength(0);
   });
 });
 

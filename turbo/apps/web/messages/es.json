@@ -3873,7 +3873,7 @@
     "heroDescription": "Cada modelo disponible para tus agentes. En qué destaca y cuándo elegirlo.",
     "filterAriaLabel": "Filtrar modelos",
     "filterAll": "Todos",
-    "filterReasoning": "Reasoning",
+    "filterReasoning": "LLM",
     "filterImage": "Imagen",
     "filterVideo": "Vídeo",
     "readMoreAbout": "Más sobre {name}",
