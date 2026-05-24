@@ -143,6 +143,7 @@ const CONNECTOR_ICON_COLORFUL = {
   mailsac: true,
   manus: true,
   mem0: true,
+  meshy: true,
   "meta-ads": true,
   minimax: true,
   minio: true,
