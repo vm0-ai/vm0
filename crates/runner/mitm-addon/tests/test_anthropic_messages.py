@@ -106,6 +106,17 @@ class TestAnthropicSseUsageExtractor:
         assert usage["model"] == "claude-sonnet-4-6"
         assert usage["tokens.input"] == 58
 
+    def test_accepts_data_level_type_for_message_delta_without_event_line(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":40,"output_tokens":1}}}\n\n'
+        )
+        parse(b'data: {"type":"message_delta","usage":{"output_tokens":250}}\n\n')
+        assert usage["tokens.input"] == 40
+        assert usage["tokens.output"] == 250
+
     def test_empty_chunks(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()
         parse(b"")
