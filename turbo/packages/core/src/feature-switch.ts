@@ -399,6 +399,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentsPageSplitSections]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Split the Agents page into separate Public and Private sections, each with its own heading and Create agent button. The Public section also shows a remaining-slot counter with a workspace cap tooltip and disables creation once the cap is reached. Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

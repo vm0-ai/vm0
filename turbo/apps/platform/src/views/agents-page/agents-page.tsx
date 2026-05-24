@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -32,12 +33,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
   sortedAgents$,
 } from "../../signals/agent.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -61,6 +64,8 @@ import {
 import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
 import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
 
+const MAX_PUBLIC_AGENTS = 7;
+
 export function AgentsPage() {
   const dialogOpen = useGet(jobsDialogOpen$);
   const setDialogOpen = useSet(setJobsDialogOpen$);
@@ -75,6 +80,9 @@ export function AgentsPage() {
   const viewMode = useGet(jobsViewMode$);
   const setViewMode = useSet(setJobsViewMode$);
   const defaultAgentName = useLastResolved(defaultAgentName$);
+  const features = useLastResolved(featureSwitch$);
+  const splitSections =
+    features?.[FeatureSwitchKey.AgentsPageSplitSections] ?? false;
 
   const agentsLoadable = useLoadable(sortedAgents$);
   const publicAgentCount =
@@ -83,7 +91,13 @@ export function AgentsPage() {
           return agent.visibility !== "private";
         }).length
       : 0;
-  const atPublicLimit = publicAgentCount >= 7;
+  const atPublicLimit = publicAgentCount >= MAX_PUBLIC_AGENTS;
+  const publicRemaining = Math.max(0, MAX_PUBLIC_AGENTS - publicAgentCount);
+
+  const openCreateDialog = (target: "public" | "private") => {
+    setVisibility(target);
+    setDialogOpen(true);
+  };
 
   const handleCreateTeammate = onDomEventFn(async (avatarUrl: string) => {
     const trimmed = newName.trim();
@@ -110,18 +124,19 @@ export function AgentsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-              onClick={() => {
-                setVisibility("private");
-                return setDialogOpen(true);
-              }}
-            >
-              <IconPlus size={14} stroke={2} />
-              New agent
-            </Button>
+            {!splitSections && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                onClick={() => {
+                  return openCreateDialog("private");
+                }}
+              >
+                <IconPlus size={14} stroke={2} />
+                New agent
+              </Button>
+            )}
 
             <Tabs
               value={viewMode}
@@ -153,7 +168,18 @@ export function AgentsPage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          {viewMode === "grid" ? <AgentGridView /> : <AgentListView />}
+          {splitSections ? (
+            <AgentSplitView
+              viewMode={viewMode}
+              atPublicLimit={atPublicLimit}
+              publicRemaining={publicRemaining}
+              onCreate={openCreateDialog}
+            />
+          ) : viewMode === "grid" ? (
+            <AgentGridView />
+          ) : (
+            <AgentListView />
+          )}
         </div>
       </main>
 
@@ -336,6 +362,207 @@ function AgentListView() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function AgentSplitView({
+  viewMode,
+  atPublicLimit,
+  publicRemaining,
+  onCreate,
+}: {
+  viewMode: "grid" | "list";
+  atPublicLimit: boolean;
+  publicRemaining: number;
+  onCreate: (visibility: "public" | "private") => void;
+}) {
+  const agentsLoadable = useLoadable(sortedAgents$);
+  const loading = agentsLoadable.state === "loading";
+  const agents =
+    agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
+  const skeleton = loading && !agents;
+
+  const publicAgents =
+    agents?.filter((a) => {
+      return a.visibility !== "private";
+    }) ?? [];
+  const privateAgents =
+    agents?.filter((a) => {
+      return a.visibility === "private";
+    }) ?? [];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <AgentSplitSection
+        title="Public"
+        agents={publicAgents}
+        viewMode={viewMode}
+        skeleton={skeleton}
+        headerAction={
+          <div className="flex items-center gap-3">
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs text-muted-foreground cursor-default">
+                    {publicRemaining} remains
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">
+                    max {MAX_PUBLIC_AGENTS} public agent for workspace
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-8 gap-2 rounded-lg border"
+              disabled={atPublicLimit}
+              onClick={() => {
+                return onCreate("public");
+              }}
+            >
+              <IconPlus size={14} stroke={2} />
+              Create agent
+            </Button>
+          </div>
+        }
+      />
+      <AgentSplitSection
+        title="Private"
+        agents={privateAgents}
+        viewMode={viewMode}
+        skeleton={skeleton}
+        headerAction={
+          <Button
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-8 gap-2 rounded-lg border"
+            onClick={() => {
+              return onCreate("private");
+            }}
+          >
+            <IconPlus size={14} stroke={2} />
+            Create agent
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+function AgentSplitSection({
+  title,
+  agents,
+  viewMode,
+  skeleton,
+  headerAction,
+}: {
+  title: string;
+  agents: AgentProps["agent"][];
+  viewMode: "grid" | "list";
+  skeleton: boolean;
+  headerAction: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <header className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        {headerAction}
+      </header>
+      {skeleton ? (
+        <AgentSplitSkeleton viewMode={viewMode} />
+      ) : agents.length > 0 ? (
+        <AgentSplitBody agents={agents} viewMode={viewMode} />
+      ) : null}
+    </section>
+  );
+}
+
+function AgentSplitBody({
+  agents,
+  viewMode,
+}: {
+  agents: AgentProps["agent"][];
+  viewMode: "grid" | "list";
+}) {
+  if (viewMode === "grid") {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {agents.map((agent) => {
+          return (
+            <Link
+              key={agent.id}
+              pathname="/agents/:agentId"
+              options={{ pathParams: { agentId: agent.id } }}
+              className="block no-underline text-inherit"
+            >
+              <AgentCard agent={agent} />
+            </Link>
+          );
+        })}
+      </div>
+    );
+  }
+  return (
+    <div className="zero-card overflow-hidden">
+      {agents.map((agent, idx) => {
+        return (
+          <Link
+            key={agent.id}
+            pathname="/agents/:agentId"
+            options={{ pathParams: { agentId: agent.id } }}
+            className="block no-underline text-inherit"
+          >
+            <AgentListRow agent={agent} isLast={idx === agents.length - 1} />
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function AgentSplitSkeleton({ viewMode }: { viewMode: "grid" | "list" }) {
+  if (viewMode === "grid") {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {[1, 2, 3].map((i) => {
+          return (
+            <Card key={i} className="zero-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 animate-pulse">
+                  <div className="h-10 w-10 rounded-full bg-muted" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="h-4 w-24 rounded bg-muted" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  }
+  return (
+    <div className="zero-card overflow-hidden">
+      {[1, 2, 3].map((i, _, arr) => {
+        return (
+          <div key={i}>
+            <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
+              <div className="h-10 w-10 rounded-full bg-muted" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-24 rounded bg-muted" />
+                <div className="h-3 w-40 rounded bg-muted" />
+              </div>
+            </div>
+            {i < arr.length && (
+              <div className="mx-5 border-b border-border/50" />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
