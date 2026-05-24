@@ -67,6 +67,7 @@ const CONNECTOR_ICON_COLORFUL = {
   ahrefs: true,
   agora: true,
   airtable: true,
+  alchemy: true,
   amplitude: true,
   anthropic: true,
   apify: true,
