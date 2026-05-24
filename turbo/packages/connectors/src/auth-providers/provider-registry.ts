@@ -34,10 +34,6 @@ export type ConnectorAuthSecretMetadata =
       readonly isRefreshable: true;
     };
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled connector auth provider capability: ${value}`);
-}
-
 export function getConnectorAuthSecretMetadata<T extends ConnectorType>(
   provider: ConnectorAuthProvider<T>,
 ): ConnectorAuthSecretMetadata {
@@ -57,8 +53,6 @@ export function getConnectorAuthSecretMetadata<T extends ConnectorType>(
         isRefreshable: true,
       };
   }
-
-  assertNever(access);
 }
 
 export async function buildAuthCodeGrantAuthUrl<
@@ -77,8 +71,6 @@ export async function buildAuthCodeGrantAuthUrl<
     case "auth-code":
       return await grant.buildAuthUrl(args.authorizeArgs);
   }
-
-  assertNever(grant);
 }
 
 export async function exchangeAuthCodeGrant<
@@ -97,8 +89,6 @@ export async function exchangeAuthCodeGrant<
     case "auth-code":
       return await grant.exchangeCode(args.exchangeArgs);
   }
-
-  assertNever(grant);
 }
 
 export async function startDeviceAuthGrant<
@@ -117,8 +107,6 @@ export async function startDeviceAuthGrant<
     case "device-auth":
       return await grant.startDeviceAuth(args.startArgs);
   }
-
-  assertNever(grant);
 }
 
 export async function pollDeviceAuthGrant<
@@ -137,8 +125,6 @@ export async function pollDeviceAuthGrant<
     case "device-auth":
       return await grant.pollDeviceAuth(args.pollArgs);
   }
-
-  assertNever(grant);
 }
 
 export async function refreshTokenAccess<T extends OAuthConnectorType>(args: {
@@ -155,6 +141,4 @@ export async function refreshTokenAccess<T extends OAuthConnectorType>(args: {
     case "refresh-token":
       return await access.refreshToken(args.refreshArgs);
   }
-
-  assertNever(access);
 }
