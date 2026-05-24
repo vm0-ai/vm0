@@ -96,7 +96,7 @@ beforeEach(() => {
 });
 
 async function openProvidersPage(): Promise<void> {
-  detachedSetupPage({ context });
+  detachedSetupPage({ context, path: "/" });
   context.store.set(setActiveOrgManageTab$, "providers");
   await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
