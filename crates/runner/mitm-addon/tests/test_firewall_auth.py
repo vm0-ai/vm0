@@ -34,6 +34,11 @@ def _http_error(url: str, status: int, reason: str, body: bytes) -> urllib.error
     return urllib.error.HTTPError(url, status, reason, Message(), io.BytesIO(body))
 
 
+class _UnreadableHttpErrorBody(io.BytesIO):
+    def read(self, size: int = -1) -> bytes:
+        raise OSError("body read failed")
+
+
 class TestGetFirewallHeaders:
     async def test_cache_miss_fetches_and_caches(self, headers):
         mock_headers = {"Authorization": "Bearer fresh-token"}
@@ -1145,6 +1150,27 @@ class TestFetchFirewallHeaders:
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         assert exc_info.value is http_error
+
+    def test_http_error_body_read_failure_reraises_http_error(self):
+        http_error = urllib.error.HTTPError(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            Message(),
+            _UnreadableHttpErrorBody(),
+        )
+        http_error.close = MagicMock()
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value is http_error
+        http_error.close.assert_called_once()
 
     @pytest.mark.parametrize(
         ("code", "status", "reason", "exception_type", "default_message"),
