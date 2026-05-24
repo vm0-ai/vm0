@@ -1119,6 +1119,7 @@ class TestFetchFirewallHeaders:
     @pytest.mark.parametrize(
         "error_body",
         [
+            b"not-json",
             b'"plain string"',
             b"[1, 2, 3]",
             b"{}",
