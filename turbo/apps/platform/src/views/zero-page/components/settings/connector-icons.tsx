@@ -84,6 +84,7 @@ const CONNECTOR_ICON_COLORFUL = {
   chatglm: true,
   chatwoot: true,
   "claude-code": true,
+  clearbit: true,
   clickup: true,
   close: true,
   cloudflare: true,
