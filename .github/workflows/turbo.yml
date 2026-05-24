@@ -497,28 +497,7 @@ jobs:
       - name: Print bench summary
         if: success() || failure()
         working-directory: turbo/apps/api
-        run: |
-          if [ ! -f bench-results.json ]; then
-            echo "::warning::bench-results.json not found"
-            exit 0
-          fi
-          node -e '
-            const r = require("./bench-results.json");
-            for (const f of r.files) {
-              for (const g of f.groups) {
-                console.log(`\n${g.fullName}`);
-                for (const b of g.benchmarks) {
-                  if (typeof b.mean !== "number") {
-                    console.log(`  ${b.name}: no samples`);
-                    continue;
-                  }
-                  console.log(
-                    `  ${b.name}: hz=${b.hz.toFixed(2)} ops/s  mean=${b.mean.toFixed(2)}ms  p99=${b.p99.toFixed(2)}ms  rme=±${b.rme.toFixed(2)}%`
-                  );
-                }
-              }
-            }
-          '
+        run: node scripts/print-bench-summary.mjs bench-results.json
       - name: Upload bench results
         if: success() || failure()
         uses: actions/upload-artifact@v4
