@@ -164,6 +164,7 @@ import { plain } from "./connectors/plain";
 import { plausible } from "./connectors/plausible";
 import { podchaser } from "./connectors/podchaser";
 import { posthog } from "./connectors/posthog";
+import { printful } from "./connectors/printful";
 import { prismaPostgres } from "./connectors/prisma-postgres";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
@@ -723,6 +724,7 @@ const CONNECTOR_TYPES_DEF = {
   ...plausible,
   ...podchaser,
   ...posthog,
+  ...printful,
   ...prismaPostgres,
   ...productlane,
   ...pushinator,
