@@ -85,9 +85,6 @@ export type OAuthExchangeArgs = OAuthExchangeFlowArgs &
 export type OAuthRefreshArgs = OAuthRefreshFlowArgs &
   OptionalClientCredentialArgs;
 
-export type OAuthRevokeArgs = OAuthRevokeFlowArgs &
-  OptionalClientCredentialArgs;
-
 export type OAuthDeviceAuthStartArgs = OAuthDeviceAuthStartFlowArgs &
   OptionalClientCredentialArgs;
 
@@ -149,28 +146,6 @@ export type OAuthDeviceAuthPollResult =
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
-export type BuildAuthUrlFn = (
-  args: OAuthAuthorizeArgs,
-) => string | AuthUrlResult | Promise<string | AuthUrlResult>;
-
-export type ExchangeCodeFn = (
-  args: OAuthExchangeArgs,
-) => Promise<OAuthTokenResult>;
-
-export type RefreshTokenFn = (
-  args: OAuthRefreshArgs,
-) => Promise<OAuthRefreshResult>;
-
-export type RevokeTokenFn = (args: OAuthRevokeArgs) => Promise<void>;
-
-export type StartDeviceAuthFn = (
-  args: OAuthDeviceAuthStartArgs,
-) => Promise<OAuthDeviceAuthStartResult>;
-
-export type PollDeviceAuthFn = (
-  args: OAuthDeviceAuthPollArgs,
-) => Promise<OAuthDeviceAuthPollResult>;
-
 type ConnectorOAuthClientFor<T extends OAuthConnectorType> =
   (typeof CONNECTOR_TYPES)[T]["oauth"]["client"];
 
@@ -215,45 +190,3 @@ export type ConnectorOAuthDeviceAuthPollArgs<
   T extends OAuthDeviceAuthConnectorType,
 > = OAuthDeviceAuthPollFlowArgs &
   TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
-
-export interface OAuthProviderMetadata {
-  getSecretName(): string;
-}
-
-export interface OAuthProvider extends OAuthProviderMetadata {
-  getClientId(currentEnv: ProviderEnv): string | undefined;
-  getClientSecret(currentEnv: ProviderEnv): string | undefined;
-}
-
-export type OAuthAuthCodeProvider = OAuthProvider & {
-  buildAuthUrl: BuildAuthUrlFn;
-  exchangeCode: ExchangeCodeFn;
-};
-
-export type OAuthDeviceAuthProvider = OAuthProvider & {
-  startDeviceAuth: StartDeviceAuthFn;
-  pollDeviceAuth: PollDeviceAuthFn;
-};
-
-export type OAuthRefreshProvider = OAuthProvider & {
-  getRefreshSecretName(): string;
-  refreshToken: RefreshTokenFn;
-};
-
-export type OAuthRevocationProvider = OAuthProvider & {
-  revokeToken: RevokeTokenFn;
-};
-
-export function isOAuthRefreshProvider(
-  provider: OAuthProviderMetadata,
-): provider is OAuthProviderMetadata & {
-  getRefreshSecretName(): string;
-  refreshToken: RefreshTokenFn;
-} {
-  return (
-    "getRefreshSecretName" in provider &&
-    typeof provider.getRefreshSecretName === "function" &&
-    "refreshToken" in provider &&
-    typeof provider.refreshToken === "function"
-  );
-}

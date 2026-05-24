@@ -5,9 +5,8 @@ import { type ModelProviderType } from "@vm0/api-contracts/contracts/model-provi
  *
  * The model-provider type and OAuth provider key are intentionally distinct:
  * the model-provider type names the user-facing provider (e.g., the row in
- * `model_providers.type`), while the OAuth provider key names the OAuth
- * implementation in `MODEL_PROVIDER_OAUTH_PROVIDERS` that knows how to refresh
- * its tokens.
+ * `model_providers.type`), while the OAuth provider key names the registered
+ * model-provider OAuth implementation that knows how to refresh its tokens.
  *
  * Add an entry when a new model-provider OAuth type ships its provider.
  *

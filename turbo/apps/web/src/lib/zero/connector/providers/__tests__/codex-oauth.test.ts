@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { getModelProviderOAuthProvider } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   refreshChatgptToken,
   getChatgptSecretName,
@@ -17,6 +17,14 @@ const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 
 const context = testContext();
+
+function getCodexRefreshAccess() {
+  const access = codexOauthProvider.access;
+  if (access.kind !== "refresh-token") {
+    throw new Error("codexOauthProvider must expose refresh-token access");
+  }
+  return access;
+}
 
 describe("connector/providers/codex-oauth", () => {
   beforeEach(() => {
@@ -166,27 +174,28 @@ describe("connector/providers/codex-oauth", () => {
   });
 
   describe("codexOauthProvider", () => {
-    it("is registered as a model-provider refresh provider", () => {
-      expect(getModelProviderOAuthProvider("codex-oauth-token")).toBe(
-        codexOauthProvider,
-      );
+    it("is registered with model-provider refresh metadata", () => {
+      expect(
+        getModelProviderOAuthSecretMetadata("codex-oauth-token"),
+      ).toStrictEqual({
+        accessSecretName: "CHATGPT_ACCESS_TOKEN",
+        refreshSecretName: "CHATGPT_REFRESH_TOKEN",
+        isRefreshable: true,
+      });
     });
 
     it("does not expose browser authorize or code exchange helpers", () => {
-      expect("buildAuthUrl" in codexOauthProvider).toBe(false);
-      expect("exchangeCode" in codexOauthProvider).toBe(false);
+      expect(codexOauthProvider.grant.kind).toBe("none");
     });
 
     it("getClientId returns the Codex public client_id (used by refresh)", () => {
-      const env = {} as Parameters<typeof codexOauthProvider.getClientId>[0];
-      expect(codexOauthProvider.getClientId(env)).toBe(CODEX_PUBLIC_CLIENT_ID);
+      expect(getCodexRefreshAccess().getClientId({})).toBe(
+        CODEX_PUBLIC_CLIENT_ID,
+      );
     });
 
     it("getClientSecret returns undefined (PKCE-only)", () => {
-      const env = {} as Parameters<
-        typeof codexOauthProvider.getClientSecret
-      >[0];
-      expect(codexOauthProvider.getClientSecret(env)).toBeUndefined();
+      expect(getCodexRefreshAccess().getClientSecret({})).toBeUndefined();
     });
 
     it("returns documented secret names", () => {

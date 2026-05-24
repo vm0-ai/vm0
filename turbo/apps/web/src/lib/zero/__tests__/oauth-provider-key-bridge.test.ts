@@ -1,9 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  MODEL_PROVIDER_OAUTH_PROVIDERS,
-  getModelProviderOAuthProvider,
+  MODEL_PROVIDER_OAUTH_PROVIDER_KEYS,
+  getModelProviderOAuthSecretMetadata,
 } from "@vm0/connectors/oauth-providers/model-provider-registry";
-import { isOAuthRefreshProvider } from "@vm0/connectors/oauth-providers";
 import {
   OAUTH_PROVIDER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_OAUTH_PROVIDER_KEY,
@@ -54,14 +53,13 @@ describe("provider-key bridge tables stay in sync", () => {
     for (const providerKey of Object.values(
       MODEL_PROVIDER_OAUTH_PROVIDER_KEY,
     )) {
-      const provider = getModelProviderOAuthProvider(providerKey!);
-      expect(provider).toBeDefined();
-      expect(provider && isOAuthRefreshProvider(provider)).toBe(true);
+      const metadata = getModelProviderOAuthSecretMetadata(providerKey!);
+      expect(metadata?.isRefreshable).toBe(true);
     }
   });
 
   it("every registered model-provider OAuth provider is bridged", () => {
-    for (const providerKey of Object.keys(MODEL_PROVIDER_OAUTH_PROVIDERS)) {
+    for (const providerKey of MODEL_PROVIDER_OAUTH_PROVIDER_KEYS) {
       expect(OAUTH_PROVIDER_KEY_SOURCE_TYPE[providerKey]).toBe(
         "model-provider",
       );

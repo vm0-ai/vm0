@@ -16,6 +16,7 @@ import type {
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
   OAuthTokenResult,
+  ProviderEnv,
 } from "../oauth-providers/provider-types";
 
 interface NoneGrantProvider {
@@ -114,4 +115,35 @@ export type ConnectorAuthProvider<T extends ConnectorType> = AuthProvider<
   ConnectorGrantProvider<T>,
   ConnectorAccessProvider<T>,
   ConnectorRevokeProvider<T>
+>;
+
+export type ModelProviderGrantProvider = NoneGrantProvider;
+
+interface ModelProviderOAuthRefreshArgs {
+  readonly clientId?: string;
+  readonly clientSecret?: string;
+  readonly refreshToken: string;
+}
+
+interface ModelProviderRefreshTokenAccessProvider {
+  readonly kind: "refresh-token";
+  getAccessSecretName(): string;
+  getRefreshSecretName(): string;
+  getClientId(currentEnv: ProviderEnv): string | undefined;
+  getClientSecret(currentEnv: ProviderEnv): string | undefined;
+  refreshToken(
+    args: ModelProviderOAuthRefreshArgs,
+  ): Promise<OAuthRefreshResult>;
+}
+
+export type ModelProviderAccessProvider =
+  | NoneAccessProvider
+  | ModelProviderRefreshTokenAccessProvider;
+
+export type ModelProviderRevokeProvider = NoneRevokeProvider;
+
+export type ModelProviderAuthProvider = AuthProvider<
+  ModelProviderGrantProvider,
+  ModelProviderAccessProvider,
+  ModelProviderRevokeProvider
 >;

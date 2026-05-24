@@ -1,4 +1,4 @@
-import { type OAuthRefreshProvider } from "../provider-types";
+import { type ModelProviderAuthProvider } from "../../auth-providers/provider-types";
 import {
   CHATGPT_OAUTH_CLIENT_ID,
   getChatgptRefreshSecretName,
@@ -12,20 +12,29 @@ import {
  * Browser OAuth setup is not supported. Users connect by pasting auth.json;
  * this provider only keeps the derived ChatGPT access token fresh server-side.
  */
-export const codexOauthProvider: OAuthRefreshProvider = {
-  refreshToken: (args) => {
-    return refreshChatgptToken(
-      args.clientId ?? CHATGPT_OAUTH_CLIENT_ID,
-      args.clientSecret ?? "",
-      args.refreshToken,
-    );
+export const codexOauthProvider: ModelProviderAuthProvider = {
+  grant: {
+    kind: "none",
   },
-  getClientId: () => {
-    return CHATGPT_OAUTH_CLIENT_ID;
+  access: {
+    kind: "refresh-token",
+    getAccessSecretName: getChatgptSecretName,
+    getRefreshSecretName: getChatgptRefreshSecretName,
+    getClientId: () => {
+      return CHATGPT_OAUTH_CLIENT_ID;
+    },
+    getClientSecret: () => {
+      return undefined;
+    },
+    refreshToken: (args) => {
+      return refreshChatgptToken(
+        args.clientId ?? CHATGPT_OAUTH_CLIENT_ID,
+        args.clientSecret ?? "",
+        args.refreshToken,
+      );
+    },
   },
-  getClientSecret: () => {
-    return undefined;
+  revoke: {
+    kind: "none",
   },
-  getSecretName: getChatgptSecretName,
-  getRefreshSecretName: getChatgptRefreshSecretName,
 };

@@ -37,7 +37,6 @@ import {
   type OAuthRefreshArgs,
   type OAuthRefreshResult,
   providerEnvFromObject,
-  isOAuthRefreshProvider,
   type OAuthTokenResult,
   type ProviderEnv,
 } from "./provider-types";
@@ -102,7 +101,7 @@ export type {
   OAuthTokenResult,
 };
 export type { ProviderEnv };
-export { providerEnvFromObject, isOAuthRefreshProvider };
+export { providerEnvFromObject };
 
 type AuthCodeConnectorOAuthProviderMap = {
   readonly [Type in OAuthAuthCodeConnectorType]: AuthCodeConnectorAuthProvider<Type>;

@@ -35,11 +35,8 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import {
-  getConnectorOAuthSecretMetadata,
-  isOAuthRefreshProvider,
-} from "@vm0/connectors/oauth-providers";
-import { getModelProviderOAuthProvider } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
+import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
@@ -854,12 +851,12 @@ function modelProviderRefreshMaps(
       >;
     }
   | undefined {
-  const provider = getModelProviderOAuthProvider(providerType);
-  if (!provider || !isOAuthRefreshProvider(provider)) {
+  const metadata = getModelProviderOAuthSecretMetadata(providerType);
+  if (!metadata?.isRefreshable) {
     return undefined;
   }
 
-  const accessSecretName = provider.getSecretName();
+  const accessSecretName = metadata.accessSecretName;
   const secretConnectorMap: Record<string, string> = {
     [accessSecretName]: providerType,
   };

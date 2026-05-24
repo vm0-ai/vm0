@@ -1,21 +1,27 @@
-import type {
-  OAuthAuthCodeProvider,
-  OAuthRefreshProvider,
-} from "./provider-types";
+import {
+  getAuthProviderSecretMetadata,
+  type AuthProviderSecretMetadata,
+} from "../auth-providers/provider-registry";
+import type { ModelProviderAuthProvider } from "../auth-providers/provider-types";
+import type { OAuthRefreshResult, ProviderEnv } from "./provider-types";
 import { codexOauthProvider } from "./providers/codex-oauth-provider";
 
-export const MODEL_PROVIDER_OAUTH_PROVIDERS = {
-  "codex-oauth-token": codexOauthProvider,
-} as const satisfies Record<
-  string,
-  OAuthAuthCodeProvider | OAuthRefreshProvider
->;
+export const MODEL_PROVIDER_OAUTH_PROVIDER_KEYS = [
+  "codex-oauth-token",
+] as const;
 
 export type ModelProviderOAuthProviderKey =
-  keyof typeof MODEL_PROVIDER_OAUTH_PROVIDERS;
+  (typeof MODEL_PROVIDER_OAUTH_PROVIDER_KEYS)[number];
 
-export type ModelProviderOAuthProvider =
-  (typeof MODEL_PROVIDER_OAUTH_PROVIDERS)[ModelProviderOAuthProviderKey];
+type ModelProviderOAuthProviderMap = {
+  readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderAuthProvider;
+};
+
+const MODEL_PROVIDER_OAUTH_PROVIDERS = {
+  "codex-oauth-token": codexOauthProvider,
+} as const satisfies ModelProviderOAuthProviderMap;
+
+export type ModelProviderOAuthSecretMetadata = AuthProviderSecretMetadata;
 
 export function isModelProviderOAuthProviderKey(
   providerKey: string,
@@ -23,11 +29,69 @@ export function isModelProviderOAuthProviderKey(
   return Object.hasOwn(MODEL_PROVIDER_OAUTH_PROVIDERS, providerKey);
 }
 
-export function getModelProviderOAuthProvider(
+function modelProviderOAuthProviderFor(
+  providerKey: ModelProviderOAuthProviderKey,
+): ModelProviderAuthProvider {
+  return MODEL_PROVIDER_OAUTH_PROVIDERS[providerKey];
+}
+
+export function getModelProviderOAuthSecretMetadata(
+  providerKey: ModelProviderOAuthProviderKey,
+): ModelProviderOAuthSecretMetadata;
+export function getModelProviderOAuthSecretMetadata(
   providerKey: string,
-): ModelProviderOAuthProvider | undefined {
+): ModelProviderOAuthSecretMetadata | undefined;
+export function getModelProviderOAuthSecretMetadata(
+  providerKey: string,
+): ModelProviderOAuthSecretMetadata | undefined {
   if (!isModelProviderOAuthProviderKey(providerKey)) {
     return undefined;
   }
-  return MODEL_PROVIDER_OAUTH_PROVIDERS[providerKey];
+
+  return getAuthProviderSecretMetadata(
+    modelProviderOAuthProviderFor(providerKey),
+  );
+}
+
+export function isModelProviderOAuthRefreshConfigured(args: {
+  readonly providerKey: ModelProviderOAuthProviderKey;
+  readonly currentEnv: ProviderEnv;
+}): boolean {
+  const access = modelProviderOAuthProviderFor(args.providerKey).access;
+
+  switch (access.kind) {
+    case "none":
+      return false;
+
+    case "refresh-token":
+      return Boolean(access.getClientId(args.currentEnv));
+  }
+}
+
+export async function refreshModelProviderOAuthToken(args: {
+  readonly providerKey: ModelProviderOAuthProviderKey;
+  readonly currentEnv: ProviderEnv;
+  readonly refreshToken: string;
+}): Promise<OAuthRefreshResult> {
+  const access = modelProviderOAuthProviderFor(args.providerKey).access;
+
+  switch (access.kind) {
+    case "none":
+      throw new Error(
+        `${args.providerKey} OAuth provider does not support refresh`,
+      );
+
+    case "refresh-token": {
+      const clientId = access.getClientId(args.currentEnv);
+      if (!clientId) {
+        throw new Error(`${args.providerKey} OAuth client ID not configured`);
+      }
+
+      return await access.refreshToken({
+        clientId,
+        clientSecret: access.getClientSecret(args.currentEnv),
+        refreshToken: args.refreshToken,
+      });
+    }
+  }
 }

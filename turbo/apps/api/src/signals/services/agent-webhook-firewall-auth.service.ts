@@ -11,14 +11,15 @@ import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
-  isOAuthRefreshProvider,
   refreshConnectorOAuthToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
-import type { OAuthRefreshProvider } from "@vm0/connectors/oauth-providers/provider-types";
 import {
-  getModelProviderOAuthProvider,
+  getModelProviderOAuthSecretMetadata,
+  isModelProviderOAuthRefreshConfigured,
+  refreshModelProviderOAuthToken,
   isModelProviderOAuthProviderKey,
+  type ModelProviderOAuthProviderKey,
 } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -160,8 +161,6 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
 interface RefreshTokenContext {
   readonly refreshTokenSecret: string;
   readonly currentRefreshToken: string;
-  readonly clientId?: string;
-  readonly clientSecret?: string;
   readonly accessTokenSecret: string;
   readonly secretUserId: string;
 }
@@ -175,7 +174,8 @@ type PreparedRefreshTokenContext =
     }
   | {
       readonly sourceType: "model-provider";
-      readonly provider: OAuthRefreshProvider;
+      readonly providerKey: ModelProviderOAuthProviderKey;
+      readonly currentEnv: ProviderEnv;
       readonly context: RefreshTokenContext;
     };
 
@@ -353,10 +353,8 @@ function getRefreshSecretNameForSource(
   sourceType: OAuthSecretSource,
 ): string | undefined {
   if (sourceType === "model-provider") {
-    const provider = getModelProviderOAuthProvider(connectorType);
-    return provider && isOAuthRefreshProvider(provider)
-      ? provider.getRefreshSecretName()
-      : undefined;
+    const metadata = getModelProviderOAuthSecretMetadata(connectorType);
+    return metadata?.isRefreshable ? metadata.refreshSecretName : undefined;
   }
 
   const metadata = getConnectorOAuthSecretMetadata(connectorType);
@@ -368,7 +366,7 @@ function getAccessSecretNameForSource(
   sourceType: OAuthSecretSource,
 ): string | undefined {
   if (sourceType === "model-provider") {
-    return getModelProviderOAuthProvider(connectorType)?.getSecretName();
+    return getModelProviderOAuthSecretMetadata(connectorType)?.accessSecretName;
   }
 
   return getConnectorOAuthSecretMetadata(connectorType)?.accessSecretName;
@@ -580,8 +578,13 @@ function prepareRefreshTokenContext(
   args: RefreshAccessTokenArgs,
 ): PreparedRefreshTokenContext | null {
   if (args.sourceType === "model-provider") {
-    const provider = getModelProviderOAuthProvider(args.connectorType);
-    if (!provider || !isOAuthRefreshProvider(provider)) {
+    if (!isModelProviderOAuthProviderKey(args.connectorType)) {
+      return null;
+    }
+    const secretMetadata = getModelProviderOAuthSecretMetadata(
+      args.connectorType,
+    );
+    if (!secretMetadata.isRefreshable) {
       return null;
     }
     if (!args.metadataKey) {
@@ -590,7 +593,7 @@ function prepareRefreshTokenContext(
       );
     }
 
-    const refreshTokenSecret = provider.getRefreshSecretName();
+    const refreshTokenSecret = secretMetadata.refreshSecretName;
     const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
     if (!currentRefreshToken) {
       L.debug(`No ${args.connectorType} refresh token available, skipping`);
@@ -598,8 +601,12 @@ function prepareRefreshTokenContext(
     }
 
     const env = currentProviderEnv();
-    const clientId = provider.getClientId(env);
-    if (!clientId) {
+    if (
+      !isModelProviderOAuthRefreshConfigured({
+        providerKey: args.connectorType,
+        currentEnv: env,
+      })
+    ) {
       L.debug(
         `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
       );
@@ -609,9 +616,7 @@ function prepareRefreshTokenContext(
     const context: RefreshTokenContext = {
       refreshTokenSecret,
       currentRefreshToken,
-      clientId,
-      clientSecret: provider.getClientSecret(env),
-      accessTokenSecret: provider.getSecretName(),
+      accessTokenSecret: secretMetadata.accessSecretName,
       secretUserId: resolveSecretUserId(
         args.sourceType,
         args.userId,
@@ -621,7 +626,8 @@ function prepareRefreshTokenContext(
 
     return {
       sourceType: args.sourceType,
-      provider,
+      providerKey: args.connectorType,
+      currentEnv: env,
       context,
     };
   }
@@ -792,9 +798,9 @@ async function refreshConnectorAccessToken(
           credentials: prepared.credentials,
           refreshToken: prepared.context.currentRefreshToken,
         })
-      : prepared.provider.refreshToken({
-          clientId: prepared.context.clientId,
-          clientSecret: prepared.context.clientSecret,
+      : refreshModelProviderOAuthToken({
+          providerKey: prepared.providerKey,
+          currentEnv: prepared.currentEnv,
           refreshToken: prepared.context.currentRefreshToken,
         });
   const refreshResult = await settle(refreshPromise);
