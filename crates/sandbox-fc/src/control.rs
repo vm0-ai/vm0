@@ -722,6 +722,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_frame_rejects_frames_larger_than_max_size() {
+        let (mut reader, mut writer) = UnixStream::pair().unwrap();
+
+        writer.write_u32(MAX_FRAME_SIZE + 1).await.unwrap();
+        drop(writer);
+
+        let err = read_frame(&mut reader).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("frame too large"));
+    }
+
+    #[tokio::test]
     async fn protocol_round_trip() {
         let request = ExecRequest {
             command: "echo hello".into(),
