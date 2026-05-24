@@ -138,30 +138,32 @@ export function AgentsPage() {
               </Button>
             )}
 
-            <Tabs
-              value={viewMode}
-              onValueChange={(v) => {
-                return setViewMode(v as "grid" | "list");
-              }}
-              className="shrink-0"
-            >
-              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-                <TabsTrigger
-                  value="grid"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconLayoutGrid size={14} stroke={1.5} />
-                  Grid
-                </TabsTrigger>
-                <TabsTrigger
-                  value="list"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconList size={14} stroke={1.5} />
-                  List
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {!splitSections && (
+              <Tabs
+                value={viewMode}
+                onValueChange={(v) => {
+                  return setViewMode(v as "grid" | "list");
+                }}
+                className="shrink-0"
+              >
+                <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                  <TabsTrigger
+                    value="grid"
+                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  >
+                    <IconLayoutGrid size={14} stroke={1.5} />
+                    Grid
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="list"
+                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  >
+                    <IconList size={14} stroke={1.5} />
+                    List
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
           </div>
         </div>
       </header>
@@ -170,7 +172,6 @@ export function AgentsPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           {splitSections ? (
             <AgentSplitView
-              viewMode={viewMode}
               atPublicLimit={atPublicLimit}
               publicRemaining={publicRemaining}
               onCreate={openCreateDialog}
@@ -193,6 +194,7 @@ export function AgentsPage() {
         visibility={visibility}
         onVisibilityChange={setVisibility}
         publicDisabled={atPublicLimit}
+        splitSections={splitSections}
       />
     </div>
   );
@@ -367,12 +369,10 @@ function AgentListView() {
 }
 
 function AgentSplitView({
-  viewMode,
   atPublicLimit,
   publicRemaining,
   onCreate,
 }: {
-  viewMode: "grid" | "list";
   atPublicLimit: boolean;
   publicRemaining: number;
   onCreate: (visibility: "public" | "private") => void;
@@ -397,7 +397,6 @@ function AgentSplitView({
       <AgentSplitSection
         title="Public"
         agents={publicAgents}
-        viewMode={viewMode}
         skeleton={skeleton}
         headerAction={
           <div className="flex items-center gap-3">
@@ -433,7 +432,6 @@ function AgentSplitView({
       <AgentSplitSection
         title="Private"
         agents={privateAgents}
-        viewMode={viewMode}
         skeleton={skeleton}
         headerAction={
           <Button
@@ -456,13 +454,11 @@ function AgentSplitView({
 function AgentSplitSection({
   title,
   agents,
-  viewMode,
   skeleton,
   headerAction,
 }: {
   title: string;
   agents: AgentProps["agent"][];
-  viewMode: "grid" | "list";
   skeleton: boolean;
   headerAction: ReactNode;
 }) {
@@ -473,42 +469,18 @@ function AgentSplitSection({
         {headerAction}
       </header>
       {skeleton ? (
-        <AgentSplitSkeleton viewMode={viewMode} />
+        <AgentSplitSkeleton />
       ) : agents.length > 0 ? (
-        <AgentSplitBody agents={agents} viewMode={viewMode} />
+        <AgentSplitBody agents={agents} />
       ) : null}
     </section>
   );
 }
 
-function AgentSplitBody({
-  agents,
-  viewMode,
-}: {
-  agents: AgentProps["agent"][];
-  viewMode: "grid" | "list";
-}) {
-  if (viewMode === "grid") {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {agents.map((agent) => {
-          return (
-            <Link
-              key={agent.id}
-              pathname="/agents/:agentId"
-              options={{ pathParams: { agentId: agent.id } }}
-              className="block no-underline text-inherit"
-            >
-              <AgentCard agent={agent} />
-            </Link>
-          );
-        })}
-      </div>
-    );
-  }
+function AgentSplitBody({ agents }: { agents: AgentProps["agent"][] }) {
   return (
-    <div className="zero-card overflow-hidden">
-      {agents.map((agent, idx) => {
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {agents.map((agent) => {
         return (
           <Link
             key={agent.id}
@@ -516,7 +488,7 @@ function AgentSplitBody({
             options={{ pathParams: { agentId: agent.id } }}
             className="block no-underline text-inherit"
           >
-            <AgentListRow agent={agent} isLast={idx === agents.length - 1} />
+            <AgentCard agent={agent} />
           </Link>
         );
       })}
@@ -524,43 +496,21 @@ function AgentSplitBody({
   );
 }
 
-function AgentSplitSkeleton({ viewMode }: { viewMode: "grid" | "list" }) {
-  if (viewMode === "grid") {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {[1, 2, 3].map((i) => {
-          return (
-            <Card key={i} className="zero-card">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3 animate-pulse">
-                  <div className="h-10 w-10 rounded-full bg-muted" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="h-4 w-24 rounded bg-muted" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    );
-  }
+function AgentSplitSkeleton() {
   return (
-    <div className="zero-card overflow-hidden">
-      {[1, 2, 3].map((i, _, arr) => {
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {[1, 2, 3].map((i) => {
         return (
-          <div key={i}>
-            <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
-              <div className="h-10 w-10 rounded-full bg-muted" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="h-4 w-24 rounded bg-muted" />
-                <div className="h-3 w-40 rounded bg-muted" />
+          <Card key={i} className="zero-card">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 animate-pulse">
+                <div className="h-10 w-10 rounded-full bg-muted" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="h-4 w-24 rounded bg-muted" />
+                </div>
               </div>
-            </div>
-            {i < arr.length && (
-              <div className="mx-5 border-b border-border/50" />
-            )}
-          </div>
+            </CardContent>
+          </Card>
         );
       })}
     </div>
@@ -577,6 +527,7 @@ function CreateTeammateDialog({
   visibility,
   onVisibilityChange,
   publicDisabled,
+  splitSections,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -587,6 +538,7 @@ function CreateTeammateDialog({
   visibility: "public" | "private";
   onVisibilityChange: (visibility: "public" | "private") => void;
   publicDisabled: boolean;
+  splitSections: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
@@ -603,6 +555,7 @@ function CreateTeammateDialog({
           visibility={visibility}
           onVisibilityChange={onVisibilityChange}
           publicDisabled={publicDisabled}
+          splitSections={splitSections}
         />
       )}
     </Dialog>
@@ -618,6 +571,7 @@ function CreateTeammateDialogContent({
   visibility,
   onVisibilityChange,
   publicDisabled,
+  splitSections,
 }: {
   newName: string;
   onNameChange: (name: string) => void;
@@ -627,6 +581,7 @@ function CreateTeammateDialogContent({
   visibility: "public" | "private";
   onVisibilityChange: (visibility: "public" | "private") => void;
   publicDisabled: boolean;
+  splitSections: boolean;
 }) {
   const avatarUrl = useGet(jobsAvatarUrl$);
   const setAvatarUrl = useSet(setJobsAvatarUrl$);
@@ -681,7 +636,11 @@ function CreateTeammateDialogContent({
       {/* Content */}
       <div className="flex flex-col items-center gap-4 px-6 py-6">
         <div className="text-center">
-          <p className="text-base font-semibold">Create a new agent</p>
+          <p className="text-base font-semibold">
+            {splitSections
+              ? `Create a new ${visibility} agent`
+              : "Create a new agent"}
+          </p>
           <p className="text-sm text-muted-foreground mt-0.5">
             Name your agent to get started.
           </p>
@@ -700,11 +659,13 @@ function CreateTeammateDialogContent({
           autoFocus
           disabled={creating}
         />
-        <CreateAgentVisibilitySelect
-          visibility={visibility}
-          onVisibilityChange={onVisibilityChange}
-          publicDisabled={publicDisabled}
-        />
+        {!splitSections && (
+          <CreateAgentVisibilitySelect
+            visibility={visibility}
+            onVisibilityChange={onVisibilityChange}
+            publicDisabled={publicDisabled}
+          />
+        )}
       </div>
 
       {/* Footer */}
