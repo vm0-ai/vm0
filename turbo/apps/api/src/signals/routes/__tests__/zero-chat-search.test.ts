@@ -236,43 +236,6 @@ describe("GET /api/zero/chat/search", () => {
     );
   });
 
-  it("excludes archived messages", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      { role: "user", content: "live platypus observation" },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      {
-        role: "user",
-        content: "archived platypus observation",
-        archivedAt: new Date(now()),
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "platypus" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.results).toHaveLength(1);
-    expect(response.body.results[0]?.matchedMessage.content).toBe(
-      "live platypus observation",
-    );
-  });
-
   it("narrows results by --since filter", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),

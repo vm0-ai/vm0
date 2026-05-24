@@ -434,7 +434,6 @@ export const sidebarChatThreads$ = computed(
           createdAt: thread.createdAt,
           updatedAt: thread.createdAt,
           isRead: true,
-          isArchived: false,
           running: thread.running,
         };
       });

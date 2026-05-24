@@ -37,7 +37,6 @@ function mockBaseAPIs(
       createdAt: string;
       updatedAt: string;
       isRead: boolean;
-      isArchived: boolean;
       running: boolean;
     }[];
     agents?: {
@@ -91,7 +90,6 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
-          isArchived: false,
           running: false,
         },
         {
@@ -101,7 +99,6 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
-          isArchived: false,
           running: false,
         },
       ],

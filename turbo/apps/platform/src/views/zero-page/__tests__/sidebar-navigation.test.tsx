@@ -29,7 +29,6 @@ function mockSubagentAPIs() {
     createdAt: string;
     updatedAt: string;
     isRead: boolean;
-    isArchived: boolean;
     running: boolean;
   }[] = [
     {
@@ -39,7 +38,6 @@ function mockSubagentAPIs() {
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
-      isArchived: false,
       running: false,
     },
   ];
@@ -171,7 +169,6 @@ function mockSubagentAPIs() {
         createdAt: now,
         updatedAt: now,
         isRead: false,
-        isArchived: false,
         running: false,
       };
       threads.unshift(newThread);

@@ -77,7 +77,6 @@ function mockChatSidebarApis(): {
               createdAt: "2026-03-10T00:00:01Z",
               updatedAt: "2026-03-10T00:00:01Z",
               isRead: true,
-              isArchived: false,
               running: false,
             };
           }),
@@ -89,7 +88,6 @@ function mockChatSidebarApis(): {
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",
               isRead: false,
-              isArchived: false,
               running: false,
             };
           }),

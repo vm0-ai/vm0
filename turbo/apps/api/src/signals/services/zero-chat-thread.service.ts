@@ -32,7 +32,6 @@ import {
   gte,
   ilike,
   isNotNull,
-  isNull,
   lt,
   or,
   sql,
@@ -41,7 +40,7 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
-import { db$, writeDb$ } from "../external/db";
+import { type Db, db$, writeDb$ } from "../external/db";
 import {
   publishThreadListChanged,
   publishUserSignal,
@@ -134,6 +133,24 @@ type ChatThreadModelPin = {
 
 function effectiveChatMessageRunId() {
   return chatMessages.runId;
+}
+
+/**
+ * Advances chat_threads.last_message_at to NOW(), but only forward — GREATEST
+ * guards against an out-of-order write rewinding the column and silently
+ * pulling a thread back down the sidebar. Call inside the same transaction as
+ * the chat_messages insert so the recency index stays accurate.
+ */
+export async function touchChatThreadLastMessageAt(
+  tx: Pick<Db, "update">,
+  threadId: string,
+): Promise<void> {
+  await tx
+    .update(chatThreads)
+    .set({
+      lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, NOW())`,
+    })
+    .where(eq(chatThreads.id, threadId));
 }
 
 export function visibleChatMessageCondition() {
@@ -690,7 +707,6 @@ export function zeroChatThreadList(args: {
       .select({
         id: chatMessages.id,
         createdAt: chatMessages.createdAt,
-        archivedAt: chatMessages.archivedAt,
       })
       .from(chatMessages)
       .where(
@@ -706,7 +722,6 @@ export function zeroChatThreadList(args: {
     const filters = [
       eq(chatThreads.userId, args.userId),
       eq(zeroAgents.orgId, args.orgId),
-      isNull(lastMessage.archivedAt),
     ];
     if (args.agentComposeId) {
       filters.push(eq(chatThreads.agentComposeId, args.agentComposeId));
@@ -726,7 +741,6 @@ export function zeroChatThreadList(args: {
           WHEN ${lastMessage.id} IS NULL THEN true
           ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
         END`,
-        lastMessageArchivedAt: lastMessage.archivedAt,
         running: sql<boolean>`EXISTS (
           SELECT 1
           FROM ${zeroRuns}
@@ -762,7 +776,6 @@ export function zeroChatThreadList(args: {
         createdAt: thread.createdAt.toISOString(),
         updatedAt: thread.updatedAt.toISOString(),
         isRead: thread.isRead,
-        isArchived: thread.lastMessageArchivedAt !== null,
         running: thread.running,
         hasDraft: thread.hasDraft,
         pinnedAt: thread.pinnedAt?.toISOString() ?? null,
@@ -928,7 +941,6 @@ export function zeroChatSearch(args: {
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
       isNotNull(chatMessages.content),
-      isNull(chatMessages.archivedAt),
       visibleChatMessageCondition(),
       ilike(chatMessages.content, pattern),
     ];
@@ -970,7 +982,6 @@ export function zeroChatSearch(args: {
                     eq(chatMessages.chatThreadId, match.chatThreadId),
                     lt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
-                    isNull(chatMessages.archivedAt),
                     visibleChatMessageCondition(),
                   ),
                 )
@@ -986,7 +997,6 @@ export function zeroChatSearch(args: {
                     eq(chatMessages.chatThreadId, match.chatThreadId),
                     gt(chatMessages.createdAt, match.createdAt),
                     isNotNull(chatMessages.content),
-                    isNull(chatMessages.archivedAt),
                     visibleChatMessageCondition(),
                   ),
                 )
@@ -1171,6 +1181,9 @@ export const insertIntegrationChatMessage$ = command(
       throw new Error("Failed to insert chat message");
     }
 
+    await touchChatThreadLastMessageAt(writeDb, args.chatThreadId);
+    signal.throwIfAborted();
+
     await publishUserSignal(
       [args.userId],
       `chatThreadMessageCreated:${args.chatThreadId}`,
@@ -1249,6 +1262,9 @@ export const insertAssistantEventMessages$ = command(
     signal.throwIfAborted();
 
     if (rows.length > 0) {
+      await touchChatThreadLastMessageAt(writeDb, args.threadId);
+      signal.throwIfAborted();
+
       await publishUserSignal(
         [args.userId],
         `chatThreadMessageCreated:${args.threadId}`,

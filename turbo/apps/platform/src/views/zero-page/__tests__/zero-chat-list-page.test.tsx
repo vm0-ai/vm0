@@ -26,7 +26,6 @@ function createMockThreads(overrides = {}) {
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
       isRead: true,
-      isArchived: false,
       running: false,
       ...overrides,
     },
@@ -37,7 +36,6 @@ function createMockThreads(overrides = {}) {
       createdAt: "2026-03-02T00:00:00Z",
       updatedAt: "2026-03-02T00:00:00Z",
       isRead: false,
-      isArchived: false,
       running: false,
       ...overrides,
     },
@@ -100,7 +98,6 @@ describe("zero chat list page - chat list rendering", () => {
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
       isRead: true,
-      isArchived: false,
       running: false,
     } as unknown as ReturnType<typeof createMockThreads>[number];
     mockChatThreads([threadWithNullTitle]);

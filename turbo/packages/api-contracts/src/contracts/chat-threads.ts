@@ -81,10 +81,8 @@ const chatThreadListItemSchema = z.object({
   /**
    * Read state of the thread's last message. `false` when the thread has no
    * messages yet or the last message has not been marked read.
-   * Threads whose last message is archived are filtered out server-side.
    */
   isRead: z.boolean(),
-  isArchived: z.boolean(),
   /**
    * True when the thread has at least one non-terminal run
    * (queued / pending / running). Drives the sidebar running indicator,

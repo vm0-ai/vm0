@@ -86,6 +86,15 @@ export const chatThreads = pgTable(
      * When set, automated title generation is suppressed.
      */
     renamedAt: timestamp("renamed_at"),
+    /**
+     * Most recent message timestamp, denormalized from chat_messages.
+     * Maintained app-side at every chat_messages insert via GREATEST() —
+     * monotonic, never rewound. Backfilled from MAX(chat_messages.created_at)
+     * and falls back to chat_threads.created_at for empty threads.
+     * Powers the sidebar "recency" ordering with an index-driven LIMIT
+     * instead of scanning every thread + LATERAL last-message lookup.
+     */
+    lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -107,6 +116,11 @@ export const chatThreads = pgTable(
       index("idx_chat_threads_user_compose_pinned")
         .on(table.userId, table.agentComposeId)
         .where(sql`${table.pinnedAt} IS NOT NULL`),
+      index("idx_chat_threads_user_compose_last_message").on(
+        table.userId,
+        table.agentComposeId,
+        table.lastMessageAt.desc(),
+      ),
     ];
   },
 );

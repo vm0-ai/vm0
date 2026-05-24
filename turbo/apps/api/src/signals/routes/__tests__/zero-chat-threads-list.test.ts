@@ -131,7 +131,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     expect(typeof thread.updatedAt).toBe("string");
   });
 
-  it("reports isRead=true and isArchived=false for a thread with no messages", async () => {
+  it("reports isRead=true for a thread with no messages", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, { title: "Empty" }, context.signal),
     );
@@ -148,7 +148,6 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
 
     expect(response.body.threads).toHaveLength(1);
     expect(response.body.threads[0]!.isRead).toBeTruthy();
-    expect(response.body.threads[0]!.isArchived).toBeFalsy();
   });
 
   it("reports isRead based on last_read_message_id", async () => {
@@ -203,56 +202,6 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     });
     expect(readRow?.isRead).toBeTruthy();
     expect(unreadRow?.isRead).toBeFalsy();
-  });
-
-  it("filters out threads whose last message is archived", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-
-    const archivedFixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { userId, orgId, title: "Archived" },
-        context.signal,
-      ),
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      archivedFixture,
-      { role: "assistant", content: "gone", archivedAt: nowDate() },
-      context.signal,
-    );
-
-    const liveFixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { userId, orgId, title: "Live" },
-        context.signal,
-      ),
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      liveFixture,
-      { role: "assistant", content: "still here" },
-      context.signal,
-    );
-
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(chatThreadsContract);
-    const response = await accept(
-      client.list({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const ids = response.body.threads.map((t) => {
-      return t.id;
-    });
-    expect(ids).toContain(liveFixture.threadId);
-    expect(ids).not.toContain(archivedFixture.threadId);
   });
 
   it("orders threads by the latest message's createdAt desc", async () => {
@@ -501,48 +450,6 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       return t.id === secondFixture.threadId;
     });
     expect(unpinnedRow?.pinnedAt).toBeNull();
-  });
-
-  it("keeps a thread visible when only an earlier message is archived", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, { title: "Mixed" }, context.signal),
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      {
-        role: "user",
-        content: "first",
-        archivedAt: nowDate(),
-        createdAt: new Date("2025-01-01T00:00:00.000Z"),
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      {
-        role: "assistant",
-        content: "second",
-        createdAt: new Date("2025-01-02T00:00:00.000Z"),
-      },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadsContract);
-    const response = await accept(
-      client.list({
-        query: { agentId: fixture.composeId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.threads).toHaveLength(1);
-    expect(response.body.threads[0]!.id).toBe(fixture.threadId);
-    expect(response.body.threads[0]!.isArchived).toBeFalsy();
   });
 
   it("reports running=false for a thread with no runs", async () => {
