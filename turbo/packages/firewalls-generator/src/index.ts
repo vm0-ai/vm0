@@ -23,6 +23,7 @@ import { generate as generateAxiom } from "./axiom";
 import { generate as generateBase44 } from "./base44";
 import { generate as generateBentoml } from "./bentoml";
 import { generate as generateBitrix } from "./bitrix";
+import { generate as generateBland } from "./bland";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrex } from "./brex";
 import { generate as generateBrevo } from "./brevo";
@@ -235,6 +236,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   base44: generateBase44,
   bentoml: generateBentoml,
   bitrix: generateBitrix,
+  bland: generateBland,
   "brave-search": generateBraveSearch,
   brex: generateBrex,
   brevo: generateBrevo,

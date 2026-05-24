@@ -41,6 +41,7 @@
     "generate:base44": "tsx src/index.ts base44",
     "generate:bentoml": "tsx src/index.ts bentoml",
     "generate:bitrix": "tsx src/index.ts bitrix",
+    "generate:bland": "tsx src/index.ts bland",
     "generate:brave-search": "tsx src/index.ts brave-search",
     "generate:brex": "tsx src/index.ts brex",
     "generate:brevo": "tsx src/index.ts brevo",

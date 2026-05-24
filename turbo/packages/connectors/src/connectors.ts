@@ -42,6 +42,7 @@ import { axiom } from "./connectors/axiom";
 import { base44 } from "./connectors/base44";
 import { bentoml } from "./connectors/bentoml";
 import { bitrix } from "./connectors/bitrix";
+import { bland } from "./connectors/bland";
 import { braveSearch } from "./connectors/brave-search";
 import { brex } from "./connectors/brex";
 import { brevo } from "./connectors/brevo";
@@ -601,6 +602,7 @@ const CONNECTOR_TYPES_DEF = {
   ...base44,
   ...bentoml,
   ...bitrix,
+  ...bland,
   ...braveSearch,
   ...brex,
   ...brevo,
