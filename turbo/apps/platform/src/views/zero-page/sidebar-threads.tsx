@@ -5,8 +5,6 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import {
-  IconSearch,
-  IconX,
   IconPlus,
   IconChevronRight,
   IconTrash,
@@ -69,10 +67,6 @@ import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
-  threadSearchOpen$,
-  sidebarSearchTerm$,
-  setThreadSearchOpen$,
-  setThreadSearchTerm$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
@@ -589,13 +583,6 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const searchTerm = useGet(sidebarSearchTerm$);
-  const trimmedTerm = searchTerm.trim().toLowerCase();
-  const filteredChatThreads = trimmedTerm
-    ? chatThreads.filter((s) => {
-        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
-      })
-    : chatThreads;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -606,18 +593,16 @@ function ChatThreads() {
     detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
-  if (filteredChatThreads.length === 0) {
+  if (chatThreads.length === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        {trimmedTerm
-          ? "No chats match your search"
-          : "Start a conversation and it'll show up here"}
+        Start a conversation and it&apos;ll show up here
       </p>
     );
   }
   return (
     <>
-      {filteredChatThreads.map((session) => {
+      {chatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
       <ChatThreadRenameDialog />
@@ -661,8 +646,7 @@ function ChatThreadsTitle() {
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
-  const { titleLabel, searchPlaceholder, newChatAriaLabel } =
-    useChatThreadsTitleLabels();
+  const { titleLabel, newChatAriaLabel } = useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
@@ -674,45 +658,10 @@ function ChatThreadsTitle() {
     );
     setExpanded(false);
   };
-  const searchOpen = useGet(threadSearchOpen$);
-  const setSearchOpen = useSet(setThreadSearchOpen$);
-  const searchTerm = useGet(sidebarSearchTerm$);
-  const setSearchTerm = useSet(setThreadSearchTerm$);
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
 
-  return searchOpen ? (
-    <div className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border">
-      <IconSearch
-        size={15}
-        stroke={2.5}
-        className="shrink-0 text-sidebar-foreground/50"
-      />
-      <input
-        type="text"
-        value={searchTerm}
-        onChange={(e) => {
-          return setSearchTerm(e.target.value);
-        }}
-        placeholder={searchPlaceholder}
-        autoFocus
-        className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
-      />
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            setSearchOpen(false);
-          }}
-          className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          aria-label="Close search"
-        >
-          <IconX size={12} stroke={2} />
-        </button>
-      </div>
-    </div>
-  ) : (
+  return (
     <div
       className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
       onClick={() => {
@@ -730,27 +679,6 @@ function ChatThreadsTitle() {
         </span>
       </span>
       <div className="flex items-center gap-0.5">
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSearchOpen(true);
-                }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
-                aria-label="Search chats"
-              >
-                <IconSearch size={15} stroke={2.5} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">Search chats</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>

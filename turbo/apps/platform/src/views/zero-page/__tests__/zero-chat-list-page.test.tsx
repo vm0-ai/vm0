@@ -7,7 +7,6 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -68,17 +67,6 @@ describe("zero chat list page - header and title", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Chats with Zero" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should show agent-scoped 'Search chat with Zero' placeholder (CHAT-LIST-002)", async () => {
-    mockChatThreads(createMockThreads());
-    setupPage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search chat with Zero"),
       ).toBeInTheDocument();
     });
   });
@@ -179,88 +167,6 @@ describe("zero chat list page - chat list rendering (continued)", () => {
       expect(
         screen.getByText(/failed to load chats|server error/i),
       ).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero chat list page - search", () => {
-  it("should filter threads by search term (CHAT-LIST-006)", async () => {
-    mockChatThreads(createMockThreads());
-    setupPage();
-
-    await waitFor(() => {
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await userEvent.type(searchInput, "First");
-
-    await waitFor(() => {
-      // After filtering, matching results should remain visible
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
-      // "No chats match your search" should not appear when results exist
-      expect(
-        screen.queryByText("No chats match your search"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("should show 'No chats match your search' when no results (CHAT-LIST-007)", async () => {
-    mockChatThreads(createMockThreads());
-    setupPage();
-
-    await waitFor(() => {
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await userEvent.type(searchInput, "nonexistent");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No chats match your search"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should clear search when X button is clicked (CHAT-LIST-008)", async () => {
-    mockChatThreads(createMockThreads());
-    setupPage();
-
-    await waitFor(() => {
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await userEvent.type(searchInput, "First");
-
-    await waitFor(() => {
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
-    });
-
-    const clearButton = screen.getAllByRole("button").find((el) => {
-      return /Clear search/.test(el.getAttribute("aria-label") ?? "");
-    })!;
-    fireEvent.click(clearButton);
-
-    await waitFor(() => {
-      expect(searchInput).toHaveValue("");
-    });
-  });
-
-  it("should be case-insensitive when filtering (CHAT-LIST-009)", async () => {
-    mockChatThreads(createMockThreads());
-    setupPage();
-
-    await waitFor(() => {
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await userEvent.type(searchInput, "first");
-
-    await waitFor(() => {
-      expect(screen.getAllByText("First chat thread")[0]).toBeInTheDocument();
     });
   });
 });

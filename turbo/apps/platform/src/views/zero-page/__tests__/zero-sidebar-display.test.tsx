@@ -13,7 +13,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
@@ -140,97 +139,6 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
     });
 
     deferred.resolve();
-  });
-});
-
-describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
-  it("shows only matching thread after typing a search term", async () => {
-    const user = userEvent.setup();
-    mockBaseAPIs({
-      threads: [
-        {
-          id: "thread-1",
-          title: "Deploy to production",
-          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          isRead: false,
-          isArchived: false,
-          running: false,
-        },
-        {
-          id: "thread-2",
-          title: "Fix the bug",
-          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
-          createdAt: "2026-03-09T00:00:00Z",
-          updatedAt: "2026-03-09T00:00:00Z",
-          isRead: false,
-          isArchived: false,
-          running: false,
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    await waitFor(() => {
-      expect(
-        within(getSidebar()).getByText("Deploy to production"),
-      ).toBeInTheDocument();
-    });
-
-    const searchChatsBtn1 = screen.getByLabelText("Search chats");
-    click(searchChatsBtn1);
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await user.type(searchInput, "deploy");
-
-    expect(
-      within(getSidebar()).getByText("Deploy to production"),
-    ).toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByText("Fix the bug"),
-    ).not.toBeInTheDocument();
-  });
-});
-
-describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
-  it("shows the typed search term in the search input", async () => {
-    const user = userEvent.setup();
-    mockBaseAPIs({
-      threads: [
-        {
-          id: "thread-1",
-          title: "Deploy to production",
-          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          isRead: false,
-          isArchived: false,
-          running: false,
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    await waitFor(() => {
-      expect(
-        within(getSidebar()).getByText("Deploy to production"),
-      ).toBeInTheDocument();
-    });
-
-    const searchChatsBtn2 = screen.getByLabelText("Search chats");
-    click(searchChatsBtn2);
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await user.type(searchInput, "deploy");
-
-    expect(searchInput).toHaveValue("deploy");
   });
 });
 

@@ -2,30 +2,6 @@ import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
 
 // ---------------------------------------------------------------------------
-// Sidebar search state
-// ---------------------------------------------------------------------------
-const internalThreadSearchOpen$ = state(false);
-export const threadSearchOpen$ = computed((get) => {
-  return get(internalThreadSearchOpen$);
-});
-
-const internalThreadSearchTerm$ = state("");
-export const sidebarSearchTerm$ = computed((get) => {
-  return get(internalThreadSearchTerm$);
-});
-
-export const setThreadSearchOpen$ = command(({ set }, open: boolean) => {
-  set(internalThreadSearchOpen$, open);
-  if (!open) {
-    set(internalThreadSearchTerm$, "");
-  }
-});
-
-export const setThreadSearchTerm$ = command(({ set }, term: string) => {
-  set(internalThreadSearchTerm$, term);
-});
-
-// ---------------------------------------------------------------------------
 // Manage pinned agents dialog state
 // ---------------------------------------------------------------------------
 const internalManagePinnedOpen$ = state(false);

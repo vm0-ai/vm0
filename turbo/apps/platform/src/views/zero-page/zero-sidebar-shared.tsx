@@ -14,7 +14,6 @@ export function useChatThreadsTitleLabels() {
   const agentName = agentDisplayName ?? "Zero";
   return {
     titleLabel: `Chats with ${agentName}`,
-    searchPlaceholder: `Search chat with ${agentName}`,
     newChatAriaLabel: `New chat with ${agentName}`,
   };
 }

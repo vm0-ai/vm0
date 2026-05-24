@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
-import {
-  detachedSetupPage,
-  fill,
-  click,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -144,64 +140,5 @@ describe("zero sidebar", () => {
       expect(screen.getByText("Agents")).toBeInTheDocument();
     });
     expect(screen.getByText("Activity logs")).toBeInTheDocument();
-  });
-
-  it("should filter chat sessions when searching", async () => {
-    mockAPIs();
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    // Wait for chat threads to render
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Second chat")).toBeInTheDocument();
-
-    // Click search button
-    const searchButton = screen.getByLabelText("Search chats");
-    click(searchButton);
-
-    // Type search query
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await fill(searchInput, "First");
-
-    // Only matching thread should be visible
-    expect(screen.getByText("First chat")).toBeInTheDocument();
-    expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
-  });
-
-  it("should close search and reset filter", async () => {
-    mockAPIs();
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    // Wait for chat threads to render
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-    });
-
-    // Open search
-    const searchButton = screen.getByLabelText("Search chats");
-    click(searchButton);
-
-    // Type search query that filters out one thread
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await fill(searchInput, "First");
-
-    expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
-
-    // Close search
-    const closeButton = screen.getByLabelText("Close search");
-    click(closeButton);
-
-    // Both threads should be visible again (search term was reset)
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Second chat")).toBeInTheDocument();
   });
 });

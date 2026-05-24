@@ -6,7 +6,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   Button,
   Dialog,
@@ -36,8 +36,6 @@ import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
-  chatListQuery$,
-  setChatListQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -59,23 +57,13 @@ export function ZeroChatListPage() {
       : null;
 
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const { titleLabel, searchPlaceholder } = useChatThreadsTitleLabels();
+  const { titleLabel } = useChatThreadsTitleLabels();
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const creating = useGet(optimisticChatThread$) !== null;
   const rootSignal = useGet(rootSignal$);
-
-  const searchTerm = useGet(chatListQuery$);
-  const setSearchTerm = useSet(setChatListQuery$);
-
-  const trimmedTerm = searchTerm.trim().toLowerCase();
-  const filteredSessions = trimmedTerm
-    ? recentSessions.filter((s) => {
-        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
-      })
-    : recentSessions;
 
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
@@ -97,36 +85,6 @@ export function ZeroChatListPage() {
       <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center gap-3 mb-3">
           <h1 className="text-lg font-semibold">{titleLabel}</h1>
-        </div>
-
-        {/* Search */}
-        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
-          <IconSearch
-            size={16}
-            stroke={2}
-            className="shrink-0 text-muted-foreground"
-          />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => {
-              return setSearchTerm(e.target.value);
-            }}
-            placeholder={searchPlaceholder}
-            className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => {
-                return setSearchTerm("");
-              }}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <IconX size={14} stroke={2} />
-            </button>
-          )}
         </div>
       </div>
 
@@ -150,8 +108,7 @@ export function ZeroChatListPage() {
         <ChatList
           loading={loading}
           error={error}
-          sessions={filteredSessions}
-          searchTerm={searchTerm}
+          sessions={recentSessions}
           selectedRecentId={selectedRecentId}
           onRecentSelect={onRecentSelect}
         />
@@ -164,14 +121,12 @@ function ChatList({
   loading,
   error,
   sessions,
-  searchTerm,
   selectedRecentId,
   onRecentSelect,
 }: {
   loading: boolean;
   error: string | null;
   sessions: ChatThreadListItem[];
-  searchTerm: string;
   selectedRecentId: string | null;
   onRecentSelect: (id: string) => void;
 }) {
@@ -210,9 +165,7 @@ function ChatList({
   if (sessions.length === 0) {
     return (
       <p className="px-3 py-8 text-sm text-muted-foreground text-center">
-        {searchTerm.trim()
-          ? "No chats match your search"
-          : "Start a conversation and it'll show up here"}
+        Start a conversation and it&apos;ll show up here
       </p>
     );
   }

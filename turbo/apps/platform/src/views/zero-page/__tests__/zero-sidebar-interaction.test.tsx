@@ -322,68 +322,6 @@ describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
   });
 });
 
-describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
-  it("receives focus and accepts typed text in the search input", async () => {
-    const user = userEvent.setup();
-    mockBaseAPIs({
-      threads: [makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z")],
-    });
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-    });
-
-    const searchChatsBtn1 = screen.getByLabelText("Search chats");
-    click(searchChatsBtn1);
-
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await user.type(searchInput, "hello");
-
-    expect(searchInput).toHaveValue("hello");
-  });
-});
-
-describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () => {
-  it("clears the search field and restores the full thread list", async () => {
-    const user = userEvent.setup();
-    mockBaseAPIs({
-      threads: [
-        makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
-        makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
-      ],
-    });
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-      expect(screen.getByText("Second chat")).toBeInTheDocument();
-    });
-
-    const searchChatsBtn2 = screen.getByLabelText("Search chats");
-    click(searchChatsBtn2);
-
-    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await user.type(searchInput, "First");
-
-    expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
-
-    const closeSearchBtn = screen.getByLabelText("Close search");
-    click(closeSearchBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText("First chat")).toBeInTheDocument();
-      expect(screen.getByText("Second chat")).toBeInTheDocument();
-    });
-  });
-});
-
 describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () => {
   it("creates a new chat session and navigates to it", async () => {
     mockBaseAPIs();
