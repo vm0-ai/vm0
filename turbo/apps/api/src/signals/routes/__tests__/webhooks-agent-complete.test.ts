@@ -733,13 +733,19 @@ describe("POST /api/webhooks/agent/complete", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, queuedRunId))
       .limit(1);
-    expect(runnerJob).toStrictEqual({
+    expect(runnerJob).toMatchObject({
       runId: queuedRunId,
       runnerGroup,
       profile,
       sessionId: queuedSessionId,
       executionContext: queuedExecutionContext,
     });
+    const promotedExecutionContext = runnerJob?.executionContext as
+      | { readonly apiStartTime?: unknown }
+      | undefined;
+    expect(promotedExecutionContext?.apiStartTime).toStrictEqual(
+      expect.any(Number),
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "queue:changed",
       null,

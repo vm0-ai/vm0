@@ -479,7 +479,7 @@ describe("POST /api/zero/runs", () => {
   it("queues zero runs at the org concurrency limit and dispatches them when drained", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
-    const firstStartedAt = 1_800_000_000_000;
+    const firstStartedAt = now();
     const queuedRequestedAt = firstStartedAt + 1000;
     const queuedPromotedAt = queuedRequestedAt + 120_000;
     await db.insert(userFeatureSwitches).values({
