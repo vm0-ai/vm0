@@ -1007,37 +1007,82 @@ mod tests {
         file.set_len(BLOCK_SIZE as u64).expect("size base image");
     }
 
-    fn pooled_disconnected_device(
-        base: &Path,
-        cow_file: &Path,
+    struct PooledDestroyHarness {
+        _tmp: tempfile::TempDir,
+        cow_file: PathBuf,
+        bitmap_file: PathBuf,
+        bitmap_tmp_path: PathBuf,
         pool: pool::DevicePoolHandle,
-        lock_dir: &Path,
-    ) -> PooledNbdCowDevice {
-        let cow = cow::CowLayer::new(
-            base,
-            cow_file,
-            BLOCK_SIZE as u64,
-            BLOCK_SIZE,
-            DEFAULT_FLUSH_THRESHOLD,
-        )
-        .expect("create cow layer");
+        device: PooledNbdCowDevice,
+    }
 
-        PooledNbdCowDevice {
-            device: NbdCowDevice {
-                device_index: TEST_DEVICE_INDEX,
-                device_path: PathBuf::from(format!("/dev/nbd{TEST_DEVICE_INDEX}")),
-                cow_file: cow_file.to_path_buf(),
-                cow: Arc::new(RwLock::new(cow)),
-                server_handles: Vec::new(),
-                shutdown: CancellationToken::new(),
-                disconnected: true,
-                connect_tid: 0,
-            },
-            lease: LeaseGuard::new(
-                pool::DeviceLease::new_for_test(TEST_DEVICE_INDEX, lock_dir),
-                pool.clone(),
-            ),
-            pool,
+    impl PooledDestroyHarness {
+        fn new() -> Self {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let base = tmp.path().join("base.img");
+            let cow_file = tmp.path().join("cow.img");
+            let bitmap_file = cow::bitmap_path_for(&cow_file);
+            let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
+            let lock_dir = tmp.path().join("locks");
+            std::fs::create_dir(&lock_dir).expect("create lock dir");
+            create_test_base_image(&base);
+            std::fs::write(&cow_file, b"cow").expect("write cow file");
+
+            let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+            let cow = cow::CowLayer::new(
+                &base,
+                &cow_file,
+                BLOCK_SIZE as u64,
+                BLOCK_SIZE,
+                DEFAULT_FLUSH_THRESHOLD,
+            )
+            .expect("create cow layer");
+            let device = PooledNbdCowDevice {
+                device: NbdCowDevice {
+                    device_index: TEST_DEVICE_INDEX,
+                    device_path: PathBuf::from(format!("/dev/nbd{TEST_DEVICE_INDEX}")),
+                    cow_file: cow_file.clone(),
+                    cow: Arc::new(RwLock::new(cow)),
+                    server_handles: Vec::new(),
+                    shutdown: CancellationToken::new(),
+                    disconnected: true,
+                    connect_tid: 0,
+                },
+                lease: LeaseGuard::new(
+                    pool::DeviceLease::new_for_test(TEST_DEVICE_INDEX, &lock_dir),
+                    pool.clone(),
+                ),
+                pool: pool.clone(),
+            };
+
+            Self {
+                _tmp: tmp,
+                cow_file,
+                bitmap_file,
+                bitmap_tmp_path,
+                pool,
+                device,
+            }
+        }
+
+        fn write_bitmap_sidecar(&self) {
+            std::fs::write(&self.bitmap_file, b"bitmap").expect("write bitmap file");
+        }
+
+        fn create_blocking_bitmap_tmp_dir(&self) {
+            std::fs::create_dir(&self.bitmap_tmp_path).expect("create bitmap tmp dir");
+        }
+
+        fn create_transient_bitmap_tmp_symlink(&self) {
+            std::os::unix::fs::symlink(
+                self.bitmap_file
+                    .parent()
+                    .expect("bitmap path parent")
+                    .join("missing-parent")
+                    .join("bitmap.tmp"),
+                &self.bitmap_tmp_path,
+            )
+            .expect("create broken bitmap tmp symlink");
         }
     }
 
@@ -1088,18 +1133,16 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_with_retries_zero_attempts_runs_once_and_removes_files() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let base = tmp.path().join("base.img");
-        let cow_file = tmp.path().join("cow.img");
-        let bitmap_file = cow::bitmap_path_for(&cow_file);
-        let lock_dir = tmp.path().join("locks");
-        std::fs::create_dir(&lock_dir).expect("create lock dir");
-        create_test_base_image(&base);
-        std::fs::write(&cow_file, b"cow").expect("write cow file");
-
-        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
-        std::fs::write(&bitmap_file, b"bitmap").expect("write bitmap file");
+        let harness = PooledDestroyHarness::new();
+        harness.write_bitmap_sidecar();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = harness;
 
         tokio::time::timeout(
             std::time::Duration::from_secs(1),
@@ -1116,17 +1159,14 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_keep_cow_zero_attempts_returns_preserved_paths() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let base = tmp.path().join("base.img");
-        let cow_file = tmp.path().join("cow.img");
-        let bitmap_file = cow::bitmap_path_for(&cow_file);
-        let lock_dir = tmp.path().join("locks");
-        std::fs::create_dir(&lock_dir).expect("create lock dir");
-        create_test_base_image(&base);
-        std::fs::write(&cow_file, b"cow").expect("write cow file");
-
-        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = PooledDestroyHarness::new();
 
         let kept = tokio::time::timeout(
             std::time::Duration::from_secs(1),
@@ -1145,19 +1185,16 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_keep_cow_zero_attempts_returns_first_error_without_retry_sleep() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let base = tmp.path().join("base.img");
-        let cow_file = tmp.path().join("cow.img");
-        let bitmap_file = cow::bitmap_path_for(&cow_file);
-        let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
-        let lock_dir = tmp.path().join("locks");
-        std::fs::create_dir(&lock_dir).expect("create lock dir");
-        create_test_base_image(&base);
-        std::fs::write(&cow_file, b"cow").expect("write cow file");
-        std::fs::create_dir(&bitmap_tmp_path).expect("create bitmap tmp dir");
-
-        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+        let harness = PooledDestroyHarness::new();
+        harness.create_blocking_bitmap_tmp_dir();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            pool,
+            device,
+            ..
+        } = harness;
 
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(1),
@@ -1174,19 +1211,16 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_keep_cow_exhausts_retries_and_returns_error() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let base = tmp.path().join("base.img");
-        let cow_file = tmp.path().join("cow.img");
-        let bitmap_file = cow::bitmap_path_for(&cow_file);
-        let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
-        let lock_dir = tmp.path().join("locks");
-        std::fs::create_dir(&lock_dir).expect("create lock dir");
-        create_test_base_image(&base);
-        std::fs::write(&cow_file, b"cow").expect("write cow file");
-        std::fs::create_dir(&bitmap_tmp_path).expect("create bitmap tmp dir");
-
-        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+        let harness = PooledDestroyHarness::new();
+        harness.create_blocking_bitmap_tmp_dir();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            bitmap_tmp_path,
+            pool,
+            device,
+        } = harness;
 
         let result = device
             .destroy_keep_cow_with_retries(DestroyRetryPolicy {
@@ -1204,23 +1238,16 @@ mod tests {
 
     #[tokio::test]
     async fn destroy_keep_cow_retries_after_first_error_and_returns_preserved_paths() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let base = tmp.path().join("base.img");
-        let cow_file = tmp.path().join("cow.img");
-        let bitmap_file = cow::bitmap_path_for(&cow_file);
-        let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
-        let lock_dir = tmp.path().join("locks");
-        std::fs::create_dir(&lock_dir).expect("create lock dir");
-        create_test_base_image(&base);
-        std::fs::write(&cow_file, b"cow").expect("write cow file");
-        std::os::unix::fs::symlink(
-            tmp.path().join("missing-parent").join("bitmap.tmp"),
-            &bitmap_tmp_path,
-        )
-        .expect("create broken bitmap tmp symlink");
-
-        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+        let harness = PooledDestroyHarness::new();
+        harness.create_transient_bitmap_tmp_symlink();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            bitmap_file,
+            bitmap_tmp_path,
+            pool,
+            device,
+        } = harness;
 
         let kept = device
             .destroy_keep_cow_with_retries(DestroyRetryPolicy {
