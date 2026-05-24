@@ -1213,11 +1213,15 @@ class TestFetchFirewallHeaders:
 
         mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
 
-    def test_closes_http_error_response(self):
+    @pytest.mark.parametrize(
+        "error_body",
+        [
+            json.dumps({"error": {"message": "Bad request", "code": "BAD_REQUEST"}}).encode(),
+            b"{}",
+        ],
+    )
+    def test_closes_http_error_response(self, error_body: bytes):
         """HTTPError path must close the underlying socket — FD leak guard (#10475)."""
-        error_body = json.dumps(
-            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
-        ).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
             400,
