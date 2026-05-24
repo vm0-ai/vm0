@@ -1144,6 +1144,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn destroy_keep_cow_zero_attempts_returns_first_error_without_retry_sleep() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = tmp.path().join("base.img");
+        let cow_file = tmp.path().join("cow.img");
+        let bitmap_file = cow::bitmap_path_for(&cow_file);
+        let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
+        let lock_dir = tmp.path().join("locks");
+        std::fs::create_dir(&lock_dir).expect("create lock dir");
+        create_test_base_image(&base);
+        std::fs::write(&cow_file, b"cow").expect("write cow file");
+        std::fs::create_dir(&bitmap_tmp_path).expect("create bitmap tmp dir");
+
+        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_keep_cow_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before returning the first error");
+
+        assert!(result.is_err());
+        assert!(cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn abort_server_handles_waits_for_task_cleanup() {
         struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
 
