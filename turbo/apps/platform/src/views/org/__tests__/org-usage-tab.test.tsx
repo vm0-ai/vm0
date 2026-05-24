@@ -11,6 +11,8 @@ import {
 } from "../../../mocks/handlers/api-usage.ts";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -80,7 +82,9 @@ function setupMockAPIs(options?: {
 }
 
 async function openUsageTab() {
-  detachedSetupPage({ context, path: "/?settings=usage" });
+  detachedSetupPage({ context, path: "/" });
+  context.store.set(setActiveOrgManageTab$, "usage");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

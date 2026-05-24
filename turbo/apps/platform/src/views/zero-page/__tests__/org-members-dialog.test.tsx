@@ -17,6 +17,8 @@ import {
   zeroOrgInviteContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -65,8 +67,13 @@ function setupMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
   });
 }
 
-function renderMembersTab() {
-  detachedSetupPage({ context, path: "/?settings=members" });
+async function renderMembersTab() {
+  detachedSetupPage({ context, path: "/" });
+  context.store.set(setActiveOrgManageTab$, "members");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 }
 
 describe("org members - invite dialog loading state", () => {
