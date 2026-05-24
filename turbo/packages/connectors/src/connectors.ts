@@ -65,6 +65,7 @@ import { cloudflare } from "./connectors/cloudflare";
 import { cloudinary } from "./connectors/cloudinary";
 import { coda } from "./connectors/coda";
 import { computer } from "./connectors/computer";
+import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
 import { customerIo } from "./connectors/customer-io";
 import { db9 } from "./connectors/db9";
@@ -624,6 +625,7 @@ const CONNECTOR_TYPES_DEF = {
   ...cloudinary,
   ...coda,
   ...computer,
+  ...coresignal,
   ...cronlytic,
   ...customerIo,
   ...db9,

@@ -57,6 +57,7 @@
     "generate:close": "tsx src/index.ts close",
     "generate:cloudflare": "tsx src/index.ts cloudflare",
     "generate:coda": "tsx src/index.ts coda",
+    "generate:coresignal": "tsx src/index.ts coresignal",
     "generate:cronlytic": "tsx src/index.ts cronlytic",
     "generate:customer-io": "tsx src/index.ts customer-io",
     "generate:deepseek": "tsx src/index.ts deepseek",
