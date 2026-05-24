@@ -88,6 +88,40 @@ enum LifecycleBehavior {
     Panic(String),
 }
 
+impl LifecycleBehavior {
+    fn into_result(self) -> Result<()> {
+        match self {
+            Self::Result(result) => result,
+            #[allow(clippy::panic)]
+            Self::Panic(message) => panic!("{message}"),
+        }
+    }
+}
+
+#[derive(Default)]
+struct LifecycleBehaviors {
+    queue: Mutex<VecDeque<LifecycleBehavior>>,
+}
+
+impl LifecycleBehaviors {
+    fn push_result(&self, result: Result<()>) {
+        self.queue
+            .lock_ignoring_poison()
+            .push_back(LifecycleBehavior::Result(result));
+    }
+
+    fn push_panic(&self, message: impl Into<String>) {
+        self.queue
+            .lock_ignoring_poison()
+            .push_back(LifecycleBehavior::Panic(message.into()));
+    }
+
+    fn next_result(&self) -> Result<()> {
+        let behavior = self.queue.lock_ignoring_poison().pop_front();
+        behavior.map_or(Ok(()), LifecycleBehavior::into_result)
+    }
+}
+
 enum DestroyBehavior {
     Panic(String),
 }
@@ -301,15 +335,15 @@ pub struct MockSandboxOverrides {
     start_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
-    stop_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
+    stop_behaviors: LifecycleBehaviors,
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
-    park_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
+    park_behaviors: LifecycleBehaviors,
     /// Optional gate that records and blocks every `park()` entry until released.
     park_gate: Mutex<Option<BlockingGate>>,
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
-    unpark_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
+    unpark_behaviors: LifecycleBehaviors,
     /// Optional gate that records and blocks every factory `destroy()` entry
     /// until released.
     destroy_gate: Mutex<Option<BlockingGate>>,
@@ -355,10 +389,10 @@ impl MockSandboxOverrides {
             create_results: Mutex::new(VecDeque::new()),
             create_configs: Mutex::new(Vec::new()),
             start_results: Mutex::new(VecDeque::new()),
-            stop_behaviors: Mutex::new(VecDeque::new()),
-            park_behaviors: Mutex::new(VecDeque::new()),
+            stop_behaviors: LifecycleBehaviors::default(),
+            park_behaviors: LifecycleBehaviors::default(),
             park_gate: Mutex::new(None),
-            unpark_behaviors: Mutex::new(VecDeque::new()),
+            unpark_behaviors: LifecycleBehaviors::default(),
             destroy_gate: Mutex::new(None),
             destroy_behaviors: Mutex::new(VecDeque::new()),
             start_process_calls: Mutex::new(Vec::new()),
@@ -434,33 +468,25 @@ impl MockSandboxOverrides {
     /// Queue a `stop()` result applied to the next factory-created sandbox.
     /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
     pub fn push_stop_result(&self, result: Result<()>) {
-        self.stop_behaviors
-            .lock_ignoring_poison()
-            .push_back(LifecycleBehavior::Result(result));
+        self.stop_behaviors.push_result(result);
     }
 
     /// Queue a `stop()` panic applied to the next factory-created sandbox.
     /// Used by runner tests to exercise panic-safe cleanup boundaries.
     pub fn push_stop_panic(&self, message: impl Into<String>) {
-        self.stop_behaviors
-            .lock_ignoring_poison()
-            .push_back(LifecycleBehavior::Panic(message.into()));
+        self.stop_behaviors.push_panic(message);
     }
 
     /// Queue a `park()` result applied to the next factory-created sandbox.
     /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
     pub fn push_park_result(&self, result: Result<()>) {
-        self.park_behaviors
-            .lock_ignoring_poison()
-            .push_back(LifecycleBehavior::Result(result));
+        self.park_behaviors.push_result(result);
     }
 
     /// Queue a `park()` panic applied to the next factory-created sandbox.
     /// Used by runner tests to exercise panic-safe cleanup boundaries.
     pub fn push_park_panic(&self, message: impl Into<String>) {
-        self.park_behaviors
-            .lock_ignoring_poison()
-            .push_back(LifecycleBehavior::Panic(message.into()));
+        self.park_behaviors.push_panic(message);
     }
 
     /// Block every `park()` call with a durable lifecycle gate.
@@ -488,17 +514,13 @@ impl MockSandboxOverrides {
     /// Queue an `unpark()` result applied to the next factory-created sandbox.
     /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
     pub fn push_unpark_result(&self, result: Result<()>) {
-        self.unpark_behaviors
-            .lock_ignoring_poison()
-            .push_back(LifecycleBehavior::Result(result));
+        self.unpark_behaviors.push_result(result);
     }
 
     /// Queue an `unpark()` panic applied to the next factory-created sandbox.
     /// Used by runner tests to exercise panic-safe cleanup boundaries.
     pub fn push_unpark_panic(&self, message: impl Into<String>) {
-        self.unpark_behaviors
-            .lock_ignoring_poison()
-            .push_back(LifecycleBehavior::Panic(message.into()));
+        self.unpark_behaviors.push_panic(message);
     }
 
     /// Block every factory `destroy()` call with a durable lifecycle gate.
@@ -656,22 +678,14 @@ pub struct MockSandbox {
 
 impl MockSandbox {
     pub fn new(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            source_ip: "10.0.0.1".into(),
-            exec_results: Mutex::new(VecDeque::new()),
-            read_file_results: Mutex::new(VecDeque::new()),
-            read_file_calls: Mutex::new(Vec::new()),
-            copy_file_results: Mutex::new(VecDeque::new()),
-            copy_file_calls: Mutex::new(Vec::new()),
-            write_file_results: Mutex::new(VecDeque::new()),
-            write_file_calls: Mutex::new(Vec::new()),
-            overrides: None,
-            stdout_tx: Mutex::new(None),
-        }
+        Self::build(id, None)
     }
 
     fn with_overrides(id: impl Into<String>, overrides: Arc<MockSandboxOverrides>) -> Self {
+        Self::build(id, Some(overrides))
+    }
+
+    fn build(id: impl Into<String>, overrides: Option<Arc<MockSandboxOverrides>>) -> Self {
         Self {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
@@ -682,7 +696,7 @@ impl MockSandbox {
             copy_file_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
-            overrides: Some(overrides),
+            overrides,
             stdout_tx: Mutex::new(None),
         }
     }
@@ -800,12 +814,7 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
-        match o.stop_behaviors.lock_ignoring_poison().pop_front() {
-            Some(LifecycleBehavior::Result(result)) => result,
-            #[allow(clippy::panic)]
-            Some(LifecycleBehavior::Panic(message)) => panic!("{message}"),
-            None => Ok(()),
-        }
+        o.stop_behaviors.next_result()
     }
 
     async fn kill(&mut self) -> Result<()> {
@@ -824,12 +833,7 @@ impl Sandbox for MockSandbox {
         };
         *o.park_calls.lock_ignoring_poison() += 1;
         wait_blocking_gate(&o.park_gate).await;
-        match o.park_behaviors.lock_ignoring_poison().pop_front() {
-            Some(LifecycleBehavior::Result(result)) => result,
-            #[allow(clippy::panic)]
-            Some(LifecycleBehavior::Panic(message)) => panic!("{message}"),
-            None => Ok(()),
-        }
+        o.park_behaviors.next_result()
     }
 
     /// Mock unpark: counter + queued-result semantics mirror [`park`]
@@ -841,12 +845,7 @@ impl Sandbox for MockSandbox {
             return Ok(());
         };
         *o.unpark_calls.lock_ignoring_poison() += 1;
-        match o.unpark_behaviors.lock_ignoring_poison().pop_front() {
-            Some(LifecycleBehavior::Result(result)) => result,
-            #[allow(clippy::panic)]
-            Some(LifecycleBehavior::Panic(message)) => panic!("{message}"),
-            None => Ok(()),
-        }
+        o.unpark_behaviors.next_result()
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
@@ -1808,6 +1807,31 @@ mod tests {
         factory.destroy(second).await;
 
         assert_eq!(overrides.destroy_call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn lifecycle_behaviors_are_consumed_fifo_and_default_to_success() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_stop_result(Err(SandboxError::Start {
+            message: "queued stop failure".into(),
+        }));
+        overrides.push_stop_result(Ok(()));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let err = sandbox
+            .stop()
+            .await
+            .expect_err("first queued stop behavior should fail");
+        assert!(err.to_string().contains("queued stop failure"));
+        sandbox
+            .stop()
+            .await
+            .expect("second queued stop behavior should succeed");
+        sandbox
+            .stop()
+            .await
+            .expect("empty stop behavior queue should default to success");
     }
 
     #[tokio::test]
