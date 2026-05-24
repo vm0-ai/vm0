@@ -7,6 +7,8 @@ import {
   setMockOrgMembers,
   resetMockOrgMembers,
 } from "../../../mocks/handlers/api-org-members.ts";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const context = testContext();
 
@@ -16,7 +18,9 @@ beforeEach(() => {
 });
 
 async function openDialog() {
-  detachedSetupPage({ context, path: "/?settings=general" });
+  detachedSetupPage({ context, path: "/" });
+  context.store.set(setActiveOrgManageTab$, "general");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
