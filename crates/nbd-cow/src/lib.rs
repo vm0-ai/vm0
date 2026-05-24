@@ -1000,6 +1000,54 @@ impl Drop for NbdCowDevice {
 mod tests {
     use super::*;
 
+    const TEST_DEVICE_INDEX: u32 = 1_000_000;
+
+    fn create_test_base_image(path: &Path) {
+        let file = std::fs::File::create(path).expect("create base image");
+        file.set_len(BLOCK_SIZE as u64).expect("size base image");
+    }
+
+    fn pooled_disconnected_device(
+        base: &Path,
+        cow_file: &Path,
+        pool: pool::DevicePoolHandle,
+        lock_dir: &Path,
+    ) -> PooledNbdCowDevice {
+        let cow = cow::CowLayer::new(
+            base,
+            cow_file,
+            BLOCK_SIZE as u64,
+            BLOCK_SIZE,
+            DEFAULT_FLUSH_THRESHOLD,
+        )
+        .expect("create cow layer");
+
+        PooledNbdCowDevice {
+            device: NbdCowDevice {
+                device_index: TEST_DEVICE_INDEX,
+                device_path: PathBuf::from(format!("/dev/nbd{TEST_DEVICE_INDEX}")),
+                cow_file: cow_file.to_path_buf(),
+                cow: Arc::new(RwLock::new(cow)),
+                server_handles: Vec::new(),
+                shutdown: CancellationToken::new(),
+                disconnected: true,
+                connect_tid: 0,
+            },
+            lease: LeaseGuard::new(
+                pool::DeviceLease::new_for_test(TEST_DEVICE_INDEX, lock_dir),
+                pool.clone(),
+            ),
+            pool,
+        }
+    }
+
+    fn zero_attempt_destroy_policy() -> DestroyRetryPolicy {
+        DestroyRetryPolicy {
+            attempts: 0,
+            delay: std::time::Duration::from_secs(60),
+        }
+    }
+
     #[tokio::test]
     async fn pooled_finalizer_starts_before_returned_future_is_polled() {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
@@ -1036,6 +1084,63 @@ mod tests {
             );
 
         let _ = finalizer.await;
+    }
+
+    #[tokio::test]
+    async fn destroy_with_retries_zero_attempts_runs_once_and_removes_files() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = tmp.path().join("base.img");
+        let cow_file = tmp.path().join("cow.img");
+        let bitmap_file = cow::bitmap_path_for(&cow_file);
+        let lock_dir = tmp.path().join("locks");
+        std::fs::create_dir(&lock_dir).expect("create lock dir");
+        create_test_base_image(&base);
+        std::fs::write(&cow_file, b"cow").expect("write cow file");
+
+        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+        std::fs::write(&bitmap_file, b"bitmap").expect("write bitmap file");
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before first attempt")
+        .expect("destroy");
+
+        assert!(!cow_file.exists());
+        assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_keep_cow_zero_attempts_returns_preserved_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = tmp.path().join("base.img");
+        let cow_file = tmp.path().join("cow.img");
+        let bitmap_file = cow::bitmap_path_for(&cow_file);
+        let lock_dir = tmp.path().join("locks");
+        std::fs::create_dir(&lock_dir).expect("create lock dir");
+        create_test_base_image(&base);
+        std::fs::write(&cow_file, b"cow").expect("write cow file");
+
+        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+
+        let kept = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_keep_cow_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before first attempt")
+        .expect("destroy keep cow");
+
+        assert_eq!(kept.cow_file, cow_file);
+        assert_eq!(kept.bitmap_file, bitmap_file);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        pool.cleanup().await;
     }
 
     #[tokio::test]
