@@ -288,21 +288,13 @@ function ConnectStepContent() {
         data-testid="onboarding-step-connect"
         className="text-2xl font-semibold tracking-tight"
       >
-        Connect your apps
+        Try this prompt
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
-        Authorize each app so Zero can work with it. You can always add more
-        later. Credentials are encrypted and never exposed.
+        Tweak it below or run it as-is. Zero takes it from here — your tools
+        stay sandboxed and nothing leaves your workspace.
       </p>
-      {selectedEntries.length === 0 ? (
-        <p
-          data-testid="onboarding-no-connectors"
-          className="text-sm text-muted-foreground py-8"
-        >
-          No connectors selected. You can go back to add some, or skip this
-          step.
-        </p>
-      ) : (
+      {selectedEntries.length > 0 && (
         <div className="w-full flex flex-col gap-3">
           {selectedEntries.map(([type, config]) => {
             const isConnected = connectedSet.has(type);
@@ -378,9 +370,6 @@ function UseCasePromptComposer() {
 
   return (
     <div data-testid="onboarding-prompt-composer" className="w-full mt-6">
-      <p className="text-xs font-medium text-muted-foreground mb-2">
-        Your first prompt
-      </p>
       <textarea
         data-testid="onboarding-prompt-input"
         value={draft}
@@ -702,14 +691,21 @@ function OnboardingFooterNav() {
 function OnboardingOrbitPanel() {
   const effectiveConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
+  const isUseCase = useGet(onboardingIsUseCase$);
+  // Use-case mode without any preselected connectors has no picker to point
+  // the user at, so the "Pick your tools\u2026" hint is misleading. Drop it and
+  // let the orbit + trust badges carry the panel on their own.
+  const hideCopy = isUseCase && effectiveConnectors.length === 0;
   return (
     <>
       <OrbitIllustration />
-      <p className="text-sm text-foreground text-center leading-relaxed mt-6 max-w-[300px]">
-        {effectiveConnectors.length === 0
-          ? "Pick your tools and Zero will handle the rest, securely."
-          : `${effectiveConnectors.length} app${effectiveConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${effectiveConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
-      </p>
+      {!hideCopy && (
+        <p className="text-sm text-foreground text-center leading-relaxed mt-6 max-w-[300px]">
+          {effectiveConnectors.length === 0
+            ? "Pick your tools and Zero will handle the rest, securely."
+            : `${effectiveConnectors.length} app${effectiveConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${effectiveConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
+        </p>
+      )}
       <p className="text-[11px] text-muted-foreground text-center mt-4">
         Sandboxed VMs&ensp;|&ensp;No credential exposure&ensp;|&ensp;Full audit
         trail&ensp;|&ensp;Open source

@@ -57,8 +57,9 @@ export const onboardingEffectiveConnectors$ = computed((get) => {
 
 /**
  * The resolved step. Onboarding is admin workspace setup (step 1 → step 2).
- * A use-case deep link (`?prompt=&connector=`) collapses the flow to step 3,
- * where the user reviews connectors + edits the prompt before "Try It".
+ * A use-case deep link (`?prompt=`, optionally with `&connector=`) collapses
+ * the flow to step 3, where the user reviews connectors + edits the prompt
+ * before "Try It".
  */
 export const onboardingEffectiveStep$ = computed(async (get) => {
   const step = await get(zeroOnboardingStep$);

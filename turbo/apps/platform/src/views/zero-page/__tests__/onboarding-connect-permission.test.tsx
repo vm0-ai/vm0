@@ -101,9 +101,9 @@ describe("onboarding connector permission dialog suppression", () => {
     await fill(input, "Test Workspace");
     click(screen.getByText("Next"));
 
-    // Step 3: Connect your apps (github pre-selected from the deep link)
+    // Step 3: Try this prompt (github pre-selected from the deep link)
     await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+      expect(screen.getByText("Try this prompt")).toBeInTheDocument();
     });
 
     // Mock the connectors API to return GitHub as connected (simulates
@@ -182,7 +182,7 @@ describe("onboarding connector permission dialog suppression", () => {
     click(screen.getByText("Next"));
 
     await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+      expect(screen.getByText("Try this prompt")).toBeInTheDocument();
     });
     click(screen.getByText("Connect"));
 
