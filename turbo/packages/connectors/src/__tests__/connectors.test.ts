@@ -41,7 +41,7 @@ import {
   refreshConnectorOAuthToken,
   revokeConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
-} from "../auth-providers/connector-provider-registry";
+} from "../auth-providers/connector-auth";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
 import { buildGoogleAuthorizationUrl } from "../oauth-providers/providers/google-oauth";
 

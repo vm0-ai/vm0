@@ -53,8 +53,8 @@
       "types": "./src/github-url.ts"
     },
     "./auth-providers": {
-      "import": "./src/auth-providers/connector-provider-registry.ts",
-      "types": "./src/auth-providers/connector-provider-registry.ts"
+      "import": "./src/auth-providers/connector-auth.ts",
+      "types": "./src/auth-providers/connector-auth.ts"
     },
     "./oauth-providers/*": {
       "import": "./src/oauth-providers/*.ts",
