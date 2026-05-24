@@ -39,7 +39,7 @@ describe("checkUnifiedSettingsParam$", () => {
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
   });
 
-  it("falls back to account for non-admin on admin-only section", async () => {
+  it("falls back to preference for non-admin on admin-only section", async () => {
     const { store, signal } = context;
     setupAuth(signal);
     setMockOrg({ role: "member" });
@@ -49,7 +49,7 @@ describe("checkUnifiedSettingsParam$", () => {
     await store.set(checkUnifiedSettingsParam$, signal);
 
     expect(store.get(settingsDialogOpen$)).toBeTruthy();
-    expect(store.get(settingsActiveSection$)).toBe("account");
+    expect(store.get(settingsActiveSection$)).toBe("preference");
   });
 
   it("does not open dialog for unknown settings value", async () => {
@@ -119,7 +119,7 @@ describe("setSettingsDialogOpen$", () => {
     const { store, signal } = context;
     setupAuth(signal);
     createPushStateMock(signal);
-    mockLocation({ pathname: "/", search: "?settings=account" }, signal);
+    mockLocation({ pathname: "/", search: "?settings=preference" }, signal);
 
     await store.set(setSettingsDialogOpen$, true, signal);
     expect(store.get(settingsDialogOpen$)).toBeTruthy();

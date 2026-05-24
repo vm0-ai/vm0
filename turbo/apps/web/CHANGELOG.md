@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.385.0](https://github.com/vm0-ai/vm0/compare/web-v12.384.3...web-v12.385.0) (2026-05-24)
+
+
+### Features
+
+* **web:** add gpt-5 series and image/video models to /models ([#14628](https://github.com/vm0-ai/vm0/issues/14628)) ([221ec66](https://github.com/vm0-ai/vm0/commit/221ec666288e88ff6bc55db918db682932e29367))
+
+
+### Bug Fixes
+
+* **web:** handle scalar string section field in docs data layer ([#14626](https://github.com/vm0-ai/vm0/issues/14626)) ([f314f16](https://github.com/vm0-ai/vm0/commit/f314f162ab7067d6f3d36f80febf1b7c51b9fe60))
+
 ## [12.384.3](https://github.com/vm0-ai/vm0/compare/web-v12.384.2...web-v12.384.3) (2026-05-23)
 
 

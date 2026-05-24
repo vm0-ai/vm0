@@ -25,6 +25,7 @@ import {
 } from "../../../../../signals/zero-page/settings/preferences-page.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
+import { AccountSection } from "./account-section.tsx";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
@@ -168,6 +169,11 @@ function EnterBlock() {
 export function PreferenceSection() {
   return (
     <div className="flex flex-col gap-8">
+      <section className="flex flex-col gap-3">
+        <SettingsSectionHeading title="Account & Security" />
+        <AccountSection />
+      </section>
+
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
           title="Appearance"

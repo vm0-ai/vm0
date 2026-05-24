@@ -503,7 +503,7 @@ export function AccountDropdown({
   };
 
   const handleOpenSettings = () => {
-    detach(openSettings("account", pageSignal), Reason.DomCallback);
+    detach(openSettings("preference", pageSignal), Reason.DomCallback);
   };
 
   return (

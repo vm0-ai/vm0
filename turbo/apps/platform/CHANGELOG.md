@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.378.0](https://github.com/vm0-ai/vm0/compare/app-v0.377.0...app-v0.378.0) (2026-05-24)
+
+
+### Features
+
+* **platform:** group agents page by visibility (Team / Private) ([#13831](https://github.com/vm0-ai/vm0/issues/13831)) ([9e5b7dd](https://github.com/vm0-ai/vm0/commit/9e5b7ddcd976501a5118a402efe45b3df0327bda))
+
+
+### Refactoring
+
+* **platform:** merge Account into Preference settings section ([#14627](https://github.com/vm0-ai/vm0/issues/14627)) ([b670a5b](https://github.com/vm0-ai/vm0/commit/b670a5b81e0051a68700993ac69b46e37590f2be))
+
 ## [0.377.0](https://github.com/vm0-ai/vm0/compare/app-v0.376.1...app-v0.377.0) (2026-05-23)
 
 

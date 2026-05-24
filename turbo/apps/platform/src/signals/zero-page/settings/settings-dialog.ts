@@ -5,7 +5,6 @@ import { isOrgAdmin$ } from "../../org.ts";
 import { initProfileName$ } from "./org-manage-tabs-state.ts";
 
 export const SETTINGS_SECTIONS = [
-  "account",
   "preference",
   "api-keys",
   "model",
@@ -39,7 +38,7 @@ export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
 
-const internalActiveSection$ = state<SettingsSection>("account");
+const internalActiveSection$ = state<SettingsSection>("preference");
 
 export const settingsActiveSection$ = computed((get) => {
   return get(internalActiveSection$);
@@ -112,7 +111,9 @@ export const checkUnifiedSettingsParam$ = command(
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
       const resolved =
-        !isAdmin && isAdminOnlySettingsSection(section) ? "account" : section;
+        !isAdmin && isAdminOnlySettingsSection(section)
+          ? "preference"
+          : section;
       set(internalActiveSection$, resolved);
       await set(setSettingsDialogOpen$, true, signal);
     }
