@@ -186,6 +186,7 @@ import { plainFirewall } from "./plain.generated";
 import { plausibleFirewall } from "./plausible.generated";
 import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
+import { porkbunFirewall } from "./porkbun.generated";
 import { productlaneFirewall } from "./productlane.generated";
 import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
@@ -408,6 +409,7 @@ const CONNECTOR_FIREWALLS = {
   plausible: plausibleFirewall,
   podchaser: podchaserFirewall,
   posthog: posthogFirewall,
+  porkbun: porkbunFirewall,
   "prisma-postgres": prismaPostgresFirewall,
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,

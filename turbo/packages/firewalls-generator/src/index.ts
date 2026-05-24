@@ -145,6 +145,7 @@ import { generate as generatePlain } from "./plain";
 import { generate as generatePlausible } from "./plausible";
 import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
+import { generate as generatePorkbun } from "./porkbun";
 import { generate as generateProductlane } from "./productlane";
 import { generate as generatePrismaPostgres } from "./prisma-postgres";
 import { generate as generatePushinator } from "./pushinator";
@@ -349,6 +350,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   plausible: generatePlausible,
   podchaser: generatePodchaser,
   posthog: generatePosthog,
+  porkbun: generatePorkbun,
   "prisma-postgres": generatePrismaPostgres,
   productlane: generateProductlane,
   pushinator: generatePushinator,
