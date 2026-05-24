@@ -154,6 +154,7 @@ const CONNECTOR_ICON_COLORFUL = {
   pdf4me: true,
   pdfco: true,
   pinecone: true,
+  pipedream: true,
   plain: true,
   plausible: true,
   podchaser: true,
