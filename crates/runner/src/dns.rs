@@ -389,20 +389,13 @@ impl DnsResultKind {
 
 /// Parse a dnsmasq DNS log line.
 ///
-/// Matches `--log-queries=extra` lines.
-fn parse_dns_line(line: &str) -> Option<DnsLogEntry> {
-    parse_extra_line(line)
-}
-
-/// Parse dnsmasq `--log-queries=extra` output.
-///
-/// Matches:
+/// Matches dnsmasq `--log-queries=extra` output:
 ///
 /// - `dnsmasq[PID]: SERIAL IP/PORT query[TYPE] DOMAIN from IP`
 /// - `dnsmasq[PID]: SERIAL IP/PORT reply DOMAIN is RESULT`
 /// - `dnsmasq[PID]: SERIAL IP/PORT cached DOMAIN is RESULT`
 /// - `dnsmasq[PID]: SERIAL IP/PORT config DOMAIN is RESULT`
-fn parse_extra_line(line: &str) -> Option<DnsLogEntry> {
+fn parse_dns_line(line: &str) -> Option<DnsLogEntry> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
     for (idx, token) in tokens.iter().enumerate().skip(2) {
         if token.starts_with("query[")
@@ -582,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_extra_line_skips_unrelated_prefix_tokens() {
+    fn parse_dns_line_skips_unrelated_prefix_tokens() {
         let line = "Apr 28 config runner reply dnsmasq[1234]: 314 10.200.0.9/41234 query[AAAA] google.com from 10.200.0.9";
         let entry = parse_dns_line(line).unwrap();
         assert_eq!(entry.source_ip, "10.200.0.9");
