@@ -1173,6 +1173,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn destroy_keep_cow_retries_after_first_error_and_returns_preserved_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = tmp.path().join("base.img");
+        let cow_file = tmp.path().join("cow.img");
+        let bitmap_file = cow::bitmap_path_for(&cow_file);
+        let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
+        let lock_dir = tmp.path().join("locks");
+        std::fs::create_dir(&lock_dir).expect("create lock dir");
+        create_test_base_image(&base);
+        std::fs::write(&cow_file, b"cow").expect("write cow file");
+        std::os::unix::fs::symlink(
+            tmp.path().join("missing-parent").join("bitmap.tmp"),
+            &bitmap_tmp_path,
+        )
+        .expect("create broken bitmap tmp symlink");
+
+        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+
+        let kept = device
+            .destroy_keep_cow_with_retries(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::ZERO,
+            })
+            .await
+            .expect("destroy keep cow should retry after tmp-file failure");
+
+        assert_eq!(kept.cow_file, cow_file);
+        assert_eq!(kept.bitmap_file, bitmap_file);
+        assert!(kept.cow_file.exists());
+        assert!(kept.bitmap_file.exists());
+        assert!(!bitmap_tmp_path.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn abort_server_handles_waits_for_task_cleanup() {
         struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
 
