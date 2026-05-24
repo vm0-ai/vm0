@@ -1,29 +1,34 @@
-import { defineConnectorOAuthProvider } from "../provider-types";
+import type { DeviceAuthConnectorAuthProvider } from "../../auth-providers/provider-types";
 import {
   pollTestOAuthDeviceAuth,
   startTestOAuthDeviceAuth,
   TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
 } from "./test-oauth-device";
 
-export const testOauthDeviceProvider = defineConnectorOAuthProvider(
-  "test-oauth-device",
+export const testOauthDeviceProvider: DeviceAuthConnectorAuthProvider<"test-oauth-device"> =
   {
-    getSecretName: () => {
-      return TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME;
+    grant: {
+      kind: "device-auth",
+      startDeviceAuth: async (args) => {
+        const { clientId } = args;
+        return await startTestOAuthDeviceAuth({
+          clientId,
+          scopes: args.scopes,
+        });
+      },
+      pollDeviceAuth: async (args) => {
+        const { clientId } = args;
+        return await pollTestOAuthDeviceAuth({
+          clientId,
+          deviceCode: args.deviceCode,
+        });
+      },
     },
-    startDeviceAuth: async (args) => {
-      const { clientId } = args;
-      return await startTestOAuthDeviceAuth({
-        clientId,
-        scopes: args.scopes,
-      });
+    access: {
+      kind: "none",
+      getAccessSecretName: () => {
+        return TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME;
+      },
     },
-    pollDeviceAuth: async (args) => {
-      const { clientId } = args;
-      return await pollTestOAuthDeviceAuth({
-        clientId,
-        deviceCode: args.deviceCode,
-      });
-    },
-  },
-);
+    revoke: { kind: "none" },
+  };

@@ -151,7 +151,7 @@ describe("connector/providers/meta-ads", () => {
     });
 
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {
-      const url = metaAdsProvider.buildAuthUrl({
+      const url = metaAdsProvider.grant.buildAuthUrl({
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -179,11 +179,13 @@ describe("connector/providers/meta-ads", () => {
     });
 
     it("getSecretName returns META_ADS_ACCESS_TOKEN", () => {
-      expect(metaAdsProvider.getSecretName()).toBe("META_ADS_ACCESS_TOKEN");
+      expect(metaAdsProvider.access.getAccessSecretName()).toBe(
+        "META_ADS_ACCESS_TOKEN",
+      );
     });
 
     it("refreshToken is not registered (Meta uses long-lived token exchange)", () => {
-      expect("refreshToken" in metaAdsProvider).toBe(false);
+      expect(metaAdsProvider.access.kind).toBe("none");
     });
   });
 });

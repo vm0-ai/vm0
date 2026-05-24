@@ -904,6 +904,48 @@ class TestReportConnectorUsage:
         assert p["category"] == "posts.read"
         assert p["quantity"] == 3
 
+    @pytest.mark.parametrize(
+        ("query", "expected_quantity"),
+        [
+            ("ids=1,,2", 2),
+            ("ids=,1,2,", 2),
+            ("ids=1,+,2", 2),
+        ],
+    )
+    def test_billable_counts_fallback_filters_empty_id_segments(
+        self, tmp_path, real_flow, query, expected_quantity
+    ):
+        """body unparseable but ?ids= present -> uses non-empty id segment count."""
+        flow = self._make_x_flow(real_flow, tmp_path, query=query, body=b"not json")
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == expected_quantity
+
+    def test_billable_counts_fallback_filters_empty_username_segments(self, tmp_path, real_flow):
+        """body unparseable but ?usernames= present -> uses non-empty username count."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/users/by",
+            query="usernames=a,,b",
+            body=b"not json",
+            permission="users.read",
+            rule="GET /2/users/by",
+        )
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "user.read"
+        assert p["quantity"] == 2
+
+    def test_billable_counts_fallback_empty_id_segments_are_no_hint(self, tmp_path, real_flow):
+        """body unparseable and only empty ?ids= segments -> no billing, with audit log."""
+        flow = self._make_x_flow(real_flow, tmp_path, query="ids=,,", body=b"not json")
+        proxy_log = tmp_path / "proxy.jsonl"
+        assert self._call_and_get_billing(flow) == []
+        assert proxy_log.exists()
+        content = proxy_log.read_text()
+        assert "unparseable" in content.lower()
+        assert '"level":"error"' in content or '"level": "error"' in content
+
     def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path, real_flow):
         """body unparseable but ?max_results=50 present -> uses max_results."""
         flow = self._make_x_flow(real_flow, tmp_path, query="max_results=50", body=b"not json")

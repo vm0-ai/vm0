@@ -8,25 +8,18 @@ import {
   getConnectorOAuthDeviceAuthConfig,
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   isOAuthAuthCodeConnectorType,
-  isOAuthDeviceAuthConnectorType,
   isStaticConfidentialConnectorOAuthCredentials,
   isStaticConnectorOAuthCredentials,
   type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import {
-  buildAuthCodeGrantAuthUrl,
-  exchangeAuthCodeGrant,
   getConnectorAuthSecretMetadata,
-  pollDeviceAuthGrant,
-  refreshTokenAccess,
-  startDeviceAuthGrant,
   type ConnectorAuthSecretMetadata,
 } from "../auth-providers/provider-registry";
 import type {
   AuthCodeConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
   OAuthConnectorAccessProvider,
-  OAuthConnectorRevokeProvider,
 } from "../auth-providers/provider-types";
 import {
   type AuthUrlResult,
@@ -34,7 +27,6 @@ import {
   type ConnectorOAuthDeviceAuthPollArgs,
   type ConnectorOAuthDeviceAuthStartArgs,
   type ConnectorOAuthExchangeArgs,
-  type ConnectorOAuthProviderFor,
   type ConnectorOAuthRefreshArgs,
   type OAuthAuthorizeArgs,
   type OAuthDeviceAuthPollArgs,
@@ -112,16 +104,30 @@ export type {
 export type { ProviderEnv };
 export { providerEnvFromObject, isOAuthRefreshProvider };
 
-type ConnectorOAuthProviderMap = {
-  readonly [Type in OAuthConnectorType]: ConnectorOAuthProviderFor<Type>;
+type AuthCodeConnectorOAuthProviderMap = {
+  readonly [Type in OAuthAuthCodeConnectorType]: AuthCodeConnectorAuthProvider<Type>;
+};
+
+type DeviceAuthConnectorOAuthProviderMap = {
+  readonly [Type in OAuthDeviceAuthConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
 export type ConnectorOAuthSecretMetadata = ConnectorAuthSecretMetadata;
 
-function connectorProviderFor<T extends OAuthConnectorType>(
+function deviceAuthConnectorProviderFor<T extends OAuthDeviceAuthConnectorType>(
   type: T,
-): ConnectorOAuthProviderFor<T> {
-  return CONNECTOR_OAUTH_PROVIDERS[type];
+): DeviceAuthConnectorOAuthProviderMap[T] {
+  return DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type];
+}
+
+function connectorAccessProviderFor<T extends OAuthConnectorType>(
+  type: T,
+): OAuthConnectorAccessProvider<T> {
+  if (isOAuthAuthCodeConnectorType(type)) {
+    return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type].access;
+  }
+
+  return deviceAuthConnectorProviderFor(type).access;
 }
 
 function connectorCredentialArgs(
@@ -148,77 +154,10 @@ function assertConfiguredConnectorOAuthCredentials(
   }
 }
 
-function connectorAccessProviderFor<T extends OAuthConnectorType>(
-  provider: ConnectorOAuthProviderFor<T>,
-): OAuthConnectorAccessProvider<T> {
-  if (
-    "getRefreshSecretName" in provider &&
-    typeof provider.getRefreshSecretName === "function" &&
-    "refreshToken" in provider &&
-    typeof provider.refreshToken === "function"
-  ) {
-    return {
-      kind: "refresh-token",
-      getAccessSecretName: provider.getSecretName,
-      getRefreshSecretName: provider.getRefreshSecretName,
-      refreshToken: provider.refreshToken,
-    };
-  }
-
-  return {
-    kind: "none",
-    getAccessSecretName: provider.getSecretName,
-  };
-}
-
-function connectorRevokeProviderFor<T extends OAuthConnectorType>(
-  provider: ConnectorOAuthProviderFor<T>,
-): OAuthConnectorRevokeProvider<T> {
-  if ("revokeToken" in provider && typeof provider.revokeToken === "function") {
-    return {
-      kind: "token-revoke",
-      revokeToken: provider.revokeToken,
-    };
-  }
-
-  return { kind: "none" };
-}
-
-function authCodeConnectorAuthProviderFor<T extends OAuthAuthCodeConnectorType>(
-  type: T,
-): AuthCodeConnectorAuthProvider<T> {
-  const provider = connectorProviderFor(type);
-  return {
-    grant: {
-      kind: "auth-code",
-      buildAuthUrl: provider.buildAuthUrl,
-      exchangeCode: provider.exchangeCode,
-    },
-    access: connectorAccessProviderFor(provider),
-    revoke: connectorRevokeProviderFor(provider),
-  };
-}
-
-function deviceConnectorAuthProviderFor<T extends OAuthDeviceAuthConnectorType>(
-  type: T,
-): DeviceAuthConnectorAuthProvider<T> {
-  const provider = connectorProviderFor(type);
-  return {
-    grant: {
-      kind: "device-auth",
-      startDeviceAuth: provider.startDeviceAuth,
-      pollDeviceAuth: provider.pollDeviceAuth,
-    },
-    access: connectorAccessProviderFor(provider),
-    revoke: connectorRevokeProviderFor(provider),
-  };
-}
-
-const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
+const AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS: AuthCodeConnectorOAuthProviderMap = {
   ahrefs: ahrefsProvider,
   airtable: airtableProvider,
   asana: asanaProvider,
-  base44: base44Provider,
   canva: canvaProvider,
   close: closeProvider,
   deel: deelProvider,
@@ -261,7 +200,17 @@ const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
   xero: xeroProvider,
   zoom: zoomProvider,
   "test-oauth": testOauthProvider,
-  "test-oauth-device": testOauthDeviceProvider,
+};
+
+const DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS: DeviceAuthConnectorOAuthProviderMap =
+  {
+    base44: base44Provider,
+    "test-oauth-device": testOauthDeviceProvider,
+  };
+
+const CONNECTOR_OAUTH_PROVIDERS = {
+  ...AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS,
+  ...DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS,
 };
 
 export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
@@ -283,13 +232,13 @@ export function getConnectorOAuthSecretMetadata(
 
   if (isOAuthAuthCodeConnectorType(type)) {
     return getConnectorAuthSecretMetadata(
-      authCodeConnectorAuthProviderFor(type),
+      AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type],
     );
   }
 
-  if (isOAuthDeviceAuthConnectorType(type)) {
-    return getConnectorAuthSecretMetadata(deviceConnectorAuthProviderFor(type));
-  }
+  return getConnectorAuthSecretMetadata(
+    DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type],
+  );
 }
 
 export async function buildConnectorOAuthAuthUrl<
@@ -301,14 +250,13 @@ export async function buildConnectorOAuthAuthUrl<
   readonly state: string;
 }): Promise<string | AuthUrlResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  return await buildAuthCodeGrantAuthUrl({
-    provider: authCodeConnectorAuthProviderFor(args.type),
-    authorizeArgs: {
-      ...connectorCredentialArgs(args.credentials),
-      redirectUri: args.redirectUri,
-      state: args.state,
-    } as ConnectorOAuthAuthorizeArgs<T>,
-  });
+  return await AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[
+    args.type
+  ].grant.buildAuthUrl({
+    ...connectorCredentialArgs(args.credentials),
+    redirectUri: args.redirectUri,
+    state: args.state,
+  } as ConnectorOAuthAuthorizeArgs<T>);
 }
 
 export async function exchangeConnectorOAuthCode<
@@ -323,17 +271,16 @@ export async function exchangeConnectorOAuthCode<
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  return await exchangeAuthCodeGrant({
-    provider: authCodeConnectorAuthProviderFor(args.type),
-    exchangeArgs: {
-      ...connectorCredentialArgs(args.credentials),
-      code: args.code,
-      redirectUri: args.redirectUri,
-      state: args.state,
-      codeVerifier: args.codeVerifier,
-      oauthContext: args.oauthContext,
-    } as ConnectorOAuthExchangeArgs<T>,
-  });
+  return await AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[
+    args.type
+  ].grant.exchangeCode({
+    ...connectorCredentialArgs(args.credentials),
+    code: args.code,
+    redirectUri: args.redirectUri,
+    state: args.state,
+    codeVerifier: args.codeVerifier,
+    oauthContext: args.oauthContext,
+  } as ConnectorOAuthExchangeArgs<T>);
 }
 
 export async function startConnectorOAuthDeviceAuth<
@@ -344,13 +291,12 @@ export async function startConnectorOAuthDeviceAuth<
 }): Promise<OAuthDeviceAuthStartResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   const oauthConfig = getConnectorOAuthDeviceAuthConfig(args.type);
-  return await startDeviceAuthGrant({
-    provider: deviceConnectorAuthProviderFor(args.type),
-    startArgs: {
-      ...connectorCredentialArgs(args.credentials),
-      scopes: oauthConfig.scopes,
-    } as ConnectorOAuthDeviceAuthStartArgs<T>,
-  });
+  return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
+    args.type
+  ].grant.startDeviceAuth({
+    ...connectorCredentialArgs(args.credentials),
+    scopes: oauthConfig.scopes,
+  } as ConnectorOAuthDeviceAuthStartArgs<T>);
 }
 
 export async function pollConnectorOAuthDeviceAuth<
@@ -361,13 +307,12 @@ export async function pollConnectorOAuthDeviceAuth<
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  return await pollDeviceAuthGrant({
-    provider: deviceConnectorAuthProviderFor(args.type),
-    pollArgs: {
-      ...connectorCredentialArgs(args.credentials),
-      deviceCode: args.deviceCode,
-    } as ConnectorOAuthDeviceAuthPollArgs<T>,
-  });
+  return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
+    args.type
+  ].grant.pollDeviceAuth({
+    ...connectorCredentialArgs(args.credentials),
+    deviceCode: args.deviceCode,
+  } as ConnectorOAuthDeviceAuthPollArgs<T>);
 }
 
 export async function refreshConnectorOAuthToken<
@@ -378,20 +323,17 @@ export async function refreshConnectorOAuthToken<
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  const access = connectorAccessProviderFor(connectorProviderFor(args.type));
+  const access = connectorAccessProviderFor(args.type);
 
   switch (access.kind) {
     case "none":
       throw new Error(`${args.type} OAuth provider does not support refresh`);
 
     case "refresh-token":
-      return await refreshTokenAccess({
-        access,
-        refreshArgs: {
-          ...connectorCredentialArgs(args.credentials),
-          refreshToken: args.refreshToken,
-        } as ConnectorOAuthRefreshArgs<T>,
-      });
+      return await access.refreshToken({
+        ...connectorCredentialArgs(args.credentials),
+        refreshToken: args.refreshToken,
+      } as ConnectorOAuthRefreshArgs<T>);
   }
 }
 

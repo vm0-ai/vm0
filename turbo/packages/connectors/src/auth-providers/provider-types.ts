@@ -70,11 +70,11 @@ export type ConnectorAccessProvider<T extends ConnectorType> =
     ? OAuthConnectorAccessProvider<T>
     : NoneAccessProvider;
 
-export interface NoneRevokeProvider {
+interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-export interface TokenRevokeProvider<T extends OAuthConnectorType> {
+interface TokenRevokeProvider<T extends OAuthConnectorType> {
   readonly kind: "token-revoke";
   revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
 }
@@ -88,7 +88,7 @@ export type ConnectorRevokeProvider<T extends ConnectorType> =
     ? OAuthConnectorRevokeProvider<T>
     : NoneRevokeProvider;
 
-interface BaseConnectorAuthProvider<TGrant, TAccess, TRevoke> {
+export interface AuthProvider<TGrant, TAccess, TRevoke> {
   readonly grant: TGrant;
   readonly access: TAccess;
   readonly revoke: TRevoke;
@@ -96,7 +96,7 @@ interface BaseConnectorAuthProvider<TGrant, TAccess, TRevoke> {
 
 export type AuthCodeConnectorAuthProvider<
   T extends OAuthAuthCodeConnectorType,
-> = BaseConnectorAuthProvider<
+> = AuthProvider<
   AuthCodeGrantProvider<T>,
   OAuthConnectorAccessProvider<T>,
   OAuthConnectorRevokeProvider<T>
@@ -104,15 +104,14 @@ export type AuthCodeConnectorAuthProvider<
 
 export type DeviceAuthConnectorAuthProvider<
   T extends OAuthDeviceAuthConnectorType,
-> = BaseConnectorAuthProvider<
+> = AuthProvider<
   DeviceAuthGrantProvider<T>,
   OAuthConnectorAccessProvider<T>,
   OAuthConnectorRevokeProvider<T>
 >;
 
-export type ConnectorAuthProvider<T extends ConnectorType> =
-  BaseConnectorAuthProvider<
-    ConnectorGrantProvider<T>,
-    ConnectorAccessProvider<T>,
-    ConnectorRevokeProvider<T>
-  >;
+export type ConnectorAuthProvider<T extends ConnectorType> = AuthProvider<
+  ConnectorGrantProvider<T>,
+  ConnectorAccessProvider<T>,
+  ConnectorRevokeProvider<T>
+>;

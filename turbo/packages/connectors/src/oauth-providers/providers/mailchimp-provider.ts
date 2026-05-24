@@ -1,38 +1,45 @@
-import { defineConnectorOAuthProvider } from "../provider-types";
+import type { AuthCodeConnectorAuthProvider } from "../../auth-providers/provider-types";
 import {
   buildMailchimpAuthorizationUrl,
   exchangeMailchimpCode,
   getMailchimpSecretName,
 } from "./mailchimp";
-export const mailchimpProvider = defineConnectorOAuthProvider("mailchimp", {
-  buildAuthUrl: (args) => {
-    const { clientId } = args;
-    return buildMailchimpAuthorizationUrl(
-      clientId,
-      args.redirectUri,
-      args.state,
-    );
+export const mailchimpProvider: AuthCodeConnectorAuthProvider<"mailchimp"> = {
+  grant: {
+    kind: "auth-code",
+    buildAuthUrl: (args) => {
+      const { clientId } = args;
+      return buildMailchimpAuthorizationUrl(
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
+    },
+    exchangeCode: async (args) => {
+      const { clientId, clientSecret } = args;
+      const code = args.code;
+      const redirectUri = args.redirectUri;
+      const result = await exchangeMailchimpCode(
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      );
+      return {
+        accessToken: result.accessToken,
+        refreshToken: null,
+        scopes: result.scopes,
+        userInfo: {
+          id: result.userInfo.id,
+          username: result.userInfo.username,
+          email: result.userInfo.email,
+        },
+      };
+    },
   },
-  exchangeCode: async (args) => {
-    const { clientId, clientSecret } = args;
-    const code = args.code;
-    const redirectUri = args.redirectUri;
-    const result = await exchangeMailchimpCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: null,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.userInfo.id,
-        username: result.userInfo.username,
-        email: result.userInfo.email,
-      },
-    };
+  access: {
+    kind: "none",
+    getAccessSecretName: getMailchimpSecretName,
   },
-  getSecretName: getMailchimpSecretName,
-});
+  revoke: { kind: "none" },
+};

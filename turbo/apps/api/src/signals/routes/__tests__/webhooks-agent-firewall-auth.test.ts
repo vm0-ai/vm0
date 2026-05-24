@@ -320,11 +320,14 @@ function configureDynamicTestOAuthRefresh(
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const provider = testOauthProvider;
-  const originalRefreshToken = provider.refreshToken;
+  const access = testOauthProvider.access;
+  if (access.kind !== "refresh-token") {
+    throw new Error("test-oauth provider should support refresh");
+  }
+  const originalRefreshToken = access.refreshToken;
 
   mutableOAuth.client = dynamicPublicClient;
-  provider.refreshToken = (args) => {
+  access.refreshToken = (args) => {
     refreshes.push({
       clientId: args.clientId,
       clientSecret: args.clientSecret,
@@ -339,11 +342,7 @@ function configureDynamicTestOAuthRefresh(
 
   return () => {
     mutableOAuth.client = originalClient;
-    if (originalRefreshToken) {
-      provider.refreshToken = originalRefreshToken;
-    } else {
-      delete provider.refreshToken;
-    }
+    access.refreshToken = originalRefreshToken;
   };
 }
 

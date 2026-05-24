@@ -237,10 +237,10 @@ function configureDynamicTestOAuthExchange(
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
   const provider = testOauthProvider;
-  const originalExchangeCode = provider.exchangeCode;
+  const originalExchangeCode = provider.grant.exchangeCode;
 
   mutableOAuth.client = dynamicPublicClient;
-  provider.exchangeCode = (args) => {
+  provider.grant.exchangeCode = (args) => {
     exchanges.push({
       clientId: args.clientId,
       clientSecret: args.clientSecret,
@@ -265,7 +265,7 @@ function configureDynamicTestOAuthExchange(
 
   return () => {
     mutableOAuth.client = originalClient;
-    provider.exchangeCode = originalExchangeCode;
+    provider.grant.exchangeCode = originalExchangeCode;
   };
 }
 
