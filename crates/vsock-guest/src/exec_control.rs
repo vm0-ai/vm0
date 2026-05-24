@@ -910,6 +910,45 @@ mod tests {
     }
 
     #[test]
+    fn dropped_operation_closes_connected_control_sink() {
+        let nonce = unique_test_nonce(19);
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(19, nonce, true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let sink = registry.resolve(19, nonce).unwrap();
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        process_control_ipc::write_hello(&mut stream).unwrap();
+
+        let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !matches!(&*guard, ControlSinkInner::Connected(_)) {
+            let now = Instant::now();
+            assert!(now < deadline, "control sink should connect after hello");
+            let (next_guard, _) = sink
+                .ready
+                .wait_timeout(guard, deadline.duration_since(now))
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+        }
+        drop(guard);
+
+        drop(registration);
+
+        assert!(matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Closed
+        ));
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let error = process_control_ipc::read_request(&mut stream).unwrap_err();
+        assert!(
+            !is_timeout(&error),
+            "operation drop should interrupt the connected control sink stream"
+        );
+    }
+
+    #[test]
     fn valid_operation_without_sink_is_unsupported() {
         let registry = ExecControlRegistry::default();
         let _registration = registry.register(7, NONCE, false).unwrap();
