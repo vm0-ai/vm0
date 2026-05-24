@@ -158,6 +158,7 @@ const CONNECTOR_ICON_COLORFUL = {
   plausible: true,
   podchaser: true,
   posthog: true,
+  printful: true,
   qdrant: true,
   qiita: true,
   reap: true,
