@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.69.5](https://github.com/vm0-ai/vm0/compare/api-v1.69.4...api-v1.69.5) (2026-05-24)
+
+
+### Refactoring
+
+* move connector auth registry boundary ([#14690](https://github.com/vm0-ai/vm0/issues/14690)) ([b8e6078](https://github.com/vm0-ai/vm0/commit/b8e60789e89da9da1090eea444b1a90d3268a502))
+* nest oauth providers under auth providers ([#14702](https://github.com/vm0-ai/vm0/issues/14702)) ([02bb57c](https://github.com/vm0-ai/vm0/commit/02bb57cb9b9d2156f492c4b670b8390514eff04c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.6
+    * @vm0/connectors bumped to 1.31.3
+    * @vm0/core bumped to 8.292.3
+    * @vm0/db bumped to 1.18.7
+
 ## [1.69.4](https://github.com/vm0-ai/vm0/compare/api-v1.69.3...api-v1.69.4) (2026-05-24)
 
 

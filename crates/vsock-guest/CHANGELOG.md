@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.11](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.10...vsock-guest-v0.18.11) (2026-05-24)
+
+
+### Refactoring
+
+* dedupe exec control guard release ([#14674](https://github.com/vm0-ai/vm0/issues/14674)) ([a910da0](https://github.com/vm0-ai/vm0/commit/a910da0223e9df063a691675889ec0d6b31c448c))
+
 ## [0.18.10](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.9...vsock-guest-v0.18.10) (2026-05-24)
 
 
