@@ -1,9 +1,30 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse, http } from "msw";
+import { setupServer } from "msw/node";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import {
   buildTestOAuthAuthorizationUrl,
   refreshTestOAuthToken,
 } from "../test-oauth";
+
+const server = setupServer();
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterAll(() => {
+  server.close();
+});
 
 describe("test-oauth provider URLs", () => {
   beforeEach(() => {
@@ -14,6 +35,7 @@ describe("test-oauth provider URLs", () => {
   });
 
   afterEach(() => {
+    server.resetHandlers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -73,18 +95,23 @@ describe("test-oauth provider URLs", () => {
   it("sends both Vercel and internal preview bypass headers on refresh", async () => {
     vi.stubEnv("VM0_API_URL", "https://pr-12962-www.vm6.ai");
     vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: "access-1",
-          refresh_token: "refresh-2",
-          expires_in: 3600,
-          token_type: "Bearer",
-          scope: "read",
-        }),
+    let tokenRequestHeaders: Headers | undefined;
+
+    server.use(
+      http.post(
+        "https://pr-12962-api.vm6.ai/api/test/oauth-provider/token",
+        ({ request }) => {
+          tokenRequestHeaders = request.headers;
+          return HttpResponse.json({
+            access_token: "access-1",
+            refresh_token: "refresh-2",
+            expires_in: 3600,
+            token_type: "Bearer",
+            scope: "read",
+          });
+        },
       ),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     await refreshTestOAuthToken(
       "test-oauth-client",
@@ -92,14 +119,11 @@ describe("test-oauth provider URLs", () => {
       "refresh-1",
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://pr-12962-api.vm6.ai/api/test/oauth-provider/token",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          "x-vercel-protection-bypass": "preview-secret",
-          "x-vm0-test-endpoint-bypass": "preview-secret",
-        }),
-      }),
+    expect(tokenRequestHeaders?.get("x-vercel-protection-bypass")).toBe(
+      "preview-secret",
+    );
+    expect(tokenRequestHeaders?.get("x-vm0-test-endpoint-bypass")).toBe(
+      "preview-secret",
     );
   });
 
