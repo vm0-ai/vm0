@@ -448,17 +448,16 @@ async function revokeExistingConnectorToken(args: {
 
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
-    (async (): Promise<void> => {
-      const accessToken = await decryptStoredSecretValue(
-        accessTokenSecret.encryptedValue,
-        args.featureSwitchContext,
-      );
-      await revokeConnectorOAuthToken({
-        type: connectorType,
-        credentials,
-        accessToken,
-      });
-    })(),
+    revokeConnectorOAuthToken({
+      type: connectorType,
+      credentials,
+      loadAccessToken: () => {
+        return decryptStoredSecretValue(
+          accessTokenSecret.encryptedValue,
+          args.featureSwitchContext,
+        );
+      },
+    }),
   );
   args.signal.throwIfAborted();
 }

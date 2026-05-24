@@ -293,7 +293,9 @@ describe("isOAuthConnectorType", () => {
       revokeConnectorOAuthToken({
         type: "github",
         credentials,
-        accessToken: "gh-access-token",
+        loadAccessToken: () => {
+          return "gh-access-token";
+        },
       }),
     ).resolves.toStrictEqual({ status: "revoked" });
     expect(authorization).toBe(
@@ -318,13 +320,19 @@ describe("isOAuthConnectorType", () => {
       throw new Error("Expected notion OAuth credentials");
     }
 
+    let loadedAccessToken = false;
+
     await expect(
       revokeConnectorOAuthToken({
         type: "notion",
         credentials,
-        accessToken: "notion-access-token",
+        loadAccessToken: () => {
+          loadedAccessToken = true;
+          return "notion-access-token";
+        },
       }),
     ).resolves.toStrictEqual({ status: "unsupported" });
+    expect(loadedAccessToken).toBe(false);
   });
 
   it("returns unconfigured when OAuth credentials are unavailable for revoke", async () => {
@@ -337,13 +345,19 @@ describe("isOAuthConnectorType", () => {
       throw new Error("Expected github OAuth credentials shape");
     }
 
+    let loadedAccessToken = false;
+
     await expect(
       revokeConnectorOAuthToken({
         type: "github",
         credentials,
-        accessToken: "gh-access-token",
+        loadAccessToken: () => {
+          loadedAccessToken = true;
+          return "gh-access-token";
+        },
       }),
     ).resolves.toStrictEqual({ status: "unconfigured" });
+    expect(loadedAccessToken).toBe(false);
   });
 
   it("builds the expected authorization URL base for every OAuth provider", async () => {

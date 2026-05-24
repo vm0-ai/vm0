@@ -358,7 +358,7 @@ export async function revokeConnectorOAuthToken<
 >(args: {
   readonly type: T;
   readonly credentials: ConnectorOAuthCredentials;
-  readonly accessToken: string;
+  readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorOAuthRevokeResult> {
   if (!args.credentials.configured) {
     return { status: "unconfigured" };
@@ -373,7 +373,7 @@ export async function revokeConnectorOAuthToken<
     case "token-revoke":
       await revoke.revokeToken({
         ...connectorCredentialArgs(args.credentials),
-        accessToken: args.accessToken,
+        accessToken: await args.loadAccessToken(),
       } as ConnectorOAuthRevokeArgs<T>);
       return { status: "revoked" };
   }
