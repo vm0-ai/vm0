@@ -11,7 +11,7 @@ function mountMockClerkProfilePortal() {
   const portal = document.createElement("div");
   portal.setAttribute("role", "dialog");
   portal.setAttribute("aria-label", "Clerk user profile");
-  portal.setAttribute("data-clerk-user-profile", "true");
+  portal.dataset.clerkUserProfile = "true";
   portal.className = "cl-userProfile-root cl-modalContent";
 
   const action = document.createElement("button");
@@ -43,16 +43,15 @@ describe("settings dialog - Clerk profile modal", () => {
       return dialog;
     });
 
-    click(within(settingsDialog).getByRole("button", { name: "Manage" }));
+    click(within(settingsDialog).getByText("Manage"));
 
     const clerkDialog = await waitFor(() => {
       return screen.getByRole("dialog", { name: "Clerk user profile" });
     });
 
-    fireEvent.pointerDown(
-      within(clerkDialog).getByRole("button", { name: "Update profile" }),
-      { button: 0 },
-    );
+    fireEvent.pointerDown(within(clerkDialog).getByText("Update profile"), {
+      button: 0,
+    });
 
     await waitFor(() => {
       expect(
