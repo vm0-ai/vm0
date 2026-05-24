@@ -950,6 +950,21 @@ mod tests {
     }
 
     #[test]
+    fn second_release_does_not_remove_reused_sequence() {
+        let registry = ExecControlRegistry::default();
+        let first = registry.register(7, NONCE, false).unwrap();
+
+        first.guard.release();
+        let _second = registry.register(7, NONCE, false).unwrap();
+        first.guard.release();
+
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
+        assert_eq!(status, ExecControlStatus::Unsupported);
+        assert_eq!(diagnostic, "exec control sink is not configured");
+        assert!(registry.register(7, *b"fedcba9876543210", false).is_err());
+    }
+
+    #[test]
     fn duplicate_control_sink_sequence_is_rejected_without_rebinding_endpoint() {
         let sink_nonce = unique_test_nonce(14);
 
