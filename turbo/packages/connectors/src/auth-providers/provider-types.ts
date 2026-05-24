@@ -1,4 +1,5 @@
 import type {
+  ConnectorType,
   OAuthAuthCodeConnectorType,
   OAuthConnectorType,
   OAuthDeviceAuthConnectorType,
@@ -41,7 +42,7 @@ export interface DeviceAuthGrantProvider<
   ): Promise<OAuthDeviceAuthPollResult>;
 }
 
-export type ConnectorGrantProvider<T extends OAuthConnectorType> =
+export type ConnectorGrantProvider<T extends ConnectorType> =
   T extends OAuthAuthCodeConnectorType
     ? NoneGrantProvider | AuthCodeGrantProvider<T>
     : T extends OAuthDeviceAuthConnectorType
@@ -60,9 +61,14 @@ export interface RefreshTokenAccessProvider<T extends OAuthConnectorType> {
   refreshToken(args: ConnectorOAuthRefreshArgs<T>): Promise<OAuthRefreshResult>;
 }
 
-export type ConnectorAccessProvider<T extends OAuthConnectorType> =
+export type OAuthConnectorAccessProvider<T extends OAuthConnectorType> =
   | NoneAccessProvider
   | RefreshTokenAccessProvider<T>;
+
+export type ConnectorAccessProvider<T extends ConnectorType> =
+  T extends OAuthConnectorType
+    ? OAuthConnectorAccessProvider<T>
+    : NoneAccessProvider;
 
 export interface NoneRevokeProvider {
   readonly kind: "none";
@@ -73,28 +79,40 @@ export interface TokenRevokeProvider<T extends OAuthConnectorType> {
   revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
 }
 
-export type ConnectorRevokeProvider<T extends OAuthConnectorType> =
+export type OAuthConnectorRevokeProvider<T extends OAuthConnectorType> =
   | NoneRevokeProvider
   | TokenRevokeProvider<T>;
 
-interface BaseConnectorAuthProvider<T extends OAuthConnectorType> {
-  readonly access: ConnectorAccessProvider<T>;
-  readonly revoke: ConnectorRevokeProvider<T>;
+export type ConnectorRevokeProvider<T extends ConnectorType> =
+  T extends OAuthConnectorType
+    ? OAuthConnectorRevokeProvider<T>
+    : NoneRevokeProvider;
+
+interface BaseConnectorAuthProvider<TGrant, TAccess, TRevoke> {
+  readonly grant: TGrant;
+  readonly access: TAccess;
+  readonly revoke: TRevoke;
 }
 
-export interface AuthCodeConnectorAuthProvider<
+export type AuthCodeConnectorAuthProvider<
   T extends OAuthAuthCodeConnectorType,
-> extends BaseConnectorAuthProvider<T> {
-  readonly grant: NoneGrantProvider | AuthCodeGrantProvider<T>;
-}
+> = BaseConnectorAuthProvider<
+  NoneGrantProvider | AuthCodeGrantProvider<T>,
+  OAuthConnectorAccessProvider<T>,
+  OAuthConnectorRevokeProvider<T>
+>;
 
-export interface DeviceAuthConnectorAuthProvider<
+export type DeviceAuthConnectorAuthProvider<
   T extends OAuthDeviceAuthConnectorType,
-> extends BaseConnectorAuthProvider<T> {
-  readonly grant: NoneGrantProvider | DeviceAuthGrantProvider<T>;
-}
+> = BaseConnectorAuthProvider<
+  NoneGrantProvider | DeviceAuthGrantProvider<T>,
+  OAuthConnectorAccessProvider<T>,
+  OAuthConnectorRevokeProvider<T>
+>;
 
-export type ConnectorAuthProvider<T extends OAuthConnectorType> =
-  BaseConnectorAuthProvider<T> & {
-    readonly grant: ConnectorGrantProvider<T>;
-  };
+export type ConnectorAuthProvider<T extends ConnectorType> =
+  BaseConnectorAuthProvider<
+    ConnectorGrantProvider<T>,
+    ConnectorAccessProvider<T>,
+    ConnectorRevokeProvider<T>
+  >;

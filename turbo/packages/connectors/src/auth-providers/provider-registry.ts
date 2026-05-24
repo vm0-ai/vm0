@@ -1,4 +1,5 @@
 import type {
+  ConnectorType,
   OAuthAuthCodeConnectorType,
   OAuthConnectorType,
   OAuthDeviceAuthConnectorType,
@@ -19,6 +20,7 @@ import type {
   AuthCodeConnectorAuthProvider,
   ConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
+  OAuthConnectorAccessProvider,
 } from "./provider-types";
 
 export type ConnectorAuthSecretMetadata =
@@ -36,7 +38,7 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled connector auth provider capability: ${value}`);
 }
 
-export function getConnectorAuthSecretMetadata<T extends OAuthConnectorType>(
+export function getConnectorAuthSecretMetadata<T extends ConnectorType>(
   provider: ConnectorAuthProvider<T>,
 ): ConnectorAuthSecretMetadata {
   const access = provider.access;
@@ -141,10 +143,10 @@ export async function pollDeviceAuthGrant<
 
 export async function refreshTokenAccess<T extends OAuthConnectorType>(args: {
   readonly type: T;
-  readonly provider: ConnectorAuthProvider<T>;
+  readonly access: OAuthConnectorAccessProvider<T>;
   readonly refreshArgs: ConnectorOAuthRefreshArgs<T>;
 }): Promise<OAuthRefreshResult> {
-  const access = args.provider.access;
+  const access = args.access;
 
   switch (access.kind) {
     case "none":

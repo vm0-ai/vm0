@@ -23,13 +23,10 @@ import {
   type ConnectorAuthSecretMetadata,
 } from "../auth-providers/provider-registry";
 import type {
-  AuthCodeGrantProvider,
   AuthCodeConnectorAuthProvider,
-  ConnectorAccessProvider,
-  ConnectorAuthProvider,
-  ConnectorRevokeProvider,
   DeviceAuthConnectorAuthProvider,
-  DeviceAuthGrantProvider,
+  OAuthConnectorAccessProvider,
+  OAuthConnectorRevokeProvider,
 } from "../auth-providers/provider-types";
 import {
   type AuthUrlResult,
@@ -153,7 +150,7 @@ function assertConfiguredConnectorOAuthCredentials(
 
 function connectorAccessProviderFor<T extends OAuthConnectorType>(
   provider: ConnectorOAuthProviderFor<T>,
-): ConnectorAccessProvider<T> {
+): OAuthConnectorAccessProvider<T> {
   if (
     "getRefreshSecretName" in provider &&
     typeof provider.getRefreshSecretName === "function" &&
@@ -176,7 +173,7 @@ function connectorAccessProviderFor<T extends OAuthConnectorType>(
 
 function connectorRevokeProviderFor<T extends OAuthConnectorType>(
   provider: ConnectorOAuthProviderFor<T>,
-): ConnectorRevokeProvider<T> {
+): OAuthConnectorRevokeProvider<T> {
   if ("revokeToken" in provider && typeof provider.revokeToken === "function") {
     return {
       kind: "token-revoke",
@@ -196,7 +193,7 @@ function authCodeConnectorAuthProviderFor<T extends OAuthAuthCodeConnectorType>(
       kind: "auth-code",
       buildAuthUrl: provider.buildAuthUrl,
       exchangeCode: provider.exchangeCode,
-    } as AuthCodeGrantProvider<T>,
+    },
     access: connectorAccessProviderFor(provider),
     revoke: connectorRevokeProviderFor(provider),
   };
@@ -211,24 +208,10 @@ function deviceConnectorAuthProviderFor<T extends OAuthDeviceAuthConnectorType>(
       kind: "device-auth",
       startDeviceAuth: provider.startDeviceAuth,
       pollDeviceAuth: provider.pollDeviceAuth,
-    } as DeviceAuthGrantProvider<T>,
+    },
     access: connectorAccessProviderFor(provider),
     revoke: connectorRevokeProviderFor(provider),
   };
-}
-
-function connectorAuthProviderFor<T extends OAuthConnectorType>(
-  type: T,
-): ConnectorAuthProvider<T> {
-  if (isOAuthAuthCodeConnectorType(type)) {
-    return authCodeConnectorAuthProviderFor(type) as ConnectorAuthProvider<T>;
-  }
-
-  if (isOAuthDeviceAuthConnectorType(type)) {
-    return deviceConnectorAuthProviderFor(type) as ConnectorAuthProvider<T>;
-  }
-
-  throw new Error(`${type} OAuth flow is not supported`);
 }
 
 const CONNECTOR_OAUTH_PROVIDERS: ConnectorOAuthProviderMap = {
@@ -298,7 +281,17 @@ export function getConnectorOAuthSecretMetadata(
     return undefined;
   }
 
-  return getConnectorAuthSecretMetadata(connectorAuthProviderFor(type));
+  if (isOAuthAuthCodeConnectorType(type)) {
+    return getConnectorAuthSecretMetadata(
+      authCodeConnectorAuthProviderFor(type),
+    );
+  }
+
+  if (isOAuthDeviceAuthConnectorType(type)) {
+    return getConnectorAuthSecretMetadata(deviceConnectorAuthProviderFor(type));
+  }
+
+  throw new Error(`${type} OAuth flow is not supported`);
 }
 
 export async function buildConnectorOAuthAuthUrl<
@@ -393,7 +386,7 @@ export async function refreshConnectorOAuthToken<
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await refreshTokenAccess({
     type: args.type,
-    provider: connectorAuthProviderFor(args.type),
+    access: connectorAccessProviderFor(connectorProviderFor(args.type)),
     refreshArgs: {
       ...connectorCredentialArgs(args.credentials),
       refreshToken: args.refreshToken,
