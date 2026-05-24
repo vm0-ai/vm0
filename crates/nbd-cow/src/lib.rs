@@ -731,6 +731,21 @@ async fn abort_server_handles(handles: Vec<JoinHandle<()>>) {
     }
 }
 
+#[derive(Clone, Copy)]
+enum DestroyMode {
+    RemoveCow,
+    KeepCow,
+}
+
+impl DestroyMode {
+    async fn run(self, device: &mut NbdCowDevice) -> Result<()> {
+        match self {
+            Self::RemoveCow => device.destroy().await,
+            Self::KeepCow => device.destroy_keep_cow().await,
+        }
+    }
+}
+
 /// A COW device whose NBD pool ownership is tied to the device lifecycle.
 pub struct PooledNbdCowDevice {
     device: NbdCowDevice,
@@ -814,30 +829,14 @@ impl PooledNbdCowDevice {
             mut lease,
             pool,
         } = self;
-        let attempts = policy.attempts();
-
-        match device.destroy().await {
-            Ok(()) => {
-                Self::release_clean(&pool, &mut lease).await;
-                Ok(())
-            }
-            Err(mut last_err) => {
-                for _ in 1..attempts {
-                    tokio::time::sleep(policy.delay).await;
-                    match device.destroy().await {
-                        Ok(()) => {
-                            Self::release_clean(&pool, &mut lease).await;
-                            return Ok(());
-                        }
-                        Err(e) => last_err = e,
-                    }
-                }
-
-                device.abandon();
-                Self::retire_uncertain(&pool, &mut lease).await;
-                Err(last_err)
-            }
-        }
+        Self::destroy_with_mode(
+            &mut device,
+            &mut lease,
+            &pool,
+            policy,
+            DestroyMode::RemoveCow,
+        )
+        .await
     }
 
     /// Destroy the device while preserving COW data for snapshot persistence.
@@ -865,33 +864,43 @@ impl PooledNbdCowDevice {
         } = self;
         let cow_file = device.cow_file().to_path_buf();
         let bitmap_file = device.bitmap_path();
+        Self::destroy_with_mode(&mut device, &mut lease, &pool, policy, DestroyMode::KeepCow)
+            .await?;
+
+        Ok(KeptCow {
+            cow_file,
+            bitmap_file,
+        })
+    }
+
+    async fn destroy_with_mode(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        policy: DestroyRetryPolicy,
+        mode: DestroyMode,
+    ) -> Result<()> {
         let attempts = policy.attempts();
 
-        match device.destroy_keep_cow().await {
+        match mode.run(device).await {
             Ok(()) => {
-                Self::release_clean(&pool, &mut lease).await;
-                Ok(KeptCow {
-                    cow_file,
-                    bitmap_file,
-                })
+                Self::release_clean(pool, lease).await;
+                Ok(())
             }
             Err(mut last_err) => {
                 for _ in 1..attempts {
                     tokio::time::sleep(policy.delay).await;
-                    match device.destroy_keep_cow().await {
+                    match mode.run(device).await {
                         Ok(()) => {
-                            Self::release_clean(&pool, &mut lease).await;
-                            return Ok(KeptCow {
-                                cow_file,
-                                bitmap_file,
-                            });
+                            Self::release_clean(pool, lease).await;
+                            return Ok(());
                         }
                         Err(e) => last_err = e,
                     }
                 }
 
                 device.abandon();
-                Self::retire_uncertain(&pool, &mut lease).await;
+                Self::retire_uncertain(pool, lease).await;
                 Err(last_err)
             }
         }
