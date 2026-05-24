@@ -60,6 +60,7 @@ import { aviationstackFirewall } from "./aviationstack.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { base44Firewall } from "./base44.generated";
 import { bentomlFirewall } from "./bentoml.generated";
+import { bitrefillFirewall } from "./bitrefill.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brexFirewall } from "./brex.generated";
@@ -288,6 +289,7 @@ const CONNECTOR_FIREWALLS = {
   axiom: axiomFirewall,
   base44: base44Firewall,
   bentoml: bentomlFirewall,
+  bitrefill: bitrefillFirewall,
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
   brex: brexFirewall,

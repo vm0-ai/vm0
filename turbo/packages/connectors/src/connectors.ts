@@ -41,6 +41,7 @@ import { aviationstack } from "./connectors/aviationstack";
 import { axiom } from "./connectors/axiom";
 import { base44 } from "./connectors/base44";
 import { bentoml } from "./connectors/bentoml";
+import { bitrefill } from "./connectors/bitrefill";
 import { bitrix } from "./connectors/bitrix";
 import { braveSearch } from "./connectors/brave-search";
 import { brex } from "./connectors/brex";
@@ -600,6 +601,7 @@ const CONNECTOR_TYPES_DEF = {
   ...axiom,
   ...base44,
   ...bentoml,
+  ...bitrefill,
   ...bitrix,
   ...braveSearch,
   ...brex,
