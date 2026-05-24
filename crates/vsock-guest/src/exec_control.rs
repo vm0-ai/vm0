@@ -1601,6 +1601,48 @@ mod tests {
     }
 
     #[test]
+    fn operation_drop_interrupts_control_sink_handshake() {
+        let handshake_nonce = unique_test_nonce(18);
+
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(18, handshake_nonce, true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let sink = registry.resolve(18, handshake_nonce).unwrap();
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+
+        let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !matches!(&*guard, ControlSinkInner::Handshaking(_)) {
+            let now = Instant::now();
+            assert!(
+                now < deadline,
+                "control sink should enter handshaking after accept"
+            );
+            let (next_guard, _) = sink
+                .ready
+                .wait_timeout(guard, deadline.duration_since(now))
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+        }
+        drop(guard);
+
+        drop(registration);
+
+        let guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(matches!(*guard, ControlSinkInner::Closed));
+        drop(guard);
+
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let error = process_control_ipc::read_request(&mut stream).unwrap_err();
+        assert!(
+            !is_timeout(&error),
+            "operation drop should interrupt the accepted handshake stream"
+        );
+    }
+
+    #[test]
     fn close_does_not_wait_for_busy_control_stream_lock() {
         let sink = Arc::new(ControlSinkState::new());
         let (stream, _peer) = UnixStream::pair().unwrap();
