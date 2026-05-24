@@ -238,6 +238,27 @@ describe("isOAuthConnectorType", () => {
     expect(getConnectorOAuthSecretMetadata("computer")).toBeUndefined();
   });
 
+  it("rejects refresh for OAuth connectors without refresh-token access", async () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return name === "GITHUB_CLIENT_ID"
+        ? "test-github-client"
+        : "test-github-secret";
+    });
+    expect(credentials?.configured).toBe(true);
+
+    if (!credentials?.configured) {
+      throw new Error("Expected github OAuth credentials");
+    }
+
+    await expect(
+      refreshConnectorOAuthToken({
+        type: "github",
+        credentials,
+        refreshToken: "refresh-token",
+      }),
+    ).rejects.toThrow("github OAuth provider does not support refresh");
+  });
+
   it("builds the expected authorization URL base for every OAuth provider", async () => {
     const previousEnv = {
       VM0_API_URL: process.env.VM0_API_URL,
