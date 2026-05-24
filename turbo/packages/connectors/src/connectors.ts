@@ -28,6 +28,7 @@ import { spotify } from "./connectors/spotify";
 import { agentmail } from "./connectors/agentmail";
 import { agora } from "./connectors/agora";
 import { ahrefs } from "./connectors/ahrefs";
+import { adzuna } from "./connectors/adzuna";
 import { altium365 } from "./connectors/altium-365";
 import { amplitude } from "./connectors/amplitude";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
@@ -587,6 +588,7 @@ const CONNECTOR_TYPES_DEF = {
   ...agentmail,
   ...agora,
   ...ahrefs,
+  ...adzuna,
   ...altium365,
   ...amplitude,
   ...anthropicManagedAgents,
