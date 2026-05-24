@@ -427,23 +427,6 @@ export const MODELS: ModelEntry[] = [
   // -------------------------------------------------------------------------
 
   {
-    slug: "gemini-2-5-flash-image",
-    modelId: "gemini-2.5-flash-image",
-    name: "Gemini 2.5 Flash Image",
-    vendor: "Google",
-    category: "image",
-    modalities: ["Image", "Text-to-image", "Image edit"],
-    releasedToVm0: "April 2026",
-    generationPricing: {
-      unit: "image",
-      priceUsd: 0.0387,
-      note: "1024×1024 standard",
-    },
-    comparisonSlugs: ["GPT Image 1", "SeedDream 4", "Flux Pro 1.1 Ultra"],
-    alternativeSlugs: ["gpt-image-1", "seedream-4", "flux-pro-1-1-ultra"],
-  },
-
-  {
     slug: "gpt-image-1",
     modelId: "gpt-image-1",
     name: "GPT Image 1",
@@ -456,16 +439,8 @@ export const MODELS: ModelEntry[] = [
       priceUsd: 0.05,
       note: "Medium standard tier (1024×1024)",
     },
-    comparisonSlugs: [
-      "Gemini 2.5 Flash Image",
-      "SeedDream 4",
-      "Flux Pro 1.1 Ultra",
-    ],
-    alternativeSlugs: [
-      "gemini-2-5-flash-image",
-      "flux-pro-1-1-ultra",
-      "seedream-4",
-    ],
+    comparisonSlugs: ["SeedDream 4", "Flux Pro 1.1 Ultra"],
+    alternativeSlugs: ["flux-pro-1-1-ultra", "seedream-4"],
   },
 
   {
@@ -481,8 +456,8 @@ export const MODELS: ModelEntry[] = [
       priceUsd: 0.072,
       note: "Per generated image",
     },
-    comparisonSlugs: ["GPT Image 1", "SeedDream 4", "Gemini 2.5 Flash Image"],
-    alternativeSlugs: ["gpt-image-1", "seedream-4", "gemini-2-5-flash-image"],
+    comparisonSlugs: ["GPT Image 1", "SeedDream 4"],
+    alternativeSlugs: ["gpt-image-1", "seedream-4"],
   },
 
   {
@@ -498,16 +473,8 @@ export const MODELS: ModelEntry[] = [
       priceUsd: 0.036,
       note: "Per generated image",
     },
-    comparisonSlugs: [
-      "GPT Image 1",
-      "Flux Pro 1.1 Ultra",
-      "Gemini 2.5 Flash Image",
-    ],
-    alternativeSlugs: [
-      "gpt-image-1",
-      "flux-pro-1-1-ultra",
-      "gemini-2-5-flash-image",
-    ],
+    comparisonSlugs: ["GPT Image 1", "Flux Pro 1.1 Ultra"],
+    alternativeSlugs: ["gpt-image-1", "flux-pro-1-1-ultra"],
   },
 
   // -------------------------------------------------------------------------
@@ -574,4 +541,31 @@ export function getModelBySlug(slug: string): ModelEntry | undefined {
   return MODELS.find((m) => {
     return m.slug === slug;
   });
+}
+
+// Per-generation-model onboarding prompts. The CTA on each image/video detail
+// page deep-links into the app's onboarding flow with this prompt prefilled,
+// so a first-time visitor lands on a chat that can immediately run the model
+// without having to write their own prompt. Mentioning the model id in plain
+// English lets the agent reliably pass it as `--model` when it calls the
+// built-in generation tool, while keeping the surface copy natural.
+const GENERATION_CTA_PROMPTS: Readonly<Record<string, string>> = {
+  "gpt-image-1":
+    "Generate an illustration of a cute cat using the gpt-image-1 model.",
+  "flux-pro-1-1-ultra":
+    "Generate a photorealistic studio portrait of a cat using the flux-pro-1.1-ultra model.",
+  "seedream-4":
+    "Generate a photorealistic shot of a cat sitting in a sunny window using the seedream4 model.",
+  "veo-3-1-fast":
+    "Generate a short cinematic video of a cat stretching on a sunlit windowsill using the veo3.1-fast model.",
+  "kling-v3-4k":
+    "Generate a stylized 4K video of a cat walking through a neon-lit alley using the kling-v3-4k model.",
+  "dreamina-seedance-2-0":
+    "Generate a smooth tracking video of a cat exploring a flower garden using the dreamina-seedance-2.0 model.",
+};
+
+export function getModelCtaUrl(model: ModelEntry, appUrl: string): string {
+  const prompt = GENERATION_CTA_PROMPTS[model.slug];
+  if (!prompt) return appUrl;
+  return `${appUrl}/onboarding?prompt=${encodeURIComponent(prompt)}`;
 }

@@ -110,25 +110,27 @@ describe("onboarding continue in web → agent chat page", () => {
 // ---------------------------------------------------------------------------
 
 describe("prompt param forwarding", () => {
-  it("should forward ?prompt= to chat page via Get Started", async () => {
+  it("?prompt= alone enters use-case mode and seeds the Try It composer", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding?prompt=hello%20world" });
-    await walkAdminToContinue();
 
-    switchToAdminComplete();
-
-    click(screen.getByText(/Get Started/));
+    // Step 1: name workspace. Use-case mode collapses step 2, so the next
+    // screen after Next is the condensed step 3 with the editable composer
+    // and a "Try It" CTA — not the regular "Choose your tools" picker.
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
+    await fill(screen.getByPlaceholderText("e.g. Acme Corp"), "Test Workspace");
+    click(screen.getByText("Next"));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+      expect(screen.getByText("Try this prompt")).toBeInTheDocument();
     });
-
-    // The chat page consumes ?prompt= and injects it into the textarea
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    expect(textarea).toHaveValue("hello world");
+    expect(screen.getByTestId("onboarding-prompt-input")).toHaveValue(
+      "hello world",
+    );
+    expect(screen.getByText("Try It")).toBeInTheDocument();
   });
 
   it("should not include prompt param when absent", async () => {

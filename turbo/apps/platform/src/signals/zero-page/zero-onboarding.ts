@@ -52,10 +52,11 @@ const internalWorkspaceName$ = state("");
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
 /**
- * True when the user arrived via a "use case" deep link carrying both
- * `?connector=` and `?prompt=`. In this mode the onboarding is condensed to
- * step 3, which grows an editable composer so the user can tweak the prompt
- * before continuing straight into the web chat with their default agent.
+ * True when the user arrived via a "use case" deep link carrying a
+ * `?prompt=` (with or without `?connector=`). In this mode the onboarding
+ * is condensed to step 3, which grows an editable composer so the user can
+ * tweak the prompt before continuing straight into the web chat with their
+ * default agent.
  */
 const internalUseCaseMode$ = state(false);
 const internalPromptDraft$ = state("");

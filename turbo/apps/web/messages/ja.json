@@ -5965,118 +5965,13 @@
         "routingNotes": "DeepSeekのAnthropic互換エンドポイント`api.deepseek.com`経由でルーティング。DeepSeekプロバイダーのデフォルトモデル。VM0 Managedでも利用可能。",
         "vm0Notes": "V4 FlashはBuilt-inモデル中最低のクレジットマルチプライヤー（×0.02）を持ち、Sonnet 4.6の約50分の1です。キャッシュ読み取りは課金、キャッシュ書き込みは無料。VM0はDeepSeekプロバイダーに10分のAPIタイムアウトを設定しており、Flashの短い単発作業と自然に適合します。"
       },
-      "gemini-2-5-flash-image": {
-        "name": "Gemini 2.5 Flash Image",
-        "pageTitle": "Gemini 2.5 Flash Image on VM0. 高速テキストツーイメージのデフォルト",
-        "tagline": "Googleの高速テキストツーイメージおよび画像編集モデル。強力な指示追従、キャラクター一貫性、キュレーション済み画像ラインナップで画像あたり最も安いクレジットコスト。",
-        "cardIntro": "Googleの高速テキストツーイメージモデル。安価で、長いプロンプトの追従が正確、編集にわたって被写体を保持するのが得意。",
-        "metaTitle": "Gemini 2.5 Flash Image on VM0: 価格、仕様、比較",
-        "metaDescription": "VM0上のGemini 2.5 Flash Image。Googleのテキストツーイメージおよび画像編集モデル、高い指示遵守、キャラクター一貫性、画像あたり約$0.04。GPT Image 1、Flux Pro 1.1 Ultra、SeedDream 4と比較。",
-        "summary": "Gemini 2.5 Flash ImageはGoogleのどこでもデフォルトのテキストツーイメージおよび画像編集モデルです。エージェントワークロードに最も重要な2つの特性で優れています：長く構造化されたプロンプトに従う（途中で指示を失うことなくフルブリーフを渡せます）、そしてマルチターン編集にわたって被写体を一貫させる（呼び出し間でドリフトすることなく、エージェントが同じキャラクターまたは製品ショットを反復できます）。\n\n定価は1024×1024画像あたり約$0.04で、キュレーション済み画像ラインナップで最も安いモデルです。自然なパターンは、Gemini 2.5 Flash Imageをデフォルトにし、デフォルトが届かない特定のアスペクトレシオまたはアスペクトが必要なときのみFlux Pro 1.1 UltraまたはSeedDream 4にエスカレートすることです。",
-        "releaseDate": "2026年4月",
-        "familyPosition": "エージェントワークロードのためのGoogleのテキストツーイメージワークホース。",
-        "background": [
-          "Gemini 2.5 Flash ImageはGemini 2.5ファミリーにおけるGoogleのテキストツーイメージおよび画像編集モデルです。Googleのフレーミングはテキスト側のFlashバリアントと同じです：低いコールあたりコストで高スループットに調整され、最後のリクエストがストリーミングを終える前に次のリクエストがキューに入るプロダクションワークロード向けに最適化されたモデル。",
-          "エージェント使用において2つの行動的特性が際立ちます。第一に、長く構造化されたプロンプトに対する指示遵守が、ほとんどのオープンウェイトテキストツーイメージのベースラインよりも大幅に優れています。これはエージェントがプログラム的にプロンプトを構成し、短縮できない場合に重要です。第二に、マルチターン編集にわたるキャラクターと被写体の一貫性がよく保たれます。これが、単一のアセットを反復するエージェントワークフローにおける編集ループのデフォルトとしてモデルを実行可能にしているものです。"
-        ],
-        "architecture": "ネイティブ編集サポート付きのディフュージョンベースのテキストツーイメージモデル。標準ティアで生成画像あたり課金。入力はテキストプロンプトと、編集スタイルフロー用のオプションのリファレンス画像を受け付けます。出力は要求された解像度のPNG。",
-        "specs": [
-          { "label": "ファミリー", "value": "Gemini 2.5世代" },
-          {
-            "label": "モダリティ",
-            "value": "テキストツーイメージ、イメージツーイメージ編集"
-          },
-          { "label": "出力解像度", "value": "1024×1024標準ティア" },
-          { "label": "ベンダー定価", "value": "画像あたり約$0.04" },
-          { "label": "言語", "value": "多言語プロンプト" },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
-        ],
-        "benchmarksNote": "",
-        "benchmarks": [],
-        "performance": [
-          {
-            "title": "指示遵守",
-            "body": "多くのオープンウェイトモデルが節を脱落させ始める長く構造化されたプロンプトで持ちこたえます。エージェントがブリーフをプログラム的に構成し、プロンプトが交渉不可能な場合に有用です。"
-          },
-          {
-            "title": "キャラクター一貫性",
-            "body": "マルチターン編集にわたって被写体を認識可能に保ち、これが単一アセット上の反復的エージェントループに対してモデルを実行可能にしている特性です。"
-          },
-          {
-            "title": "コスト",
-            "body": "画像あたり約$0.04 — VM0上のキュレーション済みテキストツーイメージモデルで最安。バルクファンアウト生成が手頃なまま。"
-          },
-          {
-            "title": "アスペクト天井",
-            "body": "Flux Pro 1.1 Ultraのハイパースタイライズドな見た目やSeedDream 4のフォトリアルな見た目ではなく、クリーンで正確な出力に偏っています。アスペクトが成果物の場合はエスカレートしてください。"
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "ブリーフからマーケティングビジュアルをドラフトするエージェント",
-            "body": "ブランドボイス、製品説明、ターゲットオーディエンスをエージェントに渡してください。Gemini 2.5 Flash Imageは数秒でドラフトビジュアルをレンダリングします。十数のバリエーションをファンアウトして最良を選ぶのに十分安価。"
-          },
-          {
-            "title": "単一アセットを反復する編集ループ",
-            "body": "一度生成して、ターン間で被写体を一貫させながら照明、フレーミング、または背景を反復します。キャラクター一貫性は、ループ内の人間が同じ画像を編集していることを意味し、毎ターン新しいセットから選ぶわけではありません。"
-          },
-          {
-            "title": "プレミアムモデルの前のイラスト事前フィルタ",
-            "body": "Gemini 2.5 Flash Imageを使って構図を安価にロックし、最終選択をFlux Pro 1.1 Ultraでアスペクトのために再レンダリングします。プレミアムステップのコストをファンアウトではなく1回の呼び出しに削減します。"
-          }
-        ],
-        "avoidFor": "成果物がアスペクトの場合はGemini 2.5 Flash Imageをスキップしてください — Flux Pro 1.1 UltraとSeedDream 4はフォトリアルおよびエディトリアルな見た目でより多くのスタイリスティック天井を運びます。",
-        "comparisons": [
-          {
-            "vs": "GPT Image 1",
-            "body": "GPT Image 1はスタイライズドイラストとキャラクター作業でより強く、Gemini 2.5 Flash Imageはコールあたり安価で長いプロンプトの指示追従でより強い。構造化プロンプトを持つエージェントワークロードには、Gemini 2.5 Flash Imageがより安全なデフォルトです。"
-          },
-          {
-            "vs": "SeedDream 4",
-            "body": "SeedDream 4はより高いフォトリアル天井を運び、Gemini 2.5 Flash Imageはより安価、高速、長いプロンプトをより信頼性高く追従します。Geminiをデフォルトに、ブリーフが特にフォト的アスペクトの場合のみSeedDream 4にエスカレートしてください。"
-          },
-          {
-            "vs": "Flux Pro 1.1 Ultra",
-            "body": "Flux Pro 1.1 Ultraはキュレーション済みラインナップで最高のスタイリスティック天井を持ち、Gemini 2.5 Flash Imageはコストと指示追従で勝ちます。Geminiで事前フィルタし、アスペクトがポイントのときFluxで最終を提供してください。"
-          }
-        ],
-        "verdict": "テキストツーイメージエージェントワークロードにはGemini 2.5 Flash Imageをデフォルトに。アスペクトが成果物の場合のみFlux Pro 1.1 UltraまたはSeedDream 4にエスカレートしてください。",
-        "faqs": [
-          {
-            "q": "Gemini 2.5 Flash Imageは既存の画像を編集できますか？",
-            "a": "はい。テキストプロンプトと並んでリファレンス画像を受け付け、反復編集のためのインペインティングとアウトペインティングフローをサポートしています。"
-          },
-          {
-            "q": "どの出力解像度を生成しますか？",
-            "a": "標準ティアで1024×1024。より高い解像度は比例コストで利用可能。"
-          },
-          {
-            "q": "画像あたりのコストは？",
-            "a": "生成された1024×1024画像あたり約$0.04 — VM0上のキュレーション済みテキストツーイメージモデルで最安。"
-          },
-          {
-            "q": "モデルは画像内のテキストが得意ですか？",
-            "a": "はい — 生成された画像内に短いテキスト文字列をレンダリングする点で、ほとんどのオープンウェイトベースラインよりも大幅に強力です。"
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "gpt-image-1",
-            "reason": "より強力なスタイライズドイラスト"
-          },
-          { "slug": "flux-pro-1-1-ultra", "reason": "より高いアスペクト天井" },
-          { "slug": "seedream-4", "reason": "より強力なフォトリアル結果" }
-        ],
-        "routingNotes": "Routed to Google's Gemini 2.5 Flash Image endpoint and billed per generated image.",
-        "vm0Notes": "Gemini 2.5 Flash Image is the price/quality default for text-to-image agent workloads on VM0. Use it as the everywhere-default and reserve the more expensive image models for the steps where their stylistic ceiling actually matters."
-      },
       "gpt-image-1": {
         "name": "GPT Image 1",
         "pageTitle": "GPT Image 1 on VM0. OpenAIのテキストツーイメージモデル",
         "tagline": "強力なスタイライズドイラストと編集を持つOpenAIのテキストツーイメージモデル。OpenAIのアスペクトとプロンプト追従スタイルが欲しいときの自然な選択。",
-        "cardIntro": "OpenAIのテキストツーイメージモデル。スタイライズドイラスト、キャラクター作業、編集に強い — Gemini 2.5 Flash ImageのOpenAI側の対応物。",
+        "cardIntro": "OpenAIのテキストツーイメージモデル。スタイライズドイラスト、キャラクター作業、編集に強い — SeedDream 4のOpenAI側の対応物。",
         "metaTitle": "GPT Image 1 on VM0: 価格、仕様、比較",
-        "metaDescription": "VM0上のGPT Image 1。OpenAIのテキストツーイメージおよび画像編集モデル、スタイライズドイラストの強み、マルチティア価格、Gemini 2.5 Flash Image、Flux Pro 1.1 Ultra、SeedDream 4との比較。",
+        "metaDescription": "VM0上のGPT Image 1。OpenAIのテキストツーイメージおよび画像編集モデル、スタイライズドイラストの強み、マルチティア価格、Flux Pro 1.1 Ultra、SeedDream 4との比較。",
         "summary": "GPT Image 1はOpenAIのテキストツーイメージモデル — ほとんどのチームがChatGPTの画像生成の背後にあるモデルとして知っているものです。その強みは、テキスト駆動マスキングによるスタイライズドイラスト、キャラクター作業、画像編集であり、OpenAIのテキストモデルが期待するものに密接にマッピングするプロンプト追従スタイルです。\n\n定価はティアベースで、低/標準ティアで画像あたり約$0.011から、高/大ティアで$0.25まで。中標準ティア（1024×1024で約$0.05）はほとんどのエージェントワークロードに対する賢明なデフォルトです。",
         "releaseDate": "2026年4月",
         "familyPosition": "OpenAIの主要なテキストツーイメージモデル。解像度と品質設定にわたるティア価格。",
@@ -6126,12 +6021,8 @@
             "body": "オーケストレーションエージェントが既にGPT-5.4またはGPT-5.5上にある場合、画像生成をOpenAIサーフェス内（GPT Image 1）に保つことで、プロンプトスタイル、編集セマンティクス、構造化出力が実行全体で一貫したまま保たれます。"
           }
         ],
-        "avoidFor": "コストが支配的な場合（Gemini 2.5 Flash Imageは同じデフォルトティアで約半分の価格）、または成果物が特にフォトリアルな場合（SeedDream 4はより高いフォトリアル天井を運びます）はGPT Image 1をスキップしてください。",
+        "avoidFor": "コストが支配的な場合（SeedDream 4は同じデフォルトティアで約半分の価格）、または成果物が特にフォトリアルな場合（SeedDream 4はより高いフォトリアル天井を運びます）はGPT Image 1をスキップしてください。",
         "comparisons": [
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Gemini 2.5 Flash Imageはより安価で長い構造化プロンプトで強く、GPT Image 1はスタイライズドイラストで強く、OpenAIスタックエージェントとより自然に統合します。"
-          },
           {
             "vs": "SeedDream 4",
             "body": "SeedDream 4はわずかに低い価格でフォトリアルアスペクトでリードし、GPT Image 1はスタイライズドイラストと編集フローでリードします。"
@@ -6141,7 +6032,7 @@
             "body": "Flux Pro 1.1 Ultraはヒーローショット成果物で最高のアスペクト天井を運び、GPT Image 1はその他すべての自然なOpenAIスタックデフォルトです。"
           }
         ],
-        "verdict": "エージェントが既にOpenAIスタック上にあり、スタイライズドイラストまたはネイティブ編集フローが欲しい場合はGPT Image 1を選んでください。フォトリアルヒーローショットにはFlux Pro 1.1 Ultraにエスカレート、コストが支配する場合はGemini 2.5 Flash Imageに降格してください。",
+        "verdict": "エージェントが既にOpenAIスタック上にあり、スタイライズドイラストまたはネイティブ編集フローが欲しい場合はGPT Image 1を選んでください。フォトリアルヒーローショットにはFlux Pro 1.1 Ultraにエスカレート、コストが支配する場合はSeedDream 4に降格してください。",
         "faqs": [
           {
             "q": "GPT Image 1の価格は？",
@@ -6162,10 +6053,6 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "より安価、より強力な長プロンプト遵守"
-          },
-          {
             "slug": "flux-pro-1-1-ultra",
             "reason": "より高いフォトリアルアスペクト天井"
           },
@@ -6180,8 +6067,8 @@
         "tagline": "Black Forest Labsのハイ天井テキストツーイメージモデル。画像が成果物で、エディトリアルまたはフォトリアルグレードの出力が必要なときの選択。",
         "cardIntro": "Black Forest Labsのトップティア画像モデル。キュレーション済みラインナップで最高のアスペクト天井 — ヒーローショットとエディトリアルグレードの出力に使用。",
         "metaTitle": "Flux Pro 1.1 Ultra on VM0: 価格、仕様、比較",
-        "metaDescription": "VM0上のFlux Pro 1.1 Ultra。Black Forest Labsのトップティアテキストツーイメージモデル、エディトリアルグレードのアスペクト天井、画像あたり$0.072、GPT Image 1、SeedDream 4、Gemini 2.5 Flash Imageとの比較。",
-        "summary": "Flux Pro 1.1 UltraはBlack Forest Labsのトップティアテキストツーイメージモデル — 画像自体がエージェントループのステップではなく成果物のときに手を伸ばすものです。エディトリアル、フォトリアル、デザイン主導のアスペクトでの出力品質はキュレーション済みラインナップで最高であり、詳細な構図ブリーフでのプロンプト遵守がよく保たれます。\n\n定価は画像あたり$0.072で、Gemini 2.5 Flash Image（$0.04）やSeedDream 4（$0.036）に対して高価ですが、画像あたりの品質リフトは十分に大きく、ほとんどのチームは安価なモデルで事前フィルタした後の最終レンダリングステップとして使用します。",
+        "metaDescription": "VM0上のFlux Pro 1.1 Ultra。Black Forest Labsのトップティアテキストツーイメージモデル、エディトリアルグレードのアスペクト天井、画像あたり$0.072、GPT Image 1、SeedDream 4との比較。",
+        "summary": "Flux Pro 1.1 UltraはBlack Forest Labsのトップティアテキストツーイメージモデル — 画像自体がエージェントループのステップではなく成果物のときに手を伸ばすものです。エディトリアル、フォトリアル、デザイン主導のアスペクトでの出力品質はキュレーション済みラインナップで最高であり、詳細な構図ブリーフでのプロンプト遵守がよく保たれます。\n\n定価は画像あたり$0.072で（$0.04）やSeedDream 4（$0.036）に対して高価ですが、画像あたりの品質リフトは十分に大きく、ほとんどのチームは安価なモデルで事前フィルタした後の最終レンダリングステップとして使用します。",
         "releaseDate": "2026年4月",
         "familyPosition": "Black Forest LabsのFlux 1.1世代のプレミアムティア。",
         "background": [
@@ -6201,7 +6088,7 @@
         "performance": [
           {
             "title": "アスペクト天井",
-            "body": "キュレーション済み画像ラインナップで最高。ヒーローショット、エディトリアル、フォトリアルなアスペクトがGemini 2.5 Flash ImageやGPT Image 1よりもここで信頼性高く着地します。"
+            "body": "キュレーション済み画像ラインナップで最高。ヒーローショット、エディトリアル、フォトリアルなアスペクトがSeedDream 4やGPT Image 1よりもここで信頼性高く着地します。"
           },
           {
             "title": "構図忠実度",
@@ -6209,7 +6096,7 @@
           },
           {
             "title": "コスト",
-            "body": "画像あたり$0.072 — Gemini 2.5 Flash ImageとSeedDream 4の約2倍。標準パターンは安価なモデルで事前フィルタし、Fluxで最終をレンダリングすることです。"
+            "body": "画像あたり$0.072 — SeedDream 4とSeedDream 4の約2倍。標準パターンは安価なモデルで事前フィルタし、Fluxで最終をレンダリングすることです。"
           },
           {
             "title": "速度",
@@ -6230,7 +6117,7 @@
             "body": "記事、ブログ投稿、レポート用のマガジンスタイルのヒーローイラスト。Fluxのスタイリスティック天井がワークホースデフォルトと一線を画します。"
           }
         ],
-        "avoidFor": "コストが支配的なファンアウトループではFlux Pro 1.1 Ultraをスキップしてください — Gemini 2.5 Flash Imageはコールあたり約2倍安価です。反復ステップではなく、最終レンダリングステップとして使用してください。",
+        "avoidFor": "コストが支配的なファンアウトループではFlux Pro 1.1 Ultraをスキップしてください — SeedDream 4はコールあたり約2倍安価です。反復ステップではなく、最終レンダリングステップとして使用してください。",
         "comparisons": [
           {
             "vs": "GPT Image 1",
@@ -6239,17 +6126,13 @@
           {
             "vs": "SeedDream 4",
             "body": "両方ともフォトリアル傾向。SeedDream 4はより安価でポートレートと製品作業で競争力があり、Flux Pro 1.1 Ultraはより高いコストでヒーローショットの構図忠実度で勝ちます。"
-          },
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "異なる役割。Gemini 2.5 Flash Imageは反復用の安価なワークホースで、Flux Pro 1.1 Ultraはプレミアム最終レンダリングステップ。スタックしてください、1つを選ばないで。"
           }
         ],
         "verdict": "Flux Pro 1.1 Ultraを安価なモデルで事前フィルタした後の最終レンダリングステップとして使用してください。画像が成果物のとき、アスペクト天井がプレミアムを正当化します。",
         "faqs": [
           {
             "q": "Flux Pro 1.1 Ultraのコストは？",
-            "a": "生成画像あたり$0.072。Gemini 2.5 Flash ImageとSeedDream 4の約2倍。"
+            "a": "生成画像あたり$0.072。SeedDream 4とSeedDream 4の約2倍。"
           },
           {
             "q": "画像編集をサポートしていますか？",
@@ -6266,17 +6149,13 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "安価な反復デフォルト"
-          },
-          {
             "slug": "gpt-image-1",
             "reason": "より強力なスタイライズドイラスト"
           },
           { "slug": "seedream-4", "reason": "より安価なフォトリアル代替" }
         ],
         "routingNotes": "Routed to Black Forest Labs' Flux Pro 1.1 Ultra endpoint and billed per generated image.",
-        "vm0Notes": "Flux Pro 1.1 Ultra is the premium tier of the curated image lineup. Use it for the final-render step rather than for iteration; pair it with Gemini 2.5 Flash Image or SeedDream 4 for the cheap pre-filter."
+        "vm0Notes": "Flux Pro 1.1 Ultra is the premium tier of the curated image lineup. Use it for the final-render step rather than for iteration; pair it with SeedDream 4 for the cheap pre-filter."
       },
       "seedream-4": {
         "name": "SeedDream 4",
@@ -6284,8 +6163,8 @@
         "tagline": "ByteDanceのSeedDream 4テキストツーイメージモデル。ラインナップで最も安いオプションに匹敵するコストで強力なフォトリアルアスペクト。",
         "cardIntro": "ByteDanceのSeedDream 4。低い画像あたりコストでのフォトリアルアスペクト — ブリーフが写真のときの自然なデフォルト。",
         "metaTitle": "SeedDream 4 on VM0: 価格、仕様、比較",
-        "metaDescription": "VM0上のSeedDream 4。ByteDanceのテキストツーイメージモデル、強力なフォトリアル出力、画像あたり約$0.036、Gemini 2.5 Flash Image、GPT Image 1、Flux Pro 1.1 Ultraとの比較。",
-        "summary": "SeedDream 4はByteDanceのSeedream V4世代のテキストツーイメージモデルです。その際立った特性はフォトリアルアスペクト — ポートレート、製品ショット、ライフスタイル写真 — であり、定価（画像あたり$0.036）はキュレーション済みラインナップで最も安いオプションと競争力があります。\n\nブリーフが特に写真の場合の自然なデフォルトです。スタイライズドイラストやエディトリアルデザインにはGPT Image 1またはFlux Pro 1.1 Ultraを、長く構造化されたプロンプトでの一般的な反復エージェントワークロードにはGemini 2.5 Flash Imageを選んでください。",
+        "metaDescription": "VM0上のSeedDream 4。ByteDanceのテキストツーイメージモデル、強力なフォトリアル出力、画像あたり約$0.036、GPT Image 1、Flux Pro 1.1 Ultraとの比較。",
+        "summary": "SeedDream 4はByteDanceのSeedream V4世代のテキストツーイメージモデルです。その際立った特性はフォトリアルアスペクト — ポートレート、製品ショット、ライフスタイル写真 — であり、定価（画像あたり$0.036）はキュレーション済みラインナップで最も安いオプションと競争力があります。\n\nブリーフが特に写真の場合の自然なデフォルトです。スタイライズドイラストやエディトリアルデザインにはGPT Image 1またはFlux Pro 1.1 Ultraを、長く構造化されたプロンプトでの一般的な反復エージェントワークロードにはSeedDream 4を選んでください。",
         "releaseDate": "2026年4月",
         "familyPosition": "ByteDanceのSeedream V4世代のフォトリアルテキストツーイメージデフォルト。",
         "background": [
@@ -6337,7 +6216,7 @@
             "body": "ブリーフがフォトリアルだが成果物がFluxプレミアムを正当化しない場合、SeedDream 4は半分の価格でほとんどの品質を運びます。"
           }
         ],
-        "avoidFor": "スタイライズドイラスト（GPT Image 1がリード）、長い構造化プロンプト反復（Gemini 2.5 Flash Imageがリード）、またはFluxプレミアムが正当化されるヒーローショットエディトリアル作業ではSeedDream 4をスキップしてください。",
+        "avoidFor": "スタイライズドイラスト（GPT Image 1がリード）、長い構造化プロンプト反復（SeedDream 4がリード）、またはFluxプレミアムが正当化されるヒーローショットエディトリアル作業ではSeedDream 4をスキップしてください。",
         "comparisons": [
           {
             "vs": "GPT Image 1",
@@ -6346,10 +6225,6 @@
           {
             "vs": "Flux Pro 1.1 Ultra",
             "body": "両方ともフォトリアル傾向。SeedDream 4は半分の価格でポートレートと製品作業で競争力があり、Flux Pro 1.1 Ultraはヒーローショットの構図忠実度で勝ちます。"
-          },
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Gemini 2.5 Flash Imageは長プロンプトの指示追従がより強い安価な汎用デフォルトで、SeedDream 4は写真ブリーフでより高い天井を持つフォトリアル特化デフォルトです。"
           }
         ],
         "verdict": "ブリーフが特に写真でコストが重要なときはSeedDream 4をデフォルトに。ヒーローショットがプレミアムを正当化する場合のみFlux Pro 1.1 Ultraにエスカレートしてください。",
@@ -6373,10 +6248,6 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "より安価な汎用デフォルト"
-          },
-          {
             "slug": "flux-pro-1-1-ultra",
             "reason": "プレミアムヒーローショット品質"
           },
@@ -6386,7 +6257,7 @@
           }
         ],
         "routingNotes": "Routed to ByteDance's SeedDream V4 text-to-image endpoint and billed per generated image.",
-        "vm0Notes": "SeedDream 4 is the photoreal-specific default in the curated image lineup. Pair it with Flux Pro 1.1 Ultra for hero shots and with Gemini 2.5 Flash Image for non-photo iteration."
+        "vm0Notes": "SeedDream 4 is the photoreal-specific default in the curated image lineup. Pair it with Flux Pro 1.1 Ultra for hero shots and with GPT Image 1 for non-photo iteration."
       },
       "veo-3-1-fast": {
         "name": "Veo 3.1 Fast",
@@ -6633,7 +6504,7 @@
           },
           {
             "title": "イメージツービデオ",
-            "body": "画像条件付けフローの強力な処理。エージェントが静止画像（Gemini 2.5 Flash ImageまたはSeedDream 4で安価に生成）を短いモーションクリップに拡張したい場合に有用。"
+            "body": "画像条件付けフローの強力な処理。エージェントが静止画像（SeedDream 4またはSeedDream 4で安価に生成）を短いモーションクリップに拡張したい場合に有用。"
           },
           {
             "title": "アスペクト天井",

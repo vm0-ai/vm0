@@ -25,13 +25,12 @@ export const setupOnboardingPage$ = command(
     set(resetOnboardingStep$);
     signal.throwIfAborted();
 
-    // Detect use-case deep link early — `?prompt=...&connector=...` lets even
-    // already-onboarded users (including non-admins) land here intentionally
-    // to try a suggested task, so we must NOT auto-redirect them home then.
+    // Detect use-case deep link early — `?prompt=...` (optionally with
+    // `&connector=...`) lets even already-onboarded users (including
+    // non-admins) land here intentionally to try a suggested task, so we
+    // must NOT auto-redirect them home then.
     const earlyParams = get(searchParams$);
-    const hasUseCaseLink =
-      (earlyParams.get("prompt")?.length ?? 0) > 0 &&
-      earlyParams.get("connector") !== null;
+    const hasUseCaseLink = (earlyParams.get("prompt")?.length ?? 0) > 0;
 
     // Onboarding is purely admin workspace setup. If onboarding is not needed
     // (non-admins, or admins whose workspace is already set up) and there's no
@@ -78,17 +77,13 @@ export const setupOnboardingPage$ = command(
       }
     }
 
-    // "Use case" deep link: ?prompt=... + ?connector=... together signal that
-    // the user came in from a specific suggested task. We seed an editable
-    // prompt draft and switch onboarding into condensed mode where the flow
-    // collapses to step 3, which grows a composer + "Try It" CTA that goes
-    // straight to the web chat.
+    // "Use case" deep link: ?prompt=... (optionally with ?connector=...)
+    // signals that the user came in from a specific suggested task. We seed
+    // an editable prompt draft and switch onboarding into condensed mode
+    // where the flow collapses to step 3, which grows a composer + "Try It"
+    // CTA that goes straight to the web chat.
     const promptParam = params.get("prompt");
-    if (
-      promptParam !== null &&
-      promptParam.length > 0 &&
-      connectorParam !== null
-    ) {
+    if (promptParam !== null && promptParam.length > 0) {
       set(markUseCaseMode$, promptParam);
     }
   },

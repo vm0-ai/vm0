@@ -81,7 +81,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     expect(context.store.get(zeroSelectedConnectors$)).toContain("github");
   });
 
-  it("does not enter use-case mode when only ?prompt= is present", async () => {
+  it("enters use-case mode when only ?prompt= is present (connector is optional)", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
@@ -92,8 +92,8 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
 
     await context.store.set(setupOnboardingPage$, context.signal);
 
-    expect(context.store.get(onboardingIsUseCase$)).toBeFalsy();
-    expect(context.store.get(onboardingPromptDraft$)).toBe("");
+    expect(context.store.get(onboardingIsUseCase$)).toBeTruthy();
+    expect(context.store.get(onboardingPromptDraft$)).toBe("hello");
   });
 
   it("does not enter use-case mode when only ?connector= is present", async () => {

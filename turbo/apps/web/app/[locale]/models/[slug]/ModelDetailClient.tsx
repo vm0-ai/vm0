@@ -10,6 +10,7 @@ import {
   MODELS,
   type GenerationPricingUnit,
   type ModelEntry,
+  getModelCtaUrl,
   isReasoningModel,
   vendorIconPath,
 } from "../data";
@@ -145,6 +146,7 @@ interface Props {
 export function ModelDetailClient({ model, related }: Props) {
   const t = useTranslations("models");
   const platformUrl = getAppUrl();
+  const ctaUrl = getModelCtaUrl(model, platformUrl);
   const c = (key: string) => {
     return `content.${model.slug}.${key}`;
   };
@@ -198,7 +200,7 @@ export function ModelDetailClient({ model, related }: Props) {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <a
-                href={platformUrl}
+                href={ctaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-get-access group"

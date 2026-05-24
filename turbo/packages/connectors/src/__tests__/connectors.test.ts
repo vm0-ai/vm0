@@ -39,6 +39,7 @@ import {
   getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
   refreshConnectorOAuthToken,
+  revokeConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
 } from "../oauth-providers/provider-registry";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
@@ -257,6 +258,106 @@ describe("isOAuthConnectorType", () => {
         refreshToken: "refresh-token",
       }),
     ).rejects.toThrow("github OAuth provider does not support refresh");
+  });
+
+  it("revokes OAuth tokens through the provider registry", async () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      if (name === "GH_OAUTH_CLIENT_ID") {
+        return "test-github-client";
+      }
+      if (name === "GH_OAUTH_CLIENT_SECRET") {
+        return "test-github-secret";
+      }
+      return undefined;
+    });
+    expect(credentials?.configured).toBe(true);
+
+    if (!credentials?.configured) {
+      throw new Error("Expected github OAuth credentials");
+    }
+
+    let authorization: string | null = null;
+    let body = "";
+    server.use(
+      http.delete(
+        "https://api.github.com/applications/test-github-client/grant",
+        async ({ request }) => {
+          authorization = request.headers.get("authorization");
+          body = await request.text();
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    await expect(
+      revokeConnectorOAuthToken({
+        type: "github",
+        credentials,
+        loadAccessToken: () => {
+          return "gh-access-token";
+        },
+      }),
+    ).resolves.toStrictEqual({ status: "revoked" });
+    expect(authorization).toBe(
+      `Basic ${btoa("test-github-client:test-github-secret")}`,
+    );
+    expect(body).toBe(JSON.stringify({ access_token: "gh-access-token" }));
+  });
+
+  it("returns unsupported for OAuth connectors without revoke support", async () => {
+    const credentials = getConnectorOAuthCredentials("notion", (name) => {
+      if (name === "NOTION_OAUTH_CLIENT_ID") {
+        return "test-notion-client";
+      }
+      if (name === "NOTION_OAUTH_CLIENT_SECRET") {
+        return "test-notion-secret";
+      }
+      return undefined;
+    });
+    expect(credentials?.configured).toBe(true);
+
+    if (!credentials?.configured) {
+      throw new Error("Expected notion OAuth credentials");
+    }
+
+    let loadedAccessToken = false;
+
+    await expect(
+      revokeConnectorOAuthToken({
+        type: "notion",
+        credentials,
+        loadAccessToken: () => {
+          loadedAccessToken = true;
+          return "notion-access-token";
+        },
+      }),
+    ).resolves.toStrictEqual({ status: "unsupported" });
+    expect(loadedAccessToken).toBe(false);
+  });
+
+  it("returns unconfigured when OAuth credentials are unavailable for revoke", async () => {
+    const credentials = getConnectorOAuthCredentials("github", () => {
+      return undefined;
+    });
+    expect(credentials?.configured).toBe(false);
+
+    if (!credentials) {
+      throw new Error("Expected github OAuth credentials shape");
+    }
+
+    let loadedAccessToken = false;
+
+    await expect(
+      revokeConnectorOAuthToken({
+        type: "github",
+        credentials,
+        loadAccessToken: () => {
+          loadedAccessToken = true;
+          return "gh-access-token";
+        },
+      }),
+    ).resolves.toStrictEqual({ status: "unconfigured" });
+    expect(loadedAccessToken).toBe(false);
   });
 
   it("builds the expected authorization URL base for every OAuth provider", async () => {
