@@ -64,6 +64,7 @@ function connectorIconHasLooseViewBox(type: ConnectorType): boolean {
  * Dark single-fill logos (e.g. navy) are *not* listed here—they invert for contrast on dark UI.
  */
 const CONNECTOR_ICON_COLORFUL = {
+  adzuna: true,
   ahrefs: true,
   agora: true,
   airtable: true,
