@@ -569,8 +569,11 @@ function chatThreadMessages(
 // identical queries that each paid the same join cost on the hot
 // chat-thread detail path. Rows are ordered newest-first so the latest-N
 // scans below match the previous LIMIT semantics.
-const ACTIVE_RUN_STATUSES: readonly string[] = ["queued", "pending", "running"];
 const LATEST_SESSION_ID_SCAN_DEPTH = 5;
+
+function isActiveRunStatus(status: string): boolean {
+  return status === "queued" || status === "pending" || status === "running";
+}
 
 interface ThreadRunSummaryRow {
   readonly id: string;
@@ -602,7 +605,7 @@ function pickActiveRuns(
 ): readonly { readonly id: string; readonly status: string }[] {
   const active: { id: string; status: string }[] = [];
   for (const row of rows) {
-    if (ACTIVE_RUN_STATUSES.includes(row.status)) {
+    if (isActiveRunStatus(row.status)) {
       active.push({ id: row.id, status: row.status });
     }
   }
