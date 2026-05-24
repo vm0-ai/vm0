@@ -144,6 +144,7 @@
     "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:pika": "tsx src/index.ts pika",
     "generate:pinecone": "tsx src/index.ts pinecone",
+    "generate:pipedream": "tsx src/index.ts pipedream",
     "generate:pipedrive": "tsx src/index.ts pipedrive",
     "generate:plausible": "tsx src/index.ts plausible",
     "generate:podchaser": "tsx src/index.ts podchaser",

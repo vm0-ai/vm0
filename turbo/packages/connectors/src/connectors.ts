@@ -159,6 +159,7 @@ import { pdforge } from "./connectors/pdforge";
 import { perplexity } from "./connectors/perplexity";
 import { pika } from "./connectors/pika";
 import { pinecone } from "./connectors/pinecone";
+import { pipedream } from "./connectors/pipedream";
 import { pipedrive } from "./connectors/pipedrive";
 import { plain } from "./connectors/plain";
 import { plausible } from "./connectors/plausible";
@@ -718,6 +719,7 @@ const CONNECTOR_TYPES_DEF = {
   ...perplexity,
   ...pika,
   ...pinecone,
+  ...pipedream,
   ...pipedrive,
   ...plain,
   ...plausible,

@@ -140,6 +140,7 @@ import { generate as generatePdforge } from "./pdforge";
 import { generate as generatePerplexity } from "./perplexity";
 import { generate as generatePika } from "./pika";
 import { generate as generatePinecone } from "./pinecone";
+import { generate as generatePipedream } from "./pipedream";
 import { generate as generatePipedrive } from "./pipedrive";
 import { generate as generatePlain } from "./plain";
 import { generate as generatePlausible } from "./plausible";
@@ -344,6 +345,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   perplexity: generatePerplexity,
   pika: generatePika,
   pinecone: generatePinecone,
+  pipedream: generatePipedream,
   pipedrive: generatePipedrive,
   plain: generatePlain,
   plausible: generatePlausible,

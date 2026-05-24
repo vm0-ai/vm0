@@ -181,6 +181,7 @@ import { pdfcoFirewall } from "./pdfco.generated";
 import { pineconeFirewall } from "./pinecone.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
+import { pipedreamFirewall } from "./pipedream.generated";
 import { pipedriveFirewall } from "./pipedrive.generated";
 import { plainFirewall } from "./plain.generated";
 import { plausibleFirewall } from "./plausible.generated";
@@ -403,6 +404,7 @@ const CONNECTOR_FIREWALLS = {
   pinecone: pineconeFirewall,
   pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
+  pipedream: pipedreamFirewall,
   pipedrive: pipedriveFirewall,
   plain: plainFirewall,
   plausible: plausibleFirewall,
