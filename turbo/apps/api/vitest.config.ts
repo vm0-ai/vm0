@@ -5,5 +5,11 @@ export default defineConfig({
     globals: true,
     environment: "node",
     setupFiles: ["./src/__tests__/env-stub.ts", "./src/__tests__/setup.ts"],
+    exclude: ["node_modules/**", "dist/**", "**/__benches__/**"],
+    benchmark: {
+      include: ["src/**/__benches__/**/*.bench.ts"],
+      reporters: ["default", "json"],
+      outputJson: "bench-results.json",
+    },
   },
 });

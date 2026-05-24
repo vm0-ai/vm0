@@ -459,6 +459,49 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
+  bench-api:
+    needs: [detect-turbo-ts-checks, prepare]
+    runs-on: ubuntu-latest
+    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    if: |
+      needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
+        startsWith(github.head_ref, 'perf/') ||
+        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    services:
+      postgres:
+        image: postgres:17-alpine
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Run Database Migrations
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm --filter web db:migrate
+      - name: Bench API
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm -F api exec vitest bench --run
+      - name: Upload bench results
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-api-results
+          path: turbo/apps/api/bench-results.json
+          if-no-files-found: warn
+
   test-migrate:
     needs: prepare
     runs-on: ubuntu-latest
