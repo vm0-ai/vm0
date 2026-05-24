@@ -451,16 +451,3 @@
     opacity: 0;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .running-indicator::before {
-    animation: none;
-    opacity: 0.28;
-    transform: scale(0.62);
-  }
-  .running-indicator::after {
-    animation: none;
-    opacity: 0.18;
-    transform: scale(1);
-  }
-}
