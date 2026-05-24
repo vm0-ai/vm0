@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { sql } from "drizzle-orm";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
