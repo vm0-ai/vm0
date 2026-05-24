@@ -6,13 +6,14 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, count, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { publishOrgSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import { recordSandboxOperation } from "../external/sandbox-op-log";
 
 const L = logger("ZeroRunQueue");
 
@@ -30,6 +31,54 @@ function tierLimit(tier: OrgTier | null | undefined): number {
     return TIER_CONCURRENCY_LIMITS.free;
   }
   return TIER_CONCURRENCY_LIMITS[tier];
+}
+
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type QueuedRunnerJobPayload = NonNullable<
+  Awaited<ReturnType<typeof decryptQueuedRunnerJobPayload>>
+>;
+
+async function promoteApiQueuedRunnerJob(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly runId: string;
+    readonly queuedAt: Date;
+    readonly payload: QueuedRunnerJobPayload;
+  },
+): Promise<void> {
+  const promotedAt = now();
+  const [remainingRow] = await tx
+    .select({ depth: count() })
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.orgId, args.orgId));
+
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "dequeue_zero_run",
+    durationMs: Math.max(0, promotedAt - args.queuedAt.getTime()),
+    success: true,
+    runId: args.runId,
+    dimensions: {
+      queue_depth_at_dequeue: Number(remainingRow?.depth ?? 0),
+    },
+  });
+
+  await tx.insert(runnerJobQueue).values({
+    runId: args.runId,
+    runnerGroup: args.payload.runnerGroup,
+    profile: args.payload.profile,
+    sessionId: args.payload.sessionId,
+    executionContext: {
+      ...args.payload.executionContext,
+      apiStartTime: promotedAt,
+    },
+    expiresAt: new Date(promotedAt + 2 * 60 * 60 * 1000),
+  });
+  await tx
+    .update(agentRuns)
+    .set({ runnerGroup: args.payload.runnerGroup })
+    .where(eq(agentRuns.id, args.runId));
 }
 
 /**
@@ -94,6 +143,7 @@ export const drainOrgQueue$ = command(
         .select({
           runId: agentRunQueue.runId,
           userId: agentRunQueue.userId,
+          createdAt: agentRunQueue.createdAt,
           encryptedParams: agentRunQueue.encryptedParams,
         })
         .from(agentRunQueue)
@@ -113,8 +163,6 @@ export const drainOrgQueue$ = command(
           )
           .returning({ id: agentRuns.id });
         if (!updated) {
-          // Run was cancelled or otherwise transitioned between enqueue
-          // and drain — skip and try the next entry.
           L.debug("drainOrgQueue: queued run already transitioned, skipping", {
             runId: row.runId,
           });
@@ -130,23 +178,14 @@ export const drainOrgQueue$ = command(
           featureSwitchContext,
         );
         if (payload) {
-          await tx.insert(runnerJobQueue).values({
+          await promoteApiQueuedRunnerJob(tx, {
+            orgId: args.orgId,
             runId: row.runId,
-            runnerGroup: payload.runnerGroup,
-            profile: payload.profile,
-            sessionId: payload.sessionId,
-            executionContext: payload.executionContext,
-            expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+            queuedAt: row.createdAt,
+            payload,
           });
-          await tx
-            .update(agentRuns)
-            .set({ runnerGroup: payload.runnerGroup })
-            .where(eq(agentRuns.id, row.runId));
         }
         promoted = 1;
-        // Web's `dequeueNextAtomic` returns after the first successful
-        // transition (one slot freed = one dispatch). Match that to
-        // avoid over-dequeuing.
         return payload
           ? {
               promoted,
@@ -164,9 +203,6 @@ export const drainOrgQueue$ = command(
     });
     signal.throwIfAborted();
 
-    // Publish queue:changed after a drain attempt — either we promoted
-    // a run, or the caller upstream freed the slot (e.g. cancel) and
-    // the queue view must refresh even when the queue was empty.
     await publishOrgSignal(args.orgId, "queue:changed");
     signal.throwIfAborted();
 

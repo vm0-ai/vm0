@@ -42,6 +42,7 @@ import {
 } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
+import { mockNow } from "../../../lib/time";
 import { decryptSecretsMap } from "../../services/crypto.utils";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -478,6 +479,9 @@ describe("POST /api/zero/runs", () => {
   it("queues zero runs at the org concurrency limit and dispatches them when drained", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
+    const firstStartedAt = 1_800_000_000_000;
+    const queuedRequestedAt = firstStartedAt + 1000;
+    const queuedPromotedAt = queuedRequestedAt + 120_000;
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
@@ -490,6 +494,7 @@ describe("POST /api/zero/runs", () => {
       fixture: fx,
       framework: "codex",
     });
+    mockNow(firstStartedAt);
     const first = await accept(
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
@@ -498,6 +503,16 @@ describe("POST /api/zero/runs", () => {
       [201],
     );
 
+    const [firstRunnerJob] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, first.body.runId));
+    const firstExecutionContext = firstRunnerJob?.executionContext as {
+      readonly apiStartTime?: number;
+    };
+    expect(firstExecutionContext.apiStartTime).toBe(firstStartedAt);
+
+    mockNow(queuedRequestedAt);
     const queued = await accept(
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
@@ -531,6 +546,7 @@ describe("POST /api/zero/runs", () => {
       .where(eq(runnerJobQueue.runId, queued.body.runId));
     expect(runnerJobsBeforeDrain).toHaveLength(0);
 
+    mockNow(queuedPromotedAt);
     await db
       .update(agentRuns)
       .set({ status: "completed", completedAt: new Date(now()) })
@@ -563,7 +579,9 @@ describe("POST /api/zero/runs", () => {
       readonly environment?: Record<string, string>;
       readonly encryptedSecrets?: string | null;
       readonly featureFlags?: Record<string, boolean>;
+      readonly apiStartTime?: number;
     };
+    expect(executionContext.apiStartTime).toBe(queuedPromotedAt);
     expect(executionContext.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(executionContext.featureFlags).toMatchObject({
       [FeatureSwitchKey.ComputerUse]: true,

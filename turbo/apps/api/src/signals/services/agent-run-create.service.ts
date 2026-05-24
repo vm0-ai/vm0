@@ -129,6 +129,7 @@ import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { logger } from "../../lib/log";
+import { recordSandboxOperation } from "../external/sandbox-op-log";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -2856,6 +2857,20 @@ async function enqueueRunForConcurrency(
     ),
     createdAt: args.run.createdAt,
     expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+  });
+  const [depthRow] = await db
+    .select({ depth: count() })
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.orgId, args.orgId));
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "enqueue_zero_run",
+    durationMs: 0,
+    success: true,
+    runId: args.run.id,
+    dimensions: {
+      queue_depth: Number(depthRow?.depth ?? 0),
+    },
   });
   await db
     .update(agentRuns)
