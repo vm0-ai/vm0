@@ -177,6 +177,7 @@ import { reducto } from "./connectors/reducto";
 import { replicate } from "./connectors/replicate";
 import { reportei } from "./connectors/reportei";
 import { resend } from "./connectors/resend";
+import { rentcast } from "./connectors/rentcast";
 import { revenuecat } from "./connectors/revenuecat";
 import { runway } from "./connectors/runway";
 import { salesforce } from "./connectors/salesforce";
@@ -736,6 +737,7 @@ const CONNECTOR_TYPES_DEF = {
   ...replicate,
   ...reportei,
   ...resend,
+  ...rentcast,
   ...revenuecat,
   ...runway,
   ...salesforce,

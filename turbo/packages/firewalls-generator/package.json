@@ -158,6 +158,7 @@
     "generate:replicate": "tsx src/index.ts replicate",
     "generate:reportei": "tsx src/index.ts reportei",
     "generate:resend": "tsx src/index.ts resend",
+    "generate:rentcast": "tsx src/index.ts rentcast",
     "generate:revenuecat": "tsx src/index.ts revenuecat",
     "generate:runway": "tsx src/index.ts runway",
     "generate:salesforce": "tsx src/index.ts salesforce",

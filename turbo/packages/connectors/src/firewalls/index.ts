@@ -199,6 +199,7 @@ import { reductoFirewall } from "./reducto.generated";
 import { reporteiFirewall } from "./reportei.generated";
 import { replicateFirewall } from "./replicate.generated";
 import { resendFirewall } from "./resend.generated";
+import { rentcastFirewall } from "./rentcast.generated";
 import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
 import { salesforceFirewall } from "./salesforce.generated";
@@ -420,6 +421,7 @@ const CONNECTOR_FIREWALLS = {
   reportei: reporteiFirewall,
   replicate: replicateFirewall,
   resend: resendFirewall,
+  rentcast: rentcastFirewall,
   revenuecat: revenuecatFirewall,
   runway: runwayFirewall,
   salesforce: salesforceFirewall,
