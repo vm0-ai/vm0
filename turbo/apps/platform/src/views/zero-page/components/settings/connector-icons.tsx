@@ -76,6 +76,7 @@ const CONNECTOR_ICON_COLORFUL = {
   bedrock: true,
   bentoml: true,
   bitrix: true,
+  bland: true,
   "brave-search": true,
   brevo: true,
   browserbase: true,
