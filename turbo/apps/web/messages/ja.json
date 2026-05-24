@@ -4308,17 +4308,38 @@
         ],
         "architecture": "GPT-5.5はGPT-5.4から400Kトークンコンテキストウィンドウを継承し、ウィンドウ全体が標準入力価格で課金されます。`reasoning_effort`パラメーターを4レベル（minimal、low、medium、high）でサポートし、プロンプトキャッシュではキャッシュ入力が入力レートの10分の1で課金され、codex CLIがデフォルトで使用するResponses APIサーフェスを使用します。ツール使用、構造化出力、コンピュータ使用は5.4から変更ありません。入力はテキスト、ビジョン、コードにわたってマルチモーダル。モデルにはネイティブな画像生成はありません（それにはImages APIを使用）。",
         "specs": [
-          { "label": "ファミリー", "value": "GPT-5世代" },
-          { "label": "モダリティ", "value": "テキスト、ビジョン、コード" },
-          { "label": "言語", "value": "英語中心、多言語対応" },
-          { "label": "プロンプトキャッシュ", "value": "サポート（OpenAI）" },
-          { "label": "コンテキストウィンドウ", "value": "400Kトークン" },
-          { "label": "最大出力", "value": "最大128Kトークン" },
+          {
+            "label": "ファミリー",
+            "value": "GPT-5世代"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、ビジョン、コード"
+          },
+          {
+            "label": "言語",
+            "value": "英語中心、多言語対応"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "サポート（OpenAI）"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "400Kトークン"
+          },
+          {
+            "label": "最大出力",
+            "value": "最大128Kトークン"
+          },
           {
             "label": "推論努力レベル",
             "value": "Minimal / Low / Medium / High"
           },
-          { "label": "ベンダー定価", "value": "入力$5 / 出力$30 /1M" }
+          {
+            "label": "ベンダー定価",
+            "value": "入力$5 / 出力$30 /1M"
+          }
         ],
         "benchmarksNote": "OpenAIのGPT-5.5リリース資料からのベンダー報告スコア、公開されているGPT-5.4の数字に対するデルタを示しています。独立レビューは、エージェントコーディングタスクで5.5をClaude Opus 4.7の数ポイント以内に位置付けています。絶対パーセンテージは方向性として捉えてください。OpenAIは全フロンティアモデルでSWE-bench Verifiedのトレーニングデータ汚染を指摘しています。",
         "benchmarks": [
@@ -4437,7 +4458,10 @@
           }
         ],
         "alternatives": [
-          { "slug": "gpt-5-4", "reason": "半分のクレジット、同じファミリー" },
+          {
+            "slug": "gpt-5-4",
+            "reason": "半分のクレジット、同じファミリー"
+          },
           {
             "slug": "claude-opus-4-7",
             "reason": "Claude側の同等フラッグシップ"
@@ -4622,17 +4646,38 @@
         ],
         "architecture": "GPT-5.4はGPT-5ファミリーの残りと同じアーキテクチャを使用します：400Kトークンコンテキストウィンドウ、4レベル（minimal、low、medium、high）の`reasoning_effort`パラメーター、キャッシュ入力が入力レートの10分の1で課金されるプロンプトキャッシュ、codex CLIがデフォルトで使用するResponses APIサーフェス。ツール使用、構造化出力、コンピュータ使用がサポートされています。入力はテキスト、ビジョン、コードにわたってマルチモーダル。",
         "specs": [
-          { "label": "ファミリー", "value": "GPT-5世代" },
-          { "label": "モダリティ", "value": "テキスト、ビジョン、コード" },
-          { "label": "言語", "value": "英語中心、多言語対応" },
-          { "label": "プロンプトキャッシュ", "value": "サポート（OpenAI）" },
-          { "label": "コンテキストウィンドウ", "value": "400Kトークン" },
-          { "label": "最大出力", "value": "最大128Kトークン" },
+          {
+            "label": "ファミリー",
+            "value": "GPT-5世代"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、ビジョン、コード"
+          },
+          {
+            "label": "言語",
+            "value": "英語中心、多言語対応"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "サポート（OpenAI）"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "400Kトークン"
+          },
+          {
+            "label": "最大出力",
+            "value": "最大128Kトークン"
+          },
           {
             "label": "推論努力レベル",
             "value": "Minimal / Low / Medium / High"
           },
-          { "label": "ベンダー定価", "value": "入力$2.5 / 出力$15 /1M" }
+          {
+            "label": "ベンダー定価",
+            "value": "入力$2.5 / 出力$15 /1M"
+          }
         ],
         "benchmarksNote": "OpenAIのGPT-5リリース資料からのベンダー報告スコア、前世代のOpenAIに対するデルタを示しています。独立レビューはGPT-5.4をClaude Sonnet 4.6と同じコーディング品質帯に位置付けています。絶対パーセンテージは方向性として捉えてください。",
         "benchmarks": [
@@ -5069,17 +5114,38 @@
         ],
         "architecture": "GPT-5.4 MiniはGPT-5ファミリーの残りと同じアーキテクチャを使用します：400Kトークンコンテキストウィンドウ、4レベルの`reasoning_effort`パラメーター、キャッシュ入力が入力レートの10分の1で課金されるプロンプトキャッシュ、Responses APIサーフェス。ツール使用、構造化出力、マルチモーダルビジョン入力がサポートされています。モデルはより小さく高速な兄弟 — トークンあたり少ないパラメーター、ドルあたりより多くのスループット。",
         "specs": [
-          { "label": "ファミリー", "value": "GPT-5世代" },
-          { "label": "モダリティ", "value": "テキスト、ビジョン、コード" },
-          { "label": "言語", "value": "英語中心、多言語対応" },
-          { "label": "プロンプトキャッシュ", "value": "サポート（OpenAI）" },
-          { "label": "コンテキストウィンドウ", "value": "400Kトークン" },
-          { "label": "最大出力", "value": "最大128Kトークン" },
+          {
+            "label": "ファミリー",
+            "value": "GPT-5世代"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、ビジョン、コード"
+          },
+          {
+            "label": "言語",
+            "value": "英語中心、多言語対応"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "サポート（OpenAI）"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "400Kトークン"
+          },
+          {
+            "label": "最大出力",
+            "value": "最大128Kトークン"
+          },
           {
             "label": "推論努力レベル",
             "value": "Minimal / Low / Medium / High"
           },
-          { "label": "ベンダー定価", "value": "入力$0.75 / 出力$4.5 /1M" }
+          {
+            "label": "ベンダー定価",
+            "value": "入力$0.75 / 出力$4.5 /1M"
+          }
         ],
         "benchmarksNote": "OpenAIのGPT-5 Miniリリース資料からのベンダー報告スコア。独立レビューはほとんどのエージェントベンチマークで5.4 MiniをClaude Haiku 4.5と同じコスト削減帯に位置付けています。絶対パーセンテージは方向性として捉えてください。",
         "benchmarks": [
@@ -5965,6 +6031,124 @@
         "routingNotes": "DeepSeekのAnthropic互換エンドポイント`api.deepseek.com`経由でルーティング。DeepSeekプロバイダーのデフォルトモデル。VM0 Managedでも利用可能。",
         "vm0Notes": "V4 FlashはBuilt-inモデル中最低のクレジットマルチプライヤー（×0.02）を持ち、Sonnet 4.6の約50分の1です。キャッシュ読み取りは課金、キャッシュ書き込みは無料。VM0はDeepSeekプロバイダーに10分のAPIタイムアウトを設定しており、Flashの短い単発作業と自然に適合します。"
       },
+      "gpt-image-2": {
+        "name": "GPT Image 2",
+        "pageTitle": "VM0 の GPT Image 2。OpenAI の新しい画像生成モデル",
+        "tagline": "OpenAI の新しい画像モデルで、テキストからの画像生成と編集に対応します。GPT Image のワークフローで、より高いプロンプト追従性と柔軟なサイズ指定が必要なときに使います。",
+        "cardIntro": "生成と編集に対応する OpenAI の新しい画像モデル。GPT Image 1 より柔軟なサイズ指定と高いプロンプト追従性を備えています。",
+        "metaTitle": "VM0 の GPT Image 2: 料金、仕様、比較",
+        "metaDescription": "VM0 の GPT Image 2。柔軟なサイズ、品質ティア、GPT Image 1 や SeedDream 4 との比較を備えた OpenAI の新しい画像生成・編集モデルです。",
+        "summary": "GPT Image 2 は VM0 で利用できる OpenAI の新しい画像生成モデルです。GPT Image のテキストから画像生成と編集のワークフローを維持しつつ、本番向けの画像タスクに必要な柔軟なサイズ指定と高いプロンプト追従性を追加しています。\n\nVM0 の課金はティア制で、low/standard ティアの 1 画像あたり約 $0.007 から high/large ティアの $0.481 までです。medium-standard ティア (VM0 では 1024x1024 あたり約 $0.064) は、ほとんどの Built-in 生成呼び出しに適した標準設定です。",
+        "releaseDate": "April 2026",
+        "familyPosition": "OpenAI の新しい GPT Image モデル。プロンプト追従性と柔軟な出力サイズの面で GPT Image 1 の上位に位置づけられます。",
+        "background": [
+          "GPT Image 2 は、VM0 の Built-in 画像生成パスから利用できる OpenAI の新しい画像モデルです。GPT Image 1 と同じエージェント向けワークフローで、テキストから画像生成と画像編集に対応します。",
+          "OpenAI らしいプロンプト追従性が必要で、GPT Image 1 の標準ティアより柔軟な出力サイズも必要な場合に、よいデフォルトになります。品質とサイズに応じて課金されるため、下書きループは安価に抑え、最終レンダーだけ高品質にできます。"
+        ],
+        "architecture": "fal 上の OpenAI GPT Image 2 エンドポイントを通じて提供される、テキストから画像生成および画像編集モデルです。品質ティアと柔軟な画像サイズに対応します。このモデルでは VM0 の透明背景出力はサポートされません。",
+        "specs": [
+          {
+            "label": "ファミリー",
+            "value": "OpenAI Images"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキストから画像、画像から画像の編集"
+          },
+          {
+            "label": "出力ティア",
+            "value": "Standard / Large x Low / Medium / High"
+          },
+          {
+            "label": "VM0 課金価格",
+            "value": "1 画像あたり $0.007 から $0.481"
+          },
+          {
+            "label": "言語",
+            "value": "多言語プロンプト"
+          },
+          {
+            "label": "VM0 での提供開始",
+            "value": "2026年4月"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "プロンプト追従性",
+            "body": "GPT Image 1 ではなく GPT Image 2 を選ぶ主な理由は、詳細なプロンプトをより厳密に実行できることです。構図、アスペクト比、スタイル制約を含む指示で特に有効です。"
+          },
+          {
+            "title": "柔軟なサイズ",
+            "body": "VM0 の柔軟な画像サイズパスに対応しているため、モデルファミリーを切り替えずに正方形、縦長、横長、大きめの出力をエージェントから要求できます。"
+          },
+          {
+            "title": "編集フロー",
+            "body": "画像から画像の編集とマスクに対応します。元画像を保ちながら、指定した領域だけを変更するワークフローで使います。"
+          },
+          {
+            "title": "コスト",
+            "body": "medium と high のティアでは GPT Image 1 より高価です。下書きループは低めの品質にし、最終出力だけ高品質にするのが適しています。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "正確なプロンプト追従が必要なエージェント",
+            "body": "フレーミング、スタイル、サイズに具体的な要件がある場合、GPT Image 2 は GPT Image 1 より安全な OpenAI 画像モデルの選択肢です。"
+          },
+          {
+            "title": "複数のアスペクト比が必要な画像ワークフロー",
+            "body": "マーケティング、SNS、Web サイトのアセットでは、正方形、縦長、横長の出力が必要になることがよくあります。GPT Image 2 は、プロンプトの書き方を変えずにそうしたワークフローに合います。"
+          },
+          {
+            "title": "OpenAI スタックでの編集ループ",
+            "body": "エージェントがすでに計画やコピーに OpenAI モデルを使っている場合、GPT Image 2 により画像生成も同じプロンプト追従系のファミリーに保てます。"
+          }
+        ],
+        "avoidFor": "コストが最優先の場合や、真の透明背景出力が必要な場合は GPT Image 2 を避けてください。制約によっては GPT Image 1、GPT Image 1.5、SeedDream 4 の方が適しています。",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "GPT Image 2 は、より新しく柔軟で、プロンプト追従性が高いモデルです。GPT Image 1 は一般的な medium-standard 設定では引き続き安価で、スタイライズされたイラストにも強みがあります。"
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4 はより安価で、フォトリアル寄りです。最低コストよりもプロンプト追従性、編集ワークフロー、柔軟なサイズが重要な場合は、GPT Image 2 が OpenAI スタックでのよりよい選択です。"
+          }
+        ],
+        "verdict": "より高いプロンプト追従性と柔軟なサイズ指定を備えた OpenAI 画像生成が必要なら GPT Image 2 を選びます。コストが最重要なら GPT Image 1 または SeedDream 4 を使います。",
+        "faqs": [
+          {
+            "q": "GPT Image 2 はどのように課金されますか?",
+            "a": "品質とサイズに応じて課金されます。VM0 では medium-standard ティアが 1 画像あたり約 $0.064、high/large ティアが約 $0.481 です。"
+          },
+          {
+            "q": "GPT Image 2 は画像編集に対応していますか?",
+            "a": "はい。VM0 では GPT Image 2 の画像から画像の編集とマスク対応を提供しています。"
+          },
+          {
+            "q": "GPT Image 2 は透明背景に対応していますか?",
+            "a": "いいえ。VM0 の GPT Image 2 パスは透明背景出力をサポートしていません。"
+          },
+          {
+            "q": "GPT Image 1 ではなく GPT Image 2 を使うべきタイミングは?",
+            "a": "より厳密なプロンプト追従と柔軟なサイズが必要な場合は GPT Image 2 を使います。指示が単純な場合やコストを重視する場合は GPT Image 1 を使います。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-image-1",
+            "reason": "より安価な OpenAI 画像のデフォルト"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "より安価なフォトリアル代替"
+          }
+        ],
+        "routingNotes": "VM0 の Built-in 生成パスを通じて OpenAI の GPT Image 2 エンドポイントへルーティングされ、出力画像ティアごとに課金されます。",
+        "vm0Notes": "GPT Image 2 は VM0 Managed generation で利用でき、品質とサイズを制御できます。通常のエージェント作業には medium 品質を使い、生成画像自体が納品物になる場合は high 品質を使います。"
+      },
       "gpt-image-1": {
         "name": "GPT Image 1",
         "pageTitle": "GPT Image 1 on VM0. OpenAIのテキストツーイメージモデル",
@@ -5981,15 +6165,30 @@
         ],
         "architecture": "ネイティブ編集サポート付きのディフュージョンベースのテキストツーイメージ。ティア価格は出力解像度（標準/大）と品質（低/中/高）でスケールし、中/標準ティアが典型的なデフォルト。入力は編集とマスク用のテキストとオプションのリファレンス画像を受け付けます。",
         "specs": [
-          { "label": "ファミリー", "value": "OpenAI Images" },
+          {
+            "label": "ファミリー",
+            "value": "OpenAI Images"
+          },
           {
             "label": "モダリティ",
             "value": "テキストツーイメージ、イメージツーイメージ編集"
           },
-          { "label": "出力ティア", "value": "標準/大 × 低/中/高" },
-          { "label": "ベンダー定価", "value": "画像あたり$0.011から$0.25" },
-          { "label": "言語", "value": "多言語プロンプト" },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
+          {
+            "label": "出力ティア",
+            "value": "標準/大 × 低/中/高"
+          },
+          {
+            "label": "ベンダー定価",
+            "value": "画像あたり$0.011から$0.25"
+          },
+          {
+            "label": "言語",
+            "value": "多言語プロンプト"
+          },
+          {
+            "label": "VM0 提供開始",
+            "value": "2026年4月"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6056,7 +6255,10 @@
             "slug": "flux-pro-1-1-ultra",
             "reason": "より高いフォトリアルアスペクト天井"
           },
-          { "slug": "seedream-4", "reason": "より良いフォトリアルデフォルト" }
+          {
+            "slug": "seedream-4",
+            "reason": "より良いフォトリアルデフォルト"
+          }
         ],
         "routingNotes": "Routed to OpenAI's Images surface and billed per generated image at the selected tier.",
         "vm0Notes": "GPT Image 1 is the OpenAI-stack default for stylised illustration and edit-loop agent workflows. The medium/standard tier is the sensible everywhere-default; reserve the high/large tier for delivery-grade output."
@@ -6077,11 +6279,26 @@
         ],
         "architecture": "構図忠実度に調整されたプロンプト追従を持つ高解像度ディフュージョンモデル。生成画像あたり課金。入力はテキストプロンプトを受け付け、配信に適した高解像度出力を生成します。",
         "specs": [
-          { "label": "ファミリー", "value": "Flux 1.1 Pro" },
-          { "label": "モダリティ", "value": "テキストツーイメージ" },
-          { "label": "ベンダー定価", "value": "画像あたり$0.072" },
-          { "label": "言語", "value": "多言語プロンプト" },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
+          {
+            "label": "ファミリー",
+            "value": "Flux 1.1 Pro"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキストツーイメージ"
+          },
+          {
+            "label": "ベンダー定価",
+            "value": "画像あたり$0.072"
+          },
+          {
+            "label": "言語",
+            "value": "多言語プロンプト"
+          },
+          {
+            "label": "VM0 提供開始",
+            "value": "2026年4月"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6152,7 +6369,10 @@
             "slug": "gpt-image-1",
             "reason": "より強力なスタイライズドイラスト"
           },
-          { "slug": "seedream-4", "reason": "より安価なフォトリアル代替" }
+          {
+            "slug": "seedream-4",
+            "reason": "より安価なフォトリアル代替"
+          }
         ],
         "routingNotes": "Routed to Black Forest Labs' Flux Pro 1.1 Ultra endpoint and billed per generated image.",
         "vm0Notes": "Flux Pro 1.1 Ultra is the premium tier of the curated image lineup. Use it for the final-render step rather than for iteration; pair it with SeedDream 4 for the cheap pre-filter."
@@ -6173,14 +6393,26 @@
         ],
         "architecture": "ディフュージョンベースのテキストツーイメージモデル。生成画像あたり課金。入力はテキストプロンプトを受け付け、ポートレート、製品、ライフスタイル画像に適したフォトリアル傾向の出力を生成します。",
         "specs": [
-          { "label": "ファミリー", "value": "Seedream V4" },
-          { "label": "モダリティ", "value": "テキストツーイメージ" },
-          { "label": "ベンダー定価", "value": "画像あたり$0.036" },
+          {
+            "label": "ファミリー",
+            "value": "Seedream V4"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキストツーイメージ"
+          },
+          {
+            "label": "ベンダー定価",
+            "value": "画像あたり$0.036"
+          },
           {
             "label": "言語",
             "value": "多言語プロンプト（英語＋中国語が強い）"
           },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
+          {
+            "label": "VM0 提供開始",
+            "value": "2026年4月"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6275,18 +6507,30 @@
         ],
         "architecture": "同じパスでネイティブオーディオ合成を持つテキストツービデオおよびイメージツービデオディフュージョンモデル。出力時間は720p、1080p、または4Kで4、6、または8秒。品質ティアモディファイア付きで生成ビデオ秒あたり課金。",
         "specs": [
-          { "label": "ファミリー", "value": "Google Veo 3" },
+          {
+            "label": "ファミリー",
+            "value": "Google Veo 3"
+          },
           {
             "label": "モダリティ",
             "value": "テキストツービデオ、イメージツービデオ、ネイティブオーディオ"
           },
-          { "label": "クリップ長", "value": "4秒 / 6秒 / 8秒" },
-          { "label": "出力解像度", "value": "720p / 1080p / 4K" },
+          {
+            "label": "クリップ長",
+            "value": "4秒 / 6秒 / 8秒"
+          },
+          {
+            "label": "出力解像度",
+            "value": "720p / 1080p / 4K"
+          },
           {
             "label": "ベンダー定価",
             "value": "秒あたり約$0.15（720p＋オーディオ）"
           },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
+          {
+            "label": "VM0 提供開始",
+            "value": "2026年4月"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6357,7 +6601,10 @@
             "slug": "kling-v3-4k",
             "reason": "スタイライズド/アニメ天井、より長いクリップ"
           },
-          { "slug": "dreamina-seedance-2-0", "reason": "秒あたりより安価" }
+          {
+            "slug": "dreamina-seedance-2-0",
+            "reason": "秒あたりより安価"
+          }
         ],
         "routingNotes": "Routed to Google's Veo 3.1 Fast video generation endpoint and billed per generated video-second with quality-tier modifiers.",
         "vm0Notes": "Veo 3.1 Fast is the cinematic / audio-bearing default in the curated video lineup on VM0. Pair it with Dreamina Seedance 2.0 for cheap iteration and with Kling V3 4K for stylised or longer-form clips."
@@ -6378,15 +6625,30 @@
         ],
         "architecture": "テキストツービデオおよびイメージツービデオディフュージョンモデル。標準ティアは3〜15秒のクリップ時間で4Kでレンダリング。生成ビデオ秒あたり課金。",
         "specs": [
-          { "label": "ファミリー", "value": "Kling V3" },
+          {
+            "label": "ファミリー",
+            "value": "Kling V3"
+          },
           {
             "label": "モダリティ",
             "value": "テキストツービデオ、イメージツービデオ"
           },
-          { "label": "クリップ長", "value": "3〜15秒" },
-          { "label": "出力解像度", "value": "4K（標準ティア）" },
-          { "label": "ベンダー定価", "value": "秒あたり約$0.28（4K）" },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
+          {
+            "label": "クリップ長",
+            "value": "3〜15秒"
+          },
+          {
+            "label": "出力解像度",
+            "value": "4K（標準ティア）"
+          },
+          {
+            "label": "ベンダー定価",
+            "value": "秒あたり約$0.28（4K）"
+          },
+          {
+            "label": "VM0 提供開始",
+            "value": "2026年4月"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6457,7 +6719,10 @@
             "slug": "veo-3-1-fast",
             "reason": "シネマティック/ネイティブオーディオ"
           },
-          { "slug": "dreamina-seedance-2-0", "reason": "より安価なバルク生成" }
+          {
+            "slug": "dreamina-seedance-2-0",
+            "reason": "より安価なバルク生成"
+          }
         ],
         "routingNotes": "Routed to Kuaishou's Kling V3 4K endpoint and billed per generated video-second.",
         "vm0Notes": "Kling V3 4K is the high-ceiling option in the curated video lineup on VM0. Reserve it for stylised, long-form or 4K deliverables — for the everywhere-default reach for Veo 3.1 Fast or Dreamina Seedance 2.0."
@@ -6478,18 +6743,30 @@
         ],
         "architecture": "3つの品質ティア（Fast、Standard、Pro）を持つテキストツービデオおよびイメージツービデオディフュージョンモデル。キュレーション済みエントリはStandard 2.0ティアをカバーします。解像度と画像条件付けが使用されているかどうかのモディファイア付きで生成ビデオ秒あたり課金。",
         "specs": [
-          { "label": "ファミリー", "value": "Seedance 2.0" },
+          {
+            "label": "ファミリー",
+            "value": "Seedance 2.0"
+          },
           {
             "label": "モダリティ",
             "value": "テキストツービデオ、イメージツービデオ"
           },
-          { "label": "クリップ長", "value": "4〜15秒" },
-          { "label": "出力解像度", "value": "480p / 720p / 1080p" },
+          {
+            "label": "クリップ長",
+            "value": "4〜15秒"
+          },
+          {
+            "label": "出力解像度",
+            "value": "480p / 720p / 1080p"
+          },
           {
             "label": "ベンダー定価",
             "value": "秒あたり約$0.05（1080p＋画像）"
           },
-          { "label": "VM0 提供開始", "value": "2026年4月" }
+          {
+            "label": "VM0 提供開始",
+            "value": "2026年4月"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6560,7 +6837,10 @@
             "slug": "veo-3-1-fast",
             "reason": "ネイティブオーディオ、シネマティックモーション"
           },
-          { "slug": "kling-v3-4k", "reason": "スタイライズド、より長い、4K" }
+          {
+            "slug": "kling-v3-4k",
+            "reason": "スタイライズド、より長い、4K"
+          }
         ],
         "routingNotes": "Routed to ByteDance's Dreamina Seedance 2.0 endpoint and billed per generated video-second with resolution and image-conditioning modifiers.",
         "vm0Notes": "Dreamina Seedance 2.0 is the cost-optimised default in the curated video lineup on VM0. The standard pattern is to use it for iteration and fan-out, then escalate the chosen variant to Veo 3.1 Fast or Kling V3 4K only when the final render justifies the premium."
