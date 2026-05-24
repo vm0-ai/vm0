@@ -185,6 +185,7 @@ const CONNECTOR_ICON_COLORFUL = {
   wandb: true,
   webflow: true,
   weread: true,
+  "whale-alert": true,
   workos: true,
   wrike: true,
   xero: true,
