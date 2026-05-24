@@ -92,6 +92,7 @@ const CONNECTOR_ICON_COLORFUL = {
   cronlytic: true,
   "customer-io": true,
   deepseek: true,
+  defillama: true,
   doubao: true,
   dify: true,
   discord: true,
