@@ -133,6 +133,7 @@ import { mapbox } from "./connectors/mapbox";
 import { mathpix } from "./connectors/mathpix";
 import { mem0 } from "./connectors/mem0";
 import { mercury } from "./connectors/mercury";
+import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
 import { minimax } from "./connectors/minimax";
@@ -692,6 +693,7 @@ const CONNECTOR_TYPES_DEF = {
   ...mathpix,
   ...mem0,
   ...mercury,
+  ...meshy,
   ...metaAds,
   ...metabase,
   ...minimax,

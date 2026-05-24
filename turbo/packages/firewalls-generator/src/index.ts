@@ -114,6 +114,7 @@ import { generate as generateMapbox } from "./mapbox";
 import { generate as generateMathpix } from "./mathpix";
 import { generate as generateMem0 } from "./mem0";
 import { generate as generateMercury } from "./mercury";
+import { generate as generateMeshy } from "./meshy";
 import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
 import { generate as generateMinimax } from "./minimax";
@@ -321,6 +322,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   manus: generateManus,
   mem0: generateMem0,
   mercury: generateMercury,
+  meshy: generateMeshy,
   metabase: generateMetabase,
   "meta-ads": generateMetaAds,
   minimax: generateMinimax,

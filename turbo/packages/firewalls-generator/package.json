@@ -125,6 +125,7 @@
     "generate:manus": "tsx src/index.ts manus",
     "generate:mem0": "tsx src/index.ts mem0",
     "generate:mercury": "tsx src/index.ts mercury",
+    "generate:meshy": "tsx src/index.ts meshy",
     "generate:metabase": "tsx src/index.ts metabase",
     "generate:meta-ads": "tsx src/index.ts meta-ads",
     "generate:minimax": "tsx src/index.ts minimax",

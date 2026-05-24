@@ -156,6 +156,7 @@ import { mapboxFirewall } from "./mapbox.generated";
 import { mathpixFirewall } from "./mathpix.generated";
 import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
+import { meshyFirewall } from "./meshy.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
 import { mossFirewall } from "./moss.generated";
@@ -381,6 +382,7 @@ const CONNECTOR_FIREWALLS = {
   manus: manusFirewall,
   mem0: mem0Firewall,
   mercury: mercuryFirewall,
+  meshy: meshyFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
   moss: mossFirewall,
