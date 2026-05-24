@@ -40,7 +40,9 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_compiled_firewall_matching.py` | Compiled firewall matcher parity and edge cases |
 | `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
 | `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
-| `test_firewall_rewrite.py` | Firewall auth URL rewrite and query injection |
+| `test_firewall_rewrite.py` | Firewall auth URL rewrite and forwarding behavior |
+| `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
+| `test_url_utils.py` | URL reconstruction and rewrite utility cases |
 | `test_auth_cache.py` | Firewall auth cache behavior |
 | `test_anthropic_messages.py` | Anthropic Messages usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |

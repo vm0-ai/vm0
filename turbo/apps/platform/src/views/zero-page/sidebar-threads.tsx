@@ -230,11 +230,13 @@ function ChatThreadMenu({
   isPinned,
   isHighlighted,
   renameEnabled,
+  hasOtherIndicator,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
   renameEnabled: boolean;
+  hasOtherIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const pinChatThread = useSet(pinChatThread$);
@@ -268,7 +270,9 @@ function ChatThreadMenu({
           <button
             type="button"
             onClick={handleMenuTriggerClick}
-            className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
+            className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md ${
+              hasOtherIndicator ? "invisible" : "visible"
+            } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
               isHighlighted
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
                 : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
@@ -346,6 +350,7 @@ function ChatThreadSideDecorator({
       </div>
     );
   }
+  const hasOtherIndicator = indicatorState !== null || isPinned;
   return (
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
@@ -353,6 +358,7 @@ function ChatThreadSideDecorator({
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         renameEnabled={renameEnabled}
+        hasOtherIndicator={hasOtherIndicator}
       />
       {indicatorState !== null ? (
         <span className="flex items-center justify-center group-hover:hidden peer-data-[state=open]:hidden">
