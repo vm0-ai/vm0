@@ -893,10 +893,10 @@ mod tests {
 
     #[test]
     fn dropped_operation_closes_control_sink() {
-        let nonce = unique_test_nonce(16);
+        let nonce = unique_test_nonce(20);
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(16, nonce, true).unwrap();
-        let sink = registry.resolve(16, nonce).unwrap();
+        let registration = registry.register(20, nonce, true).unwrap();
+        let sink = registry.resolve(20, nonce).unwrap();
 
         drop(registration);
 
@@ -904,7 +904,7 @@ mod tests {
             *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
             ControlSinkInner::Closed
         ));
-        let (status, diagnostic) = resolve_error(&registry, 16, nonce);
+        let (status, diagnostic) = resolve_error(&registry, 20, nonce);
         assert_eq!(status, ExecControlStatus::Inactive);
         assert_eq!(diagnostic, "exec operation is not active");
     }
