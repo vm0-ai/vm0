@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { createStore } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
@@ -272,5 +275,94 @@ describe("POST /api/zero/billing/checkout", () => {
         code: "BAD_REQUEST",
       },
     });
+  });
+});
+
+describe("POST /api/zero/billing/credit-checkout", () => {
+  const createdOrgIds: string[] = [];
+
+  beforeEach(() => {
+    setZeroPrice();
+  });
+
+  afterEach(async () => {
+    while (createdOrgIds.length > 0) {
+      const orgId = createdOrgIds.pop();
+      if (orgId) {
+        await deleteOrgRow(orgId);
+      }
+    }
+  });
+
+  async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
+    const fixture = await seedOrgRow();
+    createdOrgIds.push(fixture.orgId);
+    return fixture;
+  }
+
+  it("returns 403 for non-admin org member", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can buy credits",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("creates one-time credit checkout for free-tier admins", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/credit",
+    });
+
+    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/credit",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "payment",
+        customer: customerId,
+        metadata: {
+          purpose: "credit_purchase",
+          orgId: fixture.orgId,
+          creditsAmount: "20000",
+        },
+      }),
+    );
   });
 });

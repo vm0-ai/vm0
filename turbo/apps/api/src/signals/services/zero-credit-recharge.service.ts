@@ -75,7 +75,6 @@ async function resolvePaymentMethod(
  * Atomically claims the recharge slot via UPDATE … RETURNING with a
  * WHERE clause that filters on:
  *  - autoRechargeEnabled = true
- *  - tier != 'free'
  *  - stripeCustomerId / threshold / amount NOT NULL
  *  - credits <= threshold
  *  - pendingAt IS NULL OR pendingAt < now() - 10 minutes
@@ -109,7 +108,6 @@ export const triggerAutoRecharge$ = command(
       .where(
         sql`${orgMetadata.orgId} = ${orgId}
             AND ${orgMetadata.autoRechargeEnabled} = true
-            AND ${orgMetadata.tier} != 'free'
             AND ${orgMetadata.stripeCustomerId} IS NOT NULL
             AND ${orgMetadata.autoRechargeThreshold} IS NOT NULL
             AND ${orgMetadata.autoRechargeAmount} IS NOT NULL

@@ -827,7 +827,10 @@ function createAllMessagesComputed(
         const optimisticAssociation = entry.optimisticUserMessageAssociation;
         const isOptimisticRun =
           isUnassociatedUser && optimisticAssociation === "run";
-        const isQueued = isUnassociatedUser && optimisticAssociation !== "run";
+        const isQueued =
+          isUnassociatedUser &&
+          optimisticAssociation !== "run" &&
+          message.error === undefined;
         if (message.role !== "assistant") {
           return {
             ...message,
