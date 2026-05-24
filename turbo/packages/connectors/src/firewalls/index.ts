@@ -40,6 +40,7 @@ import {
 import { getConnectorEnvironmentMapping } from "../connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
+import { amadeusFirewall } from "./amadeus.generated";
 import { anthropicManagedAgentsFirewall } from "./anthropic-managed-agents.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { agoraFirewall } from "./agora.generated";
@@ -274,6 +275,7 @@ export interface PermissionGroup<T extends { name: string }> {
 const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
   amplitude: amplitudeFirewall,
+  amadeus: amadeusFirewall,
   "anthropic-managed-agents": anthropicManagedAgentsFirewall,
   ahrefs: ahrefsFirewall,
   agora: agoraFirewall,

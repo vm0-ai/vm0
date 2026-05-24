@@ -30,6 +30,7 @@ import { agora } from "./connectors/agora";
 import { ahrefs } from "./connectors/ahrefs";
 import { altium365 } from "./connectors/altium-365";
 import { amplitude } from "./connectors/amplitude";
+import { amadeus } from "./connectors/amadeus";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { apify } from "./connectors/apify";
 import { apollo } from "./connectors/apollo";
@@ -589,6 +590,7 @@ const CONNECTOR_TYPES_DEF = {
   ...ahrefs,
   ...altium365,
   ...amplitude,
+  ...amadeus,
   ...anthropicManagedAgents,
   ...apify,
   ...apollo,

@@ -8,6 +8,7 @@
 
 import { generate as generateAgentmail } from "./agentmail";
 import { generate as generateAmplitude } from "./amplitude";
+import { generate as generateAmadeus } from "./amadeus";
 import { generate as generateAnthropicManagedAgents } from "./anthropic-managed-agents";
 import { generate as generateAhrefs } from "./ahrefs";
 import { generate as generateAgora } from "./agora";
@@ -221,6 +222,7 @@ import { createGoogleGenerator, googleServiceNames } from "./google";
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
   amplitude: generateAmplitude,
+  amadeus: generateAmadeus,
   "anthropic-managed-agents": generateAnthropicManagedAgents,
   ahrefs: generateAhrefs,
   agora: generateAgora,
