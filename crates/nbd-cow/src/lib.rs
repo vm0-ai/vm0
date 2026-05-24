@@ -1173,6 +1173,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn destroy_keep_cow_exhausts_retries_and_returns_error() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = tmp.path().join("base.img");
+        let cow_file = tmp.path().join("cow.img");
+        let bitmap_file = cow::bitmap_path_for(&cow_file);
+        let bitmap_tmp_path = PathBuf::from(format!("{}.tmp", bitmap_file.display()));
+        let lock_dir = tmp.path().join("locks");
+        std::fs::create_dir(&lock_dir).expect("create lock dir");
+        create_test_base_image(&base);
+        std::fs::write(&cow_file, b"cow").expect("write cow file");
+        std::fs::create_dir(&bitmap_tmp_path).expect("create bitmap tmp dir");
+
+        let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
+        let device = pooled_disconnected_device(&base, &cow_file, pool.clone(), &lock_dir);
+
+        let result = device
+            .destroy_keep_cow_with_retries(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::ZERO,
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(cow_file.exists());
+        assert!(!bitmap_file.exists());
+        assert!(bitmap_tmp_path.is_dir());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn destroy_keep_cow_retries_after_first_error_and_returns_preserved_paths() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let base = tmp.path().join("base.img");
