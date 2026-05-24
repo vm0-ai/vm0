@@ -3,10 +3,8 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconDownload,
-  IconFileMusic,
   IconLink,
   IconPhoto,
-  IconVideo,
   IconLoader2,
   IconZoomIn,
   IconZoomOut,
@@ -899,6 +897,35 @@ function CsvLightboxBody({
 // FileAttachmentChip — compact chip shown inside sent message bubbles
 // ---------------------------------------------------------------------------
 
+// Shared visual shape for file attachment chips. Keeps a fixed h-7 (28px)
+// height regardless of upload state, with the filename always visible and
+// truncated with an ellipsis past max-w-[240px].
+const FILE_CHIP_CLASSES =
+  "inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5 transition-colors";
+
+function FileChipBody({
+  filename,
+  contentType,
+  testId,
+}: {
+  filename: string;
+  contentType?: string;
+  testId: string;
+}) {
+  return (
+    <>
+      <FilePreviewIcon
+        filename={filename}
+        contentType={contentType}
+        size="sm"
+        className="shrink-0"
+        testId={testId}
+      />
+      <span className="min-w-0 truncate text-xs font-medium">{filename}</span>
+    </>
+  );
+}
+
 export function FileAttachmentChip({
   contentType,
   filename,
@@ -920,12 +947,11 @@ export function FileAttachmentChip({
       }}
       title={filename}
       aria-label={`Download ${filename}`}
-      className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
+      className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
     >
-      <FilePreviewIcon
+      <FileChipBody
         filename={filename}
         contentType={contentType}
-        className="h-9 w-9"
         testId="attachment-chip-file-icon"
       />
     </button>
@@ -951,12 +977,11 @@ export function PreviewableFileAttachmentChip({
       }}
       title={filename}
       aria-label={`Open ${kind} preview for ${filename}`}
-      className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
+      className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
     >
-      <FilePreviewIcon
+      <FileChipBody
         filename={filename}
         contentType={contentTypeForDocumentAttachmentPreviewKind(kind)}
-        className="h-9 w-9"
         testId="attachment-chip-file-icon"
       />
     </button>
@@ -1065,58 +1090,47 @@ function AttachmentChip({
     infoLoadable.state === "hasData" ? infoLoadable.data?.url : undefined;
   const openImageLightbox = useSet(openImageLightbox$);
   const isImage = attachment.contentType.startsWith("image/");
-  const isVideo = attachment.contentType.startsWith("video/");
-  const isAudio = attachment.contentType.startsWith("audio/");
   return (
-    <>
-      <div
-        className="relative inline-flex items-center justify-center"
-        title={attachment.filename}
-      >
-        {isImage ? (
-          <ComposerImagePreviewButton
-            filename={attachment.filename}
-            openImageLightbox={openImageLightbox}
-            url={url}
-          />
-        ) : isVideo ? (
-          <IconVideo size={28} stroke={1.5} className="text-muted-foreground" />
-        ) : isAudio ? (
-          <IconFileMusic
-            size={28}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-        ) : (
-          <FilePreviewIcon
+    <div
+      className="relative inline-flex items-center"
+      title={attachment.filename}
+    >
+      {isImage ? (
+        <ComposerImagePreviewButton
+          filename={attachment.filename}
+          openImageLightbox={openImageLightbox}
+          url={url}
+        />
+      ) : (
+        <span className={FILE_CHIP_CLASSES}>
+          <FileChipBody
             filename={attachment.filename}
             contentType={attachment.contentType}
-            className="h-9 w-9"
             testId="composer-attachment-file-icon"
           />
-        )}
-        {uploading && (
-          <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-            <IconLoader2
-              size={10}
-              className="animate-spin text-muted-foreground"
-            />
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={onRemove}
-          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
-          aria-label={
-            uploading
-              ? `Cancel upload ${attachment.filename}`
-              : `Remove ${attachment.filename}`
-          }
-        >
-          <IconX size={9} stroke={2.5} />
-        </button>
-      </div>
-    </>
+        </span>
+      )}
+      {uploading && (
+        <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
+          <IconLoader2
+            size={10}
+            className="animate-spin text-muted-foreground"
+          />
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
+        aria-label={
+          uploading
+            ? `Cancel upload ${attachment.filename}`
+            : `Remove ${attachment.filename}`
+        }
+      >
+        <IconX size={9} stroke={2.5} />
+      </button>
+    </div>
   );
 }
 

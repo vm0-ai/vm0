@@ -148,6 +148,8 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
         within(link).getByTestId("attachment-chip-file-icon"),
       ).toBeInTheDocument();
       expect(within(link).getByText("ZIP")).toBeInTheDocument();
+      // Filename must be rendered in the chip body, not only in the title tooltip.
+      expect(within(link).getByText("archive.zip")).toBeInTheDocument();
     });
   });
 });
@@ -700,8 +702,8 @@ describe("chat-d-063: preview button renders for previewable file attachment", (
 // Covers the video branch added to AttachmentChip in #9662.
 // ---------------------------------------------------------------------------
 
-describe("chat-d-064: video attachment chip shows neither image thumbnail nor file-type icon", () => {
-  it("renders composer chip without image preview or file-type icon for an mp4 upload", async () => {
+describe("chat-d-064: video attachment chip shows filename next to a file-type icon", () => {
+  it("renders composer chip with filename text and no image thumbnail for an mp4 upload", async () => {
     const user = userEvent.setup();
     const videoUrl = "https://example.com/demo.mp4";
 
@@ -729,28 +731,26 @@ describe("chat-d-064: video attachment chip shows neither image thumbnail nor fi
       new File(["v"], "demo.mp4", { type: "video/mp4" }),
     );
 
-    // Wait for the chip's Remove button, which appears only after the
-    // attachment has been added to the draft.
     await waitFor(() => {
       expect(screen.getByLabelText("Remove demo.mp4")).toBeInTheDocument();
     });
 
     const chipDiv = document.querySelector<HTMLElement>('[title="demo.mp4"]');
     expect(chipDiv).toBeInTheDocument();
-
-    // Image branch would render an <img> with src=videoUrl; video branch must not.
+    // Image branch would render an <img> with src=videoUrl; video must not.
     expect(
       document.querySelector(`img[src="${videoUrl}"]`),
     ).not.toBeInTheDocument();
-    // File branch would render an aria-hidden file-type icon <img>; video must not.
+    // Filename must be visible in the chip body (not just in the title tooltip).
+    expect(within(chipDiv!).getByText("demo.mp4")).toBeInTheDocument();
     expect(
-      chipDiv?.querySelector('img[aria-hidden="true"]'),
-    ).not.toBeInTheDocument();
+      within(chipDiv!).getByTestId("composer-attachment-file-icon"),
+    ).toBeInTheDocument();
   });
 });
 
-describe("chat-d-064: audio attachment chip shows audio file icon", () => {
-  it("renders composer chip without image preview or file-type icon for an mp3 upload", async () => {
+describe("chat-d-064: audio attachment chip shows filename next to a file-type icon", () => {
+  it("renders composer chip with filename text and no image thumbnail for an mp3 upload", async () => {
     const user = userEvent.setup();
     const audioUrl = "https://example.com/clip.mp3";
 
@@ -787,10 +787,10 @@ describe("chat-d-064: audio attachment chip shows audio file icon", () => {
     expect(
       document.querySelector(`img[src="${audioUrl}"]`),
     ).not.toBeInTheDocument();
+    expect(within(chipDiv!).getByText("clip.mp3")).toBeInTheDocument();
     expect(
-      chipDiv?.querySelector('img[aria-hidden="true"]'),
-    ).not.toBeInTheDocument();
-    expect(chipDiv?.querySelector("svg")).toBeInTheDocument();
+      within(chipDiv!).getByTestId("composer-attachment-file-icon"),
+    ).toBeInTheDocument();
   });
 });
 
