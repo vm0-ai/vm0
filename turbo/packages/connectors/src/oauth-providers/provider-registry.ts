@@ -20,6 +20,7 @@ import type {
   AuthCodeConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
   OAuthConnectorAccessProvider,
+  OAuthConnectorRevokeProvider,
 } from "../auth-providers/provider-types";
 import {
   type AuthUrlResult,
@@ -28,6 +29,7 @@ import {
   type ConnectorOAuthDeviceAuthStartArgs,
   type ConnectorOAuthExchangeArgs,
   type ConnectorOAuthRefreshArgs,
+  type ConnectorOAuthRevokeArgs,
   type OAuthAuthorizeArgs,
   type OAuthDeviceAuthPollArgs,
   type OAuthDeviceAuthPollResult,
@@ -103,6 +105,11 @@ export type {
 export type { ProviderEnv };
 export { providerEnvFromObject };
 
+export type ConnectorOAuthRevokeResult =
+  | { readonly status: "revoked" }
+  | { readonly status: "unsupported" }
+  | { readonly status: "unconfigured" };
+
 type AuthCodeConnectorOAuthProviderMap = {
   readonly [Type in OAuthAuthCodeConnectorType]: AuthCodeConnectorAuthProvider<Type>;
 };
@@ -127,6 +134,16 @@ function connectorAccessProviderFor<T extends OAuthConnectorType>(
   }
 
   return deviceAuthConnectorProviderFor(type).access;
+}
+
+function connectorRevokeProviderFor<T extends OAuthConnectorType>(
+  type: T,
+): OAuthConnectorRevokeProvider<T> {
+  if (isOAuthAuthCodeConnectorType(type)) {
+    return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type].revoke;
+  }
+
+  return deviceAuthConnectorProviderFor(type).revoke;
 }
 
 function connectorCredentialArgs(
@@ -333,6 +350,32 @@ export async function refreshConnectorOAuthToken<
         ...connectorCredentialArgs(args.credentials),
         refreshToken: args.refreshToken,
       } as ConnectorOAuthRefreshArgs<T>);
+  }
+}
+
+export async function revokeConnectorOAuthToken<
+  T extends OAuthConnectorType,
+>(args: {
+  readonly type: T;
+  readonly credentials: ConnectorOAuthCredentials;
+  readonly loadAccessToken: () => string | Promise<string>;
+}): Promise<ConnectorOAuthRevokeResult> {
+  if (!args.credentials.configured) {
+    return { status: "unconfigured" };
+  }
+
+  const revoke = connectorRevokeProviderFor(args.type);
+
+  switch (revoke.kind) {
+    case "none":
+      return { status: "unsupported" };
+
+    case "token-revoke":
+      await revoke.revokeToken({
+        ...connectorCredentialArgs(args.credentials),
+        accessToken: await args.loadAccessToken(),
+      } as ConnectorOAuthRevokeArgs<T>);
+      return { status: "revoked" };
   }
 }
 

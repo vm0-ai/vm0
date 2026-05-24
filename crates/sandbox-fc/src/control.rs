@@ -655,6 +655,8 @@ fn resolve_control_socket_in(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::net::UnixListener as StdUnixListener;
+
     use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
     use tokio::sync::oneshot;
     use vsock_host::{NormalOperationFenceRejection, VsockHost};
@@ -666,6 +668,13 @@ mod tests {
         guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     ) -> GuestOperationStartGate {
         GuestOperationStartGate::new(guest, ParkCoordinator::new())
+    }
+
+    fn bind_control_socket_for_test(sandbox_dir: &Path) -> (PathBuf, StdUnixListener) {
+        std::fs::create_dir_all(sandbox_dir).unwrap();
+        let control_sock = SockPaths::new(sandbox_dir.to_path_buf()).control_sock();
+        let listener = StdUnixListener::bind(&control_sock).unwrap();
+        (control_sock, listener)
     }
 
     fn test_gate_with_coordinator(
@@ -1352,5 +1361,46 @@ mod tests {
         let err = resolve_control_socket_in(&sock_parent, "nonexistent-id-12345").unwrap_err();
 
         assert!(matches!(err, SandboxControlError::NotFound(_)));
+    }
+
+    #[test]
+    fn resolve_control_socket_single_match_returns_socket_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let running_id = "sandbox-aa-live";
+        let stale_id = "sandbox-aa-stale";
+        let unrelated_id = "sandbox-bb-live";
+
+        let (control_sock, _listener) = bind_control_socket_for_test(&sock_parent.join(running_id));
+        let (_unrelated_control_sock, _unrelated_listener) =
+            bind_control_socket_for_test(&sock_parent.join(unrelated_id));
+        std::fs::create_dir_all(sock_parent.join(stale_id)).unwrap();
+
+        let resolved = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap();
+
+        assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
+    fn resolve_control_socket_multiple_matches_returns_ambiguous() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_a = "sandbox-aa-1";
+        let sandbox_b = "sandbox-aa-2";
+        let prefix = "sandbox-aa-";
+
+        let (_control_sock_a, _listener_a) =
+            bind_control_socket_for_test(&sock_parent.join(sandbox_a));
+        let (_control_sock_b, _listener_b) =
+            bind_control_socket_for_test(&sock_parent.join(sandbox_b));
+
+        let err = resolve_control_socket_in(&sock_parent, prefix).unwrap_err();
+
+        let SandboxControlError::Ambiguous(message) = err else {
+            panic!("expected ambiguous error");
+        };
+        assert!(message.contains(&format!("prefix '{prefix}'")));
+        assert!(message.contains(sandbox_a));
+        assert!(message.contains(sandbox_b));
     }
 }

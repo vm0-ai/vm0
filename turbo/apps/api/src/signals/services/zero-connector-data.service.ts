@@ -9,14 +9,18 @@ import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
   getAvailableConnectorAuthMethods,
-  getConnectorOAuthEnvKeys,
+  getConnectorOAuthCredentials,
   getConnectorProvidedSecretNames,
   getConnectorSecretNames,
   getRuntimeAvailableConnectorTypes,
   getScopeDiff,
   isConnectorAuthMethodAvailable,
 } from "@vm0/connectors/connector-utils";
-import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/oauth-providers";
+import {
+  getConnectorOAuthSecretMetadata,
+  isOAuthConnectorType,
+  revokeConnectorOAuthToken,
+} from "@vm0/connectors/oauth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -403,99 +407,6 @@ export function zeroConnectorByType(args: {
   });
 }
 
-function revocableConnectorAccessTokenName(
-  type: ConnectorType,
-): string | undefined {
-  switch (type) {
-    case "github": {
-      return "GITHUB_ACCESS_TOKEN";
-    }
-    case "linear": {
-      return "LINEAR_ACCESS_TOKEN";
-    }
-    case "slack": {
-      return "SLACK_ACCESS_TOKEN";
-    }
-    default: {
-      return undefined;
-    }
-  }
-}
-
-async function revokeConnectorToken(args: {
-  readonly type: ConnectorType;
-  readonly accessToken: string;
-}): Promise<void> {
-  const envKeys = getConnectorOAuthEnvKeys(args.type);
-  const clientId = envKeys ? optionalEnv(envKeys.clientId) : undefined;
-  const clientSecret = envKeys?.clientSecret
-    ? optionalEnv(envKeys.clientSecret)
-    : undefined;
-  if (!clientId || !clientSecret) {
-    return;
-  }
-
-  if (args.type === "github") {
-    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
-      "base64",
-    );
-    const response = await fetch(
-      `https://api.github.com/applications/${clientId}/grant`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Basic ${credentials}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify({ access_token: args.accessToken }),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`GitHub grant revocation failed: ${response.status}`);
-    }
-    return;
-  }
-
-  if (args.type === "slack") {
-    const response = await fetch("https://slack.com/api/auth.revoke", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Slack token revocation failed: ${response.status}`);
-    }
-    const data = (await response.json()) as { ok: boolean; error?: string };
-    if (!data.ok) {
-      throw new Error(data.error ?? "Slack token revocation returned ok=false");
-    }
-    return;
-  }
-
-  if (args.type === "linear") {
-    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
-      "base64",
-    );
-    const response = await fetch("https://api.linear.app/oauth/revoke", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${credentials}`,
-      },
-      body: new URLSearchParams({
-        token: args.accessToken,
-        token_type_hint: "access_token",
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Linear token revocation failed: ${response.status}`);
-    }
-  }
-}
-
 async function revokeExistingConnectorToken(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -504,10 +415,13 @@ async function revokeExistingConnectorToken(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const accessTokenName = revocableConnectorAccessTokenName(args.type);
-  if (!accessTokenName) {
+  if (!isOAuthConnectorType(args.type)) {
     return;
   }
+
+  const connectorType = args.type;
+  const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
+  const accessTokenName = secretMetadata.accessSecretName;
 
   const [accessTokenSecret] = await args.db
     .select({ encryptedValue: secrets.encryptedValue })
@@ -527,14 +441,22 @@ async function revokeExistingConnectorToken(args: {
     return;
   }
 
+  const credentials = getConnectorOAuthCredentials(connectorType, optionalEnv);
+  if (!credentials) {
+    return;
+  }
+
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
-    revokeConnectorToken({
-      type: args.type,
-      accessToken: await decryptStoredSecretValue(
-        accessTokenSecret.encryptedValue,
-        args.featureSwitchContext,
-      ),
+    revokeConnectorOAuthToken({
+      type: connectorType,
+      credentials,
+      loadAccessToken: () => {
+        return decryptStoredSecretValue(
+          accessTokenSecret.encryptedValue,
+          args.featureSwitchContext,
+        );
+      },
     }),
   );
   args.signal.throwIfAborted();
