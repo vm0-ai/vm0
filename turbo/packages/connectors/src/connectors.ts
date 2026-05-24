@@ -91,6 +91,7 @@ import { fal } from "./connectors/fal";
 import { figma } from "./connectors/figma";
 import { firecrawl } from "./connectors/firecrawl";
 import { fireflies } from "./connectors/fireflies";
+import { flightaware } from "./connectors/flightaware";
 import { freshdesk } from "./connectors/freshdesk";
 import { gamma } from "./connectors/gamma";
 import { garminConnect } from "./connectors/garmin-connect";
@@ -650,6 +651,7 @@ const CONNECTOR_TYPES_DEF = {
   ...figma,
   ...firecrawl,
   ...fireflies,
+  ...flightaware,
   ...freshdesk,
   ...gamma,
   ...garminConnect,

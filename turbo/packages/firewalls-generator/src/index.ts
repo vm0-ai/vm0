@@ -70,6 +70,7 @@ import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateFireflies } from "./fireflies";
+import { generate as generateFlightaware } from "./flightaware";
 import { generate as generateFreshdesk } from "./freshdesk";
 import { generate as generateGamma } from "./gamma";
 import { generate as generateGarminConnect } from "./garmin-connect";
@@ -279,6 +280,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   figma: generateFigma,
   firecrawl: generateFirecrawl,
   fireflies: generateFireflies,
+  flightaware: generateFlightaware,
   freshdesk: generateFreshdesk,
   gamma: generateGamma,
   "garmin-connect": generateGarminConnect,
