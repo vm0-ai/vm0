@@ -126,6 +126,7 @@ import { gumroadFirewall } from "./gumroad.generated";
 import { heygenFirewall } from "./heygen.generated";
 import { heliconeFirewall } from "./helicone.generated";
 import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
+import { honchoFirewall } from "./honcho.generated";
 import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
@@ -354,6 +355,7 @@ const CONNECTOR_FIREWALLS = {
   heygen: heygenFirewall,
   helicone: heliconeFirewall,
   htmlcsstoimage: htmlcsstoimageFirewall,
+  honcho: honchoFirewall,
   hubspot: hubspotFirewall,
   "hugging-face": huggingFaceFirewall,
   hume: humeFirewall,

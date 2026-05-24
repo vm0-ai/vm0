@@ -103,6 +103,7 @@ import { groq } from "./connectors/groq";
 import { helicone } from "./connectors/helicone";
 import { heygen } from "./connectors/heygen";
 import { htmlcsstoimage } from "./connectors/htmlcsstoimage";
+import { honcho } from "./connectors/honcho";
 import { huggingFace } from "./connectors/hugging-face";
 import { hume } from "./connectors/hume";
 import { hunter } from "./connectors/hunter";
@@ -662,6 +663,7 @@ const CONNECTOR_TYPES_DEF = {
   ...helicone,
   ...heygen,
   ...htmlcsstoimage,
+  ...honcho,
   ...huggingFace,
   ...hume,
   ...hunter,
