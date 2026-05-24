@@ -5978,121 +5978,13 @@
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de DeepSeek en `api.deepseek.com`. Modelo predeterminado en el proveedor DeepSeek; también disponible en VM0 Managed.",
         "vm0Notes": "V4 Flash tiene el multiplicador de crédito más bajo de cualquier modelo Built-in (×0,02), aproximadamente 50× menos que Sonnet 4.6. Las lecturas de caché facturan mientras que las escrituras de caché son gratuitas, y VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek que se empareja naturalmente con el trabajo corto de un solo paso de Flash."
       },
-      "gemini-2-5-flash-image": {
-        "name": "Gemini 2.5 Flash Image",
-        "pageTitle": "Gemini 2.5 Flash Image en VM0. El predeterminado rápido de texto a imagen",
-        "tagline": "El modelo rápido de texto a imagen y edición de imagen de Google. Fuerte seguimiento de instrucciones, consistencia de personajes y el costo de crédito por imagen más barato de la línea curada de imágenes.",
-        "cardIntro": "El modelo rápido de texto a imagen de Google. Barato, preciso siguiendo prompts largos y bueno preservando sujetos a través de ediciones.",
-        "metaTitle": "Gemini 2.5 Flash Image en VM0: Precios, Especificaciones y Comparación",
-        "metaDescription": "Gemini 2.5 Flash Image en VM0. El modelo de texto a imagen y edición de imagen de Google con alta adherencia a instrucciones, consistencia de personajes y ~$0,04 por imagen. Comparado con GPT Image 1, Flux Pro 1.1 Ultra y SeedDream 4.",
-        "summary": "Gemini 2.5 Flash Image es el modelo predeterminado universal de texto a imagen y edición de imagen de Google. Funciona bien en las dos propiedades que más importan para cargas de trabajo de agente: sigue prompts largos y estructurados (para que puedas entregarle el brief completo sin perder instrucciones en el camino) y mantiene los sujetos consistentes a través de ediciones de múltiples turnos (para que un agente pueda iterar sobre el mismo personaje o toma de producto sin que derive entre llamadas).\n\nEl precio de lista es de alrededor de $0,04 por imagen de 1024×1024, lo que lo convierte en el modelo más barato de la línea curada de imágenes. El patrón natural es usar Gemini 2.5 Flash Image por defecto y escalar a Flux Pro 1.1 Ultra o SeedDream 4 solo cuando necesitas una estética específica que el predeterminado no alcanza.",
-        "releaseDate": "Abril 2026",
-        "familyPosition": "El caballo de batalla de texto a imagen de Google para cargas de trabajo de agente.",
-        "background": [
-          "Gemini 2.5 Flash Image es el modelo de texto a imagen y edición de imagen de Google en la familia Gemini 2.5. El planteamiento de Google es el mismo que para la variante Flash del lado de texto: un modelo ajustado para alto rendimiento a bajo costo por llamada, optimizado para cargas de trabajo de producción donde la siguiente solicitud se encola antes de que termine de hacer streaming la anterior.",
-          "Dos propiedades de comportamiento destacan para uso de agente. Primero, la adherencia a instrucciones en prompts largos y estructurados es materialmente mejor que en la mayoría de líneas base de texto a imagen de peso abierto, lo que importa cuando un agente está componiendo el prompt programáticamente y no puede acortarlo. Segundo, la consistencia de personajes y sujetos a través de ediciones de múltiples turnos aguanta bien, que es lo que hace al modelo viable como predeterminado del bucle de edición en flujos de trabajo de agente que iteran sobre un solo activo."
-        ],
-        "architecture": "Modelo de texto a imagen basado en Diffusion con soporte nativo de edición. La facturación es por imagen generada en el nivel estándar. Las entradas aceptan prompts de texto más imágenes de referencia opcionales para flujos tipo edición. Las salidas son PNG en la resolución solicitada.",
-        "specs": [
-          { "label": "Familia", "value": "Generación Gemini 2.5" },
-          {
-            "label": "Modalidades",
-            "value": "Texto a imagen, edición imagen a imagen"
-          },
-          { "label": "Resoluciones", "value": "1024×1024 nivel estándar" },
-          { "label": "Precio listado", "value": "~$0,04 por imagen" },
-          { "label": "Idiomas", "value": "Prompts multilingües" },
-          { "label": "Disponible en VM0", "value": "Abril 2026" }
-        ],
-        "benchmarksNote": "",
-        "benchmarks": [],
-        "performance": [
-          {
-            "title": "Adherencia a instrucciones",
-            "body": "Aguanta en prompts largos y estructurados donde muchos modelos de peso abierto empiezan a soltar cláusulas. Útil cuando un agente compone el brief programáticamente y el prompt es innegociable."
-          },
-          {
-            "title": "Consistencia de personajes",
-            "body": "Mantiene a los sujetos reconocibles a través de ediciones de múltiples turnos, que es la propiedad que hace al modelo viable para bucles iterativos de agente sobre un solo activo."
-          },
-          {
-            "title": "Costo",
-            "body": "Alrededor de $0,04 por imagen — el más barato de los modelos curados de texto a imagen en VM0. La generación masiva fan-out se mantiene asequible."
-          },
-          {
-            "title": "Techo estético",
-            "body": "Se inclina hacia salida limpia y precisa en lugar del look hiper-estilizado de Flux Pro 1.1 Ultra o el look fotorrealista de SeedDream 4. Escala cuando la estética es el entregable."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "El agente que redacta visuales de marketing desde un brief",
-            "body": "Entrega al agente la voz de marca, descripción del producto y audiencia objetivo; Gemini 2.5 Flash Image renderiza visuales borrador en segundos. Lo suficientemente barato para hacer fan-out de una docena de variaciones y elegir la mejor."
-          },
-          {
-            "title": "El bucle de edición que itera sobre un solo activo",
-            "body": "Genera una vez, luego itera sobre iluminación, encuadre o fondo manteniendo el sujeto consistente entre turnos. La consistencia de personajes significa que el humano en el bucle está editando la misma imagen, no eligiendo de un conjunto fresco cada turno."
-          },
-          {
-            "title": "El prefiltrado de ilustración antes del modelo premium",
-            "body": "Usa Gemini 2.5 Flash Image para fijar la composición de forma barata, luego re-renderiza el elegido final en Flux Pro 1.1 Ultra para la estética. Reduce el costo del paso premium a una llamada en lugar de un fan-out."
-          }
-        ],
-        "avoidFor": "Evita Gemini 2.5 Flash Image cuando el entregable es la estética — Flux Pro 1.1 Ultra y SeedDream 4 llevan más techo estilístico en looks fotorrealistas y editoriales.",
-        "comparisons": [
-          {
-            "vs": "GPT Image 1",
-            "body": "GPT Image 1 es más fuerte en ilustración estilizada y trabajo de personajes; Gemini 2.5 Flash Image es más barato por llamada y más fuerte en seguimiento de instrucciones en prompts largos. Para cargas de trabajo de agente con prompts estructurados, Gemini 2.5 Flash Image es el predeterminado más seguro."
-          },
-          {
-            "vs": "SeedDream 4",
-            "body": "SeedDream 4 lleva un techo fotorrealista más alto; Gemini 2.5 Flash Image es más barato, más rápido y sigue prompts largos de forma más fiable. Usa Gemini por defecto, escala a SeedDream 4 cuando el brief es específicamente una estética de foto."
-          },
-          {
-            "vs": "Flux Pro 1.1 Ultra",
-            "body": "Flux Pro 1.1 Ultra tiene el techo estilístico más alto de la línea curada; Gemini 2.5 Flash Image gana en costo y en seguimiento de instrucciones. Prefiltra con Gemini, entrega finales en Flux cuando la estética es el punto."
-          }
-        ],
-        "verdict": "Usa Gemini 2.5 Flash Image por defecto para cargas de trabajo de agente de texto a imagen. Escala a Flux Pro 1.1 Ultra o SeedDream 4 solo cuando la estética es el entregable.",
-        "faqs": [
-          {
-            "q": "¿Puede Gemini 2.5 Flash Image editar imágenes existentes?",
-            "a": "Sí. Acepta una imagen de referencia junto al prompt de texto y soporta flujos de inpainting y outpainting para ediciones iterativas."
-          },
-          {
-            "q": "¿Qué resolución de salida produce?",
-            "a": "1024×1024 en el nivel estándar. Resoluciones más altas están disponibles a costo proporcional."
-          },
-          {
-            "q": "¿Cuánto cuesta por imagen?",
-            "a": "Alrededor de $0,04 por imagen generada de 1024×1024 — el más barato de los modelos curados de texto a imagen en VM0."
-          },
-          {
-            "q": "¿Es bueno el modelo con texto dentro de imágenes?",
-            "a": "Sí — significativamente más fuerte que la mayoría de líneas base de peso abierto al renderizar cadenas cortas de texto dentro de la imagen generada."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "gpt-image-1",
-            "reason": "Ilustración estilizada más fuerte"
-          },
-          { "slug": "flux-pro-1-1-ultra", "reason": "Techo estético más alto" },
-          {
-            "slug": "seedream-4",
-            "reason": "Resultados fotorrealistas más fuertes"
-          }
-        ],
-        "routingNotes": "Enrutado al endpoint Gemini 2.5 Flash Image de Google y facturado por imagen generada.",
-        "vm0Notes": "Gemini 2.5 Flash Image es el predeterminado precio/calidad para cargas de trabajo de agente de texto a imagen en VM0. Úsalo como el predeterminado universal y reserva los modelos de imagen más caros para los pasos donde su techo estilístico realmente importa."
-      },
       "gpt-image-1": {
         "name": "GPT Image 1",
         "pageTitle": "GPT Image 1 en VM0. El modelo de texto a imagen de OpenAI",
         "tagline": "El modelo de texto a imagen de OpenAI con fuerte ilustración estilizada y edición. La opción natural cuando quieres la estética y estilo de seguimiento de prompts de OpenAI.",
-        "cardIntro": "El modelo de texto a imagen de OpenAI. Fuerte en ilustración estilizada, trabajo de personajes y edición — la contraparte del lado OpenAI de Gemini 2.5 Flash Image.",
+        "cardIntro": "El modelo de texto a imagen de OpenAI. Fuerte en ilustración estilizada, trabajo de personajes y edición — la contraparte del lado OpenAI de SeedDream 4.",
         "metaTitle": "GPT Image 1 en VM0: Precios, Especificaciones y Comparación",
-        "metaDescription": "GPT Image 1 en VM0. El modelo de texto a imagen y edición de imagen de OpenAI con fortaleza en ilustración estilizada, precios multi-nivel y comparación con Gemini 2.5 Flash Image, Flux Pro 1.1 Ultra y SeedDream 4.",
+        "metaDescription": "GPT Image 1 en VM0. El modelo de texto a imagen y edición de imagen de OpenAI con fortaleza en ilustración estilizada, precios multi-nivel y comparación con Flux Pro 1.1 Ultra y SeedDream 4.",
         "summary": "GPT Image 1 es el modelo de texto a imagen de OpenAI — el que la mayoría de equipos conoce como el modelo detrás de la generación de imágenes de ChatGPT. Sus fortalezas son la ilustración estilizada, el trabajo de personajes y la edición de imagen con enmascaramiento basado en texto, con un estilo de seguimiento de prompts que se mapea cercanamente a lo que los modelos de texto de OpenAI esperan.\n\nEl precio de lista es basado en niveles, desde alrededor de $0,011 por imagen en el nivel bajo/estándar hasta $0,25 en el nivel alto/grande. El nivel medio-estándar (alrededor de $0,05 por 1024×1024) es el predeterminado sensato para la mayoría de cargas de trabajo de agente.",
         "releaseDate": "Abril 2026",
         "familyPosition": "El modelo primario de texto a imagen de OpenAI. Precios por nivel a través de configuraciones de resolución y calidad.",
@@ -6148,12 +6040,8 @@
             "body": "Si el agente orquestador ya está en GPT-5.4 o GPT-5.5, mantener la generación de imágenes dentro de la superficie OpenAI (GPT Image 1) significa que el estilo de prompt, semántica de edición y salidas estructuradas permanecen consistentes a través de la ejecución."
           }
         ],
-        "avoidFor": "Evita GPT Image 1 cuando el costo domina (Gemini 2.5 Flash Image es aproximadamente la mitad del precio para el mismo nivel predeterminado) o cuando el entregable es específicamente fotorrealista (SeedDream 4 lleva un techo fotorrealista más alto).",
+        "avoidFor": "Evita GPT Image 1 cuando el costo domina (SeedDream 4 es aproximadamente la mitad del precio para el mismo nivel predeterminado) o cuando el entregable es específicamente fotorrealista (SeedDream 4 lleva un techo fotorrealista más alto).",
         "comparisons": [
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Gemini 2.5 Flash Image es más barato y más fuerte en prompts largos estructurados; GPT Image 1 es más fuerte en ilustración estilizada y se integra de forma más natural con agentes del stack OpenAI."
-          },
           {
             "vs": "SeedDream 4",
             "body": "SeedDream 4 lidera en estética fotorrealista a un precio ligeramente más bajo; GPT Image 1 lidera en ilustración estilizada y flujos de edición."
@@ -6163,7 +6051,7 @@
             "body": "Flux Pro 1.1 Ultra lleva el techo estético más alto para entregables de toma hero; GPT Image 1 es el predeterminado natural del stack OpenAI para todo lo demás."
           }
         ],
-        "verdict": "Elige GPT Image 1 cuando tu agente ya está en el stack OpenAI y quieres ilustración estilizada o flujos de edición nativos. Escala a Flux Pro 1.1 Ultra para tomas hero fotorrealistas; baja a Gemini 2.5 Flash Image cuando el costo domina.",
+        "verdict": "Elige GPT Image 1 cuando tu agente ya está en el stack OpenAI y quieres ilustración estilizada o flujos de edición nativos. Escala a Flux Pro 1.1 Ultra para tomas hero fotorrealistas; baja a SeedDream 4 cuando el costo domina.",
         "faqs": [
           {
             "q": "¿Cómo se cobra GPT Image 1?",
@@ -6184,10 +6072,6 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "Más barato, adherencia más fuerte a prompts largos"
-          },
-          {
             "slug": "flux-pro-1-1-ultra",
             "reason": "Techo estético fotorrealista más alto"
           },
@@ -6205,8 +6089,8 @@
         "tagline": "El modelo de texto a imagen de techo alto de Black Forest Labs. La opción cuando la imagen es el entregable y necesitas salida de grado editorial o fotorrealista.",
         "cardIntro": "El modelo de imagen de primer nivel de Black Forest Labs. El techo estético más alto de la línea curada — úsalo para tomas hero y salida de grado editorial.",
         "metaTitle": "Flux Pro 1.1 Ultra en VM0: Precios, Especificaciones y Comparación",
-        "metaDescription": "Flux Pro 1.1 Ultra en VM0. El modelo de texto a imagen de primer nivel de Black Forest Labs con techo estético de grado editorial, $0,072 por imagen y comparación con GPT Image 1, SeedDream 4 y Gemini 2.5 Flash Image.",
-        "summary": "Flux Pro 1.1 Ultra es el modelo de texto a imagen de primer nivel de Black Forest Labs — al que recurrir cuando la imagen en sí es el entregable, no un paso en un bucle de agente. La calidad de salida en estéticas editoriales, fotorrealistas y dirigidas al diseño es la más alta de la línea curada, y la adherencia a prompts en briefs compositivos detallados aguanta bien.\n\nEl precio de lista es de $0,072 por imagen, lo que lo hace caro en relación con Gemini 2.5 Flash Image ($0,04) o SeedDream 4 ($0,036), pero el aumento de calidad por imagen es lo suficientemente grande como para que la mayoría de equipos lo usen como el paso de renderizado final después de prefiltrar con un modelo más barato.",
+        "metaDescription": "Flux Pro 1.1 Ultra en VM0. El modelo de texto a imagen de primer nivel de Black Forest Labs con techo estético de grado editorial, $0,072 por imagen y comparación con GPT Image 1, SeedDream 4.",
+        "summary": "Flux Pro 1.1 Ultra es el modelo de texto a imagen de primer nivel de Black Forest Labs — al que recurrir cuando la imagen en sí es el entregable, no un paso en un bucle de agente. La calidad de salida en estéticas editoriales, fotorrealistas y dirigidas al diseño es la más alta de la línea curada, y la adherencia a prompts en briefs compositivos detallados aguanta bien.\n\nEl precio de lista es de $0,072 por imagen, lo que lo hace caro en relación con SeedDream 4 ($0,04) o SeedDream 4 ($0,036), pero el aumento de calidad por imagen es lo suficientemente grande como para que la mayoría de equipos lo usen como el paso de renderizado final después de prefiltrar con un modelo más barato.",
         "releaseDate": "Abril 2026",
         "familyPosition": "Nivel premium de Black Forest Labs de la generación Flux 1.1.",
         "background": [
@@ -6226,7 +6110,7 @@
         "performance": [
           {
             "title": "Techo estético",
-            "body": "El más alto de la línea curada de imágenes. Las estéticas de toma hero, editoriales y fotorrealistas aterrizan de forma más fiable aquí que en Gemini 2.5 Flash Image o GPT Image 1."
+            "body": "El más alto de la línea curada de imágenes. Las estéticas de toma hero, editoriales y fotorrealistas aterrizan de forma más fiable aquí que en SeedDream 4 o GPT Image 1."
           },
           {
             "title": "Fidelidad compositiva",
@@ -6234,7 +6118,7 @@
           },
           {
             "title": "Costo",
-            "body": "$0,072 por imagen — aproximadamente 2× Gemini 2.5 Flash Image y SeedDream 4. El patrón estándar es prefiltrar con un modelo más barato y renderizar finales en Flux."
+            "body": "$0,072 por imagen — aproximadamente 2× SeedDream 4. El patrón estándar es prefiltrar con un modelo más barato y renderizar finales en Flux."
           },
           {
             "title": "Velocidad",
@@ -6255,7 +6139,7 @@
             "body": "Ilustraciones hero estilo revista para artículos, posts de blog e informes. El techo estilístico de Flux lo separa de los predeterminados caballo de batalla."
           }
         ],
-        "avoidFor": "Evita Flux Pro 1.1 Ultra en bucles fan-out donde el costo domina — Gemini 2.5 Flash Image es aproximadamente 2× más barato por llamada. Úsalo como el paso de renderizado final en lugar del paso de iteración.",
+        "avoidFor": "Evita Flux Pro 1.1 Ultra en bucles fan-out donde el costo domina — SeedDream 4 es aproximadamente 2× más barato por llamada. Úsalo como el paso de renderizado final en lugar del paso de iteración.",
         "comparisons": [
           {
             "vs": "GPT Image 1",
@@ -6264,17 +6148,13 @@
           {
             "vs": "SeedDream 4",
             "body": "Ambos inclinados al fotorrealismo. SeedDream 4 es la mitad del precio y competitivo en trabajo de retrato y producto; Flux Pro 1.1 Ultra gana en fidelidad compositiva de toma hero a mayor costo."
-          },
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Roles diferentes. Gemini 2.5 Flash Image es el caballo de batalla barato para iteración; Flux Pro 1.1 Ultra es el paso premium de renderizado final. Apílalos, no elijas uno."
           }
         ],
         "verdict": "Usa Flux Pro 1.1 Ultra como el paso de renderizado final después de prefiltrar con un modelo más barato. El techo estético justifica la prima cuando la imagen es el entregable.",
         "faqs": [
           {
             "q": "¿Cuánto cuesta Flux Pro 1.1 Ultra?",
-            "a": "$0,072 por imagen generada. Aproximadamente 2× Gemini 2.5 Flash Image y SeedDream 4."
+            "a": "$0,072 por imagen generada. Aproximadamente 2× SeedDream 4."
           },
           {
             "q": "¿Soporta edición de imagen?",
@@ -6291,10 +6171,6 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "Predeterminado barato para iteración"
-          },
-          {
             "slug": "gpt-image-1",
             "reason": "Ilustración estilizada más fuerte"
           },
@@ -6304,7 +6180,7 @@
           }
         ],
         "routingNotes": "Enrutado al endpoint Flux Pro 1.1 Ultra de Black Forest Labs y facturado por imagen generada.",
-        "vm0Notes": "Flux Pro 1.1 Ultra es el nivel premium de la línea curada de imágenes. Úsalo para el paso de renderizado final en lugar de para iteración; empareja con Gemini 2.5 Flash Image o SeedDream 4 para el prefiltrado barato."
+        "vm0Notes": "Flux Pro 1.1 Ultra es el nivel premium de la línea curada de imágenes. Úsalo para el paso de renderizado final en lugar de para iteración; empareja con SeedDream 4 o SeedDream 4 para el prefiltrado barato."
       },
       "seedream-4": {
         "name": "SeedDream 4",
@@ -6312,8 +6188,8 @@
         "tagline": "El modelo de texto a imagen SeedDream 4 de ByteDance. Fuerte estética fotorrealista a un costo comparable a las opciones más baratas de la línea.",
         "cardIntro": "SeedDream 4 de ByteDance. Estética fotorrealista a bajo costo por imagen — el predeterminado natural cuando el brief es una foto.",
         "metaTitle": "SeedDream 4 en VM0: Precios, Especificaciones y Comparación",
-        "metaDescription": "SeedDream 4 en VM0. El modelo de texto a imagen de ByteDance con fuerte salida fotorrealista, ~$0,036 por imagen y comparación con Gemini 2.5 Flash Image, GPT Image 1 y Flux Pro 1.1 Ultra.",
-        "summary": "SeedDream 4 es el modelo de texto a imagen de ByteDance en la generación Seedream V4. Su propiedad destacada es la estética fotorrealista — retratos, tomas de producto, fotografía de estilo de vida — a un precio de lista ($0,036 por imagen) que es competitivo con la opción más barata de la línea curada.\n\nEs el predeterminado natural cuando el brief es específicamente una foto. Para ilustración estilizada o diseño editorial elige GPT Image 1 o Flux Pro 1.1 Ultra; para cargas de trabajo iterativas generales de agente en prompts largos estructurados elige Gemini 2.5 Flash Image.",
+        "metaDescription": "SeedDream 4 en VM0. El modelo de texto a imagen de ByteDance con fuerte salida fotorrealista, ~$0,036 por imagen y comparación con GPT Image 1 y Flux Pro 1.1 Ultra.",
+        "summary": "SeedDream 4 es el modelo de texto a imagen de ByteDance en la generación Seedream V4. Su propiedad destacada es la estética fotorrealista — retratos, tomas de producto, fotografía de estilo de vida — a un precio de lista ($0,036 por imagen) que es competitivo con la opción más barata de la línea curada.\n\nEs el predeterminado natural cuando el brief es específicamente una foto. Para ilustración estilizada o diseño editorial elige GPT Image 1 o Flux Pro 1.1 Ultra; para cargas de trabajo iterativas generales de agente en prompts largos estructurados elige SeedDream 4.",
         "releaseDate": "Abril 2026",
         "familyPosition": "El predeterminado fotorrealista de texto a imagen de ByteDance en la generación Seedream V4.",
         "background": [
@@ -6365,7 +6241,7 @@
             "body": "Cuando el brief es fotorrealista pero el entregable no justifica la prima de Flux, SeedDream 4 lleva la mayor parte de la calidad a la mitad del precio."
           }
         ],
-        "avoidFor": "Evita SeedDream 4 para ilustración estilizada (GPT Image 1 lidera), iteración en prompts largos estructurados (Gemini 2.5 Flash Image lidera) o trabajo editorial de toma hero donde la prima de Flux está justificada.",
+        "avoidFor": "Evita SeedDream 4 para ilustración estilizada (GPT Image 1 lidera), iteración en prompts largos estructurados (SeedDream 4 lidera) o trabajo editorial de toma hero donde la prima de Flux está justificada.",
         "comparisons": [
           {
             "vs": "GPT Image 1",
@@ -6374,10 +6250,6 @@
           {
             "vs": "Flux Pro 1.1 Ultra",
             "body": "Ambos inclinados al fotorrealismo. SeedDream 4 es la mitad del precio y competitivo en trabajo de retrato y producto; Flux Pro 1.1 Ultra gana en fidelidad compositiva de toma hero."
-          },
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Gemini 2.5 Flash Image es el predeterminado barato de propósito general con seguimiento de instrucciones más fuerte en prompts largos; SeedDream 4 es el predeterminado específico fotorrealista con un techo más alto en briefs de foto."
           }
         ],
         "verdict": "Usa SeedDream 4 por defecto cuando el brief es específicamente una foto y el costo importa. Escala a Flux Pro 1.1 Ultra solo cuando la toma hero justifica la prima.",
@@ -6401,10 +6273,6 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "Predeterminado de propósito general más barato"
-          },
-          {
             "slug": "flux-pro-1-1-ultra",
             "reason": "Calidad premium de toma hero"
           },
@@ -6414,7 +6282,7 @@
           }
         ],
         "routingNotes": "Enrutado al endpoint de texto a imagen SeedDream V4 de ByteDance y facturado por imagen generada.",
-        "vm0Notes": "SeedDream 4 es el predeterminado específico fotorrealista en la línea curada de imágenes. Empareja con Flux Pro 1.1 Ultra para tomas hero y con Gemini 2.5 Flash Image para iteración no fotográfica."
+        "vm0Notes": "SeedDream 4 es el predeterminado específico fotorrealista en la línea curada de imágenes. Empareja con Flux Pro 1.1 Ultra para tomas hero y con SeedDream 4 para iteración no fotográfica."
       },
       "veo-3-1-fast": {
         "name": "Veo 3.1 Fast",
@@ -6661,7 +6529,7 @@
           },
           {
             "title": "Imagen a video",
-            "body": "Fuerte manejo de flujos de condicionamiento por imagen. Útil cuando un agente quiere extender una imagen estática (generada de forma barata en Gemini 2.5 Flash Image o SeedDream 4) a un clip corto de movimiento."
+            "body": "Fuerte manejo de flujos de condicionamiento por imagen. Útil cuando un agente quiere extender una imagen estática (generada de forma barata en SeedDream 4 o SeedDream 4) a un clip corto de movimiento."
           },
           {
             "title": "Techo estético",

@@ -5952,118 +5952,13 @@
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Default model on the DeepSeek provider; also available on VM0 Managed.",
         "vm0Notes": "V4 Flash carries the lowest credit multiplier of any Built-in model (×0.02), roughly 50× less than Sonnet 4.6. Cache reads bill while cache writes are free, and VM0 sets a 10-minute API timeout for the DeepSeek provider that pairs naturally with Flash's short single-shot work."
       },
-      "gemini-2-5-flash-image": {
-        "name": "Gemini 2.5 Flash Image",
-        "pageTitle": "Gemini 2.5 Flash Image on VM0. The fast text-to-image default",
-        "tagline": "Googles schnelles Text-zu-Bild- und Bildbearbeitungsmodell. Starke Anweisungstreue, Charakterkonsistenz und die günstigsten Credit-Kosten pro Bild im kuratierten Bild-Lineup.",
-        "cardIntro": "Googles schnelles Text-zu-Bild-Modell. Günstig, präzise bei langen Prompts und gut darin, Subjekte über Edits hinweg beizubehalten.",
-        "metaTitle": "Gemini 2.5 Flash Image auf VM0: Preise, Specs & Vergleich",
-        "metaDescription": "Gemini 2.5 Flash Image auf VM0. Googles Text-zu-Bild- und Bildbearbeitungsmodell mit hoher Anweisungstreue, Charakterkonsistenz und ~$0,04 pro Bild. Verglichen mit GPT Image 1, Flux Pro 1.1 Ultra und SeedDream 4.",
-        "summary": "Gemini 2.5 Flash Image ist Googles Standard-Text-zu-Bild- und Bildbearbeitungsmodell für überall. Es punktet bei den beiden Eigenschaften, die für Agent-Workloads am wichtigsten sind: Es folgt langen, strukturierten Prompts (so kann man ihm das vollständige Briefing übergeben, ohne unterwegs Anweisungen zu verlieren), und es behält Subjekte über mehrstufige Edits hinweg konsistent (so kann ein Agent denselben Charakter oder dieselbe Produktaufnahme iterieren, ohne dass sie zwischen Calls driftet).\n\nDer Listenpreis liegt bei etwa $0,04 pro 1024×1024-Bild, was es zum günstigsten Modell im kuratierten Bild-Lineup macht. Das natürliche Muster ist, standardmäßig Gemini 2.5 Flash Image zu verwenden und nur dann auf Flux Pro 1.1 Ultra oder SeedDream 4 zu eskalieren, wenn eine bestimmte Ästhetik gefragt ist, die der Standard nicht trifft.",
-        "releaseDate": "April 2026",
-        "familyPosition": "Googles Text-zu-Bild-Arbeitspferd für Agent-Workloads.",
-        "background": [
-          "Gemini 2.5 Flash Image ist Googles Text-zu-Bild- und Bildbearbeitungsmodell in der Gemini-2.5-Familie. Googles Rahmen ist derselbe wie für die textseitige Flash-Variante: Ein Modell, das auf hohen Durchsatz bei niedrigen Kosten pro Call abgestimmt ist, optimiert für Produktions-Workloads, in denen die nächste Anfrage in der Warteschlange steht, bevor die letzte fertig gestreamt ist.",
-          "Zwei Verhaltenseigenschaften stechen für Agent-Nutzung heraus. Erstens ist die Anweisungstreue bei langen strukturierten Prompts deutlich besser als bei den meisten Open-Weight-Text-zu-Bild-Baselines, was zählt, wenn ein Agent den Prompt programmatisch zusammenstellt und ihn nicht kürzen kann. Zweitens hält die Charakter- und Subjektkonsistenz über mehrstufige Edits hinweg gut, was das Modell als Edit-Loop-Default in Agent-Workflows, die auf einem einzigen Asset iterieren, brauchbar macht."
-        ],
-        "architecture": "Diffusion-basiertes Text-zu-Bild-Modell mit nativer Edit-Unterstützung. Die Abrechnung erfolgt pro generiertem Bild in der Standardstufe. Eingaben akzeptieren Textprompts plus optionale Referenzbilder für Edit-Flows. Ausgaben sind PNG in der angeforderten Auflösung.",
-        "specs": [
-          { "label": "Familie", "value": "Gemini 2.5 Generation" },
-          {
-            "label": "Modalitäten",
-            "value": "Text-zu-Bild, Bild-zu-Bild-Edit"
-          },
-          { "label": "Ausgabeauflösung", "value": "1024×1024 Standardstufe" },
-          { "label": "Listenpreis", "value": "~$0,04 pro Bild" },
-          { "label": "Sprachen", "value": "Mehrsprachige Prompts" },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
-        ],
-        "benchmarksNote": "",
-        "benchmarks": [],
-        "performance": [
-          {
-            "title": "Anweisungstreue",
-            "body": "Hält sich bei langen strukturierten Prompts, bei denen viele Open-Weight-Modelle Klauseln verlieren. Nützlich, wenn ein Agent das Briefing programmatisch zusammenstellt und der Prompt nicht verhandelbar ist."
-          },
-          {
-            "title": "Charakterkonsistenz",
-            "body": "Hält Subjekte über mehrstufige Edits hinweg erkennbar, die Eigenschaft, die das Modell für iterative Agent-Loops auf einem einzigen Asset brauchbar macht."
-          },
-          {
-            "title": "Kosten",
-            "body": "Etwa $0,04 pro Bild — das günstigste der kuratierten Text-zu-Bild-Modelle auf VM0. Bulk-Fan-out-Generierung bleibt erschwinglich."
-          },
-          {
-            "title": "Ästhetische Obergrenze",
-            "body": "Neigt zu sauberer, präziser Ausgabe statt zum hyperstilisierten Look von Flux Pro 1.1 Ultra oder zum photorealistischen Look von SeedDream 4. Eskalieren, wenn die Ästhetik das Deliverable ist."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "Der Agent, der Marketing-Visuals aus einem Briefing entwirft",
-            "body": "Übergibt dem Agenten Brand Voice, Produktbeschreibung und Zielgruppe; Gemini 2.5 Flash Image rendert Entwurfs-Visuals in Sekunden. Günstig genug, um ein Dutzend Varianten zu fächern und die beste auszuwählen."
-          },
-          {
-            "title": "Der Edit-Loop, der auf einem einzigen Asset iteriert",
-            "body": "Einmal generieren, dann Beleuchtung, Framing oder Hintergrund iterieren und dabei das Subjekt über Runden hinweg konsistent halten. Charakterkonsistenz bedeutet, dass der Mensch im Loop dasselbe Bild bearbeitet und nicht jede Runde aus einem frischen Set wählt."
-          },
-          {
-            "title": "Der Illustrations-Vorfilter vor dem Premium-Modell",
-            "body": "Mit Gemini 2.5 Flash Image die Komposition günstig festlegen, dann die finale Auswahl auf Flux Pro 1.1 Ultra für die Ästhetik rerendern. Reduziert die Kosten des Premium-Schritts auf einen Call statt eines Fan-outs."
-          }
-        ],
-        "avoidFor": "Überspringe Gemini 2.5 Flash Image, wenn das Deliverable die Ästhetik ist — Flux Pro 1.1 Ultra und SeedDream 4 haben eine höhere stilistische Obergrenze für photorealistische und editoriale Looks.",
-        "comparisons": [
-          {
-            "vs": "GPT Image 1",
-            "body": "GPT Image 1 ist stärker bei stilisierter Illustration und Charakterarbeit; Gemini 2.5 Flash Image ist günstiger pro Call und stärker bei Anweisungstreue für lange Prompts. Für Agent-Workloads mit strukturierten Prompts ist Gemini 2.5 Flash Image der sicherere Standard."
-          },
-          {
-            "vs": "SeedDream 4",
-            "body": "SeedDream 4 hat eine höhere photorealistische Obergrenze; Gemini 2.5 Flash Image ist günstiger, schneller und folgt langen Prompts zuverlässiger. Standardmäßig Gemini, eskaliere auf SeedDream 4, wenn das Briefing speziell eine Foto-Ästhetik ist."
-          },
-          {
-            "vs": "Flux Pro 1.1 Ultra",
-            "body": "Flux Pro 1.1 Ultra hat die höchste stilistische Obergrenze im kuratierten Lineup; Gemini 2.5 Flash Image gewinnt bei Kosten und Anweisungstreue. Vorfiltern mit Gemini, Finals auf Flux liefern, wenn die Ästhetik der Punkt ist."
-          }
-        ],
-        "verdict": "Standardmäßig Gemini 2.5 Flash Image für Text-zu-Bild-Agent-Workloads. Eskaliere auf Flux Pro 1.1 Ultra oder SeedDream 4 nur, wenn die Ästhetik das Deliverable ist.",
-        "faqs": [
-          {
-            "q": "Can Gemini 2.5 Flash Image edit existing images?",
-            "a": "Ja. Es akzeptiert ein Referenzbild neben dem Textprompt und unterstützt Inpainting- und Outpainting-Flows für iterative Edits."
-          },
-          {
-            "q": "What output resolution does it produce?",
-            "a": "1024×1024 in der Standardstufe. Höhere Auflösungen sind zu proportionalen Kosten verfügbar."
-          },
-          {
-            "q": "How much does it cost per image?",
-            "a": "Etwa $0,04 pro generiertem 1024×1024-Bild — das günstigste der kuratierten Text-zu-Bild-Modelle auf VM0."
-          },
-          {
-            "q": "Is the model good at text inside images?",
-            "a": "Ja — deutlich stärker als die meisten Open-Weight-Baselines beim Rendern kurzer Textstrings innerhalb des generierten Bildes."
-          }
-        ],
-        "alternatives": [
-          { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" },
-          {
-            "slug": "flux-pro-1-1-ultra",
-            "reason": "Higher aesthetic ceiling"
-          },
-          { "slug": "seedream-4", "reason": "Stronger photoreal results" }
-        ],
-        "routingNotes": "Routed to Google's Gemini 2.5 Flash Image endpoint and billed per generated image.",
-        "vm0Notes": "Gemini 2.5 Flash Image ist der Preis-/Qualitäts-Standard für Text-zu-Bild-Agent-Workloads auf VM0. Verwende es als Überall-Standard und reserviere die teureren Bildmodelle für die Schritte, in denen ihre stilistische Obergrenze tatsächlich zählt."
-      },
       "gpt-image-1": {
         "name": "GPT Image 1",
         "pageTitle": "GPT Image 1 on VM0. OpenAI's text-to-image model",
         "tagline": "OpenAIs Text-zu-Bild-Modell mit starker stilisierter Illustration und Bearbeitung. Die natürliche Wahl, wenn man OpenAIs Ästhetik und Prompt-Style möchte.",
-        "cardIntro": "OpenAIs Text-zu-Bild-Modell. Stark bei stilisierter Illustration, Charakterarbeit und Bearbeitung — das OpenAI-seitige Gegenstück zu Gemini 2.5 Flash Image.",
+        "cardIntro": "OpenAIs Text-zu-Bild-Modell. Stark bei stilisierter Illustration, Charakterarbeit und Bearbeitung — das OpenAI-seitige Gegenstück zu SeedDream 4.",
         "metaTitle": "GPT Image 1 auf VM0: Preise, Specs & Vergleich",
-        "metaDescription": "GPT Image 1 auf VM0. OpenAIs Text-zu-Bild- und Bildbearbeitungsmodell mit Stärken in stilisierter Illustration, mehrstufiger Preisgestaltung und Vergleich zu Gemini 2.5 Flash Image, Flux Pro 1.1 Ultra und SeedDream 4.",
+        "metaDescription": "GPT Image 1 auf VM0. OpenAIs Text-zu-Bild- und Bildbearbeitungsmodell mit Stärken in stilisierter Illustration, mehrstufiger Preisgestaltung und Vergleich zu Flux Pro 1.1 Ultra und SeedDream 4.",
         "summary": "GPT Image 1 ist OpenAIs Text-zu-Bild-Modell — dasjenige, das die meisten Teams als das Modell hinter der Bildgenerierung in ChatGPT kennen. Seine Stärken liegen in stilisierter Illustration, Charakterarbeit und Bildbearbeitung mit textgesteuerter Maskierung, mit einem Prompt-Style, der eng dem entspricht, was OpenAIs Text-Modelle erwarten.\n\nDer Listenpreis ist gestaffelt, von etwa $0,011 pro Bild in der niedrigen/Standard-Stufe bis $0,25 in der hohen/großen Stufe. Die Medium-Standard-Stufe (etwa $0,05 pro 1024×1024) ist der sinnvolle Standard für die meisten Agent-Workloads.",
         "releaseDate": "April 2026",
         "familyPosition": "OpenAIs primäres Text-zu-Bild-Modell. Stufenbasierter Preis über Auflösung und Qualitätseinstellungen.",
@@ -6116,12 +6011,8 @@
             "body": "Wenn der orchestrierende Agent bereits auf GPT-5.4 oder GPT-5.5 läuft, hält die Bildgenerierung innerhalb der OpenAI-Oberfläche (GPT Image 1) den Prompt-Style, die Edit-Semantik und strukturierte Ausgaben über den Run hinweg konsistent."
           }
         ],
-        "avoidFor": "Überspringe GPT Image 1, wenn die Kosten dominieren (Gemini 2.5 Flash Image ist für dieselbe Standardstufe etwa halb so teuer) oder wenn das Deliverable speziell photorealistisch ist (SeedDream 4 hat eine höhere photorealistische Obergrenze).",
+        "avoidFor": "Überspringe GPT Image 1, wenn die Kosten dominieren (SeedDream 4 ist für dieselbe Standardstufe etwa halb so teuer) oder wenn das Deliverable speziell photorealistisch ist (SeedDream 4 hat eine höhere photorealistische Obergrenze).",
         "comparisons": [
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Gemini 2.5 Flash Image ist günstiger und stärker bei langen strukturierten Prompts; GPT Image 1 ist stärker bei stilisierter Illustration und integriert sich natürlicher mit OpenAI-Stack-Agenten."
-          },
           {
             "vs": "SeedDream 4",
             "body": "SeedDream 4 führt bei photorealistischer Ästhetik zu leicht niedrigerem Preis; GPT Image 1 führt bei stilisierter Illustration und Edit-Flows."
@@ -6131,7 +6022,7 @@
             "body": "Flux Pro 1.1 Ultra hat die höchste ästhetische Obergrenze für Hero-Shot-Deliverables; GPT Image 1 ist der natürliche OpenAI-Stack-Standard für alles andere."
           }
         ],
-        "verdict": "Wähle GPT Image 1, wenn dein Agent bereits auf dem OpenAI-Stack läuft und du stilisierte Illustration oder native Edit-Flows möchtest. Eskaliere auf Flux Pro 1.1 Ultra für photorealistische Hero-Shots; wechsle zu Gemini 2.5 Flash Image, wenn die Kosten dominieren.",
+        "verdict": "Wähle GPT Image 1, wenn dein Agent bereits auf dem OpenAI-Stack läuft und du stilisierte Illustration oder native Edit-Flows möchtest. Eskaliere auf Flux Pro 1.1 Ultra für photorealistische Hero-Shots; wechsle zu wenn die Kosten dominieren.",
         "faqs": [
           {
             "q": "How is GPT Image 1 priced?",
@@ -6152,10 +6043,6 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "Cheaper, stronger long-prompt adherence"
-          },
-          {
             "slug": "flux-pro-1-1-ultra",
             "reason": "Higher photoreal aesthetic ceiling"
           },
@@ -6170,8 +6057,8 @@
         "tagline": "Black Forest Labs' hochauflösendes Text-zu-Bild-Modell. Die Wahl, wenn das Bild das Deliverable ist und editoriale oder photorealistische Qualität gefragt ist.",
         "cardIntro": "Black Forest Labs' Top-Tier-Bildmodell. Höchste ästhetische Obergrenze im kuratierten Lineup — verwende es für Hero-Shots und editoriale Ausgabe.",
         "metaTitle": "Flux Pro 1.1 Ultra auf VM0: Preise, Specs & Vergleich",
-        "metaDescription": "Flux Pro 1.1 Ultra auf VM0. Black Forest Labs' Top-Tier-Text-zu-Bild-Modell mit editorialer Ästhetik, $0,072 pro Bild und Vergleich zu GPT Image 1, SeedDream 4 und Gemini 2.5 Flash Image.",
-        "summary": "Flux Pro 1.1 Ultra ist Black Forest Labs' Top-Tier-Text-zu-Bild-Modell — dasjenige, zu dem man greift, wenn das Bild selbst das Deliverable ist und nicht ein Schritt in einem Agent-Loop. Die Ausgabequalität bei editorialen, photorealistischen und designgeführten Ästhetiken ist die höchste im kuratierten Lineup, und die Prompt-Treue bei detaillierten Kompositionsbriefings hält gut.\n\nDer Listenpreis liegt bei $0,072 pro Bild, was es im Vergleich zu Gemini 2.5 Flash Image ($0,04) oder SeedDream 4 ($0,036) teuer macht, aber der Qualitätssprung pro Bild ist groß genug, dass die meisten Teams es als Final-Render-Schritt nach Vorfilterung mit einem günstigeren Modell verwenden.",
+        "metaDescription": "Flux Pro 1.1 Ultra auf VM0. Black Forest Labs' Top-Tier-Text-zu-Bild-Modell mit editorialer Ästhetik, $0,072 pro Bild und Vergleich zu GPT Image 1, SeedDream 4.",
+        "summary": "Flux Pro 1.1 Ultra ist Black Forest Labs' Top-Tier-Text-zu-Bild-Modell — dasjenige, zu dem man greift, wenn das Bild selbst das Deliverable ist und nicht ein Schritt in einem Agent-Loop. Die Ausgabequalität bei editorialen, photorealistischen und designgeführten Ästhetiken ist die höchste im kuratierten Lineup, und die Prompt-Treue bei detaillierten Kompositionsbriefings hält gut.\n\nDer Listenpreis liegt bei $0,072 pro Bild, was es im Vergleich zu SeedDream 4 ($0,04) oder SeedDream 4 ($0,036) teuer macht, aber der Qualitätssprung pro Bild ist groß genug, dass die meisten Teams es als Final-Render-Schritt nach Vorfilterung mit einem günstigeren Modell verwenden.",
         "releaseDate": "April 2026",
         "familyPosition": "Premium-Stufe der Flux-1.1-Generation von Black Forest Labs.",
         "background": [
@@ -6191,7 +6078,7 @@
         "performance": [
           {
             "title": "Ästhetische Obergrenze",
-            "body": "Höchste im kuratierten Bild-Lineup. Hero-Shot-, editoriale und photorealistische Ästhetiken landen hier zuverlässiger als auf Gemini 2.5 Flash Image oder GPT Image 1."
+            "body": "Höchste im kuratierten Bild-Lineup. Hero-Shot-, editoriale und photorealistische Ästhetiken landen hier zuverlässiger als auf SeedDream 4 oder GPT Image 1."
           },
           {
             "title": "Kompositionstreue",
@@ -6199,7 +6086,7 @@
           },
           {
             "title": "Kosten",
-            "body": "$0,072 pro Bild — etwa 2× Gemini 2.5 Flash Image und SeedDream 4. Das Standardmuster ist, mit einem günstigeren Modell vorzufiltern und Finals auf Flux zu rendern."
+            "body": "$0,072 pro Bild — etwa 2× SeedDream 4. Das Standardmuster ist, mit einem günstigeren Modell vorzufiltern und Finals auf Flux zu rendern."
           },
           {
             "title": "Geschwindigkeit",
@@ -6220,7 +6107,7 @@
             "body": "Magazinhafte Hero-Illustrationen für Artikel, Blogposts und Reports. Flux' stilistische Obergrenze hebt es von den Workhorse-Standards ab."
           }
         ],
-        "avoidFor": "Überspringe Flux Pro 1.1 Ultra in Fan-out-Loops, in denen die Kosten dominieren — Gemini 2.5 Flash Image ist pro Call etwa 2× günstiger. Verwende es als Final-Render-Schritt statt als Iterationsschritt.",
+        "avoidFor": "Überspringe Flux Pro 1.1 Ultra in Fan-out-Loops, in denen die Kosten dominieren — SeedDream 4 ist pro Call etwa 2× günstiger. Verwende es als Final-Render-Schritt statt als Iterationsschritt.",
         "comparisons": [
           {
             "vs": "GPT Image 1",
@@ -6229,17 +6116,13 @@
           {
             "vs": "SeedDream 4",
             "body": "Beide sind photorealistisch ausgerichtet. SeedDream 4 ist günstiger und konkurrenzfähig bei Porträt- und Produktarbeiten; Flux Pro 1.1 Ultra gewinnt bei Hero-Shot-Kompositionstreue zu höheren Kosten."
-          },
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Unterschiedliche Rollen. Gemini 2.5 Flash Image ist das günstige Arbeitspferd für Iteration; Flux Pro 1.1 Ultra ist der Premium-Final-Render-Schritt. Stapeln, nicht eines auswählen."
           }
         ],
         "verdict": "Verwende Flux Pro 1.1 Ultra als Final-Render-Schritt nach Vorfilterung mit einem günstigeren Modell. Die ästhetische Obergrenze rechtfertigt den Aufpreis, wenn das Bild das Deliverable ist.",
         "faqs": [
           {
             "q": "How much does Flux Pro 1.1 Ultra cost?",
-            "a": "$0,072 pro generiertem Bild. Etwa 2× Gemini 2.5 Flash Image und SeedDream 4."
+            "a": "$0,072 pro generiertem Bild. Etwa 2× SeedDream 4."
           },
           {
             "q": "Does it support image editing?",
@@ -6255,15 +6138,11 @@
           }
         ],
         "alternatives": [
-          {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "Cheap iteration default"
-          },
           { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" },
           { "slug": "seedream-4", "reason": "Cheaper photoreal alternative" }
         ],
         "routingNotes": "Routed to Black Forest Labs' Flux Pro 1.1 Ultra endpoint and billed per generated image.",
-        "vm0Notes": "Flux Pro 1.1 Ultra ist die Premium-Stufe des kuratierten Bild-Lineups. Verwende es für den Final-Render-Schritt statt für die Iteration; paare es mit Gemini 2.5 Flash Image oder SeedDream 4 als günstigem Vorfilter."
+        "vm0Notes": "Flux Pro 1.1 Ultra ist die Premium-Stufe des kuratierten Bild-Lineups. Verwende es für den Final-Render-Schritt statt für die Iteration; paare es mit SeedDream 4 oder SeedDream 4 als günstigem Vorfilter."
       },
       "seedream-4": {
         "name": "SeedDream 4",
@@ -6271,8 +6150,8 @@
         "tagline": "ByteDance's SeedDream-4-Text-zu-Bild-Modell. Starke photorealistische Ästhetik zu Kosten, die mit den günstigsten Optionen im Lineup vergleichbar sind.",
         "cardIntro": "ByteDance's SeedDream 4. Photorealistische Ästhetik zu niedrigen Kosten pro Bild — der natürliche Standard, wenn das Briefing ein Foto ist.",
         "metaTitle": "SeedDream 4 auf VM0: Preise, Specs & Vergleich",
-        "metaDescription": "SeedDream 4 auf VM0. ByteDance's Text-zu-Bild-Modell mit starker photorealistischer Ausgabe, ~$0,036 pro Bild und Vergleich zu Gemini 2.5 Flash Image, GPT Image 1 und Flux Pro 1.1 Ultra.",
-        "summary": "SeedDream 4 ist ByteDance's Text-zu-Bild-Modell in der Seedream-V4-Generation. Seine herausragende Eigenschaft ist die photorealistische Ästhetik — Porträts, Produktaufnahmen, Lifestyle-Fotografie — zu einem Listenpreis ($0,036 pro Bild), der mit der günstigsten Option im kuratierten Lineup konkurrieren kann.\n\nEs ist der natürliche Standard, wenn das Briefing speziell ein Foto ist. Für stilisierte Illustration oder editoriales Design wähle GPT Image 1 oder Flux Pro 1.1 Ultra; für allgemeine iterative Agent-Workloads mit langen strukturierten Prompts wähle Gemini 2.5 Flash Image.",
+        "metaDescription": "SeedDream 4 auf VM0. ByteDance's Text-zu-Bild-Modell mit starker photorealistischer Ausgabe, ~$0,036 pro Bild und Vergleich zu GPT Image 1 und Flux Pro 1.1 Ultra.",
+        "summary": "SeedDream 4 ist ByteDance's Text-zu-Bild-Modell in der Seedream-V4-Generation. Seine herausragende Eigenschaft ist die photorealistische Ästhetik — Porträts, Produktaufnahmen, Lifestyle-Fotografie — zu einem Listenpreis ($0,036 pro Bild), der mit der günstigsten Option im kuratierten Lineup konkurrieren kann.\n\nEs ist der natürliche Standard, wenn das Briefing speziell ein Foto ist. Für stilisierte Illustration oder editoriales Design wähle GPT Image 1 oder Flux Pro 1.1 Ultra; für allgemeine iterative Agent-Workloads mit langen strukturierten Prompts wähle SeedDream 4.",
         "releaseDate": "April 2026",
         "familyPosition": "ByteDance's photorealistischer Text-zu-Bild-Standard in der Seedream-V4-Generation.",
         "background": [
@@ -6324,7 +6203,7 @@
             "body": "Wenn das Briefing photorealistisch ist, das Deliverable aber den Flux-Aufpreis nicht rechtfertigt, liefert SeedDream 4 den Großteil der Qualität zum halben Preis."
           }
         ],
-        "avoidFor": "Überspringe SeedDream 4 für stilisierte Illustration (GPT Image 1 führt), Iteration bei langen strukturierten Prompts (Gemini 2.5 Flash Image führt) oder Hero-Shot-Editorial-Arbeit, bei der der Flux-Aufpreis gerechtfertigt ist.",
+        "avoidFor": "Überspringe SeedDream 4 für stilisierte Illustration (GPT Image 1 führt), Iteration bei langen strukturierten Prompts (SeedDream 4 führt) oder Hero-Shot-Editorial-Arbeit, bei der der Flux-Aufpreis gerechtfertigt ist.",
         "comparisons": [
           {
             "vs": "GPT Image 1",
@@ -6333,10 +6212,6 @@
           {
             "vs": "Flux Pro 1.1 Ultra",
             "body": "Beide sind photorealistisch ausgerichtet. SeedDream 4 ist halb so teuer und konkurrenzfähig bei Porträt- und Produktarbeiten; Flux Pro 1.1 Ultra gewinnt bei Hero-Shot-Kompositionstreue."
-          },
-          {
-            "vs": "Gemini 2.5 Flash Image",
-            "body": "Gemini 2.5 Flash Image ist der günstige Allzweck-Standard mit stärkerer Anweisungstreue bei langen Prompts; SeedDream 4 ist der photorealistik-spezifische Standard mit einer höheren Obergrenze bei Foto-Briefings."
           }
         ],
         "verdict": "Standardmäßig SeedDream 4, wenn das Briefing speziell ein Foto ist und Kosten zählen. Eskaliere auf Flux Pro 1.1 Ultra nur, wenn der Hero-Shot den Aufpreis rechtfertigt.",
@@ -6360,17 +6235,13 @@
         ],
         "alternatives": [
           {
-            "slug": "gemini-2-5-flash-image",
-            "reason": "Cheaper general-purpose default"
-          },
-          {
             "slug": "flux-pro-1-1-ultra",
             "reason": "Premium hero-shot quality"
           },
           { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" }
         ],
         "routingNotes": "Routed to ByteDance's SeedDream V4 text-to-image endpoint and billed per generated image.",
-        "vm0Notes": "SeedDream 4 ist der photorealistik-spezifische Standard im kuratierten Bild-Lineup. Paare es mit Flux Pro 1.1 Ultra für Hero-Shots und mit Gemini 2.5 Flash Image für Nicht-Foto-Iteration."
+        "vm0Notes": "SeedDream 4 ist der photorealistik-spezifische Standard im kuratierten Bild-Lineup. Paare es mit Flux Pro 1.1 Ultra für Hero-Shots und mit SeedDream 4 für Nicht-Foto-Iteration."
       },
       "veo-3-1-fast": {
         "name": "Veo 3.1 Fast",
@@ -6611,7 +6482,7 @@
           },
           {
             "title": "Bild-zu-Video",
-            "body": "Starke Handhabung von Bildkonditionierungs-Flows. Nützlich, wenn ein Agent ein Standbild (günstig generiert auf Gemini 2.5 Flash Image oder SeedDream 4) in einen kurzen Bewegungsclip erweitern möchte."
+            "body": "Starke Handhabung von Bildkonditionierungs-Flows. Nützlich, wenn ein Agent ein Standbild (günstig generiert auf SeedDream 4 oder SeedDream 4) in einen kurzen Bewegungsclip erweitern möchte."
           },
           {
             "title": "Ästhetische Obergrenze",
