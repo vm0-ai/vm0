@@ -290,9 +290,6 @@ export function getConnectorOAuthSecretMetadata(
   if (isOAuthDeviceAuthConnectorType(type)) {
     return getConnectorAuthSecretMetadata(deviceConnectorAuthProviderFor(type));
   }
-
-  const exhaustive: never = type;
-  throw new Error(`${exhaustive} OAuth flow is not supported`);
 }
 
 export async function buildConnectorOAuthAuthUrl<
@@ -396,8 +393,6 @@ export async function refreshConnectorOAuthToken<
         } as ConnectorOAuthRefreshArgs<T>,
       });
   }
-  const exhaustive: never = access;
-  return exhaustive;
 }
 
 /**

@@ -53,8 +53,6 @@ export function getConnectorAuthSecretMetadata<T extends ConnectorType>(
         isRefreshable: true,
       };
   }
-  const exhaustive: never = access;
-  return exhaustive;
 }
 
 export async function buildAuthCodeGrantAuthUrl<
