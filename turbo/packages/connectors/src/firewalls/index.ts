@@ -98,6 +98,7 @@ import { dropboxSignFirewall } from "./dropbox-sign.generated";
 import { duffelFirewall } from "./duffel.generated";
 import { e2bFirewall } from "./e2b.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
+import { etherscanFirewall } from "./etherscan.generated";
 import { etsyFirewall } from "./etsy.generated";
 import { exaFirewall } from "./exa.generated";
 import { exploriumFirewall } from "./explorium.generated";
@@ -326,6 +327,7 @@ const CONNECTOR_FIREWALLS = {
   duffel: duffelFirewall,
   e2b: e2bFirewall,
   elevenlabs: elevenlabsFirewall,
+  etherscan: etherscanFirewall,
   etsy: etsyFirewall,
   exa: exaFirewall,
   explorium: exploriumFirewall,

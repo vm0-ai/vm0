@@ -84,6 +84,7 @@ import { duffel } from "./connectors/duffel";
 import { e2b } from "./connectors/e2b";
 import { elevenlabs } from "./connectors/elevenlabs";
 import { etsy } from "./connectors/etsy";
+import { etherscan } from "./connectors/etherscan";
 import { exa } from "./connectors/exa";
 import { explorium } from "./connectors/explorium";
 import { faire } from "./connectors/faire";
@@ -643,6 +644,7 @@ const CONNECTOR_TYPES_DEF = {
   ...e2b,
   ...elevenlabs,
   ...etsy,
+  ...etherscan,
   ...exa,
   ...explorium,
   ...faire,

@@ -72,6 +72,7 @@
     "generate:duffel": "tsx src/index.ts duffel",
     "generate:e2b": "tsx src/index.ts e2b",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
+    "generate:etherscan": "tsx src/index.ts etherscan",
     "generate:explorium": "tsx src/index.ts explorium",
     "generate:faire": "tsx src/index.ts faire",
     "generate:fal": "tsx src/index.ts fal",
