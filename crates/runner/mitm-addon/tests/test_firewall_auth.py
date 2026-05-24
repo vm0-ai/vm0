@@ -1143,19 +1143,45 @@ class TestFetchFirewallHeaders:
 
         assert exc_info.value is http_error
 
-    def test_connector_not_configured_with_non_string_message_uses_default(self):
+    @pytest.mark.parametrize(
+        ("code", "status", "reason", "exception_type", "default_message"),
+        [
+            (
+                "CONNECTOR_NOT_CONFIGURED",
+                424,
+                "Failed Dependency",
+                auth.ConnectorNotConfiguredError,
+                "Connector not configured",
+            ),
+            (
+                "INSUFFICIENT_CREDITS",
+                402,
+                "Payment Required",
+                auth.InsufficientCreditsError,
+                "Insufficient credits",
+            ),
+        ],
+    )
+    def test_known_error_with_non_string_message_uses_default(
+        self,
+        code: str,
+        status: int,
+        reason: str,
+        exception_type: type[Exception],
+        default_message: str,
+    ):
         error_body = json.dumps(
             {
                 "error": {
                     "message": None,
-                    "code": "CONNECTOR_NOT_CONFIGURED",
+                    "code": code,
                 }
             }
         ).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            424,
-            "Failed Dependency",
+            status,
+            reason,
             error_body,
         )
 
@@ -1163,11 +1189,11 @@ class TestFetchFirewallHeaders:
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.ConnectorNotConfiguredError) as exc_info,
+            pytest.raises(exception_type) as exc_info,
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
-        assert str(exc_info.value) == "Connector not configured"
+        assert str(exc_info.value) == default_message
 
     def test_closes_response_on_success(self):
         """Success path must close the urlopen response — FD leak guard (#10475)."""
