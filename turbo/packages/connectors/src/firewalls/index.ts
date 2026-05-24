@@ -44,6 +44,7 @@ import { anthropicManagedAgentsFirewall } from "./anthropic-managed-agents.gener
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { agoraFirewall } from "./agora.generated";
 import { airtableFirewall } from "./airtable.generated";
+import { alchemyFirewall } from "./alchemy.generated";
 import { apolloFirewall } from "./apollo.generated";
 import { apifyFirewall } from "./apify.generated";
 import { pikaFirewall } from "./pika.generated";
@@ -278,6 +279,7 @@ const CONNECTOR_FIREWALLS = {
   ahrefs: ahrefsFirewall,
   agora: agoraFirewall,
   airtable: airtableFirewall,
+  alchemy: alchemyFirewall,
   apollo: apolloFirewall,
   pika: pikaFirewall,
   apify: apifyFirewall,

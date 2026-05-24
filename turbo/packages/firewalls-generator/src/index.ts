@@ -12,6 +12,7 @@ import { generate as generateAnthropicManagedAgents } from "./anthropic-managed-
 import { generate as generateAhrefs } from "./ahrefs";
 import { generate as generateAgora } from "./agora";
 import { generate as generateAirtable } from "./airtable";
+import { generate as generateAlchemy } from "./alchemy";
 import { generate as generateApollo } from "./apollo";
 import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
@@ -225,6 +226,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   ahrefs: generateAhrefs,
   agora: generateAgora,
   airtable: generateAirtable,
+  alchemy: generateAlchemy,
   apollo: generateApollo,
   apify: generateApify,
   asana: generateAsana,

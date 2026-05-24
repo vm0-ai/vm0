@@ -29,6 +29,7 @@ import { agentmail } from "./connectors/agentmail";
 import { agora } from "./connectors/agora";
 import { ahrefs } from "./connectors/ahrefs";
 import { altium365 } from "./connectors/altium-365";
+import { alchemy } from "./connectors/alchemy";
 import { amplitude } from "./connectors/amplitude";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { apify } from "./connectors/apify";
@@ -588,6 +589,7 @@ const CONNECTOR_TYPES_DEF = {
   ...agora,
   ...ahrefs,
   ...altium365,
+  ...alchemy,
   ...amplitude,
   ...anthropicManagedAgents,
   ...apify,
