@@ -171,6 +171,7 @@ const CONNECTOR_ICON_COLORFUL = {
   slack: true,
   "slack-webhook": true,
   snowflake: true,
+  sociavault: true,
   spotify: true,
   sproutgigs: true,
   "stability-ai": true,
