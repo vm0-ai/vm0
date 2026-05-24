@@ -23,14 +23,15 @@ import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-swit
 import { resetMockOrgModelProviders } from "../../../mocks/handlers/api-org-model-providers.ts";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const context = testContext();
 
 async function openProvidersPage() {
-  detachedSetupPage({
-    context,
-    path: "/?settings=providers",
-  });
+  detachedSetupPage({ context, path: "/" });
+  context.store.set(setActiveOrgManageTab$, "providers");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

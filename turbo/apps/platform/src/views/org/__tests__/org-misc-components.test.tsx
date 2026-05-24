@@ -33,6 +33,8 @@ import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { orgOpenAddDialog$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
+import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -338,7 +340,9 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
 // ---------------------------------------------------------------------------
 
 async function openSetupPrompt() {
-  detachedSetupPage({ context, path: "/?settings=providers" });
+  detachedSetupPage({ context, path: "/" });
+  context.store.set(setActiveOrgManageTab$, "providers");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
