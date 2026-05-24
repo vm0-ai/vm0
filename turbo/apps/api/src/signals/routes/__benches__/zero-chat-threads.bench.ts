@@ -15,6 +15,11 @@ import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 // issues 4 nearly identical `zero_runs INNER JOIN agent_runs` queries; this
 // bench establishes the baseline so a follow-up refactor (merge into 1 query)
 // can be measured against it via CI artifact diff.
+//
+// Fixture seeding runs lazily inside the first bench iteration (not in
+// `beforeAll`) because vitest 4 does not bridge `beforeAll` into bench mode:
+// iterations would otherwise see an unseeded DB, error silently in
+// tinybench, and produce empty samples without failing the suite.
 
 const context = testContext();
 const store = createStore();
@@ -25,74 +30,59 @@ const STATUSES = ["completed", "completed", "failed", "running"] as const;
 
 const client = setupApp({ context })(chatThreadByIdContract);
 
-let fixture: ZeroChatThreadFixture | undefined;
-let initPromise: Promise<void> | undefined;
-
-function ensureSeeded(): Promise<void> {
-  initPromise ??= (async () => {
-    const seeded = await store.set(
-      seedZeroChatThread$,
-      { title: "bench" },
-      context.signal,
-    );
-
-    for (let i = 0; i < RUN_COUNT; i++) {
-      const status = STATUSES[i % STATUSES.length];
-      await store.set(
-        seedRun$,
-        {
-          orgId: seeded.orgId,
-          userId: seeded.userId,
-          composeId: seeded.composeId,
-          chatThreadId: seeded.threadId,
-          status,
-          completedAt: status === "completed" ? nowDate() : null,
-        },
+const ensureSeeded: () => Promise<ZeroChatThreadFixture> = (() => {
+  let cached: Promise<ZeroChatThreadFixture> | undefined;
+  return () => {
+    cached ??= (async () => {
+      const seeded = await store.set(
+        seedZeroChatThread$,
+        { title: "bench" },
         context.signal,
       );
-    }
-
-    mocks.clerk.session(seeded.userId, seeded.orgId);
-
-    const sanity = await client.get({
-      params: { id: seeded.threadId },
-      headers: { authorization: "Bearer clerk-session" },
-    });
-    if (sanity.status !== 200) {
-      throw new Error(
-        `sanity check failed: status=${String(sanity.status)} body=${JSON.stringify(sanity.body)}`,
-      );
-    }
-
-    fixture = seeded;
-  })();
-  return initPromise;
-}
+      for (let i = 0; i < RUN_COUNT; i++) {
+        const status = STATUSES[i % STATUSES.length];
+        await store.set(
+          seedRun$,
+          {
+            orgId: seeded.orgId,
+            userId: seeded.userId,
+            composeId: seeded.composeId,
+            chatThreadId: seeded.threadId,
+            status,
+            completedAt: status === "completed" ? nowDate() : null,
+          },
+          context.signal,
+        );
+      }
+      mocks.clerk.session(seeded.userId, seeded.orgId);
+      const sanity = await client.get({
+        params: { id: seeded.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      });
+      if (sanity.status !== 200) {
+        throw new Error(
+          `sanity check failed: status=${String(sanity.status)} body=${JSON.stringify(sanity.body)}`,
+        );
+      }
+      return seeded;
+    })();
+    return cached;
+  };
+})();
 
 describe("bench GET /api/zero/chat-threads/:id", () => {
-  let iterCount = 0;
   bench(
     "current",
     async () => {
-      await ensureSeeded();
-      if (!fixture) {
-        throw new Error("fixture missing after seed");
-      }
-      iterCount += 1;
-      const start = performance.now();
+      const fixture = await ensureSeeded();
       const response = await client.get({
         params: { id: fixture.threadId },
         headers: { authorization: "Bearer clerk-session" },
       });
-      const elapsed = performance.now() - start;
-      // eslint-disable-next-line no-console
-      console.log(
-        `[bench-iter] ${String(iterCount)} status=${String(response.status)} elapsed=${elapsed.toFixed(2)}ms`,
-      );
       if (response.status !== 200) {
         throw new Error(`unexpected status ${String(response.status)}`);
       }
     },
-    { iterations: 5, time: 0, warmupIterations: 1 },
+    { time: 5000, warmupIterations: 5 },
   );
 });
