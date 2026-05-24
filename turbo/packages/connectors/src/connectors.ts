@@ -190,6 +190,7 @@ import { shortio } from "./connectors/shortio";
 import { similarweb } from "./connectors/similarweb";
 import { slackWebhook } from "./connectors/slack-webhook";
 import { snowflake } from "./connectors/snowflake";
+import { sociavault } from "./connectors/sociavault";
 import { sponge } from "./connectors/sponge";
 import { sproutgigs } from "./connectors/sproutgigs";
 import { square } from "./connectors/square";
@@ -749,6 +750,7 @@ const CONNECTOR_TYPES_DEF = {
   ...similarweb,
   ...slackWebhook,
   ...snowflake,
+  ...sociavault,
   ...sponge,
   ...sproutgigs,
   ...square,

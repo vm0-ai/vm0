@@ -171,6 +171,7 @@ import { generate as generateStabilityAi } from "./stability-ai";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
 import { generate as generateSlackWebhook } from "./slack-webhook";
+import { generate as generateSociavault } from "./sociavault";
 import { generate as generateSponge } from "./sponge";
 import { generate as generateSproutGigs } from "./sproutgigs";
 import { generate as generateSpotify } from "./spotify";
@@ -374,6 +375,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   similarweb: generateSimilarweb,
   slack: generateSlack,
   "slack-webhook": generateSlackWebhook,
+  sociavault: generateSociavault,
   sponge: generateSponge,
   sproutgigs: generateSproutGigs,
   spotify: generateSpotify,
