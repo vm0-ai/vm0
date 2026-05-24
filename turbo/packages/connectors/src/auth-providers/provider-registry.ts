@@ -53,12 +53,13 @@ export function getConnectorAuthSecretMetadata<T extends ConnectorType>(
         isRefreshable: true,
       };
   }
+  const exhaustive: never = access;
+  return exhaustive;
 }
 
 export async function buildAuthCodeGrantAuthUrl<
   T extends OAuthAuthCodeConnectorType,
 >(args: {
-  readonly type: T;
   readonly provider: AuthCodeConnectorAuthProvider<T>;
   readonly authorizeArgs: ConnectorOAuthAuthorizeArgs<T>;
 }): Promise<string | AuthUrlResult> {
@@ -69,7 +70,6 @@ export async function buildAuthCodeGrantAuthUrl<
 export async function exchangeAuthCodeGrant<
   T extends OAuthAuthCodeConnectorType,
 >(args: {
-  readonly type: T;
   readonly provider: AuthCodeConnectorAuthProvider<T>;
   readonly exchangeArgs: ConnectorOAuthExchangeArgs<T>;
 }): Promise<OAuthTokenResult> {
@@ -80,7 +80,6 @@ export async function exchangeAuthCodeGrant<
 export async function startDeviceAuthGrant<
   T extends OAuthDeviceAuthConnectorType,
 >(args: {
-  readonly type: T;
   readonly provider: DeviceAuthConnectorAuthProvider<T>;
   readonly startArgs: ConnectorOAuthDeviceAuthStartArgs<T>;
 }): Promise<OAuthDeviceAuthStartResult> {
@@ -91,7 +90,6 @@ export async function startDeviceAuthGrant<
 export async function pollDeviceAuthGrant<
   T extends OAuthDeviceAuthConnectorType,
 >(args: {
-  readonly type: T;
   readonly provider: DeviceAuthConnectorAuthProvider<T>;
   readonly pollArgs: ConnectorOAuthDeviceAuthPollArgs<T>;
 }): Promise<OAuthDeviceAuthPollResult> {
@@ -100,7 +98,6 @@ export async function pollDeviceAuthGrant<
 }
 
 export async function refreshTokenAccess<T extends OAuthConnectorType>(args: {
-  readonly type: T;
   readonly access: RefreshTokenAccessProvider<T>;
   readonly refreshArgs: ConnectorOAuthRefreshArgs<T>;
 }): Promise<OAuthRefreshResult> {

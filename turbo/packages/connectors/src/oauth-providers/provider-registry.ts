@@ -291,7 +291,8 @@ export function getConnectorOAuthSecretMetadata(
     return getConnectorAuthSecretMetadata(deviceConnectorAuthProviderFor(type));
   }
 
-  throw new Error(`${type} OAuth flow is not supported`);
+  const exhaustive: never = type;
+  throw new Error(`${exhaustive} OAuth flow is not supported`);
 }
 
 export async function buildConnectorOAuthAuthUrl<
@@ -304,7 +305,6 @@ export async function buildConnectorOAuthAuthUrl<
 }): Promise<string | AuthUrlResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await buildAuthCodeGrantAuthUrl({
-    type: args.type,
     provider: authCodeConnectorAuthProviderFor(args.type),
     authorizeArgs: {
       ...connectorCredentialArgs(args.credentials),
@@ -327,7 +327,6 @@ export async function exchangeConnectorOAuthCode<
 }): Promise<OAuthTokenResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await exchangeAuthCodeGrant({
-    type: args.type,
     provider: authCodeConnectorAuthProviderFor(args.type),
     exchangeArgs: {
       ...connectorCredentialArgs(args.credentials),
@@ -349,7 +348,6 @@ export async function startConnectorOAuthDeviceAuth<
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   const oauthConfig = getConnectorOAuthDeviceAuthConfig(args.type);
   return await startDeviceAuthGrant({
-    type: args.type,
     provider: deviceConnectorAuthProviderFor(args.type),
     startArgs: {
       ...connectorCredentialArgs(args.credentials),
@@ -367,7 +365,6 @@ export async function pollConnectorOAuthDeviceAuth<
 }): Promise<OAuthDeviceAuthPollResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await pollDeviceAuthGrant({
-    type: args.type,
     provider: deviceConnectorAuthProviderFor(args.type),
     pollArgs: {
       ...connectorCredentialArgs(args.credentials),
@@ -392,7 +389,6 @@ export async function refreshConnectorOAuthToken<
 
     case "refresh-token":
       return await refreshTokenAccess({
-        type: args.type,
         access,
         refreshArgs: {
           ...connectorCredentialArgs(args.credentials),
@@ -400,6 +396,8 @@ export async function refreshConnectorOAuthToken<
         } as ConnectorOAuthRefreshArgs<T>,
       });
   }
+  const exhaustive: never = access;
+  return exhaustive;
 }
 
 /**
