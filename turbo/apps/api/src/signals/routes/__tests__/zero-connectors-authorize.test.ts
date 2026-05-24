@@ -9,7 +9,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -666,6 +666,18 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       .from(connectors)
       .where(eq(connectors.id, connector!.id));
     expect(survivors).toHaveLength(0);
+    const secretSurvivors = await db
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, "NOTION_ACCESS_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+    expect(secretSurvivors).toHaveLength(0);
   });
 });
 
