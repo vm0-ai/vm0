@@ -29,6 +29,7 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   isAdminOnlySettingsSection,
   settingsActiveSection$,
+  externalProfileModalOpen$,
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/zero-page/settings/settings-dialog.ts";
@@ -189,6 +190,7 @@ function isClerkModalTarget(target: EventTarget | null): boolean {
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
+  const externalProfileModalOpen = useGet(externalProfileModalOpen$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -210,7 +212,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      modal={!externalProfileModalOpen}
+    >
       <DialogContent
         className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
         onInteractOutside={(event) => {

@@ -33,10 +33,21 @@ export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
 }
 
 const internalSettingsDialogOpen$ = state(false);
+const internalExternalProfileModalOpen$ = state(false);
 
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
+
+export const externalProfileModalOpen$ = computed((get) => {
+  return get(internalExternalProfileModalOpen$);
+});
+
+export const setExternalProfileModalOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalExternalProfileModalOpen$, open);
+  },
+);
 
 const internalActiveSection$ = state<SettingsSection>("preference");
 
