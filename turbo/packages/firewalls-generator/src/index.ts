@@ -30,6 +30,7 @@ import { generate as generateBrightData } from "./bright-data";
 import { generate as generateBrowserbase } from "./browserbase";
 import { generate as generateBrowserUse } from "./browser-use";
 import { generate as generateBrowserless } from "./browserless";
+import { generate as generateBubblemaps } from "./bubblemaps";
 import { generate as generateBuffer } from "./buffer";
 import { generate as generateBuiltwith } from "./builtwith";
 import { generate as generateCalCom } from "./cal-com";
@@ -242,6 +243,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   browserbase: generateBrowserbase,
   "browser-use": generateBrowserUse,
   browserless: generateBrowserless,
+  bubblemaps: generateBubblemaps,
   buffer: generateBuffer,
   "cal-com": generateCalCom,
   calendly: generateCalendly,

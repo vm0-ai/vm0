@@ -68,6 +68,7 @@ import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
 import { browserUseFirewall } from "./browser-use.generated";
 import { browserlessFirewall } from "./browserless.generated";
+import { bubblemapsFirewall } from "./bubblemaps.generated";
 import { bufferFirewall } from "./buffer.generated";
 import { builtwithFirewall } from "./builtwith.generated";
 import { calComFirewall } from "./cal-com.generated";
@@ -296,6 +297,7 @@ const CONNECTOR_FIREWALLS = {
   browserbase: browserbaseFirewall,
   "browser-use": browserUseFirewall,
   browserless: browserlessFirewall,
+  bubblemaps: bubblemapsFirewall,
   buffer: bufferFirewall,
   "cal-com": calComFirewall,
   calendly: calendlyFirewall,

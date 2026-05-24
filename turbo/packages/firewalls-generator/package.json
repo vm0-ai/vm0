@@ -47,6 +47,7 @@
     "generate:bright-data": "tsx src/index.ts bright-data",
     "generate:browserbase": "tsx src/index.ts browserbase",
     "generate:browserless": "tsx src/index.ts browserless",
+    "generate:bubblemaps": "tsx src/index.ts bubblemaps",
     "generate:buffer": "tsx src/index.ts buffer",
     "generate:cal-com": "tsx src/index.ts cal-com",
     "generate:calendly": "tsx src/index.ts calendly",

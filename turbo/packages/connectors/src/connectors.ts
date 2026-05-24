@@ -50,6 +50,7 @@ import { browserbase } from "./connectors/browserbase";
 import { browserless } from "./connectors/browserless";
 import { browserstack } from "./connectors/browserstack";
 import { browserUse } from "./connectors/browser-use";
+import { bubblemaps } from "./connectors/bubblemaps";
 import { buffer } from "./connectors/buffer";
 import { builtwith } from "./connectors/builtwith";
 import { calCom } from "./connectors/cal-com";
@@ -609,6 +610,7 @@ const CONNECTOR_TYPES_DEF = {
   ...browserless,
   ...browserstack,
   ...browserUse,
+  ...bubblemaps,
   ...buffer,
   ...builtwith,
   ...calCom,
