@@ -155,6 +155,7 @@ import { generate as generateRailwayProject } from "./railway-project";
 import { generate as generateReddit } from "./reddit";
 import { generate as generateReap } from "./reap";
 import { generate as generateReducto } from "./reducto";
+import { generate as generateRecraft } from "./recraft";
 import { generate as generateReportei } from "./reportei";
 import { generate as generateReplicate } from "./replicate";
 import { generate as generateResend } from "./resend";
@@ -358,6 +359,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "railway-project": generateRailwayProject,
   reddit: generateReddit,
   reap: generateReap,
+  recraft: generateRecraft,
   reportei: generateReportei,
   replicate: generateReplicate,
   resend: generateResend,

@@ -174,6 +174,7 @@ import { railwayProject } from "./connectors/railway-project";
 import { reap } from "./connectors/reap";
 import { reddit } from "./connectors/reddit";
 import { reducto } from "./connectors/reducto";
+import { recraft } from "./connectors/recraft";
 import { replicate } from "./connectors/replicate";
 import { reportei } from "./connectors/reportei";
 import { resend } from "./connectors/resend";
@@ -733,6 +734,7 @@ const CONNECTOR_TYPES_DEF = {
   ...reap,
   ...reddit,
   ...reducto,
+  ...recraft,
   ...replicate,
   ...reportei,
   ...resend,

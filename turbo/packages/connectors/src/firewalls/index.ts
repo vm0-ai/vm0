@@ -196,6 +196,7 @@ import { railwayProjectFirewall } from "./railway-project.generated";
 import { redditFirewall } from "./reddit.generated";
 import { reapFirewall } from "./reap.generated";
 import { reductoFirewall } from "./reducto.generated";
+import { recraftFirewall } from "./recraft.generated";
 import { reporteiFirewall } from "./reportei.generated";
 import { replicateFirewall } from "./replicate.generated";
 import { resendFirewall } from "./resend.generated";
@@ -417,6 +418,7 @@ const CONNECTOR_FIREWALLS = {
   "railway-project": railwayProjectFirewall,
   reddit: redditFirewall,
   reap: reapFirewall,
+  recraft: recraftFirewall,
   reportei: reporteiFirewall,
   replicate: replicateFirewall,
   resend: resendFirewall,
