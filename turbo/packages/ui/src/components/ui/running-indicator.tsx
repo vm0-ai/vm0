@@ -15,7 +15,10 @@ function RunningIndicator({
       aria-label={label}
       className={cn("running-indicator", className)}
       {...rest}
-    />
+    >
+      <span className="running-indicator-center" aria-hidden />
+      <span className="running-indicator-ripple" aria-hidden />
+    </span>
   );
 }
 
