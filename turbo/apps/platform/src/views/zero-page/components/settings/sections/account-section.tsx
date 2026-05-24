@@ -49,7 +49,7 @@ export function AccountSection() {
       </div>
       <Button onClick={handleOpen} disabled={!clerk} className="shrink-0">
         <IconUser size={14} />
-        Manage account
+        Manage
       </Button>
     </div>
   );

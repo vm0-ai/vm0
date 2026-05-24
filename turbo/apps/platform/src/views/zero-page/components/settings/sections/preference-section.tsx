@@ -170,7 +170,7 @@ export function PreferenceSection() {
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
-        <SettingsSectionHeading title="Account" />
+        <SettingsSectionHeading title="Account & Security" />
         <AccountSection />
       </section>
 
