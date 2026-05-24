@@ -10,6 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
@@ -120,7 +121,7 @@ function mockBaseAPIs(options?: {
   setMockTeam(agents);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
     mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
@@ -417,7 +418,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
     setMockTeam([makeDefaultAgent()]);
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads });
+        return respond(200, splitChatThreadListResponse(threads));
       }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {

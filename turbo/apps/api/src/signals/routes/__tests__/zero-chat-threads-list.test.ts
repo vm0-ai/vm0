@@ -24,6 +24,19 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+/**
+ * Flattens the new paged response into a single recency-ordered list so most
+ * tests can keep asserting on a single "this thread shows up" sequence without
+ * caring which segment (pinned vs non-pinned) it landed in. The pin/unpin test
+ * still asserts on the raw segments directly.
+ */
+function allListedThreads<U>(body: {
+  pinned: readonly U[];
+  threads: readonly U[];
+}): readonly U[] {
+  return [...body.pinned, ...body.threads];
+}
+
 async function setLastReadMessageId(
   threadId: string,
   messageId: string | null,
@@ -101,7 +114,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toStrictEqual([]);
+    expect(allListedThreads(response.body)).toStrictEqual([]);
   });
 
   it("lists created threads with id, createdAt, updatedAt fields populated", async () => {
@@ -123,8 +136,8 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(1);
-    const thread = response.body.threads[0]!;
+    expect(allListedThreads(response.body)).toHaveLength(1);
+    const thread = allListedThreads(response.body)[0]!;
     expect(thread.id).toBe(fixture.threadId);
     expect(thread.title).toBe("Listed thread");
     expect(typeof thread.createdAt).toBe("string");
@@ -146,8 +159,8 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(1);
-    expect(response.body.threads[0]!.isRead).toBeTruthy();
+    expect(allListedThreads(response.body)).toHaveLength(1);
+    expect(allListedThreads(response.body)[0]!.isRead).toBeTruthy();
   });
 
   it("reports isRead based on last_read_message_id", async () => {
@@ -194,10 +207,10 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    const readRow = response.body.threads.find((t) => {
+    const readRow = allListedThreads(response.body).find((t) => {
       return t.id === readFixture.threadId;
     });
-    const unreadRow = response.body.threads.find((t) => {
+    const unreadRow = allListedThreads(response.body).find((t) => {
       return t.id === unreadFixture.threadId;
     });
     expect(readRow?.isRead).toBeTruthy();
@@ -256,7 +269,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     );
 
     expect(
-      initial.body.threads.map((t) => {
+      allListedThreads(initial.body).map((t) => {
         return t.id;
       }),
     ).toStrictEqual([newerFixture.threadId, olderFixture.threadId]);
@@ -282,7 +295,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     );
 
     expect(
-      after.body.threads.map((t) => {
+      allListedThreads(after.body).map((t) => {
         return t.id;
       }),
     ).toStrictEqual([olderFixture.threadId, newerFixture.threadId]);
@@ -329,7 +342,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     );
 
     expect(
-      response.body.threads.map((t) => {
+      allListedThreads(response.body).map((t) => {
         return t.id;
       }),
     ).toStrictEqual([secondFixture.threadId, firstFixture.threadId]);
@@ -387,7 +400,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
     expect(
-      baseline.body.threads.map((t) => {
+      allListedThreads(baseline.body).map((t) => {
         return t.id;
       }),
     ).toStrictEqual([
@@ -411,7 +424,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
     expect(
-      afterPin.body.threads.map((t) => {
+      allListedThreads(afterPin.body).map((t) => {
         return t.id;
       }),
     ).toStrictEqual([
@@ -419,7 +432,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       thirdFixture.threadId,
       firstFixture.threadId,
     ]);
-    const pinnedRow = afterPin.body.threads.find((t) => {
+    const pinnedRow = allListedThreads(afterPin.body).find((t) => {
       return t.id === secondFixture.threadId;
     });
     expect(typeof pinnedRow?.pinnedAt).toBe("string");
@@ -438,7 +451,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
     expect(
-      afterUnpin.body.threads.map((t) => {
+      allListedThreads(afterUnpin.body).map((t) => {
         return t.id;
       }),
     ).toStrictEqual([
@@ -446,7 +459,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       secondFixture.threadId,
       firstFixture.threadId,
     ]);
-    const unpinnedRow = afterUnpin.body.threads.find((t) => {
+    const unpinnedRow = allListedThreads(afterUnpin.body).find((t) => {
       return t.id === secondFixture.threadId;
     });
     expect(unpinnedRow?.pinnedAt).toBeNull();
@@ -467,7 +480,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.running).toBeFalsy();
+    expect(allListedThreads(response.body)[0]!.running).toBeFalsy();
   });
 
   it("reports running=true when a run is non-terminal", async () => {
@@ -496,7 +509,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.running).toBeTruthy();
+    expect(allListedThreads(response.body)[0]!.running).toBeTruthy();
   });
 
   it("returns agent.id and agent.avatarUrl for scoped (agentId query) requests", async () => {
@@ -514,9 +527,13 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(1);
-    expect(response.body.threads[0]!.agent.id).toBe(fixture.composeId);
-    expect(response.body.threads[0]!.agent).toHaveProperty("avatarUrl");
+    expect(allListedThreads(response.body)).toHaveLength(1);
+    expect(allListedThreads(response.body)[0]!.agent.id).toBe(
+      fixture.composeId,
+    );
+    expect(allListedThreads(response.body)[0]!.agent).toHaveProperty(
+      "avatarUrl",
+    );
   });
 
   it("reports running=false when all runs reach terminal states", async () => {
@@ -545,7 +562,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.running).toBeFalsy();
+    expect(allListedThreads(response.body)[0]!.running).toBeFalsy();
   });
 
   it("reports hasDraft=false for a thread without draft content", async () => {
@@ -563,7 +580,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.hasDraft).toBeFalsy();
+    expect(allListedThreads(response.body)[0]!.hasDraft).toBeFalsy();
   });
 
   it("reports hasDraft=true when draftContent is non-empty", async () => {
@@ -585,7 +602,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.hasDraft).toBeTruthy();
+    expect(allListedThreads(response.body)[0]!.hasDraft).toBeTruthy();
   });
 
   it("reports hasDraft=true when only draftAttachments are set", async () => {
@@ -618,7 +635,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.hasDraft).toBeTruthy();
+    expect(allListedThreads(response.body)[0]!.hasDraft).toBeTruthy();
   });
 
   it("reports hasDraft=false when draftContent is empty string", async () => {
@@ -640,7 +657,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.hasDraft).toBeFalsy();
+    expect(allListedThreads(response.body)[0]!.hasDraft).toBeFalsy();
   });
 
   it("reports running=true when any run is non-terminal even with a terminal sibling", async () => {
@@ -680,7 +697,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads[0]!.running).toBeTruthy();
+    expect(allListedThreads(response.body)[0]!.running).toBeTruthy();
   });
 
   it("returns pinnedAt and renamedAt as ISO strings when set", async () => {
@@ -708,9 +725,11 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(1);
-    expect(response.body.threads[0]!.pinnedAt).toBe("2025-05-01T10:00:00.000Z");
-    expect(response.body.threads[0]!.renamedAt).toBe(
+    expect(allListedThreads(response.body)).toHaveLength(1);
+    expect(allListedThreads(response.body)[0]!.pinnedAt).toBe(
+      "2025-05-01T10:00:00.000Z",
+    );
+    expect(allListedThreads(response.body)[0]!.renamedAt).toBe(
       "2025-06-01T12:00:00.000Z",
     );
   });
@@ -730,9 +749,9 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(1);
-    expect(response.body.threads[0]!.pinnedAt).toBeNull();
-    expect(response.body.threads[0]!.renamedAt).toBeNull();
+    expect(allListedThreads(response.body)).toHaveLength(1);
+    expect(allListedThreads(response.body)[0]!.pinnedAt).toBeNull();
+    expect(allListedThreads(response.body)[0]!.renamedAt).toBeNull();
   });
 
   it("returns pinned threads before unpinned threads", async () => {
@@ -789,9 +808,9 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(2);
-    expect(response.body.threads[0]!.id).toBe(pinned.threadId);
-    expect(response.body.threads[1]!.id).toBe(unpinned.threadId);
+    expect(allListedThreads(response.body)).toHaveLength(2);
+    expect(allListedThreads(response.body)[0]!.id).toBe(pinned.threadId);
+    expect(allListedThreads(response.body)[1]!.id).toBe(unpinned.threadId);
   });
 });
 
@@ -828,7 +847,7 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
       [200],
     );
 
-    const ids = response.body.threads.map((t) => {
+    const ids = allListedThreads(response.body).map((t) => {
       return t.id;
     });
     expect(ids).toContain(a.threadId);
@@ -850,9 +869,13 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
       [200],
     );
 
-    expect(response.body.threads).toHaveLength(1);
-    expect(response.body.threads[0]!.agent.id).toBe(fixture.composeId);
-    expect(response.body.threads[0]!.agent).toHaveProperty("avatarUrl");
+    expect(allListedThreads(response.body)).toHaveLength(1);
+    expect(allListedThreads(response.body)[0]!.agent.id).toBe(
+      fixture.composeId,
+    );
+    expect(allListedThreads(response.body)[0]!.agent).toHaveProperty(
+      "avatarUrl",
+    );
   });
 
   it("does not leak threads from another org", async () => {
@@ -884,10 +907,122 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
       [200],
     );
 
-    const ids = response.body.threads.map((t) => {
+    const ids = allListedThreads(response.body).map((t) => {
       return t.id;
     });
     expect(ids).toContain(mine.threadId);
     expect(ids).not.toContain(others.threadId);
+  });
+
+  it("returns pinned threads in `pinned` and non-pinned in `threads`", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+
+    const pinnedFixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { userId, orgId, title: "Pinned" },
+        context.signal,
+      ),
+    );
+    const unpinnedFixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { userId, orgId, title: "Unpinned" },
+        context.signal,
+      ),
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .update(chatThreads)
+      .set({ pinnedAt: nowDate() })
+      .where(eq(chatThreads.id, pinnedFixture.threadId));
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(chatThreadsContract);
+    const response = await accept(
+      client.list({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.pinned.map((t) => {
+        return t.id;
+      }),
+    ).toStrictEqual([pinnedFixture.threadId]);
+    expect(
+      response.body.threads.map((t) => {
+        return t.id;
+      }),
+    ).toStrictEqual([unpinnedFixture.threadId]);
+    expect(response.body.totalCount).toBe(1);
+    expect(response.body.hasMore).toBeFalsy();
+    expect(response.body.nextCursor).toBeNull();
+  });
+
+  it("caps the non-pinned segment at `limit` and reports hasMore + nextCursor when there's overflow", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+
+    // Seed 3 non-pinned threads with distinct createdAt so ordering is stable.
+    for (let i = 0; i < 3; i += 1) {
+      await track(
+        store.set(
+          seedZeroChatThread$,
+          {
+            userId,
+            orgId,
+            title: `T${i}`,
+            createdAt: new Date(`2025-01-0${i + 1}T00:00:00.000Z`),
+          },
+          context.signal,
+        ),
+      );
+    }
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(chatThreadsContract);
+    const firstPage = await accept(
+      client.list({
+        query: { limit: 2 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(firstPage.body.threads).toHaveLength(2);
+    expect(firstPage.body.hasMore).toBeTruthy();
+    expect(firstPage.body.nextCursor).not.toBeNull();
+    expect(firstPage.body.totalCount).toBe(3);
+
+    const secondPage = await accept(
+      client.list({
+        query: {
+          limit: 2,
+          cursor: firstPage.body.nextCursor!,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(secondPage.body.threads).toHaveLength(1);
+    expect(secondPage.body.hasMore).toBeFalsy();
+    expect(secondPage.body.nextCursor).toBeNull();
+    // Pinned segment is omitted on cursor pages.
+    expect(secondPage.body.pinned).toStrictEqual([]);
+
+    const allIds = [
+      ...firstPage.body.threads.map((t) => {
+        return t.id;
+      }),
+      ...secondPage.body.threads.map((t) => {
+        return t.id;
+      }),
+    ];
+    expect(new Set(allIds).size).toBe(3);
   });
 });

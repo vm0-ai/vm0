@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 /**
  * Agent-scoped chat-threads sidebar behaviour after unified-list removal.
  */
@@ -50,8 +51,9 @@ function mockThreads(observedQueries: ListQuery[]) {
   server.use(
     mockApi(chatThreadsContract.list, ({ query, respond }) => {
       observedQueries.push({ agentId: query.agentId });
-      return respond(200, {
-        threads: [
+      return respond(
+        200,
+        splitChatThreadListResponse([
           {
             id: "thread-default",
             title: "Default thread",
@@ -61,8 +63,8 @@ function mockThreads(observedQueries: ListQuery[]) {
             isRead: true,
             running: false,
           },
-        ],
-      });
+        ]),
+      );
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {

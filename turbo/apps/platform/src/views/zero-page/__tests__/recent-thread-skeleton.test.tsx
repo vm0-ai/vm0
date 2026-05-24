@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
@@ -41,8 +42,9 @@ function mockAgentsWithThreads() {
   ]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        threads: [
+      return respond(
+        200,
+        splitChatThreadListResponse([
           {
             id: THREAD_ID,
             title: "My test conversation",
@@ -52,8 +54,8 @@ function mockAgentsWithThreads() {
             isRead: false,
             running: false,
           },
-        ],
-      });
+        ]),
+      );
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -97,7 +99,13 @@ describe("recent thread skeleton (#7546)", () => {
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
     );
 

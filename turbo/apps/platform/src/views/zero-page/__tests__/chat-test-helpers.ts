@@ -97,7 +97,13 @@ export function mockSubagentThread(threadId: string) {
       });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: [] });
+      return respond(200, {
+        pinned: [],
+        threads: [],
+        hasMore: false,
+        nextCursor: null,
+        totalCount: 0,
+      });
     }),
     mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
@@ -162,6 +168,43 @@ interface ThreadListItem {
   updatedAt: string;
   isRead: boolean;
   running: boolean;
+  pinnedAt?: string | null;
+}
+
+type PagedThreadItem = ThreadListItem & {
+  hasDraft?: boolean;
+  pinnedAt?: string | null;
+  renamedAt?: string | null;
+};
+
+/**
+ * Splits a flat ThreadListItem array into the new paged response shape that
+ * the chatThreadsContract.list endpoint returns. Pinned items go to `pinned`,
+ * the rest to `threads`; pagination metadata defaults to "no more pages"
+ * since fixtures rarely care about cursor mechanics.
+ */
+export function splitChatThreadListResponse(
+  threads: readonly PagedThreadItem[],
+): {
+  pinned: PagedThreadItem[];
+  threads: PagedThreadItem[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  totalCount: number;
+} {
+  const pinned = threads.filter((t) => {
+    return t.pinnedAt !== null && t.pinnedAt !== undefined;
+  });
+  const nonPinned = threads.filter((t) => {
+    return t.pinnedAt === null || t.pinnedAt === undefined;
+  });
+  return {
+    pinned,
+    threads: nonPinned,
+    hasMore: false,
+    nextCursor: null,
+    totalCount: nonPinned.length,
+  };
 }
 
 interface MockLifecycleControl {
@@ -511,7 +554,7 @@ export function mockChatLifecycle(options?: {
       });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: threadList });
+      return respond(200, splitChatThreadListResponse(threadList));
     }),
     mockApi(chatThreadsContract.create, ({ body, respond }) => {
       threadId = body.clientThreadId ?? threadId;
