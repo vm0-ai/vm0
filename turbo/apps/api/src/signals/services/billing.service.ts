@@ -87,6 +87,20 @@ export const updateAutoRechargeConfig$ = command(
     const writeDb = set(writeDb$);
 
     if (enabled) {
+      const [row] = await writeDb
+        .select({ tier: orgMetadata.tier })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      const orgTier = row?.tier ?? "free";
+      if (orgTier === "free") {
+        return {
+          ok: false,
+          error: "Auto-recharge is only available for paid plans (Pro/Max)",
+        };
+      }
       if (threshold === undefined || amount === undefined) {
         return {
           ok: false,

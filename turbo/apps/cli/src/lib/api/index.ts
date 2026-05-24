@@ -57,7 +57,6 @@ export {
 // Domain modules - Zero Billing
 export {
   getZeroBillingStatus,
-  updateZeroBillingAutoRecharge,
   createZeroCreditCheckout,
 } from "./domains/zero-billing";
 

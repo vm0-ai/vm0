@@ -993,6 +993,14 @@ const ZERO_BILLING_CHECKOUT_NEXT_NEGATIVE_PATHS = [
   "/api/zero/billing/checkout/extra",
   "/api/zero/billing/checkout-session",
 ] as const;
+const ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE =
+  "/api/zero/billing/credit-checkout";
+const ZERO_BILLING_CREDIT_CHECKOUT_PATH = "/api/zero/billing/credit-checkout";
+const ZERO_BILLING_CREDIT_CHECKOUT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/billing",
+  "/api/zero/billing/credit-checkout/extra",
+  "/api/zero/billing/credit-checkout-session",
+] as const;
 const ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE = "/api/zero/billing/downgrade";
 const ZERO_BILLING_DOWNGRADE_PATH = "/api/zero/billing/downgrade";
 const ZERO_BILLING_DOWNGRADE_NEXT_NEGATIVE_PATHS = [
@@ -2498,6 +2506,11 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_BILLING_CHECKOUT_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/billing/checkout",
+        },
+        {
+          source: ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/billing/credit-checkout",
         },
         {
           source: ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE,
@@ -6849,6 +6862,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero billing credit checkout rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/billing/credit-checkout",
+    });
+
+    const matcher = getPathMatch(ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_BILLING_CREDIT_CHECKOUT_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_BILLING_CREDIT_CHECKOUT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero billing downgrade rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -9097,6 +9133,15 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero billing checkout path", () => {
     expect(matchesApiBackendRewritePath(ZERO_BILLING_CHECKOUT_PATH)).toBe(true);
     for (const pathname of ZERO_BILLING_CHECKOUT_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero billing credit checkout path", () => {
+    expect(
+      matchesApiBackendRewritePath(ZERO_BILLING_CREDIT_CHECKOUT_PATH),
+    ).toBe(true);
+    for (const pathname of ZERO_BILLING_CREDIT_CHECKOUT_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
