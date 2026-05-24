@@ -1279,6 +1279,30 @@ mod tests {
     }
 
     #[test]
+    fn pending_exec_control_returns_inactive_when_operation_drops() {
+        let forward_nonce = unique_test_nonce(17);
+
+        let registry = ExecControlRegistry::default();
+        let registration = registry.register(17, forward_nonce, true).unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload =
+            vsock_proto::encode_exec_control(17, forward_nonce, "msg-drop", b"payload", 5000)
+                .unwrap();
+
+        handle_exec_control(33, &payload, &registry, &writer).unwrap();
+        drop(registration);
+
+        let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
+        assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
+        assert_eq!(seq, 33);
+        assert_eq!(status, ExecControlStatus::Inactive);
+        assert_eq!(message_id, "msg-drop");
+        assert_eq!(diagnostic, "exec operation is not active");
+    }
+
+    #[test]
     fn exec_control_queue_full_rejects_without_leaking_pending_slots() {
         let sink = Arc::new(ControlSinkState::new());
         let (guest, _host) = UnixStream::pair().unwrap();
