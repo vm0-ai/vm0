@@ -31,7 +31,6 @@ import {
   gt,
   gte,
   ilike,
-  inArray,
   isNotNull,
   isNull,
   lt,
@@ -565,65 +564,68 @@ function chatThreadMessages(
   );
 }
 
-function latestSessionIdForThread(
+// Single zero_runs JOIN agent_runs scan used to derive activeRuns,
+// latestSessionId, and latestRunProviderType in JS. Replaces three near-
+// identical queries that each paid the same join cost on the hot
+// chat-thread detail path. Rows are ordered newest-first so the latest-N
+// scans below match the previous LIMIT semantics.
+const ACTIVE_RUN_STATUSES: readonly string[] = ["queued", "pending", "running"];
+const LATEST_SESSION_ID_SCAN_DEPTH = 5;
+
+interface ThreadRunSummaryRow {
+  readonly id: string;
+  readonly modelProvider: string | null;
+  readonly status: string;
+  readonly result: unknown;
+}
+
+function threadRunSummaries(
   threadId: string,
-): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    const rows = await get(db$)
+): Computed<Promise<readonly ThreadRunSummaryRow[]>> {
+  return computed(async (get): Promise<readonly ThreadRunSummaryRow[]> => {
+    return await get(db$)
       .select({
+        id: zeroRuns.id,
+        modelProvider: zeroRuns.modelProvider,
+        status: agentRuns.status,
         result: agentRuns.result,
       })
       .from(zeroRuns)
       .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
       .where(eq(zeroRuns.chatThreadId, threadId))
-      .orderBy(desc(agentRuns.createdAt))
-      .limit(5);
+      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id));
+  });
+}
 
-    for (const row of rows) {
-      if (hasAgentSessionId(row.result)) {
-        return row.result.agentSessionId;
-      }
+function pickActiveRuns(
+  rows: readonly ThreadRunSummaryRow[],
+): readonly { readonly id: string; readonly status: string }[] {
+  const active: { id: string; status: string }[] = [];
+  for (const row of rows) {
+    if (ACTIVE_RUN_STATUSES.includes(row.status)) {
+      active.push({ id: row.id, status: row.status });
     }
-    return null;
-  });
+  }
+  return active;
 }
 
-function latestRunProviderTypeForThread(
-  threadId: string,
-): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    const [row] = await get(db$)
-      .select({ modelProvider: zeroRuns.modelProvider })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(zeroRuns.chatThreadId, threadId))
-      .orderBy(desc(agentRuns.createdAt))
-      .limit(1);
-    return row?.modelProvider ?? null;
-  });
+function pickLatestSessionId(
+  rows: readonly ThreadRunSummaryRow[],
+): string | null {
+  const limit = Math.min(rows.length, LATEST_SESSION_ID_SCAN_DEPTH);
+  for (let i = 0; i < limit; i++) {
+    const row = rows[i]!;
+    if (hasAgentSessionId(row.result)) {
+      return row.result.agentSessionId;
+    }
+  }
+  return null;
 }
 
-function activeRunsForThread(
-  threadId: string,
-): Computed<
-  Promise<readonly { readonly id: string; readonly status: string }[]>
-> {
-  return computed(
-    async (
-      get,
-    ): Promise<readonly { readonly id: string; readonly status: string }[]> => {
-      return await get(db$)
-        .select({ id: zeroRuns.id, status: agentRuns.status })
-        .from(zeroRuns)
-        .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-        .where(
-          and(
-            eq(zeroRuns.chatThreadId, threadId),
-            inArray(agentRuns.status, ["queued", "pending", "running"]),
-          ),
-        );
-    },
-  );
+function pickLatestRunProviderType(
+  rows: readonly ThreadRunSummaryRow[],
+): string | null {
+  return rows[0]?.modelProvider ?? null;
 }
 
 export function zeroChatThreadDetail(args: {
@@ -636,19 +638,14 @@ export function zeroChatThreadDetail(args: {
       return null;
     }
 
-    const [
-      messages,
-      activeRuns,
-      latestSessionId,
-      latestRunProviderTypeRaw,
-      modelPin,
-    ] = await Promise.all([
+    const [messages, runSummaries, modelPin] = await Promise.all([
       get(chatThreadMessages(args.threadId, args.userId)),
-      get(activeRunsForThread(args.threadId)),
-      get(latestSessionIdForThread(args.threadId)),
-      get(latestRunProviderTypeForThread(args.threadId)),
+      get(threadRunSummaries(args.threadId)),
       get(effectiveModelFirstThreadPin({ thread, userId: args.userId })),
     ]);
+    const activeRuns = pickActiveRuns(runSummaries);
+    const latestSessionId = pickLatestSessionId(runSummaries);
+    const latestRunProviderTypeRaw = pickLatestRunProviderType(runSummaries);
 
     return {
       id: thread.id,
