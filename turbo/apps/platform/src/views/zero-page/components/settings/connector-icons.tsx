@@ -162,6 +162,7 @@ const CONNECTOR_ICON_COLORFUL = {
   qiita: true,
   reap: true,
   reddit: true,
+  rentcast: true,
   reportei: true,
   salesforce: true,
   serpapi: true,
