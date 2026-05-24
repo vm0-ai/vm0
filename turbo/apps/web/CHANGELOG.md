@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.385.2](https://github.com/vm0-ai/vm0/compare/web-v12.385.1...web-v12.385.2) (2026-05-24)
+
+
+### Refactoring
+
+* remove connector oauth provider adapter ([#14659](https://github.com/vm0-ai/vm0/issues/14659)) ([7d6cff9](https://github.com/vm0-ai/vm0/commit/7d6cff9d712aa9dd1eb3ac410b3c1e7fb9dc366d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.38.4
+    * @vm0/connectors bumped to 1.31.1
+    * @vm0/core bumped to 8.292.1
+    * @vm0/db bumped to 1.18.5
+
 ## [12.385.1](https://github.com/vm0-ai/vm0/compare/web-v12.385.0...web-v12.385.1) (2026-05-24)
 
 

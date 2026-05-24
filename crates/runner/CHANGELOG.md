@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.103.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.13...runner-rs-v0.103.14) (2026-05-24)
+
+
+### Bug Fixes
+
+* **mitm-addon:** filter empty x fallback id segments ([#14658](https://github.com/vm0-ai/vm0/issues/14658)) ([db9cbee](https://github.com/vm0-ai/vm0/commit/db9cbee1fb8e97b4e6a587291564aeeb33acf3ff))
+
 ## [0.103.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.12...runner-rs-v0.103.13) (2026-05-24)
 
 
