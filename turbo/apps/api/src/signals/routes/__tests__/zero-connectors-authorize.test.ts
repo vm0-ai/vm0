@@ -625,6 +625,48 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     );
     expect(revokeBody).toContain('"access_token":"gh-access-token"');
   });
+
+  it("skips provider revoke for OAuth connectors without revoke support", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    const db = store.set(writeDb$);
+    const [connector] = await db
+      .insert(connectors)
+      .values({ orgId, userId, type: "notion", authMethod: "oauth" })
+      .returning({ id: connectors.id });
+    expect(connector).toBeDefined();
+    await db.insert(secrets).values({
+      orgId,
+      userId,
+      name: "NOTION_ACCESS_TOKEN",
+      type: "connector",
+      encryptedValue: "invalid-encrypted-token",
+    });
+
+    let revokeCalled = false;
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/revoke", () => {
+        revokeCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    mocks.clerk.session(userId, orgId);
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("notion"), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+
+    expect(response.status).toBe(307);
+    expect(revokeCalled).toBeFalsy();
+    const survivors = await db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.id, connector!.id));
+    expect(survivors).toHaveLength(0);
+  });
 });
 
 describe("POST /api/zero/connectors/:type/oauth/start", () => {
