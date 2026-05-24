@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.379.2](https://github.com/vm0-ai/vm0/compare/app-v0.379.1...app-v0.379.2) (2026-05-24)
+
+
+### Refactoring
+
+* remove chat thread search from sidebar and chat list ([#14664](https://github.com/vm0-ai/vm0/issues/14664)) ([8481e49](https://github.com/vm0-ai/vm0/commit/8481e496d068dbbce9e0e7d25caf752f2072171e))
+
 ## [0.379.1](https://github.com/vm0-ai/vm0/compare/app-v0.379.0...app-v0.379.1) (2026-05-24)
 
 
