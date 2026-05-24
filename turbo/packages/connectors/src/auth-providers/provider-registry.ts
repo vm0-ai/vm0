@@ -1,6 +1,3 @@
-import type { ConnectorType } from "../connectors";
-import type { ConnectorAuthProvider } from "./provider-types";
-
 type AuthProviderSecretAccess =
   | {
       readonly kind: "none";
@@ -27,8 +24,6 @@ export type AuthProviderSecretMetadata =
       readonly isRefreshable: true;
     };
 
-export type ConnectorAuthSecretMetadata = AuthProviderSecretMetadata;
-
 export function getAuthProviderSecretMetadata(
   provider: AuthProviderWithSecretMetadata,
 ): AuthProviderSecretMetadata {
@@ -48,10 +43,4 @@ export function getAuthProviderSecretMetadata(
         isRefreshable: true,
       };
   }
-}
-
-export function getConnectorAuthSecretMetadata<T extends ConnectorType>(
-  provider: ConnectorAuthProvider<T>,
-): ConnectorAuthSecretMetadata {
-  return getAuthProviderSecretMetadata(provider);
 }

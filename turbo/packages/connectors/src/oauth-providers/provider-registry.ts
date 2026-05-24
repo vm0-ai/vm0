@@ -13,8 +13,8 @@ import {
   type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import {
-  getConnectorAuthSecretMetadata,
-  type ConnectorAuthSecretMetadata,
+  getAuthProviderSecretMetadata,
+  type AuthProviderSecretMetadata,
 } from "../auth-providers/provider-registry";
 import type {
   AuthCodeConnectorAuthProvider,
@@ -111,7 +111,7 @@ type DeviceAuthConnectorOAuthProviderMap = {
   readonly [Type in OAuthDeviceAuthConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
-export type ConnectorOAuthSecretMetadata = ConnectorAuthSecretMetadata;
+export type ConnectorOAuthSecretMetadata = AuthProviderSecretMetadata;
 
 function deviceAuthConnectorProviderFor<T extends OAuthDeviceAuthConnectorType>(
   type: T,
@@ -230,12 +230,12 @@ export function getConnectorOAuthSecretMetadata(
   }
 
   if (isOAuthAuthCodeConnectorType(type)) {
-    return getConnectorAuthSecretMetadata(
+    return getAuthProviderSecretMetadata(
       AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type],
     );
   }
 
-  return getConnectorAuthSecretMetadata(
+  return getAuthProviderSecretMetadata(
     DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type],
   );
 }

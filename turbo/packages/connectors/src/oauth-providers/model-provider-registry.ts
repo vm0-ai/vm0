@@ -29,12 +29,6 @@ export function isModelProviderOAuthProviderKey(
   return Object.hasOwn(MODEL_PROVIDER_OAUTH_PROVIDERS, providerKey);
 }
 
-function modelProviderOAuthProviderFor(
-  providerKey: ModelProviderOAuthProviderKey,
-): ModelProviderAuthProvider {
-  return MODEL_PROVIDER_OAUTH_PROVIDERS[providerKey];
-}
-
 export function getModelProviderOAuthSecretMetadata(
   providerKey: ModelProviderOAuthProviderKey,
 ): ModelProviderOAuthSecretMetadata;
@@ -49,7 +43,7 @@ export function getModelProviderOAuthSecretMetadata(
   }
 
   return getAuthProviderSecretMetadata(
-    modelProviderOAuthProviderFor(providerKey),
+    MODEL_PROVIDER_OAUTH_PROVIDERS[providerKey],
   );
 }
 
@@ -57,7 +51,7 @@ export function isModelProviderOAuthRefreshConfigured(args: {
   readonly providerKey: ModelProviderOAuthProviderKey;
   readonly currentEnv: ProviderEnv;
 }): boolean {
-  const access = modelProviderOAuthProviderFor(args.providerKey).access;
+  const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
 
   switch (access.kind) {
     case "none":
@@ -73,7 +67,7 @@ export async function refreshModelProviderOAuthToken(args: {
   readonly currentEnv: ProviderEnv;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  const access = modelProviderOAuthProviderFor(args.providerKey).access;
+  const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
 
   switch (access.kind) {
     case "none":
