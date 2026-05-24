@@ -170,6 +170,22 @@ function SectionContent({ section }: { section: SettingsSection }) {
   return <Component />;
 }
 
+function isClerkModalTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return (
+    target.closest(
+      [
+        "[data-clerk-user-profile]",
+        "[data-clerk-modal]",
+        '[class*="cl-userProfile"]',
+        '[class*="cl-modal"]',
+      ].join(","),
+    ) !== null
+  );
+}
+
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
@@ -195,7 +211,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
+      <DialogContent
+        className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
+        onInteractOutside={(event) => {
+          if (isClerkModalTarget(event.target)) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Manage your account, preferences, workspace, and billing settings.
