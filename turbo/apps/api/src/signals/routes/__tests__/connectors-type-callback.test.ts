@@ -6,7 +6,7 @@ import {
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
-import { testOauthProvider } from "@vm0/connectors/oauth-providers/providers/test-oauth-provider";
+import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";

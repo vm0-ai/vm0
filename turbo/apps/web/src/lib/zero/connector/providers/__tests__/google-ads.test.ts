@@ -5,7 +5,7 @@ import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
 import { isOAuthConnectorType } from "@vm0/connectors/auth-providers";
-import { googleAdsProvider } from "@vm0/connectors/oauth-providers/providers/google-ads-provider";
+import { googleAdsProvider } from "@vm0/connectors/auth-providers/oauth/providers/google-ads-provider";
 
 const context = testContext();
 const TOKEN_URL = "https://oauth2.googleapis.com/token";

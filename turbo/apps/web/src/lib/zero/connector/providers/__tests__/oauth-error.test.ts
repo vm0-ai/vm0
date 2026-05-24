@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { throwOAuthError } from "@vm0/connectors/oauth-providers/providers/oauth-error";
+import { throwOAuthError } from "@vm0/connectors/auth-providers/oauth/error";
 
 function makeResponse(status: number, body: string): Response {
   return new Response(body, { status, statusText: "Bad Request" });

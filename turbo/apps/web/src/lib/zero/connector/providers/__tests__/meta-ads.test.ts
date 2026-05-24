@@ -9,8 +9,8 @@ import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
   getMetaAdsSecretName,
-} from "@vm0/connectors/oauth-providers/providers/meta-ads";
-import { metaAdsProvider } from "@vm0/connectors/oauth-providers/providers/meta-ads-provider";
+} from "@vm0/connectors/auth-providers/oauth/providers/meta-ads";
+import { metaAdsProvider } from "@vm0/connectors/auth-providers/oauth/providers/meta-ads-provider";
 
 const TOKEN_URL = "https://graph.facebook.com/v22.0/oauth/access_token";
 const USER_URL = "https://graph.facebook.com/v22.0/me";

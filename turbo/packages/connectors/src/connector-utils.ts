@@ -20,7 +20,7 @@ import {
   type OAuthDeviceAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
-export { isGoogleOAuthConnector } from "./oauth-providers/google-oauth-connectors";
+export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
 
 /**
  * Connector utility vocabulary:
