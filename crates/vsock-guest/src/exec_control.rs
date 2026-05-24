@@ -233,6 +233,10 @@ fn start_control_sink_accept_thread(endpoint: &str, sink: Arc<ControlSinkState>)
 
 impl ExecControlGuard {
     pub(crate) fn release(&self) {
+        self.release_once();
+    }
+
+    fn release_once(&self) {
         if !self.released.swap(true, Ordering::AcqRel) {
             self.registry.remove(self.seq);
         }
@@ -241,9 +245,7 @@ impl ExecControlGuard {
 
 impl Drop for ExecControlGuard {
     fn drop(&mut self) {
-        if !self.released.swap(true, Ordering::AcqRel) {
-            self.registry.remove(self.seq);
-        }
+        self.release_once();
     }
 }
 
@@ -876,6 +878,17 @@ mod tests {
 
         assert_eq!(status, ExecControlStatus::Inactive);
         assert_eq!(diagnostic, "exec operation is not active");
+    }
+
+    #[test]
+    fn dropped_operation_allows_sequence_reuse() {
+        let registry = ExecControlRegistry::default();
+        {
+            let _registration = registry.register(7, NONCE, false).unwrap();
+            assert!(registry.register(7, *b"fedcba9876543210", false).is_err());
+        }
+
+        assert!(registry.register(7, NONCE, false).is_ok());
     }
 
     #[test]
