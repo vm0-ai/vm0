@@ -1,7 +1,7 @@
 import {
   getAuthProviderSecretMetadata,
   type AuthProviderSecretMetadata,
-} from "../auth-providers/provider-registry";
+} from "../auth-providers/secret-metadata";
 import type { ModelProviderAuthProvider } from "../auth-providers/provider-types";
 import type { OAuthRefreshResult, ProviderEnv } from "./provider-types";
 import { codexOauthProvider } from "./providers/codex-oauth-provider";

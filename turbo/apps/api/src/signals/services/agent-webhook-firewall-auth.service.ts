@@ -13,7 +13,7 @@ import {
   isOAuthConnectorType,
   refreshConnectorOAuthToken,
   type ProviderEnv,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import {
   getModelProviderOAuthSecretMetadata,
   isModelProviderOAuthRefreshConfigured,

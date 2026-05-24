@@ -52,9 +52,9 @@
       "import": "./src/github-url.ts",
       "types": "./src/github-url.ts"
     },
-    "./oauth-providers": {
-      "import": "./src/oauth-providers/provider-registry.ts",
-      "types": "./src/oauth-providers/provider-registry.ts"
+    "./auth-providers": {
+      "import": "./src/auth-providers/provider-registry.ts",
+      "types": "./src/auth-providers/provider-registry.ts"
     },
     "./oauth-providers/*": {
       "import": "./src/oauth-providers/*.ts",

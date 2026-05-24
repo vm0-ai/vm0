@@ -4,7 +4,7 @@ import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
-import { isOAuthConnectorType } from "@vm0/connectors/oauth-providers";
+import { isOAuthConnectorType } from "@vm0/connectors/auth-providers";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,

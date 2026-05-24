@@ -20,7 +20,7 @@ import {
   isOAuthConnectorType,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import type {
   OAuthDeviceAuthCompleteResult,
   OAuthDeviceAuthPollResult,

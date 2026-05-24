@@ -6,7 +6,7 @@ import {
   isStaticConfidentialConnectorOAuthCredentials,
   type StaticConfidentialConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
-import { exchangeConnectorOAuthCode } from "@vm0/connectors/oauth-providers";
+import { exchangeConnectorOAuthCode } from "@vm0/connectors/auth-providers";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,

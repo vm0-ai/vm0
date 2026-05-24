@@ -20,7 +20,7 @@ import {
   getConnectorOAuthSecretMetadata,
   isOAuthConnectorType,
   revokeConnectorOAuthToken,
-} from "@vm0/connectors/oauth-providers";
+} from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
