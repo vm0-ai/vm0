@@ -89,6 +89,7 @@ const CONNECTOR_ICON_COLORFUL = {
   cloudflare: true,
   cloudinary: true,
   coda: true,
+  coresignal: true,
   cronlytic: true,
   "customer-io": true,
   deepseek: true,
