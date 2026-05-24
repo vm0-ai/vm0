@@ -273,14 +273,19 @@ def _fetch_firewall_headers_sync(
                 error_body = json.loads(e.read())
             except (json.JSONDecodeError, OSError):
                 raise e from None
-            error_info = error_body.get("error", {})
+            if not isinstance(error_body, dict):
+                raise e from None
+            error_info = error_body.get("error")
+            if not isinstance(error_info, dict):
+                raise e from None
+            error_message = error_info.get("message")
             if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
                 raise ConnectorNotConfiguredError(
-                    error_info.get("message", "Connector not configured"),
+                    error_message if isinstance(error_message, str) else "Connector not configured",
                 ) from None
             if error_info.get("code") == "INSUFFICIENT_CREDITS":
                 raise InsufficientCreditsError(
-                    error_info.get("message", "Insufficient credits"),
+                    error_message if isinstance(error_message, str) else "Insufficient credits",
                 ) from None
             raise
 

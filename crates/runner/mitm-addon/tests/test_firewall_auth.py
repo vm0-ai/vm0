@@ -1116,6 +1116,59 @@ class TestFetchFirewallHeaders:
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
+    @pytest.mark.parametrize(
+        "error_body",
+        [
+            b'"plain string"',
+            b"[1, 2, 3]",
+            json.dumps({"error": "not-a-dict"}).encode(),
+            json.dumps({"error": None}).encode(),
+        ],
+    )
+    def test_malformed_http_error_envelope_reraises_http_error(self, error_body: bytes):
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            error_body,
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value is http_error
+
+    def test_connector_not_configured_with_non_string_message_uses_default(self):
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": None,
+                    "code": "CONNECTOR_NOT_CONFIGURED",
+                }
+            }
+        ).encode()
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            424,
+            "Failed Dependency",
+            error_body,
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(auth.ConnectorNotConfiguredError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert str(exc_info.value) == "Connector not configured"
+
     def test_closes_response_on_success(self):
         """Success path must close the urlopen response — FD leak guard (#10475)."""
         mock_resp = MagicMock()
