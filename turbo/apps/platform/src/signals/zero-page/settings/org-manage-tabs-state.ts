@@ -5,17 +5,12 @@ import {
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
-import { zeroOrgDomainsContract } from "@vm0/api-contracts/contracts/zero-org-domains";
-import type {
-  OrgEnrollmentMode,
-  OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
+import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
-import { refreshOrgDomains$ } from "../../external/org-domains.ts";
 import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
@@ -26,7 +21,6 @@ export type OrgManageTab =
   | "general"
   | "providers"
   | "members"
-  | "domains"
   | "billing"
   | "usage"
   | "invoices";
@@ -293,59 +287,6 @@ export const setRevokeInvitationDialogTarget$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-domains-tab: AddDomainDialog
-// ---------------------------------------------------------------------------
-
-const internalAddDomainDialogOpen$ = state(false);
-
-export const addDomainDialogOpen$ = computed((get) => {
-  return get(internalAddDomainDialogOpen$);
-});
-
-export const setAddDomainDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalAddDomainDialogOpen$, open);
-});
-
-const internalAddDomainName$ = state("");
-
-export const addDomainName$ = computed((get) => {
-  return get(internalAddDomainName$);
-});
-
-export const setAddDomainName$ = command(({ set }, value: string) => {
-  set(internalAddDomainName$, value);
-});
-
-const internalAddDomainEnrollmentMode$ =
-  state<OrgEnrollmentMode>("manual_invitation");
-
-export const addDomainEnrollmentMode$ = computed((get) => {
-  return get(internalAddDomainEnrollmentMode$);
-});
-
-export const setAddDomainEnrollmentMode$ = command(
-  ({ set }, value: OrgEnrollmentMode) => {
-    set(internalAddDomainEnrollmentMode$, value);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// org-domains-tab: DomainRow remove dialog (keyed by domain id)
-// ---------------------------------------------------------------------------
-
-const internalRemoveDomainDialogTarget$ = state<string | null>(null);
-
-export const removeDomainDialogTarget$ = computed((get) => {
-  return get(internalRemoveDomainDialogTarget$);
-});
-
-export const setRemoveDomainDialogTarget$ = command(
-  ({ set }, target: string | null) => {
-    set(internalRemoveDomainDialogTarget$, target);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // org-general-tab: ProfileSection saveError
 // ---------------------------------------------------------------------------
 
@@ -509,74 +450,5 @@ export const rejectRequest$ = command(
     signal.throwIfAborted();
     toast.success("Membership request rejected");
     set(refreshOrgMembers$);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// org-domains-tab: async commands
-// ---------------------------------------------------------------------------
-
-export const addDomain$ = command(
-  async (
-    { get, set },
-    name: string,
-    enrollmentMode: OrgEnrollmentMode,
-    signal: AbortSignal,
-  ) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroOrgDomainsContract);
-    await accept(
-      client.add({
-        body: { name, enrollmentMode },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    toast.success(`Domain ${name} added`);
-    set(refreshOrgDomains$);
-    set(internalAddDomainDialogOpen$, false);
-    set(internalAddDomainName$, "");
-    set(internalAddDomainEnrollmentMode$, "manual_invitation");
-  },
-);
-
-export const removeDomain$ = command(
-  async ({ get, set }, domainId: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroOrgDomainsContract);
-    await accept(
-      client.remove({
-        body: { domainId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    toast.success("Domain removed");
-    set(refreshOrgDomains$);
-    set(internalRemoveDomainDialogTarget$, null);
-  },
-);
-
-export const setDomainVerified$ = command(
-  async (
-    { get, set },
-    domainId: string,
-    verified: boolean,
-    signal: AbortSignal,
-  ) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroOrgDomainsContract);
-    await accept(
-      client.setVerified({
-        body: { domainId, verified },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    toast.success(verified ? "Domain verified" : "Domain unverified");
-    set(refreshOrgDomains$);
   },
 );

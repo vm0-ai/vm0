@@ -111,62 +111,6 @@ export type UpdateOrgMemberRoleRequest = z.infer<
 >;
 
 /**
- * Org domain schema
- */
-export const orgDomainSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  enrollmentMode: z.string(),
-  verification: z.object({
-    status: z.string(),
-    strategy: z.string(),
-  }),
-  createdAt: z.string(),
-});
-export type OrgDomain = z.infer<typeof orgDomainSchema>;
-
-/**
- * Org domains response schema
- */
-export const orgDomainsResponseSchema = z.object({
-  domains: z.array(orgDomainSchema),
-});
-export type OrgDomainsResponse = z.infer<typeof orgDomainsResponseSchema>;
-
-/**
- * Add domain request schema
- */
-const orgEnrollmentModeSchema = z.enum([
-  "manual_invitation",
-  "automatic_invitation",
-  "automatic_suggestion",
-]);
-export type OrgEnrollmentMode = z.infer<typeof orgEnrollmentModeSchema>;
-
-export const addDomainRequestSchema = z.object({
-  name: z.string(),
-  enrollmentMode: orgEnrollmentModeSchema,
-});
-export type AddDomainRequest = z.infer<typeof addDomainRequestSchema>;
-
-/**
- * Domain action request schema (for delete)
- */
-export const domainActionRequestSchema = z.object({
-  domainId: z.string(),
-});
-export type DomainActionRequest = z.infer<typeof domainActionRequestSchema>;
-
-/**
- * Domain verify/unverify request schema
- */
-export const domainVerifyRequestSchema = z.object({
-  domainId: z.string(),
-  verified: z.boolean(),
-});
-export type DomainVerifyRequest = z.infer<typeof domainVerifyRequestSchema>;
-
-/**
  * Simple message response schema
  */
 export const orgMessageResponseSchema = z.object({

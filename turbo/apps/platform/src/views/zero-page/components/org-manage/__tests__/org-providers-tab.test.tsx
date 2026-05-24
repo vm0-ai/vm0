@@ -26,6 +26,8 @@ import {
 } from "../../../../../mocks/handlers/api-org-model-providers.ts";
 import { resetMockOrgModelPolicies } from "../../../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../../../mocks/handlers/api-feature-switches.helpers.ts";
+import { setOrgManageDialogOpen$ } from "../../../../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveOrgManageTab$ } from "../../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =
@@ -94,7 +96,9 @@ beforeEach(() => {
 });
 
 async function openProvidersPage(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=providers" });
+  detachedSetupPage({ context });
+  context.store.set(setActiveOrgManageTab$, "providers");
+  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

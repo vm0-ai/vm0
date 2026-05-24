@@ -21,13 +21,11 @@ import {
   IconCreditCard,
   IconCoins,
   IconFileInvoice,
-  IconWorldWww,
 } from "@tabler/icons-react";
 
 import { OrgGeneralTab } from "./org-general-tab.tsx";
 import { OrgProvidersTab } from "./org-providers-tab.tsx";
 import { OrgMembersTab } from "./org-members-tab.tsx";
-import { OrgDomainsTab } from "./org-domains-tab.tsx";
 import { OrgBillingTab } from "./org-billing-tab.tsx";
 import { OrgUsageTab } from "./org-usage-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
@@ -60,10 +58,6 @@ const TAB_META = {
     title: "Members",
     description: "Manage who has access to this workspace.",
   },
-  domains: {
-    title: "Domains",
-    description: "Manage verified domains for your workspace.",
-  },
   billing: {
     title: "Billing",
     description: "Manage your plan and payment method.",
@@ -93,23 +87,16 @@ const BILLING_GROUP = {
   ],
 } as const satisfies SidebarGroup;
 
-function getConfigurationGroup(): SidebarGroup {
-  return {
-    label: "Configuration",
-    items: [
-      {
-        id: "providers",
-        label: "Models",
-        icon: IconCpu as NavIcon,
-      },
-      {
-        id: "domains",
-        label: "Domains",
-        icon: IconWorldWww as NavIcon,
-      },
-    ],
-  };
-}
+const CONFIGURATION_GROUP = {
+  label: "Configuration",
+  items: [
+    {
+      id: "providers",
+      label: "Models",
+      icon: IconCpu as NavIcon,
+    },
+  ],
+} as const satisfies SidebarGroup;
 
 const BASE_SIDEBAR_GROUPS = [
   {
@@ -131,9 +118,6 @@ const TAB_COMPONENTS = {
   },
   members: () => {
     return <OrgMembersTab />;
-  },
-  domains: () => {
-    return <OrgDomainsTab />;
   },
   billing: () => {
     return <OrgBillingTab />;
@@ -160,7 +144,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
   const sidebarGroups = [
     ...BASE_SIDEBAR_GROUPS.slice(0, 1),
-    ...(isAdmin ? [getConfigurationGroup()] : []),
+    ...(isAdmin ? [CONFIGURATION_GROUP] : []),
     ...BASE_SIDEBAR_GROUPS.slice(1),
     ...(isAdmin ? [BILLING_GROUP] : []),
   ];

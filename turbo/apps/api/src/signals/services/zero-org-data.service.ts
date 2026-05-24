@@ -10,7 +10,6 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import type {
-  OrgDomainsResponse,
   OrgMessageResponse,
   OrgMember,
   OrgMembersResponse,
@@ -29,21 +28,6 @@ const clerkOrgIdentitySchema = z.object({
   slug: z.string().nullable().optional(),
   name: z.string().nullable().optional(),
   createdBy: z.string().nullable().optional(),
-});
-
-const clerkDomainDataSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  enrollment_mode: z.string().optional(),
-  enrollmentMode: z.string().optional(),
-  created_at: z.number().optional(),
-  createdAt: z.number().optional(),
-  verification: z
-    .object({
-      status: z.string(),
-      strategy: z.string(),
-    })
-    .optional(),
 });
 
 interface OrgIdentity {
@@ -724,40 +708,6 @@ export function zeroOrgList(
         };
       }),
       active: undefined,
-    };
-  });
-}
-
-export function zeroOrgDomainsList(
-  orgId: string,
-): Computed<Promise<OrgDomainsResponse>> {
-  return computed(async (get): Promise<OrgDomainsResponse> => {
-    const client = get(clerk$);
-    const domains = await client.organizations.getOrganizationDomainList({
-      organizationId: orgId,
-    });
-
-    return {
-      domains: domains.data.map((domain) => {
-        const parsed = clerkDomainDataSchema.parse(domain);
-        const enrollmentMode =
-          parsed.enrollment_mode ?? parsed.enrollmentMode ?? "";
-        const createdAtMs = parsed.created_at ?? parsed.createdAt;
-        return {
-          id: parsed.id,
-          name: parsed.name,
-          enrollmentMode,
-          verification: parsed.verification
-            ? {
-                status: parsed.verification.status,
-                strategy: parsed.verification.strategy,
-              }
-            : { status: "unverified", strategy: "email_code" },
-          createdAt: createdAtMs
-            ? new Date(createdAtMs).toISOString()
-            : new Date(0).toISOString(),
-        };
-      }),
     };
   });
 }

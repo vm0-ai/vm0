@@ -38,11 +38,8 @@ export interface ApiTestMocks {
     readonly authenticateRequest: AsyncMock;
     readonly verifyWebhook: AsyncMock;
     readonly organizations: {
-      readonly createOrganizationDomain: AsyncMock;
-      readonly deleteOrganizationDomain: AsyncMock;
       readonly createOrganizationInvitation: AsyncMock;
       readonly getOrganization: AsyncMock;
-      readonly getOrganizationDomainList: AsyncMock;
       readonly getOrganizationInvitationList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
       readonly deleteOrganizationMembership: AsyncMock;
@@ -50,7 +47,6 @@ export interface ApiTestMocks {
       readonly revokeOrganizationInvitation: AsyncMock;
       readonly deleteOrganization: AsyncMock;
       readonly updateOrganization: AsyncMock;
-      readonly updateOrganizationDomain: AsyncMock;
       readonly updateOrganizationMembership: AsyncMock;
       readonly updateOrganizationLogo: AsyncMock;
     };
@@ -213,15 +209,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     authenticateRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     verifyWebhook: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     organizations: {
-      createOrganizationDomain:
-        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      deleteOrganizationDomain:
-        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createOrganizationInvitation:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      getOrganizationDomainList:
-        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationInvitationList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
@@ -233,8 +223,6 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       deleteOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       updateOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      updateOrganizationDomain:
-        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       updateOrganizationMembership:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       updateOrganizationLogo: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -855,11 +843,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiomLogging.flush.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
   apiTestMocks.clerk.verifyWebhook.mockReset();
-  apiTestMocks.clerk.organizations.createOrganizationDomain.mockReset();
-  apiTestMocks.clerk.organizations.deleteOrganizationDomain.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationInvitation.mockReset();
   apiTestMocks.clerk.organizations.getOrganization.mockReset();
-  apiTestMocks.clerk.organizations.getOrganizationDomainList.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationInvitationList.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.organizations.deleteOrganizationLogo.mockReset();
@@ -867,7 +852,6 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.revokeOrganizationInvitation.mockReset();
   apiTestMocks.clerk.organizations.deleteOrganization.mockReset();
   apiTestMocks.clerk.organizations.updateOrganization.mockReset();
-  apiTestMocks.clerk.organizations.updateOrganizationDomain.mockReset();
   apiTestMocks.clerk.organizations.updateOrganizationMembership.mockReset();
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
