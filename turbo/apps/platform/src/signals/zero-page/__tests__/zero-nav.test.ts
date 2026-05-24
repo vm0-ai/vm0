@@ -207,50 +207,6 @@ describe("zero-nav", () => {
   });
 
   describe("handleZeroAccountAction$", () => {
-    it("should navigate to settings for 'preferences' action", async () => {
-      context.store.set(setRootSignal$, context.signal);
-      createPushStateMock(context.signal);
-      mockLocation({ pathname: "/", search: "" }, context.signal);
-      const noop$ = command(() => {
-        return void 0;
-      });
-      await context.store.set(
-        initRoutes$,
-        [
-          { path: "/", setup: noop$ },
-          { path: "/settings", setup: noop$ },
-          { path: "{/*path}", setup: noop$ },
-        ],
-        context.signal,
-      );
-
-      context.store.set(handleZeroAccountAction$, "preferences");
-
-      expect(context.store.get(activeRoute$)).toBe("settings");
-    });
-
-    it("should navigate to usage for 'usage' action", async () => {
-      context.store.set(setRootSignal$, context.signal);
-      createPushStateMock(context.signal);
-      mockLocation({ pathname: "/", search: "" }, context.signal);
-      const noop$ = command(() => {
-        return void 0;
-      });
-      await context.store.set(
-        initRoutes$,
-        [
-          { path: "/", setup: noop$ },
-          { path: "/usage", setup: noop$ },
-          { path: "{/*path}", setup: noop$ },
-        ],
-        context.signal,
-      );
-
-      context.store.set(handleZeroAccountAction$, "usage");
-
-      expect(context.store.get(activeRoute$)).toBe("usage");
-    });
-
     it("should navigate to lab for 'lab' action", async () => {
       context.store.set(setRootSignal$, context.signal);
       createPushStateMock(context.signal);
@@ -277,14 +233,6 @@ describe("zero-nav", () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
       context.store.set(handleZeroAccountAction$, "signout");
-
-      expect(context.store.get(activeRoute$)).toBe("schedules");
-    });
-
-    it("should do nothing for 'manage' action", () => {
-      mockLocation({ pathname: "/schedules", search: "" }, context.signal);
-
-      context.store.set(handleZeroAccountAction$, "manage");
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });

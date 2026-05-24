@@ -1,9 +1,6 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { homeAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
@@ -13,12 +10,7 @@ export const setupHomePage$ = command(
       return;
     }
 
-    const features = get(featureSwitch$);
-    if (features[FeatureSwitchKey.UnifiedSettings]) {
-      await set(checkUnifiedSettingsParam$, signal);
-    } else {
-      await set(checkSettingsParam$, signal);
-    }
+    await set(checkUnifiedSettingsParam$, signal);
 
     // Redirect bare / to /agents/:id/chat. Use-case "Try It" deep links go
     // through /onboarding directly (see buildPromptHref in use-cases/data.ts),

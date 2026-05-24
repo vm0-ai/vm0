@@ -392,13 +392,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.UnifiedSettings]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the org-manage dialog and bottom-left Preferences/Manage account entries with a single unified settings dialog. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.AgentsPageSplitSections]: {
     maintainer: "ethan@vm0.ai",
     description:

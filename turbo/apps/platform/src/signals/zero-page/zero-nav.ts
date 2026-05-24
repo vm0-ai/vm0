@@ -108,32 +108,11 @@ export const handleZeroNavSelect$ = command(
   },
 );
 
-export type ZeroAccountAction =
-  | "preferences"
-  | "manage"
-  | "apiKeys"
-  | "usage"
-  | "lab"
-  | "signout";
+export type ZeroAccountAction = "lab" | "signout";
 
 export const handleZeroAccountAction$ = command(
   ({ set }, action: ZeroAccountAction) => {
     set(internalSidebarExpanded$, false);
-    if (action === "signout" || action === "manage") {
-      return;
-    }
-    if (action === "preferences") {
-      set(detachedNavigateTo$, ROUTES.settings);
-      return;
-    }
-    if (action === "apiKeys") {
-      set(detachedNavigateTo$, ROUTES.settingsApiKeys);
-      return;
-    }
-    if (action === "usage") {
-      set(detachedNavigateTo$, ROUTES.usage);
-      return;
-    }
     if (action === "lab") {
       set(detachedNavigateTo$, ROUTES.lab);
     }

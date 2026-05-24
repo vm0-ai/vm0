@@ -2,16 +2,12 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
 import {
-  IconAdjustmentsHorizontal,
-  IconUser,
   IconLogout,
   IconPlus,
   IconChevronRight,
   IconSettings,
   IconSwitchHorizontal,
   IconDatabaseExport,
-  IconKey,
-  IconChartBar,
   IconFlask,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -190,62 +186,6 @@ function CurrentAccountHeader({
   );
 }
 
-function PreferencesGroup({
-  hidePreferences,
-  labEnabled,
-  onAccountAction,
-}: {
-  hidePreferences: boolean;
-  labEnabled: boolean;
-  onAccountAction: (action: ZeroAccountAction) => void;
-}) {
-  if (hidePreferences) {
-    return null;
-  }
-  return (
-    <>
-      <DropdownMenuItem
-        onClick={() => {
-          return onAccountAction("preferences");
-        }}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
-        <IconAdjustmentsHorizontal
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
-        <span>Preferences</span>
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        onClick={() => {
-          return onAccountAction("usage");
-        }}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
-        <IconChartBar
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
-        <span>Usage</span>
-      </DropdownMenuItem>
-      {labEnabled && (
-        <DropdownMenuItem
-          onClick={() => {
-            return onAccountAction("lab");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>Lab</span>
-        </DropdownMenuItem>
-      )}
-      <DropdownMenuSeparator />
-    </>
-  );
-}
-
 function UnifiedSettingsGroup({
   labEnabled,
   onAccountAction,
@@ -359,62 +299,33 @@ function AccountManagementGroup({
 }
 
 function ExtraAccountActions({
-  apiKeysEnabled,
   showExportData,
-  hideManageAndApiKeys,
   apiBase,
-  onAccountAction,
 }: {
-  apiKeysEnabled: boolean;
   showExportData: boolean;
-  hideManageAndApiKeys: boolean;
   apiBase: string | undefined;
-  onAccountAction: (action: ZeroAccountAction) => void;
 }) {
+  if (!showExportData) {
+    return null;
+  }
   return (
-    <>
-      {!hideManageAndApiKeys && (
-        <DropdownMenuItem
-          onClick={() => {
-            return onAccountAction("manage");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>Manage account</span>
-        </DropdownMenuItem>
-      )}
-      {!hideManageAndApiKeys && apiKeysEnabled && (
-        <DropdownMenuItem
-          onClick={() => {
-            return onAccountAction("apiKeys");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconKey size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>API Keys</span>
-        </DropdownMenuItem>
-      )}
-      {showExportData && (
-        <DropdownMenuItem
-          disabled={!apiBase}
-          onClick={() => {
-            if (!apiBase) {
-              return;
-            }
-            return window.open(`${apiBase}/export`, "_blank");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconDatabaseExport
-            size={18}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-          <span>Export data</span>
-        </DropdownMenuItem>
-      )}
-    </>
+    <DropdownMenuItem
+      disabled={!apiBase}
+      onClick={() => {
+        if (!apiBase) {
+          return;
+        }
+        return window.open(`${apiBase}/export`, "_blank");
+      }}
+      className="gap-3 px-3 py-2.5 rounded-lg"
+    >
+      <IconDatabaseExport
+        size={18}
+        stroke={1.5}
+        className="text-muted-foreground"
+      />
+      <span>Export data</span>
+    </DropdownMenuItem>
   );
 }
 
@@ -452,9 +363,7 @@ export function AccountDropdown({
   const features = useLastResolved(featureSwitch$);
   const apiBase = useLastResolved(apiBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
-  const apiKeysEnabled = features?.[FeatureSwitchKey.ApiKeys] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
-  const unifiedSettings = features?.[FeatureSwitchKey.UnifiedSettings] ?? false;
   const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
 
@@ -474,10 +383,6 @@ export function AccountDropdown({
         clerk?.signOut({ sessionId, redirectUrl: signInUrl }),
         Reason.DomCallback,
       );
-      return;
-    }
-    if (action === "manage") {
-      detach(clerk?.openUserProfile(), Reason.DomCallback);
       return;
     }
     onAccountAction?.(action);
@@ -522,19 +427,11 @@ export function AccountDropdown({
           display={accountDisplay}
           visible={current !== undefined || user !== undefined}
         />
-        {unifiedSettings ? (
-          !hidePreferences && (
-            <UnifiedSettingsGroup
-              labEnabled={labEnabled}
-              onAccountAction={handleAccountAction}
-              onOpenSettings={handleOpenSettings}
-            />
-          )
-        ) : (
-          <PreferencesGroup
-            hidePreferences={hidePreferences}
+        {!hidePreferences && (
+          <UnifiedSettingsGroup
             labEnabled={labEnabled}
             onAccountAction={handleAccountAction}
+            onOpenSettings={handleOpenSettings}
           />
         )}
         <AccountManagementGroup
@@ -543,11 +440,8 @@ export function AccountDropdown({
           onAddAccount={handleAddAccount}
         />
         <ExtraAccountActions
-          apiKeysEnabled={apiKeysEnabled}
           showExportData={showExportData}
-          hideManageAndApiKeys={unifiedSettings}
           apiBase={apiBase}
-          onAccountAction={handleAccountAction}
         />
         <DropdownMenuSeparator />
         <SignOutItem onAccountAction={handleAccountAction} />
