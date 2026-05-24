@@ -44,6 +44,7 @@ import { generate as generateClerk } from "./clerk";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateCoda } from "./coda";
 import { generate as generateCronlytic } from "./cronlytic";
+import { generate as generateCrustdata } from "./crustdata";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
@@ -254,6 +255,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   cloudflare: generateCloudflare,
   coda: generateCoda,
   cronlytic: generateCronlytic,
+  crustdata: generateCrustdata,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
   deepseek: generateDeepseek,

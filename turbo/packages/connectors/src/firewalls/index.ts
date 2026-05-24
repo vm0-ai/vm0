@@ -81,6 +81,7 @@ import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
+import { crustdataFirewall } from "./crustdata.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
@@ -308,6 +309,7 @@ const CONNECTOR_FIREWALLS = {
   cloudflare: cloudflareFirewall,
   coda: codaFirewall,
   cronlytic: cronlyticFirewall,
+  crustdata: crustdataFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
   deepseek: deepseekFirewall,
