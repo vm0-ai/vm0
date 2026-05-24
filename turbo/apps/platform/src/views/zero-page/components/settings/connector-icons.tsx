@@ -90,6 +90,7 @@ const CONNECTOR_ICON_COLORFUL = {
   cloudinary: true,
   coda: true,
   cronlytic: true,
+  crustdata: true,
   "customer-io": true,
   deepseek: true,
   doubao: true,
