@@ -493,7 +493,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm -F api exec vitest bench --run
+        run: pnpm -F api exec vitest bench --run --outputJson bench-results.json
       - name: Upload bench results
         if: success() || failure()
         uses: actions/upload-artifact@v4

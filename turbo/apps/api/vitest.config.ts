@@ -8,8 +8,6 @@ export default defineConfig({
     exclude: ["node_modules/**", "dist/**", "**/__benches__/**"],
     benchmark: {
       include: ["src/**/__benches__/**/*.bench.ts"],
-      reporters: ["default", "json"],
-      outputJson: "bench-results.json",
     },
   },
 });
