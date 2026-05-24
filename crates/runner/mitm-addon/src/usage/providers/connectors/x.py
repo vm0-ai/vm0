@@ -9,7 +9,7 @@ import json
 import urllib.parse
 import uuid
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import TypedDict
 
 from mitmproxy import http
@@ -241,15 +241,21 @@ def create_json_response_extractor() -> XJsonResponseExtractor:
     return XJsonResponseExtractor()
 
 
+def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:
+    count = sum(1 for value in values for segment in value.split(",") if segment.strip())
+    return count or None
+
+
 def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
     """Extract billing-relevant query params from an X API request.
 
     Returns a dict with:
       - ``request_ids_count``: int | None — total comma-separated count
         across all ``?ids=`` and ``?usernames=`` params (None when both
-        are absent).  ``usernames`` is folded in because ``GET /2/users/by``
-        uses it instead of ``ids`` for batch user lookup; both signal the
-        same "this many resources" billing dimension.
+        are absent or contain no non-empty segments).  ``usernames`` is
+        folded in because ``GET /2/users/by`` uses it instead of ``ids`` for
+        batch user lookup; both signal the same "this many resources" billing
+        dimension.
       - ``has_expansions``: bool — whether ``?expansions=`` is present.
       - ``max_results``: int | None — value of ``?max_results=``, used
         as an upper-bound fallback when the response body cannot be parsed.
@@ -263,7 +269,7 @@ def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
     parsed = urllib.parse.urlparse(flow.metadata.get("original_url", ""))
     qs = urllib.parse.parse_qs(parsed.query)
     id_like_values = qs.get("ids", []) + qs.get("usernames", [])
-    ids_count = sum(len(v.split(",")) for v in id_like_values) if id_like_values else None
+    ids_count = _count_non_empty_comma_segments(id_like_values)
     max_values = qs.get("max_results", [])
     max_results: int | None = None
     if max_values:
