@@ -1121,8 +1121,10 @@ class TestFetchFirewallHeaders:
         [
             b'"plain string"',
             b"[1, 2, 3]",
+            b"{}",
             json.dumps({"error": "not-a-dict"}).encode(),
             json.dumps({"error": None}).encode(),
+            json.dumps({"error": {}}).encode(),
         ],
     )
     def test_malformed_http_error_envelope_reraises_http_error(self, error_body: bytes):
