@@ -384,14 +384,22 @@ export async function refreshConnectorOAuthToken<
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  return await refreshTokenAccess({
-    type: args.type,
-    access: connectorAccessProviderFor(connectorProviderFor(args.type)),
-    refreshArgs: {
-      ...connectorCredentialArgs(args.credentials),
-      refreshToken: args.refreshToken,
-    } as ConnectorOAuthRefreshArgs<T>,
-  });
+  const access = connectorAccessProviderFor(connectorProviderFor(args.type));
+
+  switch (access.kind) {
+    case "none":
+      throw new Error(`${args.type} OAuth provider does not support refresh`);
+
+    case "refresh-token":
+      return await refreshTokenAccess({
+        type: args.type,
+        access,
+        refreshArgs: {
+          ...connectorCredentialArgs(args.credentials),
+          refreshToken: args.refreshToken,
+        } as ConnectorOAuthRefreshArgs<T>,
+      });
+  }
 }
 
 /**

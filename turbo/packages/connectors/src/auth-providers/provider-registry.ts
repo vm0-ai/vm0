@@ -20,7 +20,7 @@ import type {
   AuthCodeConnectorAuthProvider,
   ConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
-  OAuthConnectorAccessProvider,
+  RefreshTokenAccessProvider,
 } from "./provider-types";
 
 export type ConnectorAuthSecretMetadata =
@@ -101,16 +101,8 @@ export async function pollDeviceAuthGrant<
 
 export async function refreshTokenAccess<T extends OAuthConnectorType>(args: {
   readonly type: T;
-  readonly access: OAuthConnectorAccessProvider<T>;
+  readonly access: RefreshTokenAccessProvider<T>;
   readonly refreshArgs: ConnectorOAuthRefreshArgs<T>;
 }): Promise<OAuthRefreshResult> {
-  const access = args.access;
-
-  switch (access.kind) {
-    case "none":
-      throw new Error(`${args.type} OAuth provider does not support refresh`);
-
-    case "refresh-token":
-      return await access.refreshToken(args.refreshArgs);
-  }
+  return await args.access.refreshToken(args.refreshArgs);
 }
