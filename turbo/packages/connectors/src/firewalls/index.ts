@@ -85,6 +85,7 @@ import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
 import { deelFirewall } from "./deel.generated";
+import { defillamaFirewall } from "./defillama.generated";
 import { devtoFirewall } from "./devto.generated";
 import { diffbotFirewall } from "./diffbot.generated";
 import { difyFirewall } from "./dify.generated";
@@ -310,6 +311,7 @@ const CONNECTOR_FIREWALLS = {
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
+  defillama: defillamaFirewall,
   deepseek: deepseekFirewall,
   doubao: doubaoFirewall,
   devto: devtoFirewall,

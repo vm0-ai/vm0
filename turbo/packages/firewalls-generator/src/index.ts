@@ -48,6 +48,7 @@ import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
 import { generate as generateDeel } from "./deel";
+import { generate as generateDefillama } from "./defillama";
 import { generate as generateDevto } from "./devto";
 import { generate as generateDiffbot } from "./diffbot";
 import { generate as generateDify } from "./dify";
@@ -256,6 +257,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   cronlytic: generateCronlytic,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
+  defillama: generateDefillama,
   deepseek: generateDeepseek,
   doubao: generateDoubao,
   devto: generateDevto,

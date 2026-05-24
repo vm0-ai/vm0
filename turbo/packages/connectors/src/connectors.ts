@@ -69,6 +69,7 @@ import { cronlytic } from "./connectors/cronlytic";
 import { customerIo } from "./connectors/customer-io";
 import { db9 } from "./connectors/db9";
 import { deel } from "./connectors/deel";
+import { defillama } from "./connectors/defillama";
 import { deepseek } from "./connectors/deepseek";
 import { devto } from "./connectors/devto";
 import { diffbot } from "./connectors/diffbot";
@@ -628,6 +629,7 @@ const CONNECTOR_TYPES_DEF = {
   ...customerIo,
   ...db9,
   ...deel,
+  ...defillama,
   ...deepseek,
   ...devto,
   ...diffbot,
