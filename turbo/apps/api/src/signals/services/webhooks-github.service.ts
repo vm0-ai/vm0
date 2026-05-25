@@ -1113,7 +1113,7 @@ export const handleGithubIssueCommentEvent$ = command(
 
 const dispatchGithubAgentRun$ = command(
   async (
-    { get, set },
+    { set },
     params: DispatchParams,
     signal: AbortSignal,
   ): Promise<void> => {
