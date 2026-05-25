@@ -249,8 +249,6 @@ export {
   generateWebVoice,
   generateWebImage,
   generateWebVideo,
-  generateWebPresentation,
-  generateWebWebsite,
 } from "./domains/web";
 
 // Domain modules - Zero Host

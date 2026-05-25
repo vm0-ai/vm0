@@ -8,7 +8,6 @@ import type {
   ZeroBuiltInGenerationAcceptedResponse,
   ZeroBuiltInGenerationResponse,
 } from "@vm0/api-contracts/contracts/zero-built-in-generation";
-import type { ZeroWebsiteIoGenerateResponse } from "@vm0/api-contracts/contracts/zero-website-io-generate";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 
@@ -344,53 +343,6 @@ function generateWebVideoPayload(
     ["lastFrameImageUrl", options.lastFrameImageUrl],
   ]);
 }
-
-interface GenerateWebPresentationOptions {
-  prompt: string;
-  style?: string;
-  slideCount?: number;
-  imageCount?: number;
-  imageModel?: string;
-  theme?: string;
-  audience?: string;
-  title?: string;
-}
-
-interface GenerateWebPresentationResult {
-  id: string;
-  filename: string;
-  contentType: string;
-  size: number;
-  url: string;
-  creditsCharged: number;
-  model: string;
-  style: string;
-  theme: string;
-  slideCount: number;
-  imageCount: number;
-  imageModel: string;
-  imageUrls: string[];
-  imageCreditsCharged: number;
-  textCreditsCharged: number;
-  title: string;
-  responseId?: string;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  };
-}
-
-interface GenerateWebWebsiteOptions {
-  prompt: string;
-  template?: string;
-  imageCount?: number;
-  imageModel?: string;
-  title?: string;
-  audience?: string;
-}
-
-type GenerateWebWebsiteResult = ZeroWebsiteIoGenerateResponse;
 
 interface PrepareUploadResponse {
   id: string;
@@ -1001,122 +953,5 @@ export async function generateWebVideo(
     baseUrl,
     token,
     fallback: "Failed to generate video",
-  });
-}
-
-/**
- * Generate a billed HTML presentation from a prompt and receive the permanent
- * /f URL. Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT
- * / Clerk session.
- */
-export async function generateWebPresentation(
-  options: GenerateWebPresentationOptions,
-): Promise<GenerateWebPresentationResult> {
-  const baseUrl = await getBaseUrl();
-  const token = await getActiveToken();
-  if (!token) {
-    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
-  }
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
-
-  const response = await fetch(
-    new URL("/api/zero/presentation-io/generate", baseUrl),
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        prompt: options.prompt,
-        ...(options.style ? { style: options.style } : {}),
-        ...(options.slideCount !== undefined
-          ? { slideCount: options.slideCount }
-          : {}),
-        ...(options.imageCount !== undefined
-          ? { imageCount: options.imageCount }
-          : {}),
-        ...(options.imageModel ? { imageModel: options.imageModel } : {}),
-        ...(options.theme ? { theme: options.theme } : {}),
-        ...(options.audience ? { audience: options.audience } : {}),
-        ...(options.title ? { title: options.title } : {}),
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const { message, code } = await parseErrorBody(
-      response,
-      "Failed to generate presentation",
-    );
-    throw new ApiRequestError(message, code, response.status);
-  }
-
-  return readBuiltInGenerationResponse<GenerateWebPresentationResult>({
-    response,
-    baseUrl,
-    token,
-    fallback: "Failed to generate presentation",
-  });
-}
-
-/**
- * Generate structured website template content from a prompt. The CLI builds
- * and publishes the generated content through zero host.
- */
-export async function generateWebWebsite(
-  options: GenerateWebWebsiteOptions,
-): Promise<GenerateWebWebsiteResult> {
-  const baseUrl = await getBaseUrl();
-  const token = await getActiveToken();
-  if (!token) {
-    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
-  }
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
-
-  const response = await fetch(
-    new URL("/api/zero/website-io/generate", baseUrl),
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        prompt: options.prompt,
-        ...(options.template ? { template: options.template } : {}),
-        ...(options.imageCount !== undefined
-          ? { imageCount: options.imageCount }
-          : {}),
-        ...(options.imageModel ? { imageModel: options.imageModel } : {}),
-        ...(options.title ? { title: options.title } : {}),
-        ...(options.audience ? { audience: options.audience } : {}),
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const { message, code } = await parseErrorBody(
-      response,
-      "Failed to generate website",
-    );
-    throw new ApiRequestError(message, code, response.status);
-  }
-
-  return readBuiltInGenerationResponse<GenerateWebWebsiteResult>({
-    response,
-    baseUrl,
-    token,
-    fallback: "Failed to generate website",
   });
 }
