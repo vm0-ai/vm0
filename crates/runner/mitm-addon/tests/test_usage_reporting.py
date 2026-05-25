@@ -1705,7 +1705,14 @@ class TestResponseUsageReporting:
 
         mock_opener.open.assert_not_called()
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        assert "Model provider JSON usage extraction failed" in proxy_log.read_text()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        usage_warnings = [
+            entry
+            for entry in entries
+            if entry.get("message") == "Model provider JSON usage extraction failed"
+        ]
+        assert len(usage_warnings) == 1
+        assert usage_warnings[0]["error"] == "incomplete json"
 
     def test_full_pipeline_corrupt_model_json_encoding_does_not_fallback_to_raw_buffer(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
