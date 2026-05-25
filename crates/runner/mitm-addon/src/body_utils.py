@@ -223,6 +223,38 @@ def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
     return body
 
 
+def _decompress_zlib_json_usage_body(
+    data: bytes, encoding: Literal["gzip", "deflate"], max_output: int
+) -> tuple[bytes, str | None]:
+    wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+    remaining_data = data
+    out = bytearray()
+
+    while remaining_data:
+        if len(out) >= max_output:
+            return bytes(out), None
+
+        obj = zlib.decompressobj(wbits)
+        try:
+            decoded = obj.decompress(remaining_data, max_length=max_output - len(out))
+        except zlib.error as exc:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            return data, None
+
+        out.extend(decoded)
+        if not obj.eof:
+            if data and not out:
+                return bytes(out), "incomplete compressed body"
+            return bytes(out), None
+        if not obj.unused_data:
+            return bytes(out), None
+        remaining_data = obj.unused_data
+
+    return bytes(out), None
+
+
 def decompress_json_usage_body(
     data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
 ) -> tuple[bytes, str | None]:
@@ -236,18 +268,7 @@ def decompress_json_usage_body(
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if encoding in ("gzip", "deflate"):
-        try:
-            wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-            obj = zlib.decompressobj(wbits)
-            body = obj.decompress(data, max_length=max_output)
-        except zlib.error as exc:
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-            return data, None
-        if data and not body and not obj.eof:
-            return body, "incomplete compressed body"
-        return body, None
+        return _decompress_zlib_json_usage_body(data, encoding, max_output)
     if encoding == "br":
         try:
             body, finished = _decompress_brotli_bounded_with_finished(data, max_output)
