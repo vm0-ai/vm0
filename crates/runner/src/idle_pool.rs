@@ -911,6 +911,26 @@ mod tests {
         }
     }
 
+    async fn make_idle_destroy_payload(overrides: Arc<MockSandboxOverrides>) -> IdleDestroyPayload {
+        let sandbox_id = SandboxId::new_v4();
+        let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
+            MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        ));
+        let sandbox = factory
+            .create(SandboxConfig {
+                id: sandbox_id,
+                resources: ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+                device_rate_limits: None,
+            })
+            .await
+            .expect("create sandbox");
+
+        IdleDestroyPayload { sandbox, factory }
+    }
+
     async fn make_idle_park_request(
         overrides: Arc<MockSandboxOverrides>,
         session_id: &str,
@@ -941,6 +961,32 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
         })
+    }
+
+    #[tokio::test]
+    async fn idle_destroy_payload_stop_error_completes_after_destroy() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_stop_result(Err(sandbox::SandboxError::Start {
+            message: "simulated idle stop failure".into(),
+        }));
+        let payload = make_idle_destroy_payload(Arc::clone(&overrides)).await;
+
+        let outcome = payload.stop_and_destroy().await;
+
+        assert_eq!(outcome, DestroyOutcome::Completed);
+        assert_eq!(overrides.destroy_call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn idle_destroy_payload_stop_panic_is_uncertain_after_destroy() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_stop_panic("simulated idle stop panic");
+        let payload = make_idle_destroy_payload(Arc::clone(&overrides)).await;
+
+        let outcome = payload.stop_and_destroy().await;
+
+        assert_eq!(outcome, DestroyOutcome::Uncertain);
+        assert_eq!(overrides.destroy_call_count(), 1);
     }
 
     #[tokio::test]
