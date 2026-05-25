@@ -24,6 +24,7 @@ import {
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
   getConnectorOAuthFlow,
+  getEligibleConnectorTypes,
   getRuntimeAvailableConnectorTypes,
   isOAuthAuthCodeConnectorType,
   isOAuthDeviceAuthConnectorType,
@@ -828,6 +829,15 @@ describe("getAvailableConnectorAuthMethods", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes Lark API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethods("lark", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethods("lark", {
+        [FeatureSwitchKey.LarkConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
+
   it("exposes Doubao API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethods("doubao", {})).toStrictEqual([
       "api-token",
@@ -838,6 +848,12 @@ describe("getAvailableConnectorAuthMethods", () => {
     expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([
       "api-token",
     ]);
+  });
+});
+
+describe("getEligibleConnectorTypes", () => {
+  it("excludes Lark while every auth method is feature-gated", () => {
+    expect(getEligibleConnectorTypes()).not.toContain("lark");
   });
 });
 

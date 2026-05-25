@@ -202,6 +202,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable remote desktop host registration",
     enabled: false,
   },
+  [FeatureSwitchKey.LarkConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the Lark connector while tenant access-token exchange is being repaired.",
+    enabled: false,
+  },
   [FeatureSwitchKey.LocalBrowserUse]: {
     maintainer: "ethan@vm0.ai",
     description:

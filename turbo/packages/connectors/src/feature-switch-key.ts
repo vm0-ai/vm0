@@ -36,6 +36,7 @@ export enum FeatureSwitchKey {
   GitHubIntegration = "githubIntegration",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
+  LarkConnector = "larkConnector",
   LocalBrowserUse = "localBrowserUse",
   LocalAgentConnector = "localAgentConnector",
   Lab = "lab",
