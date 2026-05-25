@@ -485,7 +485,7 @@ def response(flow: http.HTTPFlow) -> None:
                 )
             if json_usage:
                 flow.metadata["model_provider_usage"] = json_usage
-            elif json_error:
+            elif json_error is not None:
                 log_proxy_entry(
                     proxy_log_path,
                     "warn",

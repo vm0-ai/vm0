@@ -281,7 +281,11 @@ def extract_openai_responses_usage_with_error_from_json(
 def extract_openai_responses_usage_from_json(
     body: bytes, headers: http.Headers | None
 ) -> dict | None:
-    """Extract usage from a complete non-streaming Responses JSON body."""
+    """Extract usage from a complete non-streaming Responses JSON body.
+
+    This compatibility wrapper keeps the original best-effort ``dict | None``
+    contract for callers that do not need parser error details.
+    """
 
     usage, _error = extract_openai_responses_usage_with_error_from_json(body, headers)
     return usage
