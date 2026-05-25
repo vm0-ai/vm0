@@ -2,8 +2,7 @@ import type {
   ArtifactSnapshotsPayload,
   VolumeVersionsSnapshot,
 } from "../../lib/infra/checkpoint/types";
-import { getAuthContext } from "../../lib/auth/get-auth-context";
-import { resolveOrg } from "../../lib/zero/org/resolve-org";
+import { getTestAuthContext } from "./core";
 import {
   markTestRunCompletedFromCheckpoint,
   markTestRunFailed,
@@ -54,14 +53,10 @@ export async function createTestRun(
   prompt: string,
   options?: CreateTestRunOptions,
 ): Promise<{ runId: string; status: string; sessionId?: string }> {
-  const authCtx = await getAuthContext();
-  if (!authCtx) {
-    throw new Error("Failed to create test run: not authenticated");
-  }
-  const { org } = await resolveOrg(authCtx);
-  const { runId } = await seedTestRun(authCtx.userId, agentComposeId, {
+  const authContext = await getTestAuthContext();
+  const { runId } = await seedTestRun(authContext.userId, agentComposeId, {
     ...options,
-    orgId: options?.orgId ?? org.orgId,
+    orgId: options?.orgId ?? authContext.orgId,
     prompt,
   });
   const run = await findTestRunRecord(runId);

@@ -3,19 +3,10 @@
 export {
   createTestRequest,
   createDefaultComposeConfig,
-  createTestSandboxToken,
   createTestTarFile,
   getTestAuthContext,
   type ComposeConfigOptions,
 } from "./core";
-export {
-  createTestCliToken,
-  insertTestCliToken,
-  deleteTestCliToken,
-  createTestDeviceCode,
-  findTestDeviceCode,
-  findTestCliToken,
-} from "./auth";
 export {
   createTestOrg,
   deleteOrgRow,
