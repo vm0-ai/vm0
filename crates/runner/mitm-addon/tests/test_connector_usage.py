@@ -950,6 +950,31 @@ class TestReportConnectorUsage:
         assert "unparseable" in entry["message"].lower()
         assert entry["parse_error"] == "incomplete json"
 
+    @pytest.mark.parametrize("parse_error", ["", None, {"reason": "incomplete json"}])
+    def test_unparseable_x_json_state_omits_invalid_parse_error(
+        self, tmp_path, real_flow, parse_error
+    ):
+        """Only non-empty string parse errors should be written to the audit log."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            rule="GET /2/tweets/search/recent",
+        )
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": parse_error,
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert "parse_error" not in entry
+
     def test_billable_counts_fallback_only_when_no_hints(self, tmp_path, real_flow):
         """body unparseable but ?ids= present -> uses ids_count, no fallback."""
         flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=b"not json")
