@@ -12,6 +12,7 @@ import {
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorGenerationType,
+  type ConnectorInteractivePairingGrantConfig,
   type DynamicPublicConnectorOAuthClientConfig,
   type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
@@ -56,37 +57,6 @@ export function getConnectorAuthMethod(
   authMethod: ConnectorAuthMethodType,
 ): ConnectorAuthMethodConfig | undefined {
   return getConnectorAuthMethods(type)[authMethod];
-}
-
-/**
- * Get CLI auth flow config for connector types that support provider CLI auth.
- */
-function getConnectorCliAuthConfig(
-  type: ConnectorType,
-): ConnectorCliAuthConfig | undefined {
-  const method = getConnectorAuthMethod(type, "cli-auth");
-  if (method?.grant.kind !== "interactive-pairing") {
-    return undefined;
-  }
-  return {
-    flow: method.grant.flow,
-    modes: method.grant.modes,
-  };
-}
-
-/**
- * Get the frontend CLI auth flow for connector types that support it.
- */
-export function getConnectorCliAuthFlow(
-  type: ConnectorType,
-): ConnectorCliAuthFlow | undefined {
-  return getConnectorCliAuthConfig(type)?.flow;
-}
-
-export function getConnectorCliAuthModes(
-  type: ConnectorType,
-): NonNullable<ConnectorCliAuthConfig["modes"]> {
-  return getConnectorCliAuthConfig(type)?.modes ?? [];
 }
 
 function connectorAuthMethodValues(
@@ -148,25 +118,73 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   }
 }
 
-type ConnectorOAuthGrant =
+export type ConnectorOAuthGrantConfig =
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig;
 
-function getConnectorOAuthGrant(
+export function getConnectorOAuthGrantConfigIfSupported(
   type: ConnectorType,
-): ConnectorOAuthGrant | undefined {
-  for (const method of connectorAuthMethodValues(type)) {
-    switch (method.grant.kind) {
-      case "auth-code":
-      case "device-auth":
-        return method.grant;
-      case "manual":
-      case "managed":
-      case "interactive-pairing":
-        continue;
-    }
+): ConnectorOAuthGrantConfig | undefined {
+  const method = getConnectorAuthMethod(type, "oauth");
+  switch (method?.grant.kind) {
+    case "auth-code":
+    case "device-auth":
+      return method.grant;
+    case "manual":
+    case "managed":
+    case "interactive-pairing":
+    case undefined:
+      return undefined;
   }
-  return undefined;
+}
+
+export function getConnectorAuthCodeGrantConfig(
+  type: ConnectorType,
+): ConnectorAuthCodeGrantConfig | undefined {
+  const grant = getConnectorOAuthGrantConfigIfSupported(type);
+  return grant?.kind === "auth-code" ? grant : undefined;
+}
+
+export function getConnectorDeviceAuthGrantConfig(
+  type: ConnectorType,
+): ConnectorDeviceAuthGrantConfig | undefined {
+  const grant = getConnectorOAuthGrantConfigIfSupported(type);
+  return grant?.kind === "device-auth" ? grant : undefined;
+}
+
+export function getConnectorOAuthScopes(type: ConnectorType): string[] {
+  return [...(getConnectorOAuthGrantConfigIfSupported(type)?.scopes ?? [])];
+}
+
+export function getConnectorInteractivePairingGrantConfig(
+  type: ConnectorType,
+): ConnectorInteractivePairingGrantConfig | undefined {
+  const method = getConnectorAuthMethod(type, "cli-auth");
+  switch (method?.grant.kind) {
+    case "interactive-pairing":
+      return method.grant;
+    case "manual":
+    case "auth-code":
+    case "device-auth":
+    case "managed":
+    case undefined:
+      return undefined;
+  }
+}
+
+/**
+ * Get the frontend CLI auth flow for connector types that support it.
+ */
+export function getConnectorCliAuthFlow(
+  type: ConnectorType,
+): ConnectorCliAuthFlow | undefined {
+  return getConnectorInteractivePairingGrantConfig(type)?.flow;
+}
+
+export function getConnectorCliAuthModes(
+  type: ConnectorType,
+): NonNullable<ConnectorCliAuthConfig["modes"]> {
+  return getConnectorInteractivePairingGrantConfig(type)?.modes ?? [];
 }
 
 export function getConnectorGenerationTypes(
@@ -315,7 +333,7 @@ function hasEnvValue(readEnv: ConnectorEnvReader, name: string): boolean {
 export function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
-  return getConnectorOAuthConfigIfSupported(type)?.client;
+  return getConnectorOAuthGrantConfigIfSupported(type)?.client;
 }
 
 export function resolveConnectorOAuthClientCredentials(
@@ -561,7 +579,7 @@ export function getConnectorProvidedSecretNames(
 export function getConnectorOAuthConfigIfSupported(
   type: ConnectorType,
 ): ConnectorOAuthConfig | undefined {
-  const grant = getConnectorOAuthGrant(type);
+  const grant = getConnectorOAuthGrantConfigIfSupported(type);
   switch (grant?.kind) {
     case "auth-code":
       return {
@@ -605,17 +623,13 @@ export function getConnectorOAuthFlow(
 export function isOAuthAuthCodeConnectorType(
   type: ConnectorType,
 ): type is OAuthAuthCodeConnectorType {
-  return (
-    getConnectorOAuthConfigIfSupported(type)?.flow === "authorization-code"
-  );
+  return getConnectorOAuthGrantConfigIfSupported(type)?.kind === "auth-code";
 }
 
 export function isOAuthDeviceAuthConnectorType(
   type: ConnectorType,
 ): type is OAuthDeviceAuthConnectorType {
-  return (
-    getConnectorOAuthConfigIfSupported(type)?.flow === "device-authorization"
-  );
+  return getConnectorOAuthGrantConfigIfSupported(type)?.kind === "device-auth";
 }
 
 export function getConnectorOAuthDeviceAuthConfig(
@@ -637,12 +651,12 @@ export function hasRequiredScopes(
   connectorType: ConnectorType,
   storedScopes: string[] | null,
 ): boolean {
-  const oauthConfig = getConnectorOAuthConfigIfSupported(connectorType);
-  if (!oauthConfig) return true;
-  if (oauthConfig.scopes.length === 0) return true;
+  const scopes = getConnectorOAuthGrantConfigIfSupported(connectorType)?.scopes;
+  if (!scopes) return true;
+  if (scopes.length === 0) return true;
   if (!storedScopes) return false;
   const storedSet = new Set(storedScopes);
-  return oauthConfig.scopes.every((s) => {
+  return scopes.every((s) => {
     return storedSet.has(s);
   });
 }
@@ -661,8 +675,9 @@ export function getScopeDiff(
   connectorType: ConnectorType,
   storedScopes: string[] | null,
 ): ScopeDiff {
-  const oauthConfig = getConnectorOAuthConfigIfSupported(connectorType);
-  const currentScopes = oauthConfig?.scopes ?? [];
+  const currentScopes = [
+    ...(getConnectorOAuthGrantConfigIfSupported(connectorType)?.scopes ?? []),
+  ];
   const stored = storedScopes ?? [];
   const storedSet = new Set(stored);
   const currentSet = new Set(currentScopes);

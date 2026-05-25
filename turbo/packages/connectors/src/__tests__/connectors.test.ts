@@ -9,9 +9,12 @@ import {
   getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
   hasRequiredScopes,
+  getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethod,
   getConnectorCliAuthFlow,
   getConnectorCliAuthModes,
+  getConnectorDeviceAuthGrantConfig,
+  getConnectorInteractivePairingGrantConfig,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
@@ -22,6 +25,8 @@ import {
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
   getConnectorOAuthFlow,
+  getConnectorOAuthGrantConfigIfSupported,
+  getConnectorOAuthScopes,
   getConnectorManualGrantFields,
   getEligibleConnectorTypes,
   getRuntimeAvailableConnectorTypes,
@@ -189,6 +194,10 @@ describe("connector auth method config", () => {
     expect(method?.access).toStrictEqual({ kind: "none" });
     expect(method?.revoke).toStrictEqual({ kind: "none" });
     expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
+    expect(getConnectorInteractivePairingGrantConfig("stripe")).toStrictEqual(
+      method?.grant,
+    );
+    expect(getConnectorInteractivePairingGrantConfig("github")).toBeUndefined();
     expect(getConnectorCliAuthFlow("stripe")).toBe("browser-verification");
     expect(getConnectorCliAuthModes("stripe")).toStrictEqual([
       {
@@ -1328,13 +1337,104 @@ describe("getConnectorProvidedSecretNames", () => {
 describe("getConnectorOAuthConfig - google-meet scopes", () => {
   it("uses meetings.space.readonly for google meet oauth scopes", () => {
     const config = getConnectorOAuthConfig("google-meet");
-    const scopes = config.scopes;
+    const scopes = getConnectorOAuthScopes("google-meet");
+    expect(scopes).toStrictEqual(config.scopes);
     expect(scopes).toContain(
       "https://www.googleapis.com/auth/meetings.space.readonly",
     );
     expect(scopes).not.toContain(
       "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
     );
+
+    scopes.push("test-mutated-scope");
+    expect(getConnectorOAuthScopes("google-meet")).not.toContain(
+      "test-mutated-scope",
+    );
+  });
+});
+
+describe("connector OAuth lifecycle grant helpers", () => {
+  it("returns auth-code grant config for GitHub", () => {
+    const method = getConnectorAuthMethod("github", "oauth");
+
+    expect(getConnectorOAuthGrantConfigIfSupported("github")).toStrictEqual(
+      method?.grant,
+    );
+    expect(getConnectorAuthCodeGrantConfig("github")).toMatchObject({
+      kind: "auth-code",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      scopes: ["repo", "project", "workflow"],
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "GH_OAUTH_CLIENT_ID",
+        clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+      },
+    });
+  });
+
+  it("returns device-auth grant config for device OAuth connectors", () => {
+    expect(
+      getConnectorDeviceAuthGrantConfig("test-oauth-device"),
+    ).toMatchObject({
+      kind: "device-auth",
+      deviceAuthUrl: "/api/test/oauth-provider/device/code",
+      tokenUrl: "/api/test/oauth-provider/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientId: "test-oauth-device-client",
+      },
+      scopes: ["read"],
+    });
+    expect(getConnectorDeviceAuthGrantConfig("base44")).toMatchObject({
+      kind: "device-auth",
+      deviceAuthUrl: "https://app.base44.com/oauth/device/code",
+      tokenUrl: "https://app.base44.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientId: "base44_cli",
+      },
+      scopes: ["apps:read", "apps:write", "offline"],
+    });
+  });
+
+  it("returns undefined for connectors without OAuth grants", () => {
+    expect(getConnectorOAuthGrantConfigIfSupported("axiom")).toBeUndefined();
+  });
+
+  it("keeps legacy OAuth config equivalent to lifecycle grant projections", () => {
+    for (const type of connectorTypeSchema.options) {
+      const grant = getConnectorOAuthGrantConfigIfSupported(type);
+      const config = getConnectorOAuthConfigIfSupported(type);
+
+      switch (grant?.kind) {
+        case "auth-code":
+          expect(config, `${type}: auth-code OAuth config`).toStrictEqual({
+            flow: "authorization-code",
+            tokenUrl: grant.tokenUrl,
+            client: grant.client,
+            scopes: [...grant.scopes],
+          });
+          break;
+        case "device-auth":
+          expect(config, `${type}: device-auth OAuth config`).toStrictEqual({
+            flow: "device-authorization",
+            deviceAuthUrl: grant.deviceAuthUrl,
+            tokenUrl: grant.tokenUrl,
+            client: grant.client,
+            scopes: [...grant.scopes],
+          });
+          break;
+        case undefined:
+          expect(config, `${type}: no OAuth config`).toBeUndefined();
+          break;
+      }
+    }
   });
 });
 
