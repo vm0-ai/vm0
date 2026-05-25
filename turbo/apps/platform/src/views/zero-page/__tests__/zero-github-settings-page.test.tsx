@@ -65,6 +65,9 @@ describe("github settings page", () => {
     await waitFor(() => {
       expect(screen.getByText("Connection")).toBeInTheDocument();
       expect(screen.getByText("Danger zone")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("github-installation-target"),
+      ).toHaveTextContent("(Installed on @vm0-test)");
       expect(screen.getByText("Connect")).toBeInTheDocument();
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });

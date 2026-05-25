@@ -11,6 +11,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -158,6 +159,7 @@ async function seedFixture(): Promise<GitHubIssuesFixture> {
 
 async function seedGithubInstallation(args: {
   readonly composeId: string;
+  readonly defaultComposeId?: string;
   readonly installationId?: string | null;
   readonly status?: "active" | "pending";
 }): Promise<{
@@ -177,7 +179,7 @@ async function seedGithubInstallation(args: {
     .insert(githubInstallations)
     .values({
       orgId: compose.orgId,
-      defaultComposeId: args.composeId,
+      defaultComposeId: args.defaultComposeId ?? args.composeId,
       installationId:
         args.installationId === undefined
           ? remoteInstallationId()
@@ -311,11 +313,13 @@ async function postSignedCallback(
   });
 }
 
-function completedOutput(): void {
+function completedOutput(
+  result = "Implemented the requested issue fix.",
+): void {
   context.mocks.axiom.query.mockResolvedValueOnce([
     {
       eventType: "result",
-      eventData: { result: "Implemented the requested issue fix." },
+      eventData: { result },
     },
   ]);
 }
@@ -590,7 +594,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       repo: "test-repo",
       issueNumber: "42",
     });
-    expect(capturedComments[0]!.body).toContain("GitHub Agent");
+    expect(capturedComments[0]!.body).not.toContain("🤖");
+    expect(capturedComments[0]!.body).not.toContain("GitHub Agent");
     expect(capturedComments[0]!.body).toContain(
       "Implemented the requested issue fix.",
     );
@@ -598,7 +603,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     expect(context.mocks.axiom.query).toHaveBeenCalledTimes(1);
   });
 
-  it("includes an audit link when the AuditLink switch is on", async () => {
+  it("includes audit and selected model footer text when configured", async () => {
     const fixture = await track(seedFixture());
     const installation = await seedGithubInstallation({
       composeId: fixture.composeId,
@@ -611,6 +616,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       installation.installationId,
     );
     await enableAuditLink(fixture);
+    const db = store.set(writeDb$);
     const payload: GitHubIssuesPayload = {
       installationId: installation.id,
       repo: "test-org/test-repo",
@@ -621,6 +627,10 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       fixture,
       payload,
     });
+    await db
+      .update(zeroRuns)
+      .set({ selectedModel: "claude-opus-4-7" })
+      .where(eq(zeroRuns.id, runId));
     completedOutput();
 
     const response = await postSignedCallback({
@@ -632,10 +642,66 @@ describe("POST /api/internal/callbacks/github/issues", () => {
 
     expect(response.status).toBe(200);
     expect(capturedComments).toHaveLength(1);
-    expect(capturedComments[0]!.body).toContain("Audit");
-    expect(capturedComments[0]!.body).toContain(
-      `http://localhost:3002/activities/${runId}`,
+    const body = capturedComments[0]!.body;
+    expect(body).toContain("📋 [Audit]");
+    expect(body).toContain(`/activities/${runId}`);
+    expect(body).toContain("Claude Opus 4.7");
+    expect(body).not.toContain("Responded by");
+  });
+
+  it("includes responded-by and selected model footer text for non-default agent replies", async () => {
+    const fixture = await track(seedFixture());
+    const { composeId: defaultComposeId } = await store.set(
+      seedCompose$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: `github-default-${randomUUID().slice(0, 8)}`,
+        displayName: "Default GitHub Agent",
+      },
+      context.signal,
     );
+    const installation = await seedGithubInstallation({
+      composeId: fixture.composeId,
+      defaultComposeId,
+    });
+    if (!installation.installationId) {
+      throw new Error("Expected active installation to have remote ID");
+    }
+    mockGithubAppEnv();
+    const { capturedComments } = setupGithubApiMocks(
+      installation.installationId,
+    );
+    const db = store.set(writeDb$);
+    const payload: GitHubIssuesPayload = {
+      installationId: installation.id,
+      repo: "test-org/test-repo",
+      issueNumber: 42,
+      agentId: fixture.composeId,
+    };
+    const { runId, callbackId } = await seedRunAndCallback({
+      fixture,
+      payload,
+    });
+    await db
+      .update(zeroRuns)
+      .set({ selectedModel: "claude-opus-4-7" })
+      .where(eq(zeroRuns.id, runId));
+    completedOutput("Responder result");
+
+    const response = await postSignedCallback({
+      callbackId,
+      runId,
+      status: "completed",
+      payload,
+    });
+
+    expect(response.status).toBe(200);
+    expect(capturedComments).toHaveLength(1);
+    const body = capturedComments[0]!.body;
+    expect(body).toContain("Responder result");
+    expect(body).toContain("Responded by GitHub Agent");
+    expect(body).toContain("Claude Opus 4.7");
   });
 
   it("posts a failed run comment with the run error", async () => {
@@ -671,6 +737,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
 
     expect(response.status).toBe(200);
     expect(capturedComments).toHaveLength(1);
+    expect(capturedComments[0]!.body).not.toContain("🤖");
     expect(capturedComments[0]!.body).not.toContain("**Error:**");
     expect(capturedComments[0]!.body).toContain(
       "Oops, something went wrong. Please try again later.",

@@ -118,19 +118,24 @@ export const apiIntegrationsGithubHandlers = [
     return respond(200, mockGithubIntegration);
   }),
 
-  mockApi(integrationsGithubContract.connectUser, ({ respond }) => {
+  mockApi(integrationsGithubContract.connectUser, ({ body, respond }) => {
     if (!mockGithubIntegration) {
       return respond(404, {
         error: { message: "GitHub installation not found", code: "NOT_FOUND" },
       });
     }
+    const connectSignature = body?.connectSignature;
     mockGithubIntegration = {
       ...mockGithubIntegration,
       isConnected: true,
       connectedGithubUserId:
-        mockGithubIntegration.connectedGithubUserId ?? "98765",
+        connectSignature?.githubUserId ??
+        mockGithubIntegration.connectedGithubUserId ??
+        "98765",
       connectedGithubUsername:
-        mockGithubIntegration.connectedGithubUsername ?? "octocat",
+        connectSignature?.githubUsername ??
+        mockGithubIntegration.connectedGithubUsername ??
+        "octocat",
     };
     return respond(200, { ok: true });
   }),

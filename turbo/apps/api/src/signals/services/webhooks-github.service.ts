@@ -236,7 +236,6 @@ function buildIntegrationPrompt(): string {
   const headerParts = [
     "# Current Integration",
     "You are currently running inside: GitHub",
-    "GitHub issue and pull request attachments are shown as [GitHub file] blocks. Download them with `zero github download-file -h`.",
     "GitHub label listeners run agents when issues or pull requests receive matching labels. Manage them with `zero github label-listener -h`.",
   ];
   const botUsername = githubAppBotUsername();
@@ -300,7 +299,7 @@ function buildGithubMentionConnectUrl(args: {
     }),
   });
 
-  return `${env("VM0_WEB_URL").replace(/\/$/u, "")}/api/zero/github/oauth/connect?${params.toString()}`;
+  return `${env("APP_URL").replace(/\/$/u, "")}/github/connect?${params.toString()}`;
 }
 
 function formatGithubConnectPrompt(args: {

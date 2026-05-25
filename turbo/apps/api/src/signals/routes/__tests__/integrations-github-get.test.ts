@@ -7,6 +7,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
@@ -22,6 +23,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import { signGithubConnectParams } from "../../services/github-oauth.service";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -41,6 +43,7 @@ interface GithubFixture {
   readonly userId: string;
   readonly composeId: string;
   readonly installationRowId: string;
+  readonly remoteInstallationId: string;
 }
 
 interface DefaultAgentFixture {
@@ -98,13 +101,16 @@ function expectGithubInstallUrl(
   });
 }
 
-function expectGithubConnectUrl(
-  connectUrl: string,
-  _fixture: GithubFixture,
-): void {
+function expectGithubConnectUrl(connectUrl: string): void {
   const url = new URL(connectUrl);
-  expect(url.origin).toBe(WEB_ORIGIN);
-  expect(url.pathname).toBe("/api/zero/connectors/github/authorize");
+  expect(url.origin).toBe("https://github.com");
+  expect(url.pathname).toBe("/login/oauth/authorize");
+  expect(url.searchParams.get("client_id")).toBe(GH_OAUTH_CLIENT_ID);
+  expect(url.searchParams.get("redirect_uri")).toBe(
+    `${WEB_ORIGIN}/api/connectors/github/callback`,
+  );
+  expect(url.searchParams.get("scope")).toBe("repo project workflow");
+  expect(url.searchParams.get("state")).toMatch(/^[a-f0-9]{64}$/u);
 }
 
 function mockSession(
@@ -175,10 +181,11 @@ async function seedGithubFixture(
         ? githubUserId()
         : linkedGithubUserId;
 
+  const remoteInstallation = remoteInstallationId();
   const [installation] = await writeDb
     .insert(githubInstallations)
     .values({
-      installationId: remoteInstallationId(),
+      installationId: remoteInstallation,
       orgId,
       adminGithubUserId,
       defaultComposeId: composeId,
@@ -203,6 +210,7 @@ async function seedGithubFixture(
     userId,
     composeId,
     installationRowId: installation.id,
+    remoteInstallationId: remoteInstallation,
   };
 }
 
@@ -215,6 +223,9 @@ async function cleanupGithubFixture(fixture: GithubFixture): Promise<void> {
         eq(connectors.userId, fixture.userId),
       ),
     );
+  await writeDb
+    .delete(connectorOauthStates)
+    .where(eq(connectorOauthStates.userId, fixture.userId));
   await writeDb
     .delete(secrets)
     .where(
@@ -440,7 +451,9 @@ describe("GET /api/integrations/github", () => {
     expect(response.body.installation.installationId).toBeTruthy();
     expect(response.body.isConnected).toBeTruthy();
     expect(response.body.connectedGithubUsername).toBe("octocat");
-    expectGithubConnectUrl(response.body.connectUrl, fixture);
+    expect(response.body.connectUrl).toBe(
+      `${WEB_ORIGIN}/api/zero/github/oauth/connect`,
+    );
     expect(response.body.labelListeners).toStrictEqual([]);
     expect(response.body.agent).toStrictEqual({
       id: fixture.composeId,
@@ -558,6 +571,53 @@ describe("GET /api/integrations/github", () => {
     );
   });
 
+  it("links a GitHub user from a signed mention connect body", async () => {
+    const fixture = await seedGithubFixture({ link: false });
+    fixtures.push(fixture);
+    mockSession(fixture.userId, fixture.orgId);
+    const githubUserId = "123456789";
+    const timestamp = Math.floor(now() / 1000);
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.connectUser({
+        headers: authHeaders(),
+        body: {
+          connectSignature: {
+            installationId: fixture.remoteInstallationId,
+            githubUserId,
+            githubUsername: "octocat",
+            timestamp,
+            signature: signGithubConnectParams({
+              installationId: fixture.remoteInstallationId,
+              githubUserId,
+              githubUsername: "octocat",
+              timestamp,
+              secretsEncryptionKey: SECRETS_ENCRYPTION_KEY,
+            }),
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ ok: true });
+    const links = await writeDb
+      .select()
+      .from(githubUserLinks)
+      .where(eq(githubUserLinks.vm0UserId, fixture.userId));
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      installationId: fixture.installationRowId,
+      githubUserId,
+      vm0UserId: fixture.userId,
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "github:changed",
+      null,
+    );
+  });
+
   it("returns isAdmin false for an org member when the linked GitHub user is not the installation admin", async () => {
     const fixture = await seedGithubFixture({ admin: "other" });
     fixtures.push(fixture);
@@ -601,6 +661,7 @@ describe("GET /api/integrations/github", () => {
     expect(response.body.connectedGithubUserId).toBeNull();
     expect(response.body.connectedGithubUsername).toBeNull();
     expect(response.body.installation.isAdmin).toBeTruthy();
+    expectGithubConnectUrl(response.body.connectUrl);
   });
 
   it("returns isAdmin false for an org member when the installation has no admin GitHub user", async () => {

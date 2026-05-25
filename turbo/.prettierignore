@@ -9,6 +9,7 @@ coverage
 CHANGELOG.md
 .source
 Caddyfile
+.dev-process-pid
 **/codereviews/**
 apps/web/src/db/migrations/
 apps/web/scripts/migrations/

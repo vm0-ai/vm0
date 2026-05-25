@@ -15,8 +15,7 @@ import {
   fetchGitHubUserInfo,
 } from "@vm0/connectors/auth-providers/oauth/providers/github";
 
-import { authRoute } from "../auth/auth-route";
-import { organizationAuthContext$ } from "../auth/auth-context";
+import { requiredAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -26,10 +25,12 @@ import { logger } from "../../lib/log";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   buildGithubOauthState,
+  buildGithubUserConnectAuthorizationUrl,
   createOrActivateGithubInstallation,
   findGithubInstallationByInstallationId,
   getGithubInstallationAccessToken,
   getGithubInstallationInfo,
+  githubUserConnectCallbackRedirectUri,
   isGithubOauthStateSignatureValid,
   linkGithubVm0User,
   loadActiveGithubInstallationForOrg,
@@ -80,10 +81,6 @@ function appUrl(path: string): string {
 
 function githubAppSetupCallbackRedirectUri(origin: string): string {
   return `${origin}${GITHUB_APP_SETUP_CALLBACK_PATH}`;
-}
-
-function userConnectCallbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/github/oauth/connect/callback`;
 }
 
 function githubUserOauthCredentials():
@@ -586,6 +583,12 @@ function invalidGithubConnectLinkRedirect(): Response {
   );
 }
 
+function signInRedirect(requestUrl: string): Response {
+  const signInUrl = new URL("/sign-in", requestUrl);
+  signInUrl.searchParams.set("redirect_url", requestUrl);
+  return redirectResponse(signInUrl.toString());
+}
+
 const connectGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
@@ -595,6 +598,22 @@ const connectGithubUserOauth$ = command(
     }
 
     const query = get(queryOf(githubOauthContract.connect));
+    const auth = await set(
+      requiredAuthContext$,
+      { requireOrganization: true },
+      signal,
+    );
+    signal.throwIfAborted();
+    if ("status" in auth) {
+      return auth.status === 401
+        ? signInRedirect(request.url)
+        : worksErrorRedirect(auth.body.error.message);
+    }
+    if (!auth.orgId) {
+      return worksErrorRedirect("Explicit org context required");
+    }
+    const orgId = auth.orgId;
+
     if (hasGithubConnectSignatureQuery(query)) {
       if (!query.installation || !query.ghUser || !query.ts || !query.sig) {
         return invalidGithubConnectLinkRedirect();
@@ -613,12 +632,11 @@ const connectGithubUserOauth$ = command(
         return invalidGithubConnectLinkRedirect();
       }
 
-      const auth = get(organizationAuthContext$);
       const db = set(writeDb$);
       const installation = await findGithubInstallationByInstallationId({
         db,
         installationId: query.installation,
-        orgId: auth.orgId,
+        orgId,
         signal,
       });
       signal.throwIfAborted();
@@ -651,9 +669,22 @@ const connectGithubUserOauth$ = command(
     }
 
     const origin = getOAuthWebOrigin(request);
-    return noStoreRedirect(
-      new URL("/api/zero/connectors/github/authorize", origin).toString(),
-    );
+    const db = set(writeDb$);
+    const authorizationUrl = await buildGithubUserConnectAuthorizationUrl({
+      db,
+      vm0UserId: auth.userId,
+      orgId,
+      origin,
+      readEnv: optionalEnv,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!authorizationUrl) {
+      return worksErrorRedirect("GitHub OAuth is not configured");
+    }
+
+    return noStoreRedirect(authorizationUrl);
   },
 );
 
@@ -699,7 +730,7 @@ const callbackGithubUserOauth$ = command(
     }
 
     const origin = getOAuthWebOrigin(request);
-    const redirectUri = userConnectCallbackRedirectUri(origin);
+    const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorOAuthCode({
       type: "github",
       credentials,
@@ -890,7 +921,7 @@ export const githubOauthRoutes: readonly RouteEntry[] = [
   },
   {
     route: githubOauthContract.connect,
-    handler: authRoute({ requireOrganization: true }, connectGithubUserOauth$),
+    handler: connectGithubUserOauth$,
   },
   {
     route: githubOauthContract.connectCallback,

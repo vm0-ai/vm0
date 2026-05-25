@@ -1198,8 +1198,8 @@ describe("POST /api/webhooks/github", () => {
       "[URL] https://github.com/user-attachments/assets/abc123",
     );
     expect(runs[0]?.appendSystemPrompt).toContain("[FILENAME] screenshot.png");
-    expect(runs[0]?.appendSystemPrompt).toContain(
-      "zero github download-file -h",
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      "GitHub issue and pull request attachments are shown as [GitHub file] blocks.",
     );
   });
 
@@ -1721,8 +1721,8 @@ describe("POST /api/webhooks/github", () => {
     const connectUrlText = body.match(/\[Connect GitHub\]\(([^)]+)\)/)?.[1];
     expect(connectUrlText).toBeDefined();
     const connectUrl = new URL(connectUrlText!);
-    expect(connectUrl.origin).toBe("http://localhost:3001");
-    expect(connectUrl.pathname).toBe("/api/zero/github/oauth/connect");
+    expect(connectUrl.origin).toBe("http://localhost:3002");
+    expect(connectUrl.pathname).toBe("/github/connect");
     expect(connectUrl.searchParams.get("installation")).toBe(
       fixture.remoteInstallationId,
     );
