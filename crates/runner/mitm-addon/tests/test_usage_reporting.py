@@ -106,6 +106,22 @@ def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
     ]
 
 
+def _assert_single_model_sse_parse_warning(
+    flow: http.HTTPFlow,
+    *,
+    usage_protocol: str,
+    event: str,
+) -> None:
+    usage_warnings = _model_sse_parse_warnings(flow)
+    assert len(usage_warnings) == 1
+    warning = usage_warnings[0]
+    assert warning["level"] == "warn"
+    assert warning["type"] == "usage_event"
+    assert warning["usage_protocol"] == usage_protocol
+    assert warning["event"] == event
+    assert warning["error"]
+
+
 class TestResponseUsageReporting:
     """Tests for usage extraction and reporting in response() hook."""
 
@@ -424,14 +440,11 @@ class TestResponseUsageReporting:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
-        usage_warnings = _model_sse_parse_warnings(flow)
-        assert len(usage_warnings) == 1
-        warning = usage_warnings[0]
-        assert warning["level"] == "warn"
-        assert warning["type"] == "usage_event"
-        assert warning["usage_protocol"] == "anthropic_messages_sse"
-        assert warning["event"] == "message_start"
-        assert warning["error"]
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
 
     def test_full_pipeline_anthropic_sse_error_logs_truncated_message_start(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
@@ -458,14 +471,11 @@ class TestResponseUsageReporting:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
-        usage_warnings = _model_sse_parse_warnings(flow)
-        assert len(usage_warnings) == 1
-        warning = usage_warnings[0]
-        assert warning["level"] == "warn"
-        assert warning["type"] == "usage_event"
-        assert warning["usage_protocol"] == "anthropic_messages_sse"
-        assert warning["event"] == "message_start"
-        assert warning["error"]
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
 
     def test_full_pipeline_anthropic_sse_logs_malformed_message_start(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
@@ -489,14 +499,11 @@ class TestResponseUsageReporting:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
-        usage_warnings = _model_sse_parse_warnings(flow)
-        assert len(usage_warnings) == 1
-        warning = usage_warnings[0]
-        assert warning["level"] == "warn"
-        assert warning["type"] == "usage_event"
-        assert warning["usage_protocol"] == "anthropic_messages_sse"
-        assert warning["event"] == "message_start"
-        assert warning["error"]
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
 
     def test_full_pipeline_anthropic_sse_logs_truncated_message_delta_after_start(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
@@ -529,14 +536,11 @@ class TestResponseUsageReporting:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50}
         assert {event["provider"] for event in events} == {"claude-sonnet-4-6"}
-        usage_warnings = _model_sse_parse_warnings(flow)
-        assert len(usage_warnings) == 1
-        warning = usage_warnings[0]
-        assert warning["level"] == "warn"
-        assert warning["type"] == "usage_event"
-        assert warning["usage_protocol"] == "anthropic_messages_sse"
-        assert warning["event"] == "message_delta"
-        assert warning["error"]
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_delta",
+        )
 
     def test_full_pipeline_openai_sse_logs_truncated_terminal_event(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
@@ -564,14 +568,11 @@ class TestResponseUsageReporting:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
-        usage_warnings = _model_sse_parse_warnings(flow)
-        assert len(usage_warnings) == 1
-        warning = usage_warnings[0]
-        assert warning["level"] == "warn"
-        assert warning["type"] == "usage_event"
-        assert warning["usage_protocol"] == "openai_responses_sse"
-        assert warning["event"] == "response.completed"
-        assert warning["error"]
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="response.completed",
+        )
 
     def test_full_pipeline_openai_sse_logs_truncated_late_event_name(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
@@ -599,14 +600,11 @@ class TestResponseUsageReporting:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
-        usage_warnings = _model_sse_parse_warnings(flow)
-        assert len(usage_warnings) == 1
-        warning = usage_warnings[0]
-        assert warning["level"] == "warn"
-        assert warning["type"] == "usage_event"
-        assert warning["usage_protocol"] == "openai_responses_sse"
-        assert warning["event"] == "response.completed"
-        assert warning["error"]
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="response.completed",
+        )
 
     def test_full_pipeline_eventless_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
