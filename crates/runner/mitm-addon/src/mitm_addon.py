@@ -283,9 +283,9 @@ async def request(flow: http.HTTPFlow) -> None:
             if isinstance(result, matching.FirewallAllow):
                 _maybe_track_usage_flow(
                     flow,
-                    is_billable_firewall(result.match_info, vm_info),
+                    is_billable_firewall(result.name, vm_info),
                 )
-                await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+                await handle_firewall_request(flow, result, vm_info)
                 if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
                     # Local firewall/auth errors never reach a provider. They only
                     # need pre-tracking to keep shutdown from racing while auth is

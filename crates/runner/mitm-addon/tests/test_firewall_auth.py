@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import auth
+import matching
 from tests.auth_state_helpers import (
     cached_headers,
     force_refresh_pending,
@@ -32,6 +33,18 @@ def _upstream_headers(*pairs: tuple[str, str]) -> Message:
 
 def _http_error(url: str, status: int, reason: str, body: bytes) -> urllib.error.HTTPError:
     return urllib.error.HTTPError(url, status, reason, Message(), io.BytesIO(body))
+
+
+def _allow(
+    api_entry: dict,
+    *,
+    name: str = "github",
+    permission: str | None = "repo-read",
+    params: dict[str, str] | None = None,
+    rule: str | None = "GET /repos/{owner}/{repo}",
+    rel_path: str = "/",
+) -> matching.FirewallAllow:
+    return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
 
 
 class _UnreadableHttpErrorBody(io.BytesIO):
@@ -554,12 +567,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {
-            "name": "github",
-            "permission": "repo-read",
-            "rule": "GET /repos/{owner}/{repo}",
-            "params": {"owner": "octocat", "repo": "hello"},
-        }
+        allow = _allow(api_entry, params={"owner": "octocat", "repo": "hello"})
         token_meta = {
             "headers": {"Authorization": "Bearer real-token", "X-Custom": "value"},
             "resolved_secrets": ["GITHUB_TOKEN"],
@@ -572,7 +580,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -614,12 +622,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             # intentionally no "billableFirewalls" key
         }
-        match_info = {
-            "name": "github",
-            "permission": "repo-read",
-            "rule": "GET /repos",
-            "params": {},
-        }
+        allow = _allow(api_entry, rule="GET /repos")
         token_meta = {
             "headers": {},
             "resolved_secrets": [],
@@ -632,7 +635,7 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.metadata["firewall_billable"] is False
 
@@ -647,7 +650,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {"name": "github"}
+        allow = _allow(api_entry)
 
         with (
             patch.object(
@@ -658,7 +661,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -683,7 +686,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": "",
             "billableFirewalls": [],
         }
-        match_info = {"name": "github"}
+        allow = _allow(api_entry)
 
         with (
             patch.object(
@@ -701,7 +704,7 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is None
 
@@ -719,7 +722,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {"name": "github"}
+        allow = _allow(api_entry)
 
         with (
             patch.object(
@@ -734,7 +737,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -759,7 +762,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": ["github"],
         }
-        match_info = {"name": "github"}
+        allow = _allow(api_entry)
 
         with (
             patch.object(
@@ -770,7 +773,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 402
@@ -797,7 +800,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {}
+        allow = _allow(api_entry, name="", permission=None, rule=None)
 
         with (
             patch.object(
@@ -812,7 +815,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -837,7 +840,7 @@ class TestHandleFirewallRequest:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {"name": "htmlcsstoimage"}
+        allow = _allow(api_entry, name="htmlcsstoimage")
 
         with (
             patch.object(
@@ -852,7 +855,7 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 424
@@ -872,10 +875,10 @@ class TestHandleFirewallRequest:
             "networkLogPath": "",
             "billableFirewalls": [],
         }
-        match_info = {"name": "github"}
+        allow = _allow(api_entry)
 
         with mitm_ctx():
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502

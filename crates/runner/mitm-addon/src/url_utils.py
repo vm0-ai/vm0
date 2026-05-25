@@ -335,7 +335,7 @@ def _merge_rewrite_query(
 
 def build_rewrite_url(
     resolved_base: str,
-    match_info: dict,
+    rel_path: str,
     orig_query: str,
     resolved_query: dict[str, str] | None = None,
 ) -> str:
@@ -350,7 +350,6 @@ def build_rewrite_url(
     base_parsed = urllib.parse.urlsplit(resolved_base)
 
     # Append rel_path to the base path portion
-    rel_path = match_info.get("rel_path", "/")
     base_path = base_parsed.path.rstrip("/") + rel_path if rel_path != "/" else base_parsed.path
 
     merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)

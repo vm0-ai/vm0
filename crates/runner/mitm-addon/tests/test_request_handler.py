@@ -485,7 +485,7 @@ class TestRequestHandler:
             await mitm_addon.request(flow)
 
         # Dispatcher routed to the real handle_firewall_request, which writes
-        # match-info into flow.metadata at auth.py:327–333 up-front.
+        # firewall allow metadata into flow.metadata up front.
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.metadata["firewall_name"] == "github"
         assert flow.metadata["firewall_permission"] == "full-access"
@@ -639,7 +639,7 @@ class TestRequestHandler:
     async def test_firewall_permission_allows_matched(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
-        """Firewall with permissions and matching rule calls handler with match_info."""
+        """Firewall with permissions and matching rule calls handler with allow result."""
         reg_path = _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
@@ -677,7 +677,7 @@ class TestRequestHandler:
             await mitm_addon.request(flow)
 
         # Dispatcher routed to the real handle_firewall_request, which writes
-        # match-info into flow.metadata at auth.py:327–333 up-front.
+        # firewall allow metadata into flow.metadata up front.
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.metadata["firewall_name"] == "github"
         assert flow.metadata["firewall_permission"] == "read-repos"

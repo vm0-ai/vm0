@@ -17,7 +17,11 @@ class TestCompiledFirewallMatching:
         if isinstance(raw, matching.FirewallAllow):
             assert isinstance(compiled, matching.FirewallAllow)
             assert compiled.api_entry is raw.api_entry
-            assert compiled.match_info == raw.match_info
+            assert compiled.name == raw.name
+            assert compiled.permission == raw.permission
+            assert compiled.params == raw.params
+            assert compiled.rule == raw.rule
+            assert compiled.rel_path == raw.rel_path
             return
         if isinstance(raw, matching.FirewallBlock):
             assert compiled == raw
@@ -50,7 +54,7 @@ class TestCompiledFirewallMatching:
 
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["params"] == {
+        assert compiled.params == {
             "region": "us",
             "org": "acme",
             "path": "a/b/c",
@@ -95,7 +99,7 @@ class TestCompiledFirewallMatching:
         )
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["params"] == {"sub": "a.b", "id": "123"}
+        assert compiled.params == {"sub": "a.b", "id": "123"}
 
         url = "https://example.org/items/123"
         raw = matching.match_firewall_request(url, "GET", fws, policies)
@@ -107,7 +111,7 @@ class TestCompiledFirewallMatching:
         )
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["params"] == {"sub": "", "id": "123"}
+        assert compiled.params == {"sub": "", "id": "123"}
 
     def test_matches_raw_for_static_base_boundary_and_query(self):
         fws = _wrap_firewalls(
@@ -135,7 +139,7 @@ class TestCompiledFirewallMatching:
         )
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["rel_path"] == "/"
+        assert compiled.rel_path == "/"
 
         url = "https://api.anthropic.com/v1/messages_fake"
         raw = matching.match_firewall_request(url, "GET", fws, policies)
@@ -199,7 +203,7 @@ class TestCompiledFirewallMatching:
         )
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["permission"] == ""
+        assert compiled.permission is None
 
         ask_policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "ask"}}
         raw = matching.match_firewall_request(url, "GET", fws, ask_policies)
@@ -290,8 +294,8 @@ class TestCompiledFirewallMatching:
 
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["name"] == "specific"
-        assert compiled.match_info["permission"] == "items-read"
+        assert compiled.name == "specific"
+        assert compiled.permission == "items-read"
 
     def test_preserves_raw_rule_order_for_any_before_exact_method(self):
         api_entry = {
@@ -319,7 +323,7 @@ class TestCompiledFirewallMatching:
 
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry is api_entry
-        assert result.match_info["rule"] == "ANY /repos/{owner}/{repo}"
+        assert result.rule == "ANY /repos/{owner}/{repo}"
 
     def test_later_allowed_permission_still_wins_after_earlier_denied_match(self):
         fws = _wrap_firewalls(
@@ -354,7 +358,7 @@ class TestCompiledFirewallMatching:
 
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
-        assert compiled.match_info["permission"] == "repo-admin"
+        assert compiled.permission == "repo-admin"
 
     def test_denied_permission_names_keep_encounter_order_and_deduplicate(self):
         fws = _wrap_firewalls(
@@ -513,7 +517,7 @@ class TestCompiledFirewallMatching:
         )
 
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "repo-read"
+        assert result.permission == "repo-read"
 
     def test_malformed_rules_shape_fails_closed_without_compile_error(self):
         fws = _wrap_firewalls(

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
 
+import matching
 from auth_base_forwarder import (
     forward_request,
     forwarded_request_header_pairs,
@@ -82,30 +83,30 @@ def _get_auth_state(cache_key: tuple[str, str]) -> _FirewallAuthState:
     return state
 
 
-def is_billable_firewall(match_info: dict, vm_info: dict) -> bool:
+def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
     """Return whether this firewall should emit connector/model usage."""
-    return match_info.get("name", "") in (vm_info.get("billableFirewalls") or [])
+    return firewall_name in (vm_info.get("billableFirewalls") or [])
 
 
 def _prepare_firewall_metadata(
     flow: http.HTTPFlow,
-    api_entry: dict,
+    allow: matching.FirewallAllow,
     vm_info: dict,
-    match_info: dict,
 ) -> None:
     """Store firewall match metadata once before auth resolution starts."""
+    api_entry = allow.api_entry
     firewall_base = api_entry["base"]
     api_id = api_entry.get("id", firewall_base)
     # billableFirewalls is optional in the TS schema; runner may omit the
     # field entirely for non-vm0 / no-billable-connector runs.
-    firewall_billable = is_billable_firewall(match_info, vm_info)
+    firewall_billable = is_billable_firewall(allow.name, vm_info)
 
     flow.metadata["firewall_base"] = firewall_base
     flow.metadata["firewall_api_id"] = api_id
-    flow.metadata["firewall_name"] = match_info.get("name", "")
-    flow.metadata["firewall_permission"] = match_info.get("permission", "")
-    flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
-    flow.metadata["firewall_params"] = match_info.get("params", {})
+    flow.metadata["firewall_name"] = allow.name
+    flow.metadata["firewall_permission"] = allow.permission or ""
+    flow.metadata["firewall_rule_match"] = allow.rule or ""
+    flow.metadata["firewall_params"] = allow.params
     flow.metadata["firewall_billable"] = firewall_billable
     flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
 
@@ -475,10 +476,11 @@ async def get_firewall_headers(
 
 
 async def handle_firewall_request(
-    flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict
+    flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
 ) -> None:
     """Handle a firewall-matched request: fetch resolved headers, inject into request."""
-    _prepare_firewall_metadata(flow, api_entry, vm_info, match_info)
+    _prepare_firewall_metadata(flow, allow, vm_info)
+    api_entry = allow.api_entry
     firewall_base = flow.metadata["firewall_base"]
     api_id = flow.metadata["firewall_api_id"]
     run_id = flow.metadata.get("vm_run_id", "")
@@ -508,7 +510,7 @@ async def handle_firewall_request(
             action="ALLOW",
             error_code="auth_unavailable",
             message="Auth secrets not configured",
-            permission=match_info.get("name", ""),
+            permission=allow.name,
         )
         return
 
@@ -527,7 +529,6 @@ async def handle_firewall_request(
             firewall_billable,
         )
     except ConnectorNotConfiguredError as e:
-        fw_name = match_info.get("name", "")
         log_proxy_entry(
             proxy_log_path,
             "info",
@@ -541,8 +542,8 @@ async def handle_firewall_request(
             action="BLOCK",
             error_code="connector_not_configured",
             message=str(e),
-            permission=fw_name,
-            connectors=[fw_name] if fw_name else None,
+            permission=allow.name,
+            connectors=[allow.name] if allow.name else None,
         )
         return
     except InsufficientCreditsError as e:
@@ -559,7 +560,7 @@ async def handle_firewall_request(
             action="BLOCK",
             error_code="insufficient_credits",
             message=str(e),
-            permission=match_info.get("name", ""),
+            permission=allow.name,
         )
         return
     except Exception as e:
@@ -576,7 +577,7 @@ async def handle_firewall_request(
             action="ALLOW",
             error_code="auth_failed",
             message=f"Failed to resolve auth headers: {e}",
-            permission=match_info.get("name", ""),
+            permission=allow.name,
         )
         return
 
@@ -592,7 +593,7 @@ async def handle_firewall_request(
     resolved_base = token_meta.get("base")
     if resolved_base:
         orig_query = urllib.parse.urlparse(flow.request.path).query
-        new_url = build_rewrite_url(resolved_base, match_info, orig_query, resolved_query)
+        new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
 
         # Filter client-controlled hop-by-hop headers before adding trusted
         # auth headers, so Connection tokens cannot suppress injected auth.
@@ -626,7 +627,7 @@ async def handle_firewall_request(
                 action="ALLOW",
                 error_code="url_rewrite_forward_failed",
                 message="Failed to forward request to upstream",
-                permission=match_info.get("name", ""),
+                permission=allow.name,
             )
             return
 

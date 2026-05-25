@@ -9,6 +9,19 @@ from urllib.parse import urlparse
 from mitmproxy import http
 
 import auth
+import matching
+
+
+def _allow(
+    api_entry: dict,
+    *,
+    name: str = "test",
+    permission: str | None = "send",
+    params: dict[str, str] | None = None,
+    rule: str | None = "POST /",
+    rel_path: str = "/",
+) -> matching.FirewallAllow:
+    return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
 
 
 def make_rewrite_inputs(
@@ -68,7 +81,7 @@ def make_rewrite_inputs(
         "networkLogPath": str(tmp_path / "net.jsonl"),
         "billableFirewalls": [],
     }
-    match_info = {
+    allow_kwargs = {
         "name": "test",
         "permission": "send",
         "rule": "POST /",
@@ -76,7 +89,8 @@ def make_rewrite_inputs(
         "rel_path": rel_path,
     }
     if match_overrides:
-        match_info.update(match_overrides)
+        allow_kwargs.update(match_overrides)
+    allow = _allow(api_entry, **allow_kwargs)
     token_meta = {
         "headers": {},
         "base": resolved_base,
@@ -87,7 +101,7 @@ def make_rewrite_inputs(
     }
     if token_overrides:
         token_meta.update(token_overrides)
-    return flow, api_entry, vm_info, match_info, token_meta
+    return flow, allow, vm_info, token_meta
 
 
 class TestAuthBaseUrlRewrite:
@@ -95,7 +109,7 @@ class TestAuthBaseUrlRewrite:
 
     async def test_url_rewrite_with_rel_path_root(self, real_flow, mitm_ctx, tmp_path):
         """When rel_path is '/', resolved base URL is forwarded as-is."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
@@ -108,7 +122,7 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.response.status_code == 200
@@ -117,7 +131,7 @@ class TestAuthBaseUrlRewrite:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """Duplicate upstream response headers survive response construction."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
@@ -139,7 +153,7 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response.status_code == 200
         assert flow.response.headers.get_all("Set-Cookie") == ["a=1", "b=2"]
@@ -147,7 +161,7 @@ class TestAuthBaseUrlRewrite:
 
     async def test_url_rewrite_with_remaining_path(self, real_flow, mitm_ctx, tmp_path):
         """When rel_path has content, it's appended to resolved base in forwarded URL."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             seed_url="https://bitrix.internal/rest/0/placeholder/crm.deal.list.json",
@@ -169,7 +183,7 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert (
             mock_forward.call_args[0][0]
             == "https://mycompany.bitrix24.com/rest/1/real-token/crm.deal.list.json"
@@ -178,7 +192,7 @@ class TestAuthBaseUrlRewrite:
 
     async def test_url_rewrite_preserves_query_string(self, real_flow, mitm_ctx, tmp_path):
         """Query string from original request is preserved in forwarded URL."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/discord-webhook/hook?wait=true",
@@ -192,14 +206,14 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
 
     async def test_url_rewrite_resolved_base_with_trailing_slash(
         self, real_flow, mitm_ctx, tmp_path
     ):
         """Trailing slash on resolved base is stripped before appending rel_path."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/bitrix/rest/0/placeholder/crm.deal.list",
@@ -220,7 +234,7 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert (
             mock_forward.call_args[0][0]
             == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
@@ -228,7 +242,7 @@ class TestAuthBaseUrlRewrite:
 
     async def test_url_rewrite_merges_query_strings(self, real_flow, mitm_ctx, tmp_path):
         """When resolved base has query string and original request also has one, merge with &."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/discord-webhook/hook?wait=true",
@@ -242,14 +256,14 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
     async def test_url_rewrite_auth_query_overrides_base_and_original_query(
         self, real_flow, mitm_ctx, tmp_path
     ):
         """auth.query is the highest-priority trusted query source for URL rewrites."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/discord-webhook/hook?api_key=agent&q=test",
@@ -269,7 +283,7 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert (
             mock_forward.call_args[0][0]
             == "https://example.com/hook?region=us&q=test&api_key=trusted+key"
@@ -291,12 +305,12 @@ class TestAuthBaseUrlRewrite:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {
-            "name": "github",
-            "permission": "repo-read",
-            "rule": "GET /repos/{owner}/{repo}",
-            "params": {},
-        }
+        allow = _allow(
+            api_entry,
+            name="github",
+            permission="repo-read",
+            rule="GET /repos/{owner}/{repo}",
+        )
         token_meta = {
             "headers": {"Authorization": "Bearer real-token"},
             "resolved_secrets": ["GITHUB_TOKEN"],
@@ -308,7 +322,7 @@ class TestAuthBaseUrlRewrite:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         # URL should not be modified
         assert flow.request.url == original_url
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -319,7 +333,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
     async def test_sets_auth_url_rewrite_metadata_and_response(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is set and flow.response is populated via forward_request."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
         mock_forward = AsyncMock(
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
@@ -328,7 +342,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.metadata["auth_url_rewrite"] is True
         assert flow.response is not None
         assert flow.response.status_code == 200
@@ -351,12 +365,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "billableFirewalls": [],
         }
-        match_info = {
-            "name": "gh",
-            "permission": "read",
-            "rule": "GET /repos/{owner}/{repo}",
-            "params": {},
-        }
+        allow = _allow(api_entry, name="gh", permission="read", rule="GET /repos/{owner}/{repo}")
         token_meta = {
             "headers": {"Authorization": "Bearer real"},
             "resolved_secrets": ["TOKEN"],
@@ -366,14 +375,14 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert "auth_url_rewrite" not in flow.metadata
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
 
     async def test_forward_request_includes_auth_headers(self, real_flow, mitm_ctx, tmp_path):
         """auth.headers are included in the forwarded request to the real URL."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://discord.com/api/webhooks/123/abc",
@@ -385,7 +394,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.metadata["auth_url_rewrite"] is True
         # Auth headers passed to forward_request.
         call_args = mock_forward.call_args
@@ -396,7 +405,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """auth.base forwarding keeps repeated headers unless auth overrides that name."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             request_headers=headers(
@@ -418,7 +427,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         req_headers = mock_forward.call_args[0][2]
         assert ("Connection", "Authorization, X-Remove") not in req_headers
@@ -435,7 +444,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
         """Unsafe client and injected headers are stripped without suppressing auth."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             request_headers=headers(
@@ -475,7 +484,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         req_headers = mock_forward.call_args[0][2]
         header_names = [name.lower() for name, _value in req_headers]
@@ -502,7 +511,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """auth.base forwarding does not drop bodies for non-POST methods."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             method="DELETE",
@@ -514,14 +523,14 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert mock_forward.call_args[0][1] == "DELETE"
         assert mock_forward.call_args[0][3] == b"delete-body"
 
     async def test_forward_request_preserves_empty_raw_body(self, real_flow, mitm_ctx, tmp_path):
         """An explicit empty body is distinct from no body for Content-Length."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             method="POST",
@@ -533,13 +542,13 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert mock_forward.call_args[0][3] == b""
 
     async def test_forward_request_preserves_absent_body(self, real_flow, mitm_ctx, tmp_path):
         """A request with no raw body remains distinct from an explicit empty body."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             method="GET",
@@ -551,7 +560,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert mock_forward.call_args[0][3] is None
 
@@ -564,22 +573,22 @@ class TestAuthBaseUrlRewriteEdgeCases:
         log were emitted on failure, and ``firewall_error`` was left unset —
         making failed rewrites indistinguishable from successful ones in
         dashboards."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.response.headers["Content-Type"] == "application/json"
         body = json.loads(flow.response.content)
         assert body["error"] == "url_rewrite_forward_failed"
         assert body["message"] == "Failed to forward request to upstream"
-        assert body["permission"] == match_info["name"]
-        assert body["base"] == api_entry["base"]
+        assert body["permission"] == allow.name
+        assert body["base"] == allow.api_entry["base"]
         assert "connectors" not in body
         # Failure must not masquerade as a successful rewrite.
         assert "auth_url_rewrite" not in flow.metadata
@@ -596,7 +605,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """Forward errors must not leak secret-bearing resolved auth.base URLs."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://real.example.com/webhook/super-secret-token",
@@ -611,7 +620,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert flow.response is not None
         assert b"super-secret-token" not in flow.response.content
@@ -622,13 +631,13 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server is treated as absent — no URL rewrite."""
-        flow, api_entry, vm_info, match_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
         token_meta["base"] = ""
         original_url = flow.request.url
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.request.url == original_url
         assert "auth_url_rewrite" not in flow.metadata

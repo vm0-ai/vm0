@@ -732,10 +732,41 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
 
 
 class FirewallAllow(NamedTuple):
-    """Permission matched — inject auth headers."""
+    """Base URL matched and auth headers should be injected.
+
+    ``permission`` and ``rule`` are present for a matched permission. They are
+    ``None`` for unknown-endpoint allow, where the firewall base matched but no
+    permission rule did and ``unknownPolicy`` allowed the request.
+    """
 
     api_entry: dict
-    match_info: dict
+    name: str
+    permission: str | None
+    params: dict[str, str]
+    rule: str | None
+    rel_path: str
+
+
+def _permission_allow(
+    api_entry: dict,
+    *,
+    name: str,
+    permission: str,
+    params: dict[str, str],
+    rule: str,
+    rel_path: str,
+) -> FirewallAllow:
+    return FirewallAllow(api_entry, name, permission, params, rule, rel_path)
+
+
+def _unknown_allow(
+    api_entry: dict,
+    *,
+    name: str,
+    params: dict[str, str],
+    rel_path: str,
+) -> FirewallAllow:
+    return FirewallAllow(api_entry, name, None, params, None, rel_path)
 
 
 FirewallBlockReason = Literal[
@@ -802,6 +833,8 @@ def match_compiled_firewall_request(
       FirewallBlock — permission denied, unknown endpoint blocked, or matched
         malformed firewall config failed closed
       None — no base URL match (not a firewall request)
+
+    ``unknownPolicy="ask"`` is treated as block at the proxy layer.
     """
     if not compiled_firewalls:
         return None
@@ -856,15 +889,13 @@ def match_compiled_firewall_request(
                         all_params = {**base_params, **params}
 
                         if perm.name not in block_set:
-                            return FirewallAllow(
+                            return _permission_allow(
                                 api_entry.raw_api_entry,
-                                {
-                                    "name": fw_entry.name,
-                                    "permission": perm.name,
-                                    "params": all_params,
-                                    "rule": rule.raw,
-                                    "rel_path": rel_path,
-                                },
+                                name=fw_entry.name,
+                                permission=perm.name,
+                                params=all_params,
+                                rule=rule.raw,
+                                rel_path=rel_path,
                             )
                         if perm.name not in denied_perm_names:
                             denied_perm_names.append(perm.name)
@@ -889,15 +920,11 @@ def match_compiled_firewall_request(
         if malformed_match is not None:
             return FirewallBlock(*malformed_match, (), "malformed_firewall_config")
         if _get_unknown_policy(blocked_name, network_policies) == "allow":
-            return FirewallAllow(
+            return _unknown_allow(
                 first_matched_api_entry,
-                {
-                    "name": blocked_name,
-                    "permission": "",
-                    "params": base_params,
-                    "rule": "",
-                    "rel_path": blocked_rel_path,
-                },
+                name=blocked_name,
+                params=base_params,
+                rel_path=blocked_rel_path,
             )
         return FirewallBlock(
             blocked_base,
@@ -986,15 +1013,13 @@ def match_firewall_request(
 
                         # Three-level: not in deny/ask → allowed
                         if perm_name not in block_set:
-                            return FirewallAllow(
+                            return _permission_allow(
                                 api_entry,
-                                {
-                                    "name": fw_name,
-                                    "permission": perm_name,
-                                    "params": all_params,
-                                    "rule": rule_str,
-                                    "rel_path": rel_path,
-                                },
+                                name=fw_name,
+                                permission=perm_name,
+                                params=all_params,
+                                rule=rule_str,
+                                rel_path=rel_path,
                             )
                         # Permission exists but not granted — record for
                         # DENY but keep checking other permissions.
@@ -1017,15 +1042,11 @@ def match_firewall_request(
         # No permission rule matched — this is an "unknown" endpoint.
         # "ask" is treated as "deny" at the proxy level (same as ask permissions).
         if _get_unknown_policy(blocked_name, network_policies) == "allow":
-            return FirewallAllow(
+            return _unknown_allow(
                 first_matched_api_entry,
-                {
-                    "name": blocked_name,
-                    "permission": "",
-                    "params": base_params,
-                    "rule": "",
-                    "rel_path": blocked_rel_path,
-                },
+                name=blocked_name,
+                params=base_params,
+                rel_path=blocked_rel_path,
             )
         return FirewallBlock(
             blocked_base,

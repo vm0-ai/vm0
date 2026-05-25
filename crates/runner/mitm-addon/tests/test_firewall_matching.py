@@ -47,10 +47,10 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["name"] == "github"
-        assert result.match_info["permission"] == "repo-read"
-        assert result.match_info["params"] == {"owner": "octocat", "repo": "hello"}
-        assert result.match_info["rule"] == "GET /repos/{owner}/{repo}"
+        assert result.name == "github"
+        assert result.permission == "repo-read"
+        assert result.params == {"owner": "octocat", "repo": "hello"}
+        assert result.rule == "GET /repos/{owner}/{repo}"
 
     def test_any_method_matches(self, headers):
         fw_configs = _wrap_firewalls(
@@ -69,7 +69,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "full-access"
+        assert result.permission == "full-access"
 
     def test_method_case_insensitive(self, headers):
         fw_configs = _wrap_firewalls(
@@ -174,7 +174,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com", "GET", fw_configs, network_policies=_grant_all(fw_configs)
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "root"
+        assert result.permission == "root"
 
     def test_trailing_slash_on_url(self, headers):
         """URL trailing slash doesn't affect matching (split filters empty segments)."""
@@ -271,7 +271,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "messages-send"
+        assert result.permission == "messages-send"
 
     def test_malformed_rules_skipped(self, headers):
         """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
@@ -352,7 +352,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(gh, matching.FirewallAllow)
-        assert gh.match_info["name"] == "github"
+        assert gh.name == "github"
 
         sl = matching.match_firewall_request(
             "https://slack.com/api/chat.postMessage",
@@ -361,7 +361,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(sl, matching.FirewallAllow)
-        assert sl.match_info["name"] == "slack"
+        assert sl.name == "slack"
 
     def test_query_string_stripped_for_matching(self, headers):
         fw_configs = _wrap_firewalls(
@@ -443,7 +443,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer api-token"
-        assert result.match_info["permission"] == "full-access"
+        assert result.permission == "full-access"
 
         # Request to second base
         result = matching.match_firewall_request(
@@ -454,7 +454,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer files-token"
-        assert result.match_info["permission"] == "full-access"
+        assert result.permission == "full-access"
 
     def test_same_base_different_permissions(self, headers):
         """Same base URL with different permissions/auth — second api_entry can match."""
@@ -480,7 +480,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer user"
-        assert result.match_info["permission"] == "send"
+        assert result.permission == "send"
 
     def test_parameterized_host_allows(self, headers):
         """Base URL with {subdomain} in host matches dynamically."""
@@ -501,9 +501,9 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["name"] == "zendesk"
-        assert result.match_info["permission"] == "tickets"
-        assert result.match_info["params"] == {"subdomain": "acme"}
+        assert result.name == "zendesk"
+        assert result.permission == "tickets"
+        assert result.params == {"subdomain": "acme"}
 
     def test_parameterized_host_blocks_no_permission(self, headers):
         """Base URL with host param matches but no rule → block."""
@@ -563,7 +563,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["params"] == {"org": "acme", "id": "123"}
+        assert result.params == {"org": "acme", "id": "123"}
 
     def test_parameterized_host_and_path(self, headers):
         """Both host and path params extracted."""
@@ -583,7 +583,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["params"] == {"tenant": "us", "org": "acme"}
+        assert result.params == {"tenant": "us", "org": "acme"}
 
     def test_greedy_host_param_matches_multi_level(self, headers):
         """Greedy {sub+} in host matches multiple subdomain levels."""
@@ -603,7 +603,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["params"]["sub"] == "a.b.c"
+        assert result.params["sub"] == "a.b.c"
 
     def test_greedy_star_host_param_matches_zero(self, headers):
         """Greedy {sub*} in host matches zero subdomains."""
@@ -620,7 +620,7 @@ class TestMatchFirewallRequest:
             "https://example.com/api", "GET", fw_configs, network_policies=_grant_all(fw_configs)
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["params"]["sub"] == ""
+        assert result.params["sub"] == ""
 
     def test_mixed_static_and_parameterized_bases(self, headers):
         """Static and parameterized bases in same config both work."""
@@ -653,7 +653,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(gh, matching.FirewallAllow)
-        assert gh.match_info["name"] == "github"
+        assert gh.name == "github"
 
         zd = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/tickets",
@@ -662,8 +662,8 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(zd, matching.FirewallAllow)
-        assert zd.match_info["name"] == "zendesk"
-        assert zd.match_info["params"]["sub"] == "acme"
+        assert zd.name == "zendesk"
+        assert zd.params["sub"] == "acme"
 
     def test_parameterized_host_with_query_string(self, headers):
         """Parameterized base URL + query string in request."""
@@ -683,7 +683,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["params"]["sub"] == "acme"
+        assert result.params["sub"] == "acme"
 
     def test_parameterized_host_rejects_nonstandard_port(self, headers):
         """Non-standard port must NOT match — prevents auth header leaking to rogue server."""
@@ -725,15 +725,15 @@ class TestMatchFirewallRequestMixedSegments:
             _grant_all(firewalls),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["params"] == {"owner": "octocat", "repo": "hello"}
-        assert result.match_info["rel_path"] == "/info/refs"
-        assert result.match_info["permission"] == "git|fetch"
+        assert result.params == {"owner": "octocat", "repo": "hello"}
+        assert result.rel_path == "/info/refs"
+        assert result.permission == "git|fetch"
 
 
 class TestMatchFirewallRequestRelPath:
-    """Tests that match_firewall_request includes rel_path in match_info."""
+    """Tests that match_firewall_request includes rel_path in allow result."""
 
-    def test_rel_path_included_in_match_info(self, headers):
+    def test_rel_path_included_in_allow_result(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -751,7 +751,7 @@ class TestMatchFirewallRequestRelPath:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["rel_path"] == "/"
+        assert result.rel_path == "/"
 
     def test_rel_path_with_remaining_segments(self, headers):
         fw_configs = _wrap_firewalls(
@@ -771,7 +771,7 @@ class TestMatchFirewallRequestRelPath:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["rel_path"] == "/crm.deal.list"
+        assert result.rel_path == "/crm.deal.list"
 
 
 class TestThreeLevelMatching:
@@ -803,7 +803,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "repo-read"
+        assert result.permission == "repo-read"
 
     def test_denied_permission_blocked(self):
         policies = {
@@ -842,7 +842,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "repo-read"
+        assert result.permission == "repo-read"
 
     def test_ask_permission_blocked(self):
         """Permission in ask list is treated as denied at proxy level."""
@@ -897,7 +897,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == ""
+        assert result.permission is None
 
     def test_permission_in_both_allow_and_deny_is_blocked(self):
         """deny takes precedence when permission appears in both allow and deny."""
@@ -924,8 +924,8 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == ""
-        assert result.match_info["rule"] == ""
+        assert result.permission is None
+        assert result.rule is None
 
     def test_unknown_endpoint_blocked_when_unknown_policy_deny(self):
         policies = {
@@ -1013,7 +1013,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == ""
+        assert result.permission is None
 
     def test_overlapping_permissions_allows_if_any_not_blocked(self, headers):
         """Same endpoint in two permissions — one denied, one allowed → ALLOW."""
@@ -1040,7 +1040,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "repo-admin"
+        assert result.permission == "repo-admin"
 
     def test_overlapping_permissions_denies_if_all_blocked(self, headers):
         """Same endpoint in two permissions — both denied → DENY."""
@@ -1114,7 +1114,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["name"] == "github"
+        assert result.name == "github"
 
         # Slack: channels:read explicitly denied → DENY
         result = matching.match_firewall_request(
@@ -1134,8 +1134,8 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["name"] == "slack"
-        assert result.match_info["permission"] == ""
+        assert result.name == "slack"
+        assert result.permission is None
 
     def test_different_unknown_policy_per_name(self, headers):
         """unknownPolicy differs per firewall name — github strict, slack permissive."""
@@ -1317,7 +1317,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == "repo-read"
+        assert result.permission == "repo-read"
 
         # Second API: no permissions defined, base matches → unknown
         # → ALLOW (unknownPolicy: allow)
@@ -1328,4 +1328,4 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, matching.FirewallAllow)
-        assert result.match_info["permission"] == ""
+        assert result.permission is None
