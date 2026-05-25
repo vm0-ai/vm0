@@ -463,3 +463,20 @@ class TestReleaseResponseStreamState:
         response_streaming.release_response_stream_state(flow)
 
         assert flow.response.stream is external_stream
+
+    def test_configured_release_is_idempotent(self, real_flow):
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=_header_map({"content-type": "application/json"})
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert callable(_response_stream(flow))
+
+        response_streaming.release_response_stream_state(flow)
+        response_streaming.release_response_stream_state(flow)
+
+        assert flow.response.stream is False
+        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
