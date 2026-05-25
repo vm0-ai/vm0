@@ -61,5 +61,4 @@ export enum FeatureSwitchKey {
   HostedSites = "hostedSites",
   SandboxIoLimiters = "sandboxIoLimiters",
   ZeroMaps = "zeroMaps",
-  AgentsPageSplitSections = "agentsPageSplitSections",
 }

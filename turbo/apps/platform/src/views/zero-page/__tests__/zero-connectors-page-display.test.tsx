@@ -110,7 +110,11 @@ describe("connectors page - grouped display", () => {
       { type: "openai", authMethod: "api-token" },
     ]);
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: false },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
