@@ -4,25 +4,40 @@ import { Command } from "commander";
 import { downloadGithubFile } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
-function defaultOutPath(fileId: string, filename?: string): string {
-  return join(tmpdir(), `github-${filename || basename(fileId) || "file"}`);
+function filenameFromUrl(fileUrl: string): string {
+  if (URL.canParse(fileUrl)) {
+    const segment = new URL(fileUrl).pathname.split("/").filter(Boolean).pop();
+    if (!segment) {
+      return "file";
+    }
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  }
+  return basename(fileUrl) || "file";
+}
+
+function defaultOutPath(fileUrl: string, filename?: string): string {
+  return join(tmpdir(), `github-${filename || filenameFromUrl(fileUrl)}`);
 }
 
 export const downloadFileCommand = new Command()
   .name("download-file")
   .description("Download a file from a GitHub context block")
-  .argument("<file-id>", "ID from a [GitHub file] block")
+  .argument("<url>", "URL from a [GitHub file] block")
   .option(
     "-o, --out <path>",
-    "Output path for the downloaded file (default: /tmp/github-<filename-or-id>)",
+    "Output path for the downloaded file (default: /tmp/github-<filename-or-url-basename>)",
   )
   .option("--filename <name>", "Filename hint from the [GitHub file] block")
   .addHelpText(
     "after",
     `
 Examples:
-  Download to default temp path: zero github download-file 8a6e1f02-0a08-4cf0-b3ac-f2892ed6f0ba --filename screenshot.png
-  Download to explicit path:     zero github download-file 8a6e1f02-0a08-4cf0-b3ac-f2892ed6f0ba -o /tmp/screenshot.png
+  Download to default temp path: zero github download-file https://github.com/user-attachments/assets/abc123 --filename screenshot.png
+  Download to explicit path:     zero github download-file https://github.com/user-attachments/assets/abc123 -o /tmp/screenshot.png
 
 Output:
   Prints a JSON object to stdout on success:
@@ -36,15 +51,16 @@ How to read the downloaded file:
   - PDF/text/csv/json/markdown: read the file directly
 
 Notes:
-  - The file id comes from a [GitHub file] block
-  - Streams the file bytes from VM0 storage directly to disk`,
+  - The URL comes from a [GitHub file] block
+  - Streams the GitHub file bytes through VM0 directly to disk`,
   )
   .action(
     withErrorHandler(
-      async (fileId: string, options: { out?: string; filename?: string }) => {
-        const outPath = options.out ?? defaultOutPath(fileId, options.filename);
+      async (fileUrl: string, options: { out?: string; filename?: string }) => {
+        const outPath =
+          options.out ?? defaultOutPath(fileUrl, options.filename);
         const result = await downloadGithubFile(
-          fileId,
+          fileUrl,
           outPath,
           options.filename,
         );

@@ -130,7 +130,7 @@ export async function deleteGithubLabelListener(
 }
 
 export async function downloadGithubFile(
-  fileId: string,
+  fileUrl: string,
   outPath: string,
   filename?: string,
 ): Promise<DownloadGithubFileResult> {
@@ -141,7 +141,7 @@ export async function downloadGithubFile(
   }
 
   const url = new URL("/api/zero/integrations/github/download-file", baseUrl);
-  url.searchParams.set("file_id", fileId);
+  url.searchParams.set("url", fileUrl);
   if (filename) {
     url.searchParams.set("filename", filename);
   }

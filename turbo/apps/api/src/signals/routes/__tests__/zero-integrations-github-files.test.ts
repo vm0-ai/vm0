@@ -165,14 +165,9 @@ describe("GitHub zero file integration routes", () => {
     };
   }
 
-  it("streams a mirrored GitHub context file by file id", async () => {
+  it("streams a GitHub context file from an allowed URL", async () => {
     const fixture = await seedFixture();
-    const fileId = randomUUID();
-    const s3Key = `artifacts/${fixture.userId}/${fileId}/screenshot.png`;
-    const fileUrl = `https://cdn.vm7.io/artifacts/${fixture.userId}/${fileId}/screenshot.png`;
-    mocks.s3.listObjects([
-      { bucket: "test-user-artifacts", key: s3Key, size: 9 },
-    ]);
+    const fileUrl = "https://github.com/user-attachments/assets/abc123";
     server.use(
       http.get(fileUrl, ({ request }) => {
         expect(request.headers.get("authorization")).toBeNull();
@@ -188,8 +183,12 @@ describe("GitHub zero file integration routes", () => {
     );
 
     const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      url: fileUrl,
+      filename: "screenshot.png",
+    });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?file_id=${fileId}&filename=screenshot.png`,
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -209,14 +208,10 @@ describe("GitHub zero file integration routes", () => {
     await expect(response.text()).resolves.toBe("png-bytes");
   });
 
-  it("uses the stored artifact filename when no filename hint is provided", async () => {
+  it("uses the GitHub URL filename when no filename hint is provided", async () => {
     const fixture = await seedFixture();
-    const fileId = randomUUID();
-    const s3Key = `artifacts/${fixture.userId}/${fileId}/github-file.png`;
-    const fileUrl = `https://cdn.vm7.io/artifacts/${fixture.userId}/${fileId}/github-file.png`;
-    mocks.s3.listObjects([
-      { bucket: "test-user-artifacts", key: s3Key, size: 14 },
-    ]);
+    const fileUrl =
+      "https://raw.githubusercontent.com/vm0-ai/vm0/main/github-file.png";
     server.use(
       http.get(fileUrl, ({ request }) => {
         expect(request.headers.get("authorization")).toBeNull();
@@ -232,8 +227,9 @@ describe("GitHub zero file integration routes", () => {
     );
 
     const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({ url: fileUrl });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?file_id=${fileId}`,
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -252,13 +248,15 @@ describe("GitHub zero file integration routes", () => {
     await expect(response.text()).resolves.toBe("artifact-bytes");
   });
 
-  it("returns 404 when a GitHub context file id has no artifact", async () => {
+  it("rejects non-GitHub file URLs", async () => {
     const fixture = await seedFixture();
-    mocks.s3.listObjects([]);
 
     const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      url: "https://example.com/file.png",
+    });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?file_id=${randomUUID()}`,
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -271,18 +269,21 @@ describe("GitHub zero file integration routes", () => {
       },
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: { code: "NOT_FOUND" },
+      error: { code: "BAD_REQUEST" },
     });
   });
 
   it("requires github read capability for context file downloads", async () => {
     const fixture = await seedFixture();
     const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      url: "https://github.com/user-attachments/assets/abc123",
+    });
 
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?file_id=${randomUUID()}`,
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
