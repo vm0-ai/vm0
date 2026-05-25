@@ -1,39 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { isDesktopComputerUsePageUrl } from "./computer-use-page-url";
 
-const ALLOWED_ORIGINS = new Set([
-  "https://app.vm0.ai",
-  "http://localhost:3000",
-]);
+const RENDERER_URL = "vm0-desktop://renderer/index.html";
 
 describe("isDesktopComputerUsePageUrl", () => {
-  it("allows the desktop Computer Use page from configured app origins", () => {
+  it("allows the local Desktop renderer", () => {
+    expect(isDesktopComputerUsePageUrl(RENDERER_URL, RENDERER_URL)).toBe(true);
+  });
+
+  it("rejects hosted Platform pages and other local files", () => {
     expect(
       isDesktopComputerUsePageUrl(
         "https://app.vm0.ai/computer-use",
-        ALLOWED_ORIGINS,
+        RENDERER_URL,
       ),
-    ).toBe(true);
-    expect(
-      isDesktopComputerUsePageUrl(
-        "http://localhost:3000/computer-use/",
-        ALLOWED_ORIGINS,
-      ),
-    ).toBe(true);
-  });
-
-  it("rejects other pages and origins", () => {
-    expect(
-      isDesktopComputerUsePageUrl("https://app.vm0.ai/agents", ALLOWED_ORIGINS),
     ).toBe(false);
     expect(
       isDesktopComputerUsePageUrl(
-        "https://evil.example/computer-use",
-        ALLOWED_ORIGINS,
+        "vm0-desktop://renderer/other.html",
+        RENDERER_URL,
       ),
     ).toBe(false);
-    expect(isDesktopComputerUsePageUrl("not a url", ALLOWED_ORIGINS)).toBe(
-      false,
-    );
+    expect(isDesktopComputerUsePageUrl("not a url", RENDERER_URL)).toBe(false);
   });
 });

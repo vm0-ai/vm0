@@ -291,16 +291,9 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const isDesktopShell =
-    typeof window !== "undefined" &&
-    (window.vm0DesktopComputerUse !== undefined ||
-      window.vm0DesktopWindowChrome !== undefined);
 
   return (
-    <div
-      data-desktop-shell={isDesktopShell ? "true" : undefined}
-      className="zero-app flex h-dvh w-full bg-background"
-    >
+    <div className="zero-app flex h-dvh w-full bg-background">
       <OrgManageDialogMount />
       <SettingsDialogMount />
       <QueueDrawer />
@@ -314,13 +307,6 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         }}
       />
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
-        {isDesktopShell && (
-          <div
-            className="zero-workspace-titlebar-drag-region"
-            data-testid="workspace-titlebar-drag-region"
-            aria-hidden="true"
-          />
-        )}
         <InstallBanner />
         <IosInstallModal />
         <MobileTopBar />

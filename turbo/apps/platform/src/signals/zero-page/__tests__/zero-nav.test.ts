@@ -47,9 +47,9 @@ describe("zero-nav", () => {
       expect(context.store.get(activeRoute$)).toBe("activities");
     });
 
-    it("should resolve /computer-use to 'desktopComputerUse'", () => {
+    it("should not resolve removed /computer-use route", () => {
       mockLocation({ pathname: "/computer-use", search: "" }, context.signal);
-      expect(context.store.get(activeRoute$)).toBe("desktopComputerUse");
+      expect(context.store.get(activeRoute$)).toBeNull();
     });
 
     it("should resolve /works to 'works'", () => {

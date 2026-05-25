@@ -94,11 +94,13 @@
     "apps/desktop": {
       "entry": [
         "forge.config.js",
+        "vite.renderer.config.ts",
         "src/main.ts",
         "src/preload.ts",
-        "src/**/*.{test,spec}.ts"
+        "src/renderer/main.tsx",
+        "src/**/*.{test,spec}.{ts,tsx}"
       ],
-      "project": ["src/**/*.ts", "*.js"],
+      "project": ["src/**/*.{ts,tsx}", "*.{js,ts}"],
       "ignoreDependencies": [
         "@electron-forge/cli",
         "@electron-forge/maker-zip",

@@ -10,7 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -27,11 +27,6 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 const context = testContext();
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-
-afterEach(() => {
-  Reflect.deleteProperty(window, "vm0DesktopComputerUse");
-  Reflect.deleteProperty(window, "vm0DesktopWindowChrome");
-});
 
 function mockBaseAPIs() {
   setMockTeam([
@@ -208,92 +203,6 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
       expect(
         screen.getByRole("heading", { name: "Members" }),
       ).toBeInTheDocument();
-    });
-  });
-});
-
-describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", () => {
-  it("marks the app shell as desktop-only when the computer use bridge is available", async () => {
-    mockBaseAPIs();
-    Object.defineProperty(window, "vm0DesktopComputerUse", {
-      configurable: true,
-      value: {},
-    });
-
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(document.querySelector(".zero-app")).toHaveAttribute(
-        "data-desktop-shell",
-        "true",
-      );
-    });
-  });
-
-  it("leaves the web app shell unmarked when the desktop bridge is unavailable", async () => {
-    mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(document.querySelector(".zero-app")).not.toHaveAttribute(
-        "data-desktop-shell",
-      );
-    });
-
-    expect(
-      screen.queryByTestId("workspace-titlebar-drag-region"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders a workspace titlebar drag region in desktop shell mode", async () => {
-    mockBaseAPIs();
-    Object.defineProperty(window, "vm0DesktopWindowChrome", {
-      configurable: true,
-      value: {
-        setSidebarCollapsed: () => {
-          return Promise.resolve();
-        },
-      },
-    });
-
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("workspace-titlebar-drag-region"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("syncs collapsed sidebar state to the desktop window chrome bridge", async () => {
-    const user = userEvent.setup();
-    const setSidebarCollapsed = vi.fn(() => {
-      return Promise.resolve();
-    });
-    mockBaseAPIs();
-    Object.defineProperty(window, "vm0DesktopWindowChrome", {
-      configurable: true,
-      value: { setSidebarCollapsed },
-    });
-
-    detachedSetupPage({ context, path: "/agents" });
-
-    await waitFor(() => {
-      expect(setSidebarCollapsed).toHaveBeenLastCalledWith(false);
-    });
-
-    setSidebarCollapsed.mockClear();
-    await user.keyboard("{Control>}b{/Control}");
-
-    await waitFor(() => {
-      expect(setSidebarCollapsed).toHaveBeenLastCalledWith(true);
-    });
-
-    setSidebarCollapsed.mockClear();
-    await user.keyboard("{Control>}b{/Control}");
-
-    await waitFor(() => {
-      expect(setSidebarCollapsed).toHaveBeenLastCalledWith(false);
     });
   });
 });

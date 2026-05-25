@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { createElement } from "react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
@@ -57,25 +58,21 @@ import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
-import { setupDesktopComputerUsePage$ } from "./desktop-computer-use-page/desktop-computer-use-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
-import { startSkeletonCycling$ } from "./app-skeleton.ts";
+import { hideAppSkeleton$, startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
+import { updatePage$ } from "./react-router.ts";
+import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { googleAdsBillingConversionPayload } from "./bootstrap/billing-conversion.ts";
 
-/**
- * Catch-all fallback — redirects unknown paths to /.
- * Intentionally not wrapped with setupAuthPageWrapper: the / route
- * already enforces auth, so wrapping here would add an unnecessary
- * sign-in round-trip before the redirect.
- */
-const setupNotFoundRedirect$ = command(({ set }) => {
-  set(detachedNavigateTo$, "/");
+const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
+  set(updatePage$, createElement(NotFoundPage));
+  await set(hideAppSkeleton$, signal);
 });
 
 /**
@@ -133,10 +130,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.connectors,
     setup: setupAuthPageWrapper(setupConnectorsPage$),
-  },
-  {
-    path: ROUTES.desktopComputerUse,
-    setup: setupAuthPageWrapper(setupDesktopComputerUsePage$),
   },
   {
     path: ROUTES.localBrowserConnect,
@@ -309,9 +302,9 @@ const ROUTE_CONFIG = [
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
 
   {
-    // Catch-all: redirect unknown paths to /
+    // Catch-all: keep unknown paths in place and show the not-found surface.
     path: "{/*path}",
-    setup: setupNotFoundRedirect$,
+    setup: setupNotFoundPage$,
   },
 ] as const;
 

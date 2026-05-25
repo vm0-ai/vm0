@@ -3,7 +3,6 @@ const DESKTOP_AUTH_CALLBACK_PATH = "/callback";
 const DESKTOP_AUTH_CONSUME_PATH = "/desktop-auth/consume";
 const DESKTOP_AUTH_START_WEB_PATH = "/desktop-auth/start";
 const DESKTOP_AUTH_CALLBACK_SCHEME_PARAM = "callbackScheme";
-const DESKTOP_SIGNED_OUT_PATHS = new Set(["/sign-in", "/sign-up"]);
 const DESKTOP_AUTH_CODE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const DESKTOP_AUTH_START_RETRY_MS = 30_000;
 
@@ -88,18 +87,6 @@ export function isDesktopAuthStartNavigation(
     url &&
     allowedAppOrigins.has(url.origin) &&
     url.pathname === DESKTOP_AUTH_START_WEB_PATH,
-  );
-}
-
-export function isDesktopSignedOutNavigation(
-  rawUrl: string,
-  allowedAppOrigins: ReadonlySet<string>,
-): boolean {
-  const url = parseUrl(rawUrl);
-  return Boolean(
-    url &&
-    allowedAppOrigins.has(url.origin) &&
-    DESKTOP_SIGNED_OUT_PATHS.has(url.pathname),
   );
 }
 

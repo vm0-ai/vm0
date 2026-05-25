@@ -59,6 +59,7 @@ module.exports = {
       /^\/README\.md$/,
       /^\/forge\.config\.js$/,
       /^\/tsconfig\.json$/,
+      /^\/vite\.renderer\.config\.ts$/,
       /^\/vitest\.config\.ts$/,
     ],
   },

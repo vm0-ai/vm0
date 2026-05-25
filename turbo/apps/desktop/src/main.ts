@@ -1,5 +1,14 @@
 import path from "node:path";
-import { app, BrowserWindow, Menu, session, shell } from "electron";
+import { pathToFileURL } from "node:url";
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  net,
+  protocol,
+  session,
+  shell,
+} from "electron";
 import {
   ComputerUseSnapshotStore,
   executeComputerUseCommand,
@@ -13,6 +22,7 @@ import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   IDLE_COMPUTER_USE_HOST_STATE,
+  hasRequiredComputerUsePermissions,
   type ComputerUseApprovalAction,
   type DesktopComputerUseState,
 } from "./computer-use-types";
@@ -23,11 +33,14 @@ import {
 import { resolveDesktopConfig } from "./config";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import {
+  installDesktopAuthIpc,
+  notifyDesktopAuthChanged,
+} from "./desktop-auth-electron";
+import {
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthStartUrl,
   createDesktopAuthStartGate,
   isDesktopAuthStartNavigation,
-  isDesktopSignedOutNavigation,
   parseDesktopAuthCallback,
   parseDesktopAuthCallbackArgv,
 } from "./desktop-auth";
@@ -35,9 +48,12 @@ import {
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
 } from "./desktop-window-lifecycle";
-import { installDesktopWindowChromeIpc } from "./desktop-window-chrome-electron";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
-import { buildSignedOutPageUrl } from "./signed-out-page";
+import {
+  desktopRendererFilePath,
+  desktopRendererUrl,
+  isDesktopRendererUrl,
+} from "./desktop-renderer-url";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 const config = resolveDesktopConfig();
@@ -45,13 +61,26 @@ const desktopAuthStartUrl = buildDesktopAuthStartUrl(
   config.platformUrl,
   config.identity.authScheme,
 );
-const signedOutPageUrl = buildSignedOutPageUrl(desktopAuthStartUrl);
+const localRendererUrl = desktopRendererUrl();
+const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
 let appIsQuitting = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "vm0-desktop",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 function preloadPath(): string {
   return path.join(__dirname, "preload.js");
@@ -72,6 +101,16 @@ function applyDockIcon(): void {
   }
 }
 
+function installDesktopRendererProtocol(): void {
+  const electronSession = session.fromPartition(config.sessionPartition);
+  electronSession.protocol.handle("vm0-desktop", (request) => {
+    const filePath = desktopRendererFilePath(request.url);
+    if (!filePath) {
+      return new Response("Not found", { status: 404 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+}
 function getComputerUseBridgeState(): DesktopComputerUseState {
   return {
     featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
@@ -134,7 +173,18 @@ function installComputerUse(): void {
       requestAccessibilityPermission: requestComputerUsePermission,
       decideCommand: decideComputerUseCommand,
     },
-    { allowedAppOrigins: config.allowedAppOrigins },
+    { rendererUrl: localRendererUrl },
+  );
+}
+
+function installDesktopAuth(): void {
+  installDesktopAuthIpc(
+    {
+      openSignIn: () => {
+        openExternal(desktopAuthStartUrl);
+      },
+    },
+    { rendererUrl: localRendererUrl },
   );
 }
 
@@ -196,20 +246,11 @@ function openDesktopAuthCallback(rawUrl: string): boolean {
   return true;
 }
 
-function showSignedOutPage(window: BrowserWindow): void {
-  void window.loadURL(signedOutPageUrl);
-}
-
-function shouldShowSignedOutPage(rawUrl: string): boolean {
-  return isDesktopSignedOutNavigation(rawUrl, config.allowedAppOrigins);
-}
-
 interface PreventableNavigationEvent {
   readonly preventDefault: () => void;
 }
 
 function handleAuthNavigation(
-  window: BrowserWindow,
   event: PreventableNavigationEvent,
   url: string,
 ): boolean {
@@ -221,15 +262,15 @@ function handleAuthNavigation(
     event.preventDefault();
     return true;
   }
-  if (shouldShowSignedOutPage(url)) {
-    event.preventDefault();
-    showSignedOutPage(window);
-    return true;
-  }
   return false;
 }
 
-function browserWindowOptions() {
+interface BrowserWindowOptionsInput {
+  readonly preload?: boolean;
+}
+
+function browserWindowOptions(options: BrowserWindowOptionsInput = {}) {
+  const preload = options.preload === false ? undefined : preloadPath();
   return {
     title: config.identity.displayName,
     backgroundColor: "#19191b",
@@ -239,46 +280,23 @@ function browserWindowOptions() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
-      preload: preloadPath(),
+      ...(preload ? { preload } : {}),
       partition: config.sessionPartition,
     },
   } satisfies Electron.BrowserWindowConstructorOptions;
 }
 
-function installChildWindowPolicy(window: BrowserWindow): void {
-  const { webContents } = window;
-
-  webContents.setWindowOpenHandler(({ url }) => {
-    if (openDesktopAuthCallback(url)) {
-      return { action: "deny" };
-    }
-    if (openDesktopAuthStart(url)) {
-      return { action: "deny" };
-    }
-    if (shouldShowSignedOutPage(url)) {
-      showSignedOutPage(window);
-      return { action: "deny" };
-    }
-
-    const decision = decideWindowOpen(url, config.allowedAppOrigins);
-    if (decision.action === "open-external") {
-      openExternal(decision.url);
-    }
-    return { action: "deny" };
-  });
-}
-
 function installMainWindowPolicy(window: BrowserWindow): void {
   window.webContents.on("will-navigate", (event, url) => {
-    if (handleAuthNavigation(window, event, url)) {
+    if (handleAuthNavigation(event, url)) {
       return;
     }
 
-    if (isAllowedAppNavigation(url, config.allowedAppOrigins)) {
+    if (isDesktopRendererUrl(url, localRendererUrl)) {
       return;
     }
     event.preventDefault();
-    const decision = decideWindowOpen(url, config.allowedAppOrigins);
+    const decision = decideWindowOpen(url, noAllowedAppOrigins);
     if (decision.action === "open-external") {
       openExternal(decision.url);
     }
@@ -288,7 +306,7 @@ function installMainWindowPolicy(window: BrowserWindow): void {
     if (!event.isMainFrame) {
       return;
     }
-    handleAuthNavigation(window, event, event.url);
+    handleAuthNavigation(event, event.url);
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -298,34 +316,17 @@ function installMainWindowPolicy(window: BrowserWindow): void {
     if (openDesktopAuthStart(url)) {
       return { action: "deny" };
     }
-    if (shouldShowSignedOutPage(url)) {
-      showSignedOutPage(window);
-      return { action: "deny" };
-    }
 
-    const decision = decideWindowOpen(url, config.allowedAppOrigins);
-    if (decision.action === "allow-in-app") {
-      return {
-        action: "allow",
-        overrideBrowserWindowOptions: browserWindowOptions(),
-      };
-    }
+    const decision = decideWindowOpen(url, noAllowedAppOrigins);
     if (decision.action === "open-external") {
       openExternal(decision.url);
     }
     return { action: "deny" };
   });
-
-  window.webContents.on("did-create-window", (childWindow) => {
-    installChildWindowPolicy(childWindow);
-  });
 }
 
-async function createMainWindow(initialUrl?: string): Promise<BrowserWindow> {
+async function createMainWindow(): Promise<BrowserWindow> {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    if (initialUrl) {
-      await mainWindow.loadURL(initialUrl);
-    }
     showAndFocusWindow(mainWindow);
     return mainWindow;
   }
@@ -357,13 +358,135 @@ async function createMainWindow(initialUrl?: string): Promise<BrowserWindow> {
   });
 
   installMainWindowPolicy(window);
-  await window.loadURL(initialUrl ?? config.platformUrl.toString());
+  await window.loadURL(localRendererUrl);
   return window;
+}
+
+function isPlatformRootUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return (
+      isAllowedAppNavigation(rawUrl, config.allowedAppOrigins) &&
+      url.pathname === "/"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function installAuthConsumeWindowPolicy(window: BrowserWindow): void {
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isAllowedAppNavigation(url, config.allowedAppOrigins)) {
+      return;
+    }
+    event.preventDefault();
+    const decision = decideWindowOpen(url, noAllowedAppOrigins);
+    if (decision.action === "open-external") {
+      openExternal(decision.url);
+    }
+  });
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const decision = decideWindowOpen(url, noAllowedAppOrigins);
+    if (decision.action === "open-external") {
+      openExternal(decision.url);
+    }
+    return { action: "deny" };
+  });
+}
+
+function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      rejectAuth(new Error("Desktop auth consume timed out"));
+    }, 30_000);
+
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      window.webContents.off("did-navigate", handleNavigation);
+      window.webContents.off("did-fail-load", handleLoadFailure);
+      window.off("closed", handleClosed);
+    };
+
+    const resolveAuth = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      if (!window.isDestroyed()) {
+        window.close();
+      }
+      resolve();
+    };
+
+    const rejectAuth = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      if (!window.isDestroyed()) {
+        window.close();
+      }
+      reject(error);
+    };
+
+    const handleNavigation = (_event: Electron.Event, url: string): void => {
+      if (isPlatformRootUrl(url)) {
+        resolveAuth();
+      }
+    };
+
+    const handleLoadFailure = (
+      _event: Electron.Event,
+      errorCode: number,
+      errorDescription: string,
+      _validatedUrl: string,
+      isMainFrame: boolean,
+    ): void => {
+      if (isMainFrame) {
+        rejectAuth(
+          new Error(
+            `Desktop auth consume failed: ${errorCode} ${errorDescription}`,
+          ),
+        );
+      }
+    };
+
+    const handleClosed = (): void => {
+      rejectAuth(new Error("Desktop auth consume window closed"));
+    };
+
+    window.webContents.on("did-navigate", handleNavigation);
+    window.webContents.on("did-fail-load", handleLoadFailure);
+    window.on("closed", handleClosed);
+  });
+}
+
+async function maybeStartComputerUseAfterAuth(): Promise<void> {
+  notifyDesktopAuthChanged();
+  notifyDesktopComputerUseChanged();
+  if (hasRequiredComputerUsePermissions(getComputerUsePermissionState())) {
+    await startComputerUseRuntime();
+  }
 }
 
 async function openDesktopAuthConsume(code: string): Promise<void> {
   const consumeUrl = buildDesktopAuthConsumeUrl(config.platformUrl, code);
-  await createMainWindow(consumeUrl);
+  const authWindow = new BrowserWindow({
+    ...browserWindowOptions({ preload: false }),
+    show: false,
+    width: 480,
+    height: 640,
+    skipTaskbar: true,
+  });
+  installAuthConsumeWindowPolicy(authWindow);
+  const pendingConsume = waitForAuthConsumeWindow(authWindow);
+  await authWindow.loadURL(consumeUrl);
+  await pendingConsume;
+  await maybeStartComputerUseAfterAuth();
 }
 
 function handleDesktopAuthCallback(rawUrl: string): void {
@@ -455,20 +578,17 @@ if (!hasSingleInstanceLock) {
     applyDockIcon();
     applyApplicationMenu();
     registerDesktopAuthProtocol();
-    installDesktopWindowChromeIpc({
-      allowedAppOrigins: config.allowedAppOrigins,
-      platform: process.platform,
-    });
+    installDesktopRendererProtocol();
     installComputerUse();
+    installDesktopAuth();
     queueDesktopAuthCallbackArgv(process.argv);
 
     const pendingCode = pendingDesktopAuthCode;
     pendingDesktopAuthCode = null;
-    await createMainWindow(
-      pendingCode
-        ? buildDesktopAuthConsumeUrl(config.platformUrl, pendingCode)
-        : undefined,
-    );
+    await createMainWindow();
+    if (pendingCode) {
+      void openDesktopAuthConsume(pendingCode);
+    }
 
     app.on("activate", () => {
       void createMainWindow();

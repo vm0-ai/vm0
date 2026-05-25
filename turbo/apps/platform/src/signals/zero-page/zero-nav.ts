@@ -64,7 +64,6 @@ export type SidebarNavId =
   | "chat"
   | "agents"
   | "connectors"
-  | "computerUse"
   | "schedules"
   | "activities"
   | "insights"
@@ -90,7 +89,6 @@ export const handleZeroNavSelect$ = command(
         chat: ROUTES.home,
         agents: ROUTES.agents,
         connectors: ROUTES.connectors,
-        computerUse: ROUTES.desktopComputerUse,
         schedules: ROUTES.schedules,
         activities: ROUTES.activities,
         insights: ROUTES.insights,
