@@ -367,10 +367,29 @@ class TestRequestHandler:
         auth_fetch.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("sni", "host_header"),
+        ("base", "sni", "host_header", "expected_firewall_base", "expected_original_url"),
         [
-            ("api.github.com", "API.GITHUB.COM"),
-            ("API.GITHUB.COM.", "api.github.com."),
+            (
+                "https://api.github.com",
+                "api.github.com",
+                "API.GITHUB.COM",
+                "https://api.github.com",
+                "https://api.github.com/repos",
+            ),
+            (
+                "https://api.github.com",
+                "API.GITHUB.COM.",
+                "api.github.com.",
+                "https://api.github.com",
+                "https://api.github.com/repos",
+            ),
+            (
+                "https://xn--bcher-kva.example",
+                "bücher.example",
+                "xn--bcher-kva.example",
+                "https://xn--bcher-kva.example",
+                "https://xn--bcher-kva.example/repos",
+            ),
         ],
     )
     async def test_accepts_authority_host_normalization_equivalence(
@@ -380,10 +399,13 @@ class TestRequestHandler:
         mitm_ctx,
         fake_firewall_headers,
         headers,
+        base,
         sni,
         host_header,
+        expected_firewall_base,
+        expected_original_url,
     ):
-        reg_path = _write_github_firewall_registry(tmp_path)
+        reg_path = _write_github_firewall_registry(tmp_path, base=base)
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -400,7 +422,8 @@ class TestRequestHandler:
             await mitm_addon.request(flow)
 
         assert flow.response is None
-        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["firewall_base"] == expected_firewall_base
+        assert flow.metadata["original_url"] == expected_original_url
         assert flow.request.headers["Authorization"] == "Bearer x"
 
     @pytest.mark.parametrize(
