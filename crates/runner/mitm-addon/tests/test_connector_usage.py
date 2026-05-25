@@ -588,6 +588,36 @@ class TestReportConnectorUsage:
         assert p["category"] == "content.create_with_url"
         assert p["quantity"] == 1
 
+    def test_x_json_parse_error_on_write_does_not_emit_lost_visibility_log(
+        self, tmp_path, real_flow
+    ):
+        """Write operations bill by method and should not emit read visibility errors."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+        assert proxy_log.exists()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert all(entry["level"] != "error" for entry in entries)
+        assert all("unparseable" not in entry["message"].lower() for entry in entries)
+        assert all("parse_error" not in entry for entry in entries)
+
     def test_tweet_create_plain_text_downgrades_to_content_create(self, tmp_path, real_flow):
         """POST /2/tweets with text only (no URL, no quote, no media)
         downgrades to the cheaper Content: Create bucket."""
