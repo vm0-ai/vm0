@@ -435,28 +435,27 @@ function TrialStepContent() {
       )}
 
       {/* Hero: lead with the dollar value so users see they're getting
-          real spending power, not a token allowance. */}
-      <div className="zero-border rounded-2xl bg-background px-5 py-5 mb-5 flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-          <IconCoins size={22} stroke={1.75} className="text-primary" />
+          real spending power, not a token allowance. The $20 is the visual
+          anchor of the entire step. */}
+      <div className="zero-border rounded-2xl bg-primary/5 px-6 py-6 mb-6 relative overflow-hidden">
+        <div className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
+          <IconCoins size={20} stroke={1.75} className="text-primary" />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-2xl font-semibold text-foreground leading-none">
-              $20
-            </span>
-            <span className="text-sm font-medium text-foreground">
-              in VM0 credits, on us
-            </span>
-          </div>
-          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-            That&apos;s 20,000 credits to spend on Zero — enough agent runs to
-            draft, build and ship things from day one.
-          </p>
+        <div className="flex items-baseline gap-2">
+          <span className="text-5xl font-semibold text-foreground leading-none tracking-tight">
+            $20
+          </span>
+          <span className="text-base font-medium text-foreground">
+            in credits, on us
+          </span>
         </div>
+        <p className="text-sm text-foreground mt-3 leading-relaxed">
+          <span className="font-medium">20,000 VM0 credits</span> to spend on
+          Zero — enough agent runs to draft, build and ship from day one.
+        </p>
       </div>
 
-      <p className="text-sm font-medium text-foreground mb-3">
+      <p className="text-sm font-semibold text-foreground mb-3">
         Plus everything in Pro
       </p>
       <ul
