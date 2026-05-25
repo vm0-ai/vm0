@@ -138,14 +138,14 @@ export function getConnectorOAuthGrantConfigIfSupported(
   }
 }
 
-export function getConnectorAuthCodeGrantConfig(
+export function getConnectorAuthCodeGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorAuthCodeGrantConfig | undefined {
   const grant = getConnectorOAuthGrantConfigIfSupported(type);
   return grant?.kind === "auth-code" ? grant : undefined;
 }
 
-export function getConnectorDeviceAuthGrantConfig(
+export function getConnectorDeviceAuthGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorDeviceAuthGrantConfig | undefined {
   const grant = getConnectorOAuthGrantConfigIfSupported(type);
@@ -156,7 +156,7 @@ export function getConnectorOAuthScopes(type: ConnectorType): string[] {
   return [...(getConnectorOAuthGrantConfigIfSupported(type)?.scopes ?? [])];
 }
 
-export function getConnectorInteractivePairingGrantConfig(
+export function getConnectorInteractivePairingGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorInteractivePairingGrantConfig | undefined {
   const method = getConnectorAuthMethod(type, "cli-auth");
@@ -178,13 +178,15 @@ export function getConnectorInteractivePairingGrantConfig(
 export function getConnectorCliAuthFlow(
   type: ConnectorType,
 ): ConnectorCliAuthFlow | undefined {
-  return getConnectorInteractivePairingGrantConfig(type)?.flow;
+  return getConnectorInteractivePairingGrantConfigIfSupported(type)?.flow;
 }
 
 export function getConnectorCliAuthModes(
   type: ConnectorType,
 ): NonNullable<ConnectorCliAuthConfig["modes"]> {
-  return getConnectorInteractivePairingGrantConfig(type)?.modes ?? [];
+  return (
+    getConnectorInteractivePairingGrantConfigIfSupported(type)?.modes ?? []
+  );
 }
 
 export function getConnectorGenerationTypes(

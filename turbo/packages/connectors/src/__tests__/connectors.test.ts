@@ -9,12 +9,12 @@ import {
   getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
   hasRequiredScopes,
-  getConnectorAuthCodeGrantConfig,
+  getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
   getConnectorCliAuthFlow,
   getConnectorCliAuthModes,
-  getConnectorDeviceAuthGrantConfig,
-  getConnectorInteractivePairingGrantConfig,
+  getConnectorDeviceAuthGrantConfigIfSupported,
+  getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
@@ -194,10 +194,12 @@ describe("connector auth method config", () => {
     expect(method?.access).toStrictEqual({ kind: "none" });
     expect(method?.revoke).toStrictEqual({ kind: "none" });
     expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
-    expect(getConnectorInteractivePairingGrantConfig("stripe")).toStrictEqual(
-      method?.grant,
-    );
-    expect(getConnectorInteractivePairingGrantConfig("github")).toBeUndefined();
+    expect(
+      getConnectorInteractivePairingGrantConfigIfSupported("stripe"),
+    ).toStrictEqual(method?.grant);
+    expect(
+      getConnectorInteractivePairingGrantConfigIfSupported("github"),
+    ).toBeUndefined();
     expect(getConnectorCliAuthFlow("stripe")).toBe("browser-verification");
     expect(getConnectorCliAuthModes("stripe")).toStrictEqual([
       {
@@ -1360,7 +1362,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
     expect(getConnectorOAuthGrantConfigIfSupported("github")).toStrictEqual(
       method?.grant,
     );
-    expect(getConnectorAuthCodeGrantConfig("github")).toMatchObject({
+    expect(getConnectorAuthCodeGrantConfigIfSupported("github")).toMatchObject({
       kind: "auth-code",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project", "workflow"],
@@ -1376,7 +1378,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
 
   it("returns device-auth grant config for device OAuth connectors", () => {
     expect(
-      getConnectorDeviceAuthGrantConfig("test-oauth-device"),
+      getConnectorDeviceAuthGrantConfigIfSupported("test-oauth-device"),
     ).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "/api/test/oauth-provider/device/code",
@@ -1389,7 +1391,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
       },
       scopes: ["read"],
     });
-    expect(getConnectorDeviceAuthGrantConfig("base44")).toMatchObject({
+    expect(
+      getConnectorDeviceAuthGrantConfigIfSupported("base44"),
+    ).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
       tokenUrl: "https://app.base44.com/oauth/token",
@@ -1405,6 +1409,13 @@ describe("connector OAuth lifecycle grant helpers", () => {
 
   it("returns undefined for connectors without OAuth grants", () => {
     expect(getConnectorOAuthGrantConfigIfSupported("axiom")).toBeUndefined();
+    expect(getConnectorOAuthScopes("axiom")).toStrictEqual([]);
+    expect(
+      getConnectorAuthCodeGrantConfigIfSupported("base44"),
+    ).toBeUndefined();
+    expect(
+      getConnectorDeviceAuthGrantConfigIfSupported("github"),
+    ).toBeUndefined();
   });
 
   it("keeps legacy OAuth config equivalent to lifecycle grant projections", () => {
