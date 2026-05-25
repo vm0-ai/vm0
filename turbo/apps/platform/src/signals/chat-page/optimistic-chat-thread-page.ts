@@ -123,6 +123,7 @@ async function appendQueuedMessage(
         clientMessageId: append.clientMessageId,
         modelSelection: append.modelSelection,
         attachFiles: append.attachments ?? undefined,
+        ...(append.forceNewSession ? { forceNewSession: true } : {}),
       },
       fetchOptions: { signal },
     }),
@@ -155,6 +156,7 @@ function queuedReplayAppendArgs({
     clientMessageId: entry.message.id,
     hasTextContent: hasTextContentForQueuedReplay(entry.message),
     modelSelection,
+    ...(entry.forceNewSession ? { forceNewSession: true } : {}),
   };
 }
 

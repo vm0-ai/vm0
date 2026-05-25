@@ -211,6 +211,18 @@ function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
   return pick(time);
 }
 
+function shouldForceNewSessionForModelChange(
+  thread: ChatThread | null,
+  selectedModel: string | undefined,
+): boolean {
+  const threadPinSelectedModel = thread?.selectedModel ?? null;
+  return (
+    threadPinSelectedModel !== null &&
+    selectedModel !== undefined &&
+    threadPinSelectedModel !== selectedModel
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ChatThreadSignals — returned by createChatThreadSignals
 // ---------------------------------------------------------------------------
@@ -1508,11 +1520,10 @@ function createSendMessage(deps: SendMessageDeps) {
       // PROVIDER_INCOMPATIBLE (or "Invalid signature in thinking block") on
       // the runner side. The server then injects prior chat messages into
       // the system prompt so the agent still has conversation context.
-      const threadPinSelectedModel = thread?.selectedModel ?? null;
-      const forceNewSession =
-        threadPinSelectedModel !== null &&
-        effectiveSelectedModel !== undefined &&
-        threadPinSelectedModel !== effectiveSelectedModel;
+      const forceNewSession = shouldForceNewSessionForModelChange(
+        thread,
+        effectiveSelectedModel,
+      );
 
       const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
@@ -1584,6 +1595,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
     const modelSelection = await get(modelSelection$);
     signal.throwIfAborted();
+    const forceNewSession = shouldForceNewSessionForModelChange(
+      thread,
+      modelSelection?.selectedModel,
+    );
     const result = await set(
       prepareUserMessageFromDraft$,
       draft,
@@ -1616,6 +1631,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         attachFiles: result.attachments,
         createdAt: nowIso,
       },
+      ...(forceNewSession ? { forceNewSession: true } : {}),
     });
     animationFrame(
       () => {
@@ -1636,6 +1652,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           clientMessageId,
           hasTextContent: result.hasTextContent,
           modelSelection,
+          ...(forceNewSession ? { forceNewSession: true } : {}),
         },
         signal,
       ),

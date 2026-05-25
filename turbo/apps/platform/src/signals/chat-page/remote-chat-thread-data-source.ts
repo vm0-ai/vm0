@@ -54,6 +54,7 @@ const appendQueuedMessage$ = command(
       clientMessageId,
       hasTextContent,
       modelSelection,
+      forceNewSession,
     }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
@@ -68,6 +69,7 @@ const appendQueuedMessage$ = command(
           clientMessageId,
           modelSelection,
           attachFiles: attachments ?? undefined,
+          ...(forceNewSession ? { forceNewSession: true } : {}),
         },
         fetchOptions: { signal },
       }),

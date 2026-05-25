@@ -45,6 +45,7 @@ const THREAD_ID = "thread-editable-1";
 
 function makeThreadDetail(
   overrides: Partial<{
+    activeRunIds: string[];
     modelProviderId: string | null;
     selectedModel: string | null;
   }> = {},
@@ -234,6 +235,64 @@ describe("chat thread page — model picker editable", () => {
       user,
       textarea as HTMLTextAreaElement,
       "Use Opus now",
+    );
+
+    await waitFor(() => {
+      expect(capturedBody).toBeDefined();
+    });
+    expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-7");
+    expect(capturedBody?.forceNewSession).toBeTruthy();
+  });
+
+  // CHAT-MODEL-EDIT-006: queued sends share the same model-switch semantics as
+  // direct sends so the backend can start a compatible CLI session.
+  it("sends forceNewSession for queued messages after changing model on an active thread (CHAT-MODEL-EDIT-006)", async () => {
+    const user = userEvent.setup();
+    let capturedBody:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          forceNewSession?: boolean;
+        }
+      | undefined;
+
+    setupMocks([makeUserMessage()], {
+      activeRunIds: ["run-active-1"],
+      selectedModel: "claude-sonnet-4-6",
+    });
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        capturedBody = {
+          modelSelection:
+            "modelSelection" in body ? body.modelSelection : undefined,
+          forceNewSession:
+            "forceNewSession" in body ? body.forceNewSession : undefined,
+        };
+        return respond(201, {
+          runId: null,
+          threadId: THREAD_ID,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await user.click(
+      await screen.findByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
+    );
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Opus 4\.7/i }),
+    );
+    const textarea = await screen.findByPlaceholderText(
+      /Type your next message/,
+    );
+    await sendMessageInUI(
+      user,
+      textarea as HTMLTextAreaElement,
+      "Queue this on Opus",
     );
 
     await waitFor(() => {
