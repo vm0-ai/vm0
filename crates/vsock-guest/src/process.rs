@@ -90,6 +90,12 @@ pub(crate) struct ProcessTreeKillTarget {
     child_pgid: Option<u32>,
 }
 
+impl ProcessTreeKillTarget {
+    pub(crate) fn child_id(self) -> u32 {
+        self.child_id
+    }
+}
+
 /// Snapshot process-tree kill targets while the direct child is still alive.
 ///
 /// This preserves the process group created by `su - user` even if the direct
@@ -116,7 +122,7 @@ pub(crate) fn refresh_process_tree_kill_target(target: &mut ProcessTreeKillTarge
 /// # Safety
 ///
 /// `child_id` must be a valid PID from `Command::spawn()`.
-/// Returns `true` if the primary kill (the direct child's group) succeeded.
+/// Returns `true` if any targeted process group was signalled.
 pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
     // Find su's child PGID BEFORE killing — after kill, PPID changes to 1.
     let target = process_tree_kill_target(child_id);
@@ -131,6 +137,7 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
 pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> bool {
     // Kill the direct child's process group (the su wrapper).
     let ret = unsafe { libc::kill(-(target.child_id as i32), libc::SIGKILL) };
+    let mut signalled = ret == 0;
     if ret != 0 {
         let err = std::io::Error::last_os_error();
         log(
@@ -150,7 +157,9 @@ pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> 
         && pgid != target.child_id
     {
         let ret = unsafe { libc::kill(-(pgid as i32), libc::SIGKILL) };
-        if ret != 0 {
+        if ret == 0 {
+            signalled = true;
+        } else {
             let err = std::io::Error::last_os_error();
             log(
                 "WARN",
@@ -159,7 +168,7 @@ pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> 
         }
     }
 
-    ret == 0
+    signalled
 }
 
 /// Kill the process tree for a spawned child and reap the direct child.
@@ -606,7 +615,7 @@ mod tests {
         assert!(status.success());
 
         // SAFETY: `target` came from the spawned shell before it exited.
-        unsafe { kill_process_tree_target(target) };
+        assert!(unsafe { kill_process_tree_target(target) });
         match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
             Ok(true) => {}
             Ok(false) => {

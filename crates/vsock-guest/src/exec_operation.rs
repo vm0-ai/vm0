@@ -29,7 +29,7 @@ use crate::shell_command::{
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
-    wait_with_kill_timeout_or_cancelled_either,
+    wait_with_kill_timeout_or_cancelled_either_with_target,
 };
 use crate::writer::GuestWriter;
 
@@ -632,8 +632,9 @@ fn run_exec_operation_worker<S>(
     drop(output_tx);
 
     refresh_process_tree_kill_target(&mut kill_target);
-    let outcome = wait_with_kill_timeout_or_cancelled_either(
+    let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
         child,
+        kill_target,
         request.timeout.wait_timeout_ms(),
         &connection_cancel,
         &exec_cancel,
