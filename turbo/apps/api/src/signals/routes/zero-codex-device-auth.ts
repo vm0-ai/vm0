@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -14,7 +12,6 @@ import {
   completeCodexDeviceAuth$,
   startCodexDeviceAuth,
 } from "../services/codex-device-auth.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
 
 const modelProviderWriteAuth = {
@@ -32,28 +29,6 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const codexDeviceAuthDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Codex device auth is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-function isCodexDeviceAuthEnabled(params: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.CodexDeviceAuth, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides: params.overrides,
-  });
-}
-
 const startCodexDeviceAuthBody$ = bodyResultOf(
   zeroCodexDeviceAuthContract.start,
 );
@@ -67,21 +42,6 @@ const cancelCodexDeviceAuthBody$ = bodyResultOf(
 const startCodexDeviceAuthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-
-    if (
-      !isCodexDeviceAuthEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return codexDeviceAuthDisabled;
-    }
-
     const body = await get(startCodexDeviceAuthBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -127,21 +87,6 @@ const completeCodexDeviceAuthInner$ = command(
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
-    }
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-
-    if (
-      !isCodexDeviceAuthEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return codexDeviceAuthDisabled;
     }
 
     const result = await set(

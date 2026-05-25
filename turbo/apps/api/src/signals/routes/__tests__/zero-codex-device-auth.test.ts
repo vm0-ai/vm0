@@ -1,11 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -148,31 +146,6 @@ function expectOAuthTokenBody(calls: {
   expect(body?.get("code_verifier")).toBe("code_verifier_test");
 }
 
-async function setCodexDeviceAuthOverride(
-  userId: string,
-  orgId: string,
-  enabled: boolean,
-) {
-  const db = store.set(writeDb$);
-  await db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: {
-        [FeatureSwitchKey.CodexDeviceAuth]: enabled,
-      },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: {
-          [FeatureSwitchKey.CodexDeviceAuth]: enabled,
-        },
-      },
-    });
-}
-
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
@@ -203,14 +176,6 @@ async function cleanupUser(userId: string, orgId: string) {
     .delete(secrets)
     .where(
       and(eq(secrets.userId, ORG_SENTINEL_USER_ID), eq(secrets.orgId, orgId)),
-    );
-  await db
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.userId, userId),
-        eq(userFeatureSwitches.orgId, orgId),
-      ),
     );
 }
 
@@ -269,26 +234,6 @@ describe("Codex device auth routes", () => {
     mocks.clerk.session(userId, orgId, role);
     return { userId, orgId };
   }
-
-  it("respects a disabled Codex device auth override before contacting OpenAI auth", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    fixtures.push({ userId, orgId });
-    mocks.clerk.session(userId, orgId);
-    await setCodexDeviceAuthOverride(userId, orgId, false);
-    const calls = mockCodexDeviceAuthHttp();
-
-    const response = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { scope: "org" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(calls.userCode).toHaveLength(0);
-  });
 
   it("rejects member org-scope starts before contacting OpenAI auth", async () => {
     const { userId, orgId } = setupUser("org:member");
