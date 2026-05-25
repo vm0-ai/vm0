@@ -24,6 +24,24 @@ export interface ComputerUseRuntimeAuditEvent {
   readonly createdAt: string;
 }
 
+export type ComputerUseLocalCommandLogStatus =
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export interface ComputerUseLocalCommandLogEntry {
+  readonly commandId: string;
+  readonly kind: string;
+  readonly app: string | null;
+  readonly status: ComputerUseLocalCommandLogStatus;
+  readonly payload: Record<string, unknown>;
+  readonly result: Record<string, unknown> | null;
+  readonly error: Record<string, unknown> | null;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+  readonly durationMs: number | null;
+}
+
 export interface ComputerUseHostRuntimeState {
   readonly status: ComputerUseHostRuntimeStatus;
   readonly hostId: string | null;
@@ -31,6 +49,7 @@ export interface ComputerUseHostRuntimeState {
   readonly lastCommandAt: string | null;
   readonly lastError: string | null;
   readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
+  readonly localCommandLog: readonly ComputerUseLocalCommandLogEntry[];
 }
 
 export interface DesktopComputerUseState {
@@ -55,4 +74,5 @@ export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
     lastCommandAt: null,
     lastError: null,
     recentAuditEvents: [],
+    localCommandLog: [],
   });

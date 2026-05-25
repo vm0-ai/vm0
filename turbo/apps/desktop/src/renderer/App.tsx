@@ -1,15 +1,20 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   IconAlertCircle,
   IconBuilding,
   IconChevronDown,
   IconCheck,
+  IconChevronRight,
+  IconCode,
   IconExternalLink,
   IconHistory,
+  IconMaximize,
+  IconPhoto,
   IconPlayerPlay,
   IconRefresh,
   IconShieldCheck,
   IconUserCircle,
+  IconX,
 } from "@tabler/icons-react";
 import { useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -32,6 +37,14 @@ import {
 } from "./computer-use-state";
 
 type HostStatus = DesktopComputerUseState["host"]["status"];
+type CommandLogEntry =
+  DesktopComputerUseState["host"]["localCommandLog"][number];
+
+interface ScreenshotPreview {
+  readonly src: string;
+  readonly title: string;
+  readonly meta: string;
+}
 
 const STATUS_LABELS = {
   idle: "Idle",
@@ -42,6 +55,19 @@ const STATUS_LABELS = {
   disabled: "Disabled",
   error: "Error",
 } as const satisfies Record<HostStatus, string>;
+
+const COMMAND_STATUS_LABELS = {
+  running: "Running",
+  succeeded: "Succeeded",
+  failed: "Failed",
+} as const satisfies Record<CommandLogEntry["status"], string>;
+
+const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
+  "elements",
+  "screenshot",
+  "text",
+  "visibleElements",
+]);
 
 function BridgeSubscription() {
   const setupBridge = useSet(setupComputerUseBridge$);
@@ -138,6 +164,153 @@ function formatTimestamp(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatDuration(value: number | null): string {
+  if (value === null) {
+    return "In progress";
+  }
+  if (value < 1_000) {
+    return `${value} ms`;
+  }
+  return `${(value / 1_000).toFixed(1)} s`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function recordStringValue(
+  record: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function recordNumberValue(
+  record: Record<string, unknown> | null,
+  key: string,
+): number | null {
+  const value = record?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? "";
+}
+
+function previewValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "None";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return formatJson(value);
+}
+
+function visibleElementRecords(
+  result: Record<string, unknown> | null,
+): readonly Record<string, unknown>[] {
+  const value = result?.visibleElements;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
+}
+
+function jsonDisplayRecord(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      key === "screenshot" &&
+      typeof entry === "string" &&
+      entry.startsWith("data:image/")
+    ) {
+      next[key] = `[image data URL, ${entry.length} characters]`;
+    } else {
+      next[key] = jsonDisplayValue(entry);
+    }
+  }
+  return next;
+}
+
+function jsonDisplayValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => {
+      return jsonDisplayValue(entry);
+    });
+  }
+  if (isRecord(value)) {
+    return jsonDisplayRecord(value);
+  }
+  return value;
+}
+
+function resultSummaryRecord(
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(result)) {
+    if (!RESULT_SUMMARY_KEYS_TO_SKIP.has(key)) {
+      summary[key] = jsonDisplayValue(value);
+    }
+  }
+  if (recordStringValue(result, "text")) {
+    summary.text = "[shown in Agent State]";
+  }
+  if (recordStringValue(result, "screenshot")) {
+    summary.screenshot = "[shown as image]";
+  }
+  const elements = result.elements;
+  if (Array.isArray(elements)) {
+    summary.elements = `${elements.length} elements`;
+  }
+  const visibleElements = result.visibleElements;
+  if (Array.isArray(visibleElements)) {
+    summary.visibleElements = `${visibleElements.length} visible elements`;
+  }
+  return summary;
+}
+
+function screenshotMeta(result: Record<string, unknown> | null): string {
+  const sourceName = recordStringValue(result, "screenshotSourceName");
+  const width = recordNumberValue(result, "screenshotWidth");
+  const height = recordNumberValue(result, "screenshotHeight");
+  const dimensions =
+    width !== null && height !== null ? `${width}x${height}` : null;
+  return [sourceName, dimensions].filter(Boolean).join(" - ");
+}
+
+function KeyValueList({
+  emptyLabel,
+  value,
+}: {
+  readonly emptyLabel: string;
+  readonly value: Record<string, unknown>;
+}) {
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return <div className="compact-empty">{emptyLabel}</div>;
+  }
+  return (
+    <dl className="key-value-list">
+      {entries.map(([key, entry]) => {
+        return (
+          <div key={key}>
+            <dt>{key}</dt>
+            <dd>{previewValue(entry)}</dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
 }
 
 function PermissionsPanel({
@@ -314,39 +487,311 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
-function HistoryPanel({ state }: { readonly state: DesktopComputerUseState }) {
-  const events = state.host.recentAuditEvents;
+function CommandStatusBadge({
+  status,
+}: {
+  readonly status: CommandLogEntry["status"];
+}) {
   return (
-    <Panel title="Recent History" icon={<IconHistory size={18} />}>
-      {events.length === 0 ? (
-        <div className="empty-state">No recent command events.</div>
+    <span className={`command-status command-status-${status}`}>
+      {COMMAND_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function CommandLogSection({
+  children,
+  icon,
+  title,
+}: {
+  readonly children: ReactNode;
+  readonly icon: ReactNode;
+  readonly title: string;
+}) {
+  return (
+    <section className="command-log-section">
+      <div className="command-log-section-title">
+        {icon}
+        <h3>{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function VisibleElements({
+  elements,
+}: {
+  readonly elements: readonly Record<string, unknown>[];
+}) {
+  if (elements.length === 0) {
+    return null;
+  }
+  const preview = elements.slice(0, 8);
+  return (
+    <CommandLogSection title="Visible Elements" icon={<IconCode size={15} />}>
+      <div className="visible-elements-list">
+        {preview.map((element, index) => {
+          const label =
+            recordStringValue(element, "text") ??
+            recordStringValue(element, "elementId") ??
+            `Element ${index + 1}`;
+          const elementIndex = recordNumberValue(element, "elementIndex");
+          const role = recordStringValue(element, "role");
+          const meta = [
+            elementIndex !== null ? `#${elementIndex.toString()}` : null,
+            role,
+          ]
+            .filter((value): value is string => {
+              return value !== null;
+            })
+            .join(" - ");
+          return (
+            <div
+              className="visible-element-row"
+              key={`${label}-${index.toString()}`}
+            >
+              <span>{label}</span>
+              {meta && <code>{meta}</code>}
+            </div>
+          );
+        })}
+      </div>
+      {elements.length > preview.length && (
+        <div className="compact-empty">
+          {elements.length - preview.length} more elements in raw result
+        </div>
+      )}
+    </CommandLogSection>
+  );
+}
+
+function ScreenshotBlock({
+  entry,
+  onPreview,
+  screenshot,
+}: {
+  readonly entry: CommandLogEntry;
+  readonly onPreview: (preview: ScreenshotPreview) => void;
+  readonly screenshot: string;
+}) {
+  const meta = screenshotMeta(entry.result);
+  return (
+    <CommandLogSection title="Screenshot" icon={<IconPhoto size={15} />}>
+      <button
+        type="button"
+        className="screenshot-thumbnail"
+        onClick={() => {
+          onPreview({
+            src: screenshot,
+            title: `${entry.kind} screenshot`,
+            meta,
+          });
+        }}
+      >
+        <img src={screenshot} alt={`${entry.kind} screenshot`} />
+        <span>
+          <IconMaximize size={14} />
+          Open
+        </span>
+      </button>
+      {meta && <div className="row-meta">{meta}</div>}
+    </CommandLogSection>
+  );
+}
+
+function CommandLogRow({
+  entry,
+  expanded,
+  onPreviewScreenshot,
+  onToggle,
+}: {
+  readonly entry: CommandLogEntry;
+  readonly expanded: boolean;
+  readonly onPreviewScreenshot: (preview: ScreenshotPreview) => void;
+  readonly onToggle: () => void;
+}) {
+  const resultText = recordStringValue(entry.result, "text");
+  const screenshot = recordStringValue(entry.result, "screenshot");
+  const visibleElements = visibleElementRecords(entry.result);
+  const completedAt = entry.completedAt ?? entry.startedAt;
+  return (
+    <article className="command-log-row">
+      <button
+        type="button"
+        className="command-log-summary"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <span className="command-log-chevron">
+          {expanded ? (
+            <IconChevronDown size={16} />
+          ) : (
+            <IconChevronRight size={16} />
+          )}
+        </span>
+        <span className="command-log-main">
+          <span className="row-title">{entry.kind}</span>
+          <span className="row-meta">
+            {entry.app ?? "No target app"} - {formatTimestamp(completedAt)} -{" "}
+            {formatDuration(entry.durationMs)}
+          </span>
+        </span>
+        <CommandStatusBadge status={entry.status} />
+      </button>
+      {expanded && (
+        <div className="command-log-details">
+          <CommandLogSection title="Parameters" icon={<IconCode size={15} />}>
+            <KeyValueList
+              value={entry.payload}
+              emptyLabel="No parameters were sent."
+            />
+          </CommandLogSection>
+          {entry.error && (
+            <CommandLogSection
+              title="Error"
+              icon={<IconAlertCircle size={15} />}
+            >
+              <pre className="json-block">{formatJson(entry.error)}</pre>
+            </CommandLogSection>
+          )}
+          {entry.result && (
+            <CommandLogSection title="Result" icon={<IconCheck size={15} />}>
+              <KeyValueList
+                value={resultSummaryRecord(entry.result)}
+                emptyLabel="No result fields were returned."
+              />
+            </CommandLogSection>
+          )}
+          {resultText && (
+            <CommandLogSection
+              title="Agent State"
+              icon={<IconCode size={15} />}
+            >
+              <pre className="agent-state-block">{resultText}</pre>
+            </CommandLogSection>
+          )}
+          {screenshot && (
+            <ScreenshotBlock
+              entry={entry}
+              screenshot={screenshot}
+              onPreview={onPreviewScreenshot}
+            />
+          )}
+          <VisibleElements elements={visibleElements} />
+          <details className="raw-log-details">
+            <summary>Raw Log Entry</summary>
+            <pre className="json-block">
+              {formatJson(jsonDisplayValue(entry))}
+            </pre>
+          </details>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ScreenshotLightbox({
+  onClose,
+  preview,
+}: {
+  readonly onClose: () => void;
+  readonly preview: ScreenshotPreview | null;
+}) {
+  useEffect(() => {
+    if (!preview) {
+      return undefined;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, preview]);
+
+  if (!preview) {
+    return null;
+  }
+
+  return (
+    <div className="screenshot-lightbox" role="presentation" onClick={onClose}>
+      <div
+        className="screenshot-lightbox-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={preview.title}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <div className="screenshot-lightbox-header">
+          <div>
+            <strong>{preview.title}</strong>
+            {preview.meta && <span>{preview.meta}</span>}
+          </div>
+          <button type="button" className="icon-only-button" onClick={onClose}>
+            <IconX size={18} />
+          </button>
+        </div>
+        <img src={preview.src} alt={preview.title} />
+      </div>
+    </div>
+  );
+}
+
+function CommandLogPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const entries = state.host.localCommandLog;
+  const [expandedCommandIds, setExpandedCommandIds] = useState<
+    readonly string[]
+  >([]);
+  const [screenshotPreview, setScreenshotPreview] =
+    useState<ScreenshotPreview | null>(null);
+  const toggleCommand = (commandId: string) => {
+    setExpandedCommandIds((current) => {
+      if (current.includes(commandId)) {
+        return current.filter((candidate) => {
+          return candidate !== commandId;
+        });
+      }
+      return [commandId, ...current];
+    });
+  };
+
+  return (
+    <Panel title="Command Log" icon={<IconHistory size={18} />}>
+      {entries.length === 0 ? (
+        <div className="empty-state">No local native commands have run.</div>
       ) : (
-        <div className="history-list">
-          {events.map((event) => {
+        <div className="command-log-list">
+          {entries.map((entry) => {
             return (
-              <div
-                className="history-row"
-                key={`${event.commandId}-${event.event}-${event.createdAt}`}
-              >
-                <div>
-                  <div className="row-title">
-                    {event.kind} - {event.event}
-                  </div>
-                  <div className="row-meta">
-                    {event.app ?? "No target app"} -{" "}
-                    {formatTimestamp(event.createdAt)}
-                  </div>
-                </div>
-                {event.approvalOutcome && (
-                  <span className={`outcome outcome-${event.approvalOutcome}`}>
-                    {event.approvalOutcome}
-                  </span>
-                )}
-              </div>
+              <CommandLogRow
+                key={entry.commandId}
+                entry={entry}
+                expanded={expandedCommandIds.includes(entry.commandId)}
+                onPreviewScreenshot={setScreenshotPreview}
+                onToggle={() => {
+                  toggleCommand(entry.commandId);
+                }}
+              />
             );
           })}
         </div>
       )}
+      <ScreenshotLightbox
+        preview={screenshotPreview}
+        onClose={() => {
+          setScreenshotPreview(null);
+        }}
+      />
     </Panel>
   );
 }
@@ -375,7 +820,7 @@ function ComputerUseContent({
         <>
           <PermissionsPanel state={state} />
           <RuntimePanel state={state} />
-          <HistoryPanel state={state} />
+          <CommandLogPanel state={state} />
         </>
       )}
     </>

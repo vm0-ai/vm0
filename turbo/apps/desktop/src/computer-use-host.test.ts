@@ -3,6 +3,11 @@ import {
   ComputerUseHostRuntime,
   type ComputerUseHostFetch,
 } from "./computer-use-host";
+import type {
+  ComputerUseCommand,
+  ComputerUseCommandExecutionResult,
+} from "./computer-use-accessibility";
+import type { ComputerUsePermissionState } from "./computer-use-types";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -15,16 +20,26 @@ function createRuntime(
   options: {
     readonly sessionFetch?: ComputerUseHostFetch;
     readonly hostFetch?: ComputerUseHostFetch;
+    readonly executeCommand?: (
+      command: ComputerUseCommand,
+      permissions: ComputerUsePermissionState,
+    ) => Promise<ComputerUseCommandExecutionResult>;
   } = {},
 ) {
   const sessionFetch =
     options.sessionFetch ??
-    vi.fn<ComputerUseHostFetch>(async () => {
+    vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return jsonResponse({ auditEvents: [] });
+      }
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
   const hostFetch =
     options.hostFetch ??
-    vi.fn<ComputerUseHostFetch>(async () => {
+    vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
       return jsonResponse({ status: "idle" });
     });
   const runtime = new ComputerUseHostRuntime({
@@ -36,7 +51,10 @@ function createRuntime(
     getPermissions() {
       return { accessibility: true, screenRecording: false };
     },
-    async executeCommand() {
+    async executeCommand(command, permissions) {
+      if (options.executeCommand) {
+        return options.executeCommand(command, permissions);
+      }
       return { status: "succeeded", result: {} };
     },
   });
@@ -95,7 +113,10 @@ describe("ComputerUseHostRuntime", () => {
 
   it("uses the host bearer token for polling after registration", async () => {
     vi.useFakeTimers();
-    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return jsonResponse({ auditEvents: [] });
+      }
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
@@ -121,6 +142,94 @@ describe("ComputerUseHostRuntime", () => {
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
       "https://api.vm0.ai/api/zero/computer-use/hosts/start",
     );
+
+    runtime.stop();
+  });
+
+  it("records local native command payloads and results", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return jsonResponse({
+          status: "claimed",
+          command: {
+            id: "cmd-1",
+            kind: "app.state",
+            payload: { app: "Things" },
+          },
+        });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({ status: "idle" });
+    });
+    const executeCommand = vi.fn<
+      (
+        command: ComputerUseCommand,
+        permissions: ComputerUsePermissionState,
+      ) => Promise<ComputerUseCommandExecutionResult>
+    >(async () => {
+      return {
+        status: "succeeded",
+        result: {
+          text: "0 standard window Inbox",
+          screenshot: "data:image/png;base64,abc123",
+          screenshotWidth: 800,
+          screenshotHeight: 600,
+          screenshotSourceName: "Inbox",
+        },
+      };
+    });
+    const { runtime } = createRuntime({ hostFetch, executeCommand });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const [entry] = runtime.getState().localCommandLog;
+    expect(entry).toMatchObject({
+      commandId: "cmd-1",
+      kind: "app.state",
+      app: "Things",
+      status: "succeeded",
+      payload: { app: "Things" },
+      result: {
+        text: "0 standard window Inbox",
+        screenshot: "data:image/png;base64,abc123",
+        screenshotWidth: 800,
+        screenshotHeight: 600,
+        screenshotSourceName: "Inbox",
+      },
+      error: null,
+      durationMs: 0,
+    });
+    expect(executeCommand).toHaveBeenCalledWith(
+      {
+        id: "cmd-1",
+        kind: "app.state",
+        payload: { app: "Things" },
+      },
+      { accessibility: true, screenRecording: false },
+    );
+    const completionCall = hostFetch.mock.calls.find(([url]) => {
+      return url.endsWith(
+        "/api/zero/computer-use/host/commands/cmd-1/complete",
+      );
+    });
+    if (!completionCall) {
+      throw new Error("Expected Computer Use command completion request");
+    }
+    expect(JSON.parse(String(completionCall[1]?.body))).toMatchObject({
+      status: "succeeded",
+      result: {
+        text: "0 standard window Inbox",
+        screenshot: "data:image/png;base64,abc123",
+      },
+    });
 
     runtime.stop();
   });
