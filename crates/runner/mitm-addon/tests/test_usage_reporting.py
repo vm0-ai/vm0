@@ -2742,9 +2742,9 @@ class TestResponseUsageReporting:
     ):
         """Missing message_id in model_provider_usage falls back to flow.id.
 
-        Without a stable per-flow key, server-side dedup of usage webhook
-        retries fails, which would double-charge.  flow.id is stable
-        across retries because _enqueue_webhook copies the dict once.
+        Without a stable per-flow source key, duplicate response/error
+        observations could be aggregated twice before the webhook payload is
+        built.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"

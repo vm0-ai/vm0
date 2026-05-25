@@ -574,7 +574,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
             **log_extra,
         )
 
-    # Forward usage events to the platform for persistence.
+    # Buffer usage events for aggregate platform upload.
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:
@@ -588,9 +588,8 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     url = f"{api_url}/api/webhooks/agent/usage-event"
     events: list[UsageEvent] = []
     for category, qty in billable_counts.items():
-        # UUIDv5 from stable inputs — retries produce the same key, so the
-        # server-side UNIQUE(idempotency_key) dedups duplicate deliveries
-        # without the addon needing to persist anything across restarts.
+        # UUIDv5 from stable source inputs. The usage buffer uses this key to
+        # dedupe duplicate response/error observations before aggregation.
         idempotency_key = str(
             uuid.uuid5(
                 USAGE_EVENT_NAMESPACE_CONNECTOR,

@@ -271,6 +271,35 @@ class TestReportModelProviderUsage:
         body = json.loads(mock_opener.open.call_args[0][0].data)
         assert body["events"][0]["quantity"] == 10
 
+    def test_source_dedupe_separates_flows_when_message_id_missing(
+        self, real_flow, fresh_usage_executor
+    ):
+        first = real_flow(with_response=False, host="api.anthropic.com")
+        first.id = "flow-first"
+        second = real_flow(with_response=False, host="api.anthropic.com")
+        second.id = "flow-second"
+        for flow in (first, second):
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+            flow.metadata["firewall_billable"] = True
+            flow.metadata["vm_sandbox_token"] = "tok-xyz"
+            flow.metadata["model_provider_usage"] = {
+                "model": "claude-sonnet-4-6",
+                "tokens.input": 10,
+            }
+
+        with (
+            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_model_provider_usage(first, "run-fallback")
+            usage.report_model_provider_usage(second, "run-fallback")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        body = json.loads(mock_opener.open.call_args[0][0].data)
+        assert body["events"][0]["quantity"] == 20
+
     def test_source_dedupe_preserves_message_id_over_flow_id(self, real_flow, fresh_usage_executor):
         first = real_flow(with_response=False, host="api.anthropic.com")
         first.id = "flow-first"
