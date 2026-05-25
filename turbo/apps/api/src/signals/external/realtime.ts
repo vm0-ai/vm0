@@ -89,13 +89,11 @@ export async function createRunnerGroupRealtimeToken(
 /**
  * Publish a per-user invalidation/notification signal.
  *
- * Channel naming and payload shape mirror the existing apps/web helper
- * (apps/web/src/lib/infra/realtime/client.ts). Platform clients subscribe via
- * the existing /api/zero/realtime/token endpoint and receive events from
- * either backend during the rollout window.
+ * Platform clients subscribe via the existing /api/zero/realtime/token
+ * endpoint and receive events published by the API backend.
  *
  * NOT best-effort: rejections from Ably propagate to the caller, matching
- * web's behaviour. Wave 2/3 mutation handlers should use this directly; if
+ * the original route behaviour. Mutation handlers should use this directly; if
  * a non-blocking publish becomes necessary for a future route, prefer
  * `settle` from ../utils.
  */
@@ -166,9 +164,8 @@ export async function publishOrgSignal(
 }
 
 /**
- * Notify a runner-group channel that a run should halt. Mirrors web's
- * publishCancelNotification; the runner subscribes to its group's
- * channel and aborts the matching run on receipt.
+ * Notify a runner-group channel that a run should halt. The runner subscribes
+ * to its group's channel and aborts the matching run on receipt.
  */
 export async function publishCancelToRunnerGroup(
   group: string,
