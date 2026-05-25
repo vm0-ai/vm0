@@ -15,6 +15,16 @@ import {
 } from "../services/integrations-github.service";
 import type { RouteEntry } from "../route";
 
+const githubReadAuth = {
+  requireOrganization: true,
+  requiredCapability: "github:read",
+} as const;
+
+const githubWriteAuth = {
+  requireOrganization: true,
+  requiredCapability: "github:write",
+} as const;
+
 const updateInstallationBody$ = bodyResultOf(
   integrationsGithubContract.updateInstallation,
 );
@@ -115,7 +125,7 @@ const deleteGithubLabelListenerInner$ = command(
 export const integrationsGithubRoutes: readonly RouteEntry[] = [
   {
     route: integrationsGithubContract.getInstallation,
-    handler: authRoute({ requireOrganization: true }, getGithubInstallation$),
+    handler: authRoute(githubReadAuth, getGithubInstallation$),
   },
   {
     route: integrationsGithubContract.connectUser,
@@ -141,23 +151,14 @@ export const integrationsGithubRoutes: readonly RouteEntry[] = [
   },
   {
     route: integrationsGithubContract.createLabelListener,
-    handler: authRoute(
-      { requireOrganization: true },
-      createGithubLabelListenerInner$,
-    ),
+    handler: authRoute(githubWriteAuth, createGithubLabelListenerInner$),
   },
   {
     route: integrationsGithubContract.updateLabelListener,
-    handler: authRoute(
-      { requireOrganization: true },
-      updateGithubLabelListenerInner$,
-    ),
+    handler: authRoute(githubWriteAuth, updateGithubLabelListenerInner$),
   },
   {
     route: integrationsGithubContract.deleteLabelListener,
-    handler: authRoute(
-      { requireOrganization: true },
-      deleteGithubLabelListenerInner$,
-    ),
+    handler: authRoute(githubWriteAuth, deleteGithubLabelListenerInner$),
   },
 ];

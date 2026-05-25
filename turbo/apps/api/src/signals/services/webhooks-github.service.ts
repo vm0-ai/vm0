@@ -199,6 +199,7 @@ function buildIntegrationPrompt(): string {
     "# Current Integration",
     "You are currently running inside: GitHub",
     "GitHub issue and pull request attachments are shown as [GitHub file] blocks. Download them with `zero github download-file -h`.",
+    "GitHub label listeners run agents when issues or pull requests receive matching labels. Manage them with `zero github label-listener -h`.",
   ];
   const botUsername = githubAppBotUsername();
   if (botUsername) {

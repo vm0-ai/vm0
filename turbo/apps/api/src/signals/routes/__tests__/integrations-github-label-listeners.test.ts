@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -9,12 +10,19 @@ import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
 } from "./helpers/zero-usage-insight";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
@@ -30,6 +38,23 @@ interface GithubListenerFixture {
 
 function authHeaders(): Record<string, string> {
   return { authorization: "Bearer clerk-session" };
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities: readonly ZeroCapability[];
+}): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: randomUUID(),
+    capabilities: [...args.capabilities],
+    iat: seconds,
+    exp: seconds + 60,
+  });
 }
 
 function newRemoteInstallationId(): string {
@@ -99,6 +124,7 @@ async function listenerRows(fixture: GithubListenerFixture) {
 
 describe("GitHub label listener integration routes", () => {
   const fixtures: GithubListenerFixture[] = [];
+  const membershipFixtures: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     context.mocks.clerk.authenticateRequest.mockReset();
@@ -112,6 +138,12 @@ describe("GitHub label listener integration routes", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await cleanupFixture(fixture);
+      }
+    }
+    while (membershipFixtures.length > 0) {
+      const fixture = membershipFixtures.pop();
+      if (fixture) {
+        await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
   });
@@ -181,6 +213,99 @@ describe("GitHub label listener integration routes", () => {
 
     expect(deleteResponse.status).toBe(200);
     await expect(listenerRows(fixture)).resolves.toHaveLength(0);
+  });
+
+  it("accepts zero tokens with GitHub write capability for label listener management", async () => {
+    const fixture = await seedFixture();
+    fixtures.push(fixture);
+    membershipFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          role: "member",
+        },
+        context.signal,
+      ),
+    );
+    const app = createApp({ signal: context.signal });
+    const authorization = `Bearer ${zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["github:write"],
+    })}`;
+
+    const createResponse = await app.request(ROUTE_PATH, {
+      method: "POST",
+      headers: { authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        labelName: "Ready For Zero",
+        triggerMode: "anyone",
+        prompt: "Handle this issue",
+        agentId: fixture.composeId,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()) as {
+      readonly listener: { readonly id: string };
+    };
+
+    const updateResponse = await app.request(
+      `${ROUTE_PATH}/${created.listener.id}`,
+      {
+        method: "PATCH",
+        headers: { authorization, "content-type": "application/json" },
+        body: JSON.stringify({
+          labelName: "Needs Agent",
+          prompt: "Review and fix",
+        }),
+      },
+    );
+
+    expect(updateResponse.status).toBe(200);
+
+    const deleteResponse = await app.request(
+      `${ROUTE_PATH}/${created.listener.id}`,
+      {
+        method: "DELETE",
+        headers: { authorization },
+      },
+    );
+
+    expect(deleteResponse.status).toBe(200);
+    await expect(listenerRows(fixture)).resolves.toHaveLength(0);
+  });
+
+  it("requires GitHub write capability for label listener writes", async () => {
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request(ROUTE_PATH, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${zeroToken({
+          userId: `user_${randomUUID()}`,
+          orgId: `org_${randomUUID()}`,
+          capabilities: ["github:read"],
+        })}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        labelName: "Ready",
+        triggerMode: "anyone",
+        prompt: "Handle this issue",
+        agentId: randomUUID(),
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Missing required capability: github:write",
+        code: "FORBIDDEN",
+      },
+    });
   });
 
   it("requires a GitHub user link for created-by-me listeners", async () => {
