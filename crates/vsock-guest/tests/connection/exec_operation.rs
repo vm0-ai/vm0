@@ -213,6 +213,38 @@ fn exec_operation_child_can_exit_without_reading_stdin() {
 }
 
 #[test]
+fn exec_operation_returns_when_grandchild_holds_stdin_without_reading() {
+    use std::time::Instant;
+
+    let (handle, mut host_stream) = start_guest_connection();
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(8)))
+        .unwrap();
+    let orphan = OrphanProcessGuard::new("orphan-exec-operation-stdin");
+    let stdin = vec![b'x'; vsock_proto::MAX_EXEC_STDIN_BYTES];
+    let command = format!(
+        "sleep 30 <&0 >/dev/null 2>/dev/null & echo $! > '{}'; printf stdin-orphan-done",
+        orphan.pid_path()
+    );
+
+    let start = Instant::now();
+    send_exec_start_with_stdin(&mut host_stream, 109, &command, Some(&stdin));
+    let (_chunks, result) = read_exec_result(&mut host_stream, 109);
+    let elapsed = start.elapsed();
+
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(b"stdin-orphan-done".to_vec()));
+    assert_eq!(result.stderr, Some(Vec::new()));
+    assert!(result.diagnostic.is_empty());
+    assert!(
+        elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
+        "exec result should not wait for an inherited stdin pipe, took {elapsed:?}",
+    );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn exec_operation_expected_nonzero_exit_still_returns_result() {
     let (handle, mut host_stream) = start_guest_connection();
 

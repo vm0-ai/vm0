@@ -202,6 +202,28 @@ fn exec_start_roundtrip_empty_stdin_bytes() {
 }
 
 #[test]
+fn exec_start_roundtrip_max_stdin_bytes() {
+    let stdin_bytes = vec![0xA5; MAX_EXEC_STDIN_BYTES];
+    let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1000 },
+        command: "cat",
+        env: &[],
+        sudo: false,
+        label: "stdin",
+        stdout: ExecOutputPolicy::Capture { limit_bytes: 4096 },
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: Some(&stdin_bytes),
+    })
+    .unwrap();
+
+    let decoded = decode_exec_start(&payload).unwrap();
+    assert_eq!(decoded.stdin_bytes, Some(stdin_bytes.as_slice()));
+}
+
+#[test]
 fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::Supervised,
