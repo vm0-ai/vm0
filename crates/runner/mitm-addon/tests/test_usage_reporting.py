@@ -486,6 +486,71 @@ class TestResponseUsageReporting:
         }
         assert not proxy_log_path.exists()
 
+    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    def test_json_fallback_zero_token_usage_stays_quiet(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, provider_case
+    ):
+        """Valid zero-token usage is not a parser failure and does not bill."""
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        if provider_case == "anthropic":
+            flow = real_flow(with_response=False, host="api.anthropic.com")
+            body = (
+                b'{"id":"msg_1","model":"claude-sonnet-4-6",'
+                b'"usage":{"input_tokens":0,"output_tokens":0}}'
+            )
+            flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+            expected_usage = {
+                "message_id": "msg_1",
+                "model": "claude-sonnet-4-6",
+                "tokens.input": 0,
+                "tokens.output": 0,
+            }
+        else:
+            flow = real_flow(with_response=False, host="api.openai.com")
+            body = (
+                b'{"id":"resp_1","model":"gpt-5.5","usage":'
+                b'{"input_tokens":0,"output_tokens":0,'
+                b'"input_tokens_details":{"cached_tokens":0}}}'
+            )
+            flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+            flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+            flow.metadata["cli_agent_type"] = "codex"
+            expected_usage = {
+                "message_id": "resp_1",
+                "model": "gpt-5.5",
+                "tokens.input": 0,
+                "tokens.output": 0,
+                "tokens.cache_read": 0,
+            }
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-type": "application/json"}),
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert flow.metadata["model_provider_usage"] == expected_usage
+        assert not proxy_log_path.exists()
+
     def test_codex_oauth_non_streaming_json_fallback(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
