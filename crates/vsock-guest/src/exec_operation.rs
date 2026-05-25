@@ -18,8 +18,8 @@ use crate::error::to_io_error;
 use crate::exec_control::ExecControlGuard;
 use crate::log::log;
 use crate::process::{
-    ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child, kill_process_tree_target,
-    process_tree_kill_target,
+    ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child, kill_and_reap_child_with_target,
+    kill_process_tree_target, process_tree_kill_target, refresh_process_tree_kill_target,
 };
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
@@ -460,6 +460,7 @@ fn run_exec_operation_worker<S>(
     } = spawned;
     let _env_script = env_script;
     let child_pid = child.id();
+    let mut kill_target = process_tree_kill_target(child_pid);
     let failure = WaitFailureContext {
         seq: request.seq,
         started,
@@ -482,7 +483,7 @@ fn run_exec_operation_worker<S>(
                 truncate_command_preview(&request.label)
             ),
         );
-        kill_and_reap_child(child);
+        kill_and_reap_child_with_target(child, kill_target);
         release_exec_control_guard(request.exec_control_guard.as_ref());
         operation_guard.release();
         registration.complete();
@@ -546,6 +547,7 @@ fn run_exec_operation_worker<S>(
             Err(e) => {
                 kill_join_stdin_and_send_wait_failed(
                     child,
+                    kill_target,
                     stdin_writer,
                     &format!("failed to spawn exec output writer thread: {e}"),
                     failure,
@@ -576,6 +578,7 @@ fn run_exec_operation_worker<S>(
             drop(output_tx);
             kill_join_stdin_and_send_wait_failed(
                 child,
+                kill_target,
                 stdin_writer,
                 &format!("failed to spawn stdout drain thread: {e}"),
                 failure,
@@ -603,7 +606,7 @@ fn run_exec_operation_worker<S>(
             exec_cancel.store(true, Ordering::Release);
             drain_cancel.store(true, Ordering::Release);
             drop(output_tx);
-            kill_and_reap_child(child);
+            kill_and_reap_child_with_target(child, kill_target);
             join_stdin_writer_after_kill(stdin_writer);
             let _ = stdout_handle.join();
             join_output_writer(output_handle);
@@ -627,7 +630,7 @@ fn run_exec_operation_worker<S>(
     drop(drain_done_tx);
     drop(output_tx);
 
-    let kill_target = process_tree_kill_target(child_pid);
+    refresh_process_tree_kill_target(&mut kill_target);
     let outcome = wait_with_kill_timeout_or_cancelled_either(
         child,
         request.timeout.wait_timeout_ms(),
@@ -1016,11 +1019,12 @@ fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailur
 
 fn kill_join_stdin_and_send_wait_failed(
     child: Child,
+    kill_target: ProcessTreeKillTarget,
     stdin_writer: Option<StdinWriter>,
     diagnostic: &str,
     failure: WaitFailureContext<'_>,
 ) {
-    kill_and_reap_child(child);
+    kill_and_reap_child_with_target(child, kill_target);
     join_stdin_writer_after_kill(stdin_writer);
     send_final_and_complete(
         failure.registration,
