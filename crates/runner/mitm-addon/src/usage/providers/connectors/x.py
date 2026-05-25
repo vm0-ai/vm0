@@ -313,6 +313,8 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     Failures (truncated buffer, malformed JSON, unexpected shape) leave
     ``body_parsed=False`` and emit no count fields, so analysis can
     distinguish "field absent in response" from "we couldn't parse it".
+    Incremental parser failures may also include ``parse_error`` for proxy
+    audit logs.
     """
     state = flow.metadata.get("stream_buffer_state") or {}
     truncated = bool(state.get("truncated", False))

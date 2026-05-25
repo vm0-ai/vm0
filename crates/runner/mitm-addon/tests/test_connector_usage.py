@@ -892,10 +892,11 @@ class TestReportConnectorUsage:
         proxy_log = tmp_path / "proxy.jsonl"
         assert self._call_and_get_billing(flow) == []
         assert proxy_log.exists()
-        content = proxy_log.read_text()
-        assert "unparseable" in content.lower()
-        assert '"level":"error"' in content or '"level": "error"' in content
-        assert "tweet.read" in content  # permission is included for auditing
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert entry["permission"] == "tweet.read"
+        assert "parse_error" not in entry
 
     def test_unparseable_x_json_state_logs_parse_error(self, tmp_path, real_flow):
         """Incremental parser failures should surface the parse reason for audit."""
