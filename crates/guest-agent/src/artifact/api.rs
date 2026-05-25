@@ -4,7 +4,7 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::urls;
 use api_contracts::generated::types::webhooks::agent::storages::{
-    commit as storage_commit, prepare as storage_prepare,
+    FileEntryWithHash, commit as storage_commit, prepare as storage_prepare,
 };
 use guest_common::log_warn;
 
@@ -58,7 +58,7 @@ pub(super) async fn prepare_snapshot(
         run_id: request.run_id.to_string(),
         storage_name: request.storage_name.to_string(),
         storage_type: request.storage_type.to_string(),
-        files: to_prepare_files(request.files),
+        files: to_request_files(request.files),
         parent_version_id: non_empty_string(request.parent_version_id),
         force: None,
         base_version: None,
@@ -118,7 +118,7 @@ pub(super) async fn commit_snapshot(
         storage_type: request.storage_type.to_string(),
         version_id: request.version_id.to_string(),
         parent_version_id: non_empty_string(request.parent_version_id),
-        files: to_commit_files(request.files),
+        files: to_request_files(request.files),
         message: request.message.map(str::to_string),
     };
 
@@ -150,21 +150,10 @@ fn non_empty_string(value: &str) -> Option<String> {
     }
 }
 
-fn to_prepare_files(files: &[FileEntry]) -> Vec<storage_prepare::RequestFile> {
+fn to_request_files(files: &[FileEntry]) -> Vec<FileEntryWithHash> {
     files
         .iter()
-        .map(|file| storage_prepare::RequestFile {
-            path: file.path.clone(),
-            hash: file.hash.clone(),
-            size: file.size,
-        })
-        .collect()
-}
-
-fn to_commit_files(files: &[FileEntry]) -> Vec<storage_commit::RequestFile> {
-    files
-        .iter()
-        .map(|file| storage_commit::RequestFile {
+        .map(|file| FileEntryWithHash {
             path: file.path.clone(),
             hash: file.hash.clone(),
             size: file.size,

@@ -40,15 +40,15 @@ pub mod runners {
 pub mod webhooks {
     pub mod agent {
         pub mod storages {
-            pub mod commit {
-                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-                #[serde(rename_all = "camelCase")]
-                pub struct RequestFile {
-                    pub path: String,
-                    pub hash: String,
-                    pub size: u64,
-                }
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct FileEntryWithHash {
+                pub path: String,
+                pub hash: String,
+                pub size: u64,
+            }
 
+            pub mod commit {
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct Request {
@@ -58,7 +58,7 @@ pub mod webhooks {
                     pub version_id: String,
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub parent_version_id: Option<String>,
-                    pub files: Vec<RequestFile>,
+                    pub files: Vec<super::FileEntryWithHash>,
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub message: Option<String>,
                 }
@@ -79,14 +79,6 @@ pub mod webhooks {
             pub mod prepare {
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
-                pub struct RequestFile {
-                    pub path: String,
-                    pub hash: String,
-                    pub size: u64,
-                }
-
-                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-                #[serde(rename_all = "camelCase")]
                 pub struct RequestChanges {
                     pub added: Vec<String>,
                     pub modified: Vec<String>,
@@ -99,7 +91,7 @@ pub mod webhooks {
                     pub run_id: String,
                     pub storage_name: String,
                     pub storage_type: String,
-                    pub files: Vec<RequestFile>,
+                    pub files: Vec<super::FileEntryWithHash>,
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub parent_version_id: Option<String>,
                     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,6 +1,6 @@
 use api_contracts::generated::types::{
     runners::storage as runner_storage,
-    webhooks::agent::storages::{commit, prepare},
+    webhooks::agent::storages::{FileEntryWithHash, commit, prepare},
 };
 use serde_json::json;
 
@@ -11,7 +11,7 @@ fn generated_prepare_request_serializes_wire_shape() {
         run_id: "run-1".to_string(),
         storage_name: "memory".to_string(),
         storage_type: "artifact".to_string(),
-        files: vec![prepare::RequestFile {
+        files: vec![FileEntryWithHash {
             path: "file.txt".to_string(),
             hash: hash.clone(),
             size: 12,
@@ -119,7 +119,7 @@ fn generated_commit_request_serializes_wire_shape() {
         storage_type: "artifact".to_string(),
         version_id: "version-1".to_string(),
         parent_version_id: None,
-        files: vec![commit::RequestFile {
+        files: vec![FileEntryWithHash {
             path: "file.txt".to_string(),
             hash: hash.clone(),
             size: 34,
