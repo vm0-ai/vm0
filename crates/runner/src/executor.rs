@@ -4289,6 +4289,7 @@ mod tests {
                 .unwrap();
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     #[tokio::test]
@@ -4594,6 +4595,17 @@ mod tests {
         assert!(result.is_err(), "start failure must return an error");
         let err = result.err().unwrap();
         assert!(err.to_string().contains("boot failed"), "got: {err}");
+        assert_proxy_registry_empty(dir.path()).await;
+        assert!(
+            !config
+                .network_log_manager
+                .append_for_ip(
+                    "10.0.0.1",
+                    serde_json::json!({"type":"dns","host":"after-start-failure.test"})
+                )
+                .await,
+            "start failure should close inline network-log attribution",
+        );
     }
 
     #[tokio::test]
