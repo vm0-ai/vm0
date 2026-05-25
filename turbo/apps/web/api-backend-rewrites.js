@@ -1036,6 +1036,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/developer-support", "/api/zero/developer-support"],
+  ["/api/zero/debug/set-credits", "/api/zero/debug/set-credits"],
   ["/api/zero/report-error", "/api/zero/report-error"],
   [ZERO_RUNS_REWRITE_SOURCE, "/api/zero/runs"],
   [ZERO_RUNS_QUEUE_REWRITE_SOURCE, "/api/zero/runs/queue"],
