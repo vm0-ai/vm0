@@ -50,7 +50,6 @@ function mockEmptyMessages(threadId: string) {
         id: threadId,
         title: `Thread ${threadId}`,
         agentId: AGENT_ID,
-        chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,

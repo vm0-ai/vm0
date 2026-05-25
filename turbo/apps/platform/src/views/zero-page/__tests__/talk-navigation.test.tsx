@@ -53,7 +53,6 @@ function mockChatAPIs(options?: { waitForSend?: Promise<void> }) {
         id: params.id,
         title: "Hello",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,

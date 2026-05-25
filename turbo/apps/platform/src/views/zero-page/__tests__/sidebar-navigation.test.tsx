@@ -126,7 +126,6 @@ function mockSubagentAPIs() {
           id: params.id,
           title: thread?.title ?? null,
           agentId: thread?.agent.id ?? "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
           draftContent: null,
@@ -139,18 +138,6 @@ function mockSubagentAPIs() {
         id: "thread-sub-1",
         title: "Subagent thread",
         agentId: "subagent-compose-id",
-        chatMessages: [
-          {
-            role: "user",
-            content: "Hello from subagent",
-            createdAt: "2026-03-10T00:00:00Z",
-          },
-          {
-            role: "assistant",
-            content: "Hi, I am Helper Bot!",
-            createdAt: "2026-03-10T00:00:01Z",
-          },
-        ],
         latestSessionId: "session-sub-1",
         activeRunIds: [],
         draftContent: null,

@@ -46,17 +46,10 @@ function registerThreadMocks(registry: Map<string, ThreadEntry>) {
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
-      const messages = snapshot.get(params.id) ?? [];
       return respond(200, {
         id: params.id,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: messages.map((m, i) => {
-          return {
-            ...m,
-            createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
-          };
-        }),
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,
@@ -358,17 +351,10 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
         },
       ),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
-        const msgs = params.id === "thread-ll-a" ? threadLLAMessages : [];
         return respond(200, {
           id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: msgs.map((m, i) => {
-            return {
-              ...m,
-              createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
-            };
-          }),
           latestSessionId: null,
           activeRunIds: [],
           draftContent: null,
@@ -450,7 +436,6 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
           id: "thread-pre-scroll",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
           draftContent: null,

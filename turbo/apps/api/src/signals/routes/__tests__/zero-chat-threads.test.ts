@@ -15,10 +15,8 @@ import { writeDb$ } from "../../external/db";
 import {
   addRunToThread$,
   deleteZeroChatThread$,
-  seedAssistantEventMessages$,
   seedZeroChatMessage$,
   seedZeroChatThread$,
-  transitionRunStatus$,
   updateChatThreadTitle$,
   type ZeroChatThreadFixture,
 } from "./helpers/zero-chat-threads";
@@ -27,7 +25,6 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { seedRun$ } from "./helpers/zero-usage-insight";
-import { nowDate } from "../../external/time";
 
 const context = testContext();
 const store = createStore();
@@ -38,7 +35,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
-  it("returns thread detail with S3-backed attachment metadata", async () => {
+  it("returns thread detail without chat messages", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, { title: "Uploads" }, context.signal),
     );
@@ -86,74 +83,9 @@ describe("GET /api/zero/chat-threads/:id", () => {
       modelProviderCredentialScope: null,
       selectedModel: null,
       renamedAt: null,
-      chatMessages: [
-        {
-          role: "user",
-          content: "see attached file",
-          attachFiles: [
-            {
-              id: "file_123",
-              filename: "report.pdf",
-              contentType: "application/pdf",
-              size: 42,
-              url: `https://cdn.vm7.io/artifacts/${encodeURIComponent(fixture.userId)}/file_123/report.pdf`,
-            },
-          ],
-        },
-      ],
     });
-    // Each chatMessage must carry its DB row id — the contract marks it
-    // optional for back-compat, but production clients dedupe on id, and
-    // omitting it caused a shadow divergence regression (see PR #12339).
-    for (const message of response.body.chatMessages) {
-      expect(message.id).toStrictEqual(expect.any(String));
-    }
-  });
-
-  it("keeps the Clerk user_ prefix in attachment file URLs", async () => {
-    // Users authenticated via Clerk have IDs prefixed with "user_".
-    // The public CDN URL must omit this prefix (matching web behavior)
-    // so the URL is stable regardless of auth source.
-    const fixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { userId: "user_clerk123" },
-        context.signal,
-      ),
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      {
-        role: "user",
-        content: "attachment",
-        attachFiles: ["file_abc"],
-        createdAt: new Date("2025-01-01T00:00:00.000Z"),
-      },
-      context.signal,
-    );
-    mocks.clerk.session("user_clerk123", fixture.orgId);
-    mocks.s3.listObjects([
-      {
-        bucket: "test-user-artifacts",
-        key: "artifacts/user_clerk123/file_abc/photo.png",
-        size: 256,
-      },
-    ]);
-
-    const client = setupApp({ context })(chatThreadByIdContract);
-
-    const response = await accept(
-      client.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.chatMessages[0]?.attachFiles?.[0]?.url).toBe(
-      "https://cdn.vm7.io/artifacts/user_clerk123/file_abc/photo.png",
-    );
+    expect(response.body).not.toHaveProperty("chatMessages");
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
   it("returns renamedAt as ISO string when thread was renamed", async () => {
@@ -223,7 +155,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     });
   });
 
-  it("returns thread detail with empty messages", async () => {
+  it("returns thread detail metadata only", async () => {
     const fixture = await track(
       store.set(
         seedZeroChatThread$,
@@ -245,7 +177,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     expect(response.body.id).toBe(fixture.threadId);
     expect(response.body.title).toBe("Detail thread");
     expect(response.body.agentId).toBe(fixture.composeId);
-    expect(response.body.chatMessages).toStrictEqual([]);
+    expect(response.body).not.toHaveProperty("chatMessages");
     expect(response.body.latestSessionId).toBeNull();
     expect(response.body.createdAt).toStrictEqual(expect.any(String));
     expect(response.body.updatedAt).toStrictEqual(expect.any(String));
@@ -340,61 +272,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
     expect(response.body.modelProviderCredentialScope).toBeNull();
   });
 
-  it("returns chat messages after run completes", async () => {
-    const fixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { title: "Messages thread" },
-        context.signal,
-      ),
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: fixture.composeId,
-        status: "completed",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      { role: "user", content: "What files changed?" },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatMessage$,
-      fixture,
-      {
-        role: "assistant",
-        content: "Here are the changed files.",
-        runId,
-      },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(chatThreadByIdContract);
-
-    const response = await accept(
-      client.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.chatMessages).toHaveLength(2);
-    const assistantMsg = response.body.chatMessages.find((m) => {
-      return m.role === "assistant";
-    });
-    expect(assistantMsg).toBeDefined();
-    expect(assistantMsg?.content).toBe("Here are the changed files.");
-    expect(assistantMsg?.runId).toBe(runId);
-  });
-
   it("returns 404 when accessing another user's thread", async () => {
     const fixture = await track(
       store.set(
@@ -479,123 +356,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
 
     expect(response.body.threads).toHaveLength(1);
     expect(response.body.threads[0]?.title).toBe("After AI update");
-  });
-
-  it("returns cancelled run as a single user message", async () => {
-    const fixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { title: "Cancelled run thread" },
-        context.signal,
-      ),
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: fixture.composeId,
-        status: "cancelled",
-      },
-      context.signal,
-    );
-    await store.set(
-      addRunToThread$,
-      { threadId: fixture.threadId, runId },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(chatThreadByIdContract);
-
-    const response = await accept(
-      client.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    // Only the user message is present — no assistant placeholder.
-    expect(response.body.chatMessages).toHaveLength(1);
-    const userMsg = response.body.chatMessages.find((m) => {
-      return m.role === "user";
-    });
-    expect(userMsg).toBeDefined();
-    expect(userMsg?.content).toBe("test prompt");
-  });
-
-  it("does not mask event-backed assistant content with run-level timeout error", async () => {
-    // Regression test for #12372: event-backed assistant rows must keep
-    // their own `content` and NOT inherit the run-level timeout error via
-    // the leftJoin fallback.
-    const fixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { title: "Event-backed rows thread" },
-        context.signal,
-      ),
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: fixture.composeId,
-        status: "running",
-      },
-      context.signal,
-    );
-    await store.set(
-      addRunToThread$,
-      {
-        threadId: fixture.threadId,
-        runId,
-        prompt: "multi-step prompt",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedAssistantEventMessages$,
-      {
-        threadId: fixture.threadId,
-        runId,
-        items: [
-          { sequenceNumber: 0, content: "First partial response" },
-          { sequenceNumber: 1, content: "Second partial response" },
-        ],
-      },
-      context.signal,
-    );
-    await store.set(
-      transitionRunStatus$,
-      {
-        runId,
-        status: "timeout",
-        completedAt: nowDate(),
-        error: "Run timed out (no heartbeat)",
-      },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(chatThreadByIdContract);
-
-    const response = await accept(
-      client.get({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const eventRows = response.body.chatMessages.filter((m) => {
-      return m.role === "assistant" && m.content !== null;
-    });
-    expect(eventRows).toHaveLength(2);
-    for (const row of eventRows) {
-      expect(row.content).not.toContain("Run timed out");
-    }
   });
 
   it("returns activeRuns with live status for non-terminal runs", async () => {

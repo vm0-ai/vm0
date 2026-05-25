@@ -127,29 +127,6 @@ const summaryEntrySchema = z.union([
   textSummaryEntrySchema,
 ]);
 
-const storedChatMessageBaseSchema = z.object({
-  id: z.string().optional(),
-  content: z.string().nullable(),
-  runId: z.string().optional(),
-  revokesMessageId: z.string().optional(),
-  interruptsRunId: z.string().optional(),
-  error: z.string().optional(),
-  attachFiles: z.array(resolvedAttachFileSchema).optional(),
-  createdAt: z.string(),
-});
-
-const storedChatMessageSchema = z.discriminatedUnion("role", [
-  storedChatMessageBaseSchema
-    .extend({
-      role: z.literal("user"),
-    })
-    .strict(),
-  storedChatMessageBaseSchema.extend({
-    role: z.literal("assistant"),
-    status: z.string().optional(),
-  }),
-]);
-
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
@@ -177,7 +154,6 @@ const chatThreadDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   agentId: z.string(),
-  chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
   /**
    * ID of the latest message this user has marked read in this thread.

@@ -162,7 +162,6 @@ export const apiAgentsHandlers = [
       id: "b0000000-0000-4000-a000-000000000001",
       title: null,
       agentId: "c0000000-0000-4000-a000-000000000001",
-      chatMessages: [],
       latestSessionId: null,
       activeRunIds: [],
       createdAt: "2026-03-10T00:00:00Z",

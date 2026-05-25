@@ -51,7 +51,6 @@ function mockAPIs(threads: ThreadFixture[]) {
         id: params.id,
         title: null,
         agentId: DEFAULT_AGENT_ID,
-        chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",

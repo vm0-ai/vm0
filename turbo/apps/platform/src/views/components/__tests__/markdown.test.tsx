@@ -48,13 +48,6 @@ describe("chat-d-064: markdown content renders from props", () => {
         return respond(200, {
           id: "thread-markdown",
           ...makeThreadBase(),
-          chatMessages: [
-            {
-              role: "assistant",
-              content: "**bold text**",
-              createdAt: "2026-01-01T00:00:00Z",
-            },
-          ],
         });
       }),
     );
@@ -91,13 +84,6 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
         return respond(200, {
           id: "thread-theme",
           ...makeThreadBase(),
-          chatMessages: [
-            {
-              role: "assistant",
-              content: "hello",
-              createdAt: "2026-01-01T00:00:00Z",
-            },
-          ],
         });
       }),
     );
@@ -149,13 +135,6 @@ describe("chat-d-067: markdown image URL renders inline", () => {
         return respond(200, {
           id: "thread-img",
           ...makeThreadBase(),
-          chatMessages: [
-            {
-              role: "assistant",
-              content: `[cat](${src})`,
-              createdAt: "2026-01-01T00:00:00Z",
-            },
-          ],
         });
       }),
     );
@@ -193,13 +172,6 @@ describe("chat-d-069: markdown image syntax renders inline thumbnail", () => {
         return respond(200, {
           id: "thread-img-syntax",
           ...makeThreadBase(),
-          chatMessages: [
-            {
-              role: "assistant",
-              content: `![dog](${src})`,
-              createdAt: "2026-01-01T00:00:00Z",
-            },
-          ],
         });
       }),
     );
@@ -239,13 +211,6 @@ describe("chat-d-068: markdown video URL renders inline", () => {
         return respond(200, {
           id: "thread-video",
           ...makeThreadBase(),
-          chatMessages: [
-            {
-              role: "assistant",
-              content: `[clip](${src})`,
-              createdAt: "2026-01-01T00:00:00Z",
-            },
-          ],
         });
       }),
     );
@@ -282,13 +247,6 @@ describe("chat-d-066: markdown links open in new tab", () => {
         return respond(200, {
           id: "thread-link",
           ...makeThreadBase(),
-          chatMessages: [
-            {
-              role: "assistant",
-              content: "[example](https://example.com)",
-              createdAt: "2026-01-01T00:00:00Z",
-            },
-          ],
         });
       }),
     );

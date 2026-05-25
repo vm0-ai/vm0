@@ -55,7 +55,6 @@ function mockAPIs() {
         id: "thread-history-1",
         title: "History thread",
         agentId: DEFAULT_AGENT_ID,
-        chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,

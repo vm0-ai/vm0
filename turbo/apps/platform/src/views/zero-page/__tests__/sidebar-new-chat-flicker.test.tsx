@@ -83,7 +83,6 @@ describe("sidebar new-chat flicker", () => {
           id: params.id,
           title: null,
           agentId: AGENT_ID,
-          chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
           draftContent: null,

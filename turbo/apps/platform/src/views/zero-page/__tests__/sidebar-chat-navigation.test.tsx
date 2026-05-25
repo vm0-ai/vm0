@@ -62,7 +62,6 @@ function mockAPIs() {
         id: "thread-abc-123",
         title: "Test conversation",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [],
         latestSessionId: "session-1",
         activeRunIds: [],
         draftContent: null,

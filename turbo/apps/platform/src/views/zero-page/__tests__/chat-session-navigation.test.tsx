@@ -41,7 +41,6 @@ function mockChatSessionAPIs() {
         id: "session-thread-1",
         title: "Session navigation test",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [],
         latestSessionId: "session-wrapper-1",
         activeRunIds: [],
         draftContent: null,

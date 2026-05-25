@@ -263,7 +263,6 @@ function mockThread(options: {
         id: THREAD_ID,
         title: "My thread",
         agentId: AGENT_ID,
-        chatMessages: [],
         latestSessionId: null,
         latestSessionProviderType: null,
         activeRunIds: [],

@@ -65,7 +65,6 @@ function setupMocks(initial: ThreadFixture[]) {
         id: params.id,
         title: thread?.title ?? null,
         agentId: AGENT_ID,
-        chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,

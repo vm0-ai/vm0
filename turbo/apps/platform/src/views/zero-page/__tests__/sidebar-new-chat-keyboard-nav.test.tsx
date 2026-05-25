@@ -84,7 +84,6 @@ describe("sidebar new-chat keyboard navigation", () => {
           id: params.id,
           title: params.id === PERSISTED_THREAD_ID ? "Persisted thread" : null,
           agentId: AGENT_ID,
-          chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
           draftContent: null,

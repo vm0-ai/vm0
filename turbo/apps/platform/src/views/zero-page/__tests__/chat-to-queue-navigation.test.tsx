@@ -41,18 +41,6 @@ function mockChatThread() {
         id: "thread-1",
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [
-          {
-            role: "user",
-            content: "Hello",
-            createdAt: "2026-03-10T00:00:00Z",
-          },
-          {
-            role: "assistant",
-            content: "Hi there!",
-            createdAt: "2026-03-10T00:00:01Z",
-          },
-        ],
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,

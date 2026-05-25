@@ -29,7 +29,6 @@ function mockThreadPage(
         id: threadId,
         title: null,
         agentId: DEFAULT_AGENT_ID,
-        chatMessages: [],
         latestSessionId: null,
         lastReadMessageId,
         activeRunIds: [],

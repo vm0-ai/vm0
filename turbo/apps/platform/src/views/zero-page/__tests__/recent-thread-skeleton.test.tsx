@@ -62,7 +62,6 @@ function mockAgentsWithThreads() {
         id: THREAD_ID,
         title: "My test conversation",
         agentId: "agent-alpha",
-        chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
         draftContent: null,
