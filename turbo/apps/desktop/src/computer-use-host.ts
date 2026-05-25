@@ -244,6 +244,15 @@ export class ComputerUseHostRuntime {
       });
       return null;
     }
+    if (response.status === 409) {
+      this.setState({
+        status: "error",
+        hostId: null,
+        lastError:
+          "Computer Use is already active in another Zero Desktop session.",
+      });
+      return null;
+    }
     if (!response.ok) {
       throw new Error(`Failed to start Computer Use host: ${response.status}`);
     }

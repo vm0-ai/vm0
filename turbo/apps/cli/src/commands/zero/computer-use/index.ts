@@ -14,8 +14,6 @@ import {
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 interface ComputerUseCommandOptions {
-  readonly host?: string;
-  readonly hostId?: string;
   readonly timeout?: string;
 }
 
@@ -273,8 +271,6 @@ async function runReadCommand(
   const created = await createComputerUseReadCommand({
     kind,
     timeoutMs: timeoutSeconds * 1000,
-    ...(options.host ? { hostName: options.host } : {}),
-    ...(options.hostId ? { hostId: options.hostId } : {}),
     ...payload,
   });
   await waitForCommand(created.commandId, timeoutSeconds);
@@ -304,18 +300,13 @@ async function runWriteCommand(
   const created = await createComputerUseWriteCommand({
     kind,
     timeoutMs: timeoutSeconds * 1000,
-    ...(options.host ? { hostName: options.host } : {}),
-    ...(options.hostId ? { hostId: options.hostId } : {}),
     ...payload,
   });
   await waitForCommand(created.commandId, timeoutSeconds);
 }
 
 function addTargetOptions(command: Command): Command {
-  return command
-    .option("--host <name>", "Run on a named computer-use host")
-    .option("--host-id <id>", "Run on a specific computer-use host id")
-    .option("--timeout <seconds>", "Maximum time to wait", "30");
+  return command.option("--timeout <seconds>", "Maximum time to wait", "30");
 }
 
 function appOption(command: Command): Command {

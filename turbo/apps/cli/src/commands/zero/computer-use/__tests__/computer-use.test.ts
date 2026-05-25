@@ -136,6 +136,25 @@ describe("computer-use command visibility", () => {
     expect(subNames).not.toContain("audit");
   });
 
+  it("should not expose host targeting options on agent-facing commands", () => {
+    const prog = new Command();
+    registerZeroCommands(prog);
+
+    const computerUse = prog.commands.find((c) => {
+      return c.name() === "computer-use";
+    });
+    expect(computerUse).toBeDefined();
+
+    for (const subCommand of computerUse!.commands) {
+      const longOptions = subCommand.options.map((option) => {
+        return option.long;
+      });
+      expect(longOptions).toContain("--timeout");
+      expect(longOptions).not.toContain("--host");
+      expect(longOptions).not.toContain("--host-id");
+    }
+  });
+
   it("should write screenshot data URLs to a local file in command result console output", async () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");

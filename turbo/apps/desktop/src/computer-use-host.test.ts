@@ -168,4 +168,26 @@ describe("ComputerUseHostRuntime", () => {
         "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.",
     });
   });
+
+  it("reports an active host conflict without retrying registration", async () => {
+    vi.useFakeTimers();
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
+      return jsonResponse(
+        { error: { message: "A Desktop Computer Use host is already active" } },
+        { status: 409 },
+      );
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionFetch).toHaveBeenCalledOnce();
+    expect(runtime.getState()).toMatchObject({
+      status: "error",
+      hostId: null,
+      lastError:
+        "Computer Use is already active in another Zero Desktop session.",
+    });
+  });
 });
