@@ -897,6 +897,28 @@ class TestReportConnectorUsage:
         assert '"level":"error"' in content or '"level": "error"' in content
         assert "tweet.read" in content  # permission is included for auditing
 
+    def test_unparseable_x_json_state_logs_parse_error(self, tmp_path, real_flow):
+        """Incremental parser failures should surface the parse reason for audit."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            rule="GET /2/tweets/search/recent",
+        )
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert entry["parse_error"] == "incomplete json"
+
     def test_billable_counts_fallback_only_when_no_hints(self, tmp_path, real_flow):
         """body unparseable but ?ids= present -> uses ids_count, no fallback."""
         flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=b"not json")
