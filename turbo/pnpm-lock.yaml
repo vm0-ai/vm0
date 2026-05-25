@@ -677,12 +677,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1053.0
         version: 3.1053.0
-      '@axiomhq/js':
-        specifier: ^1.3.1
-        version: 1.5.0
-      '@axiomhq/logging':
-        specifier: ^0.1.6
-        version: 0.1.7(@axiomhq/js@1.5.0)
       '@clerk/backend':
         specifier: ^3.4.13
         version: 3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

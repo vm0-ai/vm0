@@ -41,8 +41,6 @@ const resetEnv = vi.hoisted(() => {
       "test-artifacts-secret-key",
     );
     vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
-    // Optional env vars
-    vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
     // Slack integration test vars
     vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
     vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
@@ -164,30 +162,6 @@ vi.mock("@aws-sdk/client-s3", () => {
 vi.mock("@aws-sdk/s3-request-presigner", () => {
   return {
     getSignedUrl: vi.fn(),
-  };
-});
-
-// Mock Axiom packages
-// The @axiomhq/logging Logger class needs proper method implementations
-vi.mock("@axiomhq/js", () => {
-  return {
-    Axiom: vi.fn(),
-  };
-});
-
-vi.mock("@axiomhq/logging", () => {
-  return {
-    EVENT: Symbol("EVENT"),
-    Logger: vi.fn().mockImplementation(() => {
-      return {
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        flush: vi.fn().mockResolvedValue(undefined),
-      };
-    }),
-    AxiomJSTransport: vi.fn(),
   };
 });
 
