@@ -110,7 +110,7 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ HTML presentation URL and metadata. With openDesignGenerate enabled, prints an OpenDesign-style authoring packet for the current agent instead.
+  Prints the generated /f/ HTML presentation URL and metadata. With openDesignGenerate enabled, prints an Open Design registry-selection packet for the current agent instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN

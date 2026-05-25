@@ -239,7 +239,7 @@ describe("zero built-in generate presentation command", () => {
     );
   });
 
-  it("should print OpenDesign-style presentation authoring instructions", async () => {
+  it("should print Open Design resource selection instructions for presentation", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
@@ -265,8 +265,12 @@ describe("zero built-in generate presentation command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero built-in generate presentation");
-    expect(stdout).toContain("You are the current agent");
+    expect(stdout).toContain("Open Design resource-selection packet");
+    expect(stdout).toContain("## Stage 1: Resource Selection");
+    expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
+    expect(stdout).toContain("od:skill:data-report");
+    expect(stdout).toContain("od:template:html-ppt-graphify-dark-graph");
     expect(stdout).toContain(
       "Write the artifact under `./opendesign/mockups/api-migration-plan/`.",
     );
@@ -280,7 +284,7 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
   });
 
-  it("should print JSON authoring metadata when --json is provided", async () => {
+  it("should print JSON resource selection metadata when --json is provided", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
@@ -296,7 +300,7 @@ describe("zero built-in generate presentation command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      type: "html-artifact-authoring",
+      type: "open-design-resource-selection",
       kind: "presentation",
       prompt: "JSON please",
       outputDir: "./opendesign/mockups/api-migration-plan",
@@ -304,8 +308,22 @@ describe("zero built-in generate presentation command", () => {
       hostCommand:
         "zero host ./opendesign/mockups/api-migration-plan --site api-migration-plan",
     });
+    expect(parsed.registryVersion).toEqual(
+      expect.stringContaining("vm0-ai/open-design@"),
+    );
+    expect(parsed.selection).toEqual(
+      expect.objectContaining({
+        candidates: expect.objectContaining({
+          skills: expect.arrayContaining([
+            expect.objectContaining({ id: "od:skill:data-report" }),
+          ]),
+          templates: expect.any(Array),
+          designSystems: expect.any(Array),
+        }),
+      }),
+    );
     expect(parsed.instructions).toEqual(
-      expect.stringContaining("Think like a presentation designer"),
+      expect.stringContaining("## Stage 2: Resolve Selected Resources"),
     );
   });
 

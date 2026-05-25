@@ -116,7 +116,7 @@ Examples:
   Pipe prompt:           cat brief.txt | zero built-in generate website
 
 Output:
-  Generates and publishes a hosted website. With openDesignGenerate enabled, prints an OpenDesign-style authoring packet for the current agent instead.
+  Generates and publishes a hosted website. With openDesignGenerate enabled, prints an Open Design registry-selection packet for the current agent instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN
