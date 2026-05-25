@@ -129,33 +129,6 @@ export {
 } from "./connectors";
 export { createSignedCallbackRequest } from "./callbacks";
 export {
-  PENDING_TELEGRAM_USER_ID,
-  createTestTelegramInstallation,
-  insertTestTelegramMessages,
-  createTelegramInstallationForCompose,
-  insertTestTelegramInstallation,
-  insertTestTelegramUserLink,
-  createTelegramInstallation,
-  insertTelegramMessage,
-  insertTestOfficialTelegramUserLink,
-  createTelegramPendingLinkInstallation,
-  createTelegramCallbackInstallation,
-  createTelegramThreadSession,
-  seedTestTelegramUserAgentPreference,
-  signTestConnectParams,
-  countTestTelegramMessages,
-  countTelegramUserLinkRows,
-  findTestOfficialTelegramUserLink,
-  findTestOfficialTelegramUserLinksByVm0UserId,
-  findTestTelegramUserLinksByVm0UserId,
-  findTestTelegramUserAgentPreference,
-  findTestTelegramInstallationsByOwner,
-  findTelegramThreadAgentSessionId,
-  getTestTelegramBotToken,
-  telegramUserLinkExists,
-  telegramThreadSessionExists,
-} from "./telegram";
-export {
   updateOrgStripeFields,
   updateOrgAutoRecharge,
   updateOrgStripeSubscription,
