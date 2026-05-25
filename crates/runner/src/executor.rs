@@ -446,9 +446,12 @@ async fn execute_new_sandbox(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Run job inside sandbox (new VM — no previous storage fingerprints)
-    let result = run_in_sandbox(
-        sandbox.as_ref(),
+    Ok(execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
         context,
         config,
         RunStart {
@@ -457,50 +460,15 @@ async fn execute_new_sandbox(
             prev_storage: None,
         },
         telemetry,
-        cancel.clone(),
+        cancel,
     )
-    .await;
+    .await)
+}
 
-    let stdout_stream_diagnostics = result.as_ref().map_or_else(
-        |_| AgentStdoutStreamDiagnostics::default(),
-        |result| result.stdout_stream_diagnostics,
-    );
-
-    // Post-job: copy logs + unregister proxy registry (sandbox stays alive for possible reuse)
-    post_job_cleanup(
-        sandbox.as_ref(),
-        config,
-        context,
-        &source_ip,
-        cancel.is_cancelled(),
-        stdout_stream_diagnostics,
-    )
-    .await;
-
-    let agent_result = match result {
-        Ok(result) => result,
-        Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
-    };
-
-    // Read CLI-generated session ID for first-run parking.
-    // Only needed when resume_session is absent (first turn in a conversation).
-    let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
-        let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
-        if let Some(ref sid) = id {
-            info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
-        }
-        id
-    } else {
-        None
-    };
-
-    Ok(ExecuteOutcome {
-        failure: agent_result.failure,
-        sandbox: Some(sandbox),
-        source_ip,
-        network_log_session: Some(network_log_session),
-        guest_session_id,
-    })
+struct PreparedSandboxRun {
+    sandbox: Box<dyn Sandbox>,
+    source_ip: String,
+    network_log_session: NetworkLogSession,
 }
 
 async fn destroy_sandbox_panic_safe(factory: &dyn SandboxFactory, sandbox: Box<dyn Sandbox>) {
@@ -531,12 +499,15 @@ async fn execute_reused_sandbox(
         "reusing kept-alive sandbox"
     );
 
-    // Re-register proxy with new run credentials
-    let network_log_session = register_proxy(config, context, source_ip).await;
+    let source_ip = source_ip.to_string();
+    let network_log_session = register_proxy(config, context, &source_ip).await;
 
-    // Run job — clock/entropy fixed inside run_in_sandbox (always needed after idle).
-    let result = run_in_sandbox(
-        sandbox.as_ref(),
+    execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
         context,
         config,
         RunStart {
@@ -544,6 +515,31 @@ async fn execute_reused_sandbox(
             reuse_result: SandboxReuseResult::Reused,
             prev_storage: Some(prev_storage),
         },
+        telemetry,
+        cancel,
+    )
+    .await
+}
+
+async fn execute_prepared_sandbox_run(
+    run: PreparedSandboxRun,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    cancel: CancellationToken,
+) -> ExecuteOutcome {
+    let PreparedSandboxRun {
+        sandbox,
+        source_ip,
+        network_log_session,
+    } = run;
+
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        context,
+        config,
+        start,
         telemetry,
         cancel.clone(),
     )
@@ -554,12 +550,11 @@ async fn execute_reused_sandbox(
         |result| result.stdout_stream_diagnostics,
     );
 
-    // Post-job cleanup (copy logs to host, unregister proxy registry)
     post_job_cleanup(
         sandbox.as_ref(),
         config,
         context,
-        source_ip,
+        &source_ip,
         cancel.is_cancelled(),
         stdout_stream_diagnostics,
     )
@@ -584,7 +579,7 @@ async fn execute_reused_sandbox(
     ExecuteOutcome {
         failure: agent_result.failure,
         sandbox: Some(sandbox),
-        source_ip: source_ip.to_string(),
+        source_ip,
         network_log_session: Some(network_log_session),
         guest_session_id,
     }
@@ -4668,6 +4663,35 @@ mod tests {
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_appends_stream_limit_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"reuse partial stdout".to_vec(),
+            truncated: true,
+        }]);
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let source_ip = sandbox.source_ip().to_string();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+        let ctx = minimal_context();
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 0);
+        assert!(reuse_outcome.error().is_none());
+        assert!(reuse_outcome.sandbox.is_some());
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let mut expected = b"reuse partial stdout\n".to_vec();
+        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        assert_eq!(system_log, expected);
     }
 
     #[tokio::test]
