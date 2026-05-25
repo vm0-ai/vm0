@@ -12,6 +12,7 @@
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "check-types": "tsc --noEmit",
     "dev": "pnpm build && electron-forge start",
+    "dev:packaged": "pnpm package && node scripts/run-packaged-app.js",
     "lint": "oxlint src --deny-warnings",
     "make": "pnpm build && electron-forge make --platform darwin",
     "package": "pnpm build && electron-forge package --platform darwin",

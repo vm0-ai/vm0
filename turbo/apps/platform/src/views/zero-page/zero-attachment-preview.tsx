@@ -6,6 +6,8 @@ import {
   IconEye,
   IconFileMusic,
   IconLoader2,
+  IconPlayerPlay,
+  IconVideo,
 } from "@tabler/icons-react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
@@ -17,6 +19,7 @@ import {
 import {
   lightboxUrl$,
   openDocumentLightbox$,
+  openVideoLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   classifyChatAttachment,
@@ -26,7 +29,10 @@ import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
 } from "./zero-file-preview-icon.tsx";
-import { downloadAttachmentUrl } from "./zero-attachment-chips.tsx";
+import {
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "./zero-attachment-chips.tsx";
 
 interface ChatAttachmentDescriptor {
   filename: string;
@@ -322,6 +328,70 @@ function AudioPreview({ filename, url }: { filename: string; url: string }) {
   );
 }
 
+function VideoThumbnailPreview({
+  contentType,
+  filename,
+  url,
+}: {
+  contentType?: string;
+  filename: string;
+  url: string;
+}) {
+  const openVideoLightbox = useSet(openVideoLightbox$);
+  const lightboxOpen = useGet(lightboxUrl$) !== null;
+  const videoUrl = publicAttachmentUrl(url);
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.currentTarget.blur();
+        openVideoLightbox({ url, filename });
+      }}
+      disabled={lightboxOpen}
+      title={filename}
+      aria-label={`Open video preview for ${filename}`}
+      data-testid="attachment-preview-video"
+      className={`${lightboxOpen ? "" : "group/video-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
+    >
+      <div className="relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl border border-foreground/10 bg-black sm:w-[168px]">
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-stone-900 text-white">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
+            <FilePreviewIcon
+              filename={filename}
+              contentType={contentType ?? "video/mp4"}
+              testId="attachment-preview-video-icon"
+            />
+          </span>
+        </div>
+        <video
+          src={videoUrl}
+          preload="metadata"
+          muted
+          playsInline
+          aria-hidden="true"
+          className="relative z-10 block h-full w-full bg-transparent object-cover opacity-90"
+        />
+        <div className="absolute inset-0 z-20 bg-black/15 transition-colors group-hover/video-preview:bg-black/35" />
+        <span className="absolute inset-0 z-30 flex items-center justify-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
+            <IconPlayerPlay size={20} stroke={1.8} />
+          </span>
+        </span>
+        <div className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">
+          <IconVideo size={10} />
+          Preview
+        </div>
+        <div className="absolute inset-x-0 bottom-0 z-30 flex items-end justify-between gap-2 bg-gradient-to-t from-black/65 via-black/20 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium">{filename}</div>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export function AttachmentPreview({
   attachment,
   text$,
@@ -391,6 +461,15 @@ export function AttachmentPreview({
     case "audio": {
       return (
         <AudioPreview filename={attachment.filename} url={attachment.url} />
+      );
+    }
+    case "video": {
+      return (
+        <VideoThumbnailPreview
+          contentType={attachment.contentType}
+          filename={attachment.filename}
+          url={attachment.url}
+        />
       );
     }
     case "file": {

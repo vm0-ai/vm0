@@ -70,7 +70,7 @@ import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
@@ -364,7 +364,7 @@ function buildOrgConnectUrl(
   if (threadTs) {
     params.set("t", threadTs);
   }
-  return `${env("VM0_WEB_URL")}/settings/slack?${params.toString()}`;
+  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
 function buildNotInstalledMessage(detail?: string): unknown[] {
@@ -384,7 +384,7 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
         {
           type: "button",
           text: { type: "plain_text", text: "Set up on Platform" },
-          url: `${env("VM0_WEB_URL")}/works`,
+          url: `${env("APP_URL")}/works`,
           action_id: "open_platform_setup",
         },
       ],
@@ -1164,7 +1164,7 @@ async function postPreDispatchErrorReply(args: {
     orgId: args.orgId,
     overrides,
   })
-    ? `${env("VM0_WEB_URL")}/activities`
+    ? `${env("APP_URL")}/activities`
     : undefined;
   const orgDefaultComposeId = await resolveDefaultComposeId(
     args.db,
@@ -1309,13 +1309,14 @@ async function buildRunAgentParams(
     client: resolved.client,
     userId: args.slackUserId,
   });
-  const modelRoute = await resolveIntegrationModelRouteForUser({
-    get: args.get,
-    set: args.set,
-    orgId: resolved.installation.orgId,
-    userId: resolved.connection.vm0UserId,
-    signal: args.signal,
-  });
+  const modelRoute = await args.set(
+    resolveIntegrationModelRouteForUser$,
+    {
+      orgId: resolved.installation.orgId,
+      userId: resolved.connection.vm0UserId,
+    },
+    args.signal,
+  );
   const existingSessionId = await resolveCompatibleThreadSession({
     db: args.db,
     channelId: args.channelId,
@@ -1371,7 +1372,7 @@ async function handleSlackRunResult(args: {
 }): Promise<void> {
   const { message, resolved, result } = args;
   if (result.status === "queued") {
-    const queueUrl = `${env("VM0_WEB_URL")}/?queue=1`;
+    const queueUrl = `${env("APP_URL")}/?queue=1`;
     await resolved.client.chat.postEphemeral({
       channel: message.channelId,
       user: message.slackUserId,

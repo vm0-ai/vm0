@@ -1,4 +1,3 @@
-import "server-only";
 import type {
   Axiom,
   QueryOptions as AxiomQueryOptions,

@@ -35,7 +35,7 @@ describe("lab page", () => {
     detachedSetupPage({ context, path: "/_/lab" });
 
     await waitFor(() => {
-      return screen.getAllByText(/^(?:dummy|voiceChat)$/i);
+      return screen.getByText("dummy");
     });
 
     // Should contain switch elements for feature switches

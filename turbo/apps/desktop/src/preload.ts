@@ -11,6 +11,12 @@ const desktopAuthApi: DesktopAuthApi = {
   openSignIn(): Promise<void> {
     return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.openSignIn);
   },
+  openOrgSelection(): Promise<void> {
+    return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.openOrgSelection);
+  },
+  completeSignIn(params): Promise<void> {
+    return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.completeSignIn, params);
+  },
   subscribe(callback: () => void): () => void {
     const listener = (): void => {
       callback();

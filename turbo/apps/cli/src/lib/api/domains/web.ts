@@ -642,6 +642,15 @@ function statusForBuiltInGenerationError(code: string): number {
   if (code === "GENERATION_TIMEOUT") {
     return 504;
   }
+  if (
+    code.startsWith("BYTEPLUS_INVALID_PARAMETER") ||
+    code.startsWith("BYTEPLUS_INPUT_")
+  ) {
+    return 400;
+  }
+  if (code.startsWith("BYTEPLUS_")) {
+    return 502;
+  }
   if (code.startsWith("NO_") || code.endsWith("_FAILED")) {
     return 502;
   }

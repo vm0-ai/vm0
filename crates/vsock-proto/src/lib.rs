@@ -32,7 +32,7 @@
 //! | 0x08 | G→H       | operations_resumed | (empty) |
 //! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x0A | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x0B | H→G       | exec_start     | `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]` |
+//! | 0x0B | H→G       | exec_start     | `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy][stdin_policy]` |
 //! | 0x0C | G→H       | exec_started | `[4B pid]` |
 //! | 0x0D | G→H       | exec_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0E | G→H       | exec_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
@@ -54,6 +54,8 @@
 //! always present.
 //! `exec_start.control_policy` uses 0=disabled, or 1 followed by
 //! `[1B control_flags][16B nonce]` where `control_flags` uses `SINK=0x01`.
+//! `exec_start.stdin_policy` uses 0=no explicit stdin, or 1 followed by
+//! `[4B stdin_len][stdin_bytes]` with a bounded payload.
 //! `exec_control_result.status` uses 0=delivered, 1=inactive,
 //! 2=nonce_mismatch, 3=unsupported, 4=rejected, 5=sink_unavailable,
 //! 6=sink_timeout, 7=queue_full, and 8=sink_error.
@@ -79,10 +81,10 @@ pub use payloads::exec_operation::{
     DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
     DecodedExecStart, DecodedExecStarted, ExecCapturedOutput, ExecControlPolicy,
     ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest,
-    ExecTermination, ExecTimeoutPolicy, decode_exec_cancel, decode_exec_control,
-    decode_exec_control_result, decode_exec_output, decode_exec_result, decode_exec_start,
-    decode_exec_started, encode_exec_cancel, encode_exec_control, encode_exec_control_result,
-    encode_exec_output, encode_exec_result, encode_exec_start,
+    ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES, decode_exec_cancel,
+    decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
+    decode_exec_start, decode_exec_started, encode_exec_cancel, encode_exec_control,
+    encode_exec_control_result, encode_exec_output, encode_exec_result, encode_exec_start,
     encode_exec_start_with_expected_exit_codes, encode_exec_started,
 };
 pub use payloads::write_file::{

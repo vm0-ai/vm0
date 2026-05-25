@@ -2,7 +2,6 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -15,12 +14,6 @@ import {
   seedZeroChatThread$,
   type ZeroChatThreadFixture,
 } from "./helpers/zero-chat-threads";
-import {
-  deleteVoiceChatFixture$,
-  seedVoiceChatFixture$,
-  seedVoiceChatTask$,
-  type VoiceChatFixture,
-} from "./helpers/zero-voice-chat";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { seedRun$ } from "./helpers/zero-usage-insight";
 
@@ -29,7 +22,6 @@ const SECRETS_ENCRYPTION_KEY =
 
 const AXIOM_PATH = "/api/internal/event-consumers/axiom";
 const CHAT_ASSISTANT_PATH = "/api/internal/event-consumers/chat-assistant";
-const VOICE_CHAT_PATH = "/api/internal/event-consumers/voice-chat";
 
 const context = testContext();
 const store = createStore();
@@ -39,10 +31,6 @@ const trackChatFixture = createFixtureTracker<ZeroChatThreadFixture>(
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   },
 );
-
-const trackVoiceFixture = createFixtureTracker<VoiceChatFixture>((fixture) => {
-  return store.set(deleteVoiceChatFixture$, fixture, context.signal);
-});
 
 function signedHeaders(
   rawBody: string,
@@ -151,47 +139,6 @@ async function seedChatThreadRun(): Promise<
   return { ...fixture, runId };
 }
 
-async function seedVoiceChatTaskRun(
-  status: "pending" | "queued" | "running" = "queued",
-): Promise<{
-  readonly chatFixture: ZeroChatThreadFixture;
-  readonly voiceFixture: VoiceChatFixture;
-  readonly sessionId: string;
-  readonly taskId: string;
-  readonly runId: string;
-}> {
-  const chatFixture = await trackChatFixture(
-    store.set(seedZeroChatThread$, {}, context.signal),
-  );
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: chatFixture.orgId,
-      userId: chatFixture.userId,
-      composeId: chatFixture.composeId,
-      status: "queued",
-    },
-    context.signal,
-  );
-  const voiceFixture = await trackVoiceFixture(
-    store.set(
-      seedVoiceChatFixture$,
-      {
-        sessions: [{ orgId: chatFixture.orgId, userId: chatFixture.userId }],
-      },
-      context.signal,
-    ),
-  );
-  const sessionId = voiceFixture.sessionIds[0]!;
-  const taskId = await store.set(
-    seedVoiceChatTask$,
-    sessionId,
-    { status, runId },
-    context.signal,
-  );
-  return { chatFixture, voiceFixture, sessionId, taskId, runId };
-}
-
 function readAssistantMessages(runId: string): Promise<
   readonly {
     readonly content: string | null;
@@ -210,18 +157,6 @@ function readAssistantMessages(runId: string): Promise<
     .where(
       and(eq(chatMessages.runId, runId), eq(chatMessages.role, "assistant")),
     );
-}
-
-async function readVoiceChatTask(
-  taskId: string,
-): Promise<typeof voiceChatTasks.$inferSelect | undefined> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select()
-    .from(voiceChatTasks)
-    .where(eq(voiceChatTasks.id, taskId))
-    .limit(1);
-  return row;
 }
 
 beforeEach(() => {
@@ -432,116 +367,5 @@ describe("POST /api/internal/event-consumers/chat-assistant", () => {
     await expect(readAssistantMessages(fixture.runId)).resolves.toStrictEqual(
       [],
     );
-  });
-});
-
-describe("POST /api/internal/event-consumers/voice-chat", () => {
-  it("rejects invalid signatures", async () => {
-    const response = await postEventConsumer(
-      VOICE_CHAT_PATH,
-      { runId: "run-id", events: [], context: { userId: "u", orgId: "o" } },
-      "wrong-key",
-    );
-
-    expect(response.status).toBe(401);
-  });
-
-  it("no-ops for runs unrelated to any voice-chat task", async () => {
-    const fixture = await trackChatFixture(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: fixture.composeId,
-      },
-      context.signal,
-    );
-
-    const response = await postEventConsumer(VOICE_CHAT_PATH, {
-      runId,
-      events: [buildAssistantEvent(1, "hello")],
-      context: { userId: fixture.userId, orgId: fixture.orgId },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ processed: 1 });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
-  it("flips queued tasks to running and appends assistant text", async () => {
-    const fixture = await seedVoiceChatTaskRun("queued");
-
-    const response = await postEventConsumer(VOICE_CHAT_PATH, {
-      runId: fixture.runId,
-      events: [buildAssistantEvent(1, "hello")],
-      context: {
-        userId: fixture.chatFixture.userId,
-        orgId: fixture.chatFixture.orgId,
-      },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ processed: 1 });
-    const row = await readVoiceChatTask(fixture.taskId);
-    expect(row?.status).toBe("running");
-    expect(row?.startedAt).not.toBeNull();
-    expect(row?.assistantMessages).toStrictEqual([
-      { type: "assistant", content: "hello", at: expect.any(String) },
-    ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `voice-chat:${fixture.sessionId}`,
-      null,
-    );
-  });
-
-  it("keeps running status and appends subsequent assistant text", async () => {
-    const fixture = await seedVoiceChatTaskRun("queued");
-
-    await postEventConsumer(VOICE_CHAT_PATH, {
-      runId: fixture.runId,
-      events: [buildAssistantEvent(1, "one")],
-      context: {
-        userId: fixture.chatFixture.userId,
-        orgId: fixture.chatFixture.orgId,
-      },
-    });
-    await postEventConsumer(VOICE_CHAT_PATH, {
-      runId: fixture.runId,
-      events: [buildAssistantEvent(2, "two")],
-      context: {
-        userId: fixture.chatFixture.userId,
-        orgId: fixture.chatFixture.orgId,
-      },
-    });
-
-    const row = await readVoiceChatTask(fixture.taskId);
-    expect(row?.status).toBe("running");
-    expect(
-      row?.assistantMessages.map((entry) => {
-        return entry.content;
-      }),
-    ).toStrictEqual(["one", "two"]);
-  });
-
-  it("flips status without appending for tool-use-only assistant events", async () => {
-    const fixture = await seedVoiceChatTaskRun("queued");
-
-    const response = await postEventConsumer(VOICE_CHAT_PATH, {
-      runId: fixture.runId,
-      events: [buildToolUseEvent(1)],
-      context: {
-        userId: fixture.chatFixture.userId,
-        orgId: fixture.chatFixture.orgId,
-      },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ processed: 0 });
-    const row = await readVoiceChatTask(fixture.taskId);
-    expect(row?.status).toBe("running");
-    expect(row?.assistantMessages).toStrictEqual([]);
   });
 });

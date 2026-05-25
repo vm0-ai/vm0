@@ -119,4 +119,60 @@ describe("parseBodyRenderBlocks", () => {
       },
     ]);
   });
+
+  it("renders connector authorize URLs as connector action blocks", () => {
+    const url =
+      "https://app.vm0.ai/connectors/strapi/authorize?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(url, {
+      previews: false,
+    });
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "connector-action",
+      id: "connector-action-1",
+      connectorType: "strapi",
+      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+      originalUrl: url,
+    });
+  });
+
+  it("renders markdown connector authorize links as connector action blocks", () => {
+    const url =
+      "https://app.vm0.ai/connectors/strapi/authorize?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Connect Strapi](${url})`,
+    );
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "connector-action",
+      id: "connector-action-1",
+      connectorType: "strapi",
+      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+      originalUrl: url,
+    });
+  });
+
+  it("does not render external connector authorize URLs as action blocks", () => {
+    const url =
+      "https://evil.example/connectors/strapi/authorize?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(url, {
+      previews: false,
+    });
+
+    expect(cleanContent).toBe(url);
+    expect(blocks).toStrictEqual([
+      {
+        type: "markdown",
+        id: "markdown-1",
+        content: url,
+      },
+    ]);
+  });
 });

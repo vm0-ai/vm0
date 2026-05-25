@@ -65,7 +65,7 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // Realtime pub/sub (Ably) — required env; tests use a mocked Ably client
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    // OpenAI (voice-chat ephemeral token minting, STT, TTS) — required env
+    // OpenAI (STT, TTS) — required env
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
     // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
@@ -98,12 +98,6 @@ const resetEnv = vi.hoisted(() => {
 
 // Import reloadEnv AFTER vi.hoisted() has set up the stubs
 import { reloadEnv } from "../env";
-
-// Mock server-only package (no-op in tests)
-// This package throws when imported outside of a server component
-vi.mock("server-only", () => {
-  return {};
-});
 
 // Mock Next.js after() to capture callbacks for controlled execution in tests.
 // Tests can drain the queue with context.mocks.flushAfter().
@@ -194,26 +188,6 @@ vi.mock("@axiomhq/logging", () => {
       };
     }),
     AxiomJSTransport: vi.fn(),
-  };
-});
-
-// Mock Ably (external real-time service)
-// Uses shared spy instances from ably-mock.ts so test files can import
-// mockAblyPublish / mockAblyCreateTokenRequest without repeating vi.mock.
-vi.mock("ably", async () => {
-  const { mockAblyCreateTokenRequest, mockAblyChannelsGet } =
-    await import("./ably-mock");
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: mockAblyCreateTokenRequest },
-          channels: {
-            get: mockAblyChannelsGet,
-          },
-        };
-      }),
-    },
   };
 });
 

@@ -354,6 +354,7 @@ async fn run_with_firecracker(
             stdout_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             wait_timeout: Duration::from_millis(35_000),
         })
         .await

@@ -74,7 +74,8 @@ async function seedVm0ManagedKeys(): Promise<void> {
 function configureSlackWebhookTest(): void {
   mockOptionalEnv("SLACK_SIGNING_SECRET", SIGNING_SECRET);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockEnv("VM0_WEB_URL", "https://app.vm0.test");
+  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+  mockEnv("APP_URL", "https://app.vm0.test");
   mockEnv("VM0_API_URL", "https://api.vm0.test");
   context.mocks.s3.send.mockResolvedValue({});
   context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({

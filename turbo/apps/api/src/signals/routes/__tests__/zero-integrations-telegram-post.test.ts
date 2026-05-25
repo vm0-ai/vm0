@@ -874,7 +874,8 @@ describe("POST /api/telegram/register", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("VM0_API_URL", "https://api.example.test");
-    mockEnv("VM0_WEB_URL", "https://app.example.test");
+    mockEnv("VM0_WEB_URL", "https://www.example.test");
+    mockEnv("APP_URL", "https://app.example.test");
     mockTelegramGetMe({ botId: telegramBotId, username: "registered_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
     context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
@@ -902,7 +903,7 @@ describe("POST /api/telegram/register", () => {
     });
     expect(context.mocks.telegram.setWebhook).toHaveBeenCalledWith(
       TEST_BOT_TOKEN,
-      `https://app.example.test/api/telegram/webhook/${telegramBotId}`,
+      `https://www.example.test/api/telegram/webhook/${telegramBotId}`,
       expect.stringMatching(/^[0-9a-f]{64}$/u),
     );
     expect(context.mocks.telegram.setMyCommands).toHaveBeenCalledWith(
@@ -1653,7 +1654,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const buttonUrl =
       telegramMocks.sentMessages[1]?.reply_markup?.inline_keyboard[0]?.[0]
         ?.url ?? "";
-    expect(buttonUrl).toContain("/telegram/connect?bot=");
+    expect(buttonUrl).toContain("http://localhost:3002/telegram/connect?bot=");
     expect(buttonUrl).toContain("tgUser=91612");
 
     const help = await postWebhook({

@@ -118,3 +118,9 @@ export const decideComputerUseCommand$ = command(
 export const openDesktopSignIn$ = command(async () => {
   await desktopAuthApi().openSignIn();
 });
+
+export const openDesktopOrgSelection$ = command(async ({ set }) => {
+  await desktopAuthApi().openOrgSelection();
+  set(autoStartAttempted$, false);
+  set(refreshComputerUse$);
+});

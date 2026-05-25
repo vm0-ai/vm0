@@ -202,6 +202,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable remote desktop host registration",
     enabled: false,
   },
+  [FeatureSwitchKey.LarkConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the Lark connector while tenant access-token exchange is being repaired.",
+    enabled: false,
+  },
   [FeatureSwitchKey.LocalBrowserUse]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -313,38 +319,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Trinity]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Embed the voice-chat mic toggle + voice-mode layout into the agent chat page. Gates the mic launcher, composer swap, and status/subtitle/task-card UI.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Gate voice-chat realtime billing (Plan D, Epic #12128). When OFF, " +
-      "the token route mints an OpenAI ephemeral token without admission " +
-      "checks and the /session-started, /usage, and /session-ended " +
-      "endpoints are 200 no-ops — the org gets unmetered voice-chat. " +
-      "When ON, the token route runs credit + pricing admission, " +
-      "/session-started inserts an audit row in voice_chat_realtime_" +
-      "sessions, and the browser self-reports response.done + " +
-      "transcription.completed usage events for billing. Staff-only " +
-      "during rollout; operator flips per org via the feature-switch " +
-      "overrides API.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.HostedSites]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable static hosted-site deployments from zero host. Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.OpenDesignGenerate]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use agent-authored OpenDesign-style HTML packets for website and presentation built-in generation. Staff-only during rollout.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

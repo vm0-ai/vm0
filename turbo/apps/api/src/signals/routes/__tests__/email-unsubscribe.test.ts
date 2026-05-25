@@ -110,7 +110,7 @@ describe("GET /api/email/unsubscribe", () => {
     expect(response.headers.get("content-type")).toContain("text/html");
     const html = await response.text();
     expect(html).toContain("You have been unsubscribed");
-    expect(html).toContain("http://localhost:3001/settings");
+    expect(html).toContain("http://localhost:3002/settings");
     await expect(findUser(userId)).resolves.toStrictEqual({
       emailUnsubscribed: true,
     });

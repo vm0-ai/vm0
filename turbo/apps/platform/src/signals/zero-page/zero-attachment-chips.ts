@@ -15,6 +15,11 @@ type AttachmentLightboxState =
       kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
       url: string;
       filename: string;
+    }
+  | {
+      kind: "video";
+      url: string;
+      filename: string;
     };
 
 const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
@@ -37,6 +42,18 @@ export const openDocumentLightbox$ = command(
     },
   ) => {
     set(internalLightboxState$, value);
+  },
+);
+
+export const openVideoLightbox$ = command(
+  (
+    { set },
+    value: {
+      url: string;
+      filename: string;
+    },
+  ) => {
+    set(internalLightboxState$, { kind: "video", ...value });
   },
 );
 

@@ -135,12 +135,20 @@ describe("attachment preview component", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("should render null for video files (.mp4)", () => {
-    const { container } = renderPreview({
+  it("should render video thumbnail for .mp4 files", () => {
+    renderPreview({
       filename: "video.mp4",
       url: "https://example.com/video.mp4",
     });
-    expect(container).toBeEmptyDOMElement();
+    const preview = screen.getByTestId("attachment-preview-video");
+    const video = preview.querySelector("video");
+
+    expect(preview).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open video preview for video.mp4"),
+    ).toHaveAttribute("type", "button");
+    expect(video?.getAttribute("src")).toBe("https://example.com/video.mp4");
+    expect(video?.hasAttribute("controls")).toBeFalsy();
   });
 
   it("should render a thumbnail preview block for non-inline upload file types", () => {
@@ -244,13 +252,16 @@ describe("attachment preview component", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("should return null for video content-type when filename has no extension", () => {
-    const { container } = renderPreview({
+  it("should classify by content-type video/mp4 when filename has no extension", () => {
+    renderPreview({
       filename: "clip",
       url: "https://example.com/clip",
       contentType: "video/mp4",
     });
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByTestId("attachment-preview-video")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open video preview for clip"),
+    ).toHaveAttribute("type", "button");
   });
 
   // Charset suffix

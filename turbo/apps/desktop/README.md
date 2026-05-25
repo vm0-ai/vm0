@@ -16,17 +16,25 @@ owns macOS Accessibility and targeted CGEvent input dispatch.
 
 ## Development
 
-By default the app opens production:
+For quick Electron development without macOS bundle behavior, use:
 
 ```bash
-pnpm -F @vm0/desktop dev
+pnpm desktop:dev:forge
 ```
 
-From the monorepo root, start the desktop app against the local proxy with:
+This launches the generic Electron app from `node_modules`, so macOS URL scheme
+handlers, bundle identifiers, Dock identity, and permission prompts do not match
+the packaged Desktop app.
+
+From the monorepo root, start a packaged development app against the local proxy
+with:
 
 ```bash
 pnpm desktop:dev
 ```
+
+This packages and runs `Zero Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to the
+local proxy. Use it for sign-in callback, URL scheme, and permission testing.
 
 The desktop build compiles both Electron entrypoints and the Swift native helper:
 
@@ -47,9 +55,9 @@ is also the path included in packaged macOS artifacts.
 Point it at a local or staging platform URL with:
 
 ```bash
-VM0_DESKTOP_PLATFORM_URL=https://staging-app.vm6.ai pnpm -F @vm0/desktop dev
-VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev
-VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev
+VM0_DESKTOP_PLATFORM_URL=https://staging-app.vm6.ai pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged
+VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev:packaged
 ```
 
 The desktop app does not start platform/web/api/proxy services itself. Start the

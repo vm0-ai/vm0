@@ -69,6 +69,7 @@ async fn exec_operation_connection_close_wakes_result_and_stream() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -105,6 +106,7 @@ async fn exec_start_after_connection_close_returns_connection_reset() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -132,6 +134,7 @@ async fn host_drop_closes_active_exec_result_and_stream() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await

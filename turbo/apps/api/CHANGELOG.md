@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.70.2](https://github.com/vm0-ai/vm0/compare/api-v1.70.1...api-v1.70.2) (2026-05-25)
+
+
+### Refactoring
+
+* **api:** wrap integration model route in command ([#14798](https://github.com/vm0-ai/vm0/issues/14798)) ([725f1fb](https://github.com/vm0-ai/vm0/commit/725f1fbc971e38b33a167f1fad328f61994b7a45))
+* remove web callback infra leftovers ([#14790](https://github.com/vm0-ai/vm0/issues/14790)) ([dfe62f1](https://github.com/vm0-ai/vm0/commit/dfe62f16a1e118c65feba1e5063774428c44ebec))
+* remove web org metadata leftovers ([#14800](https://github.com/vm0-ai/vm0/issues/14800)) ([419aa86](https://github.com/vm0-ai/vm0/commit/419aa86ab579c277050e96aa3fb26abf490e8183))
+
+## [1.70.1](https://github.com/vm0-ai/vm0/compare/api-v1.70.0...api-v1.70.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* show pinned chat threads across agents ([#14735](https://github.com/vm0-ai/vm0/issues/14735)) ([9764de2](https://github.com/vm0-ai/vm0/commit/9764de2797e676e31419c0d8012edc3b9a6407ce))
+
+
+### Refactoring
+
+* remove web oauth provider key bridge ([#14765](https://github.com/vm0-ai/vm0/issues/14765)) ([9209c1e](https://github.com/vm0-ai/vm0/commit/9209c1edcdbaca2a462b986249dfa131a5645072))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.1
+    * @vm0/connectors bumped to 1.32.0
+    * @vm0/core bumped to 8.293.0
+    * @vm0/db bumped to 1.18.9
+
 ## [1.70.0](https://github.com/vm0-ai/vm0/compare/api-v1.69.5...api-v1.70.0) (2026-05-25)
 
 

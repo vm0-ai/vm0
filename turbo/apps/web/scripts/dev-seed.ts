@@ -5,11 +5,12 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
 import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
+import { resolveSkillRef } from "@vm0/core/github-url";
+import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { schema } from "@vm0/db";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
-import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
 
 /**
  * Dev seed: populate usage_pricing, vm0_api_keys, and skills tables.
@@ -39,6 +40,25 @@ function usageGroup(
 ): (typeof usagePricing.$inferInsert)[] {
   return rows.map(([category, unitPrice, unitSize]) => {
     return { kind, provider, category, unitPrice, unitSize };
+  });
+}
+
+function buildSeedSkillValues(
+  names: readonly string[],
+): (typeof skills.$inferInsert)[] {
+  return names.map((name) => {
+    const url = resolveSkillRef(name);
+    const fullPath = url.replace("https://github.com/", "");
+    return {
+      url,
+      name,
+      fullPath,
+      versionHash: null,
+      frontmatter: {
+        name,
+        description: `${name} skill`,
+      },
+    };
   });
 }
 

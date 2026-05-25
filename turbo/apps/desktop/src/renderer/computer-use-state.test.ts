@@ -80,5 +80,12 @@ describe("shouldAutoStartComputerUse", () => {
         }),
       ),
     ).toBe(true);
+    expect(
+      shouldAutoStartComputerUse(
+        computerUseState({
+          host: { ...computerUseState().host, status: "needs_organization" },
+        }),
+      ),
+    ).toBe(false);
   });
 });

@@ -5,6 +5,10 @@ import type {
 
 export interface DesktopAuthApi {
   readonly openSignIn: () => Promise<void>;
+  readonly openOrgSelection: () => Promise<void>;
+  readonly completeSignIn: (params: {
+    readonly token: string;
+  }) => Promise<void>;
   readonly subscribe: (callback: () => void) => () => void;
 }
 

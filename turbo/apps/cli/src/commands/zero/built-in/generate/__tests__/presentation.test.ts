@@ -3,11 +3,12 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): backend presentation route via MSW
- * - Real (internal): All CLI code and fetch
+ * - Mock (external): none for the OpenDesign path
+ * - Real (internal): prompt parsing and feature-gated authoring packet generation
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../../mocks/server";
@@ -43,6 +44,27 @@ const PRESENTATION_RESULT = {
   },
 };
 
+function buildZeroToken(openDesignGenerate: boolean): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
+    "base64url",
+  );
+  const body = Buffer.from(
+    JSON.stringify({
+      userId: "user-1",
+      runId: "run-1",
+      orgId: "org-1",
+      scope: "zero",
+      capabilities: ["file:write", "host:write"],
+      featureSwitches: {
+        [FeatureSwitchKey.OpenDesignGenerate]: openDesignGenerate,
+      },
+      iat: 1_700_000_000,
+      exp: 1_700_007_200,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_${header}.${body}.test-signature`;
+}
+
 describe("zero built-in generate presentation command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -56,17 +78,22 @@ describe("zero built-in generate presentation command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", buildZeroToken(true));
   });
 
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
-  it("should generate a presentation and print the /f HTML URL", async () => {
+  it("should generate a billed presentation when openDesignGenerate is disabled", async () => {
+    vi.stubEnv("ZERO_TOKEN", buildZeroToken(false));
     server.use(
       http.post(PRESENTATION_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        expect(request.headers.get("authorization")).toMatch(
+          /^Bearer vm0_sandbox_/u,
+        );
         expect(request.headers.get("content-type")).toBe("application/json");
         expect(await request.json()).toEqual({
           prompt: "API migration plan",
@@ -123,7 +150,8 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).toContain("Model: gpt-5.5");
   });
 
-  it("should wait for an accepted presentation even when the proxy returns 200", async () => {
+  it("should wait for an accepted billed presentation when openDesignGenerate is disabled", async () => {
+    vi.stubEnv("ZERO_TOKEN", buildZeroToken(false));
     let statusRequested = false;
     server.use(
       http.post(PRESENTATION_URL, () => {
@@ -147,7 +175,9 @@ describe("zero built-in generate presentation command", () => {
       }),
       http.get(PRESENTATION_STATUS_URL, ({ request }) => {
         statusRequested = true;
-        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        expect(request.headers.get("authorization")).toMatch(
+          /^Bearer vm0_sandbox_/u,
+        );
         return HttpResponse.json({
           generationId: PRESENTATION_GENERATION_ID,
           type: "presentation",
@@ -177,60 +207,8 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).not.toContain("undefined");
   });
 
-  it("should print JSON metadata when --json is provided", async () => {
-    server.use(
-      http.post(PRESENTATION_URL, () => {
-        return HttpResponse.json(PRESENTATION_RESULT);
-      }),
-    );
-
-    await zeroBuiltInCommand.parseAsync([
-      "node",
-      "cli",
-      "generate",
-      "presentation",
-      "--prompt",
-      "JSON please",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      id: PRESENTATION_RESULT.id,
-      filename: PRESENTATION_RESULT.filename,
-      contentType: "text/html",
-      size: PRESENTATION_RESULT.size,
-      url: PRESENTATION_RESULT.url,
-      creditsCharged: 31,
-      model: "gpt-5.5",
-      style: "swiss",
-      theme: "ikb",
-      slideCount: 10,
-      imageCount: 8,
-      imageModel: "gpt-image-1.5",
-      imageUrls: PRESENTATION_RESULT.imageUrls,
-      imageCreditsCharged: 7,
-      textCreditsCharged: 24,
-      title: "API Migration Plan",
-    });
-  });
-
-  it("should describe the default image model in help", () => {
-    let helpOutput = "";
-    presentationCommand.configureOutput({
-      writeOut: (str: string) => {
-        helpOutput += str;
-      },
-    });
-
-    presentationCommand.outputHelp();
-
-    expect(helpOutput).toContain("Image model for generated visuals (default:");
-    expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
-  });
-
-  it("should surface API errors", async () => {
+  it("should surface billed presentation API errors when openDesignGenerate is disabled", async () => {
+    vi.stubEnv("ZERO_TOKEN", buildZeroToken(false));
     server.use(
       http.post(PRESENTATION_URL, () => {
         return HttpResponse.json(
@@ -258,6 +236,105 @@ describe("zero built-in generate presentation command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining("Credits depleted"),
+    );
+  });
+
+  it("should print OpenDesign-style presentation authoring instructions", async () => {
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "presentation",
+      "--prompt",
+      "API migration plan",
+      "--style",
+      "swiss",
+      "--slides",
+      "10",
+      "--images",
+      "8",
+      "--image-model",
+      "gpt-image-1.5",
+      "--theme",
+      "ikb",
+      "--audience",
+      "engineering leadership",
+      "--title",
+      "API Migration Plan",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("# Zero built-in generate presentation");
+    expect(stdout).toContain("You are the current agent");
+    expect(stdout).toContain("API migration plan");
+    expect(stdout).toContain(
+      "Write the artifact under `./opendesign/mockups/api-migration-plan/`.",
+    );
+    expect(stdout).toContain(
+      "zero host ./opendesign/mockups/api-migration-plan --site api-migration-plan",
+    );
+    expect(stdout).toContain("Style: swiss");
+    expect(stdout).toContain("Slide count: 10");
+    expect(stdout).toContain("Theme: ikb");
+    expect(stdout).toContain("Audience: engineering leadership");
+    expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
+  });
+
+  it("should print JSON authoring metadata when --json is provided", async () => {
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "presentation",
+      "--prompt",
+      "JSON please",
+      "--title",
+      "API Migration Plan",
+      "--json",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      type: "html-artifact-authoring",
+      kind: "presentation",
+      prompt: "JSON please",
+      outputDir: "./opendesign/mockups/api-migration-plan",
+      site: "api-migration-plan",
+      hostCommand:
+        "zero host ./opendesign/mockups/api-migration-plan --site api-migration-plan",
+    });
+    expect(parsed.instructions).toEqual(
+      expect.stringContaining("Think like a presentation designer"),
+    );
+  });
+
+  it("should describe the default image model in help", () => {
+    let helpOutput = "";
+    presentationCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
+    });
+
+    presentationCommand.outputHelp();
+
+    expect(helpOutput).toContain("Image model for generated visuals (default:");
+    expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
+  });
+
+  it("should require a prompt", async () => {
+    await expect(async () => {
+      await zeroBuiltInCommand.parseAsync([
+        "node",
+        "cli",
+        "generate",
+        "presentation",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("--prompt is required"),
     );
   });
 });

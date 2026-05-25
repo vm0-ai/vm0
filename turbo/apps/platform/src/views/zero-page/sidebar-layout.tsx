@@ -8,6 +8,7 @@ import {
 } from "ccstate-react";
 import {
   IconMenu2,
+  IconPackage,
   IconPlus,
   IconUserPlus,
   IconVolume2,
@@ -21,6 +22,11 @@ import {
   currentChatAgentId$,
   earliestUnreadEndedThread$,
 } from "../../signals/agent-chat.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+} from "../../signals/chat-page/chat-thread-panes.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
@@ -184,6 +190,42 @@ function NewOrUnreadChatButtonLeaf() {
   );
 }
 
+function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const open = useGet(thread.artifactsDrawerOpen$);
+  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(true);
+      }}
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+        open
+          ? "bg-primary/10 text-primary"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+      )}
+      aria-label="Open mobile artifacts"
+      aria-pressed={open}
+    >
+      <IconPackage size={16} stroke={1.5} />
+    </button>
+  );
+}
+
+function MobileArtifactsButtonLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+
+  if (!thread) {
+    return null;
+  }
+
+  return <MobileArtifactsButtonInner thread={thread} />;
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
   const features = useLastResolved(featureSwitch$);
@@ -192,6 +234,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
+      {inChatRoute && <MobileArtifactsButtonLeaf />}
       {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
       {inChatRoute &&
         (newButtonEnabled ? (

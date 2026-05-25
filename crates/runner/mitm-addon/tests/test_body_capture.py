@@ -23,7 +23,9 @@ from body_utils import (
 )
 from usage import (
     extract_anthropic_messages_usage_from_json,
+    extract_anthropic_messages_usage_with_error_from_json,
     extract_openai_responses_usage_from_json,
+    extract_openai_responses_usage_with_error_from_json,
 )
 
 
@@ -41,6 +43,9 @@ def _track_brotli_decompressor(monkeypatch):
             stats["max_input"] = max(stats["max_input"], len(chunk))
             stats["max_output"] = max(stats["max_output"], len(out))
             return out
+
+        def is_finished(self) -> bool:
+            return self._inner.is_finished()
 
     monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
     return stats
@@ -1072,6 +1077,16 @@ class TestExtractAnthropicUsageFromJson:
         assert result["model"] == "test"
         assert result["tokens.input"] == 42
 
+    def test_truncated_gzip_stays_silent_but_diagnostic_returns_error(self, headers):
+        original = b'{"model":"test","usage":{"input_tokens":42}}'
+        truncated = gzip.compress(original)[:10]
+        headers = headers(("Content-Encoding", "gzip"))
+
+        assert extract_anthropic_messages_usage_from_json(truncated, headers) is None
+        usage, error = extract_anthropic_messages_usage_with_error_from_json(truncated, headers)
+        assert usage is None
+        assert error == "incomplete compressed body"
+
     def test_invalid_json_returns_none(self):
         assert extract_anthropic_messages_usage_from_json(b"not json", None) is None
 
@@ -1208,6 +1223,19 @@ class TestExtractOpenAIResponsesUsageFromJson:
             "tokens.input": 35,
             "tokens.cache_read": 7,
         }
+
+    def test_truncated_gzip_stays_silent_but_diagnostic_returns_error(self, headers):
+        original = (
+            b'{"model":"gpt-5.3-codex","usage":{"input_tokens":42,'
+            b'"input_tokens_details":{"cached_tokens":7}}}'
+        )
+        truncated = gzip.compress(original)[:10]
+        headers = headers(("Content-Encoding", "gzip"))
+
+        assert extract_openai_responses_usage_from_json(truncated, headers) is None
+        usage, error = extract_openai_responses_usage_with_error_from_json(truncated, headers)
+        assert usage is None
+        assert error == "incomplete compressed body"
 
     def test_cached_input_tokens_are_clamped_to_total_input(self):
         body = (

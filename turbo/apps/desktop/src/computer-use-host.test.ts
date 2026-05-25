@@ -135,12 +135,37 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.start();
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(sessionFetch).toHaveBeenCalledOnce();
+    expect(sessionFetch).toHaveBeenCalledTimes(2);
+    expect(sessionFetch.mock.calls[0]?.[0]).toBe(
+      "https://api.vm0.ai/api/zero/computer-use/hosts/start",
+    );
+    expect(sessionFetch.mock.calls[1]?.[0]).toBe(
+      "https://api.vm0.ai/api/auth/me",
+    );
     expect(runtime.getState()).toMatchObject({
       status: "unauthenticated",
       hostId: null,
       lastError:
         "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+  });
+
+  it("reports missing organization when the Electron session is signed in", async () => {
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (input) => {
+      if (input.endsWith("/api/auth/me")) {
+        return jsonResponse({ userId: "user-1", email: "user@example.com" });
+      }
+      return new Response("{}", { status: 401 });
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+
+    expect(runtime.getState()).toMatchObject({
+      status: "needs_organization",
+      hostId: null,
+      lastError:
+        "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.",
     });
   });
 });

@@ -19,7 +19,17 @@ export type Services = {
   stripe: Stripe;
 };
 
+export type DesktopAuthBridge = {
+  readonly completeSignIn?: (params: {
+    readonly token: string;
+  }) => Promise<void>;
+};
+
 declare global {
   // getter ensures it's always defined after initServices()
   var services: Services;
+
+  interface Window {
+    readonly vm0DesktopAuth?: DesktopAuthBridge;
+  }
 }

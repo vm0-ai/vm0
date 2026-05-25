@@ -154,7 +154,6 @@ const nextConfig = {
     ],
   },
   allowedDevOrigins: ["*.vm7.ai"],
-  serverExternalPackages: ["ably"],
 };
 
 const isProduction = process.env.VERCEL_ENV === "production";

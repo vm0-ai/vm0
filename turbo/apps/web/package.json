@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "12.387.0",
+  "version": "12.387.2",
   "type": "module",
   "private": true,
   "scripts": {
@@ -33,12 +33,10 @@
     "@tabler/icons-react": "^3.36.1",
     "@vercel/functions": "^3.4.4",
     "@vm0/api-contracts": "workspace:*",
-    "@vm0/api-services": "workspace:*",
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/db": "workspace:*",
     "@vm0/ui": "workspace:*",
-    "ably": "^2.17.0",
     "cpu-features": "0.0.10",
     "drizzle-orm": "^0.45.2",
     "import-in-the-middle": "^3.0.0",
@@ -52,7 +50,6 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "require-in-the-middle": "^8.0.1",
-    "server-only": "^0.0.1",
     "stripe": "^20.4.1",
     "zod": "^4.3.6"
   },

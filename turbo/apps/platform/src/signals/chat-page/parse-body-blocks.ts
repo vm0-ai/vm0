@@ -1,4 +1,10 @@
 import { computed, type Computed } from "ccstate";
+import {
+  createConnectorActionBlock,
+  parseConnectorAuthorizeUrl,
+  type ConnectorActionDescriptor,
+  type ConnectorActionBlock,
+} from "./connector-action-block.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,7 +37,8 @@ export type BodyRenderBlock =
         kind: BodyPreviewKind;
         text$?: Computed<Promise<string>>;
       };
-    };
+    }
+  | ConnectorActionBlock;
 
 type ChatAttachmentKind = BodyPreviewKind;
 
@@ -471,6 +478,38 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   return null;
 }
 
+function extractConnectorActionFromLine(line: string): string | null {
+  const candidate = stripMarkdownLineDecorations(line);
+  const markdownLinkMatch = candidate.match(
+    new RegExp(String.raw`^\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)$`),
+  );
+  const bareUrlMatch = candidate.match(new RegExp(`^(${URL_TOKEN_PATTERN})$`));
+  if (markdownLinkMatch?.[2]) {
+    return trimPreviewUrl(markdownLinkMatch[2]);
+  }
+  if (bareUrlMatch?.[1]) {
+    return trimPreviewUrl(bareUrlMatch[1]);
+  }
+
+  const urls = Array.from(
+    candidate.matchAll(new RegExp(URL_TOKEN_PATTERN, "g")),
+    (match) => {
+      return trimPreviewUrl(match[0]);
+    },
+  ).filter((url, index, list) => {
+    return url.length > 0 && list.indexOf(url) === index;
+  });
+
+  return urls.length === 1 ? urls[0]! : null;
+}
+
+function parseConnectorActionFromLine(
+  line: string,
+): ConnectorActionDescriptor | null {
+  const url = extractConnectorActionFromLine(line);
+  return url ? parseConnectorAuthorizeUrl(url) : null;
+}
+
 function splitMarkdownTableRow(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.includes("|")) {
@@ -553,7 +592,7 @@ function markdownTableRowIndexes(lines: string[]): Set<number> {
 }
 
 // ---------------------------------------------------------------------------
-// Block parsing (pure — no computeds)
+// Block parsing
 // ---------------------------------------------------------------------------
 
 export function parseBodyRenderBlocks(
@@ -620,6 +659,18 @@ export function parseBodyRenderBlocks(
     if (tableRowIndexes.has(lineIndex)) {
       markdownBuffer.push(line);
       keptLines.push(line);
+      continue;
+    }
+
+    const connectorAction = parseConnectorActionFromLine(line);
+    if (connectorAction) {
+      flushMarkdownBuffer();
+      blocks.push(
+        createConnectorActionBlock(
+          nextBlockId("connector-action"),
+          connectorAction,
+        ),
+      );
       continue;
     }
 

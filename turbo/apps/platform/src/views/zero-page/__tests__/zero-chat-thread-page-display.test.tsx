@@ -944,9 +944,9 @@ describe("zero chat thread page display - body link document preview", () => {
   });
 });
 
-// CHAT-D-065: Video attachments render as compact download chips.
-describe("zero chat thread page display - attachment video chip", () => {
-  it("renders a compact download chip for mp4 attachments", async () => {
+// CHAT-D-065: Video attachments render as poster buttons and open playback preview.
+describe("zero chat thread page display - attachment video preview", () => {
+  it("renders an mp4 attachment poster and opens an autoplaying preview", async () => {
     const videoUrl = "https://example.com/clip.mp4";
     mockChatLifecycle({
       chatMessages: [
@@ -960,21 +960,35 @@ describe("zero chat thread page display - attachment video chip", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    const download = await waitFor(() => {
-      return screen.getByLabelText("Download clip.mp4");
+    const previewButton = await waitFor(() => {
+      return screen.getByLabelText("Preview clip.mp4");
     });
+    const posterVideo = previewButton.querySelector("video");
 
-    expect(download).toHaveAttribute("type", "button");
-    expect(download).not.toHaveAttribute("href");
     expect(
-      within(download).getByTestId("attachment-chip-file-icon"),
+      within(previewButton).getByTestId("chat-video-preview-poster"),
     ).toBeInTheDocument();
+    expect(posterVideo?.getAttribute("src")).toBe(videoUrl);
+    expect(posterVideo?.hasAttribute("controls")).toBeFalsy();
+    expect(
+      screen.queryByLabelText("Video preview for clip.mp4"),
+    ).not.toBeInTheDocument();
     expect(
       document.querySelector(`img[src="${videoUrl}"]`),
     ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(`video[src="${videoUrl}"]`),
-    ).not.toBeInTheDocument();
+
+    await userEvent.click(previewButton);
+
+    const lightbox = await waitFor(() => {
+      return screen.getByTestId("attachment-lightbox");
+    });
+    const video = within(lightbox).getByLabelText("Video preview for clip.mp4");
+
+    expect(video).toHaveAttribute("src", videoUrl);
+    expect(video).toHaveAttribute("controls");
+    expect((video as HTMLVideoElement).autoplay).toBeTruthy();
+    expect(within(lightbox).getByLabelText("Copy link")).toBeInTheDocument();
+    expect(within(lightbox).getByLabelText("Download")).toBeInTheDocument();
   });
 });
 
@@ -1239,6 +1253,59 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(within(table).getByText("alpha")).toBeInTheDocument();
       expect(within(table).getByText("1")).toBeInTheDocument();
     });
+  });
+
+  it("opens artifacts from the mobile top bar icon", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create a file",
+          runId: "run-mobile-artifacts",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-mobile-artifacts",
+              files: [
+                {
+                  id: "file-mobile",
+                  filename: "mobile.zip",
+                  contentType: "application/zip",
+                  size: 512,
+                  url: "https://example.com/mobile.zip",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open mobile artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Artifacts")).toBeInTheDocument();
+      expect(screen.getAllByText("mobile.zip").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByRole("dialog", { name: "Artifacts" })).toHaveClass(
+      "max-w-[100vw]",
+    );
   });
 
   it("renders markdown artifacts through the text loader instead of an iframe", async () => {

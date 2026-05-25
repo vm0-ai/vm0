@@ -11,7 +11,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
-import { settle } from "../utils";
+import { safeJsonParse, safeSync, settle } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
@@ -394,6 +394,11 @@ interface BytePlusVideoResult {
   readonly completionTokens: number | undefined;
 }
 
+interface BytePlusProviderError {
+  readonly message: string;
+  readonly code: string;
+}
+
 interface ParsedVideoGeneration {
   readonly model: VideoModel;
   readonly videoBytes: Buffer;
@@ -479,6 +484,38 @@ function badGateway(message: string, code: string) {
   return { status: 502 as const, body: errorBody(message, code) };
 }
 
+function bytePlusErrorStatus(status: number): ErrorStatus {
+  if (status === 400 || status === 503 || status === 504) {
+    return status;
+  }
+  return 502;
+}
+
+function normalizeBytePlusErrorCode(value: string | undefined): string {
+  const normalized = value
+    ?.trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  return normalized
+    ? `BYTEPLUS_${normalized}`
+    : "BYTEPLUS_VIDEO_GENERATION_FAILED";
+}
+
+function bytePlusProviderErrorResponse(
+  providerError: BytePlusProviderError,
+  providerStatus: number,
+): VideoErrorResponse {
+  return {
+    status: bytePlusErrorStatus(providerStatus),
+    body: errorBody(
+      `BytePlus video generation failed: ${providerError.message}`,
+      normalizeBytePlusErrorCode(providerError.code),
+    ),
+  };
+}
+
 export function videoServiceUnavailable(message: string, code: string) {
   return { status: 503 as const, body: errorBody(message, code) };
 }
@@ -495,6 +532,114 @@ export function videoInsufficientCredits() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readProviderString(
+  body: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function stringifyCompact(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.trim() || undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const serialized = safeSync(() => {
+    return JSON.stringify(value);
+  });
+  return "ok" in serialized ? serialized.ok : undefined;
+}
+
+function readBytePlusProviderError(
+  value: unknown,
+): BytePlusProviderError | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const sources = [value.error, value.data, value.response, value].filter(
+    isRecord,
+  );
+  for (const source of sources) {
+    const message =
+      readProviderString(source, [
+        "message",
+        "error_message",
+        "errorMessage",
+        "detail",
+        "description",
+        "reason",
+        "failure_reason",
+        "failureReason",
+        "status_message",
+        "statusMessage",
+        "err_msg",
+      ]) ?? stringifyCompact(source.error);
+    if (!message) {
+      continue;
+    }
+    const code =
+      readProviderString(source, ["code", "error_code", "errorCode", "type"]) ??
+      readProviderString(value, ["code", "error_code", "errorCode", "type"]);
+    const param = readProviderString(source, ["param", "parameter"]);
+    return {
+      message: param ? `${message} (${param})` : message,
+      code: code ?? "VIDEO_GENERATION_FAILED",
+    };
+  }
+
+  return null;
+}
+
+function bytePlusProviderErrorFromText(
+  text: string | undefined,
+  status: number,
+  statusText: string,
+): BytePlusProviderError {
+  const parsed = text ? safeJsonParse(text) : undefined;
+  const providerError = readBytePlusProviderError(parsed);
+  if (providerError) {
+    return providerError;
+  }
+  return {
+    message: statusText
+      ? `${statusText} (HTTP ${status})`
+      : `provider returned HTTP ${status}`,
+    code: "VIDEO_GENERATION_FAILED",
+  };
+}
+
+function bytePlusProviderFailureError(payload: unknown): BytePlusProviderError {
+  return (
+    readBytePlusProviderError(payload) ?? {
+      message: "Generation failed",
+      code: "VIDEO_GENERATION_FAILED",
+    }
+  );
+}
+
+export function bytePlusBuiltInGenerationError(payload: unknown): {
+  readonly message: string;
+  readonly code: string;
+} {
+  const providerError = bytePlusProviderFailureError(payload);
+  return {
+    message: `BytePlus video generation failed: ${providerError.message}`,
+    code: normalizeBytePlusErrorCode(providerError.code),
+  };
 }
 
 function readString(
@@ -1169,11 +1314,18 @@ export async function submitBytePlusVideoGeneration(
 
   if (!response.ok) {
     const responseBody = await readBytePlusErrorBodyForLog(response);
+    const providerError = bytePlusProviderErrorFromText(
+      responseBody,
+      response.status,
+      response.statusText,
+    );
     L.warn("BytePlus video generation task creation failed", {
       provider: "byteplus",
       model: options.model,
       status: response.status,
       statusText: response.statusText,
+      providerErrorCode: providerError.code,
+      providerErrorMessage: providerError.message,
       responseBody,
       hasFirstFrameImage: Boolean(options.firstFrameImageUrl),
       hasLastFrameImage: Boolean(options.lastFrameImageUrl),
@@ -1181,7 +1333,7 @@ export async function submitBytePlusVideoGeneration(
       referenceVideoCount: options.inputVideoUrls.length,
       referenceAudioCount: options.referenceAudioUrls.length,
     });
-    return videoInternalError("Video generation failed");
+    return bytePlusProviderErrorResponse(providerError, response.status);
   }
 
   const body: unknown = await response.json();

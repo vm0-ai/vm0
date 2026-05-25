@@ -195,6 +195,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
                 limit_bytes: 1024 * 1024,
             },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             control: SupervisedExecControl::Enabled { sink: true },
             stream_queue_capacity: None,
             start_timeout: Duration::from_secs(10),

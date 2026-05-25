@@ -40,10 +40,6 @@
       "schedule": "0 0,12 * * *"
     },
     {
-      "path": "/api/cron/voice-chat-cleanup",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/phone-cleanup",
       "schedule": "0 2 * * *"
     }

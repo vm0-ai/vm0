@@ -108,7 +108,7 @@ describe("DesktopAuthConsumeClient", () => {
         session: "session_desktop",
       });
     });
-    expect(window.location.pathname).toBe("/");
+    expect(window.location.pathname).toBe("/desktop-auth/token");
   });
 
   it("renders the provided error instead of consuming a code", () => {

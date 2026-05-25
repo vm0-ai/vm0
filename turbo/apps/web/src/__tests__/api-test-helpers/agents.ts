@@ -1,14 +1,13 @@
-import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
 import {
   createDefaultComposeConfig,
   getTestAuthContext,
   type ComposeConfigOptions,
 } from "./core";
-import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
 import {
   ensureZeroAgentRow,
   seedApiCompatibleCompose,
 } from "../db-test-seeders/agents";
+import type { TestAgentDefinition } from "./compose-content";
 
 // ---------------------------------------------------------------------------
 // Re-exports: DB-direct seeders and assertion helpers.
@@ -37,6 +36,7 @@ export {
   setTestChatThreadModelPin,
   setTestChatThreadPinnedAt,
   setTestChatThreadRenamedAt,
+  updateTestChatThreadTitle,
   setTestChatThreadDraft,
 } from "../db-test-seeders/agents";
 
@@ -66,7 +66,7 @@ export {
  */
 export async function createTestCompose(
   agentName: string,
-  options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
+  options?: ComposeConfigOptions | Partial<TestAgentDefinition>,
 ): Promise<{
   composeId: string;
   versionId: string;
@@ -85,16 +85,4 @@ export async function createTestCompose(
   await ensureZeroAgentRow(result.composeId);
 
   return { ...result, agentId: result.composeId };
-}
-
-/**
- * Update the title of a chat thread for test setup.
- * Wraps updateChatThreadTitle from chat-thread-service.
- */
-export async function updateTestChatThreadTitle(
-  threadId: string,
-  userId: string,
-  title: string,
-): Promise<void> {
-  return updateChatThreadTitle(threadId, userId, title);
 }

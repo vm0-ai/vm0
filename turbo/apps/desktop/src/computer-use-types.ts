@@ -10,6 +10,7 @@ export type ComputerUseHostRuntimeStatus =
   | "connecting"
   | "online"
   | "unauthenticated"
+  | "needs_organization"
   | "disabled"
   | "error";
 

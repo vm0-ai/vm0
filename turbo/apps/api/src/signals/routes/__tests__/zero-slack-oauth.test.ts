@@ -24,6 +24,7 @@ const context = testContext();
 const store = createStore();
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
+const APP_ORIGIN = "https://app.vm0.ai";
 
 async function appRequest(
   path: string,
@@ -110,6 +111,7 @@ describe("Slack OAuth API routes", () => {
 
   beforeEach(() => {
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("APP_URL", APP_ORIGIN);
     mockSlackEnv();
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
@@ -479,7 +481,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toContain(
-        "/settings/slack?status=connected",
+        `${APP_ORIGIN}/settings/slack?status=connected`,
       );
 
       const installation = await store.set(
@@ -633,7 +635,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
-      expect(location).toContain("/settings/slack");
+      expect(location).toContain(`${APP_ORIGIN}/settings/slack`);
       expect(location).toContain(`w=${fixture.slackWorkspaceId}`);
       expect(location).toContain(`u=${fixture.slackUserId}`);
 
@@ -657,7 +659,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
-      expect(location).toContain("/slack/failed");
+      expect(location).toContain(`${APP_ORIGIN}/slack/failed`);
       expect(decodeURIComponent(location ?? "")).toContain(
         "Failed to complete Slack installation",
       );
@@ -743,7 +745,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toContain(
-        "/settings/slack?status=connected",
+        `${APP_ORIGIN}/settings/slack?status=connected`,
       );
       const installation = await store.set(
         findSlackOrgInstallation$,
@@ -885,7 +887,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toContain(
-        "/settings/slack?status=connected",
+        `${APP_ORIGIN}/settings/slack?status=connected`,
       );
 
       const connection = await store.set(
@@ -923,7 +925,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toContain(
-        "/settings/slack?status=connected",
+        `${APP_ORIGIN}/settings/slack?status=connected`,
       );
       await clearAllDetached();
       expect(
@@ -1035,7 +1037,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toContain(
-        "/?tab=works&updated=1",
+        `${APP_ORIGIN}/?tab=works&updated=1`,
       );
     });
 
@@ -1051,7 +1053,7 @@ describe("Slack OAuth API routes", () => {
       );
       expect(slackError.status).toBe(307);
       expect(slackError.headers.get("location")).toBe(
-        `${WEB_ORIGIN}/slack/failed?error=access_denied`,
+        `${APP_ORIGIN}/slack/failed?error=access_denied`,
       );
     });
   });

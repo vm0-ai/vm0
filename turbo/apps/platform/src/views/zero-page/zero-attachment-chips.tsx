@@ -646,6 +646,86 @@ function ImageLightbox({ url }: { url: string }) {
   );
 }
 
+function VideoLightbox({ filename, url }: { filename: string; url: string }) {
+  const dialogRef = useSet(lightboxDialogRef$);
+  const closeLightbox = useSet(closeLightbox$);
+  const pageSignal = useGet(pageSignal$);
+  const videoUrl = publicAttachmentUrl(url);
+
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      closeLightbox();
+    }
+  };
+
+  return createPortal(
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      className="pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      style={{ pointerEvents: "auto" }}
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+      data-testid="attachment-lightbox"
+    >
+      <LightboxBodyScrollLock />
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            detach(
+              copyAttachmentLinkToClipboard(url),
+              Reason.DomCallback,
+              "attachment copy link",
+            );
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Copy link"
+        >
+          <IconLink size={20} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            detach(
+              downloadAttachmentUrl(url, pageSignal, filename),
+              Reason.DomCallback,
+              "attachment download",
+            );
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Download"
+        >
+          <IconDownload size={20} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            closeLightbox();
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          aria-label="Close"
+        >
+          <IconX size={20} stroke={2} />
+        </button>
+      </div>
+      <div className="relative z-10 flex w-[min(92vw,1100px)] min-w-0 overflow-hidden rounded-2xl bg-black shadow-2xl animate-in zoom-in-95 duration-200">
+        <video
+          src={videoUrl}
+          controls
+          autoPlay
+          playsInline
+          preload="metadata"
+          className="block max-h-[78vh] w-full bg-black object-contain"
+          aria-label={`Video preview for ${filename}`}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function AttachmentLightbox() {
   const preview = useGet(lightboxUrl$);
   const dialogRef = useSet(lightboxDialogRef$);
@@ -658,6 +738,10 @@ export function AttachmentLightbox() {
 
   if (preview.kind === "image") {
     return <ImageLightbox url={preview.url} />;
+  }
+
+  if (preview.kind === "video") {
+    return <VideoLightbox filename={preview.filename} url={preview.url} />;
   }
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {

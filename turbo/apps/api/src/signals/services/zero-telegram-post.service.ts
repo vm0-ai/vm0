@@ -60,7 +60,7 @@ import {
   encryptPersistentSecretValue,
 } from "./crypto.utils";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
@@ -730,7 +730,7 @@ export const registerTelegramBot$ = command(
 
 function resolveProbeOrigin(origin: string | undefined): string {
   if (!origin) {
-    return env("VM0_WEB_URL");
+    return env("APP_URL");
   }
 
   const parsed = safeUrlParse(origin);
@@ -738,7 +738,7 @@ function resolveProbeOrigin(origin: string | undefined): string {
     return parsed.origin;
   }
 
-  return env("VM0_WEB_URL");
+  return env("APP_URL");
 }
 
 function isInvalidTelegramTokenError(error: unknown): boolean {
@@ -1201,7 +1201,7 @@ function buildConnectUrl(args: {
   if (displayName) {
     params.set("tgDisplayName", displayName);
   }
-  return `${env("VM0_WEB_URL")}/telegram/connect?${params.toString()}`;
+  return `${env("APP_URL")}/telegram/connect?${params.toString()}`;
 }
 
 function buildTelegramConnectReplyMarkup(connectUrl: string) {
@@ -1954,13 +1954,14 @@ async function handleTelegramAgentMessage(args: {
   args.signal.throwIfAborted();
 
   const rootMessageId = rootMessageIdForAgentMessage(args);
-  const modelRoute = await resolveIntegrationModelRouteForUser({
-    get: args.get,
-    set: args.set,
-    orgId: args.orgId,
-    userId: args.userLink.vm0UserId,
-    signal: args.signal,
-  });
+  const modelRoute = await args.set(
+    resolveIntegrationModelRouteForUser$,
+    {
+      orgId: args.orgId,
+      userId: args.userLink.vm0UserId,
+    },
+    args.signal,
+  );
   args.signal.throwIfAborted();
   const session = await lookupAgentThreadSession({
     db: args.db,

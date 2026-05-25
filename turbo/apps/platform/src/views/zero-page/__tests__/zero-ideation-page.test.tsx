@@ -376,3 +376,35 @@ describe("ideation page - ZapierConnector feature switch", () => {
     });
   });
 });
+
+describe("ideation page - LarkConnector feature switch", () => {
+  it("should hide the Lark use case card when LarkConnector switch is off (default)", async () => {
+    mockChatAPI();
+    detachedSetupPage({ context, path: IDEAS_PATH });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Ideas & Use Cases" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText("Lark \u2194 Slack message relay"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show the Lark use case card when LarkConnector switch is on", async () => {
+    mockChatAPI();
+    detachedSetupPage({
+      context,
+      path: IDEAS_PATH,
+      featureSwitches: { [FeatureSwitchKey.LarkConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Lark \u2194 Slack message relay"),
+      ).toBeInTheDocument();
+    });
+  });
+});

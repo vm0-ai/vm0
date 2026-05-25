@@ -369,7 +369,7 @@ function customTelegramBotStatus(args: {
           userId: args.userId,
         }),
       ),
-      checkTelegramDomain(args.installation.telegramBotId, env("VM0_WEB_URL")),
+      checkTelegramDomain(args.installation.telegramBotId, env("APP_URL")),
     ]);
 
     return { ...bot, domainConfigured, environment };
@@ -387,7 +387,7 @@ function officialTelegramBotStatus(args: {
       get(buildOfficialTelegramBot(args)),
       get(telegramEnvironment({ compose: official.compose, ...args })),
       config.botId
-        ? checkTelegramDomain(config.botId, env("VM0_WEB_URL"))
+        ? checkTelegramDomain(config.botId, env("APP_URL"))
         : Promise.resolve(false),
     ]);
 
@@ -458,7 +458,7 @@ type TelegramLinkStatusResult =
 
 function resolveTelegramLoginOrigin(originParam: string | undefined): string {
   if (!originParam) {
-    return env("VM0_WEB_URL");
+    return env("APP_URL");
   }
 
   const originUrl = safeUrlParse(originParam);
@@ -469,7 +469,7 @@ function resolveTelegramLoginOrigin(originParam: string | undefined): string {
     return originUrl.origin;
   }
 
-  return env("VM0_WEB_URL");
+  return env("APP_URL");
 }
 
 function orgMismatchResult(): TelegramLinkStatusResult {

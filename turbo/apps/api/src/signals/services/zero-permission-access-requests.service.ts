@@ -154,7 +154,7 @@ function connectorLabel(connectorRef: string): string {
 }
 
 function buildReviewUrl(agentId: string, requestId: string): string {
-  const appUrl = env("VM0_WEB_URL");
+  const appUrl = env("APP_URL");
   return `${appUrl}/agents/${agentId}/permissions?request=${requestId}`;
 }
 

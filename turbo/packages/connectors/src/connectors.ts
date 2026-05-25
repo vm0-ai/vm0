@@ -28,8 +28,11 @@ import { spotify } from "./connectors/spotify";
 import { agentmail } from "./connectors/agentmail";
 import { agora } from "./connectors/agora";
 import { ahrefs } from "./connectors/ahrefs";
+import { adzuna } from "./connectors/adzuna";
 import { altium365 } from "./connectors/altium-365";
+import { alchemy } from "./connectors/alchemy";
 import { amplitude } from "./connectors/amplitude";
+import { amadeus } from "./connectors/amadeus";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { apify } from "./connectors/apify";
 import { apollo } from "./connectors/apollo";
@@ -41,7 +44,10 @@ import { aviationstack } from "./connectors/aviationstack";
 import { axiom } from "./connectors/axiom";
 import { base44 } from "./connectors/base44";
 import { bentoml } from "./connectors/bentoml";
+import { bfl } from "./connectors/bfl";
+import { bitrefill } from "./connectors/bitrefill";
 import { bitrix } from "./connectors/bitrix";
+import { bland } from "./connectors/bland";
 import { braveSearch } from "./connectors/brave-search";
 import { brex } from "./connectors/brex";
 import { brevo } from "./connectors/brevo";
@@ -50,6 +56,7 @@ import { browserbase } from "./connectors/browserbase";
 import { browserless } from "./connectors/browserless";
 import { browserstack } from "./connectors/browserstack";
 import { browserUse } from "./connectors/browser-use";
+import { bubblemaps } from "./connectors/bubblemaps";
 import { buffer } from "./connectors/buffer";
 import { builtwith } from "./connectors/builtwith";
 import { calCom } from "./connectors/cal-com";
@@ -65,12 +72,15 @@ import { close } from "./connectors/close";
 import { cloudflare } from "./connectors/cloudflare";
 import { cloudinary } from "./connectors/cloudinary";
 import { coda } from "./connectors/coda";
+import { coingecko } from "./connectors/coingecko";
 import { computer } from "./connectors/computer";
 import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
+import { crustdata } from "./connectors/crustdata";
 import { customerIo } from "./connectors/customer-io";
 import { db9 } from "./connectors/db9";
 import { deel } from "./connectors/deel";
+import { defillama } from "./connectors/defillama";
 import { deepseek } from "./connectors/deepseek";
 import { devto } from "./connectors/devto";
 import { diffbot } from "./connectors/diffbot";
@@ -86,6 +96,7 @@ import { duffel } from "./connectors/duffel";
 import { e2b } from "./connectors/e2b";
 import { elevenlabs } from "./connectors/elevenlabs";
 import { etsy } from "./connectors/etsy";
+import { etherscan } from "./connectors/etherscan";
 import { exa } from "./connectors/exa";
 import { explorium } from "./connectors/explorium";
 import { faire } from "./connectors/faire";
@@ -93,6 +104,7 @@ import { fal } from "./connectors/fal";
 import { figma } from "./connectors/figma";
 import { firecrawl } from "./connectors/firecrawl";
 import { fireflies } from "./connectors/fireflies";
+import { flightaware } from "./connectors/flightaware";
 import { freshdesk } from "./connectors/freshdesk";
 import { gamma } from "./connectors/gamma";
 import { garminConnect } from "./connectors/garmin-connect";
@@ -105,6 +117,7 @@ import { groq } from "./connectors/groq";
 import { helicone } from "./connectors/helicone";
 import { heygen } from "./connectors/heygen";
 import { htmlcsstoimage } from "./connectors/htmlcsstoimage";
+import { honcho } from "./connectors/honcho";
 import { huggingFace } from "./connectors/hugging-face";
 import { hume } from "./connectors/hume";
 import { hunter } from "./connectors/hunter";
@@ -135,6 +148,7 @@ import { mapbox } from "./connectors/mapbox";
 import { mathpix } from "./connectors/mathpix";
 import { mem0 } from "./connectors/mem0";
 import { mercury } from "./connectors/mercury";
+import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
 import { minimax } from "./connectors/minimax";
@@ -163,11 +177,14 @@ import { peopleDataLabs } from "./connectors/people-data-labs";
 import { perplexity } from "./connectors/perplexity";
 import { pika } from "./connectors/pika";
 import { pinecone } from "./connectors/pinecone";
+import { pipedream } from "./connectors/pipedream";
 import { pipedrive } from "./connectors/pipedrive";
 import { plain } from "./connectors/plain";
 import { plausible } from "./connectors/plausible";
 import { podchaser } from "./connectors/podchaser";
 import { posthog } from "./connectors/posthog";
+import { porkbun } from "./connectors/porkbun";
+import { printful } from "./connectors/printful";
 import { prismaPostgres } from "./connectors/prisma-postgres";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
@@ -178,9 +195,11 @@ import { railwayProject } from "./connectors/railway-project";
 import { reap } from "./connectors/reap";
 import { reddit } from "./connectors/reddit";
 import { reducto } from "./connectors/reducto";
+import { recraft } from "./connectors/recraft";
 import { replicate } from "./connectors/replicate";
 import { reportei } from "./connectors/reportei";
 import { resend } from "./connectors/resend";
+import { rentcast } from "./connectors/rentcast";
 import { revenuecat } from "./connectors/revenuecat";
 import { runway } from "./connectors/runway";
 import { salesforce } from "./connectors/salesforce";
@@ -194,6 +213,7 @@ import { shortio } from "./connectors/shortio";
 import { similarweb } from "./connectors/similarweb";
 import { slackWebhook } from "./connectors/slack-webhook";
 import { snowflake } from "./connectors/snowflake";
+import { sociavault } from "./connectors/sociavault";
 import { sponge } from "./connectors/sponge";
 import { sproutgigs } from "./connectors/sproutgigs";
 import { square } from "./connectors/square";
@@ -208,6 +228,7 @@ import { tavily } from "./connectors/tavily";
 import { testOauth } from "./connectors/test-oauth";
 import { testOauthDevice } from "./connectors/test-oauth-device";
 import { testrail } from "./connectors/testrail";
+import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
 import { twenty } from "./connectors/twenty";
@@ -217,6 +238,7 @@ import { v0 } from "./connectors/v0";
 import { wandb } from "./connectors/wandb";
 import { webflow } from "./connectors/webflow";
 import { weread } from "./connectors/weread";
+import { whaleAlert } from "./connectors/whale-alert";
 import { wix } from "./connectors/wix";
 import { workos } from "./connectors/workos";
 import { wrike } from "./connectors/wrike";
@@ -591,8 +613,11 @@ const CONNECTOR_TYPES_DEF = {
   ...agentmail,
   ...agora,
   ...ahrefs,
+  ...adzuna,
   ...altium365,
+  ...alchemy,
   ...amplitude,
+  ...amadeus,
   ...anthropicManagedAgents,
   ...apify,
   ...apollo,
@@ -604,7 +629,10 @@ const CONNECTOR_TYPES_DEF = {
   ...axiom,
   ...base44,
   ...bentoml,
+  ...bfl,
+  ...bitrefill,
   ...bitrix,
+  ...bland,
   ...braveSearch,
   ...brex,
   ...brevo,
@@ -613,6 +641,7 @@ const CONNECTOR_TYPES_DEF = {
   ...browserless,
   ...browserstack,
   ...browserUse,
+  ...bubblemaps,
   ...buffer,
   ...builtwith,
   ...calCom,
@@ -628,12 +657,15 @@ const CONNECTOR_TYPES_DEF = {
   ...cloudflare,
   ...cloudinary,
   ...coda,
+  ...coingecko,
   ...computer,
   ...coresignal,
   ...cronlytic,
+  ...crustdata,
   ...customerIo,
   ...db9,
   ...deel,
+  ...defillama,
   ...deepseek,
   ...devto,
   ...diffbot,
@@ -649,6 +681,7 @@ const CONNECTOR_TYPES_DEF = {
   ...e2b,
   ...elevenlabs,
   ...etsy,
+  ...etherscan,
   ...exa,
   ...explorium,
   ...faire,
@@ -656,6 +689,7 @@ const CONNECTOR_TYPES_DEF = {
   ...figma,
   ...firecrawl,
   ...fireflies,
+  ...flightaware,
   ...freshdesk,
   ...gamma,
   ...garminConnect,
@@ -668,6 +702,7 @@ const CONNECTOR_TYPES_DEF = {
   ...helicone,
   ...heygen,
   ...htmlcsstoimage,
+  ...honcho,
   ...huggingFace,
   ...hume,
   ...hunter,
@@ -698,6 +733,7 @@ const CONNECTOR_TYPES_DEF = {
   ...mathpix,
   ...mem0,
   ...mercury,
+  ...meshy,
   ...metaAds,
   ...metabase,
   ...minimax,
@@ -726,11 +762,14 @@ const CONNECTOR_TYPES_DEF = {
   ...perplexity,
   ...pika,
   ...pinecone,
+  ...pipedream,
   ...pipedrive,
   ...plain,
   ...plausible,
   ...podchaser,
   ...posthog,
+  ...porkbun,
+  ...printful,
   ...prismaPostgres,
   ...productlane,
   ...pushinator,
@@ -741,9 +780,11 @@ const CONNECTOR_TYPES_DEF = {
   ...reap,
   ...reddit,
   ...reducto,
+  ...recraft,
   ...replicate,
   ...reportei,
   ...resend,
+  ...rentcast,
   ...revenuecat,
   ...runway,
   ...salesforce,
@@ -757,6 +798,7 @@ const CONNECTOR_TYPES_DEF = {
   ...similarweb,
   ...slackWebhook,
   ...snowflake,
+  ...sociavault,
   ...sponge,
   ...sproutgigs,
   ...square,
@@ -771,6 +813,7 @@ const CONNECTOR_TYPES_DEF = {
   ...testOauth,
   ...testOauthDevice,
   ...testrail,
+  ...ticketmaster,
   ...tldv,
   ...together,
   ...twenty,
@@ -780,6 +823,7 @@ const CONNECTOR_TYPES_DEF = {
   ...wandb,
   ...webflow,
   ...weread,
+  ...whaleAlert,
   ...wix,
   ...workos,
   ...wrike,

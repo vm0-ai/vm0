@@ -18,8 +18,8 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
+import { ORG_SENTINEL_USER_ID } from "../test-constants/org";
 import { ensureOrgRow } from "../test-helpers";
 
 /**

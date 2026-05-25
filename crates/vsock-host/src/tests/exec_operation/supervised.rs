@@ -34,6 +34,7 @@ fn supervised_request(command: &str) -> SupervisedExecRequest<'_> {
         stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
         expected_exit_codes: &[],
         control: SupervisedExecControl::Disabled,
+        stdin_bytes: None,
         stream_queue_capacity: None,
         start_timeout: Duration::from_secs(5),
     }
@@ -46,6 +47,7 @@ fn supervised_stream_request(command: &str) -> SupervisedExecRequest<'_> {
             chunk_limit_bytes: 16,
         },
         stderr: ExecOutputPolicy::Discard,
+        stdin_bytes: None,
         stream_queue_capacity: Some(1),
         ..supervised_request(command)
     }
@@ -105,6 +107,7 @@ async fn send_guest_error(stream: &mut tokio::net::UnixStream, seq: u32, message
 async fn supervised_exec_rejects_zero_stream_capacity_without_sending_frame() {
     assert_supervised_start_rejected_without_frame(
         SupervisedExecRequest {
+            stdin_bytes: None,
             stream_queue_capacity: Some(0),
             ..supervised_stream_request("zero-stream-capacity")
         },
@@ -114,9 +117,23 @@ async fn supervised_exec_rejects_zero_stream_capacity_without_sending_frame() {
 }
 
 #[tokio::test]
+async fn supervised_exec_rejects_oversized_stdin_without_sending_frame() {
+    let stdin_bytes = vec![0; vsock_proto::MAX_EXEC_STDIN_BYTES + 1];
+    assert_supervised_start_rejected_without_frame(
+        SupervisedExecRequest {
+            stdin_bytes: Some(&stdin_bytes),
+            ..supervised_request("oversized-stdin")
+        },
+        "stdin_bytes",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn supervised_exec_rejects_receiver_without_stream_policy() {
     assert_supervised_start_rejected_without_frame(
         SupervisedExecRequest {
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
             ..supervised_request("receiver-without-stream")
         },
@@ -133,6 +150,7 @@ async fn supervised_exec_rejects_invalid_output_policy_without_sending_frame() {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 0,
             },
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
             ..supervised_request("invalid-output-policy")
         },
@@ -195,6 +213,42 @@ async fn supervised_exec_returns_handle_after_exec_started() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+}
+
+#[tokio::test]
+async fn supervised_exec_sends_stdin_bytes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                stdin_bytes: Some(b"supervised-stdin"),
+                ..supervised_request("cat")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    assert_eq!(decoded.lifecycle, ExecLifecyclePolicy::Supervised);
+    assert_eq!(decoded.command, "cat");
+    assert_eq!(decoded.stdin_bytes, Some(&b"supervised-stdin"[..]));
+
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
 }
 
 #[tokio::test]

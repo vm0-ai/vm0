@@ -135,6 +135,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Base44Connector]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.OpenDesignGenerate]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
@@ -146,6 +147,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Base44Connector]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.OpenDesignGenerate]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

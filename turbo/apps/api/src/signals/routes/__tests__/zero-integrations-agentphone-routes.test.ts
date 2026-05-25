@@ -274,6 +274,7 @@ function configureAgentPhoneEnv(): void {
   mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
   mockEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-user-artifacts");
   mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
+  mockEnv("APP_URL", "https://app.vm0.test");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
   mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
@@ -756,7 +757,9 @@ describe("AgentPhone migrated API routes", () => {
       agentphoneUserLinkId: null,
       direction: "inbound",
     });
-    expect(sendCalls[0]?.body).toContain("/agentphone/connect?");
+    expect(sendCalls[0]?.body).toContain(
+      "https://app.vm0.test/agentphone/connect?",
+    );
   });
 
   it("starts a new AgentPhone session when the selected model provider changed", async () => {

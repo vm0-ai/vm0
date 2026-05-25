@@ -31,6 +31,9 @@ const EXEC_CONTROL_DISABLED: u8 = 0x00;
 const EXEC_CONTROL_ENABLED: u8 = 0x01;
 const EXEC_CONTROL_FLAG_SINK: u8 = 0x01;
 
+const EXEC_STDIN_NONE: u8 = 0x00;
+const EXEC_STDIN_BYTES: u8 = 0x01;
+
 const EXEC_TERMINATION_EXITED: u8 = 0x00;
 const EXEC_TERMINATION_TIMED_OUT: u8 = 0x01;
 const EXEC_TERMINATION_CANCELLED: u8 = 0x02;
@@ -42,6 +45,9 @@ const EXEC_CAPTURED_OUTPUT_CAPTURED: u8 = 0x01;
 
 const MAX_EXEC_ENV_VARS: usize = 4096;
 const MAX_EXEC_EXPECTED_EXIT_CODES: usize = 64;
+
+/// Maximum bounded stdin payload accepted by an exec_start request.
+pub const MAX_EXEC_STDIN_BYTES: usize = 64 * 1024;
 
 /// Exec output stream selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +143,7 @@ pub struct ExecStartEncodeRequest<'a> {
     pub stderr: ExecOutputPolicy,
     pub expected_exit_codes: &'a [i32],
     pub control: ExecControlPolicy,
+    pub stdin_bytes: Option<&'a [u8]>,
 }
 
 /// Decoded exec_start payload.
@@ -152,6 +159,7 @@ pub struct DecodedExecStart<'a> {
     pub stderr: ExecOutputPolicy,
     pub expected_exit_codes: Vec<i32>,
     pub control: ExecControlPolicy,
+    pub stdin_bytes: Option<&'a [u8]>,
 }
 
 /// Decoded exec_started payload.
@@ -243,6 +251,18 @@ fn exec_control_policy_encoded_len(control: ExecControlPolicy) -> usize {
     }
 }
 
+fn exec_stdin_policy_encoded_len(stdin_bytes: Option<&[u8]>) -> Result<usize, ProtocolError> {
+    match stdin_bytes {
+        None => Ok(1),
+        Some(bytes) => {
+            if bytes.len() > MAX_EXEC_STDIN_BYTES {
+                return Err(ProtocolError::PayloadTooLarge("stdin_bytes", bytes.len()));
+            }
+            Ok(1 + 4 + bytes.len())
+        }
+    }
+}
+
 fn append_exec_lifecycle(p: &mut Vec<u8>, lifecycle: ExecLifecyclePolicy) {
     p.push(match lifecycle {
         ExecLifecyclePolicy::OneShot => EXEC_LIFECYCLE_ONE_SHOT,
@@ -270,6 +290,17 @@ fn append_exec_control_policy(p: &mut Vec<u8>, control: ExecControlPolicy) {
             p.push(EXEC_CONTROL_ENABLED);
             p.push(if sink { EXEC_CONTROL_FLAG_SINK } else { 0 });
             p.extend_from_slice(&control_nonce);
+        }
+    }
+}
+
+fn append_exec_stdin_policy(p: &mut Vec<u8>, stdin_bytes: Option<&[u8]>) {
+    match stdin_bytes {
+        None => p.push(EXEC_STDIN_NONE),
+        Some(bytes) => {
+            p.push(EXEC_STDIN_BYTES);
+            p.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+            p.extend_from_slice(bytes);
         }
     }
 }
@@ -332,13 +363,14 @@ pub fn encode_exec_start(
         stderr,
         expected_exit_codes: &[],
         control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
     })
 }
 
 /// Encode exec_start payload.
 ///
 /// Wire format:
-/// `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]`.
+/// `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy][stdin_policy]`.
 ///
 /// Duration timeout policies require a positive `timeout_ms`; use the explicit
 /// no-timeout policy for unbounded operation lifetimes.
@@ -369,6 +401,7 @@ pub fn encode_exec_start_with_expected_exit_codes(
     let stderr_policy_len = exec_output_policy_encoded_len(request.stderr)?;
     let timeout_policy_len = exec_timeout_policy_encoded_len(request.timeout);
     let control_policy_len = exec_control_policy_encoded_len(request.control);
+    let stdin_policy_len = exec_stdin_policy_encoded_len(request.stdin_bytes)?;
     validate_exec_timeout_policy(request.timeout)?;
 
     let mut payload_len = 1 + timeout_policy_len + 1 + 4;
@@ -390,6 +423,7 @@ pub fn encode_exec_start_with_expected_exit_codes(
     payload_len = checked_payload_len_add(payload_len, 2)?;
     payload_len = checked_payload_len_add(payload_len, request.expected_exit_codes.len() * 4)?;
     payload_len = checked_payload_len_add(payload_len, control_policy_len)?;
+    payload_len = checked_payload_len_add(payload_len, stdin_policy_len)?;
     ensure_payload_fits_message(payload_len)?;
 
     let mut p = Vec::with_capacity(payload_len);
@@ -416,6 +450,7 @@ pub fn encode_exec_start_with_expected_exit_codes(
         p.extend_from_slice(&exit_code.to_be_bytes());
     }
     append_exec_control_policy(&mut p, request.control);
+    append_exec_stdin_policy(&mut p, request.stdin_bytes);
     debug_assert_eq!(p.len(), payload_len);
     Ok(p)
 }
@@ -710,6 +745,26 @@ fn decode_exec_control_policy(
     }
 }
 
+fn decode_exec_stdin_policy<'a>(
+    payload: &'a [u8],
+    offset: &mut usize,
+) -> Result<Option<&'a [u8]>, ProtocolError> {
+    match read_u8(payload, offset, "exec start stdin policy truncated")? {
+        EXEC_STDIN_NONE => Ok(None),
+        EXEC_STDIN_BYTES => {
+            let len = read_u32(payload, offset, "exec start stdin_len truncated")? as usize;
+            if len > MAX_EXEC_STDIN_BYTES {
+                return Err(ProtocolError::InvalidPayload("exec start stdin too large"));
+            }
+            let bytes = read_slice(payload, offset, len, "exec start stdin truncated")?;
+            Ok(Some(bytes))
+        }
+        _ => Err(ProtocolError::InvalidPayload(
+            "exec start stdin policy invalid",
+        )),
+    }
+}
+
 /// Decode exec_start payload into a [`DecodedExecStart`] struct.
 pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, ProtocolError> {
     let mut offset = 0;
@@ -800,6 +855,7 @@ pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, Protoco
         )?);
     }
     let control = decode_exec_control_policy(payload, &mut offset)?;
+    let stdin_bytes = decode_exec_stdin_policy(payload, &mut offset)?;
     expect_consumed(payload, offset, "exec start trailing bytes")?;
     Ok(DecodedExecStart {
         lifecycle,
@@ -812,6 +868,7 @@ pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, Protoco
         stderr,
         expected_exit_codes,
         control,
+        stdin_bytes,
     })
 }
 

@@ -18,7 +18,6 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   github: "GitHub",
   cli: "CLI",
   agent: "Agent",
-  "voice-chat": "Voice Chat",
 };
 
 /**

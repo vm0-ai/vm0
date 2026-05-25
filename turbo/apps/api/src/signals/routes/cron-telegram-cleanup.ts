@@ -3,11 +3,11 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route";
 import { cleanupTelegramMessages$ } from "../services/cron-telegram-cleanup.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const telegramCleanupRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!hasValidCronSecret(get)) {
+    if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 

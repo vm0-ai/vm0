@@ -5,7 +5,6 @@ edition.workspace = true
 description = "Inject entropy and force CRNG reseed after Firecracker snapshot restore"
 
 [dependencies]
-hex.workspace = true
 libc.workspace = true
 
 [lints]

@@ -25,7 +25,6 @@
  *   - Logs are sent as structured JSON with context and fields
  *   - Console output is preserved for Vercel logs (dual-write)
  */
-import "server-only";
 import {
   EVENT,
   Logger as AxiomLogger,

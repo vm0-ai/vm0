@@ -293,7 +293,8 @@ button {
   background: #eff8ff;
 }
 
-.status-unauthenticated {
+.status-unauthenticated,
+.status-needs_organization {
   color: #b54708;
   background: #fffaeb;
 }

@@ -446,9 +446,12 @@ async fn execute_new_sandbox(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Run job inside sandbox (new VM — no previous storage fingerprints)
-    let result = run_in_sandbox(
-        sandbox.as_ref(),
+    Ok(execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
         context,
         config,
         RunStart {
@@ -457,50 +460,15 @@ async fn execute_new_sandbox(
             prev_storage: None,
         },
         telemetry,
-        cancel.clone(),
+        cancel,
     )
-    .await;
+    .await)
+}
 
-    let stdout_stream_diagnostics = result.as_ref().map_or_else(
-        |_| AgentStdoutStreamDiagnostics::default(),
-        |result| result.stdout_stream_diagnostics,
-    );
-
-    // Post-job: copy logs + unregister proxy registry (sandbox stays alive for possible reuse)
-    post_job_cleanup(
-        sandbox.as_ref(),
-        config,
-        context,
-        &source_ip,
-        cancel.is_cancelled(),
-        stdout_stream_diagnostics,
-    )
-    .await;
-
-    let agent_result = match result {
-        Ok(result) => result,
-        Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
-    };
-
-    // Read CLI-generated session ID for first-run parking.
-    // Only needed when resume_session is absent (first turn in a conversation).
-    let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
-        let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
-        if let Some(ref sid) = id {
-            info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
-        }
-        id
-    } else {
-        None
-    };
-
-    Ok(ExecuteOutcome {
-        failure: agent_result.failure,
-        sandbox: Some(sandbox),
-        source_ip,
-        network_log_session: Some(network_log_session),
-        guest_session_id,
-    })
+struct PreparedSandboxRun {
+    sandbox: Box<dyn Sandbox>,
+    source_ip: String,
+    network_log_session: NetworkLogSession,
 }
 
 async fn destroy_sandbox_panic_safe(factory: &dyn SandboxFactory, sandbox: Box<dyn Sandbox>) {
@@ -531,12 +499,15 @@ async fn execute_reused_sandbox(
         "reusing kept-alive sandbox"
     );
 
-    // Re-register proxy with new run credentials
-    let network_log_session = register_proxy(config, context, source_ip).await;
+    let source_ip = source_ip.to_string();
+    let network_log_session = register_proxy(config, context, &source_ip).await;
 
-    // Run job — clock/entropy fixed inside run_in_sandbox (always needed after idle).
-    let result = run_in_sandbox(
-        sandbox.as_ref(),
+    execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+        },
         context,
         config,
         RunStart {
@@ -544,6 +515,31 @@ async fn execute_reused_sandbox(
             reuse_result: SandboxReuseResult::Reused,
             prev_storage: Some(prev_storage),
         },
+        telemetry,
+        cancel,
+    )
+    .await
+}
+
+async fn execute_prepared_sandbox_run(
+    run: PreparedSandboxRun,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    cancel: CancellationToken,
+) -> ExecuteOutcome {
+    let PreparedSandboxRun {
+        sandbox,
+        source_ip,
+        network_log_session,
+    } = run;
+
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        context,
+        config,
+        start,
         telemetry,
         cancel.clone(),
     )
@@ -554,12 +550,11 @@ async fn execute_reused_sandbox(
         |result| result.stdout_stream_diagnostics,
     );
 
-    // Post-job cleanup (copy logs to host, unregister proxy registry)
     post_job_cleanup(
         sandbox.as_ref(),
         config,
         context,
-        source_ip,
+        &source_ip,
         cancel.is_cancelled(),
         stdout_stream_diagnostics,
     )
@@ -584,7 +579,7 @@ async fn execute_reused_sandbox(
     ExecuteOutcome {
         failure: agent_result.failure,
         sandbox: Some(sandbox),
-        source_ip: source_ip.to_string(),
+        source_ip,
         network_log_session: Some(network_log_session),
         guest_session_id,
     }
@@ -969,6 +964,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };
         match sandbox.exec(&dmesg_req).await {
@@ -1368,6 +1364,7 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
@@ -1392,13 +1389,13 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
         .and_then(|mut f| f.read_exact(&mut entropy))
         .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
 
-    let hex = hex::encode(&entropy);
     let result = sandbox
         .exec(&ExecRequest {
-            cmd: &format!("guest-reseed {hex}"),
+            cmd: "guest-reseed",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin_bytes: Some(&entropy),
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
@@ -1452,6 +1449,7 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await
@@ -1595,6 +1593,7 @@ async fn download_storages(
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &download_env,
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         })
         .await?;
@@ -3055,8 +3054,14 @@ mod tests {
     #[tokio::test]
     async fn reseed_guest_entropy_succeeds() {
         let sandbox = MockSandbox::new("test");
-        // write_file returns Ok by default, exec returns exit 0 by default.
         reseed_guest_entropy(&sandbox).await.unwrap();
+
+        let calls = sandbox.exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].cmd, "guest-reseed");
+        assert!(calls[0].sudo);
+        let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
+        assert_eq!(stdin_bytes.len(), 256);
     }
 
     #[tokio::test]
@@ -3075,7 +3080,7 @@ mod tests {
         sandbox.push_exec_result(Ok(ExecResult::new(
             1,
             Vec::new(),
-            b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
+            b"RNDRESEEDCRNG failed: Operation not permitted".to_vec(),
         )));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
@@ -3771,7 +3776,7 @@ mod tests {
     async fn test_executor_config(dir: &std::path::Path) -> ExecutorConfig {
         let registry_path = dir.join("proxy-registry.json");
         let lock_path = dir.join("proxy-registry.json.lock");
-        tokio::fs::write(&registry_path, r#"{"vms":{},"updated_at":0}"#)
+        tokio::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#)
             .await
             .unwrap();
         let log_dir = dir.join("logs");
@@ -3862,6 +3867,24 @@ mod tests {
             ctx.run_id,
             ctx.sandbox_token.clone(),
         )
+    }
+
+    async fn assert_proxy_registry_empty(dir: &std::path::Path) {
+        let raw = tokio::fs::read_to_string(dir.join("proxy-registry.json"))
+            .await
+            .unwrap();
+        let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            registry["vms"].as_object().map(|vms| vms.len()),
+            Some(0),
+            "proxy registry should not retain a VM after executor cleanup: {registry}",
+        );
+        assert!(
+            registry["updatedAt"]
+                .as_i64()
+                .is_some_and(|updated_at| updated_at > 0),
+            "proxy registry should record a cleanup mutation: {registry}",
+        );
     }
 
     struct CancelAfterWaitSandbox {
@@ -4276,6 +4299,7 @@ mod tests {
                 .unwrap();
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     #[tokio::test]
@@ -4484,14 +4508,36 @@ mod tests {
             "wait timeout",
         ));
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
 
-        let (exit_code, error) =
-            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
-                .await
-                .unwrap();
-        assert_eq!(exit_code, 1);
-        let error = error.unwrap();
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
         assert!(error.contains("wait timeout"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on post-start execution failure"
+        );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned on post-start execution failure"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     #[tokio::test]
@@ -4581,6 +4627,17 @@ mod tests {
         assert!(result.is_err(), "start failure must return an error");
         let err = result.err().unwrap();
         assert!(err.to_string().contains("boot failed"), "got: {err}");
+        assert_proxy_registry_empty(dir.path()).await;
+        assert!(
+            !config
+                .network_log_manager
+                .append_for_ip(
+                    "10.0.0.1",
+                    serde_json::json!({"type":"dns","host":"after-start-failure.test"})
+                )
+                .await,
+            "start failure should close inline network-log attribution",
+        );
     }
 
     #[tokio::test]
@@ -4668,6 +4725,37 @@ mod tests {
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_appends_stream_limit_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"reuse partial stdout".to_vec(),
+            truncated: true,
+        }]);
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let source_ip = sandbox.source_ip().to_string();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+        let ctx = minimal_context();
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 0);
+        assert!(reuse_outcome.error().is_none());
+        assert!(reuse_outcome.sandbox.is_some());
+        assert!(reuse_outcome.network_log_session.is_some());
+        assert_proxy_registry_empty(dir.path()).await;
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let mut expected = b"reuse partial stdout\n".to_vec();
+        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        assert_eq!(system_log, expected);
     }
 
     #[tokio::test]
@@ -4851,6 +4939,11 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on clock fix failure"
         );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned so finalization can close it"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     #[tokio::test]

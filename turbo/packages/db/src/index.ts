@@ -70,7 +70,6 @@ import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as localBrowserSchema from "./schema/local-browser";
 import * as localAgentSchema from "./schema/local-agent";
 import * as insightsDailySchema from "./schema/insights-daily";
-import * as voiceChatSchema from "./schema/voice-chat";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
@@ -152,7 +151,6 @@ export const schema = {
   ...localBrowserSchema,
   ...localAgentSchema,
   ...insightsDailySchema,
-  ...voiceChatSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...chatMessageSchema,

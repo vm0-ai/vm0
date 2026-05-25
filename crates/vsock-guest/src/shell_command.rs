@@ -508,12 +508,16 @@ pub(crate) fn spawn_shell_command_with_pipes(
     command: &str,
     env: &[(&str, &str)],
     sudo: bool,
+    pipe_stdin: bool,
 ) -> io::Result<SpawnedShellCommand> {
     let PreparedShellCommand {
         mut command,
         env_script,
     } = build_shell_command_with_env(command, env, sudo)?;
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    if pipe_stdin {
+        command.stdin(Stdio::piped());
+    }
     let child = crate::process::spawn_in_own_process_group(&mut command)?;
     Ok(SpawnedShellCommand { child, env_script })
 }

@@ -12,11 +12,7 @@ import { safeJsonParse } from "../../signals/utils";
 import { verifyCallbackRequest } from "../event-consumer/verify-signature";
 
 /**
- * Parsed and verified run-callback request data.
- *
- * Mirrors `apps/web/src/lib/infra/callback/verify-callback.ts#VerifiedCallback`
- * so route handlers ported from web see the same envelope shape. Re-export
- * with a route-specific payload generic from a consumer when needed.
+ * Parsed and verified run-callback request data for API callback routes.
  */
 interface VerifiedCallback<P = unknown> {
   /** Present only when the dispatcher includes callbackId (new behavior). */
@@ -73,9 +69,6 @@ function isCommand<T>(
  * preferred) or `runId` (fallback), decrypts the per-callback secret, verifies
  * `X-VM0-Signature` / `X-VM0-Timestamp`, and exposes the verified envelope via
  * `callbackPayload$`.
- *
- * Mirrors `apps/web/src/lib/infra/callback/verify-callback.ts#verifyCallback`
- * exactly so error responses are byte-equivalent during the rollout window.
  */
 export function callbackRoute<T>(
   handler$: SignalRouteHandler<T>,

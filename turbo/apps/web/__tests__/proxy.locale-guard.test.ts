@@ -83,6 +83,8 @@ describe("localeGuardLayer", () => {
       expect(classifyRoute("/desktop-auth/start")).toBe("skip");
       expect(classifyRoute("/desktop-auth/consume")).toBe("skip");
       expect(classifyRoute("/desktop-auth/callback")).toBe("skip");
+      expect(classifyRoute("/desktop-auth/select-org")).toBe("skip");
+      expect(classifyRoute("/desktop-auth/token")).toBe("skip");
     });
   });
 

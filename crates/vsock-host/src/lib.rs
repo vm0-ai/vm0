@@ -1056,6 +1056,7 @@ impl VsockHost {
             stdout_limit_bytes: exec_operation::DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: exec_operation::DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             wait_timeout,
         })
         .await

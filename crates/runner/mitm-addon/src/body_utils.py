@@ -181,9 +181,9 @@ def decompress_body(
     return data
 
 
-def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
+def _decompress_brotli_bounded_with_finished(data: bytes, max_output: int) -> tuple[bytes, bool]:
     if max_output <= 0:
-        return b""
+        return b"", False
 
     chunk_size = min(
         _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE,
@@ -205,10 +205,95 @@ def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
         remaining = max_output - len(out)
         if len(decoded) >= remaining:
             out.extend(decoded[:remaining])
-            return bytes(out)
+            return bytes(out), dec.is_finished()
         out.extend(decoded)
 
-    return bytes(out)
+    return bytes(out), dec.is_finished()
+
+
+def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
+    body, _finished = _decompress_brotli_bounded_with_finished(data, max_output)
+    return body
+
+
+def _decompress_zlib_json_usage_body(
+    data: bytes, encoding: Literal["gzip", "deflate"], max_output: int
+) -> tuple[bytes, str | None]:
+    wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+    remaining_data = data
+    out = bytearray()
+
+    while remaining_data:
+        if len(out) >= max_output:
+            return bytes(out), None
+
+        obj = zlib.decompressobj(wbits)
+        try:
+            decoded = obj.decompress(remaining_data, max_length=max_output - len(out))
+        except zlib.error as exc:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            return b"", "invalid compressed body"
+
+        out.extend(decoded)
+        if not obj.eof:
+            if data and not out:
+                return bytes(out), "incomplete compressed body"
+            return bytes(out), None
+        if not obj.unused_data:
+            return bytes(out), None
+        remaining_data = obj.unused_data
+
+    return bytes(out), None
+
+
+def decompress_json_usage_body(
+    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+) -> tuple[bytes, str | None]:
+    """Decompress a JSON usage response body with an observable empty-prefix error.
+
+    ``decompress_body`` intentionally treats truncated compressed prefixes as an
+    empty body because body capture can still mark those responses truncated
+    from stream metadata. JSON usage fallback only has the final buffer, so it
+    needs to distinguish a valid compressed empty response from an incomplete
+    compressed frame that produced no JSON bytes.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if encoding in ("gzip", "deflate"):
+        return _decompress_zlib_json_usage_body(data, encoding, max_output)
+    if encoding == "br":
+        try:
+            body, finished = _decompress_brotli_bounded_with_finished(data, max_output)
+        except brotli.error as exc:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            return b"", "invalid compressed body"
+        if data and not body and not finished:
+            return body, "incomplete compressed body"
+        return body, None
+    if encoding == "zstd":
+        try:
+            with zstandard.ZstdDecompressor().stream_reader(data) as reader:
+                body = reader.read(max_output)
+        except zstandard.ZstdError as exc:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            return b"", "invalid compressed body"
+        if data and not body:
+            try:
+                obj = zstandard.ZstdDecompressor().decompressobj()
+                obj.decompress(data)
+            except zstandard.ZstdError:
+                return body, "incomplete compressed body"
+            if not obj.eof:
+                return body, "incomplete compressed body"
+        return body, None
+    if encoding and encoding != "identity" and data:
+        return b"", "unsupported content encoding"
+    return decompress_body(data, headers, max_output=max_output), None
 
 
 def _is_text_content(content_type: str) -> bool:
