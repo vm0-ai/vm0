@@ -348,6 +348,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.OpenDesignGenerate]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use agent-authored OpenDesign-style HTML packets for website and presentation built-in generation. Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SandboxIoLimiters]: {
     maintainer: "liangyou@vm0.ai",
     description:

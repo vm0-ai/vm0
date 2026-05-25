@@ -60,6 +60,7 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
   HostedSites = "hostedSites",
+  OpenDesignGenerate = "openDesignGenerate",
   SandboxIoLimiters = "sandboxIoLimiters",
   ZeroMaps = "zeroMaps",
   AgentsPageSplitSections = "agentsPageSplitSections",

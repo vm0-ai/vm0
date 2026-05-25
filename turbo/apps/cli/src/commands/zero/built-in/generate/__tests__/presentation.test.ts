@@ -3,8 +3,8 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): none; presentation is now an agent-authored HTML workflow
- * - Real (internal): prompt parsing and authoring packet generation
+ * - Mock (external): none for the OpenDesign path
+ * - Real (internal): prompt parsing and feature-gated authoring packet generation
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -28,6 +28,7 @@ describe("zero built-in generate presentation command", () => {
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   it("should print OpenDesign-style presentation authoring instructions", async () => {
