@@ -3,10 +3,12 @@
 import gzip
 import json
 import time
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mitmproxy import http, websocket
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
@@ -314,16 +316,25 @@ class TestResponseUsageReporting:
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == "incomplete json"
 
-    def test_json_fallback_chained_content_encoding_logs_proxy_warning(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    @pytest.mark.parametrize("encoding_case", [("chained-gzip",), ("raw-deflate",)])
+    def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
     ):
-        """Unsupported one-shot encoding leaves compressed bytes, then logs parse failure."""
+        """One-shot decompression failures leave compressed bytes and log parse failure."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
-        body = gzip.compress(
+        payload = (
             b'{"id":"msg_1","model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":50,"output_tokens":200}}'
         )
+        if encoding_case == "chained-gzip":
+            body = gzip.compress(payload)
+            content_encoding = "gzip, identity"
+        else:
+            compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+            body = compressor.compress(payload) + compressor.flush()
+            content_encoding = "deflate"
+
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
@@ -340,7 +351,7 @@ class TestResponseUsageReporting:
             headers=_header_map(
                 {
                     "content-type": "application/json",
-                    "content-encoding": "gzip, identity",
+                    "content-encoding": content_encoding,
                 }
             ),
         )
