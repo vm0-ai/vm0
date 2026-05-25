@@ -4498,14 +4498,36 @@ mod tests {
             "wait timeout",
         ));
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
 
-        let (exit_code, error) =
-            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
-                .await
-                .unwrap();
-        assert_eq!(exit_code, 1);
-        let error = error.unwrap();
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
         assert!(error.contains("wait timeout"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on post-start execution failure"
+        );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned on post-start execution failure"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     #[tokio::test]
@@ -4719,6 +4741,7 @@ mod tests {
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
         assert!(reuse_outcome.network_log_session.is_some());
+        assert_proxy_registry_empty(dir.path()).await;
         let system_log = tokio::fs::read(&system_log_path).await.unwrap();
         let mut expected = b"reuse partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
