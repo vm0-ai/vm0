@@ -391,7 +391,7 @@ const PRO_TRIAL_BENEFITS: readonly string[] = [
   "Persistent workspace context across chats",
   "200+ integrations with real tool execution",
   "Scheduled tasks that run on their own",
-  "Artifacts — files, code and assets the agent ships back",
+  "Artifacts — slide decks, HTML pages, video, audio and more",
 ];
 
 /** Step 4: what Pro unlocks + the 7-day trial framing. */
