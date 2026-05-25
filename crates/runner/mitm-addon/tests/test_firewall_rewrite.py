@@ -621,7 +621,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert mock_forward.call_args[0][3] is None
 
-    async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
+    async def test_forward_failure_returns_502(self, headers, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
         firewall_error without falling through to the success-path metadata.
 
@@ -633,7 +633,17 @@ class TestAuthBaseUrlRewriteEdgeCases:
         flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
             token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
                 "resolved_secrets": ["WEBHOOK"],
                 "refreshed_connectors": ["discord"],
                 "refreshed_secrets": ["WEBHOOK"],
@@ -666,6 +676,10 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert "auth_refreshed_connectors" not in flow.metadata
         assert "auth_refreshed_secrets" not in flow.metadata
         assert "auth_cache_hit" not in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
         # Success-path log line must not be written.
         log_text = await asyncio.to_thread(
             lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
