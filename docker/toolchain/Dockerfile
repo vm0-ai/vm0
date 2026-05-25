@@ -115,8 +115,7 @@ RUN ARCH=$(dpkg --print-architecture) \
 
 # Install Python3 and Ansible for runner deployments via SSH.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip \
-    && pip3 install --no-cache-dir ansible-core \
+    ansible-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 3: Development environment with additional tools
