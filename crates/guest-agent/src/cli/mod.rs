@@ -343,6 +343,8 @@ pub async fn execute_cli(
                                     failure_diagnostic.as_ref(),
                                     &candidate,
                                 ) {
+                                    let candidate =
+                                        with_carried_failure_reason(failure_diagnostic.as_ref(), candidate);
                                     failure_diagnostic = Some(candidate);
                                 }
                             }
@@ -675,9 +677,21 @@ fn has_specific_failure_diagnostic(diagnostic: &CliFailureDiagnostic) -> bool {
         || !events::is_generic_codex_failure_diagnostic(&diagnostic.message)
 }
 
+fn with_carried_failure_reason(
+    existing: Option<&CliFailureDiagnostic>,
+    mut candidate: CliFailureDiagnostic,
+) -> CliFailureDiagnostic {
+    if candidate.failure_reason.is_none() {
+        candidate.failure_reason = existing.and_then(|diagnostic| diagnostic.failure_reason);
+    }
+    candidate
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CliFailureDiagnostic, should_replace_failure_diagnostic};
+    use super::{
+        CliFailureDiagnostic, should_replace_failure_diagnostic, with_carried_failure_reason,
+    };
     use agent_diagnostics::{FailureDetailSource, FailureReason};
 
     #[test]
@@ -726,5 +740,24 @@ mod tests {
                 failure_reason: Some(FailureReason::InvalidApiKey),
             },
         ));
+    }
+
+    #[test]
+    fn carried_failure_reason_survives_message_replacement() {
+        let candidate = with_carried_failure_reason(
+            Some(&CliFailureDiagnostic {
+                message: "turn failed".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            }),
+            CliFailureDiagnostic {
+                message: "request failed".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            },
+        );
+
+        assert_eq!(candidate.message, "request failed");
+        assert_eq!(candidate.failure_reason, Some(FailureReason::InvalidApiKey));
     }
 }
