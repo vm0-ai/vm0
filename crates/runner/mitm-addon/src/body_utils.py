@@ -181,6 +181,34 @@ def decompress_body(
     return data
 
 
+def decompress_json_usage_body(
+    data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
+) -> tuple[bytes, str | None]:
+    """Decompress a JSON usage response body with an observable empty-prefix error.
+
+    ``decompress_body`` intentionally treats truncated gzip/deflate prefixes as
+    an empty body because body capture can still mark those responses truncated
+    from stream metadata. JSON usage fallback only has the final buffer, so it
+    needs to distinguish a valid compressed empty response from an incomplete
+    compressed frame that produced no JSON bytes.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if encoding in ("gzip", "deflate"):
+        try:
+            wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+            obj = zlib.decompressobj(wbits)
+            body = obj.decompress(data, max_length=max_output)
+        except zlib.error as exc:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            return data, None
+        if data and not body and not obj.eof:
+            return body, "incomplete compressed body"
+        return body, None
+    return decompress_body(data, headers, max_output=max_output), None
+
+
 def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
     if max_output <= 0:
         return b""

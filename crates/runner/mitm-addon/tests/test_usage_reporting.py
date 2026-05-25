@@ -365,7 +365,9 @@ class TestResponseUsageReporting:
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == "incomplete json"
 
-    @pytest.mark.parametrize("encoding_case", ["chained-gzip", "raw-deflate"])
+    @pytest.mark.parametrize(
+        "encoding_case", ["chained-gzip", "raw-deflate", "truncated-gzip-prefix"]
+    )
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
     ):
@@ -379,10 +381,16 @@ class TestResponseUsageReporting:
         if encoding_case == "chained-gzip":
             body = gzip.compress(payload)
             content_encoding = "gzip, identity"
+            expected_error = "expected json value"
+        elif encoding_case == "truncated-gzip-prefix":
+            body = gzip.compress(payload)[:10]
+            content_encoding = "gzip"
+            expected_error = "incomplete compressed body"
         else:
             compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
             body = compressor.compress(payload) + compressor.flush()
             content_encoding = "deflate"
+            expected_error = "expected json value"
 
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
@@ -421,7 +429,7 @@ class TestResponseUsageReporting:
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
         assert entries[0]["type"] == "usage_event"
-        assert entries[0]["error"] == "expected json value"
+        assert entries[0]["error"] == expected_error
 
     def test_json_fallback_valid_body_without_usage_stays_quiet(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor

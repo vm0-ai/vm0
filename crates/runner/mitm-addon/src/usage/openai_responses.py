@@ -270,9 +270,11 @@ def extract_openai_responses_usage_with_error_from_json(
     """
 
     if headers:
-        body = body_utils.decompress_body(
+        body, decompress_error = body_utils.decompress_json_usage_body(
             body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
+        if decompress_error:
+            return None, decompress_error
     if not body:
         return None, None
     extractor = create_openai_responses_json_usage_extractor()
