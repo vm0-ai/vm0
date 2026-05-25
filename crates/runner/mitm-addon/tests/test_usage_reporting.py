@@ -373,6 +373,7 @@ class TestResponseUsageReporting:
             "raw-deflate",
             "truncated-gzip-prefix",
             "empty-gzip-member-before-garbage",
+            "empty-deflate-stream-before-garbage",
             "truncated-brotli-prefix",
             "truncated-zstd-prefix",
         ],
@@ -410,6 +411,10 @@ class TestResponseUsageReporting:
         elif encoding_case == "empty-gzip-member-before-garbage":
             body = gzip.compress(b"") + b"garbage"
             content_encoding = "gzip"
+            expected_error = "expected json value"
+        elif encoding_case == "empty-deflate-stream-before-garbage":
+            body = zlib.compress(b"") + b"garbage"
+            content_encoding = "deflate"
             expected_error = "expected json value"
         elif encoding_case == "truncated-brotli-prefix":
             body = body_utils.brotli.compress(payload)[:2]
@@ -462,17 +467,21 @@ class TestResponseUsageReporting:
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == expected_error
 
-    def test_json_fallback_concatenated_gzip_member_reports_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_json_fallback_concatenated_zlib_member_reports_usage(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
     ):
-        """Gzip concatenation should not let an empty first member hide usage."""
+        """Zlib stream concatenation should not let an empty first member hide usage."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
         payload = (
             b'{"id":"msg_1","model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":50,"output_tokens":200}}'
         )
-        body = gzip.compress(b"") + gzip.compress(payload)
+        if encoding_case == "gzip":
+            body = gzip.compress(b"") + gzip.compress(payload)
+        else:
+            body = zlib.compress(b"") + zlib.compress(payload)
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
@@ -489,7 +498,7 @@ class TestResponseUsageReporting:
             headers=_header_map(
                 {
                     "content-type": "application/json",
-                    "content-encoding": "gzip",
+                    "content-encoding": encoding_case,
                 }
             ),
         )
