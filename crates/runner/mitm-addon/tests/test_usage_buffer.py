@@ -191,6 +191,41 @@ def test_empty_flush_is_noop():
     enqueue.assert_not_called()
 
 
+def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        usage.buffer_usage_events(
+            url,
+            sandbox_token,
+            "run-2",
+            [_event(source_key="source-2")],
+            path,
+        )
+        assert log_type == "usage_event"
+        assert payload["runId"] == "run-1"
+        assert usage.counters._buffered_usage_events == 2
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook) as enqueue:
+        assert usage.flush_usage_events() == 1
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 1
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events() == 1
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         assert (

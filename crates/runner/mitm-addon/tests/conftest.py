@@ -49,6 +49,7 @@ def _reset_module_state() -> Iterator[None]:
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters._pending_write_error_logged = False
+    usage.counters._buffered_usage_events = 0
     usage.reset_usage_buffer_for_tests()
     yield
     usage.reset_usage_buffer_for_tests()

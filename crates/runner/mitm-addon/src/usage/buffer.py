@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Protocol, TypedDict
 
+from .counters import set_buffered_usage_events
 from .namespaces import USAGE_EVENT_NAMESPACE_AGGREGATE
 from .webhook import _enqueue_webhook
 
@@ -89,6 +90,7 @@ class UsageEventBuffer:
         self._buckets: dict[_DestinationKey, dict[_AggregateKey, int]] = {}
         self._seen_source_keys: OrderedDict[str, None] = OrderedDict()
         self._source_event_count = 0
+        self._enqueuing_source_event_count = 0
 
     def configure(self, *, flush_interval_seconds: float) -> None:
         """Update runtime buffer settings."""
@@ -105,6 +107,7 @@ class UsageEventBuffer:
     ) -> int:
         """Add source usage events and flush if the buffer exceeds a bound."""
         batches: list[_FlushBatch] = []
+        enqueuing_count = 0
         timer_to_start: _TimerHandle | None = None
         with self._lock:
             accepted_count = self._add_events_locked(
@@ -113,20 +116,24 @@ class UsageEventBuffer:
             if accepted_count == 0:
                 return 0
             if self._should_flush_locked():
-                batches = self._snapshot_batches_locked()
+                enqueuing_count, batches = self._snapshot_batches_locked()
+                self._enqueuing_source_event_count += enqueuing_count
             else:
                 timer_to_start = self._schedule_timer_locked()
+            self._sync_buffered_counter_locked()
 
         if timer_to_start is not None:
             timer_to_start.start()
-        _enqueue_batches(batches)
+        self._enqueue_and_clear_enqueuing(batches, enqueuing_count)
         return accepted_count
 
     def flush_usage_events(self) -> int:
         """Flush all buffered usage events now."""
         with self._lock:
-            batches = self._snapshot_batches_locked()
-        _enqueue_batches(batches)
+            enqueuing_count, batches = self._snapshot_batches_locked()
+            self._enqueuing_source_event_count += enqueuing_count
+            self._sync_buffered_counter_locked()
+        self._enqueue_and_clear_enqueuing(batches, enqueuing_count)
         return len(batches)
 
     def close(self) -> None:
@@ -134,8 +141,32 @@ class UsageEventBuffer:
         with self._lock:
             timer = self._timer
             self._timer = None
+            self._buckets = {}
+            self._seen_source_keys.clear()
+            self._source_event_count = 0
+            self._enqueuing_source_event_count = 0
+            self._sync_buffered_counter_locked()
         if timer is not None:
             timer.cancel()
+
+    def _enqueue_and_clear_enqueuing(
+        self,
+        batches: list[_FlushBatch],
+        enqueuing_count: int,
+    ) -> None:
+        try:
+            _enqueue_batches(batches)
+        finally:
+            if enqueuing_count:
+                with self._lock:
+                    self._enqueuing_source_event_count = max(
+                        0,
+                        self._enqueuing_source_event_count - enqueuing_count,
+                    )
+                    self._sync_buffered_counter_locked()
+
+    def _sync_buffered_counter_locked(self) -> None:
+        set_buffered_usage_events(self._source_event_count + self._enqueuing_source_event_count)
 
     def _add_events_locked(
         self,
@@ -206,15 +237,16 @@ class UsageEventBuffer:
         jitter = self._flush_interval_seconds * self._jitter_ratio
         return max(0.001, self._flush_interval_seconds + _jitter_rng.uniform(-jitter, jitter))
 
-    def _snapshot_batches_locked(self) -> list[_FlushBatch]:
+    def _snapshot_batches_locked(self) -> tuple[int, list[_FlushBatch]]:
         timer = self._timer
         self._timer = None
         if timer is not None:
             timer.cancel()
+        source_event_count = self._source_event_count
         if not self._buckets:
             self._seen_source_keys.clear()
             self._source_event_count = 0
-            return []
+            return 0, []
 
         self._flush_sequence += 1
         flush_sequence = self._flush_sequence
@@ -222,7 +254,7 @@ class UsageEventBuffer:
         self._buckets = {}
         self._seen_source_keys.clear()
         self._source_event_count = 0
-        return self._build_flush_batches_locked(buckets, flush_sequence)
+        return source_event_count, self._build_flush_batches_locked(buckets, flush_sequence)
 
     def _build_flush_batches_locked(
         self,

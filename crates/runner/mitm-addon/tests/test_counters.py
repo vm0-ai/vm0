@@ -12,10 +12,11 @@ from usage.providers import model_provider as usage_model_provider
 
 
 class TestUsagePendingCounter:
-    """Tests for the dual pending counter (in-flight flows + pending reports)."""
+    """Tests for usage pending counters."""
 
     def setup_method(self):
         usage.counters._in_flight_flows = 0
+        usage.counters._buffered_usage_events = 0
         usage.counters._pending_reports = 0
         usage.counters._pending_path = ""
         usage.counters._usage_state_id = "test-usage-state-id"
@@ -43,6 +44,43 @@ class TestUsagePendingCounter:
         assert_pending(pending_path, flows=0, reports=1)
 
         usage.counters.decrement_pending_reports()
+        assert_pending(pending_path, flows=0, reports=0)
+
+    def test_set_buffered_usage_events(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        usage.counters.set_buffered_usage_events(3)
+        assert_pending(pending_path, flows=0, buffered=3, reports=0)
+
+        usage.counters.set_buffered_usage_events(0)
+        assert_pending(pending_path, flows=0, reports=0)
+
+    def test_buffered_usage_blocks_pending_until_flush(
+        self, tmp_path, real_flow, fresh_usage_executor
+    ):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
+
+        with (
+            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_model_provider_usage(flow, "run-1")
+            assert_pending(pending_path, flows=0, buffered=1, reports=0)
+            mock_opener.open.assert_not_called()
+
+            usage.flush_usage_events()
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert usage.counters._pending_reports == 0
         assert_pending(pending_path, flows=0, reports=0)
 
     def test_enqueue_deep_copies_nested_payload(self):
@@ -282,6 +320,7 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
+            usage.flush_usage_events()
 
         assert usage.counters._pending_reports == 0
         assert_pending(pending_path, flows=0, reports=0)

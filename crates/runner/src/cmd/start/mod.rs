@@ -1288,10 +1288,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     shutdown_factories(&mut factories, runtime.as_mut(), Some(&teardown)).await;
     teardown.phase_complete("shutdown_factories", phase);
 
-    // Wait for pending usage reports to flush before stopping the proxy.
-    // The addon writes the current mitmdump identity plus in-flight flow
-    // and pending report counts; this remains bounded best-effort and
-    // falls back to stopping the proxy on timeout.
+    // Wait for buffered and pending usage reports before stopping the proxy.
+    // The addon writes the current mitmdump identity plus in-flight flow,
+    // buffered event, and pending report counts; this remains bounded
+    // best-effort and falls back to stopping the proxy on timeout.
     let phase = teardown.phase_start("wait_usage_flush");
     if let Some(usage_flush_target) = mitm.usage_flush_target() {
         info!("waiting for proxy usage reports to flush");

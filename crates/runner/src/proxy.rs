@@ -74,25 +74,21 @@ const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
-/// Must be long enough for `done()` in the mitmproxy addon to enqueue buffered
-/// usage and flush one webhook retry cycle (10 s HTTP timeout × 2 attempts plus
-/// 0.5 s backoff). Additional pending reports are still bounded by the
-/// pre-stop usage flush wait below.
+/// Must be long enough for mitmproxy's shutdown hook to drain any reports that
+/// race with the pre-stop usage flush wait below.
 const STOP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Maximum time to wait for pending usage reports to flush before stopping.
+/// Maximum time to wait for buffered and pending usage reports before stopping.
 ///
 /// The runner polls `{addon_dir}/usage-pending` (written by the Python
-/// addon) and waits until both counters reach zero or this timeout expires.
-/// 30 s is generous for worst-case webhook delivery (10 s timeout × 2
-/// retries = 20.5 s) with headroom for mitmproxy event-loop drain.
-pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
+/// addon) and waits until all counters reach zero or this timeout expires.
+/// 70 s covers the default buffered flush timer max (30 s + 20% jitter) plus
+/// one webhook retry cycle (10 s timeout × 2 attempts plus 0.5 s backoff) with
+/// headroom for mitmproxy event-loop drain.
+pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(70);
 
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
-
-/// Current JSON schema version for `{addon_dir}/usage-pending`.
-const USAGE_PENDING_VERSION: u32 = 1;
 
 /// Tolerated wall-clock skew when validating addon timestamps.
 const USAGE_PENDING_CLOCK_SKEW: Duration = Duration::from_secs(300);
@@ -106,11 +102,11 @@ pub struct UsageFlushTarget {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UsagePendingState {
-    version: u32,
     pid: u32,
     usage_state_id: String,
     updated_at_ms: u64,
     flows: u32,
+    buffered: u32,
     reports: u32,
 }
 
@@ -120,6 +116,7 @@ struct UsagePendingSnapshot {
     usage_state_id: String,
     updated_at_ms: u64,
     flows: u32,
+    buffered: u32,
     reports: u32,
 }
 
@@ -130,6 +127,7 @@ impl From<&UsagePendingState> for UsagePendingSnapshot {
             usage_state_id: state.usage_state_id.clone(),
             updated_at_ms: state.updated_at_ms,
             flows: state.flows,
+            buffered: state.buffered,
             reports: state.reports,
         }
     }
@@ -392,12 +390,6 @@ fn validate_usage_pending_state(
     target: &UsageFlushTarget,
     now_ms: u64,
 ) -> Result<(), String> {
-    if state.version != USAGE_PENDING_VERSION {
-        return Err(format!(
-            "unsupported version {}, expected {}",
-            state.version, USAGE_PENDING_VERSION
-        ));
-    }
     if state.usage_state_id != target.expected_usage_state_id {
         return Err("usage state id does not match current mitmdump process".to_string());
     }
@@ -423,12 +415,13 @@ fn validate_usage_pending_state(
 /// Wait for all pending proxy usage reports to be delivered.
 ///
 /// The Python addon writes JSON to `{addon_dir}/usage-pending` with the
-/// mitmdump usage-state identity plus in-flight flow and report counters.
-/// A successful drain requires current valid state with `flows == 0` and
-/// `reports == 0`. Missing, unreadable, stale, wrong state id, or invalid
-/// state is treated as not ready and waits until timeout. The JSON `pid`
-/// is diagnostic only: mitmdump launchers can keep the runner's direct
-/// child as a wrapper while the Python addon runs in a child process.
+/// mitmdump usage-state identity plus in-flight flow, buffered event, and
+/// report counters. A successful drain requires current valid state with
+/// `flows == 0`, `buffered == 0`, and `reports == 0`. Missing, unreadable,
+/// stale, wrong state id, or invalid state is treated as not ready and waits
+/// until timeout. The JSON `pid` is diagnostic only: mitmdump launchers can
+/// keep the runner's direct child as a wrapper while the Python addon runs in a
+/// child process.
 pub async fn wait_usage_flush(
     addon_dir: &Path,
     timeout: Duration,
@@ -443,11 +436,14 @@ pub async fn wait_usage_flush(
                     let snapshot = Some(UsagePendingSnapshot::from(&state));
                     match validate_usage_pending_state(&state, target, now_millis()) {
                         Ok(()) => {
-                            if state.flows == 0 && state.reports == 0 {
+                            if state.flows == 0 && state.buffered == 0 && state.reports == 0 {
                                 return true;
                             }
                             (
-                                format!("pending flows={} reports={}", state.flows, state.reports),
+                                format!(
+                                    "pending flows={} buffered={} reports={}",
+                                    state.flows, state.buffered, state.reports
+                                ),
                                 snapshot,
                             )
                         }
@@ -468,6 +464,7 @@ pub async fn wait_usage_flush(
                     usage_state_id = %snapshot.usage_state_id,
                     updated_at_ms = snapshot.updated_at_ms,
                     flows = snapshot.flows,
+                    buffered = snapshot.buffered,
                     reports = snapshot.reports,
                     "usage flush timed out, proceeding with proxy stop"
                 ),
@@ -1720,13 +1717,13 @@ exit 0
         }
     }
 
-    fn usage_state(flows: u32, reports: u32) -> String {
+    fn usage_state(flows: u32, buffered: u32, reports: u32) -> String {
         serde_json::json!({
-            "version": 1,
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": flows,
+            "buffered": buffered,
             "reports": reports,
         })
         .to_string()
@@ -1738,7 +1735,7 @@ exit 0
     async fn wait_usage_flush_returns_true_when_zero() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
-        std::fs::write(dir.path().join("usage-pending"), usage_state(0, 0)).unwrap();
+        std::fs::write(dir.path().join("usage-pending"), usage_state(0, 0, 0)).unwrap();
         assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
 
@@ -1758,7 +1755,7 @@ exit 0
         let p = path.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(USAGE_FLUSH_TEST_DELAY).await;
-            std::fs::write(&p, usage_state(0, 0)).unwrap();
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
         });
 
         let d = dir.path().to_path_buf();
@@ -1771,12 +1768,30 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let path = dir.path().join("usage-pending");
-        std::fs::write(&path, usage_state(2, 1)).unwrap();
+        std::fs::write(&path, usage_state(2, 0, 1)).unwrap();
 
         let p = path.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(USAGE_FLUSH_TEST_DELAY).await;
-            std::fs::write(&p, usage_state(0, 0)).unwrap();
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+        });
+
+        let d = dir.path().to_path_buf();
+        assert!(wait_usage_flush(&d, Duration::from_secs(5), &target).await);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_waits_until_buffered_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(&path, usage_state(0, 2, 0)).unwrap();
+
+        let p = path.clone();
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(USAGE_FLUSH_TEST_DELAY).await;
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
         });
 
         let d = dir.path().to_path_buf();
@@ -1788,7 +1803,7 @@ exit 0
     async fn wait_usage_flush_timeout() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
-        std::fs::write(dir.path().join("usage-pending"), usage_state(1, 3)).unwrap();
+        std::fs::write(dir.path().join("usage-pending"), usage_state(1, 0, 3)).unwrap();
         // Very short timeout — should return false.
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
     }
@@ -1814,11 +1829,11 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 1,
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": 0,
+            "buffered": 0,
             "reports": 0,
             "extraField": "unexpected",
         });
@@ -1827,11 +1842,10 @@ exit 0
     }
 
     #[tokio::test(start_paused = true)]
-    async fn wait_usage_flush_rejects_unsupported_version() {
+    async fn wait_usage_flush_rejects_legacy_state_without_buffered_count() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 2,
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
@@ -1847,11 +1861,11 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 1,
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": 0,
+            "buffered": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
@@ -1862,11 +1876,11 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 1,
             "pid": 1234,
             "usageStateId": "old-state",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": 0,
+            "buffered": 0,
             "reports": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
@@ -1878,11 +1892,11 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 1,
             "pid": 5678,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": 0,
+            "buffered": 0,
             "reports": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
@@ -1894,11 +1908,11 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 1,
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_769_000_000_000u64,
             "flows": 0,
+            "buffered": 0,
             "reports": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
@@ -1910,11 +1924,11 @@ exit 0
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();
         let state = serde_json::json!({
-            "version": 1,
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": now_millis() + USAGE_PENDING_CLOCK_SKEW.as_millis() as u64 + 60_000,
             "flows": 0,
+            "buffered": 0,
             "reports": 0,
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
