@@ -337,7 +337,9 @@ const getAppStateCommand = appOption(
   addTargetOptions(
     new Command()
       .name("get-app-state")
-      .description("Get screenshot and accessibility state for an app")
+      .description(
+        "Get screenshot and accessibility state without activating an app",
+      )
       .action(
         withErrorHandler(async (options: ComputerUseAppOptions) => {
           await runReadCommand("app.state", options, { app: options.app });
@@ -350,7 +352,9 @@ const clickCommand = appOption(
   addTargetOptions(
     new Command()
       .name("click")
-      .description("Click an accessibility element or screenshot coordinate")
+      .description(
+        "Click an accessibility element or background screenshot coordinate",
+      )
       .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
       .option("--element <id>", "Element id from get-app-state")
       .option("--element-index <index>", "Element index from get-app-state")
@@ -451,7 +455,7 @@ const pressKeyCommand = appOption(
   addTargetOptions(
     new Command()
       .name("press-key")
-      .description("Press a key or key combination in the target app")
+      .description("Send a background key or key combination to the target app")
       .requiredOption(
         "--key <key>",
         "Key or key combination to press, for example Command+K or Control+K",
@@ -493,7 +497,7 @@ const openAppCommand = appOption(
   addTargetOptions(
     new Command()
       .name("open-app")
-      .description("Open or activate an app on the Desktop host")
+      .description("Open an app on the Desktop host without activating it")
       .action(
         withErrorHandler(async (options: ComputerUseAppOptions) => {
           await runWriteCommand("app.open", options, { app: options.app });
