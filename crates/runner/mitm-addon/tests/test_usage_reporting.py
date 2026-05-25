@@ -1572,6 +1572,8 @@ class TestResponseUsageReporting:
             "model": "gpt-5.5",
             "tokens.output": 20,
         }
+        flow.metadata["stream_buffer"] = bytearray(b'{"id":"resp_1","usage":{"input_tokens":')
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -1590,6 +1592,13 @@ class TestResponseUsageReporting:
 
         events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert [event["category"] for event in events] == ["tokens.output"]
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        if proxy_log.exists():
+            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+            assert not any(
+                entry.get("message") == "Model provider JSON usage extraction failed"
+                for entry in entries
+            )
 
     def test_empty_model_usage_does_not_block_later_error_usage(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
