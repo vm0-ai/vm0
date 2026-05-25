@@ -381,27 +381,42 @@ function UseCasePromptComposer() {
 
 type ProTrialBenefit = {
   title: string;
-  description?: string;
+  description: string;
 };
 
 const PRO_TRIAL_BENEFITS: readonly ProTrialBenefit[] = [
   {
-    title: "$20 in VM0 credits to get started",
+    title: "$20 in VM0 credits",
     description: "Enough to run agents from day one",
   },
-  { title: "2 concurrent agent runs" },
-  { title: "All advanced features" },
+  {
+    title: "2 concurrent agent runs",
+    description: "Run tasks in parallel without waiting",
+  },
+  {
+    title: "All advanced features",
+    description: "Nothing held back during the trial",
+  },
   {
     title: "Multimodal generation",
     description: "Create images, video and voice from a prompt",
   },
   {
     title: "Slack & Telegram agents",
-    description: "Trigger and chat with agents where you already work",
+    description: "Chat from where you already work",
   },
-  { title: "Bring your own model keys" },
-  { title: "200+ connectors" },
-  { title: "Scheduled & recurring agents" },
+  {
+    title: "Bring your own model keys",
+    description: "Plug in Anthropic, OpenAI and more",
+  },
+  {
+    title: "200+ connectors",
+    description: "Apps, APIs and integrations",
+  },
+  {
+    title: "Scheduled & recurring agents",
+    description: "Run on a cron or fixed schedule",
+  },
 ];
 
 const TRIAL_LENGTH_DAYS = 7;
@@ -458,28 +473,23 @@ function TrialStepContent() {
 
       <ul
         data-testid="onboarding-trial-benefits"
-        className="zero-border w-full flex flex-col rounded-2xl bg-background overflow-hidden"
+        className="w-full grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4"
       >
-        {PRO_TRIAL_BENEFITS.map((benefit, index) => {
+        {PRO_TRIAL_BENEFITS.map((benefit) => {
           return (
-            <li
-              key={benefit.title}
-              className={`flex items-start gap-3 px-4 py-3 ${
-                index === 0 ? "" : "border-t border-border/40"
-              }`}
-            >
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                <IconCheck size={12} stroke={2.5} className="text-primary" />
-              </span>
+            <li key={benefit.title} className="flex items-start gap-2.5">
+              <IconCheck
+                size={16}
+                stroke={2.25}
+                className="text-primary shrink-0 mt-0.5"
+              />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-foreground leading-snug">
                   {benefit.title}
                 </span>
-                {benefit.description && (
-                  <span className="block text-xs text-muted-foreground mt-1 leading-relaxed">
-                    {benefit.description}
-                  </span>
-                )}
+                <span className="block text-xs text-muted-foreground mt-0.5 leading-snug">
+                  {benefit.description}
+                </span>
               </span>
             </li>
           );
