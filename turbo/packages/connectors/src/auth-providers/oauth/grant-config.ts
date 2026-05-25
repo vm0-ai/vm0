@@ -16,7 +16,7 @@ export function getAuthCodeGrantConfig(
   if (!grant) {
     throw new Error(`${type} auth-code grant config not found`);
   }
-  return grant;
+  return { ...grant, scopes: [...grant.scopes] };
 }
 
 export function getDeviceAuthGrantConfig(
@@ -26,5 +26,5 @@ export function getDeviceAuthGrantConfig(
   if (!grant) {
     throw new Error(`${type} device-auth grant config not found`);
   }
-  return grant;
+  return { ...grant, scopes: [...grant.scopes] };
 }
