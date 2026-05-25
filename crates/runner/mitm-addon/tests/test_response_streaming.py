@@ -367,14 +367,14 @@ class TestReleaseResponseStreamState:
     def test_preserves_externally_replaced_stream_callback(self, real_flow):
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         def external_stream(chunk):
             return chunk
 
         mitm_addon.responseheaders(flow)
-        assert callable(_response_stream(flow))
+        assert callable(response_stream(flow))
 
         flow.response.stream = external_stream
 
@@ -438,7 +438,7 @@ class TestReleaseResponseStreamState:
         flow.metadata.update(metadata)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": response_content_type}),
+            headers=header_map({"content-type": response_content_type}),
         )
 
         mitm_addon.responseheaders(flow)
@@ -467,11 +467,11 @@ class TestReleaseResponseStreamState:
     def test_configured_release_is_idempotent(self, real_flow):
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
-        assert callable(_response_stream(flow))
+        assert callable(response_stream(flow))
 
         response_streaming.release_response_stream_state(flow)
         response_streaming.release_response_stream_state(flow)
@@ -486,11 +486,11 @@ class TestReleaseResponseStreamState:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
-        assert callable(_response_stream(flow))
+        assert callable(response_stream(flow))
         assert "model_json_usage_finish" in flow.metadata
 
         flow.response = None
