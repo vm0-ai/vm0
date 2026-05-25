@@ -80,7 +80,7 @@ describe("zero jobs page - team list", () => {
     expect(screen.getByText("agent-3")).toBeInTheDocument();
   });
 
-  it("should show new agent button when no sub-agents exist", async () => {
+  it("should show public and private create buttons when no sub-agents exist", async () => {
     mockTeamAPI([
       {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -95,17 +95,27 @@ describe("zero jobs page - team list", () => {
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(screen.getByText("New agent")).toBeInTheDocument();
+      expect(screen.getByText("Public")).toBeInTheDocument();
     });
+    expect(screen.getByText("Private")).toBeInTheDocument();
+    const createButtons = screen.getAllByRole("button").filter((el) => {
+      return el.textContent?.trim() === "Create";
+    });
+    expect(createButtons).toHaveLength(2);
   });
 
-  it("should show new agent button when sub-agents exist", async () => {
+  it("should show public and private create buttons when sub-agents exist", async () => {
     mockTeamAPI();
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(screen.getByText("New agent")).toBeInTheDocument();
+      expect(screen.getByText("Public")).toBeInTheDocument();
     });
+    expect(screen.getByText("Private")).toBeInTheDocument();
+    const createButtons = screen.getAllByRole("button").filter((el) => {
+      return el.textContent?.trim() === "Create";
+    });
+    expect(createButtons).toHaveLength(2);
   });
 
   it("should display multiple agents when team API returns multiple agents", async () => {

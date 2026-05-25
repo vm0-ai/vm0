@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -44,14 +44,40 @@ function mockTeamAPI(
   setMockTeam([DEFAULT_AGENT, ...extraAgents]);
 }
 
-async function openDialog() {
+function findCreateButton(scope: HTMLElement): HTMLElement {
+  const button = within(scope)
+    .getAllByRole("button")
+    .find((el) => {
+      return el.textContent?.trim() === "Create";
+    });
+  if (!button) {
+    throw new Error("Create button not found");
+  }
+  return button;
+}
+
+function clickSectionCreate(section: "Public" | "Private") {
+  const heading = screen.getByText(section);
+  const sectionEl = heading.closest("section");
+  if (!sectionEl) {
+    throw new Error(`${section} section not found`);
+  }
+  click(findCreateButton(sectionEl as HTMLElement));
+}
+
+async function openDialog(section: "Public" | "Private" = "Private") {
   await waitFor(() => {
-    expect(screen.getByText("New agent")).toBeInTheDocument();
+    expect(screen.getByText(section)).toBeInTheDocument();
   });
-  click(screen.getByText("New agent"));
+  clickSectionCreate(section);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
+}
+
+function clickDialogCreate() {
+  const dialog = screen.getByRole("dialog");
+  click(findCreateButton(dialog));
 }
 
 describe("zero jobs page - create agent dialog", () => {
@@ -59,14 +85,7 @@ describe("zero jobs page - create agent dialog", () => {
     mockTeamAPI();
     detachedSetupPage({ context, path: "/agents" });
 
-    await waitFor(() => {
-      expect(screen.getByText("New agent")).toBeInTheDocument();
-    });
-    click(screen.getByText("New agent"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
+    await openDialog();
   });
 
   it("creates agent and shows it in the grid (AGENT-D-014)", async () => {
@@ -120,14 +139,14 @@ describe("zero jobs page - create agent dialog", () => {
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "Marketing Bot");
 
-    click(screen.getByText("Create"));
+    clickDialogCreate();
 
     await waitFor(() => {
       expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
     });
   });
 
-  it("creates private agents by default", async () => {
+  it("creates private agents when the Private section Create button is used", async () => {
     let capturedPayload: ZeroAgentRequest | null = null;
     server.use(
       mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
@@ -161,16 +180,13 @@ describe("zero jobs page - create agent dialog", () => {
       context,
       path: "/agents",
     });
-    await openDialog();
+    await openDialog("Private");
 
-    expect(screen.getByText("Create as")).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "Create as" }),
-    ).toHaveTextContent("Private");
+    expect(screen.getByText("Create a new private agent")).toBeInTheDocument();
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "Private Bot");
-    click(screen.getByText("Create"));
+    clickDialogCreate();
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();

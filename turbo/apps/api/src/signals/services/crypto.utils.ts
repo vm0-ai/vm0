@@ -7,7 +7,7 @@ import {
   type GenerateDataKeyCommandOutput,
   KMSClient,
 } from "@aws-sdk/client-kms";
-import { type FeatureSwitchContext } from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";

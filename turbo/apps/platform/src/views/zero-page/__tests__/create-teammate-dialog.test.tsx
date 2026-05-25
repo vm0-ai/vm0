@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -49,7 +49,19 @@ async function openCreateDialog() {
     expect(screen.getByText("Research Agent")).toBeInTheDocument();
   });
 
-  click(screen.getByText("New agent"));
+  const privateSection = screen.getByText("Private").closest("section");
+  if (!privateSection) {
+    throw new Error("Private section not found");
+  }
+  const createButton = within(privateSection)
+    .getAllByRole("button")
+    .find((el) => {
+      return el.textContent?.trim() === "Create";
+    });
+  if (!createButton) {
+    throw new Error("Create button not found in Private section");
+  }
+  click(createButton);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -100,7 +112,16 @@ describe("create agent dialog - avatar", () => {
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await fill(input, "My New Agent");
-    click(screen.getByText("Create"));
+    const dialog = screen.getByRole("dialog");
+    const dialogCreate = within(dialog)
+      .getAllByRole("button")
+      .find((el) => {
+        return el.textContent?.trim() === "Create";
+      });
+    if (!dialogCreate) {
+      throw new Error("Create button not found in dialog");
+    }
+    click(dialogCreate);
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();
