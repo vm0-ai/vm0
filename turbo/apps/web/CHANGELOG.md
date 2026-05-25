@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.387.4](https://github.com/vm0-ai/vm0/compare/web-v12.387.3...web-v12.387.4) (2026-05-25)
+
+
+### Refactoring
+
+* remove web axiom logger leftovers ([#14848](https://github.com/vm0-ai/vm0/issues/14848)) ([468556d](https://github.com/vm0-ai/vm0/commit/468556d495eb879024a51db909d404ca97860a1c))
+* **web:** remove unused s3 client exports ([#14842](https://github.com/vm0-ai/vm0/issues/14842)) ([c51ecc5](https://github.com/vm0-ai/vm0/commit/c51ecc5325b907129d7664ad8fe123ab2bcfb1b4))
+
+
+### Performance Improvements
+
+* persist chat message attachment metadata ([#14857](https://github.com/vm0-ai/vm0/issues/14857)) ([37cad3b](https://github.com/vm0-ai/vm0/commit/37cad3b92a310f80e986b0b310d14cb89d0f2685))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.0
+    * @vm0/core bumped to 8.293.2
+    * @vm0/db bumped to 1.18.11
+  * devDependencies
+    * @vm0/connectors bumped to 1.33.1
+
 ## [12.387.3](https://github.com/vm0-ai/vm0/compare/web-v12.387.2...web-v12.387.3) (2026-05-25)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.162.0](https://github.com/vm0-ai/vm0/compare/cli-v9.161.9...cli-v9.162.0) (2026-05-25)
+
+
+### Features
+
+* add GitHub bot mention connects ([#14560](https://github.com/vm0-ai/vm0/issues/14560)) ([4b5af7c](https://github.com/vm0-ai/vm0/commit/4b5af7c6216c7926626217f1cfb614f6ee99e034))
+* simplify computer-use host selection ([#14853](https://github.com/vm0-ai/vm0/issues/14853)) ([54f557d](https://github.com/vm0-ai/vm0/commit/54f557d9bcf53e6f304ab5db88cea188d9e21b0f))
+
+
+### Bug Fixes
+
+* avoid foreground activation in computer use ([#14834](https://github.com/vm0-ai/vm0/issues/14834)) ([64589c9](https://github.com/vm0-ai/vm0/commit/64589c95215f4b2414a1f7ffb7354d5cbae98691))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.40.0
+    * @vm0/connectors bumped to 1.33.1
+    * @vm0/core bumped to 8.293.2
+
 ## [9.161.9](https://github.com/vm0-ai/vm0/compare/cli-v9.161.8...cli-v9.161.9) (2026-05-25)
 
 

@@ -2226,6 +2226,140 @@ class TestResponseUsageReporting:
         assert "stream_buffer_state" not in flow.metadata
         assert "x_json_response_finish" not in flow.metadata
 
+    def test_response_logs_incremental_x_json_parse_error(
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+    ):
+        """Full response hook should audit parse errors from the incremental X JSON parser."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/recent")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/recent?query=vm0"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/recent"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"data":[{"id":"1"}')
+        assert "x_json_response_finish" in flow.metadata
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(api_url="https://app.test"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        mock_opener.open.assert_not_called()
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        lost_visibility_entries = [
+            entry for entry in entries if "unparseable" in entry["message"].lower()
+        ]
+        assert len(lost_visibility_entries) == 1
+        entry = lost_visibility_entries[0]
+        assert entry["level"] == "error"
+        assert entry["body_truncated"] is False
+        assert isinstance(entry["parse_error"], str)
+        assert entry["parse_error"]
+        assert "x_json_response_finish" not in flow.metadata
+
+    def test_response_logs_x_json_parse_error_after_forensic_buffer_truncates(
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+    ):
+        """The X JSON parser should stay authoritative after the forensic buffer fills."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/recent")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/recent?query=vm0"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/recent"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * body_utils.STREAM_BUFFER_LIMIT)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(api_url="https://app.test"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        mock_opener.open.assert_not_called()
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        lost_visibility_entries = [
+            entry for entry in entries if "unparseable" in entry["message"].lower()
+        ]
+        assert len(lost_visibility_entries) == 1
+        entry = lost_visibility_entries[0]
+        assert entry["level"] == "error"
+        assert entry["body_truncated"] is False
+        assert entry["parse_error"] == "incomplete json"
+        assert "x_json_response_finish" not in flow.metadata
+
+    def test_response_uses_request_hints_for_incremental_x_json_parse_error(
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+    ):
+        """Incremental X JSON parser failures should still bill from URL hints."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets?ids=1,2,3"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"data":[{"id":"1"}')
+        assert "x_json_response_finish" in flow.metadata
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(api_url="https://app.test"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        assert len(events) == 1
+        assert events[0]["category"] == "posts.read"
+        assert events[0]["quantity"] == 3
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert all(entry["level"] != "error" for entry in entries)
+        assert all("unparseable" not in entry["message"].lower() for entry in entries)
+        assert all("parse_error" not in entry for entry in entries)
+        assert "x_json_response_finish" not in flow.metadata
+
     def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
         """Early-returning SSE flows should not retain parser closures."""
         flow = real_flow(with_response=False, host="api.openai.com")

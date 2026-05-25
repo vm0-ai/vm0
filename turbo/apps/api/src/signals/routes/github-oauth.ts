@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
+import {
+  githubOauthContract,
+  type GithubOauthConnectQuery,
+} from "@vm0/api-contracts/contracts/github-oauth";
 import {
   getConnectorOAuthConfig,
   getConnectorOAuthCredentials,
@@ -12,7 +15,7 @@ import {
   fetchGitHubUserInfo,
 } from "@vm0/connectors/auth-providers/oauth/providers/github";
 
-import { authRoute } from "../auth/auth-route";
+import { requiredAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -22,10 +25,12 @@ import { logger } from "../../lib/log";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   buildGithubOauthState,
+  buildGithubUserConnectAuthorizationUrl,
   createOrActivateGithubInstallation,
   findGithubInstallationByInstallationId,
   getGithubInstallationAccessToken,
   getGithubInstallationInfo,
+  githubUserConnectCallbackRedirectUri,
   isGithubOauthStateSignatureValid,
   linkGithubVm0User,
   loadActiveGithubInstallationForOrg,
@@ -34,6 +39,7 @@ import {
   resolveGithubOauthOrgId,
   tryLinkGithubFromLocalRecord,
   tryLinkGithubFromRemoteInstallations,
+  verifyGithubConnectSignature,
 } from "../services/github-oauth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
@@ -77,10 +83,6 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
   return `${origin}${GITHUB_APP_SETUP_CALLBACK_PATH}`;
 }
 
-function userConnectCallbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/github/oauth/connect/callback`;
-}
-
 function githubUserOauthCredentials():
   | StaticConfidentialConnectorOAuthCredentials
   | undefined {
@@ -109,6 +111,12 @@ function worksErrorRedirect(message: string): Response {
   return redirectResponse(
     appUrl(`/works?error=${encodeURIComponent(message)}`),
   );
+}
+
+function hasGithubConnectSignatureQuery(
+  query: GithubOauthConnectQuery,
+): boolean {
+  return Boolean(query.installation || query.ghUser || query.ts || query.sig);
 }
 
 function errorMessageFromUnknown(error: unknown): string {
@@ -569,18 +577,116 @@ const installGithubOauth$ = command(
   },
 );
 
-const connectGithubUserOauth$ = command(({ get }, _signal: AbortSignal) => {
-  const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return noStoreRedirect(canonicalRedirectUrl);
-  }
-
-  const origin = getOAuthWebOrigin(request);
-  return noStoreRedirect(
-    new URL("/api/zero/connectors/github/authorize", origin).toString(),
+function invalidGithubConnectLinkRedirect(): Response {
+  return worksErrorRedirect(
+    "Invalid or expired GitHub connect link. Ask the bot for a new link.",
   );
-});
+}
+
+function signInRedirect(requestUrl: string): Response {
+  const signInUrl = new URL("/sign-in", requestUrl);
+  signInUrl.searchParams.set("redirect_url", requestUrl);
+  return redirectResponse(signInUrl.toString());
+}
+
+const connectGithubUserOauth$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$).raw;
+    const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
+    if (canonicalRedirectUrl) {
+      return noStoreRedirect(canonicalRedirectUrl);
+    }
+
+    const query = get(queryOf(githubOauthContract.connect));
+    const auth = await set(
+      requiredAuthContext$,
+      { requireOrganization: true },
+      signal,
+    );
+    signal.throwIfAborted();
+    if ("status" in auth) {
+      return auth.status === 401
+        ? signInRedirect(request.url)
+        : worksErrorRedirect(auth.body.error.message);
+    }
+    if (!auth.orgId) {
+      return worksErrorRedirect("Explicit org context required");
+    }
+    const orgId = auth.orgId;
+
+    if (hasGithubConnectSignatureQuery(query)) {
+      if (!query.installation || !query.ghUser || !query.ts || !query.sig) {
+        return invalidGithubConnectLinkRedirect();
+      }
+
+      if (
+        !verifyGithubConnectSignature({
+          installationId: query.installation,
+          githubUserId: query.ghUser,
+          githubUsername: query.ghLogin,
+          timestamp: query.ts,
+          signature: query.sig,
+          secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+        })
+      ) {
+        return invalidGithubConnectLinkRedirect();
+      }
+
+      const db = set(writeDb$);
+      const installation = await findGithubInstallationByInstallationId({
+        db,
+        installationId: query.installation,
+        orgId,
+        signal,
+      });
+      signal.throwIfAborted();
+
+      if (!installation) {
+        return worksErrorRedirect(
+          "No GitHub installation found for this workspace",
+        );
+      }
+
+      const githubUserId = await linkGithubVm0User({
+        db,
+        installRecordId: installation.id,
+        vm0UserId: auth.userId,
+        knownGithubUserId: query.ghUser,
+        signal,
+      });
+      signal.throwIfAborted();
+
+      if (!githubUserId) {
+        return worksErrorRedirect(
+          "This GitHub account is already linked to the installation",
+        );
+      }
+
+      await publishUserSignal([auth.userId], "github:changed");
+      signal.throwIfAborted();
+
+      return redirectResponse(appUrl("/works?github=connected"));
+    }
+
+    const origin = getOAuthWebOrigin(request);
+    const db = set(writeDb$);
+    const authorizationUrl = await buildGithubUserConnectAuthorizationUrl({
+      db,
+      vm0UserId: auth.userId,
+      orgId,
+      origin,
+      readEnv: optionalEnv,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!authorizationUrl) {
+      return worksErrorRedirect("GitHub OAuth is not configured");
+    }
+
+    return noStoreRedirect(authorizationUrl);
+  },
+);
 
 const callbackGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -624,7 +730,7 @@ const callbackGithubUserOauth$ = command(
     }
 
     const origin = getOAuthWebOrigin(request);
-    const redirectUri = userConnectCallbackRedirectUri(origin);
+    const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorOAuthCode({
       type: "github",
       credentials,
@@ -815,7 +921,7 @@ export const githubOauthRoutes: readonly RouteEntry[] = [
   },
   {
     route: githubOauthContract.connect,
-    handler: authRoute({ requireOrganization: true }, connectGithubUserOauth$),
+    handler: connectGithubUserOauth$,
   },
   {
     route: githubOauthContract.connectCallback,

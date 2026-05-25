@@ -457,7 +457,7 @@ mod tests {
             "tools": ["Bash", "Read"],
             "settings": "{\"hooks\":{}}",
             "experimentalProfile": "browser",
-            "featureFlags": {"computerUse": true, "voiceChat": false},
+            "featureFlags": {"computerUse": true, "audioOutput": false},
             "billableFirewalls": ["model-provider:vm0"],
             "modelUsageProvider": "claude-sonnet-4-6"
         });
@@ -483,7 +483,7 @@ mod tests {
         assert!(ctx.storage_manifest.is_some());
         let flags = ctx.feature_flags.as_ref().unwrap();
         assert_eq!(flags.get("computerUse"), Some(&true));
-        assert_eq!(flags.get("voiceChat"), Some(&false));
+        assert_eq!(flags.get("audioOutput"), Some(&false));
         assert_eq!(
             ctx.billable_firewalls,
             vec!["model-provider:vm0".to_string()]

@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
 import { createSign } from "node:crypto";
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import type {
+  GithubConnectUserBody,
   CreateGithubLabelListenerBody,
   GithubInstallationResponse,
   GithubLabelListener,
@@ -24,7 +25,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { writeDb$, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { tapError } from "../utils";
 import { env, optionalEnv } from "../../lib/env";
@@ -33,7 +34,10 @@ import { now, nowDate } from "../../lib/time";
 import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
 import {
   buildGithubOauthState,
+  buildGithubUserConnectAuthorizationUrl,
+  findGithubInstallationByInstallationId,
   linkGithubVm0User,
+  verifyGithubConnectSignature,
 } from "./github-oauth.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
@@ -81,8 +85,8 @@ async function githubInstallUrl(args: {
   return url.toString();
 }
 
-function githubConnectUrl(origin: string): string {
-  return `${origin}/api/zero/connectors/github/authorize`;
+function githubConnectStartUrl(origin: string): string {
+  return `${origin}/api/zero/github/oauth/connect`;
 }
 
 async function publishGithubChanged(userIds: readonly string[]): Promise<void> {
@@ -555,10 +559,36 @@ async function loadCreatedListener(args: {
 }
 
 export const connectGithubUser$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, body: GithubConnectUserBody, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const db = set(writeDb$);
-    const installation = await loadOrgGithubInstallation(db, auth.orgId);
+    const connectSignature = body?.connectSignature;
+    if (
+      connectSignature &&
+      !verifyGithubConnectSignature({
+        installationId: connectSignature.installationId,
+        githubUserId: connectSignature.githubUserId,
+        githubUsername: connectSignature.githubUsername,
+        timestamp: connectSignature.timestamp,
+        signature: connectSignature.signature,
+        secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+      })
+    ) {
+      return errorResponse(
+        400,
+        "Invalid or expired GitHub connect link",
+        "INVALID_CONNECT_LINK",
+      );
+    }
+
+    const installation = connectSignature
+      ? await findGithubInstallationByInstallationId({
+          db,
+          installationId: connectSignature.installationId,
+          orgId: auth.orgId,
+          signal,
+        })
+      : await loadOrgGithubInstallation(db, auth.orgId);
     signal.throwIfAborted();
 
     if (!installation) {
@@ -569,16 +599,23 @@ export const connectGithubUser$ = command(
       db,
       installRecordId: installation.id,
       vm0UserId: auth.userId,
+      knownGithubUserId: connectSignature?.githubUserId,
       signal,
     });
     signal.throwIfAborted();
 
     if (!githubUserId) {
-      return errorResponse(
-        409,
-        "Connect your GitHub account before linking this installation",
-        "GITHUB_ACCOUNT_REQUIRED",
-      );
+      return connectSignature
+        ? errorResponse(
+            409,
+            "This GitHub account is already linked to the installation",
+            "GITHUB_ACCOUNT_ALREADY_LINKED",
+          )
+        : errorResponse(
+            409,
+            "Connect your GitHub account before linking this installation",
+            "GITHUB_ACCOUNT_REQUIRED",
+          );
     }
 
     await publishGithubChanged([auth.userId]);
@@ -979,111 +1016,131 @@ export const deleteGithubLabelListener$ = command(
   },
 );
 
-export const getGithubInstallation$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const origin = getOAuthWebOrigin(get(request$).raw);
-  const db = get(db$);
-  const installation = await loadOrgGithubInstallation(db, auth.orgId);
-  const defaultComposeId = await loadOrgDefaultComposeId(db, auth.orgId);
-  const installUrl =
-    auth.orgRole === "admin"
-      ? await githubInstallUrl({
-          userId: auth.userId,
-          orgId: auth.orgId,
-          composeId: defaultComposeId,
-          origin,
-        })
-      : null;
+export const getGithubInstallation$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const origin = getOAuthWebOrigin(get(request$).raw);
+    const db = set(writeDb$);
+    const installation = await loadOrgGithubInstallation(db, auth.orgId);
+    signal.throwIfAborted();
+    const defaultComposeId = await loadOrgDefaultComposeId(db, auth.orgId);
+    signal.throwIfAborted();
+    const installUrl =
+      auth.orgRole === "admin"
+        ? await githubInstallUrl({
+            userId: auth.userId,
+            orgId: auth.orgId,
+            composeId: defaultComposeId,
+            origin,
+          })
+        : null;
+    signal.throwIfAborted();
 
-  if (!installation) {
-    return {
-      status: 404 as const,
-      body: {
-        error: {
-          message: "No GitHub installation found",
-          code: "NOT_FOUND",
+    if (!installation) {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: "No GitHub installation found",
+            code: "NOT_FOUND",
+          },
+          installUrl,
         },
-        installUrl,
-      },
-    };
-  }
+      };
+    }
 
-  const link = await loadUserGithubLink({
-    db,
-    installationId: installation.id,
-    userId: auth.userId,
-  });
-  const isAdmin = canManageInstallation({ orgRole: auth.orgRole });
-  const compose = await loadComposeSummary({
-    db,
-    orgId: auth.orgId,
-    composeId: installation.defaultComposeId,
-  });
-  const environment = await buildEnvironment({ db, compose });
+    const link = await loadUserGithubLink({
+      db,
+      installationId: installation.id,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+    const isAdmin = canManageInstallation({ orgRole: auth.orgRole });
+    const compose = await loadComposeSummary({
+      db,
+      orgId: auth.orgId,
+      composeId: installation.defaultComposeId,
+    });
+    signal.throwIfAborted();
+    const environment = await buildEnvironment({ db, compose });
+    signal.throwIfAborted();
 
-  const [secretList, variableList, connectorList, labelListeners] =
-    await Promise.all([
-      get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
-      get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
-      get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
-      loadListeners({
-        db,
-        installationId: installation.id,
-        userId: auth.userId,
-        orgRole: auth.orgRole,
+    const [secretList, variableList, connectorList, labelListeners] =
+      await Promise.all([
+        get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
+        get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
+        get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
+        loadListeners({
+          db,
+          installationId: installation.id,
+          userId: auth.userId,
+          orgRole: auth.orgRole,
+        }),
+      ]);
+    signal.throwIfAborted();
+
+    const connectorProvided = getConnectorProvidedSecretNames(
+      connectorList.connectors.map((connector) => {
+        return connector.type;
       }),
+    );
+    const existingSecretNames = new Set([
+      ...secretList.secrets.map((secret) => {
+        return secret.name;
+      }),
+      ...connectorProvided,
     ]);
-
-  const connectorProvided = getConnectorProvidedSecretNames(
-    connectorList.connectors.map((connector) => {
-      return connector.type;
-    }),
-  );
-  const existingSecretNames = new Set([
-    ...secretList.secrets.map((secret) => {
-      return secret.name;
-    }),
-    ...connectorProvided,
-  ]);
-  const existingVarNames = new Set(
-    variableList.variables.map((variable) => {
-      return variable.name;
-    }),
-  );
-  const githubConnector =
-    connectorList.connectors.find((connector) => {
-      return connector.type === "github";
-    }) ?? null;
-  const connectUrl = githubConnectUrl(origin);
-
-  const body: GithubInstallationResponse = {
-    installation: {
-      id: installation.id,
-      installationId: installation.installationId,
-      status: installation.status,
-      targetName: installation.targetName,
-      targetType: installation.targetType,
-      isAdmin,
-    },
-    isConnected: link !== null,
-    connectedGithubUserId: link?.githubUserId ?? null,
-    connectedGithubUsername: link
-      ? (githubConnector?.externalUsername ?? null)
-      : null,
-    installUrl,
-    connectUrl,
-    agent: compose ? { id: compose.id, name: compose.name } : null,
-    environment: {
-      ...environment,
-      missingSecrets: environment.requiredSecrets.filter((name) => {
-        return !existingSecretNames.has(name);
+    const existingVarNames = new Set(
+      variableList.variables.map((variable) => {
+        return variable.name;
       }),
-      missingVars: environment.requiredVars.filter((name) => {
-        return !existingVarNames.has(name);
-      }),
-    },
-    labelListeners: [...labelListeners],
-  };
+    );
+    const githubConnector =
+      connectorList.connectors.find((connector) => {
+        return connector.type === "github";
+      }) ?? null;
+    const connectUrl =
+      link === null
+        ? ((await buildGithubUserConnectAuthorizationUrl({
+            db,
+            vm0UserId: auth.userId,
+            orgId: auth.orgId,
+            origin,
+            readEnv: optionalEnv,
+            signal,
+          })) ?? githubConnectStartUrl(origin))
+        : githubConnectStartUrl(origin);
+    signal.throwIfAborted();
 
-  return { status: 200 as const, body };
-});
+    const body: GithubInstallationResponse = {
+      installation: {
+        id: installation.id,
+        installationId: installation.installationId,
+        status: installation.status,
+        targetName: installation.targetName,
+        targetType: installation.targetType,
+        isAdmin,
+      },
+      isConnected: link !== null,
+      connectedGithubUserId: link?.githubUserId ?? null,
+      connectedGithubUsername: link
+        ? (githubConnector?.externalUsername ?? null)
+        : null,
+      installUrl,
+      connectUrl,
+      agent: compose ? { id: compose.id, name: compose.name } : null,
+      environment: {
+        ...environment,
+        missingSecrets: environment.requiredSecrets.filter((name) => {
+          return !existingSecretNames.has(name);
+        }),
+        missingVars: environment.requiredVars.filter((name) => {
+          return !existingVarNames.has(name);
+        }),
+      },
+      labelListeners: [...labelListeners],
+    };
+
+    return { status: 200 as const, body };
+  },
+);

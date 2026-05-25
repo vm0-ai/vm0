@@ -25,6 +25,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
+import { githubInstallationTargetName } from "./github-installation-target.ts";
 
 const GITHUB_ADMIN_INSTALL_TOOLTIP = "Ask an org admin to install GitHub.";
 
@@ -240,6 +241,9 @@ function GithubCardActions({
 export function GithubCard() {
   const dataLoadable = useLastLoadable(githubIntegrationData$);
   const data = dataLoadable.state === "hasData" ? dataLoadable.data : null;
+  const installationTarget = data?.isInstalled
+    ? githubInstallationTargetName(data.installation)
+    : null;
 
   return (
     <div className="zero-card flex flex-col">
@@ -250,7 +254,19 @@ export function GithubCard() {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="text-sm font-medium text-foreground">GitHub</div>
           <div className="truncate text-sm text-muted-foreground">
-            Run agents from GitHub issue and PR labels
+            <span>Run agents from GitHub issue and PR labels or @Zero</span>
+            {installationTarget ? (
+              <>
+                {" "}
+                <span
+                  data-testid="github-installation-target"
+                  className="text-foreground"
+                >
+                  (Installed on{" "}
+                  <span className="text-green-600">{installationTarget}</span>)
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
         <GithubConnectedBadge

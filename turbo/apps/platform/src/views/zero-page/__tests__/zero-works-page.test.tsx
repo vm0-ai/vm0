@@ -197,7 +197,7 @@ describe("works page - GitHub integration card", () => {
       ).toBeInTheDocument();
       expect(
         within(getGithubCard()).getByText(
-          "Run agents from GitHub issue and PR labels",
+          "Run agents from GitHub issue and PR labels or @Zero",
         ),
       ).toBeInTheDocument();
     });
@@ -423,6 +423,9 @@ describe("works page - GitHub integration card", () => {
       expect(
         within(getGithubCard()).getByText("Connected (@octocat)"),
       ).toBeInTheDocument();
+      expect(
+        within(getGithubCard()).getByTestId("github-installation-target"),
+      ).toHaveTextContent("(Installed on @vm0-test)");
     });
   });
 

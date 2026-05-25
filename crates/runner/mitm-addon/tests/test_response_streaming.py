@@ -135,6 +135,75 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 1
 
 
+class TestXJsonFinalize:
+    """Tests for finalizing non-streaming X JSON parser state."""
+
+    def _billable_x_json_flow(self, real_flow):
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        return flow
+
+    def test_no_registered_x_json_finalizer_is_noop(self, real_flow):
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+
+        response_streaming.finalize_x_json_state(flow)
+
+        assert "x_json_state" not in flow.metadata
+
+    def test_finalizes_successful_x_json_state(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        assert "x_json_response_finish" in flow.metadata
+
+        response_stream(flow)(b'{"data":[{"id":"1"}]}')
+        response_streaming.finalize_x_json_state(flow)
+
+        state = dict(flow.metadata["x_json_state"])
+        assert "x_json_response_finish" not in flow.metadata
+        assert state["body_parsed"] is True
+        assert state["response_data_count"] == 1
+        assert "parse_error" not in state
+
+        response_streaming.finalize_x_json_state(flow)
+        assert flow.metadata["x_json_state"] == state
+
+    def test_finalizes_x_json_parse_error(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        assert "x_json_response_finish" in flow.metadata
+
+        response_stream(flow)(b'{"data":[1')
+        response_streaming.finalize_x_json_state(flow)
+
+        state = dict(flow.metadata["x_json_state"])
+        assert "x_json_response_finish" not in flow.metadata
+        assert state["body_parsed"] is False
+        assert isinstance(state["parse_error"], str)
+        assert state["parse_error"]
+
+        response_streaming.finalize_x_json_state(flow)
+        assert flow.metadata["x_json_state"] == state
+
+    def test_finalizes_non_object_x_json_without_parse_error(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        assert "x_json_response_finish" in flow.metadata
+
+        response_stream(flow)(b"[1,2,3]")
+        response_streaming.finalize_x_json_state(flow)
+
+        state = flow.metadata["x_json_state"]
+        assert "x_json_response_finish" not in flow.metadata
+        assert state["body_parsed"] is False
+        assert "parse_error" not in state
+
+
 class TestResponseHeadersSseParser:
     """Tests for SSE parser setup in responseheaders()."""
 

@@ -1,22 +1,39 @@
 import { Buffer } from "node:buffer";
-import { createSign, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  createSign,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
+import {
+  buildConnectorOAuthAuthUrl,
+  type AuthUrlResult,
+} from "@vm0/connectors/auth-providers";
+import {
+  getConnectorOAuthCredentials,
+  isStaticConfidentialConnectorOAuthCredentials,
+  type ConnectorEnvReader,
+} from "@vm0/connectors/connector-utils";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 
 import type { Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
-import { now } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
+const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
+const GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS = 15 * 60;
 
 interface AppInstallation {
   readonly id: number;
@@ -250,6 +267,56 @@ function signaturesMatch(actual: string | null, expected: string): boolean {
   );
 }
 
+function normalizeGithubUsername(
+  githubUsername: string | null | undefined,
+): string | null {
+  const normalized = githubUsername?.trim().replace(/^@+/, "");
+  return normalized || null;
+}
+
+function githubConnectSignaturePayload(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly githubUsername?: string | null;
+}): string {
+  return [
+    args.installationId,
+    args.githubUserId,
+    String(args.timestamp),
+    normalizeGithubUsername(args.githubUsername) ?? "",
+  ].join(":");
+}
+
+export function signGithubConnectParams(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly secretsEncryptionKey: string;
+  readonly githubUsername?: string | null;
+}): string {
+  return createHmac("sha256", args.secretsEncryptionKey)
+    .update(githubConnectSignaturePayload(args))
+    .digest("hex");
+}
+
+export function verifyGithubConnectSignature(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly signature: string;
+  readonly secretsEncryptionKey: string;
+  readonly githubUsername?: string | null;
+}): boolean {
+  const nowSeconds = Math.floor(now() / 1000);
+  if (nowSeconds - args.timestamp > MAX_GITHUB_CONNECT_AGE_SECONDS) {
+    return false;
+  }
+
+  const expected = signGithubConnectParams(args);
+  return signaturesMatch(args.signature, expected);
+}
+
 export async function buildGithubOauthState(args: {
   readonly vm0UserId?: string;
   readonly orgId?: string;
@@ -281,6 +348,62 @@ export async function buildGithubOauthState(args: {
   }
 
   return Object.keys(state).length > 0 ? JSON.stringify(state) : "";
+}
+
+export function githubUserConnectCallbackRedirectUri(origin: string): string {
+  return `${origin}/api/zero/github/oauth/connect/callback`;
+}
+
+function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
+  return typeof result === "string" ? { url: result } : result;
+}
+
+function generateConnectorOAuthState(): string {
+  return randomBytes(32).toString("hex");
+}
+
+export async function buildGithubUserConnectAuthorizationUrl(args: {
+  readonly db: Db;
+  readonly vm0UserId: string;
+  readonly orgId: string;
+  readonly origin: string;
+  readonly readEnv: ConnectorEnvReader;
+  readonly signal: AbortSignal;
+}): Promise<string | null> {
+  const credentials = getConnectorOAuthCredentials("github", args.readEnv);
+  if (
+    !credentials?.configured ||
+    !isStaticConfidentialConnectorOAuthCredentials(credentials)
+  ) {
+    return null;
+  }
+
+  const state = generateConnectorOAuthState();
+  const redirectUri = `${args.origin}/api/connectors/github/callback`;
+  const authResult = normalizeAuthUrlResult(
+    await buildConnectorOAuthAuthUrl({
+      type: "github",
+      credentials,
+      redirectUri,
+      state,
+    }),
+  );
+
+  await args.db.insert(connectorOauthStates).values({
+    state,
+    type: "github",
+    userId: args.vm0UserId,
+    orgId: args.orgId,
+    redirectUri,
+    codeVerifier: authResult.codeVerifier,
+    oauthContext: authResult.oauthContext,
+    expiresAt: new Date(
+      nowDate().getTime() + GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS * 1000,
+    ),
+  });
+  args.signal.throwIfAborted();
+
+  return authResult.url;
 }
 
 export function parseGithubOauthState(

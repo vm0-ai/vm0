@@ -209,6 +209,29 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: mozilla-actions/sccache-action@v0.0.10
+        with:
+          version: "v0.15.0"
+
+      - name: Configure sccache
+        shell: bash
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+        run: |
+          SCCACHE_CONF_PATH="${RUNNER_TEMP:-/tmp}/sccache.toml"
+          cat > "$SCCACHE_CONF_PATH" <<'EOF'
+          server_startup_timeout_ms = 60000
+          EOF
+
+          SCCACHE_CONF="$SCCACHE_CONF_PATH" ${SCCACHE_PATH:-sccache} --start-server
+
+          {
+            echo "CARGO_INCREMENTAL=0"
+            echo "SCCACHE_CONF=$SCCACHE_CONF_PATH"
+            echo "SCCACHE_GHA_ENABLED=true"
+            echo "RUSTC_WRAPPER=sccache"
+          } >> "$GITHUB_ENV"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target

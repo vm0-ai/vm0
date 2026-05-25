@@ -165,16 +165,12 @@ describe("GitHub zero file integration routes", () => {
     };
   }
 
-  it("streams a GitHub attachment through the active installation", async () => {
+  it("streams a GitHub context file from an allowed URL", async () => {
     const fixture = await seedFixture();
-    mockGitHubAppCredentials();
-    setupGitHubTokenMock(fixture.remoteInstallationId);
     const fileUrl = "https://github.com/user-attachments/assets/abc123";
     server.use(
       http.get(fileUrl, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer ghs_test_token",
-        );
+        expect(request.headers.get("authorization")).toBeNull();
         expect(request.headers.get("accept")).toBe("application/octet-stream");
         return new HttpResponse("png-bytes", {
           status: 200,
@@ -187,8 +183,12 @@ describe("GitHub zero file integration routes", () => {
     );
 
     const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      url: fileUrl,
+      filename: "screenshot.png",
+    });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?url=${encodeURIComponent(fileUrl)}&filename=screenshot.png`,
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -208,12 +208,82 @@ describe("GitHub zero file integration routes", () => {
     await expect(response.text()).resolves.toBe("png-bytes");
   });
 
-  it("requires github read capability for attachment downloads", async () => {
+  it("uses the GitHub URL filename when no filename hint is provided", async () => {
+    const fixture = await seedFixture();
+    const fileUrl =
+      "https://raw.githubusercontent.com/vm0-ai/vm0/main/github-file.png";
+    server.use(
+      http.get(fileUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBeNull();
+        expect(request.headers.get("accept")).toBe("application/octet-stream");
+        return new HttpResponse("artifact-bytes", {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "14",
+          },
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({ url: fileUrl });
+    const response = await app.request(
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["github:read"],
+          })}`,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("x-file-name")).toBe("github-file.png");
+    await expect(response.text()).resolves.toBe("artifact-bytes");
+  });
+
+  it("rejects non-GitHub file URLs", async () => {
+    const fixture = await seedFixture();
+
+    const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      url: "https://example.com/file.png",
+    });
+    const response = await app.request(
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["github:read"],
+          })}`,
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
+  it("requires github read capability for context file downloads", async () => {
     const fixture = await seedFixture();
     const app = createApp({ signal: context.signal });
+    const query = new URLSearchParams({
+      url: "https://github.com/user-attachments/assets/abc123",
+    });
 
     const response = await app.request(
-      "/api/zero/integrations/github/download-file?url=https%3A%2F%2Fgithub.com%2Fuser-attachments%2Fassets%2Fabc123",
+      `/api/zero/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {

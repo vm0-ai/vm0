@@ -7,16 +7,23 @@ import {
   type ConnectorGenerationType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
+import { zeroTokenAllowsFeatureSwitch } from "../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
 type BuiltInGenerationType =
+  | "dashboard-design"
+  | "docs-design"
   | "image"
+  | "mobile-app-design"
+  | "poster"
   | "presentation"
+  | "report"
   | "video"
   | "voice"
   | "website";
@@ -96,6 +103,46 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       reason: "available without connector setup",
     },
   ],
+  report: [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate report -h",
+      reason: "available without connector setup",
+    },
+  ],
+  "docs-design": [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate docs-design -h",
+      reason: "available without connector setup",
+    },
+  ],
+  poster: [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate poster -h",
+      reason: "available without connector setup",
+    },
+  ],
+  "dashboard-design": [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate dashboard-design -h",
+      reason: "available without connector setup",
+    },
+  ],
+  "mobile-app-design": [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate mobile-app-design -h",
+      reason: "available without connector setup",
+    },
+  ],
   website: [
     {
       label: "Built-in",
@@ -167,6 +214,31 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     command: "zero built-in generate presentation -h",
     models: "gpt-5.5",
   },
+  report: {
+    label: "Built-in report generation",
+    command: "zero built-in generate report -h",
+    models: "gpt-5.5",
+  },
+  "docs-design": {
+    label: "Built-in docs design generation",
+    command: "zero built-in generate docs-design -h",
+    models: "gpt-5.5",
+  },
+  poster: {
+    label: "Built-in poster generation",
+    command: "zero built-in generate poster -h",
+    models: "gpt-5.5",
+  },
+  "dashboard-design": {
+    label: "Built-in dashboard design generation",
+    command: "zero built-in generate dashboard-design -h",
+    models: "gpt-5.5",
+  },
+  "mobile-app-design": {
+    label: "Built-in mobile app design generation",
+    command: "zero built-in generate mobile-app-design -h",
+    models: "gpt-5.5",
+  },
   website: {
     label: "Built-in website generation",
     command: "zero built-in generate website -h",
@@ -189,14 +261,24 @@ const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
   "document",
   "presentation",
   "website",
+  "report",
+  "docs-design",
+  "poster",
+  "dashboard-design",
+  "mobile-app-design",
 ];
 
 const GENERATION_TYPE_LABELS: Record<DoctorGenerationType, string> = {
   audio: "Audio",
   code: "Code",
+  "dashboard-design": "Dashboard design",
   document: "Document",
+  "docs-design": "Docs design",
   image: "Image",
+  "mobile-app-design": "Mobile app design",
+  poster: "Poster",
   presentation: "Presentation",
+  report: "Report",
   text: "Text",
   video: "Video",
   voice: "Voice",
@@ -230,24 +312,64 @@ interface GenerationCandidate {
 
 function getConnectorGenerationType(
   generationType: DoctorGenerationType,
-): ConnectorGenerationType {
-  if (generationType === "voice") {
-    return "audio";
+): ConnectorGenerationType | null {
+  switch (generationType) {
+    case "voice":
+      return "audio";
+    case "dashboard-design":
+    case "docs-design":
+    case "mobile-app-design":
+    case "poster":
+    case "report":
+      return null;
+    case "audio":
+    case "code":
+    case "document":
+    case "image":
+    case "presentation":
+    case "text":
+    case "video":
+    case "website":
+      return generationType;
   }
-
-  return generationType;
 }
 
 function getBuiltInProviders(
   generationType: DoctorGenerationType,
 ): readonly BuiltInGenerationProvider[] {
+  if (
+    isOpenDesignArtifactGenerationType(generationType) &&
+    !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)
+  ) {
+    return [];
+  }
+
   return BUILT_IN_GENERATION_PROVIDERS[generationType] ?? [];
 }
 
 function getBuiltInCommand(
   generationType: DoctorGenerationType,
 ): BuiltInGenerationCommand | null {
+  if (
+    isOpenDesignArtifactGenerationType(generationType) &&
+    !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)
+  ) {
+    return null;
+  }
+
   return BUILT_IN_GENERATION_COMMANDS[generationType] ?? null;
+}
+
+function isOpenDesignArtifactGenerationType(
+  generationType: DoctorGenerationType,
+): boolean {
+  return (
+    generationType === "dashboard-design" ||
+    generationType === "docs-design" ||
+    generationType === "mobile-app-design" ||
+    generationType === "poster" ||
+    generationType === "report"
+  );
 }
 
 function getAvailableGenerationTypes(): DoctorGenerationType[] {
@@ -259,9 +381,11 @@ function getAvailableGenerationTypes(): DoctorGenerationType[] {
   }
 
   return GENERATION_TYPE_ORDER.filter((type) => {
+    const connectorGenerationType = getConnectorGenerationType(type);
     return (
       getBuiltInProviders(type).length > 0 ||
-      available.has(getConnectorGenerationType(type))
+      (connectorGenerationType !== null &&
+        available.has(connectorGenerationType))
     );
   });
 }
@@ -533,19 +657,21 @@ export const generateCommand = new Command()
       );
       const configuredTypes = new Set(connectorList.configuredTypes);
       const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
-      const candidates = getGenerationConnectors(connectorGenerationType).map(
-        ([connectorType, config]) => {
-          return toCandidate({
-            type: connectorType,
-            config,
-            connector: connectedMap.get(connectorType),
-            configuredTypes,
-            authorizedTypes,
-            agentId,
-            platformOrigin,
-          });
-        },
-      );
+      const candidates = connectorGenerationType
+        ? getGenerationConnectors(connectorGenerationType).map(
+            ([connectorType, config]) => {
+              return toCandidate({
+                type: connectorType,
+                config,
+                connector: connectedMap.get(connectorType),
+                configuredTypes,
+                authorizedTypes,
+                agentId,
+                platformOrigin,
+              });
+            },
+          )
+        : [];
       const ready = candidates.filter((candidate) => {
         return candidate.status === "ready";
       });

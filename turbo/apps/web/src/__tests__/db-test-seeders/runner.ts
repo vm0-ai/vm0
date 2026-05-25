@@ -3,7 +3,6 @@ import { initServices } from "../../lib/init-services";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { encryptSecretsMap } from "../../lib/shared/crypto/secrets-encryption";
 import { ensureTestAgentSession, getOrgAndComposeFromVersion } from "./runs";
 
 /**
@@ -53,17 +52,12 @@ export async function createTestRunnerJob(
     })
     .returning({ id: agentRuns.id });
 
-  const encryptedSecrets = encryptSecretsMap(
-    null,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-  );
-
   const storedContext: StoredExecutionContext = {
     workingDir: "/home/user",
     storageManifest: null,
     environment: null,
     resumeSession: null,
-    encryptedSecrets,
+    encryptedSecrets: null,
     cliAgentType: "claude",
     billableFirewalls: [],
     ...contextOverrides,

@@ -5,26 +5,13 @@ import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { z } from "zod";
 
 import { inferMimetype } from "../../lib/mimetype";
-import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { db$ } from "../external/db";
-import {
-  getGithubIntegrationAccessToken,
-  loadActiveGithubInstallationForOrg,
-} from "../services/github-integration-files.service";
 import type { RouteEntry } from "../route";
 import { settle } from "../utils";
 
 const c = initContract();
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-const ALLOWED_HOSTS = [
-  "github.com",
-  "objects.githubusercontent.com",
-  "private-user-images.githubusercontent.com",
-  "raw.githubusercontent.com",
-  "user-images.githubusercontent.com",
-] as const;
 
 const githubDownloadFileContract = c.router({
   download: {
@@ -32,7 +19,7 @@ const githubDownloadFileContract = c.router({
     path: "/api/zero/integrations/github/download-file",
     headers: authHeadersSchema,
     query: z.object({
-      url: z.string().url(),
+      url: z.string().url("url must be a GitHub file URL"),
       filename: z.string().min(1).max(255).optional(),
     }),
     responses: {
@@ -47,7 +34,7 @@ const githubDownloadFileContract = c.router({
       413: apiErrorSchema,
       502: apiErrorSchema,
     },
-    summary: "Download a GitHub attachment or raw file",
+    summary: "Download a GitHub context file URL",
   },
 });
 
@@ -63,24 +50,56 @@ function parseContentLength(value: string | null): number | undefined {
   return Number.isSafeInteger(size) && size >= 0 ? size : undefined;
 }
 
-function isAllowedGithubFileUrl(url: URL): boolean {
-  const hostAllowed = ALLOWED_HOSTS.some((host) => {
-    return host === url.hostname;
-  });
-  if (url.protocol !== "https:" || !hostAllowed) {
+const GITHUB_ASSET_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+const GITHUB_CONTENT_HOSTS = [
+  "objects.githubusercontent.com",
+  "private-user-images.githubusercontent.com",
+  "raw.githubusercontent.com",
+  "user-images.githubusercontent.com",
+] as const;
+
+const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
+  "application/json": "json",
+  "application/pdf": "pdf",
+  "application/zip": "zip",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/svg+xml": "svg",
+  "image/webp": "webp",
+  "text/csv": "csv",
+  "text/markdown": "md",
+  "text/plain": "txt",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+};
+
+function normalizeGithubDownloadUrl(url: string): string {
+  return url.replace(/[.,;:!?]+$/u, "");
+}
+
+function isAllowedGithubDownloadUrl(url: string): boolean {
+  if (!URL.canParse(url)) {
+    return false;
+  }
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:") {
     return false;
   }
 
-  if (url.hostname !== "github.com") {
-    return true;
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "github.com") {
+    return (
+      parsed.pathname.startsWith("/user-attachments/assets/") ||
+      parsed.pathname.startsWith("/user-attachments/files/")
+    );
   }
 
-  return url.pathname.startsWith("/user-attachments/assets/");
-}
-
-function filenameFromUrl(url: URL): string {
-  const basename = url.pathname.split("/").filter(Boolean).pop();
-  return basename ?? "github-file";
+  return GITHUB_CONTENT_HOSTS.some((host) => {
+    return host === hostname;
+  });
 }
 
 function filenameFromContentDisposition(value: string | null): string | null {
@@ -97,60 +116,58 @@ function filenameFromContentDisposition(value: string | null): string | null {
   return quotedMatch?.[1] ?? null;
 }
 
+function filenameFromGithubDownloadUrl(url: string): string | null {
+  const parsed = new URL(url);
+  const segment = parsed.pathname.split("/").filter(Boolean).pop();
+  if (!segment || GITHUB_ASSET_ID_RE.test(segment)) {
+    return null;
+  }
+  return segment;
+}
+
+function extensionFromContentType(contentType: string | null): string | null {
+  const normalized = contentType?.split(";")[0]?.trim().toLowerCase();
+  return normalized ? (EXTENSION_BY_CONTENT_TYPE[normalized] ?? null) : null;
+}
+
+function fallbackGithubFilename(contentType: string | null): string {
+  const extension = extensionFromContentType(contentType);
+  return extension ? `github-file.${extension}` : "github-file";
+}
+
+function sanitizeDownloadFilename(filename: string): string {
+  return filename.trim().replace(/[/\\]/gu, "_").slice(0, 255) || "github-file";
+}
+
 const download$ = command(async ({ get }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
   const query = get(queryOf(githubDownloadFileContract.download));
-  const url = new URL(query.url);
-  if (!isAllowedGithubFileUrl(url)) {
+  const fileUrl = normalizeGithubDownloadUrl(query.url);
+  if (!isAllowedGithubDownloadUrl(fileUrl)) {
     return jsonResponse(
       400,
-      "Only GitHub attachment and raw file URLs are supported",
+      "Only GitHub file attachment URLs can be downloaded",
       "BAD_REQUEST",
     );
   }
 
-  const db = get(db$);
-  const installation = await loadActiveGithubInstallationForOrg({
-    db,
-    orgId: auth.orgId,
-  });
-  signal.throwIfAborted();
-  if (!installation) {
-    return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
-  }
-
-  const token = await getGithubIntegrationAccessToken({
-    installation,
-    signal,
-  });
-  signal.throwIfAborted();
-  if (!token) {
-    return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
-  }
-
+  const headers = new Headers({ Accept: "application/octet-stream" });
   const downloadResult = await settle(
-    fetch(url, {
-      headers: {
-        Accept: "application/octet-stream",
-        Authorization: `Bearer ${token}`,
-      },
+    fetch(fileUrl, {
+      headers,
       signal,
     }),
   );
   signal.throwIfAborted();
   if (!downloadResult.ok) {
-    return jsonResponse(
-      502,
-      "Failed to download file from GitHub",
-      "BAD_GATEWAY",
-    );
+    return jsonResponse(502, "Failed to download GitHub file", "BAD_GATEWAY");
   }
   const downloadResponse = downloadResult.value;
   if (!downloadResponse.ok) {
+    const status = downloadResponse.status === 404 ? 404 : 502;
     return jsonResponse(
-      502,
-      `Failed to download file from GitHub: ${downloadResponse.status}`,
-      "BAD_GATEWAY",
+      status,
+      `Failed to download GitHub file: ${downloadResponse.status}`,
+      status === 404 ? "NOT_FOUND" : "BAD_GATEWAY",
     );
   }
   if (!downloadResponse.body) {
@@ -174,31 +191,36 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
     );
   }
 
-  const filename =
-    query.filename ??
-    filenameFromContentDisposition(
-      downloadResponse.headers.get("content-disposition"),
-    ) ??
-    filenameFromUrl(url);
   const responseContentType = downloadResponse.headers.get("content-type");
   if (responseContentType?.includes("text/html")) {
     return jsonResponse(
       502,
-      "GitHub returned an unexpected HTML response",
+      "GitHub returned an unexpected HTML file response",
       "BAD_GATEWAY",
     );
   }
+  const filename = sanitizeDownloadFilename(
+    query.filename ??
+      filenameFromContentDisposition(
+        downloadResponse.headers.get("content-disposition"),
+      ) ??
+      filenameFromGithubDownloadUrl(fileUrl) ??
+      fallbackGithubFilename(responseContentType),
+  );
   const contentType = responseContentType ?? inferMimetype(filename);
 
-  const headers = new Headers();
-  headers.set("Content-Type", contentType);
-  headers.set("X-File-Name", encodeURIComponent(filename));
-  headers.set("X-File-Mimetype", contentType);
+  const responseHeaders = new Headers();
+  responseHeaders.set("Content-Type", contentType);
+  responseHeaders.set("X-File-Name", encodeURIComponent(filename));
+  responseHeaders.set("X-File-Mimetype", contentType);
   if (contentLength) {
-    headers.set("Content-Length", contentLength);
+    responseHeaders.set("Content-Length", contentLength);
   }
 
-  return new Response(downloadResponse.body, { status: 200, headers });
+  return new Response(downloadResponse.body, {
+    status: 200,
+    headers: responseHeaders,
+  });
 });
 
 const githubReadAuth = {

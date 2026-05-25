@@ -102,7 +102,7 @@ export const githubIntegrationData$ = computed(
   },
 );
 
-const reloadGithubIntegration$ = command(({ set }) => {
+export const reloadGithubIntegration$ = command(({ set }) => {
   set(internalReload$, (previous) => {
     return previous + 1;
   });

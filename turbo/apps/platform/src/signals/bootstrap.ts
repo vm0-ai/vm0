@@ -19,6 +19,7 @@ import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupAgentPhoneConnectPage$ } from "./zero-page/agentphone-connect-page.ts";
+import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
 import { setupGithubSettingsPage$ } from "./zero-page/github-settings-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
@@ -164,6 +165,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsTelegram,
     setup: setupAuthPageWrapper(setupTelegramSettingsPage$),
+  },
+  {
+    path: ROUTES.githubConnect,
+    setup: setupAuthPageWrapper(setupGithubConnectPage$),
   },
   {
     path: ROUTES.telegramConnect,

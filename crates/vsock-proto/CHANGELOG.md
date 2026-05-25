@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.7](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.6...vsock-proto-v0.18.7) (2026-05-25)
+
+
+### Documentation
+
+* **vsock-proto:** document exec control status api ([#14861](https://github.com/vm0-ai/vm0/issues/14861)) ([23a6640](https://github.com/vm0-ai/vm0/commit/23a66404f8c7cf6fc7db18b93441984773282498))
+
 ## [0.18.6](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.5...vsock-proto-v0.18.6) (2026-05-25)
 
 

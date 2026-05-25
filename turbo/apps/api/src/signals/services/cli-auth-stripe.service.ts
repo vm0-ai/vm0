@@ -1801,3 +1801,39 @@ export const completeCliAuthStripe$ = command(
     });
   },
 );
+
+/**
+ * Drive Stripe CLI auth completion server-side until terminal. Each iteration
+ * runs the sandbox `stripe login --complete` command (15s timeout) — its
+ * natural blocking duration is the only cadence, no explicit sleep. Intended
+ * to be wrapped in `waitUntil` from the start route so the client only needs
+ * to subscribe to the Ably `connector:changed` event for completion.
+ */
+export const driveCliAuthStripeCompletion$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly sessionToken: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    while (!signal.aborted) {
+      const settled = await settle(
+        set(completeCliAuthStripe$, args, signal),
+        signal,
+      );
+      if (!settled.ok) {
+        L.warn("CLI auth Stripe completion driver failed", {
+          userId: args.userId,
+          error: settled.error,
+        });
+        return;
+      }
+      if (settled.value.status !== "pending") {
+        return;
+      }
+    }
+  },
+);
