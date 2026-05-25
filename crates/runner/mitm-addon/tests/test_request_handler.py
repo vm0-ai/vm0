@@ -322,6 +322,34 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == "https://api.github.com:8443/repos"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
+    async def test_accepts_matching_ipv6_host_authority(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(
+            tmp_path,
+            base="https://[2001:db8::1]:8443",
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="2001:db8::1",
+            port=8443,
+            sni="2001:db8::1",
+            path="/repos",
+            request_headers=headers(("Host", "[2001:db8::1]:8443")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is None
+        assert flow.metadata["firewall_base"] == "https://[2001:db8::1]:8443"
+        assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
+        assert flow.request.headers["Authorization"] == "Bearer x"
+
     @pytest.mark.parametrize(
         ("request_port", "host_header", "expected_original_url"),
         [
