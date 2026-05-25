@@ -153,7 +153,7 @@ pub struct SupervisedExecRequest<'a> {
     pub stdout: ExecOutputPolicy,
     /// Stderr output policy requested from the guest.
     pub stderr: ExecOutputPolicy,
-    /// Exit codes that should not be treated as notable in diagnostics.
+    /// Exit codes that should be marked expected in the guest-side exec request.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
@@ -454,11 +454,10 @@ enum ExecTerminalLogSeverity {
 }
 
 #[derive(Clone, Copy)]
-struct ExecTerminalLogContext<'a> {
+struct ExecTerminalLogContext {
     lifecycle: ExecTerminalLogLifecycle,
     slow: bool,
     termination: ExecTermination,
-    expected_exit_codes: &'a [i32],
     stdout_truncated: bool,
     stderr_truncated: bool,
     stream_overflowed: bool,
@@ -469,7 +468,6 @@ struct ExecTerminalLogContext<'a> {
 struct ExecOperationDiagnostic {
     seq: u32,
     label_log: String,
-    expected_exit_codes: Vec<i32>,
     registered_at: Instant,
     first_output_at: Option<Instant>,
 }
@@ -571,11 +569,10 @@ impl Drop for ExecOperationFrameWriteGuard {
 }
 
 impl ExecOperationDiagnostic {
-    fn new(seq: u32, label: &str, expected_exit_codes: &[i32]) -> Self {
+    fn new(seq: u32, label: &str) -> Self {
         Self {
             seq,
             label_log: exec_operation_label_log(label),
-            expected_exit_codes: expected_exit_codes.to_vec(),
             registered_at: Instant::now(),
             first_output_at: None,
         }
@@ -634,7 +631,6 @@ impl ExecOperationDiagnostic {
             lifecycle,
             slow,
             termination: result.termination,
-            expected_exit_codes: &self.expected_exit_codes,
             stdout_truncated,
             stderr_truncated,
             stream_overflowed,
@@ -1335,12 +1331,14 @@ fn duration_to_request_timeout_ms(timeout: Duration) -> u32 {
         .max(1)
 }
 
-fn exec_termination_is_notable(termination: ExecTermination, expected_exit_codes: &[i32]) -> bool {
-    !matches!(
-        termination,
-        ExecTermination::Exited { exit_code }
-            if exit_code == 0 || expected_exit_codes.contains(&exit_code)
-    )
+fn exec_termination_requires_low_level_warning(termination: ExecTermination) -> bool {
+    match termination {
+        ExecTermination::Exited { .. } => false,
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => true,
+    }
 }
 
 fn exec_terminal_log_lifecycle(lifecycle: &ExecOperationLifecycle) -> ExecTerminalLogLifecycle {
@@ -1351,10 +1349,8 @@ fn exec_terminal_log_lifecycle(lifecycle: &ExecOperationLifecycle) -> ExecTermin
     }
 }
 
-fn exec_terminal_log_severity(
-    context: ExecTerminalLogContext<'_>,
-) -> Option<ExecTerminalLogSeverity> {
-    let notable = exec_termination_is_notable(context.termination, context.expected_exit_codes)
+fn exec_terminal_log_severity(context: ExecTerminalLogContext) -> Option<ExecTerminalLogSeverity> {
+    let notable = exec_termination_requires_low_level_warning(context.termination)
         || context.stdout_truncated
         || context.stderr_truncated
         || context.stream_overflowed
@@ -2260,7 +2256,7 @@ async fn start_exec_operation_on_shared_with_tracking(
     };
     let (result_tx, result_rx) = oneshot::channel();
     let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
+    let diagnostic = ExecOperationDiagnostic::new(seq, request.label);
     let normal_operation = match tracking {
         ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
             shared.reserve_normal_operation()?,
@@ -2401,7 +2397,7 @@ where
     let (result_tx, result_rx) = oneshot::channel();
     let (start_tx, start_rx) = oneshot::channel();
     let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
+    let diagnostic = ExecOperationDiagnostic::new(seq, request.label);
     let operation = ExecOperation {
         normal_operation: Some(ExecOperationNormalTracking::Owned(
             shared.reserve_normal_operation()?,
@@ -2898,7 +2894,7 @@ mod tests {
                 normal_operations.reserve().unwrap(),
             )),
             lifecycle: ExecOperationLifecycle::OneShot,
-            diagnostic: ExecOperationDiagnostic::new(seq, label, &[]),
+            diagnostic: ExecOperationDiagnostic::new(seq, label),
             result_tx,
             stream_tx: None,
             stdout_capture: ExecCaptureState::Discard,
@@ -2926,51 +2922,28 @@ mod tests {
         slow: bool,
         result: &vsock_proto::DecodedExecResult<'_>,
     ) -> Vec<Level> {
-        capture_terminal_log_levels_with_context(lifecycle, slow, &[], result, false)
-    }
-
-    fn capture_terminal_log_levels_with_expected_exit_codes(
-        lifecycle: ExecTerminalLogLifecycle,
-        slow: bool,
-        expected_exit_codes: &[i32],
-        result: &vsock_proto::DecodedExecResult<'_>,
-    ) -> Vec<Level> {
-        capture_terminal_log_levels_with_context(
-            lifecycle,
-            slow,
-            expected_exit_codes,
-            result,
-            false,
-        )
+        capture_terminal_log_levels_with_context(lifecycle, slow, result, false)
     }
 
     fn capture_terminal_log_levels_with_context(
         lifecycle: ExecTerminalLogLifecycle,
         slow: bool,
-        expected_exit_codes: &[i32],
         result: &vsock_proto::DecodedExecResult<'_>,
         stream_overflowed: bool,
     ) -> Vec<Level> {
-        capture_terminal_log_events_with_context(
-            lifecycle,
-            slow,
-            expected_exit_codes,
-            result,
-            stream_overflowed,
-        )
-        .into_iter()
-        .map(|event| event.level)
-        .collect()
+        capture_terminal_log_events_with_context(lifecycle, slow, result, stream_overflowed)
+            .into_iter()
+            .map(|event| event.level)
+            .collect()
     }
 
     fn capture_terminal_log_events_with_context(
         lifecycle: ExecTerminalLogLifecycle,
         slow: bool,
-        expected_exit_codes: &[i32],
         result: &vsock_proto::DecodedExecResult<'_>,
         stream_overflowed: bool,
     ) -> Vec<CapturedEvent> {
-        let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log", expected_exit_codes);
+        let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log");
         if slow {
             diagnostic.registered_at =
                 Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
@@ -3003,22 +2976,24 @@ mod tests {
     }
 
     #[test]
-    fn exec_termination_notable_tracks_nonzero_exit() {
-        assert!(!exec_termination_is_notable(
-            ExecTermination::Exited { exit_code: 0 },
-            &[]
+    fn exec_termination_warning_tracks_low_level_terminal_states() {
+        assert!(!exec_termination_requires_low_level_warning(
+            ExecTermination::Exited { exit_code: 0 }
         ));
-        assert!(exec_termination_is_notable(
-            ExecTermination::Exited { exit_code: 1 },
-            &[]
+        assert!(!exec_termination_requires_low_level_warning(
+            ExecTermination::Exited { exit_code: 1 }
         ));
-        assert!(!exec_termination_is_notable(
-            ExecTermination::Exited { exit_code: 66 },
-            &[66]
+        assert!(exec_termination_requires_low_level_warning(
+            ExecTermination::TimedOut
         ));
-        assert!(exec_termination_is_notable(
-            ExecTermination::TimedOut,
-            &[124]
+        assert!(exec_termination_requires_low_level_warning(
+            ExecTermination::Cancelled
+        ));
+        assert!(exec_termination_requires_low_level_warning(
+            ExecTermination::StartFailed
+        ));
+        assert!(exec_termination_requires_low_level_warning(
+            ExecTermination::WaitFailed
         ));
     }
 
@@ -3038,13 +3013,13 @@ mod tests {
                 .is_empty()
         );
 
-        let notable = vsock_proto::DecodedExecResult {
+        let nonzero_exit = vsock_proto::DecodedExecResult {
             termination: ExecTermination::Exited { exit_code: 1 },
             ..clean
         };
         assert_eq!(
-            capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &notable),
-            vec![Level::WARN]
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &nonzero_exit),
+            vec![Level::INFO]
         );
     }
 
@@ -3054,7 +3029,6 @@ mod tests {
         let info_events = capture_terminal_log_events_with_context(
             ExecTerminalLogLifecycle::Supervised,
             true,
-            &[],
             &clean,
             false,
         );
@@ -3092,7 +3066,6 @@ mod tests {
         let warn_events = capture_terminal_log_events_with_context(
             ExecTerminalLogLifecycle::Supervised,
             false,
-            &[],
             &warn_result,
             true,
         );
@@ -3143,7 +3116,6 @@ mod tests {
                 capture_terminal_log_levels_with_context(
                     ExecTerminalLogLifecycle::Supervised,
                     false,
-                    &[],
                     &result,
                     stream_overflowed,
                 ),
@@ -3185,40 +3157,29 @@ mod tests {
     }
 
     #[test]
-    fn exec_operation_diagnostic_respects_expected_exit_codes_for_terminal_logs() {
-        let expected_nonzero = vsock_proto::DecodedExecResult {
+    fn exec_operation_diagnostic_treats_nonzero_exits_as_ordinary_terminal_results() {
+        let nonzero_exit = vsock_proto::DecodedExecResult {
             termination: ExecTermination::Exited { exit_code: 66 },
             ..clean_terminal_result()
         };
         assert_eq!(
-            capture_terminal_log_levels_with_expected_exit_codes(
-                ExecTerminalLogLifecycle::Supervised,
-                true,
-                &[66],
-                &expected_nonzero
-            ),
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::Supervised, true, &nonzero_exit),
             vec![Level::INFO]
         );
         assert!(
-            capture_terminal_log_levels_with_expected_exit_codes(
-                ExecTerminalLogLifecycle::OneShot,
-                false,
-                &[66],
-                &expected_nonzero
-            )
-            .is_empty()
+            capture_terminal_log_levels(ExecTerminalLogLifecycle::OneShot, false, &nonzero_exit)
+                .is_empty()
         );
 
-        let expected_nonzero_with_diagnostic = vsock_proto::DecodedExecResult {
-            diagnostic: "expected nonzero with diagnostic",
-            ..expected_nonzero
+        let nonzero_exit_with_diagnostic = vsock_proto::DecodedExecResult {
+            diagnostic: "nonzero with diagnostic",
+            ..nonzero_exit
         };
         assert_eq!(
-            capture_terminal_log_levels_with_expected_exit_codes(
+            capture_terminal_log_levels(
                 ExecTerminalLogLifecycle::Supervised,
                 true,
-                &[66],
-                &expected_nonzero_with_diagnostic
+                &nonzero_exit_with_diagnostic
             ),
             vec![Level::WARN]
         );
@@ -3243,7 +3204,7 @@ mod tests {
             normal_operations: crate::operation_tracker::NormalOperationTracker::new(),
             close_notify: tokio::sync::Notify::new(),
         });
-        let mut diagnostic = ExecOperationDiagnostic::new(7, label, &[]);
+        let mut diagnostic = ExecOperationDiagnostic::new(7, label);
         diagnostic.registered_at =
             Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
         {
@@ -3373,12 +3334,11 @@ mod tests {
         lifecycle: ExecTerminalLogLifecycle,
         slow: bool,
         termination: ExecTermination,
-    ) -> ExecTerminalLogContext<'static> {
+    ) -> ExecTerminalLogContext {
         ExecTerminalLogContext {
             lifecycle,
             slow,
             termination,
-            expected_exit_codes: &[],
             stdout_truncated: false,
             stderr_truncated: false,
             stream_overflowed: false,
@@ -3431,42 +3391,39 @@ mod tests {
     }
 
     #[test]
-    fn exec_terminal_log_severity_respects_expected_nonzero_exit_codes() {
-        let fast_expected = ExecTerminalLogContext {
-            expected_exit_codes: &[66],
-            ..clean_terminal_log_context(
-                ExecTerminalLogLifecycle::Supervised,
-                false,
-                ExecTermination::Exited { exit_code: 66 },
-            )
-        };
-        let slow_expected = ExecTerminalLogContext {
+    fn exec_terminal_log_severity_treats_nonzero_exits_as_ordinary_results() {
+        let fast_nonzero = clean_terminal_log_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            ExecTermination::Exited { exit_code: 66 },
+        );
+        let slow_nonzero = ExecTerminalLogContext {
             slow: true,
-            ..fast_expected
+            ..fast_nonzero
         };
-        let fast_one_shot_expected = ExecTerminalLogContext {
+        let fast_one_shot_nonzero = ExecTerminalLogContext {
             lifecycle: ExecTerminalLogLifecycle::OneShot,
-            ..fast_expected
+            ..fast_nonzero
         };
-        let slow_one_shot_expected = ExecTerminalLogContext {
+        let slow_one_shot_nonzero = ExecTerminalLogContext {
             lifecycle: ExecTerminalLogLifecycle::OneShot,
-            ..slow_expected
+            ..slow_nonzero
         };
 
-        assert_eq!(exec_terminal_log_severity(fast_expected), None);
-        assert_eq!(exec_terminal_log_severity(fast_one_shot_expected), None);
+        assert_eq!(exec_terminal_log_severity(fast_nonzero), None);
+        assert_eq!(exec_terminal_log_severity(fast_one_shot_nonzero), None);
         assert_eq!(
-            exec_terminal_log_severity(slow_expected),
+            exec_terminal_log_severity(slow_nonzero),
             Some(ExecTerminalLogSeverity::Info)
         );
         assert_eq!(
-            exec_terminal_log_severity(slow_one_shot_expected),
+            exec_terminal_log_severity(slow_one_shot_nonzero),
             Some(ExecTerminalLogSeverity::Warn)
         );
     }
 
     #[test]
-    fn exec_terminal_log_severity_warns_for_unexpected_nonzero_exit_code() {
+    fn exec_terminal_log_severity_suppresses_fast_nonzero_exits() {
         for lifecycle in [
             ExecTerminalLogLifecycle::OneShot,
             ExecTerminalLogLifecycle::Supervised,
@@ -3477,10 +3434,7 @@ mod tests {
                 ExecTermination::Exited { exit_code: 1 },
             );
 
-            assert_eq!(
-                exec_terminal_log_severity(context),
-                Some(ExecTerminalLogSeverity::Warn)
-            );
+            assert_eq!(exec_terminal_log_severity(context), None);
         }
     }
 
@@ -3492,10 +3446,6 @@ mod tests {
             ExecTermination::Exited { exit_code: 0 },
         );
         for context in [
-            ExecTerminalLogContext {
-                termination: ExecTermination::Exited { exit_code: 1 },
-                ..clean_slow
-            },
             ExecTerminalLogContext {
                 stdout_truncated: true,
                 ..clean_slow
@@ -3628,7 +3578,7 @@ mod tests {
             "{}secret-tail",
             "a".repeat(EXEC_OPERATION_LABEL_LOG_PREFIX_MAX_BYTES)
         );
-        let mut diagnostic = ExecOperationDiagnostic::new(7, &label, &[]);
+        let mut diagnostic = ExecOperationDiagnostic::new(7, &label);
         diagnostic.registered_at =
             Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
 
@@ -3653,7 +3603,6 @@ mod tests {
         let mut diagnostic = ExecOperationDiagnostic {
             seq: 9,
             label_log: "slow-first-output".to_string(),
-            expected_exit_codes: Vec::new(),
             registered_at: Instant::now()
                 - EXEC_OPERATION_STAGE_SLOW_THRESHOLD
                 - Duration::from_millis(1),
