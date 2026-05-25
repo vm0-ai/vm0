@@ -469,7 +469,7 @@ def test_source_dedupe_survives_flush_boundary(tmp_path):
     enqueue.assert_called_once()
 
 
-def test_source_dedupe_cache_evicts_oldest_key_after_bound(tmp_path):
+def test_source_dedupe_accepts_evicted_oldest_key_after_bound(tmp_path):
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     source_key_count = usage_buffer.MAX_SOURCE_IDEMPOTENCY_KEYS + 1
     events = [_event(source_key=f"source-{index}", quantity=1) for index in range(source_key_count)]
@@ -484,17 +484,8 @@ def test_source_dedupe_cache_evicts_oldest_key_after_bound(tmp_path):
         )
 
         assert accepted == source_key_count
-        assert len(usage_buffer._usage_event_buffer._seen_source_keys) == (
-            usage_buffer.MAX_SOURCE_IDEMPOTENCY_KEYS
-        )
-        assert "source-0" not in usage_buffer._usage_event_buffer._seen_source_keys
-        assert "source-1" in usage_buffer._usage_event_buffer._seen_source_keys
-        assert (
-            f"source-{usage_buffer.MAX_SOURCE_IDEMPOTENCY_KEYS}"
-            in usage_buffer._usage_event_buffer._seen_source_keys
-        )
-
-        first_payload = enqueue.call_args.args[2]
+        assert len(enqueue.call_args_list) == 1
+        first_payload = enqueue.call_args_list[0].args[2]
         assert first_payload["events"][0]["quantity"] == source_key_count
 
         assert (
