@@ -17,5 +17,6 @@ fn main() {
     std::process::exit(guest_reseed::run_cli(
         std::io::stdin().lock(),
         std::io::stderr().lock(),
+        std::env::args_os().skip(1),
     ));
 }

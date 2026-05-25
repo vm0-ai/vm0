@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::os::unix::io::AsRawFd;
@@ -9,9 +10,9 @@ use std::os::unix::io::AsRawFd;
 ///
 /// See `include/uapi/linux/random.h` in the kernel source.
 const RNDRESEEDCRNG: libc::Ioctl = 0x5207;
-pub const MAX_ENTROPY_BYTES: usize = 64 * 1024;
+const MAX_ENTROPY_BYTES: usize = 64 * 1024;
 
-pub fn read_entropy(mut input: impl Read) -> io::Result<Vec<u8>> {
+fn read_entropy(mut input: impl Read) -> io::Result<Vec<u8>> {
     let mut entropy = Vec::new();
     input
         .by_ref()
@@ -30,7 +31,7 @@ pub fn read_entropy(mut input: impl Read) -> io::Result<Vec<u8>> {
     Ok(entropy)
 }
 
-pub fn reseed(entropy: &[u8]) -> io::Result<()> {
+fn reseed(entropy: &[u8]) -> io::Result<()> {
     if entropy.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "empty entropy"));
     }
@@ -58,16 +59,27 @@ pub fn reseed(entropy: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-pub fn run_cli(input: impl Read, stderr: impl Write) -> i32 {
-    run_with_reseed(input, stderr, reseed)
+pub fn run_cli<I, A>(input: impl Read, stderr: impl Write, args: I) -> i32
+where
+    I: IntoIterator<Item = A>,
+    A: AsRef<OsStr>,
+{
+    run_with_reseed(input, stderr, args, reseed)
 }
 
-pub fn run_with_reseed<R, W, F>(input: R, mut stderr: W, reseed_fn: F) -> i32
+fn run_with_reseed<R, W, I, A, F>(input: R, mut stderr: W, args: I, reseed_fn: F) -> i32
 where
     R: Read,
     W: Write,
+    I: IntoIterator<Item = A>,
+    A: AsRef<OsStr>,
     F: FnOnce(&[u8]) -> io::Result<()>,
 {
+    if args.into_iter().next().is_some() {
+        let _ = writeln!(stderr, "usage: guest-reseed < entropy-bytes");
+        return 1;
+    }
+
     let entropy = match read_entropy(input) {
         Ok(entropy) => entropy,
         Err(e) => {
@@ -115,10 +127,15 @@ mod tests {
     fn run_with_reseed_passes_raw_entropy_to_reseed() {
         let mut stderr = Vec::new();
         let mut seen = Vec::new();
-        let code = run_with_reseed(&b"\0secret"[..], &mut stderr, |entropy| {
-            seen.extend_from_slice(entropy);
-            Ok(())
-        });
+        let code = run_with_reseed(
+            &b"\0secret"[..],
+            &mut stderr,
+            std::iter::empty::<&str>(),
+            |entropy| {
+                seen.extend_from_slice(entropy);
+                Ok(())
+            },
+        );
 
         assert_eq!(code, 0);
         assert_eq!(seen, b"\0secret");
@@ -129,7 +146,7 @@ mod tests {
     fn run_with_reseed_rejects_empty_entropy_without_calling_reseed() {
         let called = Cell::new(false);
         let mut stderr = Vec::new();
-        let code = run_with_reseed(&b""[..], &mut stderr, |_| {
+        let code = run_with_reseed(&b""[..], &mut stderr, std::iter::empty::<&str>(), |_| {
             called.set(true);
             Ok(())
         });
@@ -145,14 +162,34 @@ mod tests {
     #[test]
     fn run_with_reseed_reports_reseed_failure() {
         let mut stderr = Vec::new();
-        let code = run_with_reseed(&b"entropy"[..], &mut stderr, |_| {
-            Err(io::Error::other("ioctl denied"))
-        });
+        let code = run_with_reseed(
+            &b"entropy"[..],
+            &mut stderr,
+            std::iter::empty::<&str>(),
+            |_| Err(io::Error::other("ioctl denied")),
+        );
 
         assert_eq!(code, 1);
         assert_eq!(
             String::from_utf8(stderr).unwrap(),
             "guest-reseed: ioctl denied\n"
+        );
+    }
+
+    #[test]
+    fn run_with_reseed_rejects_argv_entropy_without_calling_reseed() {
+        let called = Cell::new(false);
+        let mut stderr = Vec::new();
+        let code = run_with_reseed(&b"entropy"[..], &mut stderr, ["old-hex-argv"], |_| {
+            called.set(true);
+            Ok(())
+        });
+
+        assert_eq!(code, 1);
+        assert!(!called.get());
+        assert_eq!(
+            String::from_utf8(stderr).unwrap(),
+            "usage: guest-reseed < entropy-bytes\n"
         );
     }
 }
