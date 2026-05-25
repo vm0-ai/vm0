@@ -966,16 +966,14 @@ where
 
 fn stdin_cancel_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     let mut fds = [0; 2];
-    // SAFETY: `pipe` initializes two file descriptors in `fds` on success.
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+    // SAFETY: `pipe2` initializes two file descriptors in `fds` on success.
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_NONBLOCK | libc::O_CLOEXEC) } != 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: both descriptors were freshly returned by `pipe`.
     let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
     // SAFETY: both descriptors were freshly returned by `pipe`.
     let write_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
-    set_nonblocking(read_fd.as_raw_fd())?;
-    set_nonblocking(write_fd.as_raw_fd())?;
     Ok((read_fd, write_fd))
 }
 
@@ -1595,6 +1593,23 @@ mod tests {
         }
         join_stdin_writer(writer, 0, "");
         drop(read_fd);
+    }
+
+    #[test]
+    fn stdin_cancel_pipe_is_nonblocking_and_close_on_exec() {
+        let (read_fd, write_fd) = stdin_cancel_pipe().unwrap();
+
+        for fd in [read_fd.as_raw_fd(), write_fd.as_raw_fd()] {
+            // SAFETY: fd is open for the duration of this assertion.
+            let status_flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            assert!(status_flags >= 0);
+            assert_ne!(status_flags & libc::O_NONBLOCK, 0);
+
+            // SAFETY: fd is open for the duration of this assertion.
+            let descriptor_flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+            assert!(descriptor_flags >= 0);
+            assert_ne!(descriptor_flags & libc::FD_CLOEXEC, 0);
+        }
     }
 
     #[test]
