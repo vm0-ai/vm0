@@ -666,14 +666,32 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert "super-secret-token" not in json.dumps(log_kwargs)
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
-        """Empty string base from server is treated as absent — no URL rewrite."""
-        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        """Empty string base from server uses standard auth injection."""
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            auth_overrides={
+                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
+            token_overrides={
+                "headers": {"Authorization": "Bearer real-token"},
+                "query": {"api_key": "resolved-key"},
+                "resolved_secrets": ["TOKEN", "API_KEY"],
+            },
+        )
         token_meta["base"] = ""
-        original_url = flow.request.url
+        original_url = urlparse(flow.request.url)
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
-        assert flow.request.url == original_url
+        updated_url = urlparse(flow.request.url)
+        assert updated_url.scheme == original_url.scheme
+        assert updated_url.netloc == original_url.netloc
+        assert updated_url.path == original_url.path
         assert "auth_url_rewrite" not in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer real-token"
+        assert flow.request.query["api_key"] == "resolved-key"
+        assert flow.metadata["auth_resolved_secrets"] == ["TOKEN", "API_KEY"]
