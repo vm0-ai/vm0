@@ -661,6 +661,34 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_not_called()
         assert _model_sse_parse_warnings(flow) == []
 
+    def test_full_pipeline_openai_non_terminal_incomplete_sse_does_not_warn(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            cli_agent_type="codex",
+        )
+        _response_stream(flow)(
+            b"event: response.in_progress\n"
+            b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert _model_sse_parse_warnings(flow) == []
+
     def test_full_pipeline_model_sse_zero_event_preserves_billed_usage_and_id(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
