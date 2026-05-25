@@ -254,6 +254,7 @@ describe("GET /api/connectors/:type/authorize", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("force_login")).toBe("true");
     expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
   });
 });

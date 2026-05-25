@@ -521,6 +521,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(url.searchParams.get("client_id")).toBe("x-test-client-id");
     expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("force_login")).toBe("true");
   });
 
   it("deletes existing local connector state before reauthorization", async () => {

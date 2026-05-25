@@ -80,6 +80,7 @@ export async function buildXAuthorizationUrl(
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
+    force_login: "true",
   });
 
   return `${X_AUTHORIZATION_URL}?${params.toString()}`;
