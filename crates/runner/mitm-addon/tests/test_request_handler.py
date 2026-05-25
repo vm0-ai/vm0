@@ -368,10 +368,17 @@ class TestRequestHandler:
         assert flow.request.headers["Authorization"] == "Bearer x"
 
     @pytest.mark.parametrize(
-        ("host_header", "expected_error"),
+        ("request_port", "host_header", "expected_error", "expected_original_url"),
         [
-            ("", "missing_authority"),
-            ("api.github.com:bad", "invalid_authority"),
+            (443, "", "missing_authority", "https://api.github.com/repos"),
+            (8443, "", "missing_authority", "https://api.github.com:8443/repos"),
+            (443, "api.github.com:bad", "invalid_authority", "https://api.github.com/repos"),
+            (
+                8443,
+                "api.github.com:bad",
+                "invalid_authority",
+                "https://api.github.com:8443/repos",
+            ),
         ],
     )
     async def test_rejects_invalid_host_authority_before_firewall_auth(
@@ -381,14 +388,17 @@ class TestRequestHandler:
         mitm_ctx,
         fake_firewall_headers,
         headers,
+        request_port,
         host_header,
         expected_error,
+        expected_original_url,
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
             host="203.0.113.10",
+            port=request_port,
             sni="api.github.com",
             path="/repos",
             request_headers=headers(("Host", host_header)),
@@ -406,7 +416,7 @@ class TestRequestHandler:
         assert body["error"] == expected_error
         assert flow.metadata["firewall_action"] == "DENY"
         assert flow.metadata["firewall_error"] == expected_error
-        assert flow.metadata["original_url"] == "https://api.github.com/repos"
+        assert flow.metadata["original_url"] == expected_original_url
         auth_fetch.assert_not_called()
 
     @pytest.mark.parametrize(
