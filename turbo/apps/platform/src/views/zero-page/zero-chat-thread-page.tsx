@@ -58,6 +58,7 @@ import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-provider
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { isOAuthAuthCodeConnectorType } from "@vm0/connectors/connector-utils";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
@@ -95,8 +96,16 @@ import {
   parseBodyRenderBlocks,
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import {
+  activeChatConnectorAction$,
+  closeChatConnectorActionConnectDialog$,
+  completeChatConnectorActionConnect$,
+  type ConnectorActionBlock,
+} from "../../signals/chat-page/connector-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
   openDocumentLightbox$ as openAttachmentDocumentLightbox$,
@@ -1666,6 +1675,7 @@ export function ZeroChatThreadPage() {
         description="Available shortcuts on this page"
         sections={CHAT_SHORTCUT_SECTIONS}
       />
+      <ChatConnectorActionConnectModal />
     </>
   );
 }
@@ -2441,6 +2451,10 @@ function BodyContentBlocks({
           );
         }
 
+        if (block.type === "connector-action") {
+          return <ConnectorActionCard key={block.id} block={block} />;
+        }
+
         if (block.preview.kind === "image") {
           return (
             <ChatImagePreviewButton
@@ -2491,6 +2505,66 @@ function BodyContentBlocks({
         );
       })}
     </div>
+  );
+}
+
+function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
+  const pageSignal = useGet(pageSignal$);
+  const complete = useLastResolved(block.complete$) ?? false;
+  const [activateLoadable, activate] = useLoadableSet(block.activate$);
+  const activating = activateLoadable.state === "loading";
+  const config = CONNECTOR_TYPES[block.connectorType];
+
+  return (
+    <div
+      data-testid="connector-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <ConnectorIcon type={block.connectorType} size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {config.label}
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {config.helpText}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled={complete || activating}
+        onClick={() => {
+          detach(activate(pageSignal), Reason.DomCallback);
+        }}
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+      >
+        {activating && <IconLoader2 size={15} className="animate-spin" />}
+        {complete ? "Connected" : "Connect"}
+      </button>
+    </div>
+  );
+}
+
+function ChatConnectorActionConnectModal() {
+  const active = useGet(activeChatConnectorAction$);
+  const close = useSet(closeChatConnectorActionConnectDialog$);
+  const [, complete] = useLoadableSet(completeChatConnectorActionConnect$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!active) {
+    return null;
+  }
+
+  return (
+    <ConnectModal
+      onClose={close}
+      onSuccess={() => {
+        return complete(pageSignal);
+      }}
+    />
   );
 }
 
