@@ -104,6 +104,26 @@ export type GithubIntegrationActionResponse = z.infer<
   typeof githubIntegrationActionResponseSchema
 >;
 
+export const githubConnectSignatureSchema = z.object({
+  installationId: z.string().min(1),
+  githubUserId: z.string().min(1),
+  githubUsername: z.string().max(255).optional(),
+  timestamp: z.number(),
+  signature: z.string().min(1),
+});
+
+export type GithubConnectSignature = z.infer<
+  typeof githubConnectSignatureSchema
+>;
+
+export const githubConnectUserBodySchema = z
+  .object({
+    connectSignature: githubConnectSignatureSchema.optional(),
+  })
+  .optional();
+
+export type GithubConnectUserBody = z.infer<typeof githubConnectUserBodySchema>;
+
 export const createGithubLabelListenerBodySchema = z.object({
   labelName: z.string().min(1).max(255),
   triggerMode: githubLabelTriggerModeSchema,
@@ -164,9 +184,10 @@ export const integrationsGithubContract = c.router({
     method: "POST",
     path: "/api/integrations/github/link",
     headers: authHeadersSchema,
-    body: c.noBody(),
+    body: githubConnectUserBodySchema,
     responses: {
       200: githubIntegrationActionResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,

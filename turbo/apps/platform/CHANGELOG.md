@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.384.0](https://github.com/vm0-ai/vm0/compare/app-v0.383.1...app-v0.384.0) (2026-05-25)
+
+
+### Features
+
+* add GitHub bot mention connects ([#14560](https://github.com/vm0-ai/vm0/issues/14560)) ([4b5af7c](https://github.com/vm0-ai/vm0/commit/4b5af7c6216c7926626217f1cfb614f6ee99e034))
+
+
+### Bug Fixes
+
+* force new session for queued model switches ([#14864](https://github.com/vm0-ai/vm0/issues/14864)) ([e8d264d](https://github.com/vm0-ai/vm0/commit/e8d264d902b5fb396c9fc471238825aa7eaa3c45))
+* protect auth polling loops ([#14860](https://github.com/vm0-ai/vm0/issues/14860)) ([2483b24](https://github.com/vm0-ai/vm0/commit/2483b245ada097e2eeb06afbc4dfd06420dfeb79))
+* render connector connect links as action cards ([#14866](https://github.com/vm0-ai/vm0/issues/14866)) ([8ab362b](https://github.com/vm0-ai/vm0/commit/8ab362b9f018ce74d270b583808c01c35abe3a03))
+
+
+### Refactoring
+
+* split connector auth lifecycle config ([#14808](https://github.com/vm0-ai/vm0/issues/14808)) ([dd05010](https://github.com/vm0-ai/vm0/commit/dd050100fc134a4c44c1cf2afd0a539402abddf0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.0
+    * @vm0/connectors bumped to 1.33.1
+    * @vm0/core bumped to 8.293.2
+
 ## [0.383.1](https://github.com/vm0-ai/vm0/compare/app-v0.383.0...app-v0.383.1) (2026-05-25)
 
 

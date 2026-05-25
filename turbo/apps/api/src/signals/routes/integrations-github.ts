@@ -28,6 +28,7 @@ const githubWriteAuth = {
 const updateInstallationBody$ = bodyResultOf(
   integrationsGithubContract.updateInstallation,
 );
+const connectUserBody$ = bodyResultOf(integrationsGithubContract.connectUser);
 const createLabelListenerBody$ = bodyResultOf(
   integrationsGithubContract.createLabelListener,
 );
@@ -65,6 +66,22 @@ const updateGithubInstallationInner$ = command(
       { agentName: body.data.agentName },
       signal,
     );
+    signal.throwIfAborted();
+
+    return result;
+  },
+);
+
+const connectGithubUserInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(connectUserBody$);
+    signal.throwIfAborted();
+
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const result = await set(connectGithubUser$, body.data, signal);
     signal.throwIfAborted();
 
     return result;
@@ -129,7 +146,7 @@ export const integrationsGithubRoutes: readonly RouteEntry[] = [
   },
   {
     route: integrationsGithubContract.connectUser,
-    handler: authRoute({ requireOrganization: true }, connectGithubUser$),
+    handler: authRoute({ requireOrganization: true }, connectGithubUserInner$),
   },
   {
     route: integrationsGithubContract.disconnectUser,

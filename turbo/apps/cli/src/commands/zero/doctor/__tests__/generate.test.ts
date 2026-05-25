@@ -282,6 +282,37 @@ describe("zero doctor generate command", () => {
     expect(text).not.toContain("Official provider:");
   });
 
+  it.each([
+    ["report", "Report", "Built-in report generation"],
+    ["docs-design", "Docs design", "Built-in docs design generation"],
+    ["poster", "Poster", "Built-in poster generation"],
+    [
+      "dashboard-design",
+      "Dashboard design",
+      "Built-in dashboard design generation",
+    ],
+    [
+      "mobile-app-design",
+      "Mobile app design",
+      "Built-in mobile app design generation",
+    ],
+  ])("suggests the built-in %s command", async (type, label, commandLabel) => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], []),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", type]);
+
+    const text = output();
+    expect(text).toContain(`${label} generation choices for current agent`);
+    expect(text).not.toContain(`No ready ${type} generation connectors found.`);
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain(commandLabel);
+    expect(text).toContain("Models: gpt-5.5");
+    expect(text).toContain(`Use: zero built-in generate ${type} -h`);
+  });
+
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes(

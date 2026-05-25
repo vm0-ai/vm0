@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectors } from "@vm0/db/schema/connector";
-import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import { decryptTestSecretValue } from "../secret-encryption-fixtures";
 
 // ---------------------------------------------------------------------------
 // Read-only assertion helpers for connector test verification.
@@ -37,7 +37,7 @@ export async function findTestConnectorSecret(
 
   if (!storedSecret) return undefined;
 
-  return decryptSecretValue(
+  return decryptTestSecretValue(
     storedSecret.encryptedValue,
     globalThis.services.env.SECRETS_ENCRYPTION_KEY,
   );

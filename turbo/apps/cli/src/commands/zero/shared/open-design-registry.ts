@@ -1,12 +1,12 @@
 export type OpenDesignTarget =
   | "presentation"
   | "website"
-  | "dashboard"
-  | "mobile-app"
+  | "dashboard-design"
+  | "mobile-app-design"
   | "poster"
   | "intro-video"
   | "report"
-  | "docs";
+  | "docs-design";
 
 type OpenDesignResourceKind = "skill" | "template" | "design-system";
 type OpenDesignResourceStatus = "curated" | "experimental" | "hidden";
@@ -67,7 +67,13 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Turns source-backed data, rankings, metrics, or lists into a concise analytical report.",
     source: source("skills/data-report/SKILL.md"),
-    targets: ["presentation", "website", "dashboard", "report", "docs"],
+    targets: [
+      "presentation",
+      "website",
+      "dashboard-design",
+      "report",
+      "docs-design",
+    ],
     tags: ["analysis", "data", "report", "ranking", "sources", "table"],
     triggers: ["report", "top 10", "ranking", "metrics", "analysis"],
     bestFor: ["source-backed reports", "ranked lists", "data summaries"],
@@ -81,7 +87,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Shapes research or editorial material into a magazine-like narrative with strong hierarchy.",
     source: source("skills/article-magazine/SKILL.md"),
-    targets: ["presentation", "website", "poster", "report", "docs"],
+    targets: ["presentation", "website", "poster", "report", "docs-design"],
     tags: ["editorial", "magazine", "article", "narrative", "research"],
     triggers: ["magazine", "editorial", "story", "essay", "briefing"],
     bestFor: [
@@ -99,7 +105,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Converts a product, brand, or feature request into a structured design brief.",
     source: source("skills/design-brief/SKILL.md"),
-    targets: ["presentation", "website", "mobile-app", "docs"],
+    targets: ["presentation", "website", "mobile-app-design", "docs-design"],
     tags: ["design", "brief", "product", "brand", "requirements"],
     triggers: ["design brief", "brand", "product direction", "requirements"],
     bestFor: ["product design briefs", "brand-driven websites"],
@@ -113,7 +119,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Dense operational dashboard layout for KPIs, lists, filters, and repeated scanning.",
     source: source("design-templates/dashboard"),
-    targets: ["website", "dashboard", "report"],
+    targets: ["website", "dashboard-design", "report"],
     tags: ["dashboard", "analytics", "kpi", "metrics", "operations", "table"],
     triggers: ["dashboard", "analytics", "monitoring", "metrics", "ops"],
     bestFor: ["metric-heavy pages", "status surfaces", "operational summaries"],
@@ -143,13 +149,35 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Documentation-style page layout for structured explanations, navigation, and examples.",
     source: source("design-templates/docs-page"),
-    targets: ["website", "docs", "report"],
+    targets: ["website", "docs-design", "report"],
     tags: ["docs", "explanation", "guide", "structured", "reference"],
     triggers: ["docs", "documentation", "guide", "explain", "how to"],
     bestFor: ["technical explainers", "product docs", "implementation notes"],
     compatibleWith: ["od:skill:design-brief", "od:design-system:mono"],
     status: "curated",
     priority: 26,
+  },
+  {
+    id: "od:template:mobile-app",
+    kind: "template",
+    name: "Mobile App Design",
+    description:
+      "Single-screen mobile UI design rendered in a realistic iPhone device frame.",
+    source: source("design-templates/mobile-app"),
+    targets: ["mobile-app-design"],
+    tags: ["mobile", "app", "ios", "design", "prototype", "phone"],
+    triggers: [
+      "mobile app",
+      "ios app",
+      "android app",
+      "phone screen",
+      "app ui",
+      "app mockup",
+    ],
+    bestFor: ["mobile UI mockups", "single-screen app design reviews"],
+    compatibleWith: ["od:skill:design-brief", "od:design-system:apple"],
+    status: "curated",
+    priority: 38,
   },
   {
     id: "od:template:html-ppt-graphify-dark-graph",
@@ -198,7 +226,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Compact update deck/page structure for highlights, risks, next steps, and metrics.",
     source: source("design-templates/weekly-update"),
-    targets: ["presentation", "report", "docs"],
+    targets: ["presentation", "report", "docs-design"],
     tags: ["update", "status", "briefing", "report", "metrics"],
     triggers: ["weekly", "status", "update", "briefing"],
     bestFor: ["team updates", "status reports", "progress summaries"],
@@ -228,7 +256,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Quiet, dense interface system for dashboards, tables, filters, and repeat workflows.",
     source: source("design-systems/dashboard"),
-    targets: ["website", "dashboard", "report"],
+    targets: ["website", "dashboard-design", "report"],
     tags: ["dashboard", "neutral", "dense", "table", "operations", "charts"],
     triggers: ["dashboard", "analytics", "metrics", "ops", "report"],
     bestFor: ["operational UIs", "data reports", "admin surfaces"],
@@ -242,7 +270,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Dark dense market-terminal aesthetic for charts, feeds, tables, and high information density.",
     source: source("design-systems/trading-terminal"),
-    targets: ["presentation", "website", "dashboard", "report"],
+    targets: ["presentation", "website", "dashboard-design", "report"],
     tags: ["dark", "terminal", "finance", "data", "charts", "dense"],
     triggers: ["dark", "terminal", "trading", "chart", "graph"],
     bestFor: ["dark analytical reports", "graph-heavy dashboards"],
@@ -256,7 +284,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Warm editorial design system for readable narrative pages, zines, and reports.",
     source: source("design-systems/warm-editorial"),
-    targets: ["presentation", "website", "poster", "report", "docs"],
+    targets: ["presentation", "website", "poster", "report", "docs-design"],
     tags: ["warm", "editorial", "magazine", "narrative", "readable"],
     triggers: ["editorial", "magazine", "zine", "warm", "story"],
     bestFor: ["narrative reports", "editorial decks", "long-form pages"],
@@ -270,7 +298,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Clean editorial design system with strong typography, media framing, and section rhythm.",
     source: source("design-systems/editorial"),
-    targets: ["presentation", "website", "poster", "report", "docs"],
+    targets: ["presentation", "website", "poster", "report", "docs-design"],
     tags: ["editorial", "typography", "media", "brand", "article"],
     triggers: ["editorial", "article", "brand", "landing", "magazine"],
     bestFor: ["brand sites", "article-style reports", "visual narratives"],
@@ -284,14 +312,44 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Minimal monospace-oriented system for documentation, technical pages, and precise reports.",
     source: source("design-systems/mono"),
-    targets: ["website", "docs", "report"],
+    targets: ["website", "docs-design", "report"],
     tags: ["mono", "docs", "technical", "minimal", "structured"],
     triggers: ["docs", "technical", "reference", "minimal", "api"],
     bestFor: ["technical documentation", "implementation reports"],
     status: "curated",
     priority: 20,
   },
+  {
+    id: "od:design-system:apple",
+    kind: "design-system",
+    name: "Apple",
+    description:
+      "Apple-inspired interface system for polished mobile and product UI design.",
+    source: source("design-systems/apple"),
+    targets: ["mobile-app-design", "website"],
+    tags: ["apple", "mobile", "ios", "clean", "product"],
+    triggers: ["mobile", "ios", "iphone", "app design", "app ui"],
+    bestFor: ["phone-framed product mocks", "consumer mobile UI"],
+    status: "curated",
+    priority: 34,
+  },
 ];
+
+export function toOpenDesignTarget(value: string): OpenDesignTarget {
+  if (value === "dashboard") {
+    return "dashboard-design";
+  }
+
+  if (value === "docs") {
+    return "docs-design";
+  }
+
+  if (value === "mobile-app") {
+    return "mobile-app-design";
+  }
+
+  return value as OpenDesignTarget;
+}
 
 function normalizeText(value: string): string {
   return value.toLowerCase();

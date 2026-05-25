@@ -313,6 +313,8 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     Failures (truncated buffer, malformed JSON, unexpected shape) leave
     ``body_parsed=False`` and emit no count fields, so analysis can
     distinguish "field absent in response" from "we couldn't parse it".
+    Incremental parser failures may also include ``parse_error`` for proxy
+    audit logs.
     """
     state = flow.metadata.get("stream_buffer_state") or {}
     truncated = bool(state.get("truncated", False))
@@ -561,12 +563,18 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         and req_meta.get("request_ids_count") is None
         and req_meta.get("max_results") is None
     ):
+        log_extra: dict[str, object] = {
+            "body_truncated": bool(resp_meta.get("body_truncated")),
+        }
+        parse_error = resp_meta.get("parse_error")
+        if isinstance(parse_error, str) and (parse_error := parse_error.strip()):
+            log_extra["parse_error"] = parse_error
         log_proxy_entry(
             proxy_log_path,
             "error",
             "X response unparseable and request carries no count hints — skipping billing",
             **log_context,
-            body_truncated=bool(resp_meta.get("body_truncated")),
+            **log_extra,
         )
 
     # Forward usage events to the platform for persistence.

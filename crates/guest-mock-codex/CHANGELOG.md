@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.0...guest-mock-codex-v0.2.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* downgrade expected runner job failures ([#14845](https://github.com/vm0-ai/vm0/issues/14845)) ([01e7044](https://github.com/vm0-ai/vm0/commit/01e7044031f4d998bce986e724b3329aba72ecf2))
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.1.2...guest-mock-codex-v0.2.0) (2026-05-11)
 
 

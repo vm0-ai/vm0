@@ -2,7 +2,7 @@ import { initServices } from "../../lib/init-services";
 import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import { encryptTestSecretValue } from "../secret-encryption-fixtures";
 
 /**
  * Insert a user-level secret directly in the database.
@@ -28,7 +28,7 @@ export async function insertTestUserSecret(params: {
 }> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const encrypted = encryptSecretValue(
+  const encrypted = encryptTestSecretValue(
     params.value ?? "test-secret-value",
     SECRETS_ENCRYPTION_KEY,
   );

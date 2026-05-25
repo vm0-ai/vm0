@@ -4,35 +4,44 @@ import { Command } from "commander";
 import { downloadGithubFile } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
-function defaultOutPath(fileUrl: string): string {
-  try {
-    const parsed = new URL(fileUrl);
-    const pathName = basename(parsed.pathname);
-    return join(tmpdir(), `github-${pathName || "file"}`);
-  } catch {
-    return join(tmpdir(), "github-file");
+function filenameFromUrl(fileUrl: string): string {
+  if (URL.canParse(fileUrl)) {
+    const segment = new URL(fileUrl).pathname.split("/").filter(Boolean).pop();
+    if (!segment) {
+      return "file";
+    }
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
   }
+  return basename(fileUrl) || "file";
+}
+
+function defaultOutPath(fileUrl: string, filename?: string): string {
+  return join(tmpdir(), `github-${filename || filenameFromUrl(fileUrl)}`);
 }
 
 export const downloadFileCommand = new Command()
   .name("download-file")
-  .description("Download a GitHub attachment or raw file URL")
+  .description("Download a file from a GitHub context block")
   .argument("<url>", "URL from a [GitHub file] block")
   .option(
     "-o, --out <path>",
-    "Output path for the downloaded file (default: /tmp/github-<url-basename>)",
+    "Output path for the downloaded file (default: /tmp/github-<filename-or-url-basename>)",
   )
   .option("--filename <name>", "Filename hint from the [GitHub file] block")
   .addHelpText(
     "after",
     `
 Examples:
-  Download to default temp path: zero github download-file https://github.com/user-attachments/assets/abc123
+  Download to default temp path: zero github download-file https://github.com/user-attachments/assets/abc123 --filename screenshot.png
   Download to explicit path:     zero github download-file https://github.com/user-attachments/assets/abc123 -o /tmp/screenshot.png
 
 Output:
   Prints a JSON object to stdout on success:
-    {"path":"/tmp/github-abc123","mimetype":"image/png","size":12345}
+    {"path":"/tmp/github-screenshot.png","mimetype":"image/png","size":12345}
 
 How to read the downloaded file:
   - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
@@ -42,13 +51,14 @@ How to read the downloaded file:
   - PDF/text/csv/json/markdown: read the file directly
 
 Notes:
-  - Uses the GitHub App installation on the server side
-  - Streams the file bytes directly to disk`,
+  - The URL comes from a [GitHub file] block
+  - Streams the GitHub file bytes through VM0 directly to disk`,
   )
   .action(
     withErrorHandler(
       async (fileUrl: string, options: { out?: string; filename?: string }) => {
-        const outPath = options.out ?? defaultOutPath(fileUrl);
+        const outPath =
+          options.out ?? defaultOutPath(fileUrl, options.filename);
         const result = await downloadGithubFile(
           fileUrl,
           outPath,

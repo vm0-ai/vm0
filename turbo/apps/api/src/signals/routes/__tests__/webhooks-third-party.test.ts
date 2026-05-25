@@ -532,7 +532,7 @@ function expectGitHubIssueContextPrompt(
 }
 
 function remoteGitHubId(): string {
-  return String(randomInt(1_000_000, 999_999_999));
+  return String(randomInt(1_000_000_000_000, 9_000_000_000_000));
 }
 
 async function seedGitHubModelRoute(args: {
@@ -1179,13 +1179,12 @@ describe("POST /api/webhooks/github", () => {
       installationId: fixture.remoteInstallationId,
       comments: [],
     });
-
+    const fileUrl = "https://github.com/user-attachments/assets/abc123";
     const response = await postGitHubWebhook({
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, {
         action: "opened",
-        issueBody:
-          "Please inspect this attachment:\n\n![screenshot.png](https://github.com/user-attachments/assets/abc123)",
+        issueBody: `Please inspect this attachment:\n\n![screenshot.png](${fileUrl})`,
       }),
     });
     await clearAllDetached();
@@ -1194,12 +1193,16 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.appendSystemPrompt).toContain("[GitHub file]");
-    expect(runs[0]?.appendSystemPrompt).toContain(
-      "[URL] https://github.com/user-attachments/assets/abc123",
-    );
+    expect(runs[0]?.appendSystemPrompt).toContain(`[URL] ${fileUrl}`);
     expect(runs[0]?.appendSystemPrompt).toContain("[FILENAME] screenshot.png");
-    expect(runs[0]?.appendSystemPrompt).toContain(
-      "zero github download-file -h",
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    );
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      `![screenshot.png](${fileUrl})`,
+    );
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      "GitHub issue and pull request attachments are shown as [GitHub file] blocks.",
     );
   });
 
@@ -1571,11 +1574,29 @@ describe("POST /api/webhooks/github", () => {
     );
   });
 
-  it("acknowledges GitHub issue comments without triggering mention runs", async () => {
+  it("dispatches GitHub issue comments that mention the app bot", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
     mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [
+        {
+          id: 12,
+          user: { login: "maintainer", type: "User" },
+          body: "Earlier discussion",
+          created_at: "2026-05-20T00:00:00Z",
+        },
+        {
+          id: 77,
+          user: { login: "linked-user", type: "User" },
+          body: `@${GITHUB_APP_SLUG}[bot] please handle this`,
+          created_at: "2026-05-21T00:00:00Z",
+        },
+      ],
+    });
 
     const response = await postGitHubWebhook({
       event: "issue_comment",
@@ -1587,7 +1608,203 @@ describe("POST /api/webhooks/github", () => {
     expect(response.body).toBe("OK");
 
     const runs = await selectGitHubRuns(fixture);
-    expect(runs).toHaveLength(0);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toBe("please handle this");
+    expect(runs[0]?.triggerSource).toBe("github");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "Matched trigger: @vm0-agent[bot] mention",
+    );
+    expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      "@vm0-agent[bot] please handle this",
+    );
+
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
+    expect(callbacks[0]?.payload).toMatchObject({
+      installationId: fixture.installationDbId,
+      repo: "vm0-ai/vm0",
+      issueNumber: 42,
+      agentId: fixture.composeId,
+      triggerCommentId: "77",
+      triggerReactionId: "2468",
+      triggerCommentBody: `@${GITHUB_APP_SLUG}[bot] please handle this`,
+    });
+  });
+
+  it("dispatches GitHub issue comments that mention the Zero alias", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        commentId: 88,
+        commentBody: "@Zero please handle this",
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toBe("please handle this");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "Matched trigger: @vm0-agent[bot] mention",
+    );
+
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
+    expect(callbacks[0]?.payload).toMatchObject({
+      triggerCommentId: "88",
+      triggerCommentBody: "@Zero please handle this",
+    });
+  });
+
+  it("replaces GitHub issue comment file HTML with URL file blocks in the prompt", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+    const fileUrl =
+      "https://github.com/user-attachments/assets/4a354666-2014-433a-82c3-dc6941d6f0ec";
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        commentBody: `@${GITHUB_APP_SLUG}[bot] please inspect\n\n<img width="480" height="480" alt="Image" src="${fileUrl}">`,
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toContain("please inspect");
+    expect(runs[0]?.prompt).toContain("[GitHub file]");
+    expect(runs[0]?.prompt).toContain(`[URL] ${fileUrl}`);
+    expect(runs[0]?.prompt).not.toContain("[ID]");
+    expect(runs[0]?.prompt).not.toContain("[FILENAME]");
+    expect(runs[0]?.prompt).not.toContain(
+      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    );
+    expect(runs[0]?.prompt).not.toContain("<img");
+    expect(runs[0]?.prompt).not.toContain("src=");
+  });
+
+  it("continues the same GitHub issue session for bot mention comments", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .insert(agentSessions)
+      .values({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        agentComposeId: fixture.composeId,
+      })
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("agent session insert returned no row");
+    }
+    await db.insert(githubIssueSessions).values({
+      userId: fixture.userId,
+      installationId: fixture.installationDbId,
+      repo: "vm0-ai/vm0",
+      issueNumber: 42,
+      agentSessionId: session.id,
+      lastCommentId: "12",
+    });
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        commentId: 78,
+        commentBody: `@${GITHUB_APP_SLUG} continue this session`,
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.sessionId).toBe(session.id);
+    expect(runs[0]?.prompt).toBe("continue this session");
+
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
+    expect(callbacks[0]?.payload).toMatchObject({
+      existingSessionId: session.id,
+      triggerCommentId: "78",
+    });
+  });
+
+  it("replies to unconnected GitHub bot mentions with a connect link", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+    const capturedComments: CapturedGitHubIssueComment[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request }) => {
+          const body = (await request.json()) as { readonly body: string };
+          capturedComments.push({ body: body.body });
+          return HttpResponse.json({ id: 9876 });
+        },
+      ),
+    );
+    const unlinkedGithubUserId = remoteGitHubId();
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        senderId: unlinkedGithubUserId,
+        senderLogin: "unlinked-user",
+        commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(capturedComments).toHaveLength(1);
+    const body = capturedComments[0]?.body ?? "";
+    expect(body).toContain("connect your GitHub account first");
+    const connectUrlText = body.match(/\[Connect GitHub\]\(([^)]+)\)/)?.[1];
+    expect(connectUrlText).toBeDefined();
+    const connectUrl = new URL(connectUrlText!);
+    expect(connectUrl.origin).toBe("http://localhost:3002");
+    expect(connectUrl.pathname).toBe("/github/connect");
+    expect(connectUrl.searchParams.get("installation")).toBe(
+      fixture.remoteInstallationId,
+    );
+    expect(connectUrl.searchParams.get("ghUser")).toBe(unlinkedGithubUserId);
+    expect(connectUrl.searchParams.get("ghLogin")).toBe("unlinked-user");
+    expect(connectUrl.searchParams.get("ts")).toMatch(/^\d+$/);
+    expect(connectUrl.searchParams.get("sig")).toMatch(/^[a-f0-9]{64}$/);
+    await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(0);
   });
 
   it("does not dispatch ignored issue comments", async () => {

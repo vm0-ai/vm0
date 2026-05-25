@@ -30,6 +30,7 @@ import {
   type GithubIssueComment,
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
+import { signGithubConnectParams } from "./github-oauth.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import {
   resolveIntegrationModelRouteForUser$,
@@ -40,6 +41,7 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
   "An unexpected error occurred. Please try again later.";
+const GITHUB_ALIAS_MENTION_HANDLES = ["@Zero[bot]", "@Zero"] as const;
 
 const gitHubUserSchema = z.object({
   id: z.number(),
@@ -58,6 +60,7 @@ const gitHubIssueSchema = z.object({
   body: z.string().nullable(),
   labels: z.array(gitHubLabelSchema),
   user: gitHubUserSchema,
+  pull_request: z.unknown().optional(),
 });
 
 const gitHubCommentSchema = z.object({
@@ -133,7 +136,12 @@ type GitHubTriggerKind = "issue" | "pull_request";
 
 interface GitHubFileReference {
   readonly url: string;
-  readonly filename: string;
+  readonly filename?: string;
+}
+
+interface GitHubFileReferenceMatch extends GitHubFileReference {
+  readonly start: number;
+  readonly end: number;
 }
 
 interface DispatchParams {
@@ -144,7 +152,8 @@ interface DispatchParams {
   readonly vm0UserId: string;
   readonly composeId: string;
   readonly prompt: string;
-  readonly matchedLabelName: string;
+  readonly matchedLabelName?: string;
+  readonly triggerDescription?: string;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
   readonly apiStartTime: number;
@@ -194,11 +203,48 @@ function githubAppBotUsername(): string | undefined {
   return `@${appSlug}[bot]`;
 }
 
+function githubAppMentionHandles(): readonly string[] {
+  const handles: string[] = [...GITHUB_ALIAS_MENTION_HANDLES];
+  const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim().replace(/^@+/, "");
+  if (!appSlug) {
+    return handles;
+  }
+  const normalizedSlug = appSlug.replace(/\[bot\]$/iu, "");
+  return Array.from(
+    new Set([`@${normalizedSlug}[bot]`, `@${normalizedSlug}`, ...handles]),
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+}
+
+function githubCommentMentionsBot(body: string): boolean {
+  const lowerBody = body.toLowerCase();
+  return githubAppMentionHandles().some((handle) => {
+    return lowerBody.includes(handle.toLowerCase());
+  });
+}
+
+function stripGithubBotMention(body: string): string {
+  return [...githubAppMentionHandles()]
+    .sort((left, right) => {
+      return right.length - left.length;
+    })
+    .reduce((text, handle) => {
+      return text.replace(new RegExp(escapeRegExp(handle), "giu"), "");
+    }, body)
+    .trim();
+}
+
+function githubIssueCommentSubjectKind(issue: GitHubIssue): GitHubTriggerKind {
+  return issue.pull_request === undefined ? "issue" : "pull_request";
+}
+
 function buildIntegrationPrompt(): string {
   const headerParts = [
     "# Current Integration",
     "You are currently running inside: GitHub",
-    "GitHub issue and pull request attachments are shown as [GitHub file] blocks. Download them with `zero github download-file -h`.",
     "GitHub label listeners run agents when issues or pull requests receive matching labels. Manage them with `zero github label-listener -h`.",
   ];
   const botUsername = githubAppBotUsername();
@@ -242,6 +288,36 @@ function buildPromptParts(
   return { prompt, appendSystemPrompt };
 }
 
+function buildGithubMentionConnectUrl(args: {
+  readonly ghInstallationId: string;
+  readonly githubUserId: string;
+  readonly githubUsername: string;
+}): string {
+  const timestamp = Math.floor(nowDate().getTime() / 1000);
+  const params = new URLSearchParams({
+    installation: args.ghInstallationId,
+    ghUser: args.githubUserId,
+    ghLogin: args.githubUsername,
+    ts: String(timestamp),
+    sig: signGithubConnectParams({
+      installationId: args.ghInstallationId,
+      githubUserId: args.githubUserId,
+      githubUsername: args.githubUsername,
+      timestamp,
+      secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+    }),
+  });
+
+  return `${env("APP_URL").replace(/\/$/u, "")}/github/connect?${params.toString()}`;
+}
+
+function formatGithubConnectPrompt(args: {
+  readonly agentName: string;
+  readonly connectUrl: string;
+}): string {
+  return `To use ${args.agentName}, connect your GitHub account first.\n\n[Connect GitHub](${args.connectUrl})`;
+}
+
 function formatGithubContextSender(args: {
   readonly login: string;
   readonly type: string;
@@ -260,11 +336,20 @@ function formatGithubContextSender(args: {
   return `{${senderParts.join(", ")}}`;
 }
 
-const GITHUB_FILE_URL_SOURCE = String.raw`https:\/\/(?:github\.com\/user-attachments\/assets\/[A-Za-z0-9-]+|(?:raw|objects|private-user-images|user-images)\.githubusercontent\.com\/[^\s)<>'"]+)`;
+const GITHUB_FILE_URL_SOURCE = String.raw`https:\/\/(?:github\.com\/user-attachments\/(?:assets\/[A-Za-z0-9-]+|files\/[^\s)<>'"]+)|(?:raw|objects|private-user-images|user-images)\.githubusercontent\.com\/[^\s)<>'"]+)`;
+const GITHUB_ASSET_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 function githubMarkdownFileLinkRegex(): RegExp {
   return new RegExp(
     `!?\\[([^\\]]*)\\]\\((${GITHUB_FILE_URL_SOURCE})\\)`,
+    "giu",
+  );
+}
+
+function githubHtmlImageTagRegex(): RegExp {
+  return new RegExp(
+    `<img\\b[^>]*\\bsrc\\s*=\\s*["'](${GITHUB_FILE_URL_SOURCE})["'][^>]*>`,
     "giu",
   );
 }
@@ -277,13 +362,16 @@ function normalizeGithubFileUrl(url: string): string {
   return url.replace(/[.,;:!?]+$/u, "");
 }
 
-function filenameFromGithubUrl(url: string): string {
+function filenameFromGithubUrl(url: string): string | undefined {
   if (!URL.canParse(url)) {
-    return "github-file";
+    return undefined;
   }
   const parsed = new URL(url);
   const segment = parsed.pathname.split("/").filter(Boolean).pop();
-  return segment ?? "github-file";
+  if (!segment || GITHUB_ASSET_ID_RE.test(segment)) {
+    return undefined;
+  }
+  return segment;
 }
 
 function isUsefulFilenameCandidate(candidate: string): boolean {
@@ -296,56 +384,140 @@ function isUsefulFilenameCandidate(candidate: string): boolean {
   );
 }
 
-function extractGithubFileReferences(
-  body: string,
-): readonly GitHubFileReference[] {
-  const references: GitHubFileReference[] = [];
-  const seen = new Set<string>();
+function htmlAttributeValue(
+  tag: string,
+  attribute: string,
+): string | undefined {
+  const match = tag.match(
+    new RegExp(
+      `\\b${escapeRegExp(attribute)}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
+      "iu",
+    ),
+  );
+  return match?.[1] ?? match?.[2];
+}
 
-  function addReference(url: string, filenameCandidate: string | undefined) {
-    const normalizedUrl = normalizeGithubFileUrl(url);
-    if (seen.has(normalizedUrl)) {
-      return;
+function pushGithubFileReferenceMatch(
+  matches: GitHubFileReferenceMatch[],
+  args: {
+    readonly start: number;
+    readonly end: number;
+    readonly url: string;
+    readonly filenameCandidate?: string;
+  },
+): void {
+  const normalizedUrl = normalizeGithubFileUrl(args.url);
+  const filename =
+    args.filenameCandidate && isUsefulFilenameCandidate(args.filenameCandidate)
+      ? args.filenameCandidate.trim()
+      : filenameFromGithubUrl(normalizedUrl);
+  matches.push({
+    start: args.start,
+    end: args.end,
+    url: normalizedUrl,
+    ...(filename ? { filename } : {}),
+  });
+}
+
+function overlapsGithubFileReferenceMatch(
+  matches: readonly GitHubFileReferenceMatch[],
+  start: number,
+): boolean {
+  return matches.some((candidate) => {
+    return start >= candidate.start && start < candidate.end;
+  });
+}
+
+function findGithubFileReferenceMatches(
+  body: string,
+): readonly GitHubFileReferenceMatch[] {
+  const matches: GitHubFileReferenceMatch[] = [];
+  for (const match of body.matchAll(githubHtmlImageTagRegex())) {
+    const matchedText = match[0];
+    const url = match[1];
+    if (match.index !== undefined && matchedText && url) {
+      const filenameCandidate = htmlAttributeValue(matchedText, "alt");
+      pushGithubFileReferenceMatch(matches, {
+        start: match.index,
+        end: match.index + matchedText.length,
+        url,
+        ...(filenameCandidate ? { filenameCandidate } : {}),
+      });
     }
-    seen.add(normalizedUrl);
-    const filename =
-      filenameCandidate && isUsefulFilenameCandidate(filenameCandidate)
-        ? filenameCandidate.trim()
-        : filenameFromGithubUrl(normalizedUrl);
-    references.push({ url: normalizedUrl, filename });
   }
 
   for (const match of body.matchAll(githubMarkdownFileLinkRegex())) {
+    const matchedText = match[0];
     const filenameCandidate = match[1];
     const url = match[2];
-    if (url) {
-      addReference(url, filenameCandidate);
+    if (
+      match.index !== undefined &&
+      matchedText &&
+      url &&
+      !overlapsGithubFileReferenceMatch(matches, match.index)
+    ) {
+      pushGithubFileReferenceMatch(matches, {
+        start: match.index,
+        end: match.index + matchedText.length,
+        url,
+        ...(filenameCandidate ? { filenameCandidate } : {}),
+      });
     }
   }
 
   for (const match of body.matchAll(githubFileUrlRegex())) {
-    const url = match[0];
-    addReference(url, undefined);
+    const matchedText = match[0];
+    const matchIndex = match.index;
+    if (matchIndex === undefined || !matchedText) {
+      continue;
+    }
+    if (overlapsGithubFileReferenceMatch(matches, matchIndex)) {
+      continue;
+    }
+
+    const normalizedUrl = normalizeGithubFileUrl(matchedText);
+    const filename = filenameFromGithubUrl(normalizedUrl);
+    matches.push({
+      start: matchIndex,
+      end: matchIndex + normalizedUrl.length,
+      url: normalizedUrl,
+      ...(filename ? { filename } : {}),
+    });
   }
 
-  return references;
+  return [...matches].sort((left, right) => {
+    return left.start - right.start;
+  });
 }
 
-function formatGithubFileReferences(body: string): string | null {
-  const references = extractGithubFileReferences(body);
+function formatGithubFileReference(file: GitHubFileReference): string {
+  return [
+    "[GitHub file]",
+    `[URL] ${file.url}`,
+    file.filename ? `[FILENAME] ${file.filename}` : null,
+  ]
+    .filter((line): line is string => {
+      return line !== null;
+    })
+    .join("\n");
+}
+
+function replaceGithubFileReferencesForContext(body: string): string {
+  const references = findGithubFileReferenceMatches(body);
   if (references.length === 0) {
-    return null;
+    return body;
   }
 
-  return references
-    .map((file) => {
-      return [
-        "[GitHub file]",
-        `[URL] ${file.url}`,
-        `[FILENAME] ${file.filename}`,
-      ].join("\n");
-    })
-    .join("\n\n");
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const reference of references) {
+    parts.push(body.slice(cursor, reference.start));
+    parts.push(formatGithubFileReference(reference));
+    cursor = reference.end;
+  }
+  parts.push(body.slice(cursor));
+
+  return parts.join("");
 }
 
 function formatGitHubIssueContextMessage(args: {
@@ -353,10 +525,9 @@ function formatGitHubIssueContextMessage(args: {
   readonly relativeIndex: number;
   readonly subjectLabel: string;
 }): string {
-  const body = args.issue.body ?? "_No description provided._";
-  const files = args.issue.body
-    ? formatGithubFileReferences(args.issue.body)
-    : null;
+  const body = args.issue.body
+    ? replaceGithubFileReferencesForContext(args.issue.body)
+    : "_No description provided._";
   return [
     "---",
     "",
@@ -372,7 +543,6 @@ function formatGitHubIssueContextMessage(args: {
     `Title: ${args.issue.title}`,
     "",
     body,
-    files ? `\n${files}` : null,
   ]
     .filter((part): part is string => {
       return part !== null;
@@ -384,7 +554,7 @@ function formatGitHubCommentContextMessage(args: {
   readonly comment: GithubIssueComment;
   readonly relativeIndex: number;
 }): string {
-  const files = formatGithubFileReferences(args.comment.body);
+  const body = replaceGithubFileReferencesForContext(args.comment.body);
   return [
     "---",
     "",
@@ -393,8 +563,7 @@ function formatGitHubCommentContextMessage(args: {
     `- SENDER: ${formatGithubContextSender(args.comment.user)}`,
     "- SOURCE: comment",
     "",
-    args.comment.body,
-    files ? `\n${files}` : null,
+    body,
   ]
     .filter((part): part is string => {
       return part !== null;
@@ -406,7 +575,8 @@ function formatIssueContext(args: {
   readonly issue: GitHubIssue;
   readonly subjectKind: GitHubTriggerKind;
   readonly repo: string;
-  readonly matchedLabelName: string;
+  readonly matchedLabelName: string | undefined;
+  readonly triggerDescription: string | undefined;
   readonly comments: readonly GithubIssueComment[];
   readonly currentCommentId: string | undefined;
 }): string {
@@ -441,7 +611,9 @@ function formatIssueContext(args: {
       issueNumber: args.issue.number,
       subjectKind: args.subjectKind,
     })}`,
-    `Matched label: ${args.matchedLabelName}`,
+    args.matchedLabelName
+      ? `Matched label: ${args.matchedLabelName}`
+      : `Matched trigger: ${args.triggerDescription ?? "GitHub event"}`,
     "",
     "The messages below are from the GitHub issue conversation. Messages closer to RELATIVE_INDEX 0 are more recent.",
     "",
@@ -738,6 +910,21 @@ async function loadGitHubRunTarget(args: {
   };
 }
 
+async function loadGitHubAgentDisplayName(args: {
+  readonly db: Db;
+  readonly composeId: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const [agent] = await args.db
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, args.composeId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return agent?.displayName ?? agent?.name ?? "this agent";
+}
+
 async function buildIssueContextForRun(args: {
   readonly token: string | undefined;
   readonly params: DispatchParams;
@@ -761,6 +948,7 @@ async function buildIssueContextForRun(args: {
     subjectKind: args.params.subjectKind,
     repo: args.params.repo,
     matchedLabelName: args.params.matchedLabelName,
+    triggerDescription: args.params.triggerDescription,
     comments,
     currentCommentId: args.params.commentId,
   });
@@ -960,6 +1148,27 @@ async function issueAuthorMatchesListenerCreator(args: {
   return link?.githubUserId === args.authorGithubUserId;
 }
 
+async function loadGithubUserLink(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly vm0UserId: string } | null> {
+  const [link] = await args.db
+    .select({ vm0UserId: githubUserLinks.vm0UserId })
+    .from(githubUserLinks)
+    .where(
+      and(
+        eq(githubUserLinks.installationId, args.installationId),
+        eq(githubUserLinks.githubUserId, args.githubUserId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return link ?? null;
+}
+
 interface LabelTriggerEventParams {
   readonly payload: {
     readonly action: string;
@@ -1096,19 +1305,103 @@ export const handleGithubPullRequestEvent$ = command(
 );
 
 export const handleGithubIssueCommentEvent$ = command(
-  (
-    _ctx,
+  async (
+    { set },
     args: {
       readonly payload: GitHubIssueCommentEvent;
       readonly apiStartTime: number;
     },
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ): Promise<void> => {
-    L.debug("Ignoring GitHub issue_comment event: mention triggers disabled", {
-      action: args.payload.action,
-      apiStartTime: args.apiStartTime,
+    const { payload } = args;
+    if (payload.action !== "created") {
+      L.debug("Ignoring GitHub issue_comment event", {
+        action: payload.action,
+      });
+      return;
+    }
+
+    if (payload.sender.type === "Bot" || payload.comment.user.type === "Bot") {
+      L.debug("Ignoring GitHub bot issue_comment event", {
+        sender: payload.sender.login,
+        commentUser: payload.comment.user.login,
+      });
+      return;
+    }
+
+    if (!githubCommentMentionsBot(payload.comment.body)) {
+      L.debug("Ignoring GitHub issue_comment without bot mention", {
+        commentId: payload.comment.id,
+      });
+      return;
+    }
+
+    const db = set(writeDb$);
+    const installation = await loadActiveInstallation({
+      db,
+      ghInstallationId: String(payload.installation.id),
+      signal,
     });
-    return Promise.resolve();
+    const token = await getGitHubTokenForInstallation({ installation, signal });
+    signal.throwIfAborted();
+
+    const githubUserId = String(payload.sender.id);
+    const link = await loadGithubUserLink({
+      db,
+      installationId: installation.id,
+      githubUserId,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!link) {
+      if (!token) {
+        return;
+      }
+
+      const agentName = await loadGitHubAgentDisplayName({
+        db,
+        composeId: installation.defaultComposeId,
+        signal,
+      });
+      const connectUrl = buildGithubMentionConnectUrl({
+        ghInstallationId: String(payload.installation.id),
+        githubUserId,
+        githubUsername: payload.sender.login,
+      });
+      await postGithubIssueCommentBestEffort({
+        token,
+        repo: payload.repository.full_name,
+        issueNumber: payload.issue.number,
+        body: formatGithubConnectPrompt({ agentName, connectUrl }),
+        signal,
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const prompt =
+      stripGithubBotMention(payload.comment.body) ||
+      payload.comment.body.trim() ||
+      payload.issue.title;
+
+    await set(
+      dispatchGithubAgentRun$,
+      {
+        ghInstallationId: String(payload.installation.id),
+        repo: payload.repository.full_name,
+        issue: payload.issue,
+        subjectKind: githubIssueCommentSubjectKind(payload.issue),
+        vm0UserId: link.vm0UserId,
+        composeId: installation.defaultComposeId,
+        prompt,
+        triggerDescription: `${githubAppBotUsername() ?? "GitHub App"} mention`,
+        commentId: String(payload.comment.id),
+        comment: payload.comment,
+        apiStartTime: args.apiStartTime,
+      },
+      signal,
+    );
   },
 );
 
@@ -1168,13 +1461,15 @@ const dispatchGithubAgentRun$ = command(
     }
 
     const existingSessionId = sessionResult.sessionId;
+    const prompt = replaceGithubFileReferencesForContext(params.prompt);
+    signal.throwIfAborted();
     const issueContext = await buildIssueContextForRun({
       token,
       params,
       issueNumber,
       signal,
     });
-    const promptParts = buildPromptParts(params.prompt, {
+    const promptParts = buildPromptParts(prompt, {
       issueContext,
       repo: params.repo,
       issueNumber,

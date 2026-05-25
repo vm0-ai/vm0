@@ -64,6 +64,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
+import { githubInstallationTargetName } from "./github-installation-target.ts";
 
 type GithubListener = GithubIntegrationData["labelListeners"][number];
 
@@ -639,6 +640,11 @@ function GithubConnectionCard({
   const disconnecting = disconnectLoadable.state === "loading";
   const busy = connecting || disconnecting;
   const connectedUser = githubConnectedUserLabel(data);
+  const description = connectedUser
+    ? `Connected as ${connectedUser}`
+    : data.isConnected
+      ? "GitHub account connected"
+      : "Connect a GitHub account to use user-specific triggers";
 
   return (
     <section className="zero-card p-4">
@@ -646,11 +652,7 @@ function GithubConnectionCard({
         <div className="min-w-0">
           <div className="text-sm font-medium text-foreground">Connection</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            {connectedUser
-              ? `Connected as ${connectedUser}`
-              : data.isConnected
-                ? "GitHub account connected"
-                : "Connect a GitHub account to use user-specific triggers"}
+            {description}
           </div>
         </div>
         {data.isConnected ? (
@@ -767,6 +769,9 @@ export function ZeroGithubSettingsPage() {
   const isInstalled = installedData !== null;
   const listeners = installedData?.labelListeners ?? [];
   const agentsLoading = agentsLoadable.state === "loading";
+  const installationTarget = installedData
+    ? githubInstallationTargetName(installedData.installation)
+    : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -796,7 +801,24 @@ export function ZeroGithubSettingsPage() {
                   GitHub
                 </h1>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Run agents from GitHub issue and PR labels
+                  <span>
+                    Run agents from GitHub issue and PR labels or @Zero
+                  </span>
+                  {installationTarget ? (
+                    <>
+                      {" "}
+                      <span
+                        data-testid="github-installation-target"
+                        className="text-foreground"
+                      >
+                        (Installed on{" "}
+                        <span className="text-green-600">
+                          {installationTarget}
+                        </span>
+                        )
+                      </span>
+                    </>
+                  ) : null}
                 </p>
               </div>
             </div>

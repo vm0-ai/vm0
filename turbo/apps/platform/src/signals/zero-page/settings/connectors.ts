@@ -472,7 +472,6 @@ export type ConnectorCliAuthState =
       readonly browserUrl: string;
       readonly verificationText: string;
       readonly expiresAtMs: number;
-      readonly pollIntervalMs: number;
       readonly approvalOpened: boolean;
       readonly errorMessage: string | null;
     }
@@ -485,7 +484,6 @@ export type ConnectorCliAuthState =
       readonly browserUrl: string;
       readonly verificationText: string;
       readonly expiresAtMs: number;
-      readonly pollIntervalMs: number;
       readonly approvalOpened: boolean;
       readonly errorMessage: string | null;
     }
@@ -1244,15 +1242,12 @@ export const setPermissionDialogType$ = command(
 // CLI auth browser-verification flow state
 // ---------------------------------------------------------------------------
 
-const CLI_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
-
 type CliAuthBrowserVerificationStartResult = {
   readonly mode: string | null;
   readonly sessionToken: string;
   readonly browserUrl: string;
   readonly verificationText: string;
   readonly expiresInMs: number;
-  readonly pollIntervalMs: number;
 };
 
 type CliAuthBrowserVerificationCompleteResult =
@@ -1273,13 +1268,12 @@ type CliAuthBrowserVerificationAdapter = {
   }) => Promise<CliAuthBrowserVerificationCompleteResult>;
 };
 
-type PollConnectorCliAuthBrowserVerificationArgs = {
+type WatchConnectorCliAuthBrowserVerificationArgs = {
   readonly type: ConnectorType;
   readonly requestId: string;
   readonly adapter: CliAuthBrowserVerificationAdapter;
   readonly createClient: ZeroClientFactory;
   readonly expiresAtMs: number;
-  readonly pollIntervalMs: number;
   readonly options: PostConnectOptions;
 };
 
@@ -1308,7 +1302,6 @@ const CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS = {
         browserUrl: result.body.browserUrl,
         verificationText: result.body.verificationCode,
         expiresInMs: secondsToMilliseconds(result.body.expiresIn),
-        pollIntervalMs: secondsToMilliseconds(result.body.interval),
       };
     },
     complete: async ({ createClient, sessionToken, signal }) => {
@@ -1432,48 +1425,42 @@ const finishConnectorCliAuthConnection$ = command(
   },
 );
 
-const pollConnectorCliAuthBrowserVerification$ = command(
+const CONNECTOR_CHANGED_TOPIC = "connector:changed";
+
+const watchConnectorCliAuthBrowserVerification$ = command(
   async (
-    { get, set },
+    { set },
     {
       type,
       requestId,
       adapter,
       createClient,
       expiresAtMs,
-      pollIntervalMs,
       options,
-    }: PollConnectorCliAuthBrowserVerificationArgs,
+    }: WatchConnectorCliAuthBrowserVerificationArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    let completed = false;
-    let expired = false;
-
-    await setLoop(
-      async (sig) => {
-        const remainingMs = expiresAtMs - Date.now();
-        if (remainingMs <= 0) {
-          expired = true;
-          return true;
-        }
-
+    // Server-driven completion: the API drives the sandbox poll in the
+    // background and publishes `connector:changed` on terminal status.
+    // Each event triggers one `complete` API call to learn whether the
+    // session finished or hit an error — no client-side polling cadence.
+    const onConnectorChanged$ = command(
+      async ({ get, set }, sig: AbortSignal): Promise<boolean> => {
         const latest = get(internalConnectorCliAuthState$);
         if (!isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
           return true;
         }
-
-        if (!latest.approvalOpened) {
-          await delay(Math.min(CLI_AUTH_MIN_POLL_INTERVAL_MS, remainingMs), {
-            signal: sig,
+        if (Date.now() >= expiresAtMs) {
+          set(internalConnectorCliAuthState$, {
+            status: "expired",
+            connectorType: type,
+            mode: latest.mode,
+            message: "Connection session expired. Start again to retry.",
           });
-          sig.throwIfAborted();
-          return false;
+          return true;
         }
 
-        set(internalConnectorCliAuthState$, {
-          ...latest,
-          status: "polling",
-        });
+        set(internalConnectorCliAuthState$, { ...latest, status: "polling" });
 
         const completeSettled = await settle(
           adapter.complete({
@@ -1496,7 +1483,7 @@ const pollConnectorCliAuthBrowserVerification$ = command(
         }
 
         if (completeResult.status === "complete") {
-          completed = set(finishConnectorCliAuthConnection$, type, options);
+          set(finishConnectorCliAuthConnection$, type, options);
           return true;
         }
 
@@ -1517,32 +1504,19 @@ const pollConnectorCliAuthBrowserVerification$ = command(
             ? userFacingConnectorCliAuthMessage(completeResult.errorMessage)
             : null,
         });
-
-        const nextRemainingMs = expiresAtMs - Date.now();
-        if (nextRemainingMs <= 0) {
-          expired = true;
-          return true;
-        }
-        await delay(Math.min(pollIntervalMs, nextRemainingMs), {
-          signal: sig,
-        });
-        sig.throwIfAborted();
         return false;
       },
-      0,
-      signal,
     );
 
-    const latest = get(internalConnectorCliAuthState$);
-    if (expired && isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
-      set(internalConnectorCliAuthState$, {
-        status: "expired",
-        connectorType: type,
-        mode: latest.mode,
-        message: "Connection session expired. Start again to retry.",
-      });
-    }
-    return completed;
+    await set(
+      setAblyLoop$,
+      CONNECTOR_CHANGED_TOPIC,
+      onConnectorChanged$,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return true;
   },
 );
 
@@ -1630,10 +1604,6 @@ export const runConnectorCliAuth$ = command(
         }
 
         const expiresAtMs = Date.now() + startResult.expiresInMs;
-        const pollIntervalMs = Math.max(
-          startResult.pollIntervalMs,
-          CLI_AUTH_MIN_POLL_INTERVAL_MS,
-        );
         set(internalConnectorCliAuthState$, {
           status: "pending",
           connectorType: type,
@@ -1643,23 +1613,26 @@ export const runConnectorCliAuth$ = command(
           browserUrl: startResult.browserUrl,
           verificationText: startResult.verificationText,
           expiresAtMs,
-          pollIntervalMs,
           approvalOpened: false,
           errorMessage: null,
         });
 
-        return await set(
-          pollConnectorCliAuthBrowserVerification$,
+        await set(
+          watchConnectorCliAuthBrowserVerification$,
           {
             type,
             requestId,
             adapter,
             createClient,
             expiresAtMs,
-            pollIntervalMs,
             options,
           },
           flowSignal,
+        );
+
+        const finalState = get(internalConnectorCliAuthState$);
+        return (
+          finalState.status === "idle" && finalState.connectorType === null
         );
       })(),
       () => {

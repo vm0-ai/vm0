@@ -6,7 +6,7 @@ export enum Mechanism {
   WaitUntil = "wait_until",
 }
 
-const IN_VITEST = env("VITEST") === "true";
+export const IN_VITEST = env("VITEST") === "true";
 const L = logger("Promise");
 
 class PromiseTracker {

@@ -710,7 +710,7 @@ function VideoLightbox({ filename, url }: { filename: string; url: string }) {
           <IconX size={20} stroke={2} />
         </button>
       </div>
-      <div className="relative z-10 flex w-[min(92vw,1100px)] min-w-0 overflow-hidden rounded-2xl bg-black shadow-2xl animate-in zoom-in-95 duration-200">
+      <div className="relative z-10 flex w-[min(92vw,1100px)] min-w-0 overflow-hidden bg-black shadow-2xl animate-in zoom-in-95 duration-200">
         <video
           src={videoUrl}
           controls

@@ -588,6 +588,36 @@ class TestReportConnectorUsage:
         assert p["category"] == "content.create_with_url"
         assert p["quantity"] == 1
 
+    def test_x_json_parse_error_on_write_does_not_emit_lost_visibility_log(
+        self, tmp_path, real_flow
+    ):
+        """Write operations bill by method and should not emit read visibility errors."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+        assert proxy_log.exists()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert all(entry["level"] != "error" for entry in entries)
+        assert all("unparseable" not in entry["message"].lower() for entry in entries)
+        assert all("parse_error" not in entry for entry in entries)
+
     def test_tweet_create_plain_text_downgrades_to_content_create(self, tmp_path, real_flow):
         """POST /2/tweets with text only (no URL, no quote, no media)
         downgrades to the cheaper Content: Create bucket."""
@@ -855,7 +885,15 @@ class TestReportConnectorUsage:
         ops audits via the proxy error log instead."""
         flow = self._make_x_flow(real_flow, tmp_path, body=b"{")
         flow.metadata["stream_buffer_state"] = {"truncated": True}
+        proxy_log = tmp_path / "proxy.jsonl"
+
         assert self._call_and_get_billing(flow) == []
+
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert entry["body_truncated"] is True
+        assert "parse_error" not in entry
 
     def test_invalid_json_with_no_hints_skips_billing(self, tmp_path, real_flow):
         """Malformed body + no URL hints → skip emission (see above)."""
@@ -892,10 +930,61 @@ class TestReportConnectorUsage:
         proxy_log = tmp_path / "proxy.jsonl"
         assert self._call_and_get_billing(flow) == []
         assert proxy_log.exists()
-        content = proxy_log.read_text()
-        assert "unparseable" in content.lower()
-        assert '"level":"error"' in content or '"level": "error"' in content
-        assert "tweet.read" in content  # permission is included for auditing
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert entry["permission"] == "tweet.read"
+        assert "parse_error" not in entry
+
+    def test_unparseable_x_json_state_logs_parse_error(self, tmp_path, real_flow):
+        """Incremental parser failures should surface the parse reason for audit."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            rule="GET /2/tweets/search/recent",
+        )
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert entry["parse_error"] == "incomplete json"
+
+    @pytest.mark.parametrize(
+        "parse_error",
+        ["", "   ", None, b"incomplete json", {"reason": "incomplete json"}],
+    )
+    def test_unparseable_x_json_state_omits_invalid_parse_error(
+        self, tmp_path, real_flow, parse_error
+    ):
+        """Only non-empty string parse errors should be written to the audit log."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            rule="GET /2/tweets/search/recent",
+        )
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": parse_error,
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert "parse_error" not in entry
 
     def test_billable_counts_fallback_only_when_no_hints(self, tmp_path, real_flow):
         """body unparseable but ?ids= present -> uses ids_count, no fallback."""
@@ -903,6 +992,69 @@ class TestReportConnectorUsage:
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "posts.read"
         assert p["quantity"] == 3
+
+    @pytest.mark.parametrize(
+        ("path", "query", "permission", "rule", "expected_category", "expected_quantity"),
+        [
+            ("/2/tweets", "ids=1,2,3", "tweet.read", "GET /2/tweets", "posts.read", 3),
+            ("/2/tweets", "max_results=50", "tweet.read", "GET /2/tweets", "posts.read", 50),
+            ("/2/users/by", "usernames=a,b", "users.read", "GET /2/users/by", "user.read", 2),
+        ],
+    )
+    def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
+        self,
+        tmp_path,
+        real_flow,
+        path,
+        query,
+        permission,
+        rule,
+        expected_category,
+        expected_quantity,
+    ):
+        """Recoverable parser failures should bill from hints without lost-visibility logs."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query=query,
+            permission=permission,
+            rule=rule,
+        )
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == expected_category
+        assert p["quantity"] == expected_quantity
+        assert proxy_log.exists()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert all(entry["level"] != "error" for entry in entries)
+        assert all("unparseable" not in entry["message"].lower() for entry in entries)
+        assert all("parse_error" not in entry for entry in entries)
+
+    def test_x_json_parse_error_with_zero_max_results_is_noop_hint(self, tmp_path, real_flow):
+        """A zero max_results hint should suppress lost-visibility logs without billing."""
+        flow = self._make_x_flow(real_flow, tmp_path, query="max_results=0")
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        if proxy_log.exists():
+            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+            assert all(entry["level"] != "error" for entry in entries)
+            assert all("unparseable" not in entry["message"].lower() for entry in entries)
+            assert all("parse_error" not in entry for entry in entries)
 
     @pytest.mark.parametrize(
         ("query", "expected_quantity"),
