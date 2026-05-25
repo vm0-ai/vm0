@@ -3869,6 +3869,12 @@ mod tests {
             Some(0),
             "proxy registry should not retain a VM after executor cleanup: {registry}",
         );
+        assert!(
+            registry["updatedAt"]
+                .as_i64()
+                .is_some_and(|updated_at| updated_at > 0),
+            "proxy registry should record a cleanup mutation: {registry}",
+        );
     }
 
     struct CancelAfterWaitSandbox {
