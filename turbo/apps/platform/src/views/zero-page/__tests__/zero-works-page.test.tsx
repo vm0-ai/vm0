@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -23,6 +24,7 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -40,6 +42,7 @@ const context = testContext();
 const mockApi = createMockApi(context);
 const GITHUB_CONNECT_URL =
   "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id";
+const GITHUB_ADMIN_INSTALL_TOOLTIP = "Ask an org admin to install GitHub.";
 
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   const defaults: SlackOrgStatus = {
@@ -198,6 +201,54 @@ describe("works page - GitHub integration card", () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows disabled GitHub install guidance when org members cannot install", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    server.use(
+      mockApi(integrationsGithubContract.getInstallation, ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "No GitHub installation found",
+            code: "NOT_FOUND",
+          },
+          installUrl: null,
+        });
+      }),
+    );
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.GitHubIntegration]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    const githubCard = getGithubCard();
+    const installButton = within(githubCard)
+      .getByText("Install GitHub")
+      .closest("button");
+    if (!installButton) {
+      throw new Error("GitHub install button not found");
+    }
+    expect(installButton).toBeDisabled();
+    expect(installButton).toHaveAttribute(
+      "title",
+      GITHUB_ADMIN_INSTALL_TOOLTIP,
+    );
+
+    await userEvent.hover(
+      within(githubCard).getByTestId("github-install-admin-required"),
+    );
+    const tooltip = (
+      await screen.findAllByText(GITHUB_ADMIN_INSTALL_TOOLTIP)
+    ).find((element) => {
+      return element.dataset.state === "delayed-open";
+    });
+    if (!tooltip) {
+      throw new Error("GitHub admin install tooltip not found");
+    }
+    expect(tooltip).toBeVisible();
   });
 
   it("refreshes the GitHub card from the page-level realtime subscription", async () => {
