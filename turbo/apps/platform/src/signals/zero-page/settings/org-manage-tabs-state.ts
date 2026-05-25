@@ -182,6 +182,11 @@ export const setBillingSubPage$ = command(({ set }, value: boolean) => {
   set(internalBillingSubPage$, value);
 });
 
+export const openBillingPlans$ = command(({ set }) => {
+  set(internalActiveTab$, "billing");
+  set(internalBillingSubPage$, true);
+});
+
 // ---------------------------------------------------------------------------
 // org-members-tab
 // ---------------------------------------------------------------------------

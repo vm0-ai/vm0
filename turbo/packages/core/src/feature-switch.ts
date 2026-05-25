@@ -152,11 +152,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CodexDeviceAuth]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Gate Codex device-auth UI and API surfaces.",
-    enabled: true,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -318,30 +313,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.StoredSecretKmsRead]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Prefer AWS KMS material when reading stored-secret envelopes. Legacy AES remains as a fallback for old or explicitly legacy-only rows.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.StoredSecretKmsWrite]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Dual-write stored-secret values to AWS KMS in addition to the legacy AES branch. When OFF, writes stay legacy-only even if SECRETS_KMS_KEY_ID is configured. This gates the KMS GenerateDataKey call so a missing IAM grant does not 500 every secret save.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.PersistentSecretKmsRead]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Prefer AWS KMS material when reading persistent secret envelopes such as bot tokens, callback secrets, OAuth tokens, and queued execution secrets. Legacy AES remains as a fallback while backfills complete.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.PersistentSecretKmsWrite]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Dual-write persistent secret values to AWS KMS in addition to the legacy AES branch. When OFF, writes stay legacy-only even if SECRETS_KMS_KEY_ID is configured.",
-    enabled: true,
-  },
   [FeatureSwitchKey.Trinity]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -394,9 +365,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AgentsPageSplitSections]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Split the Agents page into separate Public and Private sections, each with its own heading and Create agent button. The Public section also shows a remaining-slot counter with a workspace cap tooltip and disables creation once the cap is reached. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Split the Agents page into separate Public and Private sections, each with its own heading and Create button. The Public section also shows a remaining-slot counter with a workspace cap tooltip and disables creation once the cap is reached.",
+    enabled: true,
   },
 };
 

@@ -27,7 +27,6 @@ export enum FeatureSwitchKey {
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
   CliAuthStripe = "cliAuthStripe",
-  CodexDeviceAuth = "codexDeviceAuth",
   PosthogConnector = "posthogConnector",
   PwaOfflineCache = "pwaOfflineCache",
   MailchimpConnector = "mailchimpConnector",
@@ -56,10 +55,6 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   ApiBackend = "apiBackend",
   ConnectorCategories = "connectorCategories",
-  StoredSecretKmsRead = "storedSecretKmsRead",
-  StoredSecretKmsWrite = "storedSecretKmsWrite",
-  PersistentSecretKmsRead = "persistentSecretKmsRead",
-  PersistentSecretKmsWrite = "persistentSecretKmsWrite",
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",

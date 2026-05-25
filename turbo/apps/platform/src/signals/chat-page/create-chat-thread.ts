@@ -821,7 +821,9 @@ function createAllMessagesComputed(
             message.interruptsRunId,
           );
         }
-        const { blocks } = parseBodyRenderBlocks(message.content ?? "");
+        const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
+          previews: message.role === "assistant",
+        });
         const isUnassociatedUser =
           message.role === "user" && message.runId === undefined;
         const optimisticAssociation = entry.optimisticUserMessageAssociation;

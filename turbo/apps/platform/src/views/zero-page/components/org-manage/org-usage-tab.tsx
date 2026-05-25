@@ -15,10 +15,7 @@ import {
   billingStatusAsync$,
   apiTierToBillingTier,
 } from "../../../../signals/zero-page/billing.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -185,14 +182,20 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
   );
 }
 
-function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
+function CreditBalanceChart({
+  billing,
+  onComparePlans,
+}: {
+  billing: BillingStatusResponse;
+  onComparePlans?: () => void;
+}) {
   const segments = billing.creditBreakdown.filter((s) => {
     return s.credits > 0;
   });
   const total = billing.credits;
   const showFreeEmptyPrompt = billing.tier === "free" && total <= 0;
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setBillingSubPage = useSet(setBillingSubPage$);
+  const openBillingPlans = useSet(openBillingPlans$);
+  const handleComparePlans = onComparePlans ?? openBillingPlans;
 
   return (
     <div className="px-5 py-4" data-testid="credit-balance-info">
@@ -215,8 +218,7 @@ function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
             type="button"
             className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             onClick={() => {
-              setTab("billing");
-              setBillingSubPage(true);
+              handleComparePlans();
             }}
           >
             Compare plans
@@ -335,7 +337,7 @@ function LoadingSkeleton() {
 // Overview section
 // ---------------------------------------------------------------------------
 
-function OverviewSection() {
+function OverviewSection({ onComparePlans }: { onComparePlans?: () => void }) {
   const usageLoadable = useLoadable(usageMembersAsync$);
   const membersLoadable = useLoadable(orgMembers$);
   const billingLoadable = useLoadable(billingStatusAsync$);
@@ -373,7 +375,10 @@ function OverviewSection() {
               <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
             </div>
           ) : billing ? (
-            <CreditBalanceChart billing={billing} />
+            <CreditBalanceChart
+              billing={billing}
+              onComparePlans={onComparePlans}
+            />
           ) : (
             <div className="px-5 py-4">
               <p className="text-sm text-muted-foreground">
@@ -486,6 +491,10 @@ function MembersTable({
 // Main component
 // ---------------------------------------------------------------------------
 
-export function OrgUsageTab() {
-  return <OverviewSection />;
+export function OrgUsageTab({
+  onComparePlans,
+}: {
+  onComparePlans?: () => void;
+}) {
+  return <OverviewSection onComparePlans={onComparePlans} />;
 }

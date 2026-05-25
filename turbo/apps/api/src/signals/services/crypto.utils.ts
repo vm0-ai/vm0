@@ -7,11 +7,7 @@ import {
   type GenerateDataKeyCommandOutput,
   KMSClient,
 } from "@aws-sdk/client-kms";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -146,20 +142,6 @@ function storedSecretFormat(
     return "kms";
   }
   return "legacy";
-}
-
-function storedSecretReadMode(ctx: FeatureSwitchContext): StoredSecretReadMode {
-  return isFeatureEnabled(FeatureSwitchKey.StoredSecretKmsRead, ctx)
-    ? "prefer-kms"
-    : "prefer-legacy";
-}
-
-function persistentSecretReadMode(
-  ctx: FeatureSwitchContext,
-): StoredSecretReadMode {
-  return isFeatureEnabled(FeatureSwitchKey.PersistentSecretKmsRead, ctx)
-    ? "prefer-kms"
-    : "prefer-legacy";
 }
 
 function encryptSecretValueWithDataKey(
@@ -355,13 +337,9 @@ export async function decryptStoredSecretValueWithMode(
 
 export async function encryptStoredSecretValue(
   plaintext: string,
-  ctx: FeatureSwitchContext = {},
+  _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
   if (!env("SECRETS_KMS_KEY_ID")) {
-    return encryptSecretValue(plaintext);
-  }
-
-  if (!isFeatureEnabled(FeatureSwitchKey.StoredSecretKmsWrite, ctx)) {
     return encryptSecretValue(plaintext);
   }
 
@@ -370,12 +348,9 @@ export async function encryptStoredSecretValue(
 
 export async function decryptStoredSecretValue(
   encrypted: string,
-  ctx: FeatureSwitchContext = {},
+  _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  return await decryptStoredSecretValueWithMode(
-    encrypted,
-    storedSecretReadMode(ctx),
-  );
+  return await decryptStoredSecretValueWithMode(encrypted, "prefer-kms");
 }
 
 export async function encryptStoredSecretsMap(
@@ -426,13 +401,9 @@ export async function decryptPersistentSecretValueWithMode(
 
 export async function encryptPersistentSecretValue(
   plaintext: string,
-  ctx: FeatureSwitchContext,
+  _ctx: FeatureSwitchContext,
 ): Promise<string> {
   if (!env("SECRETS_KMS_KEY_ID")) {
-    return encryptSecretValue(plaintext);
-  }
-
-  if (!isFeatureEnabled(FeatureSwitchKey.PersistentSecretKmsWrite, ctx)) {
     return encryptSecretValue(plaintext);
   }
 
@@ -441,12 +412,9 @@ export async function encryptPersistentSecretValue(
 
 export async function decryptPersistentSecretValue(
   encrypted: string,
-  ctx: FeatureSwitchContext,
+  _ctx: FeatureSwitchContext,
 ): Promise<string> {
-  return await decryptPersistentSecretValueWithMode(
-    encrypted,
-    persistentSecretReadMode(ctx),
-  );
+  return await decryptPersistentSecretValueWithMode(encrypted, "prefer-kms");
 }
 
 export async function encryptPersistentSecretsMap(

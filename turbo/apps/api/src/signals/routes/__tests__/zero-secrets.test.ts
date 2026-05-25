@@ -7,7 +7,6 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { secrets } from "@vm0/db/schema/secret";
@@ -22,7 +21,6 @@ import {
   STORED_SECRET_ENVELOPE_PREFIX,
   type SecretKmsClient,
 } from "../../services/crypto.utils";
-import { updateUserFeatureSwitches$ } from "../../services/feature-switches.service";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -309,20 +307,11 @@ describe("POST /api/zero/secrets", () => {
     expect(rows[0]?.encryptedValue).not.toBe("secret-value");
   });
 
-  it("uses KMS data-key envelope encryption when the write switch is enabled", async () => {
+  it("uses KMS data-key envelope encryption when SECRETS_KMS_KEY_ID is set", async () => {
     const kms = fakeKmsClient();
     setSecretKmsClientForTests(kms.client);
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
     const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    await store.set(
-      updateUserFeatureSwitches$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        switches: { [FeatureSwitchKey.StoredSecretKmsWrite]: true },
-      },
-      context.signal,
-    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroSecretsContract);

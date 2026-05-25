@@ -14,15 +14,19 @@ test("create a new agent and verify it appears in the list", async ({
     timeout: 20_000,
   });
 
-  // Click "New agent"
-  await page.getByRole("button", { name: "New agent" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Create a new agent" }),
-  ).toBeVisible();
+  // Click the Private section's Create button
+  const privateSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Private", exact: true }),
+  });
+  await privateSection.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
 
   // Fill name and submit
   await page.getByPlaceholder("e.g. Research Assistant").fill(agentName);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create" })
+    .click();
 
   // Verify agent appears in the list (use exact match to avoid toast collision)
   await expect(page.getByText(agentName, { exact: true })).toBeVisible({

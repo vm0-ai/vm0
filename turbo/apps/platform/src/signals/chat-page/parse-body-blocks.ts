@@ -556,10 +556,14 @@ function markdownTableRowIndexes(lines: string[]): Set<number> {
 // Block parsing (pure — no computeds)
 // ---------------------------------------------------------------------------
 
-export function parseBodyRenderBlocks(content: string): {
+export function parseBodyRenderBlocks(
+  content: string,
+  options: { previews?: boolean } = {},
+): {
   cleanContent: string;
   blocks: BodyRenderBlock[];
 } {
+  const previews = options.previews ?? true;
   const blocks: BodyRenderBlock[] = [];
   const lines = content.split("\n");
   const tableRowIndexes = markdownTableRowIndexes(lines);
@@ -619,7 +623,7 @@ export function parseBodyRenderBlocks(content: string): {
       continue;
     }
 
-    const extracted = extractPreviewUrlFromLine(line);
+    const extracted = previews ? extractPreviewUrlFromLine(line) : null;
     if (!extracted) {
       markdownBuffer.push(line);
       keptLines.push(line);

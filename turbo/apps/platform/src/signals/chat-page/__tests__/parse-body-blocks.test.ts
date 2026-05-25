@@ -48,6 +48,25 @@ describe("parseBodyRenderBlocks", () => {
     ]);
   });
 
+  it("keeps artifact URLs as markdown when previews are disabled", () => {
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/36PnTFtD4dBQ9zg5jj6E5r918aV/24b42fb4-4b7b-4521-800f-defc356ae7b4/image-24b42fb4.png";
+    const content = `图也存好了：${imageUrl}`;
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(content, {
+      previews: false,
+    });
+
+    expect(cleanContent).toBe(content);
+    expect(blocks).toStrictEqual([
+      {
+        type: "markdown",
+        id: "markdown-1",
+        content,
+      },
+    ]);
+  });
+
   it("renders hosted site URLs as html previews", () => {
     vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.example.com");
     const url = "https://demo-site-a1b2c3d4.sites.example.com";

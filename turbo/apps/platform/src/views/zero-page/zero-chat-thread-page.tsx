@@ -2877,7 +2877,7 @@ function PagedUserMessage({
       ? ""
       : cleanContent;
   const bodyBlocks = enrichBlocksWithTextPreviews(
-    parseBodyRenderBlocks(strippedContent).blocks,
+    parseBodyRenderBlocks(strippedContent, { previews: false }).blocks,
   );
   const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
