@@ -213,3 +213,24 @@ def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
     assert keys[0] != keys[1]
     for key in keys:
         uuid.UUID(key)
+
+
+def test_aggregate_idempotency_key_separates_webhook_destinations(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        for token in ("token-a", "token-b"):
+            usage.buffer_usage_events(
+                "https://api.test/api/webhooks/agent/usage-event",
+                token,
+                "run-1",
+                [_event(source_key=f"source-{token}", quantity=10)],
+                proxy_log_path,
+            )
+        usage.flush_usage_events()
+
+    keys = [
+        payload["events"][0]["idempotencyKey"]
+        for payload in _payloads_from_enqueue_calls(enqueue.call_args_list)
+    ]
+    assert len(keys) == 2
+    assert keys[0] != keys[1]

@@ -74,9 +74,11 @@ const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
-/// Must be long enough for `done()` in the mitmproxy addon to flush
-/// all in-flight usage reports (each POST has a 10 s HTTP timeout).
-const STOP_TIMEOUT: Duration = Duration::from_secs(15);
+/// Must be long enough for `done()` in the mitmproxy addon to enqueue buffered
+/// usage and flush one webhook retry cycle (10 s HTTP timeout × 2 attempts plus
+/// 0.5 s backoff). Additional pending reports are still bounded by the
+/// pre-stop usage flush wait below.
+const STOP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Maximum time to wait for pending usage reports to flush before stopping.
 ///

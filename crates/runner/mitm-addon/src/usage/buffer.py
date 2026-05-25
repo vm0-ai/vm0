@@ -272,6 +272,8 @@ class UsageEventBuffer:
                         self._buffer_id,
                         str(flush_sequence),
                         destination.url,
+                        destination.sandbox_token,
+                        destination.proxy_log_path,
                         aggregate_key.run_id,
                         aggregate_key.kind,
                         aggregate_key.provider,
