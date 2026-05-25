@@ -342,6 +342,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
                 "cache_hit": False,
             },
         )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         mock_forward = AsyncMock(
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
@@ -362,6 +364,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # forward_request called with the rewritten URL
         call_args = mock_forward.call_args
         assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
+        log_text = await asyncio.to_thread(
+            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
+        )
+        assert "Firewall URL rewrite:" in log_text
+        assert f"Firewall {allow.api_entry['base']}:" in log_text
 
     async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
