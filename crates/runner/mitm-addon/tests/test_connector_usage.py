@@ -1030,6 +1030,24 @@ class TestReportConnectorUsage:
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
         assert all("parse_error" not in entry for entry in entries)
 
+    def test_x_json_parse_error_with_zero_max_results_is_noop_hint(self, tmp_path, real_flow):
+        """A zero max_results hint should suppress lost-visibility logs without billing."""
+        flow = self._make_x_flow(real_flow, tmp_path, query="max_results=0")
+        flow.metadata["x_json_state"] = {
+            "body_parsed": False,
+            "body_truncated": False,
+            "parse_error": "incomplete json",
+        }
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        if proxy_log.exists():
+            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+            assert all(entry["level"] != "error" for entry in entries)
+            assert all("unparseable" not in entry["message"].lower() for entry in entries)
+            assert all("parse_error" not in entry for entry in entries)
+
     @pytest.mark.parametrize(
         ("query", "expected_quantity"),
         [
