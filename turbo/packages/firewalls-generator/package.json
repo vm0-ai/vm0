@@ -138,6 +138,7 @@
     "generate:outlook-calendar": "tsx src/index.ts outlook-calendar",
     "generate:outlook-mail": "tsx src/index.ts outlook-mail",
     "generate:pandadoc": "tsx src/index.ts pandadoc",
+    "generate:parallel": "tsx src/index.ts parallel",
     "generate:pdf4me": "tsx src/index.ts pdf4me",
     "generate:pdfco": "tsx src/index.ts pdfco",
     "generate:pdforge": "tsx src/index.ts pdforge",

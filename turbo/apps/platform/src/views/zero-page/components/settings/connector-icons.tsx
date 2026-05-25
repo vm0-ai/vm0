@@ -151,6 +151,7 @@ const CONNECTOR_ICON_COLORFUL = {
   n8n: true,
   neon: true,
   pandadoc: true,
+  parallel: true,
   pdf4me: true,
   pdfco: true,
   pinecone: true,

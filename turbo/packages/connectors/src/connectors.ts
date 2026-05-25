@@ -153,6 +153,7 @@ import { openweather } from "./connectors/openweather";
 import { outlookCalendar } from "./connectors/outlook-calendar";
 import { outlookMail } from "./connectors/outlook-mail";
 import { pandadoc } from "./connectors/pandadoc";
+import { parallel } from "./connectors/parallel";
 import { pdf4me } from "./connectors/pdf4me";
 import { pdfco } from "./connectors/pdfco";
 import { pdforge } from "./connectors/pdforge";
@@ -712,6 +713,7 @@ const CONNECTOR_TYPES_DEF = {
   ...outlookCalendar,
   ...outlookMail,
   ...pandadoc,
+  ...parallel,
   ...pdf4me,
   ...pdfco,
   ...pdforge,

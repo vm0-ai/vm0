@@ -176,6 +176,7 @@ import { openweatherFirewall } from "./openweather.generated";
 import { outlookCalendarFirewall } from "./outlook-calendar.generated";
 import { outlookMailFirewall } from "./outlook-mail.generated";
 import { pandadocFirewall } from "./pandadoc.generated";
+import { parallelFirewall } from "./parallel.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pineconeFirewall } from "./pinecone.generated";
@@ -398,6 +399,7 @@ const CONNECTOR_FIREWALLS = {
   "outlook-calendar": outlookCalendarFirewall,
   "outlook-mail": outlookMailFirewall,
   pandadoc: pandadocFirewall,
+  parallel: parallelFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pinecone: pineconeFirewall,
