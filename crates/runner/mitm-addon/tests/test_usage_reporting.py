@@ -371,6 +371,7 @@ class TestResponseUsageReporting:
         [
             "chained-gzip",
             "raw-deflate",
+            "raw-json-with-gzip-header",
             "truncated-gzip-prefix",
             "empty-gzip-member-before-garbage",
             "empty-deflate-stream-before-garbage",
@@ -404,6 +405,10 @@ class TestResponseUsageReporting:
             body = gzip.compress(payload)
             content_encoding = "gzip, identity"
             expected_error = "expected json value"
+        elif encoding_case == "raw-json-with-gzip-header":
+            body = payload
+            content_encoding = "gzip"
+            expected_error = "invalid compressed body"
         elif encoding_case == "truncated-gzip-prefix":
             body = gzip.compress(payload)[:10]
             content_encoding = "gzip"
@@ -411,11 +416,11 @@ class TestResponseUsageReporting:
         elif encoding_case == "empty-gzip-member-before-garbage":
             body = gzip.compress(b"") + b"garbage"
             content_encoding = "gzip"
-            expected_error = "expected json value"
+            expected_error = "invalid compressed body"
         elif encoding_case == "empty-deflate-stream-before-garbage":
             body = zlib.compress(b"") + b"garbage"
             content_encoding = "deflate"
-            expected_error = "expected json value"
+            expected_error = "invalid compressed body"
         elif encoding_case == "truncated-brotli-prefix":
             body = body_utils.brotli.compress(payload)[:2]
             content_encoding = "br"
@@ -428,7 +433,7 @@ class TestResponseUsageReporting:
             compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
             body = compressor.compress(payload) + compressor.flush()
             content_encoding = "deflate"
-            expected_error = "expected json value"
+            expected_error = "invalid compressed body"
 
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
