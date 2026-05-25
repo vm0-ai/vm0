@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.59](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.58...vsock-test-v0.9.59) (2026-05-25)
+
+
+### Bug Fixes
+
+* pass guest reseed entropy over exec stdin ([#14758](https://github.com/vm0-ai/vm0/issues/14758)) ([6f9a4aa](https://github.com/vm0-ai/vm0/commit/6f9a4aac941effcad301911f5dfec055bb758667))
+
 ## [0.9.58](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.57...vsock-test-v0.9.58) (2026-05-24)
 
 ## [0.9.57](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.56...vsock-test-v0.9.57) (2026-05-24)

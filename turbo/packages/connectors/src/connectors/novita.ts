@@ -5,9 +5,6 @@ export const novita = {
     label: "Novita AI",
     category: "ai-general-models",
     generation: ["audio", "image", "text", "video"],
-    environmentMapping: {
-      NOVITA_TOKEN: "$secrets.NOVITA_TOKEN",
-    },
     helpText:
       "Connect your Novita AI account to run LLM, image, video, and audio models through an OpenAI-compatible API",
     authMethods: {
@@ -15,13 +12,23 @@ export const novita = {
         label: "API Key",
         helpText:
           "1. Sign in at [novita.ai](https://novita.ai)\n2. Open **Settings → Key Management**\n3. Click **+ Add New Key**\n4. Copy the key (it begins with `sk_`). Paste it here.",
-        secrets: {
-          NOVITA_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "sk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
+        grant: {
+          kind: "manual",
+          fields: {
+            NOVITA_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "sk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            NOVITA_TOKEN: "$secrets.NOVITA_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

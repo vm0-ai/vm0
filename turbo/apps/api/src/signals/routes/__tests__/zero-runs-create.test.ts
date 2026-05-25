@@ -1318,6 +1318,7 @@ describe("POST /api/zero/runs", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
       readonly firewalls: readonly {
@@ -1328,6 +1329,14 @@ describe("POST /api/zero/runs", () => {
         }[];
       }[];
     };
+    expect(executionContext.environment.BASE44_TOKEN).toBe(
+      "base44_placeholder_token",
+    );
+    expect(executionContext.environment).not.toHaveProperty(
+      "BASE44_ACCESS_TOKEN",
+    );
+    expect(executionContext.environment).not.toHaveProperty("LARK_TOKEN");
+    expect(executionContext.environment).not.toHaveProperty("LARK_APP_ID");
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     expect(decrypted).toMatchObject({ BASE44_TOKEN: "base44-access" });
     expect(decrypted).not.toHaveProperty("BASE44_REFRESH_TOKEN");

@@ -21,7 +21,7 @@ from tests.auth_state_helpers import (
     require_last_force_refresh_at,
     set_cached_headers,
 )
-from tests.firewall_helpers import _cancel_pending_task
+from tests.firewall_helpers import cancel_pending_task
 
 
 def _upstream_headers(*pairs: tuple[str, str]) -> Message:
@@ -439,7 +439,7 @@ class TestGetFirewallHeaders:
                 result = await task
             finally:
                 allow_fetch_return.set()
-                await _cancel_pending_task(task)
+                await cancel_pending_task(task)
 
         assert first_force_refresh_values == [False]
         assert result["headers"] == {"Authorization": "Bearer maybe-stale"}
@@ -505,7 +505,7 @@ class TestGetFirewallHeaders:
             finally:
                 allow_first_fetch_return.set()
                 for task in (leader, waiter):
-                    await _cancel_pending_task(task)
+                    await cancel_pending_task(task)
 
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
@@ -555,6 +555,8 @@ class TestHandleFirewallRequest:
     ):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         api_entry = {
             "id": "run-1:0",
             "base": "https://api.github.com",
@@ -602,6 +604,10 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_permission"] == "repo-read"
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+        log_text = await asyncio.to_thread(
+            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
+        )
+        assert "Firewall https://api.github.com: api.github.com" in log_text
 
     async def test_missing_billable_firewalls_falls_back_to_empty(
         self, real_flow, headers, mitm_ctx, tmp_path

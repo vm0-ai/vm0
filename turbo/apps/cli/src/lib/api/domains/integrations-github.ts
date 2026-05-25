@@ -3,6 +3,15 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { initClient } from "@ts-rest/core";
 import {
+  integrationsGithubContract,
+  type CreateGithubLabelListenerBody,
+  type CreateGithubLabelListenerResponse,
+  type GithubInstallationResponse,
+  type GithubIntegrationActionResponse,
+  type UpdateGithubLabelListenerBody,
+  type UpdateGithubLabelListenerResponse,
+} from "@vm0/api-contracts/contracts/integrations-github";
+import {
   integrationsGithubUploadCompleteContract,
   integrationsGithubUploadInitContract,
   type GithubUploadCompleteBody,
@@ -52,6 +61,72 @@ export async function completeGithubFileUpload(
   }
 
   handleError(result, "Failed to complete GitHub file upload");
+}
+
+export async function getGithubInstallation(): Promise<GithubInstallationResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsGithubContract, config);
+
+  const result = await client.getInstallation({ headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to get GitHub installation");
+}
+
+export async function createGithubLabelListener(
+  body: CreateGithubLabelListenerBody,
+): Promise<CreateGithubLabelListenerResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsGithubContract, config);
+
+  const result = await client.createLabelListener({ body, headers: {} });
+
+  if (result.status === 201) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to create GitHub label listener");
+}
+
+export async function updateGithubLabelListener(
+  listenerId: string,
+  body: UpdateGithubLabelListenerBody,
+): Promise<UpdateGithubLabelListenerResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsGithubContract, config);
+
+  const result = await client.updateLabelListener({
+    params: { listenerId },
+    body,
+    headers: {},
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to update GitHub label listener");
+}
+
+export async function deleteGithubLabelListener(
+  listenerId: string,
+): Promise<GithubIntegrationActionResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsGithubContract, config);
+
+  const result = await client.deleteLabelListener({
+    params: { listenerId },
+    headers: {},
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to delete GitHub label listener");
 }
 
 export async function downloadGithubFile(

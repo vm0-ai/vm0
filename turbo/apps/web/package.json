@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "12.387.2",
+  "version": "12.387.3",
   "type": "module",
   "private": true,
   "scripts": {
@@ -21,8 +21,6 @@
     "@aws-sdk/client-kms": "^3.1053.0",
     "@aws-sdk/client-s3": "^3.1053.0",
     "@aws-sdk/s3-request-presigner": "^3.1053.0",
-    "@axiomhq/js": "^1.3.1",
-    "@axiomhq/logging": "^0.1.6",
     "@clerk/backend": "^3.4.13",
     "@clerk/nextjs": "^7.2.7",
     "@neondatabase/serverless": "^1.0.2",
@@ -33,7 +31,6 @@
     "@tabler/icons-react": "^3.36.1",
     "@vercel/functions": "^3.4.4",
     "@vm0/api-contracts": "workspace:*",
-    "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/db": "workspace:*",
     "@vm0/ui": "workspace:*",
@@ -64,6 +61,7 @@
     "@types/react-dom": "^19.1.9",
     "@typescript-eslint/rule-tester": "^8.59.4",
     "@typescript-eslint/utils": "^8.59.4",
+    "@vm0/connectors": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "drizzle-kit": "^0.31.9",

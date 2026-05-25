@@ -5,9 +5,8 @@ import type {
 } from "./computer-use-accessibility";
 import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
 import type {
-  ComputerUseApprovalAction,
   ComputerUseHostRuntimeState,
-  ComputerUsePendingApprovalRuntimeEvent,
+  ComputerUseLocalCommandLogEntry,
   ComputerUsePermissionState,
   ComputerUseRuntimeAuditEvent,
 } from "./computer-use-types";
@@ -102,8 +101,8 @@ export class ComputerUseHostRuntime {
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
-    pendingApprovals: [],
     recentAuditEvents: [],
+    localCommandLog: [],
   };
 
   constructor(options: ComputerUseHostRuntimeOptions) {
@@ -139,28 +138,6 @@ export class ComputerUseHostRuntime {
     return this.state;
   }
 
-  async decideCommand(args: ComputerUseApprovalAction): Promise<void> {
-    const response = await this.sessionFetch(
-      `${this.apiBaseUrl}/api/zero/computer-use/commands/${encodeURIComponent(args.commandId)}/approval`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision: args.decision }),
-      },
-    );
-    if (!response.ok) {
-      const message = `Computer Use approval failed: ${response.status}`;
-      this.setState({ lastError: message });
-      throw new Error(message);
-    }
-
-    this.setState({
-      lastError: null,
-      lastCommandAt: new Date().toISOString(),
-    });
-    await this.refreshAuditEvents();
-  }
-
   private runtimeBody(): Record<string, unknown> {
     return buildComputerUseRuntimeBody({
       displayName: this.displayName,
@@ -172,6 +149,58 @@ export class ComputerUseHostRuntime {
   private setState(update: Partial<ComputerUseHostRuntimeState>): void {
     this.state = { ...this.state, ...update };
     this.onChange();
+  }
+
+  private startLocalCommandLogEntry(
+    command: ComputerUseCommand,
+    startedAt: string,
+  ): void {
+    const app = command.payload.app;
+    const entry: ComputerUseLocalCommandLogEntry = {
+      commandId: command.id,
+      kind: command.kind,
+      app: typeof app === "string" ? app : null,
+      status: "running",
+      payload: command.payload,
+      result: null,
+      error: null,
+      startedAt,
+      completedAt: null,
+      durationMs: null,
+    };
+    this.setState({
+      localCommandLog: [
+        entry,
+        ...this.state.localCommandLog.filter((candidate) => {
+          return candidate.commandId !== command.id;
+        }),
+      ],
+    });
+  }
+
+  private finishLocalCommandLogEntry(args: {
+    readonly commandId: string;
+    readonly status: "succeeded" | "failed";
+    readonly result: Record<string, unknown> | null;
+    readonly error: Record<string, unknown> | null;
+    readonly completedAt: string;
+    readonly durationMs: number;
+  }): void {
+    this.setState({
+      localCommandLog: this.state.localCommandLog.map((entry) => {
+        if (entry.commandId !== args.commandId) {
+          return entry;
+        }
+        return {
+          ...entry,
+          status: args.status,
+          result: args.result,
+          error: args.error,
+          completedAt: args.completedAt,
+          durationMs: args.durationMs,
+        };
+      }),
+    });
   }
 
   private schedule(delayMs: number): void {
@@ -244,6 +273,15 @@ export class ComputerUseHostRuntime {
       });
       return null;
     }
+    if (response.status === 409) {
+      this.setState({
+        status: "error",
+        hostId: null,
+        lastError:
+          "Computer Use is already active in another Zero Desktop session.",
+      });
+      return null;
+    }
     if (!response.ok) {
       throw new Error(`Failed to start Computer Use host: ${response.status}`);
     }
@@ -310,7 +348,7 @@ export class ComputerUseHostRuntime {
 
     const response = await this.sessionFetch(url.toString(), { method: "GET" });
     if (response.status === 401 || response.status === 403) {
-      this.setState({ pendingApprovals: [], recentAuditEvents: [] });
+      this.setState({ recentAuditEvents: [] });
       return;
     }
     if (!response.ok) {
@@ -321,7 +359,6 @@ export class ComputerUseHostRuntime {
 
     const body = (await response.json()) as ComputerUseAuditEventsResponse;
     this.setState({
-      pendingApprovals: derivePendingApprovals(body.auditEvents),
       recentAuditEvents: body.auditEvents,
     });
   }
@@ -344,10 +381,39 @@ export class ComputerUseHostRuntime {
       return;
     }
 
-    const completed = await this.executeCommand(
-      body.command,
-      this.getPermissions(),
-    );
+    const startedAtMs = Date.now();
+    const startedAt = new Date(startedAtMs).toISOString();
+    this.startLocalCommandLogEntry(body.command, startedAt);
+
+    let completed: ComputerUseCommandExecutionResult;
+    try {
+      completed = await this.executeCommand(
+        body.command,
+        this.getPermissions(),
+      );
+    } catch (error) {
+      const completedAtMs = Date.now();
+      this.finishLocalCommandLogEntry({
+        commandId: body.command.id,
+        status: "failed",
+        result: null,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+        completedAt: new Date(completedAtMs).toISOString(),
+        durationMs: completedAtMs - startedAtMs,
+      });
+      throw error;
+    }
+    const completedAtMs = Date.now();
+    this.finishLocalCommandLogEntry({
+      commandId: body.command.id,
+      status: completed.status,
+      result: completed.status === "succeeded" ? completed.result : null,
+      error: completed.status === "failed" ? completed.error : null,
+      completedAt: new Date(completedAtMs).toISOString(),
+      durationMs: completedAtMs - startedAtMs,
+    });
     const response = await this.hostFetch(
       `/api/zero/computer-use/host/commands/${body.command.id}/complete`,
       {
@@ -381,33 +447,4 @@ export class ComputerUseHostRuntime {
       },
     });
   }
-}
-
-function derivePendingApprovals(
-  auditEvents: readonly ComputerUseRuntimeAuditEvent[],
-): readonly ComputerUsePendingApprovalRuntimeEvent[] {
-  const resolvedCommandIds = new Set(
-    auditEvents
-      .filter((event) => {
-        return event.event !== "created";
-      })
-      .map((event) => {
-        return event.commandId;
-      }),
-  );
-
-  return auditEvents
-    .filter((event) => {
-      return (
-        event.event === "created" && !resolvedCommandIds.has(event.commandId)
-      );
-    })
-    .map((event) => {
-      return {
-        commandId: event.commandId,
-        kind: event.kind,
-        app: event.app,
-        createdAt: event.createdAt,
-      };
-    });
 }

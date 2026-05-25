@@ -1464,7 +1464,7 @@ async function openApp(
       app,
       dispatchMode: "background_app_open",
       dispatchTarget: "target_app",
-      inputRisk: "background_target_prepare",
+      inputRisk: "background_app_launch",
       text: `Opened ${app}`,
     },
   };
@@ -1663,9 +1663,9 @@ async function clickElement(args: {
         screenY: screenPoint.screenY,
         button: args.button,
         clickCount: args.clickCount,
-        dispatchMode: "targeted_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "app_process",
-        inputRisk: "targeted_app_pointer",
+        inputRisk: "background_app_pointer",
         text: `Clicked ${args.x},${args.y}`,
       },
     };
@@ -1762,9 +1762,9 @@ async function pressKey(
     result: {
       app,
       key: parsed.normalizedKey,
-      dispatchMode: "targeted_keyboard_event",
+      dispatchMode: "background_keyboard_event",
       dispatchTarget: "app_process",
-      inputRisk: "targeted_app_shortcut",
+      inputRisk: "background_app_shortcut",
       text: `Pressed ${parsed.normalizedKey}`,
     },
   };

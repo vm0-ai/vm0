@@ -4,28 +4,35 @@ export const salesforce = {
   salesforce: {
     label: "Salesforce",
     category: "sales-crm-business-operations",
-    environmentMapping: {
-      SALESFORCE_TOKEN: "$secrets.SALESFORCE_TOKEN",
-      SALESFORCE_INSTANCE: "$vars.SALESFORCE_INSTANCE",
-    },
     helpText:
       "Connect your Salesforce account to manage CRM data, contacts, leads, and sales workflows",
     authMethods: {
       "api-token": {
         label: "API Token",
-        secrets: {
-          SALESFORCE_TOKEN: {
-            label: "API Token",
-            required: true,
-            placeholder: "00D...",
-          },
-          SALESFORCE_INSTANCE: {
-            label: "Instance",
-            required: true,
-            placeholder: "mycompany",
-            type: "variable",
+        grant: {
+          kind: "manual",
+          fields: {
+            SALESFORCE_TOKEN: {
+              label: "API Token",
+              required: true,
+              placeholder: "00D...",
+            },
+            SALESFORCE_INSTANCE: {
+              label: "Instance",
+              required: true,
+              placeholder: "mycompany",
+              storage: "variable",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            SALESFORCE_TOKEN: "$secrets.SALESFORCE_TOKEN",
+            SALESFORCE_INSTANCE: "$vars.SALESFORCE_INSTANCE",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

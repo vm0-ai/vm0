@@ -154,6 +154,8 @@ const ORG_SENTINEL_USER_ID = "__org__";
 const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
 const PLATFORM_ENV_SECRET_NAMES = ["GOOGLE_ADS_DEVELOPER_TOKEN"] as const;
 const L = logger("AgentRunCreate");
+const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
+const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type ComputedGetter = Getter;
@@ -631,27 +633,76 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
-function expandEnvironment(
-  content: AgentComposeContent,
-  vars: Record<string, string> | undefined,
-  secrets: Record<string, string> | undefined,
-  additionalEnvironment: Record<string, string> | undefined,
-  environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
-): Record<string, string> | null {
-  const environment = firstAgent(content)?.environment;
-  const mergedEnvironment = {
-    ...additionalEnvironment,
-    ...environment,
-  };
-  if (Object.keys(mergedEnvironment).length === 0) {
+function connectorEnvironmentTemplates(
+  connectorTypes: readonly ConnectorType[],
+): Record<string, string> | undefined {
+  const environment: Record<string, string> = {};
+  for (const connectorType of connectorTypes) {
+    const mapping = getConnectorEnvironmentMapping(connectorType);
+    for (const [envName, valueRef] of Object.entries(mapping)) {
+      if (envName in environment) {
+        continue;
+      }
+      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        environment[envName] = `\${{ secrets.${envName} }}`;
+      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+        environment[envName] = `\${{ vars.${envName} }}`;
+      }
+    }
+  }
+  return compactRecord(environment);
+}
+
+function connectorEnvironmentSecretTemplateNames(
+  connectorTypes: readonly ConnectorType[],
+): Set<string> {
+  const names = new Set<string>();
+  for (const connectorType of connectorTypes) {
+    const mapping = getConnectorEnvironmentMapping(connectorType);
+    for (const [envName, valueRef] of Object.entries(mapping)) {
+      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        names.add(envName);
+      }
+    }
+  }
+  return names;
+}
+
+function environmentTemplates(args: {
+  readonly content: AgentComposeContent;
+  readonly additionalEnvironment: Record<string, string> | undefined;
+  readonly connectorEnvironment: Record<string, string> | undefined;
+}): Record<string, string> | undefined {
+  const environment = firstAgent(args.content)?.environment;
+  return mergeRecords(
+    args.connectorEnvironment,
+    args.additionalEnvironment,
+    environment,
+  );
+}
+
+function expandEnvironment(args: {
+  readonly content: AgentComposeContent;
+  readonly vars: Record<string, string> | undefined;
+  readonly secrets: Record<string, string> | undefined;
+  readonly additionalEnvironment: Record<string, string> | undefined;
+  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly connectorEnvironment: Record<string, string> | undefined;
+}): Record<string, string> | null {
+  const mergedEnvironment = environmentTemplates({
+    content: args.content,
+    additionalEnvironment: args.additionalEnvironment,
+    connectorEnvironment: args.connectorEnvironment,
+  });
+  if (!mergedEnvironment) {
     return null;
   }
 
   const { result } = expandVariables(mergedEnvironment, {
-    vars,
+    vars: args.vars,
     secrets: {
-      ...secrets,
-      ...firewallSecretPlaceholders(environmentFirewalls),
+      ...args.secrets,
+      ...firewallSecretPlaceholders(args.environmentFirewalls),
     },
   });
   return result;
@@ -680,21 +731,29 @@ function firewallSecretPlaceholders(
   return Object.keys(placeholders).length > 0 ? placeholders : undefined;
 }
 
-function missingEnvironmentReferences(
-  content: AgentComposeContent,
-  vars: Record<string, string> | undefined,
-  secrets: Record<string, string> | undefined,
-  environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
-): string[] {
-  const environment = firstAgent(content)?.environment;
+function missingEnvironmentReferences(args: {
+  readonly content: AgentComposeContent;
+  readonly vars: Record<string, string> | undefined;
+  readonly secrets: Record<string, string> | undefined;
+  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+  readonly additionalEnvironment: Record<string, string> | undefined;
+  readonly connectorEnvironment: Record<string, string> | undefined;
+}): string[] {
+  const environment = environmentTemplates({
+    content: args.content,
+    additionalEnvironment: args.additionalEnvironment,
+    connectorEnvironment: args.connectorEnvironment,
+  });
   if (!environment) {
     return [];
   }
   const grouped = extractAndGroupVariables(environment);
-  const firewallPlaceholders = firewallSecretPlaceholders(environmentFirewalls);
+  const firewallPlaceholders = firewallSecretPlaceholders(
+    args.environmentFirewalls,
+  );
   const missingVars = grouped.vars
     .filter((ref) => {
-      return vars?.[ref.name] === undefined;
+      return args.vars?.[ref.name] === undefined;
     })
     .map((ref) => {
       return `vars.${ref.name}`;
@@ -702,7 +761,7 @@ function missingEnvironmentReferences(
   const missingSecrets = grouped.secrets
     .filter((ref) => {
       return (
-        secrets?.[ref.name] === undefined &&
+        args.secrets?.[ref.name] === undefined &&
         firewallPlaceholders?.[ref.name] === undefined
       );
     })
@@ -710,6 +769,18 @@ function missingEnvironmentReferences(
       return `secrets.${ref.name}`;
     });
   return [...missingVars, ...missingSecrets];
+}
+
+function allowedApiTokenConnectorTypes(args: {
+  readonly apiTokenTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+}): readonly ConnectorType[] {
+  if (!args.allowedConnectorTypes) {
+    return args.apiTokenTypes;
+  }
+  return args.apiTokenTypes.filter((type) => {
+    return args.allowedConnectorTypes?.includes(type);
+  });
 }
 
 function hasExplicitFrameworkApiKey(
@@ -1217,16 +1288,22 @@ async function loadReferencedSecrets(
   },
 ): Promise<Record<string, string> | undefined> {
   const environment = firstAgent(args.content)?.environment;
-  if (!environment) {
-    return args.runSecrets;
-  }
-
-  const referencedNames = extractAndGroupVariables(environment).secrets.map(
-    (ref) => {
-      return ref.name;
-    },
+  const referencedNames = environment
+    ? extractAndGroupVariables(environment).secrets.map((ref) => {
+        return ref.name;
+      })
+    : [];
+  const apiTokenTypes = await loadApiTokenConnectorTypes(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  const dynamicConnectorSecretNames = connectorEnvironmentSecretTemplateNames(
+    allowedApiTokenConnectorTypes({
+      apiTokenTypes,
+      allowedConnectorTypes: args.allowedConnectorTypes,
+    }),
   );
-  if (referencedNames.length === 0) {
+  if (referencedNames.length === 0 && dynamicConnectorSecretNames.size === 0) {
     return args.runSecrets;
   }
 
@@ -1234,29 +1311,23 @@ async function loadReferencedSecrets(
   // api-token connector credentials are consumed by firewall auth templates,
   // which the compose environment never references. Connector-owned secrets
   // are still scoped by filterDbSecretsByConnectorPermissions below.
-  const [rows, apiTokenTypes] = await Promise.all([
-    db
-      .select({
-        name: secretsTable.name,
-        encryptedValue: secretsTable.encryptedValue,
-        userId: secretsTable.userId,
-      })
-      .from(secretsTable)
-      .where(
-        and(
-          eq(secretsTable.orgId, args.orgId),
-          eq(secretsTable.type, "user"),
-          or(
-            eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
-            eq(secretsTable.userId, args.userId),
-          ),
+  const rows = await db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+      userId: secretsTable.userId,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.type, "user"),
+        or(
+          eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
+          eq(secretsTable.userId, args.userId),
         ),
       ),
-    loadApiTokenConnectorTypes(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-    }),
-  ]);
+    );
 
   const orgSecrets: Record<string, string> = {};
   const userSecrets: Record<string, string> = {};
@@ -1274,7 +1345,11 @@ async function loadReferencedSecrets(
     allApiTokenTypes: apiTokenTypes,
     allowedConnectorTypes: args.allowedConnectorTypes,
   });
-  const merged = { ...filteredSecrets, ...args.runSecrets };
+  const connectorSecrets =
+    referencedNames.length === 0
+      ? filterRecordKeys(filteredSecrets, dynamicConnectorSecretNames)
+      : filteredSecrets;
+  const merged = { ...connectorSecrets, ...args.runSecrets };
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
@@ -1357,6 +1432,22 @@ function compactRecord(
   values: Record<string, string>,
 ): Record<string, string> | undefined {
   return Object.keys(values).length > 0 ? values : undefined;
+}
+
+function filterRecordKeys(
+  values: Record<string, string> | undefined,
+  keys: ReadonlySet<string>,
+): Record<string, string> | undefined {
+  if (!values) {
+    return undefined;
+  }
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (keys.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return compactRecord(filtered);
 }
 
 function mergeRecords(
@@ -2182,6 +2273,8 @@ function validateCompose(
   options?: {
     readonly validateEnvironmentReferences?: boolean;
     readonly environmentFirewalls?: readonly ExpandedFirewallConfig[];
+    readonly additionalEnvironment?: Record<string, string>;
+    readonly connectorEnvironment?: Record<string, string>;
   },
 ): { readonly framework: SupportedFramework } | CreateRunErrorResult {
   const framework = resolveFramework(content);
@@ -2192,12 +2285,14 @@ function validateCompose(
   }
 
   if (options?.validateEnvironmentReferences !== false) {
-    const missing = missingEnvironmentReferences(
+    const missing = missingEnvironmentReferences({
       content,
       vars,
       secrets,
-      options?.environmentFirewalls,
-    );
+      environmentFirewalls: options?.environmentFirewalls,
+      additionalEnvironment: options?.additionalEnvironment,
+      connectorEnvironment: options?.connectorEnvironment,
+    });
     if (missing.length > 0) {
       return badRequestMessage(
         `Missing required values: ${missing.join(", ")}`,
@@ -2438,6 +2533,9 @@ async function buildStoredExecutionContext(args: {
     connectorTypes: args.connectorContext.connectorTypes,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
+  const connectorEnvironment = connectorEnvironmentTemplates(
+    args.connectorContext.connectorTypes,
+  );
   const executionSecrets = buildStoredExecutionSecrets({
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
@@ -2456,13 +2554,14 @@ async function buildStoredExecutionContext(args: {
       workingDir: frameworkWorkingDir(args.framework),
       storageManifest: args.storageManifest,
       environment: {
-        ...expandEnvironment(
-          args.resolved.content,
-          args.body.vars,
-          executionSecrets.secrets,
-          args.modelProvider?.environment,
-          permissions?.environmentFirewalls,
-        ),
+        ...expandEnvironment({
+          content: args.resolved.content,
+          vars: args.body.vars,
+          secrets: executionSecrets.secrets,
+          additionalEnvironment: args.modelProvider?.environment,
+          environmentFirewalls: permissions?.environmentFirewalls,
+          connectorEnvironment,
+        }),
         ...args.extraEnvironment,
       },
       resumeSession: args.resolved.resumeSession ?? null,
@@ -3122,6 +3221,9 @@ function validateRunEnvironmentReferences(args: {
     bodySecrets: args.body.secrets,
     customConnectorContext: args.customConnectorContext,
   });
+  const connectorEnvironment = connectorEnvironmentTemplates(
+    args.connectorContext.connectorTypes,
+  );
   const validation = validateCompose(
     args.resolved.content,
     args.body.vars,
@@ -3129,6 +3231,8 @@ function validateRunEnvironmentReferences(args: {
     {
       validateEnvironmentReferences: args.validateEnvironmentReferences,
       environmentFirewalls: validationPermissions?.environmentFirewalls,
+      additionalEnvironment: args.modelProvider?.environment,
+      connectorEnvironment,
     },
   );
 

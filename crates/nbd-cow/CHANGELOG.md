@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.24](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.23...nbd-cow-v0.4.24) (2026-05-25)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid try_clone fcntl syscall in flush() ([#14841](https://github.com/vm0-ai/vm0/issues/14841)) ([0ba1623](https://github.com/vm0-ai/vm0/commit/0ba16239e16bf3d402205675473812ad3d21a71b))
+
 ## [0.4.23](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.22...nbd-cow-v0.4.23) (2026-05-24)
 
 

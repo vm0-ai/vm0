@@ -14,13 +14,6 @@ export type ComputerUseHostRuntimeStatus =
   | "disabled"
   | "error";
 
-export interface ComputerUsePendingApprovalRuntimeEvent {
-  readonly commandId: string;
-  readonly kind: string;
-  readonly app: string | null;
-  readonly createdAt: string;
-}
-
 export interface ComputerUseRuntimeAuditEvent {
   readonly commandId: string;
   readonly kind: string;
@@ -31,19 +24,32 @@ export interface ComputerUseRuntimeAuditEvent {
   readonly createdAt: string;
 }
 
+export type ComputerUseLocalCommandLogStatus =
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export interface ComputerUseLocalCommandLogEntry {
+  readonly commandId: string;
+  readonly kind: string;
+  readonly app: string | null;
+  readonly status: ComputerUseLocalCommandLogStatus;
+  readonly payload: Record<string, unknown>;
+  readonly result: Record<string, unknown> | null;
+  readonly error: Record<string, unknown> | null;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+  readonly durationMs: number | null;
+}
+
 export interface ComputerUseHostRuntimeState {
   readonly status: ComputerUseHostRuntimeStatus;
   readonly hostId: string | null;
   readonly lastHeartbeatAt: string | null;
   readonly lastCommandAt: string | null;
   readonly lastError: string | null;
-  readonly pendingApprovals: readonly ComputerUsePendingApprovalRuntimeEvent[];
   readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
-}
-
-export interface ComputerUseApprovalAction {
-  readonly commandId: string;
-  readonly decision: "approve" | "deny";
+  readonly localCommandLog: readonly ComputerUseLocalCommandLogEntry[];
 }
 
 export interface DesktopComputerUseState {
@@ -67,6 +73,6 @@ export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
-    pendingApprovals: [],
     recentAuditEvents: [],
+    localCommandLog: [],
   });

@@ -8,7 +8,10 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageAttachFileMetadata,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -156,6 +159,7 @@ interface SeedChatMessageOptions {
   readonly role: "user" | "assistant";
   readonly content: string | null;
   readonly attachFiles?: readonly string[];
+  readonly attachFileMetadata?: readonly ChatMessageAttachFileMetadata[];
   readonly createdAt?: Date;
   readonly sequenceNumber?: number | null;
   readonly runId?: string | null;
@@ -177,6 +181,9 @@ export const seedZeroChatMessage$ = command(
       role: options.role,
       content: options.content,
       attachFiles: options.attachFiles ? [...options.attachFiles] : null,
+      attachFileMetadata: options.attachFileMetadata
+        ? [...options.attachFileMetadata]
+        : null,
       sequenceNumber: options.sequenceNumber ?? null,
       runId: options.runId ?? null,
       createdAt,

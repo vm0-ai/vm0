@@ -361,16 +361,16 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Open html preview for report.html"),
+        screen.getByLabelText("Open html preview for 可爱小猫页面"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByLabelText("Open html preview for report.html"),
+      screen.getByLabelText("Open html preview for 可爱小猫页面"),
     );
 
     await waitFor(() => {
-      expect(screen.getByTitle("report.html preview")).toBeInTheDocument();
+      expect(screen.getByTitle("可爱小猫页面 preview")).toBeInTheDocument();
     });
   });
 
@@ -397,16 +397,16 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Open html preview for cute_kitten.html"),
+        screen.getByLabelText("Open html preview for 可爱小猫页面"),
       ).toBeInTheDocument();
     });
 
     await userEvent.click(
-      screen.getByLabelText("Open html preview for cute_kitten.html"),
+      screen.getByLabelText("Open html preview for 可爱小猫页面"),
     );
 
     await waitFor(() => {
-      expect(screen.getByTitle("cute_kitten.html preview")).toBeInTheDocument();
+      expect(screen.getByTitle("可爱小猫页面 preview")).toBeInTheDocument();
     });
   });
 
@@ -473,8 +473,11 @@ describe("zero chat thread page display - body link document preview", () => {
     await waitFor(() => {
       expect(screen.getAllByTestId("attachment-preview-html")).toHaveLength(2);
       expect(
-        screen.getAllByLabelText("Open html preview for symbol-report.html"),
-      ).toHaveLength(2);
+        screen.getByLabelText("Open html preview for symbol-report.html"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open html preview for 查看报告"),
+      ).toBeInTheDocument();
     });
   });
 

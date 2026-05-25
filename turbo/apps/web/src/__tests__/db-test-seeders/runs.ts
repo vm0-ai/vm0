@@ -14,17 +14,28 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
 import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
+import type { ContextArtifact } from "@vm0/db/types";
 import { initServices } from "../../lib/init-services";
 import { uniqueId } from "../test-helpers";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
-import type {
-  ArtifactSnapshotsPayload,
-  ContextArtifact,
-  VolumeVersionsSnapshot,
-} from "../../lib/infra/checkpoint/types";
 
 const TEST_SESSION_HISTORY_HASH =
   "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e";
+
+type ArtifactSnapshotsPayload = Array<{
+  name: string;
+  version: string;
+  mountPath: string;
+}>;
+
+type VolumeVersionsSnapshot = {
+  versions: Record<string, string>;
+  additionalVolumes?: Array<{
+    name: string;
+    versionId: string;
+    mountPath: string;
+  }>;
+};
 
 /**
  * Resolve both orgId and agentComposeId from a compose version ID.

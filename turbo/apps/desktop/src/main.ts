@@ -17,15 +17,18 @@ import {
   installComputerUseIpc,
   notifyDesktopComputerUseChanged,
 } from "./computer-use-electron";
-import { ComputerUseHostRuntime } from "./computer-use-host";
+import {
+  ComputerUseHostRuntime,
+  resolveComputerUseApiBaseUrl,
+} from "./computer-use-host";
 import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   IDLE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
-  type ComputerUseApprovalAction,
   type DesktopComputerUseState,
 } from "./computer-use-types";
+import type { DesktopAuthState } from "./desktop-bridge";
 import {
   getComputerUsePermissionState,
   requestComputerUseAccessibilityPermission,
@@ -62,6 +65,7 @@ import {
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 const config = resolveDesktopConfig();
+const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
 const desktopAuthStartUrl = buildDesktopAuthStartUrl(
   config.webUrl,
   config.identity.authScheme,
@@ -74,6 +78,8 @@ const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
+const AUTH_ME_PATH = "/api/auth/me";
+const ZERO_ORG_PATH = "/api/zero/org";
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
 let appIsQuitting = false;
@@ -134,6 +140,73 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
   };
 }
 
+interface AuthMeResponse {
+  readonly userId: string;
+  readonly email: string;
+}
+
+interface ZeroOrgResponse {
+  readonly id: string;
+  readonly name: string;
+  readonly slug?: string;
+}
+
+function signedOutDesktopAuthState(): DesktopAuthState {
+  return {
+    status: "signed_out",
+    user: null,
+    organization: null,
+  };
+}
+
+async function getDesktopAuthState(): Promise<DesktopAuthState> {
+  if (!desktopAuthToken) {
+    return signedOutDesktopAuthState();
+  }
+
+  const authHeaders = {
+    authorization: `Bearer ${desktopAuthToken}`,
+  };
+  const meResponse = await fetch(`${desktopApiBaseUrl}${AUTH_ME_PATH}`, {
+    headers: authHeaders,
+  });
+  if (meResponse.status === 401) {
+    desktopAuthToken = null;
+    return signedOutDesktopAuthState();
+  }
+  if (!meResponse.ok) {
+    throw new Error(`Desktop auth status failed: ${meResponse.status}`);
+  }
+
+  const user = (await meResponse.json()) as AuthMeResponse;
+  const orgResponse = await fetch(`${desktopApiBaseUrl}${ZERO_ORG_PATH}`, {
+    headers: authHeaders,
+  });
+  if (orgResponse.status === 401) {
+    desktopAuthToken = null;
+    return signedOutDesktopAuthState();
+  }
+  if (orgResponse.status === 404) {
+    return { status: "signed_in", user, organization: null };
+  }
+  if (!orgResponse.ok) {
+    throw new Error(
+      `Desktop organization status failed: ${orgResponse.status}`,
+    );
+  }
+
+  const organization = (await orgResponse.json()) as ZeroOrgResponse;
+  return {
+    status: "signed_in",
+    user,
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug ?? null,
+    },
+  };
+}
+
 async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   const desktopSession = session.fromPartition(config.sessionPartition);
   if (!computerUseRuntime) {
@@ -163,16 +236,6 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   return getComputerUseBridgeState();
 }
 
-async function decideComputerUseCommand(
-  action: ComputerUseApprovalAction,
-): Promise<DesktopComputerUseState> {
-  if (!computerUseRuntime) {
-    return getComputerUseBridgeState();
-  }
-  await computerUseRuntime.decideCommand(action);
-  return getComputerUseBridgeState();
-}
-
 function requestComputerUsePermission(): DesktopComputerUseState {
   requestComputerUseAccessibilityPermission();
   notifyDesktopComputerUseChanged();
@@ -185,7 +248,6 @@ function installComputerUse(): void {
       getState: getComputerUseBridgeState,
       start: startComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
-      decideCommand: decideComputerUseCommand,
     },
     { rendererUrl: localRendererUrl },
   );
@@ -194,6 +256,7 @@ function installComputerUse(): void {
 function installDesktopAuth(): void {
   installDesktopAuthIpc(
     {
+      getState: getDesktopAuthState,
       openSignIn: () => {
         openExternal(desktopAuthStartUrl);
       },

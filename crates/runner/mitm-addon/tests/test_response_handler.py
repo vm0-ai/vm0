@@ -17,7 +17,7 @@ from tests.auth_state_helpers import (
     set_cached_headers,
     set_last_force_refresh_at,
 )
-from tests.flow_helpers import _header_map, _response_stream
+from tests.flow_helpers import header_map, response_stream
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -39,7 +39,7 @@ class TestResponseHandler:
         # Add response
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {
                     "content-length": "256",
                     "content-type": "application/json",
@@ -80,12 +80,12 @@ class TestResponseHandler:
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-length": "999", "content-type": "application/json"}),
+            headers=header_map({"content-length": "999", "content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b"x" * 40)
-        _response_stream(flow)(b"y" * 60)
+        response_stream(flow)(b"x" * 40)
+        response_stream(flow)(b"y" * 60)
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
@@ -110,12 +110,12 @@ class TestResponseHandler:
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-length": "12", "content-type": "application/json"}),
+            headers=header_map({"content-length": "12", "content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(body[:123])
-        _response_stream(flow)(body[123:])
+        response_stream(flow)(body[:123])
+        response_stream(flow)(body[123:])
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -140,7 +140,7 @@ class TestResponseHandler:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-length": "50000"})
+            status_code=200, headers=header_map({"content-length": "50000"})
         )
 
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -165,7 +165,7 @@ class TestResponseHandler:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -189,7 +189,7 @@ class TestResponseHandler:
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-length": "50000", "content-type": "application/json"}),
+            headers=header_map({"content-length": "50000", "content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
@@ -216,12 +216,12 @@ class TestResponseHandler:
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(body[:123])
-        _response_stream(flow)(body[123:])
+        response_stream(flow)(body[:123])
+        response_stream(flow)(body[123:])
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():

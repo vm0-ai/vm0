@@ -19,10 +19,10 @@ import body_utils
 import mitm_addon
 import response_streaming
 import usage
-from tests.flow_helpers import _header_map, _response_stream
+from tests.flow_helpers import header_map, response_stream
 from tests.usage_helpers import (
-    _model_usage_idempotency_key,
-    _usage_event_events_from_calls,
+    model_usage_idempotency_key,
+    usage_event_events_from_calls,
 )
 
 
@@ -70,7 +70,7 @@ def _model_provider_sse_flow(
         flow.metadata["cli_agent_type"] = cli_agent_type
     flow.response = tutils.tresp(
         status_code=200,
-        headers=_header_map({"content-type": "text/event-stream"}),
+        headers=header_map({"content-type": "text/event-stream"}),
     )
 
     mitm_addon.responseheaders(flow)
@@ -163,7 +163,7 @@ class TestResponseUsageReporting:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {"content-type": "application/json", "content-length": str(len(body))}
             ),
         )
@@ -214,7 +214,7 @@ class TestResponseUsageReporting:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {"content-type": "application/json", "content-length": str(len(body))}
             ),
         )
@@ -234,7 +234,7 @@ class TestResponseUsageReporting:
         assert extracted["tokens.input"] == 40
         assert extracted["tokens.output"] == 200
         assert extracted["tokens.cache_read"] == 10
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
@@ -261,7 +261,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -308,7 +308,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -350,7 +350,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -465,7 +465,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {
                     "content-type": "application/json",
                     "content-encoding": content_encoding,
@@ -536,7 +536,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {
                     "content-type": "application/json",
                     "content-encoding": encoding_case,
@@ -624,7 +624,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {
                     "content-type": "application/json",
                     "content-encoding": encoding_case,
@@ -649,7 +649,7 @@ class TestResponseUsageReporting:
         assert extracted["tokens.output"] == 200
         if provider_case == "openai":
             assert extracted["tokens.cache_read"] == 10
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         expected = {
             "tokens.input": 40 if provider_case == "openai" else 50,
@@ -684,7 +684,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -720,7 +720,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -782,7 +782,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         _set_stream_buffer(flow, body)
-        flow.response = tutils.tresp(status_code=200, headers=_header_map(response_headers))
+        flow.response = tutils.tresp(status_code=200, headers=header_map(response_headers))
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -816,7 +816,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -883,7 +883,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -928,7 +928,7 @@ class TestResponseUsageReporting:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {"content-type": "application/json", "content-length": str(len(body))}
             ),
         )
@@ -948,7 +948,7 @@ class TestResponseUsageReporting:
         assert extracted["tokens.input"] == 40
         assert extracted["tokens.output"] == 200
         assert extracted["tokens.cache_read"] == 10
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
@@ -978,7 +978,7 @@ class TestResponseUsageReporting:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -1012,7 +1012,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -1044,11 +1044,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "text/event-stream"}),
+            headers=header_map({"content-type": "text/event-stream"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"input_tokens":50,"output_tokens":20,'
@@ -1064,7 +1064,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
@@ -1087,11 +1087,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "text/event-stream"}),
+            headers=header_map({"content-type": "text/event-stream"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: response.incomplete\n"
             b'data: {"response":{"id":"resp_incomplete","model":"gpt-5.5",'
             b'"usage":{"input_tokens":8000,"output_tokens":1024,'
@@ -1107,7 +1107,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 6000,
@@ -1126,7 +1126,7 @@ class TestResponseUsageReporting:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -1156,7 +1156,7 @@ class TestResponseUsageReporting:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
         flow.error = Error("connection reset by peer")
@@ -1187,7 +1187,7 @@ class TestResponseUsageReporting:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
-        _response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
+        response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -1215,7 +1215,7 @@ class TestResponseUsageReporting:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"id":"msg_1",'
             b'"model":"claude-sonnet-4-6","usage":{"input_tokens":50}}}\n\n'
@@ -1232,7 +1232,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50}
         assert {event["provider"] for event in events} == {"claude-sonnet-4-6"}
@@ -1253,7 +1253,7 @@ class TestResponseUsageReporting:
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
@@ -1285,7 +1285,7 @@ class TestResponseUsageReporting:
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt\n'
             b"event: response.completed\n\n"
         )
@@ -1316,7 +1316,7 @@ class TestResponseUsageReporting:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude'
         )
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -1342,7 +1342,7 @@ class TestResponseUsageReporting:
             original_url="https://api.anthropic.com/v1/messages",
             firewall_name="model-provider:anthropic-api-key",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: content_block_delta\n"
             b'data: {"type":"content_block_delta","delta":{"text":"hello'
         )
@@ -1370,7 +1370,7 @@ class TestResponseUsageReporting:
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -1397,7 +1397,7 @@ class TestResponseUsageReporting:
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
         )
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: response.in_progress\n"
             b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
         )
@@ -1429,11 +1429,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "text/event-stream"}),
+            headers=header_map({"content-type": "text/event-stream"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
             b'"usage":{"input_tokens":100,"output_tokens":40}}}\n\n'
@@ -1451,7 +1451,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
         assert by_category == {
@@ -1459,10 +1459,10 @@ class TestResponseUsageReporting:
             "tokens.output": 40,
         }
         assert idempotency_by_category == {
-            "tokens.input": _model_usage_idempotency_key(
+            "tokens.input": model_usage_idempotency_key(
                 "run-abc-123", "resp_sse_1", "tokens.input"
             ),
-            "tokens.output": _model_usage_idempotency_key(
+            "tokens.output": model_usage_idempotency_key(
                 "run-abc-123", "resp_sse_1", "tokens.output"
             ),
         }
@@ -1520,7 +1520,7 @@ class TestResponseUsageReporting:
             mitm_addon.websocket_end(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert flow.metadata["model_provider_usage"]["message_id"] == "resp_ws_1"
         assert by_category == {
@@ -1576,7 +1576,7 @@ class TestResponseUsageReporting:
             mitm_addon.websocket_end(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
         assert by_category == {
@@ -1584,10 +1584,8 @@ class TestResponseUsageReporting:
             "tokens.output": 40,
         }
         assert idempotency_by_category == {
-            "tokens.input": _model_usage_idempotency_key(
-                "run-abc-123", "resp_ws_1", "tokens.input"
-            ),
-            "tokens.output": _model_usage_idempotency_key(
+            "tokens.input": model_usage_idempotency_key("run-abc-123", "resp_ws_1", "tokens.input"),
+            "tokens.output": model_usage_idempotency_key(
                 "run-abc-123", "resp_ws_1", "tokens.output"
             ),
         }
@@ -1874,7 +1872,7 @@ class TestResponseUsageReporting:
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -1888,7 +1886,7 @@ class TestResponseUsageReporting:
             mitm_addon.error(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert [event["category"] for event in events] == ["tokens.output"]
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         if proxy_log.exists():
@@ -1915,7 +1913,7 @@ class TestResponseUsageReporting:
         flow.metadata["model_provider_usage"] = {"model": "gpt-5.5"}
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -1932,7 +1930,7 @@ class TestResponseUsageReporting:
             mitm_addon.error(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert [event["category"] for event in events] == ["tokens.output"]
 
     def test_full_pipeline_large_model_json_uses_bounded_buffer(
@@ -1952,11 +1950,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
         callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":200}}')
@@ -1972,7 +1970,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50, "tokens.output": 200}
 
@@ -2018,13 +2016,13 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json", "content-encoding": "gzip"}),
+            headers=header_map({"content-type": "application/json", "content-encoding": "gzip"}),
         )
 
         mitm_addon.responseheaders(flow)
         midpoint = len(compressed) // 2
-        _response_stream(flow)(compressed[:midpoint])
-        _response_stream(flow)(compressed[midpoint:])
+        response_stream(flow)(compressed[:midpoint])
+        response_stream(flow)(compressed[midpoint:])
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -2043,7 +2041,7 @@ class TestResponseUsageReporting:
         assert extracted["tokens.output"] == 200
         if provider_case == "openai":
             assert extracted["tokens.cache_read"] == 10
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         expected = {
             "tokens.input": 40 if provider_case == "openai" else 50,
@@ -2069,11 +2067,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(
+        response_stream(flow)(
             b'{"id":"msg_1","model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":50,"output_tokens":200}'
         )
@@ -2121,11 +2119,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json", "content-encoding": "gzip"}),
+            headers=header_map({"content-type": "application/json", "content-encoding": "gzip"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(raw_json)
+        response_stream(flow)(raw_json)
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -2162,11 +2160,11 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(body)
+        response_stream(flow)(body)
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -2191,11 +2189,11 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"model":"claude-sonnet-4-6"}')
+        response_stream(flow)(b'{"model":"claude-sonnet-4-6"}')
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
@@ -2214,11 +2212,11 @@ class TestResponseUsageReporting:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"data":[{"id":"1"}]}')
+        response_stream(flow)(b'{"data":[{"id":"1"}]}')
         assert "x_json_response_finish" in flow.metadata
 
         mitm_addon.response(flow)
@@ -2236,11 +2234,11 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "text/event-stream"}),
+            headers=header_map({"content-type": "text/event-stream"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(
+        response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5","usage":{"output_tokens":7}}}\n'
         )
@@ -2289,11 +2287,11 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        vm0_stream = _response_stream(flow)
+        vm0_stream = response_stream(flow)
         vm0_stream(b'{"model":"claude-sonnet-4-6"}')
         flow.response.stream = external_stream
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -2309,14 +2307,14 @@ class TestResponseUsageReporting:
         """Billable model provider JSON should parse usage without unbounded buffering."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
         callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":100}}')
@@ -2336,14 +2334,14 @@ class TestResponseUsageReporting:
         """Non-billable model providers should use the normal bounded buffer."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = False
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
@@ -2358,13 +2356,13 @@ class TestResponseUsageReporting:
         """Non-model-provider responses should truncate at 64KB."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         # No firewall_name — not a model provider
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
@@ -2377,7 +2375,7 @@ class TestResponseUsageReporting:
         """Billable X connector responses should not buffer the full body."""
         flow = real_flow(with_response=False, host="api.x.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_billable"] = True
@@ -2385,7 +2383,7 @@ class TestResponseUsageReporting:
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
         callback(b'"}],"meta":{"result_count":1}}')
@@ -2403,7 +2401,7 @@ class TestResponseUsageReporting:
         """Non-billable X JSON should not attach the billable response parser."""
         flow = real_flow(with_response=False, host="api.x.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_billable"] = False
@@ -2411,7 +2409,7 @@ class TestResponseUsageReporting:
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
 
         buf = flow.metadata["stream_buffer"]
@@ -2425,14 +2423,14 @@ class TestResponseUsageReporting:
         """Future billable connectors must not get unbounded buffers by default."""
         flow = real_flow(with_response=False, host="api.gamma.example")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "gamma"  # hypothetical future billable connector
         flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         large_chunk = b"g" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
@@ -2461,7 +2459,7 @@ class TestResponseUsageReporting:
         body = b'{"incomplete":'
         _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -2501,7 +2499,7 @@ class TestResponseUsageReporting:
             "tokens.output": 500,
         }
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "text/event-stream"})
+            status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -2560,7 +2558,7 @@ class TestResponseUsageReporting:
         assert body["runId"] == "run-int-002"
         assert body["events"] == [
             {
-                "idempotencyKey": _model_usage_idempotency_key(
+                "idempotencyKey": model_usage_idempotency_key(
                     "run-int-002", flow.id, "tokens.input"
                 ),
                 "kind": "model",
@@ -2595,7 +2593,7 @@ class TestResponseUsageReporting:
             # no message_id set
         }
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "text/event-stream"})
+            status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -2610,7 +2608,7 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
-        assert body["events"][0]["idempotencyKey"] == _model_usage_idempotency_key(
+        assert body["events"][0]["idempotencyKey"] == model_usage_idempotency_key(
             "run-fallback", "flow-uuid-xyz-123", "tokens.input"
         )
 
@@ -2635,7 +2633,7 @@ class TestResponseUsageReporting:
             "tokens.input": 10,
         }
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "text/event-stream"})
+            status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -2650,6 +2648,6 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
-        assert body["events"][0]["idempotencyKey"] == _model_usage_idempotency_key(
+        assert body["events"][0]["idempotencyKey"] == model_usage_idempotency_key(
             "run-preserved", "msg_real_anthropic_id", "tokens.input"
         )

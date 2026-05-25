@@ -4,9 +4,6 @@ export const alchemy = {
   alchemy: {
     label: "Alchemy",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      ALCHEMY_API_KEY: "$secrets.ALCHEMY_API_KEY",
-    },
     helpText:
       "Connect Alchemy to use its blockchain RPC, NFT, data, and wallet APIs",
     authMethods: {
@@ -14,12 +11,22 @@ export const alchemy = {
         label: "API Key or Access Key",
         helpText:
           "1. Log in to the [Alchemy Dashboard](https://dashboard.alchemy.com)\n2. Open **Team Overview** and go to the **Apps** tab\n3. Create or open an app and copy its **API Key**\n4. Use this key in the `Authorization: Bearer` header for supported Alchemy API requests",
-        secrets: {
-          ALCHEMY_API_KEY: {
-            label: "API Key or Access Key",
-            required: true,
+        grant: {
+          kind: "manual",
+          fields: {
+            ALCHEMY_API_KEY: {
+              label: "API Key or Access Key",
+              required: true,
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            ALCHEMY_API_KEY: "$secrets.ALCHEMY_API_KEY",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

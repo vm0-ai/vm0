@@ -12,8 +12,18 @@ import {
 import { chatThreads } from "./chat-thread";
 import { agentRuns } from "./agent-run";
 
-/** attach_files stores only file IDs — metadata is resolved at query time. */
+/** attach_files stores legacy file IDs. */
 export type ChatMessageAttachFiles = string[];
+
+export interface ChatMessageAttachFileMetadata {
+  readonly id: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly size: number;
+  readonly objectKey: string;
+}
+
+export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
 
 /**
  * Chat Messages table
@@ -69,6 +79,9 @@ export const chatMessages = pgTable(
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
+    attachFileMetadata: jsonb(
+      "attach_file_metadata",
+    ).$type<ChatMessageAttachFileMetadataList>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

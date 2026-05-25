@@ -19,8 +19,8 @@ function computerUseState(
       lastHeartbeatAt: null,
       lastCommandAt: null,
       lastError: null,
-      pendingApprovals: [],
       recentAuditEvents: [],
+      localCommandLog: [],
     },
     ...overrides,
   };

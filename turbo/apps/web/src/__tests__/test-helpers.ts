@@ -9,21 +9,19 @@
  *   const context = testContext();
  *
  *   test("my test", async () => {
- *     context.setupMocks();  // Setup S3, Axiom mocks
+ *     context.setupMocks();  // Setup external service mocks
  *     const user = await context.setupUser();
  *     // user.userId and user.orgId are unique to this test
  *     // No cleanup needed - data is isolated by unique IDs
  *   });
  */
-import { vi, afterEach, type Mock, type MockInstance } from "vitest";
+import { vi, afterEach, type MockInstance } from "vitest";
 import { randomUUID } from "crypto";
 import { inArray } from "drizzle-orm";
-import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { flushNextAsyncHooks } from "./next-after-hooks";
 import { initServices } from "../lib/init-services";
 import * as s3Client from "../lib/infra/s3/s3-client";
-import * as axiomClient from "../lib/shared/axiom/client";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -60,73 +58,9 @@ interface S3Mocks {
       filename?: string,
     ) => Promise<string>
   >;
-  generatePresignedPutUrl: MockInstance<
-    (
-      bucket: string,
-      key: string,
-      contentType?: string,
-      expiresIn?: number,
-    ) => Promise<string>
-  >;
-  listS3Objects: MockInstance<
-    (bucket: string, prefix: string) => Promise<{ key: string; size: number }[]>
-  >;
-  uploadS3Buffer: MockInstance<
-    (
-      bucket: string,
-      key: string,
-      data: Buffer,
-      contentType?: string,
-    ) => Promise<void>
-  >;
   s3ObjectExists: MockInstance<
     (bucket: string, key: string) => Promise<boolean>
   >;
-  verifyS3FilesExist: MockInstance<
-    (bucket: string, s3Key: string, fileCount: number) => Promise<boolean>
-  >;
-  downloadBlob: MockInstance<(bucket: string, hash: string) => Promise<Buffer>>;
-  downloadS3Buffer: MockInstance<
-    (bucket: string, key: string) => Promise<Buffer>
-  >;
-  downloadManifest: MockInstance<
-    (
-      bucket: string,
-      s3Key: string,
-    ) => Promise<{
-      version: string;
-      createdAt: string;
-      totalSize: number;
-      fileCount: number;
-      files: Array<{ path: string; hash: string; size: number }>;
-    }>
-  >;
-  putS3Object: MockInstance<
-    (
-      bucket: string,
-      key: string,
-      body: string | Buffer,
-      contentType: string,
-    ) => Promise<void>
-  >;
-  deleteS3Objects: MockInstance<
-    (bucket: string, keys: string[]) => Promise<void>
-  >;
-}
-
-/**
- * Axiom client mock structure
- */
-interface AxiomMocks {
-  query: Mock;
-  ingest: Mock;
-  flush: Mock;
-  /** Spy for queryAxiom function - use mockResolvedValue to set return value */
-  queryAxiom: MockInstance<typeof axiomClient.queryAxiom>;
-  /** Spy for ingestToAxiom function - use mockReturnValue to set return value */
-  ingestToAxiom: MockInstance<typeof axiomClient.ingestToAxiom>;
-  /** Spy for flushAxiom function */
-  flushAxiom: MockInstance<typeof axiomClient.flushAxiom>;
 }
 
 /**
@@ -140,11 +74,10 @@ interface DateMocks {
 }
 
 /**
- * Combined mock helpers for S3, Axiom, and Date
+ * Combined mock helpers for S3 and Date
  */
 interface MockHelpers {
   s3: S3Mocks;
-  axiom: AxiomMocks;
   /** @deprecated Use context.mocks.date.setSystemTime() instead */
   dateNow: MockInstance<() => number>;
   /** Date mock for controlling new Date() and Date.now() */
@@ -235,7 +168,7 @@ export async function ensureOrgRow(orgId: string): Promise<void> {
  *
  * The returned context provides:
  * - signal: AbortSignal for cleanup handlers
- * - mocks: Lazy getter for S3 and Axiom mocks
+ * - mocks: Lazy getter for S3 mocks
  * - setupMocks(): Explicit setup method (same effect as mocks getter)
  * - setupUser(): Create isolated user context for the test
  *
@@ -264,94 +197,14 @@ export function testContext(): TestContext {
   function createMocks(): MockHelpers {
     if (mockHelpers) return mockHelpers;
 
-    // S3 mocks with in-memory blob storage for testing session history
-    // Tracks blob uploads so downloads can return the correct content
-    const blobStorage = new Map<string, Buffer>();
-
-    const uploadS3BufferMock = vi
-      .spyOn(s3Client, "uploadS3Buffer")
-      .mockImplementation(
-        async (_bucket: string, key: string, data: Buffer) => {
-          // Store blob data for later retrieval in tests
-          blobStorage.set(key, data);
-        },
-      );
-
-    const downloadBlobMock = vi
-      .spyOn(s3Client, "downloadBlob")
-      .mockImplementation(async (_bucket: string, hash: string) => {
-        // Look up blob data that was previously uploaded
-        const key = `blobs/${hash}.blob`;
-        const data = blobStorage.get(key);
-        if (data) {
-          return data;
-        }
-        // Fallback: return standard test session history content
-        // This handles cases where the blob exists in DB (deduplication)
-        // but was uploaded in a different test instance
-        return Buffer.from(JSON.stringify([{ role: "user", content: "test" }]));
-      });
-
     const s3Mocks: S3Mocks = {
       generatePresignedUrl: vi
         .spyOn(s3Client, "generatePresignedUrl")
         .mockResolvedValue("https://mock-presigned-url"),
-      generatePresignedPutUrl: vi
-        .spyOn(s3Client, "generatePresignedPutUrl")
-        .mockResolvedValue("https://mock-presigned-put-url"),
-      listS3Objects: vi.spyOn(s3Client, "listS3Objects").mockResolvedValue([]),
-      uploadS3Buffer: uploadS3BufferMock,
       s3ObjectExists: vi
         .spyOn(s3Client, "s3ObjectExists")
         .mockResolvedValue(true),
-      verifyS3FilesExist: vi
-        .spyOn(s3Client, "verifyS3FilesExist")
-        .mockResolvedValue(true),
-      downloadBlob: downloadBlobMock,
-      downloadS3Buffer: vi
-        .spyOn(s3Client, "downloadS3Buffer")
-        .mockResolvedValue(Buffer.from("")),
-      downloadManifest: vi
-        .spyOn(s3Client, "downloadManifest")
-        .mockResolvedValue({
-          version: "0".repeat(64),
-          createdAt: new Date().toISOString(),
-          totalSize: 0,
-          fileCount: 0,
-          files: [],
-        }),
-      putS3Object: vi
-        .spyOn(s3Client, "putS3Object")
-        .mockResolvedValue(undefined),
-      deleteS3Objects: vi
-        .spyOn(s3Client, "deleteS3Objects")
-        .mockResolvedValue(undefined),
     };
-
-    // Axiom mocks - only set up if Axiom is mocked (vi.mock at module level in test file)
-    const axiomMocks: AxiomMocks = {
-      query: vi.fn().mockResolvedValue({ matches: [] }),
-      ingest: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-      queryAxiom: vi.spyOn(axiomClient, "queryAxiom").mockResolvedValue([]),
-      ingestToAxiom: vi
-        .spyOn(axiomClient, "ingestToAxiom")
-        .mockReturnValue(true),
-      flushAxiom: vi
-        .spyOn(axiomClient, "flushAxiom")
-        .mockResolvedValue(undefined),
-    };
-    // Use try/catch since Axiom may not be mocked in all test files
-    try {
-      const mocked = vi.mocked(Axiom);
-      if (typeof mocked.mockImplementation === "function") {
-        mocked.mockImplementation(() => {
-          return axiomMocks as unknown as Axiom;
-        });
-      }
-    } catch {
-      // Axiom not mocked, skip
-    }
 
     // Date.now mock - spy passes through to real implementation by default
     // Tests can override with: context.mocks.dateNow.mockReturnValue(specificTime)
@@ -397,7 +250,6 @@ export function testContext(): TestContext {
 
     const helpers: MockHelpers = {
       s3: s3Mocks,
-      axiom: axiomMocks,
       dateNow: dateNowMock,
       date: dateMocks,
       async flushAfter() {

@@ -1,21 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
-import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
-import { isOAuthConnectorType } from "@vm0/connectors/auth-providers";
-import { googleAdsProvider } from "@vm0/connectors/auth-providers/oauth/providers/google-ads-provider";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
+import { getConnectorOAuthCredentials } from "../../../../connector-utils";
+import { isOAuthConnectorType } from "../../../connector-auth";
+import { googleAdsProvider } from "../google-ads-provider";
+import { server } from "./test-server";
 
-const context = testContext();
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 describe("connector/providers/google-ads", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("googleAdsProvider", () => {
     it("registers google-ads as an OAuth connector type", () => {
       expect(isOAuthConnectorType("google-ads")).toBe(true);
@@ -85,7 +78,7 @@ describe("connector/providers/google-ads", () => {
     });
 
     it("exchangeCode maps Google token and user info response", async () => {
-      const { handler: tokenHandler } = http.post(TOKEN_URL, () => {
+      const tokenHandler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
           access_token: "google-ads-access-token",
           refresh_token: "google-ads-refresh-token",
@@ -94,7 +87,7 @@ describe("connector/providers/google-ads", () => {
             "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/userinfo.email",
         });
       });
-      const { handler: userInfoHandler } = http.get(USER_INFO_URL, () => {
+      const userInfoHandler = http.get(USER_INFO_URL, () => {
         return HttpResponse.json({
           id: "google-user-123",
           name: "Ada Lovelace",
@@ -127,7 +120,7 @@ describe("connector/providers/google-ads", () => {
     });
 
     it("refreshToken delegates to the shared Google refresh flow", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
           access_token: "refreshed-google-ads-token",
           expires_in: 3600,

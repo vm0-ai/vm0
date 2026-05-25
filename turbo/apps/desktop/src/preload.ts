@@ -2,12 +2,12 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopAuthApi, DesktopComputerUseApi } from "./desktop-bridge";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
-import type {
-  ComputerUseApprovalAction,
-  DesktopComputerUseState,
-} from "./computer-use-types";
+import type { DesktopComputerUseState } from "./computer-use-types";
 
 const desktopAuthApi: DesktopAuthApi = {
+  getState() {
+    return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.getState);
+  },
   openSignIn(): Promise<void> {
     return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.openSignIn);
   },
@@ -47,11 +47,6 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
     return ipcRenderer.invoke(
       COMPUTER_USE_CHANNELS.openScreenRecordingSettings,
     );
-  },
-  decideCommand(
-    action: ComputerUseApprovalAction,
-  ): Promise<DesktopComputerUseState> {
-    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.decideCommand, action);
   },
   subscribe(callback: () => void): () => void {
     const listener = (): void => {

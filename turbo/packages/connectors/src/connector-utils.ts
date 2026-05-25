@@ -5,13 +5,17 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
+  type ConnectorAccessConfig,
+  type ConnectorAuthCodeGrantConfig,
   type ConnectorCliAuthConfig,
   type ConnectorCliAuthFlow,
   type ConnectorConfig,
+  type ConnectorDeviceAuthGrantConfig,
   type ConnectorGenerationType,
   type DynamicPublicConnectorOAuthClientConfig,
   type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
+  type ConnectorManualGrantFieldConfig,
   type StaticConfidentialConnectorOAuthClientConfig,
   type StaticPublicConnectorOAuthClientConfig,
   type ConnectorType,
@@ -60,8 +64,14 @@ export function getConnectorAuthMethod(
 function getConnectorCliAuthConfig(
   type: ConnectorType,
 ): ConnectorCliAuthConfig | undefined {
-  const config = CONNECTOR_TYPES[type];
-  return "cliAuth" in config ? config.cliAuth : undefined;
+  const method = getConnectorAuthMethod(type, "cli-auth");
+  if (method?.grant.kind !== "interactive-pairing") {
+    return undefined;
+  }
+  return {
+    flow: method.grant.flow,
+    modes: method.grant.modes,
+  };
 }
 
 /**
@@ -79,13 +89,84 @@ export function getConnectorCliAuthModes(
   return getConnectorCliAuthConfig(type)?.modes ?? [];
 }
 
-/**
- * Get default auth method for a connector type
- */
-function getConnectorDefaultAuthMethod(
+function connectorAuthMethodValues(
   type: ConnectorType,
-): ConnectorAuthMethodType | undefined {
-  return CONNECTOR_TYPES[type].defaultAuthMethod;
+): ConnectorAuthMethodConfig[] {
+  return Object.values(CONNECTOR_TYPES[type].authMethods);
+}
+
+function getManualGrantFields(
+  method: ConnectorAuthMethodConfig | undefined,
+): Record<string, ConnectorManualGrantFieldConfig> | undefined {
+  if (!method) {
+    return undefined;
+  }
+  switch (method.grant.kind) {
+    case "manual":
+      return method.grant.fields;
+    case "managed":
+      return method.grant.fields;
+    case "auth-code":
+    case "device-auth":
+    case "interactive-pairing":
+      return undefined;
+  }
+}
+
+export function getConnectorManualGrantFields(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodType,
+): Record<string, ConnectorManualGrantFieldConfig> | undefined {
+  return getManualGrantFields(getConnectorAuthMethod(type, authMethod));
+}
+
+function connectorAccessOutputs(
+  access: ConnectorAccessConfig,
+): Record<string, string> {
+  switch (access.kind) {
+    case "static":
+    case "refresh-token":
+    case "credential-exchange":
+      return access.outputs;
+    case "managed":
+      return access.outputs ?? {};
+    case "none":
+      return {};
+  }
+}
+
+function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
+  switch (method.grant.kind) {
+    case "auth-code":
+    case "device-auth":
+      return 2;
+    case "managed":
+    case "manual":
+      return 1;
+    case "interactive-pairing":
+      return 0;
+  }
+}
+
+type ConnectorOAuthGrant =
+  | ConnectorAuthCodeGrantConfig
+  | ConnectorDeviceAuthGrantConfig;
+
+function getConnectorOAuthGrant(
+  type: ConnectorType,
+): ConnectorOAuthGrant | undefined {
+  for (const method of connectorAuthMethodValues(type)) {
+    switch (method.grant.kind) {
+      case "auth-code":
+      case "device-auth":
+        return method.grant;
+      case "manual":
+      case "managed":
+      case "interactive-pairing":
+        continue;
+    }
+  }
+  return undefined;
 }
 
 export function getConnectorGenerationTypes(
@@ -314,8 +395,9 @@ export function getConnectorOAuthEnvKeys(
  * Return connector types the current runtime can offer as connection candidates.
  *
  * This is not user connected state and it does not evaluate feature switches.
- * It includes API-token default connectors because they do not require server
- * credentials, while OAuth connectors require their runtime OAuth env to exist.
+ * It includes connectors with user-entered manual grant methods because they
+ * do not require server credentials, while OAuth connectors require their
+ * runtime OAuth env to exist unless their client config is static inline.
  */
 export function getRuntimeAvailableConnectorTypes(
   readEnv: ConnectorEnvReader,
@@ -323,10 +405,11 @@ export function getRuntimeAvailableConnectorTypes(
   const runtimeAvailable = new Set<ConnectorType>();
 
   for (const type of CONNECTOR_TYPE_KEYS) {
-    const defaultAuthMethod = getConnectorDefaultAuthMethod(type);
     if (
       hasConfiguredOAuth(readEnv, type) ||
-      defaultAuthMethod === "api-token"
+      connectorAuthMethodValues(type).some((method) => {
+        return method.grant.kind === "manual";
+      })
     ) {
       runtimeAvailable.add(type);
     }
@@ -349,8 +432,31 @@ export function getConnectorSecretNames(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodType,
 ): string[] {
-  const secrets = getConnectorAuthMethod(type, authMethod)?.secrets;
-  return secrets ? Object.keys(secrets) : [];
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return [];
+  }
+
+  const names = new Set<string>();
+  const fields = getManualGrantFields(method);
+  for (const [name, field] of Object.entries(fields ?? {})) {
+    if (field.storage !== "variable") {
+      names.add(name);
+    }
+  }
+
+  for (const valueRef of Object.values(connectorAccessOutputs(method.access))) {
+    if (valueRef.startsWith("$secrets.")) {
+      names.add(valueRef.slice("$secrets.".length));
+    }
+  }
+
+  if (method.access.kind === "refresh-token") {
+    names.add(method.access.accessToken);
+    names.add(method.access.refreshToken);
+  }
+
+  return [...names];
 }
 
 /**
@@ -359,7 +465,14 @@ export function getConnectorSecretNames(
 export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
-  return CONNECTOR_TYPES[type].environmentMapping;
+  const methods = connectorAuthMethodValues(type).sort((a, b) => {
+    return authMethodAccessPriority(a) - authMethodAccessPriority(b);
+  });
+  const mapping: Record<string, string> = {};
+  for (const method of methods) {
+    Object.assign(mapping, connectorAccessOutputs(method.access));
+  }
+  return mapping;
 }
 
 /**
@@ -391,19 +504,9 @@ export function getConnectorDerivedNames(
   for (const type of allTypes) {
     const config = CONNECTOR_TYPES[type];
 
-    // Check if this secret belongs to any auth method of this connector
-    const authMethods = config.authMethods as Record<
-      string,
-      ConnectorAuthMethodConfig
-    >;
-    let found = false;
-    for (const method of Object.values(authMethods)) {
-      if (method.secrets && secretName in method.secrets) {
-        found = true;
-        break;
-      }
-    }
-
+    const found = CONNECTOR_AUTH_METHOD_TYPES.some((authMethod) => {
+      return getConnectorSecretNames(type, authMethod).includes(secretName);
+    });
     if (!found) {
       continue;
     }
@@ -458,8 +561,26 @@ export function getConnectorProvidedSecretNames(
 export function getConnectorOAuthConfigIfSupported(
   type: ConnectorType,
 ): ConnectorOAuthConfig | undefined {
-  const config = CONNECTOR_TYPES[type];
-  return "oauth" in config ? config.oauth : undefined;
+  const grant = getConnectorOAuthGrant(type);
+  switch (grant?.kind) {
+    case "auth-code":
+      return {
+        flow: "authorization-code",
+        tokenUrl: grant.tokenUrl,
+        client: grant.client,
+        scopes: [...grant.scopes],
+      };
+    case "device-auth":
+      return {
+        flow: "device-authorization",
+        deviceAuthUrl: grant.deviceAuthUrl,
+        tokenUrl: grant.tokenUrl,
+        client: grant.client,
+        scopes: [...grant.scopes],
+      };
+    case undefined:
+      return undefined;
+  }
 }
 
 /**
@@ -468,7 +589,11 @@ export function getConnectorOAuthConfigIfSupported(
 export function getConnectorOAuthConfig(
   type: OAuthConnectorType,
 ): ConnectorOAuthConfig {
-  return CONNECTOR_TYPES[type].oauth;
+  const oauthConfig = getConnectorOAuthConfigIfSupported(type);
+  if (!oauthConfig) {
+    throw new Error(`${type} OAuth config not found`);
+  }
+  return oauthConfig;
 }
 
 export function getConnectorOAuthFlow(
@@ -496,7 +621,11 @@ export function isOAuthDeviceAuthConnectorType(
 export function getConnectorOAuthDeviceAuthConfig(
   type: OAuthDeviceAuthConnectorType,
 ): Extract<ConnectorOAuthConfig, { readonly flow: "device-authorization" }> {
-  return CONNECTOR_TYPES[type].oauth;
+  const oauthConfig = getConnectorOAuthConfig(type);
+  if (oauthConfig.flow !== "device-authorization") {
+    throw new Error(`${type} OAuth device authorization config not found`);
+  }
+  return oauthConfig;
 }
 
 /**
@@ -564,7 +693,12 @@ export function getConnectorManagedSecretNames(
   for (const type of types) {
     const config = CONNECTOR_TYPES[type];
     for (const method of Object.values(config.authMethods)) {
-      for (const name of Object.keys(method.secrets)) {
+      for (const name of Object.keys(getManualGrantFields(method) ?? {})) {
+        managed.add(name);
+      }
+    }
+    for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
+      for (const name of getConnectorSecretNames(type, authMethod)) {
         managed.add(name);
       }
     }
@@ -579,7 +713,7 @@ export function getConnectorManagedSecretNames(
 
 /**
  * Reverse lookup: given a secret/env-var name, find which connector type manages it.
- * Checks both authMethods.secrets keys and environmentMapping keys.
+ * Checks manual grant fields, access storage names, and environment mapping keys.
  * Returns null if no connector manages this name.
  */
 export function getConnectorTypeForSecretName(
@@ -588,9 +722,13 @@ export function getConnectorTypeForSecretName(
   const allTypes = CONNECTOR_TYPE_KEYS;
   for (const type of allTypes) {
     const config = CONNECTOR_TYPES[type];
-    // Check authMethods secrets
     for (const method of Object.values(config.authMethods)) {
-      if (name in method.secrets) {
+      if (name in (getManualGrantFields(method) ?? {})) {
+        return type;
+      }
+    }
+    for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
+      if (getConnectorSecretNames(type, authMethod).includes(name)) {
         return type;
       }
     }
@@ -611,13 +749,14 @@ export function getApiTokenFieldsByType(
   type: ConnectorType,
 ): { secrets: string[]; variables: string[] } | null {
   const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
-  if (!apiTokenConfig) return null;
+  const fields = getManualGrantFields(apiTokenConfig);
+  if (!fields) return null;
 
   const secretNames: string[] = [];
   const variableNames: string[] = [];
-  for (const [name, cfg] of Object.entries(apiTokenConfig.secrets)) {
+  for (const [name, cfg] of Object.entries(fields)) {
     if (!cfg.required) continue;
-    if (cfg.type === "variable") {
+    if (cfg.storage === "variable") {
       variableNames.push(name);
     } else {
       secretNames.push(name);
@@ -636,8 +775,10 @@ export function getApiTokenFieldStorageType(
   type: ConnectorType,
   name: string,
 ): "secret" | "variable" {
-  const fieldConfig = getConnectorAuthMethod(type, "api-token")?.secrets[name];
-  return fieldConfig?.type ?? "secret";
+  const fieldConfig = getManualGrantFields(
+    getConnectorAuthMethod(type, "api-token"),
+  )?.[name];
+  return fieldConfig?.storage ?? "secret";
 }
 
 /**
@@ -712,8 +853,15 @@ function tokenize(input: string): Set<string> {
 function listSecretNames(config: ConnectorConfig): string[] {
   const names: string[] = [];
   for (const method of Object.values(config.authMethods)) {
-    for (const name of Object.keys(method.secrets)) {
+    for (const name of Object.keys(getManualGrantFields(method) ?? {})) {
       names.push(name);
+    }
+    for (const valueRef of Object.values(
+      connectorAccessOutputs(method.access),
+    )) {
+      if (valueRef.startsWith("$secrets.")) {
+        names.push(valueRef.slice("$secrets.".length));
+      }
     }
   }
   return names;
@@ -729,7 +877,7 @@ function findExactMatch(
   if (type.toLowerCase() === keywordLower) {
     return { score: 100, matchedField: "type" };
   }
-  for (const envVar of Object.keys(config.environmentMapping)) {
+  for (const envVar of Object.keys(getConnectorEnvironmentMapping(type))) {
     if (envVar.toLowerCase() === keywordLower) {
       return { score: 90, matchedField: `env:${envVar}` };
     }
@@ -757,7 +905,7 @@ function findSubstringMatch(
   if (config.label.toLowerCase().includes(keywordLower)) {
     return { score: 50, matchedField: "label" };
   }
-  for (const envVar of Object.keys(config.environmentMapping)) {
+  for (const envVar of Object.keys(getConnectorEnvironmentMapping(type))) {
     if (envVar.toLowerCase().includes(keywordLower)) {
       return { score: 40, matchedField: `env:${envVar}` };
     }
@@ -784,7 +932,7 @@ function collectCandidateTokens(
   const sources = [
     type,
     config.label,
-    ...Object.keys(config.environmentMapping),
+    ...Object.keys(getConnectorEnvironmentMapping(type)),
     ...listSecretNames(config),
     ...(config.tags ?? []),
   ];

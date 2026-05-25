@@ -4,9 +4,6 @@ export const apify = {
   apify: {
     label: "Apify",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      APIFY_TOKEN: "$secrets.APIFY_TOKEN",
-    },
     helpText:
       "Connect your Apify account to run web scraping actors, manage datasets, and automate browser tasks",
     authMethods: {
@@ -14,13 +11,23 @@ export const apify = {
         label: "API Token",
         helpText:
           "1. Log in to [Apify Console](https://console.apify.com)\n2. Go to **Settings > Integrations**\n3. Copy your **Personal API token**",
-        secrets: {
-          APIFY_TOKEN: {
-            label: "API Token",
-            required: true,
-            placeholder: "apify_api_xxxxxxxx",
+        grant: {
+          kind: "manual",
+          fields: {
+            APIFY_TOKEN: {
+              label: "API Token",
+              required: true,
+              placeholder: "apify_api_xxxxxxxx",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            APIFY_TOKEN: "$secrets.APIFY_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

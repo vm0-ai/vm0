@@ -1,7 +1,3 @@
-import type {
-  ArtifactSnapshotsPayload,
-  VolumeVersionsSnapshot,
-} from "../../lib/infra/checkpoint/types";
 import { getTestAuthContext } from "./core";
 import {
   markTestRunCompletedFromCheckpoint,
@@ -10,6 +6,11 @@ import {
   seedTestCheckpointForRun,
 } from "../db-test-seeders/runs";
 import { findTestRunRecord } from "../db-test-assertions/runs";
+
+type CreateTestCheckpointOptions = Pick<
+  Parameters<typeof seedTestCheckpointForRun>[0],
+  "volumeVersionsSnapshot" | "artifactSnapshots"
+>;
 
 // Re-exports: DB-direct seeders
 export {
@@ -99,10 +100,7 @@ export async function getTestRun(runId: string): Promise<{
 export async function createTestCheckpoint(
   userId: string,
   runId: string,
-  options?: {
-    volumeVersionsSnapshot?: VolumeVersionsSnapshot;
-    artifactSnapshots?: ArtifactSnapshotsPayload;
-  },
+  options?: CreateTestCheckpointOptions,
 ): Promise<{
   checkpointId: string;
   agentSessionId: string;

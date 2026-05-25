@@ -9,7 +9,7 @@ def _pending_state(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
-def _assert_pending(path: Path, flows: int, reports: int) -> dict:
+def assert_pending(path: Path, flows: int, reports: int) -> dict:
     state = _pending_state(path)
     assert set(state) == {
         "version",

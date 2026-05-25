@@ -475,6 +475,125 @@ async def get_firewall_headers(
         return ret
 
 
+def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
+    flow.metadata["firewall_action"] = "ALLOW"
+    flow.metadata["auth_resolved_secrets"] = token_meta.get("resolved_secrets", [])
+    flow.metadata["auth_refreshed_connectors"] = token_meta.get("refreshed_connectors", [])
+    flow.metadata["auth_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
+    flow.metadata["auth_cache_hit"] = token_meta.get("cache_hit", False)
+
+
+def _apply_header_query_injection(
+    flow: http.HTTPFlow,
+    *,
+    headers: dict[str, str],
+    resolved_query: dict | None,
+) -> None:
+    for header_name, header_value in headers.items():
+        flow.request.headers[header_name] = header_value
+    if resolved_query:
+        for key, value in resolved_query.items():
+            flow.request.query[key] = value
+
+
+async def _apply_url_rewrite(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    resolved_base: str,
+    headers: dict[str, str],
+    resolved_query: dict | None,
+    firewall_base: str,
+    proxy_log_path: str,
+) -> bool:
+    # The addon forwards the request itself because mitmproxy's eager
+    # connection already connected to the placeholder IP. Setting
+    # flow.response bypasses the upstream connection entirely.
+    orig_query = urllib.parse.urlparse(flow.request.path).query
+    new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+
+    # Filter client-controlled hop-by-hop headers before adding trusted
+    # auth headers, so Connection tokens cannot suppress injected auth.
+    # Repeated request headers are preserved; resolved auth headers
+    # intentionally replace any client-supplied value with the same name.
+    req_headers = _merge_auth_headers(forwarded_request_header_pairs(flow.request.headers), headers)
+    req_body = flow.request.raw_content if flow.request.raw_content is not None else None
+
+    try:
+        status, resp_body, resp_headers = await forward_request(
+            new_url,
+            flow.request.method,
+            req_headers,
+            req_body,
+        )
+        flow.response = http.Response.make(status, resp_body, resp_headers)
+    except Exception as e:
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            "URL rewrite forward failed",
+            type="firewall",
+            firewall_base=firewall_base,
+            error_type=type(e).__name__,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=502,
+            action="ALLOW",
+            error_code="url_rewrite_forward_failed",
+            message="Failed to forward request to upstream",
+            permission=allow.name,
+        )
+        return False
+
+    flow.metadata["auth_url_rewrite"] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "info",
+        f"Firewall URL rewrite: {firewall_base} -> [redacted]",
+        type="firewall",
+        firewall_base=firewall_base,
+    )
+    return True
+
+
+async def _apply_resolved_firewall_auth(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    token_meta: dict,
+    firewall_base: str,
+    proxy_log_path: str,
+) -> bool:
+    """Apply resolved firewall auth.
+
+    Returns True when the caller should record common success metadata.
+    Returns False when this helper already set a local response and the
+    caller must return immediately.
+    """
+    headers = token_meta["headers"]
+    resolved_query = token_meta.get("query")
+    resolved_base = token_meta.get("base")
+
+    if resolved_base:
+        return await _apply_url_rewrite(
+            flow,
+            allow=allow,
+            resolved_base=resolved_base,
+            headers=headers,
+            resolved_query=resolved_query,
+            firewall_base=firewall_base,
+            proxy_log_path=proxy_log_path,
+        )
+
+    _apply_header_query_injection(
+        flow,
+        headers=headers,
+        resolved_query=resolved_query,
+    )
+    return True
+
+
 async def handle_firewall_request(
     flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
 ) -> None:
@@ -581,78 +700,17 @@ async def handle_firewall_request(
         )
         return
 
-    # Inject resolved auth headers into the request
-    headers = token_meta["headers"]
+    should_continue = await _apply_resolved_firewall_auth(
+        flow,
+        allow=allow,
+        token_meta=token_meta,
+        firewall_base=firewall_base,
+        proxy_log_path=proxy_log_path,
+    )
+    if not should_continue:
+        return
 
-    # URL rewrite path: auth.base is present (webhook-url connectors).
-    # The addon forwards the request itself because mitmproxy's eager
-    # connection already connected to the placeholder IP — we can't redirect
-    # it. Setting flow.response bypasses the upstream connection entirely.
-    resolved_query = token_meta.get("query")
-
-    resolved_base = token_meta.get("base")
-    if resolved_base:
-        orig_query = urllib.parse.urlparse(flow.request.path).query
-        new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
-
-        # Filter client-controlled hop-by-hop headers before adding trusted
-        # auth headers, so Connection tokens cannot suppress injected auth.
-        # Repeated request headers are preserved; resolved auth headers
-        # intentionally replace any client-supplied value with the same name.
-        req_headers = _merge_auth_headers(
-            forwarded_request_header_pairs(flow.request.headers), headers
-        )
-        req_body = flow.request.raw_content if flow.request.raw_content is not None else None
-
-        try:
-            status, resp_body, resp_headers = await forward_request(
-                new_url,
-                flow.request.method,
-                req_headers,
-                req_body,
-            )
-            flow.response = http.Response.make(status, resp_body, resp_headers)
-        except Exception as e:
-            log_proxy_entry(
-                proxy_log_path,
-                "error",
-                "URL rewrite forward failed",
-                type="firewall",
-                firewall_base=firewall_base,
-                error_type=type(e).__name__,
-            )
-            _set_matched_firewall_failure_response(
-                flow,
-                status=502,
-                action="ALLOW",
-                error_code="url_rewrite_forward_failed",
-                message="Failed to forward request to upstream",
-                permission=allow.name,
-            )
-            return
-
-        flow.metadata["auth_url_rewrite"] = True
-        log_proxy_entry(
-            proxy_log_path,
-            "info",
-            f"Firewall URL rewrite: {firewall_base} -> [redacted]",
-            type="firewall",
-            firewall_base=firewall_base,
-        )
-    else:
-        # Standard header injection path
-        for header_name, header_value in headers.items():
-            flow.request.headers[header_name] = header_value
-        # Standard query param injection path
-        if resolved_query:
-            for key, value in resolved_query.items():
-                flow.request.query[key] = value
-
-    flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["auth_resolved_secrets"] = token_meta.get("resolved_secrets", [])
-    flow.metadata["auth_refreshed_connectors"] = token_meta.get("refreshed_connectors", [])
-    flow.metadata["auth_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
-    flow.metadata["auth_cache_hit"] = token_meta.get("cache_hit", False)
+    _record_firewall_auth_success_metadata(flow, token_meta)
 
     trusted_host = flow.metadata.get("trusted_authority_host") or flow.request.pretty_host
     log_proxy_entry(

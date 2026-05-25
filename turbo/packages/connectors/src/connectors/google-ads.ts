@@ -6,9 +6,6 @@ export const googleAds = {
     label: "Google Ads",
     category: "marketing-content-growth",
     tags: ["ads", "advertising", "google ads", "campaigns", "gaql"],
-    environmentMapping: {
-      GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Google Ads account to manage campaigns, ad groups, and performance reports",
     authMethods: {
@@ -17,33 +14,32 @@ export const googleAds = {
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Ads access.",
-        secrets: {
-          GOOGLE_ADS_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://oauth2.googleapis.com/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
           },
-          GOOGLE_ADS_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: [
+            "https://www.googleapis.com/auth/adwords",
+            "https://www.googleapis.com/auth/userinfo.email",
+          ],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
+          refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+          outputs: {
+            GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://oauth2.googleapis.com/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-        clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-      },
-      scopes: [
-        "https://www.googleapis.com/auth/adwords",
-        "https://www.googleapis.com/auth/userinfo.email",
-      ],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

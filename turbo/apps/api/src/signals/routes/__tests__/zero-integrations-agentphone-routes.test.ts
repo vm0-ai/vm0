@@ -580,7 +580,8 @@ async function seedAgentPhoneModelReuseFixture(args: {
   await writeDb.insert(vm0ApiKeys).values({
     vendor: "anthropic",
     model: args.selectedModel,
-    apiKey: `vm0-key-${args.selectedModel}`,
+    apiKey: `vm0-key-${args.selectedModel}-${composeId}`,
+    label: composeId,
   });
   await writeDb.insert(orgModelPolicies).values({
     orgId: args.orgId,

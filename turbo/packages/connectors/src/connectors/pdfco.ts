@@ -5,21 +5,28 @@ export const pdfco = {
     label: "PDF.co",
     category: "data-automation-infrastructure",
     generation: ["document"],
-    environmentMapping: {
-      PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
-    },
     helpText:
       "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
     authMethods: {
       "api-token": {
         label: "API Key",
-        secrets: {
-          PDFCO_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "your-pdfco-api-key",
+        grant: {
+          kind: "manual",
+          fields: {
+            PDFCO_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "your-pdfco-api-key",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

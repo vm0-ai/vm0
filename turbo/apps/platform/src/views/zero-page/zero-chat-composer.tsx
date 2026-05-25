@@ -350,7 +350,7 @@ function QueuedMessagesStrip({
   const count = items.length;
   const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
-    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50">
+    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
       <div className="flex items-center gap-2 px-5 pt-3 pb-2">
         <span className="inline-flex items-center gap-[2px]" aria-hidden="true">
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />

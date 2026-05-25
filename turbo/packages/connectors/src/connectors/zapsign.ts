@@ -4,9 +4,6 @@ export const zapsign = {
   zapsign: {
     label: "ZapSign",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      ZAPSIGN_TOKEN: "$secrets.ZAPSIGN_TOKEN",
-    },
     helpText:
       "Connect your ZapSign account to create documents for electronic signature and track signing status",
     authMethods: {
@@ -14,13 +11,23 @@ export const zapsign = {
         label: "API Token",
         helpText:
           "1. Log in to your [ZapSign](https://app.zapsign.com) account\n2. Go to **Settings**\n3. Navigate to **Integrations**\n4. Select **ZAPSIGN API**\n5. Copy your API token",
-        secrets: {
-          ZAPSIGN_TOKEN: {
-            label: "API Token",
-            required: true,
-            placeholder: "your-zapsign-api-token",
+        grant: {
+          kind: "manual",
+          fields: {
+            ZAPSIGN_TOKEN: {
+              label: "API Token",
+              required: true,
+              placeholder: "your-zapsign-api-token",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            ZAPSIGN_TOKEN: "$secrets.ZAPSIGN_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

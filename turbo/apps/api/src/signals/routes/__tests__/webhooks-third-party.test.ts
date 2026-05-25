@@ -515,6 +515,7 @@ function expectGitHubIssueContextPrompt(
 ): void {
   expect(prompt).toContain("You are currently running inside: GitHub");
   expect(prompt).toContain(`Bot username: @${GITHUB_APP_SLUG}[bot]`);
+  expect(prompt).toContain("zero github label-listener -h");
   expect(prompt).toContain(
     "Issue URL: https://github.com/vm0-ai/vm0/issues/42",
   );

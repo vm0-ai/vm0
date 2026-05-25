@@ -5,39 +5,41 @@ export const outlookMail = {
   "outlook-mail": {
     label: "Outlook Mail",
     category: "communication-collaboration",
-    environmentMapping: {
-      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
-    },
     helpText: "Connect your Microsoft Outlook account to send and read emails",
     authMethods: {
       oauth: {
         featureFlag: FeatureSwitchKey.OutlookMailConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Mail access.",
-        secrets: {
-          OUTLOOK_MAIL_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl:
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
+            clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
           },
-          OUTLOOK_MAIL_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: [
+            "Mail.ReadWrite",
+            "Mail.Send",
+            "User.Read",
+            "offline_access",
+          ],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "OUTLOOK_MAIL_ACCESS_TOKEN",
+          refreshToken: "OUTLOOK_MAIL_REFRESH_TOKEN",
+          outputs: {
+            OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
-        clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
-      },
-      scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

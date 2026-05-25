@@ -78,6 +78,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       store.set(seedZeroChatThread$, {}, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
 
     const client = setupApp({ context })(chatThreadMessagesContract);
     const response = await accept(
@@ -367,6 +368,55 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(userMsg?.attachFiles?.[0]?.url).toBe(
       `https://cdn.vm7.io/artifacts/${encodeURIComponent(fixture.userId)}/paged-resolve-uuid/data.csv`,
     );
+  });
+
+  it("uses persisted attachment metadata without listing S3 objects", async () => {
+    const fixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "user",
+        content: "Use persisted metadata",
+        attachFiles: ["persisted-file"],
+        attachFileMetadata: [
+          {
+            id: "persisted-file",
+            filename: "notes.md",
+            contentType: "text/markdown",
+            size: 256,
+            objectKey: `artifacts/${encodeURIComponent(fixture.userId)}/persisted-file/notes.md`,
+          },
+        ],
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadMessagesContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: fixture.threadId },
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.messages).toHaveLength(1);
+    expect(response.body.messages[0]?.attachFiles).toStrictEqual([
+      {
+        id: "persisted-file",
+        filename: "notes.md",
+        contentType: "text/markdown",
+        size: 256,
+        url: `https://cdn.vm7.io/artifacts/${encodeURIComponent(fixture.userId)}/persisted-file/notes.md`,
+      },
+    ]);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
   it("does not expose run-level error on event-backed assistant rows", async () => {

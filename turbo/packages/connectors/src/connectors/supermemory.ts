@@ -6,19 +6,28 @@ export const supermemory = {
     category: "ai-memory-tracing-eval",
     helpText:
       "Connect to Supermemory for AI agent memory, semantic recall, and managed RAG.",
-    environmentMapping: { SUPERMEMORY_API_KEY: "$secrets.SUPERMEMORY_API_KEY" },
     authMethods: {
       "api-token": {
         label: "API Key",
         helpText:
           "Go to [console.supermemory.ai](https://console.supermemory.ai) → **API Keys** → create or copy your key.",
-        secrets: {
-          SUPERMEMORY_API_KEY: {
-            label: "API Key",
-            required: true,
-            placeholder: "sm_...",
+        grant: {
+          kind: "manual",
+          fields: {
+            SUPERMEMORY_API_KEY: {
+              label: "API Key",
+              required: true,
+              placeholder: "sm_...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            SUPERMEMORY_API_KEY: "$secrets.SUPERMEMORY_API_KEY",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

@@ -174,7 +174,11 @@ impl CowLayer {
             let to_write = remaining_in_block.min(data.len() - pos);
 
             if !self.write_buffer.contains_key(&block_idx) {
-                let full_block = self.read_full_block(block_idx)?;
+                let full_block = if block_offset == 0 && to_write == self.block_size {
+                    vec![0u8; self.block_size]
+                } else {
+                    self.read_full_block(block_idx)?
+                };
                 self.write_buffer.insert(block_idx, full_block);
             }
             let block_data = self
@@ -211,13 +215,13 @@ impl CowLayer {
         }
 
         self.ensure_cow_fd()?;
-        // try_clone dups the fd to detach from &mut self; lets flush_buffered own &mut self.
-        let fd = self
+        let cow_fd = self
             .cow_fd
-            .as_ref()
-            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure")))?
-            .try_clone()?;
-        self.flush_buffered(|offset, data| fd.write_all_at(data, offset))
+            .take()
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure")))?;
+        let result = self.flush_buffered(|offset, data| cow_fd.write_all_at(data, offset));
+        self.cow_fd = Some(cow_fd);
+        result
     }
 
     /// Drain `write_buffer` through `write_fn`. On failure, restores the failed
@@ -557,6 +561,27 @@ mod tests {
         let mut buf = vec![0u8; 4096];
         let err = cow.read(4096, &mut buf);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn full_block_write_over_dirty_block_replaces_existing_contents() {
+        let base = create_base_image(&vec![0x11; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        cow.write(0, &vec![0xAA; 4096]).unwrap();
+        cow.flush().unwrap();
+        assert_eq!(cow.dirty_block_count(), 1);
+
+        cow.write(0, &vec![0xBB; 4096]).unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
+
+        cow.flush().unwrap();
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
     }
 
     #[test]

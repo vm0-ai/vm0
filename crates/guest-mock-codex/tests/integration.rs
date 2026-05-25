@@ -325,6 +325,26 @@ fn fixture_error_event_emits_error_type() {
 }
 
 #[test]
+fn fixture_invalid_api_key_emits_error_code() {
+    let dir = TempDir::new().unwrap();
+    let out = run_with_env(
+        dir.path(),
+        &["exec", "--json", "--", "ignored"],
+        &[("MOCK_CODEX_FIXTURE", "invalid-api-key")],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 2);
+    assert_eq!(
+        out.events[0]["thread_id"],
+        "00000000-0000-0000-0000-000000000004"
+    );
+    assert_eq!(out.events[1]["type"], "error");
+    assert_eq!(out.events[1]["code"], "invalid_api_key");
+}
+
+#[test]
 fn fixture_unknown_name_falls_through_to_synthetic() {
     let dir = TempDir::new().unwrap();
     let out = run_with_env(

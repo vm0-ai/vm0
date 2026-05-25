@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CONNECTOR_TYPES,
-  type ConnectorOAuthClientConfig,
-  type OAuthConnectorType,
+import type {
+  ConnectorOAuthClientConfig,
+  OAuthConnectorType,
 } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -229,17 +229,17 @@ function useDynamicTestOAuthExchange(): {
 function configureDynamicTestOAuthExchange(
   exchanges: CapturedOAuthExchange[],
 ): () => void {
-  const oauth = CONNECTOR_TYPES["test-oauth"].oauth;
-  if (!oauth) {
+  const grant = getConnectorAuthMethod("test-oauth", "oauth")?.grant;
+  if (grant?.kind !== "auth-code") {
     throw new Error("test-oauth OAuth config is missing");
   }
 
-  const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
-  const originalClient = oauth.client;
+  const mutableGrant = grant as { client: ConnectorOAuthClientConfig };
+  const originalClient = grant.client;
   const provider = testOauthProvider;
   const originalExchangeCode = provider.grant.exchangeCode;
 
-  mutableOAuth.client = dynamicPublicClient;
+  mutableGrant.client = dynamicPublicClient;
   provider.grant.exchangeCode = (args) => {
     exchanges.push({
       clientId: args.clientId,
@@ -264,7 +264,7 @@ function configureDynamicTestOAuthExchange(
   };
 
   return () => {
-    mutableOAuth.client = originalClient;
+    mutableGrant.client = originalClient;
     provider.grant.exchangeCode = originalExchangeCode;
   };
 }

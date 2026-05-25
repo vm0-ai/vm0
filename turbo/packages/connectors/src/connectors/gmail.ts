@@ -5,38 +5,34 @@ export const gmail = {
     label: "Gmail",
     category: "communication-collaboration",
     tags: ["email", "mail"],
-    environmentMapping: {
-      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-    },
     helpText: "Connect your Gmail account to send and read emails",
     authMethods: {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Gmail access.",
-        secrets: {
-          GMAIL_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://oauth2.googleapis.com/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
           },
-          GMAIL_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "GMAIL_ACCESS_TOKEN",
+          refreshToken: "GMAIL_REFRESH_TOKEN",
+          outputs: {
+            GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://oauth2.googleapis.com/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-        clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-      },
-      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

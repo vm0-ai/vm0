@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.161.9](https://github.com/vm0-ai/vm0/compare/cli-v9.161.8...cli-v9.161.9) (2026-05-25)
+
+
+### Bug Fixes
+
+* return BytePlus video errors ([#14756](https://github.com/vm0-ai/vm0/issues/14756)) ([c2c6eb7](https://github.com/vm0-ai/vm0/commit/c2c6eb7605123df6276554735b62bddeae6c9510))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.39.2
+    * @vm0/connectors bumped to 1.33.0
+    * @vm0/core bumped to 8.293.1
+
 ## [9.161.8](https://github.com/vm0-ai/vm0/compare/cli-v9.161.7...cli-v9.161.8) (2026-05-25)
 
 

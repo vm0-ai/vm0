@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import {
   agentComposes,
@@ -18,7 +19,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
@@ -50,6 +58,23 @@ interface SeedGithubFixtureOptions {
 
 function authHeaders(): Record<string, string> {
   return { authorization: "Bearer clerk-session" };
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities: readonly ZeroCapability[];
+}): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: randomUUID(),
+    capabilities: [...args.capabilities],
+    iat: seconds,
+    exp: seconds + 60,
+  });
 }
 
 function expectGithubInstallUrl(
@@ -289,6 +314,7 @@ async function seedGithubConnector(args: {
 describe("GET /api/integrations/github", () => {
   const fixtures: GithubFixture[] = [];
   const defaultAgentFixtures: DefaultAgentFixture[] = [];
+  const membershipFixtures: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
@@ -313,6 +339,12 @@ describe("GET /api/integrations/github", () => {
       const fixture = defaultAgentFixtures.pop();
       if (fixture) {
         await cleanupDefaultAgentFixture(fixture);
+      }
+    }
+    while (membershipFixtures.length > 0) {
+      const fixture = membershipFixtures.pop();
+      if (fixture) {
+        await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
   });
@@ -419,6 +451,72 @@ describe("GET /api/integrations/github", () => {
       requiredVars: [],
       missingSecrets: [],
       missingVars: [],
+    });
+  });
+
+  it("accepts a zero token with GitHub read capability", async () => {
+    const fixture = await seedGithubFixture({
+      composeName: "github-support-agent",
+    });
+    fixtures.push(fixture);
+    membershipFixtures.push(
+      await store.set(
+        seedOrgMembership$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          role: "member",
+        },
+        context.signal,
+      ),
+    );
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.getInstallation({
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["github:read"],
+          })}`,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.installation).toMatchObject({
+      id: fixture.installationRowId,
+      status: "active",
+      isAdmin: false,
+    });
+    expect(response.body.agent).toStrictEqual({
+      id: fixture.composeId,
+      name: "github-support-agent",
+    });
+  });
+
+  it("requires GitHub read capability for zero tokens", async () => {
+    const client = setupApp({ context })(integrationsGithubContract);
+
+    const response = await accept(
+      client.getInstallation({
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: `user_${randomUUID()}`,
+            orgId: `org_${randomUUID()}`,
+            capabilities: ["github:write"],
+          })}`,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: github:read",
+        code: "FORBIDDEN",
+      },
     });
   });
 

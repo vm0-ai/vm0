@@ -1,11 +1,6 @@
 import { command } from "ccstate";
 import { createHash } from "node:crypto";
 import {
-  getConnectorEnvironmentMapping,
-  getEligibleConnectorTypes,
-} from "@vm0/connectors/connector-utils";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import {
   getInstructionsFilename,
   SUPPORTED_FRAMEWORKS,
 } from "@vm0/core/frameworks";
@@ -24,35 +19,16 @@ import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
  * Build canonical compose content for a zero agent. Pure function — same
  * inputs always yield the same output. The API owns this zero-agent compose
  * shape now; keep it stable because existing compose version hashes depend on
- * the canonical content.
+ * the canonical content. Connector environment is injected later from the
+ * authorized run context.
  */
 function buildZeroAgentComposeContent(
   agentName: string,
 ): Record<string, unknown> {
-  const eligibleConnectorTypes = getEligibleConnectorTypes();
-
   const environment: Record<string, string> = {
     ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
     ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
   };
-
-  for (const connector of eligibleConnectorTypes) {
-    const parsed = connectorTypeSchema.safeParse(connector);
-    if (!parsed.success) {
-      continue;
-    }
-    const mapping = getConnectorEnvironmentMapping(parsed.data);
-    for (const [envVar, valueRef] of Object.entries(mapping)) {
-      if (envVar in environment) {
-        continue;
-      }
-      if (valueRef.startsWith("$secrets.")) {
-        environment[envVar] = `\${{ secrets.${envVar} }}`;
-      } else if (valueRef.startsWith("$vars.")) {
-        environment[envVar] = `\${{ vars.${envVar} }}`;
-      }
-    }
-  }
 
   const agentDef: Record<string, unknown> = {
     framework: "claude-code",

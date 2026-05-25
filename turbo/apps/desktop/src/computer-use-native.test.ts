@@ -26,7 +26,7 @@ process.stdin.on("end", () => {
 describe("computer use native backend", () => {
   it.each([
     ["app_not_found", "Unable to open Things: Unable to find application"],
-    ["app_open_failed", "Unable to activate Things"],
+    ["app_open_failed", "Unable to open Things"],
   ])("preserves %s helper failures", async (code, message) => {
     const helper = await createHelper({
       status: "failed",

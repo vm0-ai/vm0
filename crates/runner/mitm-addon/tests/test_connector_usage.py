@@ -11,10 +11,10 @@ from mitmproxy.test import tutils
 import body_utils
 import mitm_addon
 import usage
-from tests.flow_helpers import _header_map, _response_stream
+from tests.flow_helpers import header_map, response_stream
 from tests.usage_helpers import (
-    _request_bodies_from_calls,
-    _usage_event_events_from_calls,
+    request_bodies_from_calls,
+    usage_event_events_from_calls,
 )
 from usage.providers.connectors import x as usage_x_connector
 
@@ -78,7 +78,7 @@ class TestReportConnectorUsage:
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=status,
-            headers=_header_map(
+            headers=header_map(
                 {
                     "content-type": "application/json",
                     "content-encoding": content_encoding,
@@ -103,7 +103,7 @@ class TestReportConnectorUsage:
             usage.report_connector_usage(flow, run_id)
         return [
             event
-            for body in _request_bodies_from_calls(mock_opener.open.call_args_list)
+            for body in request_bodies_from_calls(mock_opener.open.call_args_list)
             for event in body["events"]
         ]
 
@@ -185,7 +185,7 @@ class TestReportConnectorUsage:
             usage.report_connector_usage(flow, "run-abc-123")
 
         mock_opener.open.assert_called_once()
-        [payload] = _request_bodies_from_calls(mock_opener.open.call_args_list)
+        [payload] = request_bodies_from_calls(mock_opener.open.call_args_list)
         assert payload["runId"] == "run-abc-123"
         assert "idempotencyKey" not in payload
         by_cat = {event["category"]: event for event in payload["events"]}
@@ -212,7 +212,7 @@ class TestReportConnectorUsage:
             mock_opener.open.return_value = MagicMock()
             usage.report_connector_usage(flow, "run-abc-123")
 
-        bodies = _request_bodies_from_calls(mock_opener.open.call_args_list)
+        bodies = request_bodies_from_calls(mock_opener.open.call_args_list)
         assert [len(body["events"]) for body in bodies] == [100, 1]
         assert {body["runId"] for body in bodies} == {"run-abc-123"}
         assert all(
@@ -424,11 +424,11 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
@@ -444,7 +444,7 @@ class TestReportConnectorUsage:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"posts.read": 1, "user.read": 1}
 
@@ -466,11 +466,11 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/{id}"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"data":{"id":"1","text":"hello"}}')
+        response_stream(flow)(b'{"data":{"id":"1","text":"hello"}}')
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -481,7 +481,7 @@ class TestReportConnectorUsage:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 1
@@ -504,11 +504,11 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(
+        response_stream(flow)(
             json.dumps(
                 {
                     "errors": [
@@ -550,11 +550,11 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'[{"id":"1"}]')
+        response_stream(flow)(b'[{"id":"1"}]')
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -565,7 +565,7 @@ class TestReportConnectorUsage:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
@@ -1084,13 +1084,13 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
         flow.response = tutils.tresp(status_code=200)
         # X streams return application/json with chunked transfer, not x-ndjson.
-        flow.response.headers = _header_map({"content-type": "application/json"})
+        flow.response.headers = header_map({"content-type": "application/json"})
         flow.response.stream = False
         mitm_addon._request_start_times[flow.id] = time.time()
 
         # 1. responseheaders - registers NDJSON parser
         mitm_addon.responseheaders(flow)
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
         assert "x_json_response_finish" not in flow.metadata
 
@@ -1117,7 +1117,7 @@ class TestReportConnectorUsage:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
-        payloads = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 3 tweets primary + 0 from includes.tweets (none here) = 3
         assert by_cat["posts.read"] == 3

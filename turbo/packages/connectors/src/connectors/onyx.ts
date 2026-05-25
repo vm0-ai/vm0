@@ -6,21 +6,28 @@ export const onyx = {
     category: "docs-files-knowledge",
     helpText:
       "Connect your Onyx account to search internal knowledge bases, chat with AI agents, and index documents",
-    environmentMapping: {
-      ONYX_TOKEN: "$secrets.ONYX_TOKEN",
-    },
     authMethods: {
       "api-token": {
         label: "API Key / PAT",
         helpText:
           "1. Log in to [Onyx Cloud](https://cloud.onyx.app)\n2. Go to **Settings → Accounts & Access**\n3. Click **Create New Token**\n4. Give it a name and choose an expiration\n5. Copy the token immediately — it is shown only once",
-        secrets: {
-          ONYX_TOKEN: {
-            label: "API Key or Personal Access Token",
-            required: true,
-            placeholder: "onyx_pat_...",
+        grant: {
+          kind: "manual",
+          fields: {
+            ONYX_TOKEN: {
+              label: "API Key or Personal Access Token",
+              required: true,
+              placeholder: "onyx_pat_...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            ONYX_TOKEN: "$secrets.ONYX_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

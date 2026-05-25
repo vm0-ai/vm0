@@ -313,4 +313,52 @@ mod tests {
         assert_eq!(destroy_count.load(Ordering::SeqCst), 1);
         assert_eq!(budget.allocated(), (0, 0, 0));
     }
+
+    #[tokio::test]
+    async fn idle_stop_error_still_attempts_destroy_and_releases_budget_lease() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_stop_result(Err(sandbox::SandboxError::Start {
+            message: "simulated idle stop failure".into(),
+        }));
+        let sandbox_factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let sandbox = sandbox_factory
+            .create(sandbox::SandboxConfig {
+                id: SandboxId::new_v4(),
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+                device_rate_limits: None,
+            })
+            .await
+            .expect("create sandbox");
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        assert_eq!(budget.allocated(), (2, 4096, 1));
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox,
+                factory: Arc::new(Box::new(sandbox_factory) as Box<dyn SandboxFactory>),
+                session_id: "sess-stop-error".into(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default".into(),
+                device_rate_limits: None,
+                budget_lease: lease,
+                source_ip: "10.0.0.1".into(),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            });
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let mut jobs = pool.drain();
+        assert_eq!(jobs.len(), 1);
+
+        jobs.pop().unwrap().run().await;
+
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
 }

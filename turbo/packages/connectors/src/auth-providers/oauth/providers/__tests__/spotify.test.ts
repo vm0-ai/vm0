@@ -1,22 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
 import {
   buildSpotifyAuthorizationUrl,
   exchangeSpotifyCode,
-  refreshSpotifyToken,
   getSpotifySecretName,
-} from "@vm0/connectors/auth-providers/oauth/providers/spotify";
-
-const context = testContext();
+  refreshSpotifyToken,
+} from "../spotify";
+import { server } from "./test-server";
 
 describe("connector/providers/spotify", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("buildSpotifyAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scope", () => {
       const url = buildSpotifyAuthorizationUrl(
@@ -38,7 +30,7 @@ describe("connector/providers/spotify", () => {
 
   describe("exchangeSpotifyCode", () => {
     it("exchanges code for access token and user info", async () => {
-      const { handler: tokenHandler } = http.post(
+      const tokenHandler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return HttpResponse.json({
@@ -49,16 +41,13 @@ describe("connector/providers/spotify", () => {
           });
         },
       );
-      const { handler: meHandler } = http.get(
-        "https://api.spotify.com/v1/me",
-        () => {
-          return HttpResponse.json({
-            id: "spotify-user-123",
-            display_name: "Test Spotify User",
-            email: "test@example.com",
-          });
-        },
-      );
+      const meHandler = http.get("https://api.spotify.com/v1/me", () => {
+        return HttpResponse.json({
+          id: "spotify-user-123",
+          display_name: "Test Spotify User",
+          email: "test@example.com",
+        });
+      });
       server.use(tokenHandler, meHandler);
 
       const result = await exchangeSpotifyCode(
@@ -78,7 +67,7 @@ describe("connector/providers/spotify", () => {
     });
 
     it("throws when Spotify returns an error in response body", async () => {
-      const { handler: tokenHandler } = http.post(
+      const tokenHandler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return HttpResponse.json({
@@ -100,7 +89,7 @@ describe("connector/providers/spotify", () => {
     });
 
     it("throws when no access token in response", async () => {
-      const { handler: tokenHandler } = http.post(
+      const tokenHandler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return HttpResponse.json({});
@@ -119,7 +108,7 @@ describe("connector/providers/spotify", () => {
     });
 
     it("throws when token endpoint returns HTTP error", async () => {
-      const { handler: tokenHandler } = http.post(
+      const tokenHandler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return new HttpResponse("Internal Server Error", { status: 500 });
@@ -140,7 +129,7 @@ describe("connector/providers/spotify", () => {
 
   describe("refreshSpotifyToken", () => {
     it("refreshes access token successfully", async () => {
-      const { handler } = http.post(
+      const handler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return HttpResponse.json({
@@ -164,7 +153,7 @@ describe("connector/providers/spotify", () => {
     });
 
     it("throws when refresh returns an error", async () => {
-      const { handler } = http.post(
+      const handler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return HttpResponse.json({
@@ -181,7 +170,7 @@ describe("connector/providers/spotify", () => {
     });
 
     it("throws when no access token in refresh response", async () => {
-      const { handler } = http.post(
+      const handler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return HttpResponse.json({});
@@ -195,7 +184,7 @@ describe("connector/providers/spotify", () => {
     });
 
     it("throws when refresh endpoint returns HTTP error", async () => {
-      const { handler } = http.post(
+      const handler = http.post(
         "https://accounts.spotify.com/api/token",
         () => {
           return new HttpResponse("Bad Request", { status: 400 });

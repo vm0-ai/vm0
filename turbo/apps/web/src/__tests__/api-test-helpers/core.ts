@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { createSingleFileTar } from "../../lib/infra/tar";
 import type {
   TestAgentComposeContent,
   TestAgentDefinition,
@@ -95,17 +94,6 @@ export function createDefaultComposeConfig(
   }
 
   return config;
-}
-
-/**
- * Create a tar file containing a single file, for testing tar-related functionality.
- *
- * @param filename - The filename within the tar archive
- * @param content - The file content as a Buffer
- * @returns The tar archive as a Buffer
- */
-export function createTestTarFile(filename: string, content: Buffer): Buffer {
-  return createSingleFileTar(filename, content);
 }
 
 /**

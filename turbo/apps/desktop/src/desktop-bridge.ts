@@ -1,9 +1,30 @@
-import type {
-  ComputerUseApprovalAction,
-  DesktopComputerUseState,
-} from "./computer-use-types";
+import type { DesktopComputerUseState } from "./computer-use-types";
+
+export interface DesktopAuthUser {
+  readonly userId: string;
+  readonly email: string;
+}
+
+export interface DesktopAuthOrganization {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string | null;
+}
+
+export type DesktopAuthState =
+  | {
+      readonly status: "signed_out";
+      readonly user: null;
+      readonly organization: null;
+    }
+  | {
+      readonly status: "signed_in";
+      readonly user: DesktopAuthUser;
+      readonly organization: DesktopAuthOrganization | null;
+    };
 
 export interface DesktopAuthApi {
+  readonly getState: () => Promise<DesktopAuthState>;
   readonly openSignIn: () => Promise<void>;
   readonly openOrgSelection: () => Promise<void>;
   readonly completeSignIn: (params: {
@@ -18,9 +39,6 @@ export interface DesktopComputerUseApi {
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
-  readonly decideCommand: (
-    action: ComputerUseApprovalAction,
-  ) => Promise<DesktopComputerUseState>;
   readonly subscribe: (callback: () => void) => () => void;
 }
 

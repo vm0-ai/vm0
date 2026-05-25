@@ -4,9 +4,6 @@ export const pipedream = {
   pipedream: {
     label: "Pipedream",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      PIPEDREAM_TOKEN: "$secrets.PIPEDREAM_TOKEN",
-    },
     helpText:
       "Connect your Pipedream account to create workflows, manage event sources, and call the Pipedream REST API",
     authMethods: {
@@ -14,13 +11,23 @@ export const pipedream = {
         label: "User API Key",
         helpText:
           "1. Log in to [Pipedream](https://pipedream.com)\n2. Open **My Account → API Key** in your user settings\n3. Copy your user API key\n4. Pipedream sends this key as `Authorization: Bearer <api key>`",
-        secrets: {
-          PIPEDREAM_TOKEN: {
-            label: "User API Key",
-            required: true,
-            placeholder: "pd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
+        grant: {
+          kind: "manual",
+          fields: {
+            PIPEDREAM_TOKEN: {
+              label: "User API Key",
+              required: true,
+              placeholder: "pd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            PIPEDREAM_TOKEN: "$secrets.PIPEDREAM_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

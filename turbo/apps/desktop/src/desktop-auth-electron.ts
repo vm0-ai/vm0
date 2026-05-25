@@ -1,5 +1,6 @@
 import type { IpcMainInvokeEvent } from "electron";
 import { BrowserWindow, ipcMain } from "electron";
+import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { isDesktopRendererUrl } from "./desktop-renderer-url";
 
@@ -9,6 +10,7 @@ interface DesktopAuthIpcOptions {
 }
 
 interface DesktopAuthNativeApi {
+  readonly getState: () => Promise<DesktopAuthState> | DesktopAuthState;
   readonly openSignIn: () => void;
   readonly openOrgSelection: () => Promise<void>;
   readonly completeSignIn: (token: string) => Promise<void> | void;
@@ -66,6 +68,10 @@ export function installDesktopAuthIpc(
     return { token: value.token };
   };
 
+  ipcMain.handle(DESKTOP_AUTH_CHANNELS.getState, (event) => {
+    assertDesktopRenderer(event);
+    return api.getState();
+  });
   ipcMain.handle(DESKTOP_AUTH_CHANNELS.openSignIn, (event) => {
     assertDesktopRenderer(event);
     api.openSignIn();

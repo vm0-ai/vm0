@@ -3,7 +3,6 @@
 export {
   createTestRequest,
   createDefaultComposeConfig,
-  createTestTarFile,
   getTestAuthContext,
   type ComposeConfigOptions,
 } from "./core";

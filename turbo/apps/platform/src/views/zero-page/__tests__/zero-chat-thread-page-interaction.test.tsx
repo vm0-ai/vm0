@@ -172,15 +172,15 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const previewButton = await waitFor(() => {
-      return screen.getByLabelText("Open html preview for report.html");
+      return screen.getByLabelText("Open html preview for report");
     });
 
     await userEvent.click(previewButton);
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
-      expect(previewButton).toBeDisabled();
-      const iframe = screen.getByTitle("report.html preview");
+      expect(previewButton).toHaveAttribute("href", publicHtmlUrl);
+      const iframe = screen.getByTitle("report preview");
       expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
       expect(iframe).toHaveAttribute("scrolling", "yes");
       expect(iframe).toHaveClass(

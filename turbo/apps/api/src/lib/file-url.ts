@@ -32,3 +32,7 @@ export function buildFileUrl(
 ): string {
   return `${publicArtifactsBaseUrl()}/${buildArtifactKey(userId, id, filename)}`;
 }
+
+export function buildFileUrlFromKey(key: string): string {
+  return `${publicArtifactsBaseUrl()}/${key.replace(/^\/+/, "")}`;
+}

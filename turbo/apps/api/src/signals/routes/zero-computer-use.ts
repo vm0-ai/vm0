@@ -120,7 +120,13 @@ const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  return { status: 200 as const, body: result };
+  if (result.status === "active_host_exists") {
+    return conflict("A Desktop Computer Use host is already active");
+  }
+  return {
+    status: 200 as const,
+    body: { hostId: result.hostId, hostToken: result.hostToken },
+  };
 });
 
 const heartbeatBody$ = bodyResultOf(zeroComputerUseHeartbeatContract.heartbeat);
@@ -216,10 +222,6 @@ const commandCreateInner$ = command(
         timeoutMs: bodyResult.data.timeoutMs,
         requiresApproval: false,
         ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
-        ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
-        ...(bodyResult.data.hostName
-          ? { hostName: bodyResult.data.hostName }
-          : {}),
       },
       signal,
     );
@@ -228,11 +230,8 @@ const commandCreateInner$ = command(
     if (result.status === "no_host") {
       return notFound("No linked computer-use host found");
     }
-    if (result.status === "host_not_found") {
-      return notFound("Computer-use host not found");
-    }
     if (result.status === "host_ambiguous") {
-      return conflict("Multiple computer-use hosts have this name");
+      return conflict("Multiple active computer-use hosts are online");
     }
     if (result.status === "host_offline") {
       return conflict("No online computer-use host found");
@@ -275,10 +274,6 @@ const writeCommandCreateInner$ = command(
         timeoutMs: bodyResult.data.timeoutMs,
         requiresApproval: false,
         ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
-        ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
-        ...(bodyResult.data.hostName
-          ? { hostName: bodyResult.data.hostName }
-          : {}),
       },
       signal,
     );
@@ -287,11 +282,8 @@ const writeCommandCreateInner$ = command(
     if (result.status === "no_host") {
       return notFound("No linked computer-use host found");
     }
-    if (result.status === "host_not_found") {
-      return notFound("Computer-use host not found");
-    }
     if (result.status === "host_ambiguous") {
-      return conflict("Multiple computer-use hosts have this name");
+      return conflict("Multiple active computer-use hosts are online");
     }
     if (result.status === "host_offline") {
       return conflict("No online computer-use host found");

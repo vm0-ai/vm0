@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.293.1](https://github.com/vm0-ai/vm0/compare/core-v8.293.0...core-v8.293.1) (2026-05-25)
+
+
+### Refactoring
+
+* remove trinity voice chat ([#14814](https://github.com/vm0-ai/vm0/issues/14814)) ([512de4a](https://github.com/vm0-ai/vm0/commit/512de4a0c22e356065e32a66596ae450e6e647cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.2
+    * @vm0/connectors bumped to 1.33.0
+
 ## [8.293.0](https://github.com/vm0-ai/vm0/compare/core-v8.292.4...core-v8.293.0) (2026-05-25)
 
 

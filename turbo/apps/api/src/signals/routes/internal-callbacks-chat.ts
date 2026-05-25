@@ -7,7 +7,10 @@ import {
 } from "@vm0/api-contracts/contracts/internal-callbacks-chat";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageAttachFileMetadata,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -45,6 +48,7 @@ import { saveRunSummary$ } from "../services/run-summary.service";
 import {
   formatChatRunErrorMessage,
   insertAssistantEventMessages$,
+  resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
@@ -118,6 +122,7 @@ interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
   readonly attachFiles: readonly string[] | null;
+  readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -753,6 +758,7 @@ async function nextQueuedUserMessage(
       id: chatMessages.id,
       content: chatMessages.content,
       attachFiles: chatMessages.attachFiles,
+      attachFileMetadata: chatMessages.attachFileMetadata,
       modelProviderId: sql<null>`NULL`,
       modelProviderType: sql<null>`NULL`,
       modelProviderCredentialScope: sql<null>`NULL`,
@@ -956,13 +962,16 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   );
 
   const resolvedAttachFiles =
-    resolvedQueuedMessage.attachFiles &&
-    resolvedQueuedMessage.attachFiles.length > 0
-      ? await args.getResolvedAttachFiles(
-          userId,
-          resolvedQueuedMessage.attachFiles,
-        )
-      : [];
+    resolvedQueuedMessage.attachFileMetadata &&
+    resolvedQueuedMessage.attachFileMetadata.length > 0
+      ? resolveAttachFileMetadataUrls(resolvedQueuedMessage.attachFileMetadata)
+      : resolvedQueuedMessage.attachFiles &&
+          resolvedQueuedMessage.attachFiles.length > 0
+        ? await args.getResolvedAttachFiles(
+            userId,
+            resolvedQueuedMessage.attachFiles,
+          )
+        : [];
   const attachFiles =
     resolvedAttachFiles.length > 0
       ? resolvedAttachFiles
@@ -996,6 +1005,9 @@ async function autoSendQueuedMessageOnRunComplete(args: {
       runId: run.runId,
       attachFiles: queuedMessage.attachFiles
         ? [...queuedMessage.attachFiles]
+        : null,
+      attachFileMetadata: queuedMessage.attachFileMetadata
+        ? [...queuedMessage.attachFileMetadata]
         : null,
       revokesMessageId: queuedMessage.id,
     })

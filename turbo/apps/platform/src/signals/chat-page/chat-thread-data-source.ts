@@ -32,6 +32,7 @@ export interface AppendQueuedMessageArgs {
   clientMessageId: string;
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
+  forceNewSession?: boolean;
 }
 
 export interface RecallMessageArgs {

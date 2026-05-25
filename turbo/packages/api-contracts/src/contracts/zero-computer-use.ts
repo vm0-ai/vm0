@@ -76,8 +76,6 @@ const computerUseRuntimeBodySchema = z.object({
 });
 
 const computerUseCommandTargetShape = {
-  hostId: z.string().min(1).optional(),
-  hostName: hostNameSchema.optional(),
   timeoutMs: z.number().int().min(1_000).max(60_000).default(15_000),
 } as const;
 
@@ -390,6 +388,7 @@ export const zeroComputerUseHostsContract = c.router({
       200: computerUseHostStartResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Start or reactivate a desktop computer-use host",
   },

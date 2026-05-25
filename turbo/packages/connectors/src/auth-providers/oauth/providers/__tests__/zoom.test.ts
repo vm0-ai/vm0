@@ -1,22 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
 import {
   buildZoomAuthorizationUrl,
   exchangeZoomCode,
-  refreshZoomToken,
   getZoomSecretName,
-} from "@vm0/connectors/auth-providers/oauth/providers/zoom";
-
-const context = testContext();
+  refreshZoomToken,
+} from "../zoom";
+import { server } from "./test-server";
 
 describe("connector/providers/zoom", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("buildZoomAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and response_type", () => {
       const url = buildZoomAuthorizationUrl(
@@ -38,29 +30,23 @@ describe("connector/providers/zoom", () => {
 
   describe("exchangeZoomCode", () => {
     it("exchanges code for access token and user info", async () => {
-      const { handler: tokenHandler } = http.post(
-        "https://zoom.us/oauth/token",
-        () => {
-          return HttpResponse.json({
-            access_token: "zoom-test-token",
-            refresh_token: "zoom-refresh-token",
-            expires_in: 3599,
-            scope: "meeting:read:list_meetings user:read:user",
-          });
-        },
-      );
-      const { handler: meHandler } = http.get(
-        "https://api.zoom.us/v2/users/me",
-        () => {
-          return HttpResponse.json({
-            id: "zoom-user-123",
-            email: "test@example.com",
-            first_name: "Test",
-            last_name: "User",
-            display_name: "Test User",
-          });
-        },
-      );
+      const tokenHandler = http.post("https://zoom.us/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "zoom-test-token",
+          refresh_token: "zoom-refresh-token",
+          expires_in: 3599,
+          scope: "meeting:read:list_meetings user:read:user",
+        });
+      });
+      const meHandler = http.get("https://api.zoom.us/v2/users/me", () => {
+        return HttpResponse.json({
+          id: "zoom-user-123",
+          email: "test@example.com",
+          first_name: "Test",
+          last_name: "User",
+          display_name: "Test User",
+        });
+      });
       server.use(tokenHandler, meHandler);
 
       const result = await exchangeZoomCode(
@@ -83,15 +69,12 @@ describe("connector/providers/zoom", () => {
     });
 
     it("throws when Zoom returns an error in response body", async () => {
-      const { handler: tokenHandler } = http.post(
-        "https://zoom.us/oauth/token",
-        () => {
-          return HttpResponse.json({
-            error: "invalid_grant",
-            error_description: "Invalid authorization code",
-          });
-        },
-      );
+      const tokenHandler = http.post("https://zoom.us/oauth/token", () => {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: "Invalid authorization code",
+        });
+      });
       server.use(tokenHandler);
 
       await expect(
@@ -105,12 +88,9 @@ describe("connector/providers/zoom", () => {
     });
 
     it("throws when no access token in response", async () => {
-      const { handler: tokenHandler } = http.post(
-        "https://zoom.us/oauth/token",
-        () => {
-          return HttpResponse.json({});
-        },
-      );
+      const tokenHandler = http.post("https://zoom.us/oauth/token", () => {
+        return HttpResponse.json({});
+      });
       server.use(tokenHandler);
 
       await expect(
@@ -124,12 +104,9 @@ describe("connector/providers/zoom", () => {
     });
 
     it("throws when token endpoint returns HTTP error", async () => {
-      const { handler: tokenHandler } = http.post(
-        "https://zoom.us/oauth/token",
-        () => {
-          return new HttpResponse("Unauthorized", { status: 401 });
-        },
-      );
+      const tokenHandler = http.post("https://zoom.us/oauth/token", () => {
+        return new HttpResponse("Unauthorized", { status: 401 });
+      });
       server.use(tokenHandler);
 
       await expect(
@@ -145,7 +122,7 @@ describe("connector/providers/zoom", () => {
 
   describe("refreshZoomToken", () => {
     it("refreshes access token successfully", async () => {
-      const { handler } = http.post("https://zoom.us/oauth/token", () => {
+      const handler = http.post("https://zoom.us/oauth/token", () => {
         return HttpResponse.json({
           access_token: "new-zoom-token",
           refresh_token: "new-refresh-token",
@@ -166,7 +143,7 @@ describe("connector/providers/zoom", () => {
     });
 
     it("throws when refresh returns an error", async () => {
-      const { handler } = http.post("https://zoom.us/oauth/token", () => {
+      const handler = http.post("https://zoom.us/oauth/token", () => {
         return HttpResponse.json({
           error: "invalid_grant",
           error_description: "Refresh token revoked",
@@ -180,7 +157,7 @@ describe("connector/providers/zoom", () => {
     });
 
     it("throws when no access token in refresh response", async () => {
-      const { handler } = http.post("https://zoom.us/oauth/token", () => {
+      const handler = http.post("https://zoom.us/oauth/token", () => {
         return HttpResponse.json({});
       });
       server.use(handler);
@@ -191,7 +168,7 @@ describe("connector/providers/zoom", () => {
     });
 
     it("throws when refresh endpoint returns HTTP error", async () => {
-      const { handler } = http.post("https://zoom.us/oauth/token", () => {
+      const handler = http.post("https://zoom.us/oauth/token", () => {
         return new HttpResponse("Bad Request", { status: 400 });
       });
       server.use(handler);

@@ -54,9 +54,6 @@ function initEnv() {
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       RUNNER_DEFAULT_GROUP: z.string().min(1).optional(), // Default runner group for domain-based rollout (e.g. "vm0/production")
       GITHUB_SKILL_DOWNLOAD_TOKEN: z.string().min(1).optional(), // GitHub PAT for skill download via Contents API (avoids 60 req/hr rate limit)
-      AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(), // Scoped token for agent-run-events
-      AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(), // Scoped token for all other datasets
-      AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(), // Explicit control for Axiom dataset suffix
       // Google Search Console verification
       GOOGLE_SITE_VERIFICATION: z.string().min(1).optional(),
       SLACK_INTEGRATION_ENABLED: z.enum(["true", "false"]).optional(),
@@ -324,9 +321,6 @@ function initEnv() {
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       RUNNER_DEFAULT_GROUP: process.env.RUNNER_DEFAULT_GROUP,
       GITHUB_SKILL_DOWNLOAD_TOKEN: process.env.GITHUB_SKILL_DOWNLOAD_TOKEN,
-      AXIOM_TOKEN_SESSIONS: process.env.AXIOM_TOKEN_SESSIONS,
-      AXIOM_TOKEN_TELEMETRY: process.env.AXIOM_TOKEN_TELEMETRY,
-      AXIOM_DATASET_SUFFIX: process.env.AXIOM_DATASET_SUFFIX,
       GOOGLE_SITE_VERIFICATION: process.env.GOOGLE_SITE_VERIFICATION,
       SLACK_INTEGRATION_ENABLED: process.env.SLACK_INTEGRATION_ENABLED,
       SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,

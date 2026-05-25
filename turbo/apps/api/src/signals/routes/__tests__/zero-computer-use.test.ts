@@ -211,6 +211,76 @@ describe("desktop computer-use runtime", () => {
     expect(fixture.orgId).toBeTruthy();
   });
 
+  it("rejects a second active Desktop app computer-use host", async () => {
+    await createOrgFixture();
+    const client = setupApp({ context })(zeroComputerUseHostsContract);
+    const body = {
+      hostName: "Zero Desktop",
+      appVersion: "0.1.0",
+      osVersion: "macOS 15",
+      supportedCapabilities: [...supportedCapabilities],
+      permissions: { accessibility: true, screenRecording: true },
+    };
+
+    const started = await accept(
+      client.start({
+        body,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const rejected = await accept(
+      client.start({
+        body,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "A Desktop Computer Use host is already active",
+    );
+    const listed = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(listed.body.hosts).toHaveLength(1);
+    expect(listed.body.hosts[0]?.id).toBe(started.body.hostId);
+  });
+
+  it("refuses to route commands when multiple active hosts already exist", async () => {
+    const fixture = await createOrgFixture();
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken: "host-token-1",
+    });
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken: "host-token-2",
+    });
+    const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+
+    const response = await accept(
+      commandClient.create({
+        body: { kind: "app.state", app: "Safari", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Multiple active computer-use hosts are online",
+    );
+  });
+
   it("runs a read command through the host claim and complete flow", async () => {
     const fixture = await createOrgFixture();
     const hostToken = "host-token";

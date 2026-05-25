@@ -4,9 +4,6 @@ export const attio = {
   attio: {
     label: "Attio",
     category: "sales-crm-business-operations",
-    environmentMapping: {
-      ATTIO_TOKEN: "$secrets.ATTIO_TOKEN",
-    },
     helpText:
       "Connect your Attio workspace to manage CRM records — companies, people, deals, custom objects — plus notes, tasks, lists, and comments",
     authMethods: {
@@ -14,13 +11,23 @@ export const attio = {
         label: "API Key",
         helpText:
           "1. Open [Attio](https://app.attio.com) and sign in\n2. Open **Workspace settings** from the dropdown beside your workspace name\n3. Click the **Developers** tab\n4. Click **+ New access token**, give it a name, and select the scopes you need\n5. Click **Create**, then copy the token (shown once)",
-        secrets: {
-          ATTIO_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "your-attio-access-token",
+        grant: {
+          kind: "manual",
+          fields: {
+            ATTIO_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "your-attio-access-token",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            ATTIO_TOKEN: "$secrets.ATTIO_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

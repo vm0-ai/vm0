@@ -1,23 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
 import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
   fetchSlackUserInfo,
-  revokeSlackToken,
   getSlackSecretName,
-} from "@vm0/connectors/auth-providers/oauth/providers/slack";
-
-const context = testContext();
+  revokeSlackToken,
+} from "../slack";
+import { server } from "./test-server";
 
 describe("connector/providers/slack", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("buildSlackAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and user_scope", () => {
       const url = buildSlackAuthorizationUrl(
@@ -37,19 +29,16 @@ describe("connector/providers/slack", () => {
 
   describe("exchangeSlackCode", () => {
     it("exchanges code for access token", async () => {
-      const { handler } = http.post(
-        "https://slack.com/api/oauth.v2.access",
-        () => {
-          return HttpResponse.json({
-            ok: true,
-            authed_user: {
-              id: "U-test",
-              access_token: "xoxp-test-token",
-              scope: "users:read,chat:write",
-            },
-          });
-        },
-      );
+      const handler = http.post("https://slack.com/api/oauth.v2.access", () => {
+        return HttpResponse.json({
+          ok: true,
+          authed_user: {
+            id: "U-test",
+            access_token: "xoxp-test-token",
+            scope: "users:read,chat:write",
+          },
+        });
+      });
       server.use(handler);
 
       const result = await exchangeSlackCode(
@@ -65,15 +54,12 @@ describe("connector/providers/slack", () => {
     });
 
     it("throws when Slack returns ok=false", async () => {
-      const { handler } = http.post(
-        "https://slack.com/api/oauth.v2.access",
-        () => {
-          return HttpResponse.json({
-            ok: false,
-            error: "invalid_code",
-          });
-        },
-      );
+      const handler = http.post("https://slack.com/api/oauth.v2.access", () => {
+        return HttpResponse.json({
+          ok: false,
+          error: "invalid_code",
+        });
+      });
       server.use(handler);
 
       await expect(
@@ -87,15 +73,12 @@ describe("connector/providers/slack", () => {
     });
 
     it("throws when no user access token in response", async () => {
-      const { handler } = http.post(
-        "https://slack.com/api/oauth.v2.access",
-        () => {
-          return HttpResponse.json({
-            ok: true,
-            authed_user: { id: "U-test" },
-          });
-        },
-      );
+      const handler = http.post("https://slack.com/api/oauth.v2.access", () => {
+        return HttpResponse.json({
+          ok: true,
+          authed_user: { id: "U-test" },
+        });
+      });
       server.use(handler);
 
       await expect(
@@ -111,7 +94,7 @@ describe("connector/providers/slack", () => {
 
   describe("fetchSlackUserInfo", () => {
     it("fetches user info successfully", async () => {
-      const { handler } = http.get("https://slack.com/api/users.info", () => {
+      const handler = http.get("https://slack.com/api/users.info", () => {
         return HttpResponse.json({
           ok: true,
           user: {
@@ -132,7 +115,7 @@ describe("connector/providers/slack", () => {
     });
 
     it("throws when Slack returns ok=false", async () => {
-      const { handler } = http.get("https://slack.com/api/users.info", () => {
+      const handler = http.get("https://slack.com/api/users.info", () => {
         return HttpResponse.json({
           ok: false,
           error: "user_not_found",
@@ -148,7 +131,7 @@ describe("connector/providers/slack", () => {
 
   describe("revokeSlackToken", () => {
     it("revokes token successfully", async () => {
-      const { handler } = http.post("https://slack.com/api/auth.revoke", () => {
+      const handler = http.post("https://slack.com/api/auth.revoke", () => {
         return HttpResponse.json({ ok: true, revoked: true });
       });
       server.use(handler);
@@ -159,7 +142,7 @@ describe("connector/providers/slack", () => {
     });
 
     it("throws when revocation fails", async () => {
-      const { handler } = http.post("https://slack.com/api/auth.revoke", () => {
+      const handler = http.post("https://slack.com/api/auth.revoke", () => {
         return HttpResponse.json({ ok: false, error: "token_revoked" });
       });
       server.use(handler);

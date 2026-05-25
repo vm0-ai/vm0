@@ -5,9 +5,6 @@ export const supabase = {
   supabase: {
     label: "Supabase",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Supabase account to manage projects, databases, and APIs",
     authMethods: {
@@ -15,55 +12,64 @@ export const supabase = {
         featureFlag: FeatureSwitchKey.SupabaseConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Supabase to grant access.",
-        secrets: {
-          SUPABASE_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://api.supabase.com/v1/oauth/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_basic",
+            clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
+            clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
           },
-          SUPABASE_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: [
+            "organizations:read",
+            "projects:read",
+            "projects:write",
+            "database:read",
+            "database:write",
+            "secrets:read",
+            "rest:read",
+            "rest:write",
+            "auth:read",
+            "analytics:read",
+            "environment:read",
+            "domains:read",
+          ],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "SUPABASE_ACCESS_TOKEN",
+          refreshToken: "SUPABASE_REFRESH_TOKEN",
+          outputs: {
+            SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
       "api-token": {
         label: "Service Role Key",
         helpText:
           "1. Log in to the [Supabase Dashboard](https://supabase.com/dashboard)\n2. Open your project's **Connect** dialog, or go to **Project Settings > API Keys**\n3. For legacy keys, copy the `anon` key (for client-side) or `service_role` key (for server-side) from the **Legacy API Keys** tab\n4. For new keys, open the **API Keys** tab, click **Create new API Keys** if needed, and copy the value from the **Publishable key** section",
-        secrets: {
-          SUPABASE_TOKEN: {
-            label: "Service Role Key",
-            required: true,
-            placeholder: "eyJhbGci... or sb_secret_...",
+        grant: {
+          kind: "manual",
+          fields: {
+            SUPABASE_TOKEN: {
+              label: "Service Role Key",
+              required: true,
+              placeholder: "eyJhbGci... or sb_secret_...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            SUPABASE_TOKEN: "$secrets.SUPABASE_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://api.supabase.com/v1/oauth/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_basic",
-        clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
-        clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
-      },
-      scopes: [
-        "organizations:read",
-        "projects:read",
-        "projects:write",
-        "database:read",
-        "database:write",
-        "secrets:read",
-        "rest:read",
-        "rest:write",
-        "auth:read",
-        "analytics:read",
-        "environment:read",
-        "domains:read",
-      ],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;
