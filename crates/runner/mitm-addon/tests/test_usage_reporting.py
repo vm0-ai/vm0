@@ -2226,7 +2226,9 @@ class TestResponseUsageReporting:
         assert "stream_buffer_state" not in flow.metadata
         assert "x_json_response_finish" not in flow.metadata
 
-    def test_response_logs_incremental_x_json_parse_error(self, tmp_path, real_flow, mitm_ctx):
+    def test_response_logs_incremental_x_json_parse_error(
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+    ):
         """Full response hook should audit parse errors from the incremental X JSON parser."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/recent")
         flow.metadata["vm_run_id"] = "run-abc-123"
