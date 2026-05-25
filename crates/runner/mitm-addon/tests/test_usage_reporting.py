@@ -2066,12 +2066,16 @@ class TestResponseUsageReporting:
         """Non-model-provider requests should not trigger usage reporting."""
         flow = real_flow(with_response=False, host="api.github.com")
         log_path = str(tmp_path / "network.jsonl")
+        proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.github.com/repos"
         flow.metadata["firewall_name"] = "github"
+        flow.metadata["stream_buffer"] = bytearray(b'{"incomplete":')
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=200, headers=_header_map({"content-type": "application/json"})
         )
@@ -2087,6 +2091,8 @@ class TestResponseUsageReporting:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 0  # urllib external boundary (#9991)
+        assert "model_provider_usage" not in flow.metadata
+        assert not proxy_log_path.exists()
 
     def test_full_path_response_to_opener(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
