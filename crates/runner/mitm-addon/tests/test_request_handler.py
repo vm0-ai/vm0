@@ -437,6 +437,7 @@ class TestRequestHandler:
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_sni"
         assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
         auth_fetch.assert_not_called()
         assert "Authorization" not in flow.request.headers
 

@@ -147,7 +147,6 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
 
     raw_sni = getattr(flow.client_conn, "sni", None)
     sni = raw_sni.strip() if isinstance(raw_sni, str) else None
-    raw_fallback_url = _build_url(scheme, request_host, port, path)
 
     def _authority_validation_error(
         reason: AuthorityValidationReason,
@@ -169,7 +168,7 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
         raise _authority_validation_error(
             "missing_sni",
             message="Request blocked: HTTPS request is missing TLS SNI",
-            fallback_url=raw_fallback_url,
+            fallback_url=_build_url(scheme, request_host, port, path),
         )
 
     try:
@@ -178,7 +177,7 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
         raise _authority_validation_error(
             "invalid_sni",
             message="Request blocked: HTTPS request has invalid TLS SNI",
-            fallback_url=raw_fallback_url,
+            fallback_url=_build_url(scheme, request_host, port, path),
         ) from None
 
     trusted_url = _build_url(scheme, normalized_sni, port, path)
