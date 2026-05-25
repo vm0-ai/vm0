@@ -316,7 +316,7 @@ class TestResponseUsageReporting:
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == "incomplete json"
 
-    @pytest.mark.parametrize("encoding_case", [("chained-gzip",), ("raw-deflate",)])
+    @pytest.mark.parametrize("encoding_case", ["chained-gzip", "raw-deflate"])
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
     ):

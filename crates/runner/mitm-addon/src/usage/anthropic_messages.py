@@ -176,7 +176,7 @@ def extract_anthropic_messages_usage_with_error_from_json(
 
     Falls back to decompressing the body if *headers* indicate compression.
     Returns ``(None, error)`` when the body is not valid JSON and
-    ``(None, None)`` when the body contains no usage.
+    ``(None, None)`` when no selected usage or metadata fields are found.
     """
     if headers:
         body = body_utils.decompress_body(
@@ -191,7 +191,8 @@ def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | N
     """Extract usage from a non-streaming Anthropic API JSON response.
 
     Falls back to decompressing the body if *headers* indicate compression.
-    Returns ``None`` when the body is not valid JSON or contains no usage.
+    Returns ``None`` when the body is not valid JSON or no selected usage or
+    metadata fields are found.
     """
     usage, _error = extract_anthropic_messages_usage_with_error_from_json(body, headers)
     return usage
