@@ -4688,6 +4688,7 @@ mod tests {
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
+        assert!(reuse_outcome.network_log_session.is_some());
         let system_log = tokio::fs::read(&system_log_path).await.unwrap();
         let mut expected = b"reuse partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
