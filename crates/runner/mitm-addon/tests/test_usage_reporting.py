@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import zstandard
 from mitmproxy import http, websocket
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
@@ -366,7 +367,14 @@ class TestResponseUsageReporting:
         assert entries[0]["error"] == "incomplete json"
 
     @pytest.mark.parametrize(
-        "encoding_case", ["chained-gzip", "raw-deflate", "truncated-gzip-prefix"]
+        "encoding_case",
+        [
+            "chained-gzip",
+            "raw-deflate",
+            "truncated-gzip-prefix",
+            "truncated-brotli-prefix",
+            "truncated-zstd-prefix",
+        ],
     )
     @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
@@ -397,6 +405,14 @@ class TestResponseUsageReporting:
         elif encoding_case == "truncated-gzip-prefix":
             body = gzip.compress(payload)[:10]
             content_encoding = "gzip"
+            expected_error = "incomplete compressed body"
+        elif encoding_case == "truncated-brotli-prefix":
+            body = body_utils.brotli.compress(payload)[:2]
+            content_encoding = "br"
+            expected_error = "incomplete compressed body"
+        elif encoding_case == "truncated-zstd-prefix":
+            body = zstandard.ZstdCompressor().compress(payload)[:5]
+            content_encoding = "zstd"
             expected_error = "incomplete compressed body"
         else:
             compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
@@ -514,7 +530,9 @@ class TestResponseUsageReporting:
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
-    @pytest.mark.parametrize("encoding_case", ["identity", "gzip", "deflate"])
+    @pytest.mark.parametrize(
+        "encoding_case", ["identity", "gzip", "deflate", "br", "zstd", "zstd-no-size"]
+    )
     @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_empty_body_stays_quiet(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case, provider_case
@@ -534,6 +552,12 @@ class TestResponseUsageReporting:
             body = gzip.compress(b"")
         elif encoding_case == "deflate":
             body = zlib.compress(b"")
+        elif encoding_case == "br":
+            body = body_utils.brotli.compress(b"")
+        elif encoding_case == "zstd":
+            body = zstandard.ZstdCompressor().compress(b"")
+        elif encoding_case == "zstd-no-size":
+            body = zstandard.ZstdCompressor(write_content_size=False).compress(b"")
         else:
             body = b""
         response_headers = {
@@ -541,7 +565,9 @@ class TestResponseUsageReporting:
             "content-length": str(len(body)),
         }
         if encoding_case != "identity":
-            response_headers["content-encoding"] = encoding_case
+            response_headers["content-encoding"] = (
+                "zstd" if encoding_case == "zstd-no-size" else encoding_case
+            )
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
