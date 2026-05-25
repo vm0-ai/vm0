@@ -1,0 +1,26 @@
+<!-- Official brand asset source: https://sociavault.com/favicon.svg -->
+<!-- SociaVault Favicon - Shield Design with Dark Mode Support -->
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bg-circle { fill: #2563EB; }
+    .shield { fill: #FFFFFF; }
+    .lock-fill { fill: #2563EB; }
+    .lock-stroke { stroke: #2563EB; }
+    
+    @media (prefers-color-scheme: dark) {
+      .bg-circle { fill: #3B82F6; }
+      .shield { fill: #FFFFFF; }
+      .lock-fill { fill: #3B82F6; }
+      .lock-stroke { stroke: #3B82F6; }
+    }
+  </style>
+  
+  <!-- Background Circle -->
+  <circle cx="16" cy="16" r="14" class="bg-circle"/>
+  <!-- Shield/Vault Shape -->
+  <path d="M16 6C20 6 24 8 24 8V20C24 24 20 26 16 26C12 26 8 24 8 20V8C8 8 12 6 16 6Z" 
+        class="shield"/>
+  <!-- Lock Element -->
+  <rect x="14" y="17" width="4" height="5" rx="1" class="lock-fill"/>
+  <circle cx="16" cy="14" r="2" fill="none" class="lock-stroke" stroke-width="1"/>
+</svg>
