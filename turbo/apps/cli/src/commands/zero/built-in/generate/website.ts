@@ -1,14 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 
 import { Command, InvalidArgumentError } from "commander";
-import chalk from "chalk";
-import { generateWebWebsite } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
-import { publishStaticSite } from "../../../../lib/host/publish-static-site";
-import { buildGeneratedWebsite } from "../../shared/website-build";
+import { createHtmlArtifactAuthoringPacket } from "../../shared/html-artifact-authoring";
 
 const WEBSITE_TEMPLATES = ["auto", "launch", "profile"] as const;
 const WEBSITE_MAX_IMAGES = 3;
@@ -21,7 +15,6 @@ interface WebsiteOptions {
   readonly site?: string;
   readonly title?: string;
   readonly audience?: string;
-  readonly keepBuildDir?: boolean;
   readonly json?: boolean;
 }
 
@@ -72,15 +65,9 @@ function readPrompt(options: WebsiteOptions): string {
   });
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export const websiteCommand = new Command()
   .name("website")
-  .description("Generate, build, and publish a hosted website from a prompt")
+  .description("Prepare agent-authored HTML website instructions from a prompt")
   .option("--prompt <text>", "Website prompt; can also be piped via stdin")
   .option(
     "--template <template>",
@@ -101,7 +88,6 @@ export const websiteCommand = new Command()
   .option("--site <slug>", "Hosted site slug; defaults to the generated name")
   .option("--title <text>", "Requested site title or name")
   .option("--audience <text>", "Audience context")
-  .option("--keep-build-dir", "Keep the temporary static build directory")
   .option("--json", "Print metadata as JSON")
   .addHelpText(
     "after",
@@ -113,111 +99,42 @@ Examples:
   Pipe prompt:           cat brief.txt | zero built-in generate website
 
 Output:
-  Builds a React template into a static website, publishes it with zero host, and prints the hosted URL
+  Prints an OpenDesign-style authoring packet for the current agent. The agent writes HTML locally, then publishes with zero host.
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires host:write capability)
-  - Charges org credits for model-generated website content
-  - Uses OpenAI gpt-5.5 for website content and fal.ai for generated visuals`,
+  - Does not call the built-in website generation API
+  - Does not charge separate built-in generation credits
+  - Final publishing uses zero host and requires host:write capability`,
   )
   .action(
     withErrorHandler(async (options: WebsiteOptions) => {
       const prompt = readPrompt(options);
-      if (!options.json) {
-        console.log(chalk.dim("Generating website content..."));
-      }
-      const generation = await generateWebWebsite({
+      const packet = createHtmlArtifactAuthoringPacket({
+        kind: "website",
         prompt,
-        template: options.template,
-        imageCount: options.images,
-        imageModel: options.imageModel,
-        title: options.title,
-        audience: options.audience,
+        slugSource: options.title,
+        site: options.site,
+        details: [
+          `Template direction: ${options.template}`,
+          `Suggested generated visual count: ${options.images}`,
+          `Image model preference if visuals are generated separately: ${
+            options.imageModel ?? "default"
+          }`,
+          `Requested title/site name: ${options.title ?? "not specified"}`,
+          `Audience: ${options.audience ?? "not specified"}`,
+        ],
+        artifactRules: [
+          "Build the usable website as the first screen; do not output a landing-page plan.",
+          "If it is a marketing site, make the product or offer visible in the first viewport.",
+          "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
+          "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
+        ],
       });
 
-      const buildRoot = await mkdtemp(join(tmpdir(), "zero-website-"));
-      const outDir = join(buildRoot, "dist");
-      try {
-        if (!options.json) {
-          console.log(chalk.dim("Building React template..."));
-        }
-        await buildGeneratedWebsite({
-          outDir,
-          templateId: generation.templateId,
-          siteData: generation.siteData,
-          generatedVisuals: generation.generatedVisuals,
-        });
-
-        const site = options.site ?? generation.slugSuggestion;
-        const hosted = await publishStaticSite({
-          dir: outDir,
-          site,
-          onProgress: options.json
-            ? undefined
-            : (progress) => {
-                if (progress.phase === "preparing") {
-                  console.log(
-                    chalk.dim(`Preparing ${progress.fileCount} files...`),
-                  );
-                  return;
-                }
-                console.log(chalk.dim(`Uploading ${progress.path}`));
-              },
-        });
-
-        const result = {
-          url: hosted.url,
-          siteId: hosted.siteId,
-          deploymentId: hosted.deploymentId,
-          publicSlug: hosted.publicSlug,
-          site,
-          templateId: generation.templateId,
-          templateLabel: generation.templateLabel,
-          fileCount: hosted.fileCount,
-          size: hosted.size,
-          creditsCharged: generation.creditsCharged,
-          textCreditsCharged: generation.textCreditsCharged,
-          imageCreditsCharged: generation.imageCreditsCharged,
-          model: generation.model,
-          imageCount: generation.imageCount,
-          imageModel: generation.imageModel,
-          imageUrls: generation.imageUrls,
-          responseId: generation.responseId,
-          generationId: generation.generationId,
-          usage: generation.usage,
-          ...(options.keepBuildDir ? { buildDir: outDir } : {}),
-        };
-
-        if (options.json) {
-          console.log(JSON.stringify(result));
-          return;
-        }
-
-        console.log(chalk.green(`✓ Website generated: ${hosted.url}`));
-        console.log(chalk.dim(`  Site: ${hosted.publicSlug}`));
-        console.log(chalk.dim(`  Deployment: ${hosted.deploymentId}`));
-        console.log(chalk.dim(`  Template: ${generation.templateLabel}`));
-        console.log(chalk.dim(`  Files: ${hosted.fileCount.toLocaleString()}`));
-        console.log(chalk.dim(`  Size: ${formatBytes(hosted.size)}`));
-        console.log(chalk.dim(`  Images: ${generation.imageCount}`));
-        console.log(chalk.dim(`  Image model: ${generation.imageModel}`));
-        console.log(
-          chalk.dim(`  Credits charged: ${generation.creditsCharged}`),
-        );
-        console.log(
-          chalk.dim(`  Text credits: ${generation.textCreditsCharged}`),
-        );
-        console.log(
-          chalk.dim(`  Image credits: ${generation.imageCreditsCharged}`),
-        );
-        console.log(chalk.dim(`  Model: ${generation.model}`));
-        if (options.keepBuildDir) {
-          console.log(chalk.dim(`  Build dir: ${outDir}`));
-        }
-      } finally {
-        if (!options.keepBuildDir) {
-          await rm(buildRoot, { recursive: true, force: true });
-        }
+      if (options.json) {
+        console.log(JSON.stringify(packet));
+        return;
       }
+      console.log(packet.instructions);
     }),
   );
