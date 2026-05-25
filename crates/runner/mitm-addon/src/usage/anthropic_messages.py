@@ -169,22 +169,9 @@ def create_anthropic_messages_json_usage_extractor() -> AnthropicMessagesJsonUsa
     return AnthropicMessagesJsonUsageExtractor()
 
 
-def extract_anthropic_messages_usage_with_error_from_json(
-    body: bytes, headers
+def _extract_anthropic_messages_usage_from_decoded_json_body(
+    body: bytes,
 ) -> tuple[dict | None, str | None]:
-    """Extract usage from a non-streaming Anthropic API JSON response.
-
-    Falls back to decompressing the body if *headers* indicate compression.
-    Returns ``(None, error)`` when JSON usage parsing fails and
-    ``(None, None)`` when the decoded body is empty or no selected usage or
-    metadata fields are found.
-    """
-    if headers:
-        body, decompress_error = body_utils.decompress_json_usage_body(
-            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
-        )
-        if decompress_error:
-            return None, decompress_error
     if not body:
         return None, None
     extractor = create_anthropic_messages_json_usage_extractor()
@@ -195,9 +182,31 @@ def extract_anthropic_messages_usage_with_error_from_json(
 def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | None:
     """Extract usage from a non-streaming Anthropic API JSON response.
 
-    Falls back to decompressing the body if *headers* indicate compression.
-    Returns ``None`` when JSON usage parsing fails or no selected usage or
-    metadata fields are found.
+    This is the silent best-effort API: it returns ``None`` when decoding or
+    parsing fails, the decoded body is empty, or no selected usage or metadata
+    fields are found.
     """
-    usage, _error = extract_anthropic_messages_usage_with_error_from_json(body, headers)
+    if headers:
+        body = body_utils.decompress_body(
+            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        )
+    usage, _error = _extract_anthropic_messages_usage_from_decoded_json_body(body)
     return usage
+
+
+def extract_anthropic_messages_usage_with_error_from_json(
+    body: bytes, headers
+) -> tuple[dict | None, str | None]:
+    """Extract usage from a non-streaming Anthropic API JSON response.
+
+    This is the diagnostic API: it returns ``(None, error)`` when decoding or
+    parsing fails, and ``(None, None)`` when the decoded body is empty or no
+    selected usage or metadata fields are found.
+    """
+    if headers:
+        body, decompress_error = body_utils.decompress_json_usage_body(
+            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        )
+        if decompress_error:
+            return None, decompress_error
+    return _extract_anthropic_messages_usage_from_decoded_json_body(body)
