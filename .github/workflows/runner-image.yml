@@ -269,11 +269,6 @@ jobs:
           R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
         run: .github/scripts/prepare-runner-image.sh
 
-      - name: Show sccache stats
-        if: always()
-        shell: bash
-        run: ${SCCACHE_PATH:-sccache} --show-stats
-
       - name: Validate manifest
         env:
           MANIFEST_PATH: runner-image-manifest/manifest.json
