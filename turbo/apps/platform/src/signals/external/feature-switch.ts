@@ -114,10 +114,6 @@ export const resetFeatureSwitches$ = command(
   },
 );
 
-export const trinityEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.Trinity] ?? false;
-});
-
 export const pwaOfflineCacheEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
 });

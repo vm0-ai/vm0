@@ -28,7 +28,6 @@ import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
-import { cronVoiceChatCleanupRoutes } from "./routes/cron-voice-chat-cleanup";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
@@ -43,12 +42,10 @@ import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks
 import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
-import { internalCallbacksVoiceChatRoutes } from "./routes/internal-callbacks-voice-chat";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
-import { internalEventConsumerVoiceChatRoutes } from "./routes/internal-event-consumers-voice-chat";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
@@ -158,7 +155,6 @@ import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
-import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "./routes/zero-voice-io-stt";
@@ -207,12 +203,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksScheduleRoutes,
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
-  ...internalCallbacksVoiceChatRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
-  ...internalEventConsumerVoiceChatRoutes,
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
@@ -248,7 +242,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
-  ...cronVoiceChatCleanupRoutes,
   ...deviceTokenRoutes,
   ...emailUnsubscribeRoutes,
   ...generateImageRoutes,
@@ -293,7 +286,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
-  ...zeroVoiceChatRoutes,
   ...zeroVoiceIoQuotaRoutes,
   ...zeroVoiceIoSpeechRoutes,
   ...zeroVoiceIoSttRoutes,

@@ -234,7 +234,7 @@ function initEnv() {
         .optional(),
       // Realtime pub/sub
       ABLY_API_KEY: z.string().min(1),
-      // OpenAI (voice-chat ephemeral token minting, STT, TTS, image generation)
+      // OpenAI (STT, TTS, image generation)
       OPENAI_API_KEY: z.string().min(1),
       // fal.ai (built-in image generation fallback models)
       FAL_KEY: z.string().min(1).optional(),

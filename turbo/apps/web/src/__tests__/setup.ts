@@ -65,7 +65,7 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // Realtime pub/sub (Ably) — required env; tests use a mocked Ably client
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    // OpenAI (voice-chat ephemeral token minting, STT, TTS) — required env
+    // OpenAI (STT, TTS) — required env
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
     // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.

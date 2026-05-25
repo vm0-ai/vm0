@@ -8,17 +8,12 @@ export {
   seedUserCacheEntry,
   insertUserCacheEntry,
 } from "../db-test-seeders/users";
-export { insertTestVoiceChatSession } from "../db-test-seeders/voice-chat";
 
 // Re-exports: read-only assertions
 export {
   countUserRows,
   getPushSubscriptionsByEndpoint,
 } from "../db-test-assertions/users";
-export {
-  getTestVoiceChatSession,
-  countTestVoiceChatSessionsByReasoningStatus,
-} from "../db-test-assertions/voice-chat";
 
 /**
  * Register a push subscription for the current authenticated user. The user
