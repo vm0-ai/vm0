@@ -1151,6 +1151,10 @@ export {
   type RedeemResponse,
 } from "./zero-billing";
 export {
+  zeroDebugSetCreditsContract,
+  type ZeroDebugSetCreditsContract,
+} from "./zero-debug-credits";
+export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
   // Inferred types

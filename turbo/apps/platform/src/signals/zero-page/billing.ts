@@ -7,6 +7,7 @@ import {
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroDebugSetCreditsContract } from "@vm0/api-contracts/contracts/zero-debug-credits";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -75,6 +76,24 @@ export const reloadBillingStatus$ = command(({ set }) => {
     return x + 1;
   });
 });
+
+/**
+ * Dev-only: set the current org's credit balance to the given value via the
+ * /api/zero/debug/set-credits endpoint. The endpoint 404s in production, so
+ * the Debug UI block is also gated on VITE_VERCEL_ENV !== "production".
+ */
+export const setOrgCreditsDebug$ = command(
+  async ({ get, set }, credits: number, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroDebugSetCreditsContract);
+    await accept(
+      client.create({ body: { credits }, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadBillingStatus$);
+  },
+);
 
 export const setBillingDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalDialogOpen$, open);
