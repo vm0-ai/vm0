@@ -372,6 +372,8 @@ class TestResponseUsageReporting:
             "chained-gzip",
             "raw-deflate",
             "raw-json-with-gzip-header",
+            "raw-json-with-br-header",
+            "raw-json-with-zstd-header",
             "truncated-gzip-prefix",
             "empty-gzip-member-before-garbage",
             "empty-deflate-stream-before-garbage",
@@ -408,6 +410,14 @@ class TestResponseUsageReporting:
         elif encoding_case == "raw-json-with-gzip-header":
             body = payload
             content_encoding = "gzip"
+            expected_error = "invalid compressed body"
+        elif encoding_case == "raw-json-with-br-header":
+            body = payload
+            content_encoding = "br"
+            expected_error = "invalid compressed body"
+        elif encoding_case == "raw-json-with-zstd-header":
+            body = payload
+            content_encoding = "zstd"
             expected_error = "invalid compressed body"
         elif encoding_case == "truncated-gzip-prefix":
             body = gzip.compress(payload)[:10]

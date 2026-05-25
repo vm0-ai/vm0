@@ -269,7 +269,7 @@ def decompress_json_usage_body(
             with contextlib.suppress(AttributeError):
                 # ctx.log unavailable outside mitmproxy runtime
                 ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-            return data, None
+            return b"", "invalid compressed body"
         if data and not body and not finished:
             return body, "incomplete compressed body"
         return body, None
@@ -281,7 +281,7 @@ def decompress_json_usage_body(
             with contextlib.suppress(AttributeError):
                 # ctx.log unavailable outside mitmproxy runtime
                 ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-            return data, None
+            return b"", "invalid compressed body"
         if data and not body:
             try:
                 obj = zstandard.ZstdDecompressor().decompressobj()
