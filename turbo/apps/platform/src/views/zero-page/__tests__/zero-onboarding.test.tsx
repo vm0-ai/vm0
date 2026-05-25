@@ -188,7 +188,9 @@ describe("zero onboarding - Pro trial step", () => {
     });
     // The benefit checklist renders, and the trial step is now terminal.
     expect(screen.getByTestId("onboarding-trial-benefits")).toBeInTheDocument();
-    expect(screen.getByText("Multimodal generation")).toBeInTheDocument();
+    expect(
+      screen.getByText("Generate images, video and voice from a prompt"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
       "Get Started",
     );

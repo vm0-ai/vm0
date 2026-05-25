@@ -54,6 +54,7 @@ import {
   IconCheck,
   IconCircleCheck,
   IconCircleCheckFilled,
+  IconCoins,
   IconLoader,
   IconSearch,
 } from "@tabler/icons-react";
@@ -379,44 +380,16 @@ function UseCasePromptComposer() {
 // config rather than being hardcoded here.
 // ---------------------------------------------------------------------------
 
-type ProTrialBenefit = {
-  title: string;
-  description: string;
-};
-
-const PRO_TRIAL_BENEFITS: readonly ProTrialBenefit[] = [
-  {
-    title: "$20 in VM0 credits",
-    description: "Enough to run agents from day one",
-  },
-  {
-    title: "2 concurrent agent runs",
-    description: "Run tasks in parallel without waiting",
-  },
-  {
-    title: "All advanced features",
-    description: "Nothing held back during the trial",
-  },
-  {
-    title: "Multimodal generation",
-    description: "Generate images, video and voice",
-  },
-  {
-    title: "Slack & Telegram agents",
-    description: "Chat from where you already work",
-  },
-  {
-    title: "Bring your own model keys",
-    description: "Plug in Anthropic, OpenAI and more",
-  },
-  {
-    title: "200+ connectors",
-    description: "Apps, APIs and integrations",
-  },
-  {
-    title: "Scheduled & recurring agents",
-    description: "Run on a cron or fixed schedule",
-  },
+// Pro features below the hero credit card. Phrased as "what you get",
+// not feature names — these read top-to-bottom in a single column.
+const PRO_TRIAL_BENEFITS: readonly string[] = [
+  "Run 2 agents at the same time",
+  "Every Pro feature unlocked — nothing held back",
+  "Generate images, video and voice from a prompt",
+  "Trigger Zero from Slack and Telegram",
+  "Plug in your own OpenAI, Anthropic or Gemini keys",
+  "Connect 200+ apps and APIs",
+  "Schedule agents to run on their own",
 ];
 
 /** Step 4: what Pro unlocks + the 7-day trial framing. */
@@ -442,8 +415,7 @@ function TrialStepContent() {
         Your 7-day Pro trial is ready
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
-        Everything below is included while you explore. Your trial starts the
-        moment you finish setup.
+        Here&apos;s what you get the moment you finish setup.
       </p>
 
       {connectorEntries.length > 0 && (
@@ -462,25 +434,45 @@ function TrialStepContent() {
         </div>
       )}
 
+      {/* Hero: lead with the dollar value so users see they're getting
+          real spending power, not a token allowance. */}
+      <div className="zero-border rounded-2xl bg-background px-5 py-5 mb-5 flex items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+          <IconCoins size={22} stroke={1.75} className="text-primary" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-2xl font-semibold text-foreground leading-none">
+              $20
+            </span>
+            <span className="text-sm font-medium text-foreground">
+              in VM0 credits, on us
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            That&apos;s 20,000 credits to spend on Zero — enough agent runs to
+            draft, build and ship things from day one.
+          </p>
+        </div>
+      </div>
+
+      <p className="text-sm font-medium text-foreground mb-3">
+        Plus everything in Pro
+      </p>
       <ul
         data-testid="onboarding-trial-benefits"
-        className="w-full grid grid-cols-1 sm:grid-cols-2 auto-rows-fr gap-x-8 gap-y-4"
+        className="w-full flex flex-col gap-y-2.5"
       >
         {PRO_TRIAL_BENEFITS.map((benefit) => {
           return (
-            <li key={benefit.title} className="flex items-start gap-2.5">
+            <li key={benefit} className="flex items-start gap-2.5">
               <IconCheck
                 size={16}
                 stroke={2.25}
                 className="text-primary shrink-0 mt-0.5"
               />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-foreground leading-snug">
-                  {benefit.title}
-                </span>
-                <span className="block text-xs text-muted-foreground mt-0.5 leading-snug">
-                  {benefit.description}
-                </span>
+              <span className="text-sm text-foreground leading-snug">
+                {benefit}
               </span>
             </li>
           );
