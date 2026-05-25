@@ -399,7 +399,7 @@ const PRO_TRIAL_BENEFITS: readonly ProTrialBenefit[] = [
   },
   {
     title: "Multimodal generation",
-    description: "Create images, video and voice from a prompt",
+    description: "Generate images, video and voice",
   },
   {
     title: "Slack & Telegram agents",
@@ -418,15 +418,6 @@ const PRO_TRIAL_BENEFITS: readonly ProTrialBenefit[] = [
     description: "Run on a cron or fixed schedule",
   },
 ];
-
-const TRIAL_LENGTH_DAYS = 7;
-const TRIAL_REMINDER_LEAD_DAYS = 2;
-
-function formatTrialDate(daysFromNow: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + daysFromNow);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 /** Step 4: what Pro unlocks + the 7-day trial framing. */
 function TrialStepContent() {
@@ -473,7 +464,7 @@ function TrialStepContent() {
 
       <ul
         data-testid="onboarding-trial-benefits"
-        className="w-full grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4"
+        className="w-full grid grid-cols-1 sm:grid-cols-2 auto-rows-fr gap-x-8 gap-y-4"
       >
         {PRO_TRIAL_BENEFITS.map((benefit) => {
           return (
@@ -499,31 +490,8 @@ function TrialStepContent() {
   );
 }
 
-/** Left-panel trial-status illustration for step 4 — a reassurance timeline. */
+/** Left-panel trial-status illustration for step 4. */
 function OnboardingTrialPanel() {
-  const reminderDate = formatTrialDate(
-    TRIAL_LENGTH_DAYS - TRIAL_REMINDER_LEAD_DAYS,
-  );
-  const chargeDate = formatTrialDate(TRIAL_LENGTH_DAYS);
-
-  const stops = [
-    {
-      label: "Today",
-      detail: "Trial begins — full Pro access",
-      active: true,
-    },
-    {
-      label: reminderDate,
-      detail: "We email you a heads-up",
-      active: false,
-    },
-    {
-      label: chargeDate,
-      detail: "Trial ends — cancel anytime before this",
-      active: false,
-    },
-  ];
-
   return (
     <>
       <img
@@ -539,50 +507,6 @@ function OnboardingTrialPanel() {
         Full access while you explore. We&apos;ll remind you before your trial
         ends.
       </p>
-
-      <div className="zero-border relative w-full max-w-[340px] mt-8 rounded-2xl bg-background px-5 py-5">
-        <ol className="flex flex-col">
-          {stops.map((stop, index) => {
-            const isLast = index === stops.length - 1;
-            return (
-              <li
-                key={stop.detail}
-                className={`flex items-start gap-3.5 ${isLast ? "" : "pb-5"}`}
-              >
-                <div className="flex flex-col items-center self-stretch">
-                  <span
-                    className={`mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full ${
-                      stop.active
-                        ? "bg-primary ring-4 ring-primary/15"
-                        : "border border-border bg-background"
-                    }`}
-                  />
-                  {!isLast && (
-                    <span
-                      aria-hidden
-                      className="my-1.5 w-px flex-1 bg-border"
-                    />
-                  )}
-                </div>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-foreground leading-snug">
-                    {stop.label}
-                  </span>
-                  <span className="block text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                    {stop.detail}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-
-      <div className="zero-border mt-4 inline-flex items-center gap-2 rounded-full bg-background px-3 py-1.5">
-        <span className="text-xs font-medium text-foreground">$0 today</span>
-        <span className="h-3 w-px bg-border" aria-hidden />
-        <span className="text-xs text-muted-foreground">Cancel anytime</span>
-      </div>
     </>
   );
 }
