@@ -187,7 +187,9 @@ pub(crate) fn kill_and_reap_child_with_target(mut child: Child, mut target: Proc
     // SAFETY: child_id comes from a live `Child` returned by Command::spawn.
     refresh_process_tree_kill_target(&mut target);
     let child_id = target.child_id;
-    let killed = unsafe { kill_process_tree_target(target) } || child.kill().is_ok();
+    let tree_killed = unsafe { kill_process_tree_target(target) };
+    let child_killed = child.kill().is_ok();
+    let killed = tree_killed || child_killed;
     if !killed {
         log(
             "WARN",

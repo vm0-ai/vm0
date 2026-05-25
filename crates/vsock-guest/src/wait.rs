@@ -232,9 +232,10 @@ fn kill_child_unless_done(
 fn kill_child(kill_target: ProcessTreeKillTarget, reason: KillReason) -> WatchdogKill {
     let child_id = kill_target.child_id();
     // SAFETY: kill_target comes from a PID returned by Command::spawn.
-    let killed = unsafe { kill_process_tree_target(kill_target) }
-        // SAFETY: child_id is a process id from Command::spawn.
-        || unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+    let tree_killed = unsafe { kill_process_tree_target(kill_target) };
+    // SAFETY: child_id is a process id from Command::spawn.
+    let child_killed = unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+    let killed = tree_killed || child_killed;
     WatchdogKill { reason, killed }
 }
 
