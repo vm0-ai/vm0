@@ -1,4 +1,10 @@
-type HtmlArtifactKind = "presentation" | "website";
+import {
+  type OpenDesignCandidateSlice,
+  type OpenDesignTarget,
+  selectOpenDesignCandidates,
+} from "./open-design-registry";
+
+type HtmlArtifactKind = OpenDesignTarget;
 
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
@@ -10,9 +16,23 @@ interface HtmlArtifactAuthoringOptions {
 }
 
 interface HtmlArtifactAuthoringPacket {
-  readonly type: "html-artifact-authoring";
+  readonly type: "open-design-resource-selection";
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
+  readonly registryVersion: string;
+  readonly selection: {
+    readonly candidates: OpenDesignCandidateSlice["candidates"];
+    readonly outputSchema: {
+      readonly skills: "string[]";
+      readonly template: "string";
+      readonly designSystem: "string | null";
+      readonly rationale: "string";
+    };
+  };
+  readonly authoring: {
+    readonly details: readonly string[];
+    readonly artifactRules: readonly string[];
+  };
   readonly outputDir: string;
   readonly site: string;
   readonly hostCommand: string;
@@ -31,7 +51,18 @@ function slugify(value: string): string {
 }
 
 function titleForKind(kind: HtmlArtifactKind): string {
-  return kind === "presentation" ? "HTML presentation" : "hosted website";
+  const titles: Record<HtmlArtifactKind, string> = {
+    presentation: "HTML presentation",
+    website: "hosted website",
+    dashboard: "dashboard",
+    "mobile-app": "mobile app prototype",
+    poster: "poster",
+    "intro-video": "intro video storyboard",
+    report: "report",
+    docs: "documentation site",
+  };
+
+  return titles[kind];
 }
 
 function outputDirForSite(site: string): string {
@@ -47,14 +78,57 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
+  const candidateSlice = selectOpenDesignCandidates({
+    target: options.kind,
+    prompt: [
+      options.prompt,
+      options.slugSource ?? "",
+      ...options.details,
+      ...options.artifactRules,
+    ].join("\n"),
+  });
+  const selectionSchema = {
+    skills: "string[]",
+    template: "string",
+    designSystem: "string | null",
+    rationale: "string",
+  } as const;
   const instructions = [
     `# Zero built-in generate ${options.kind}`,
     "",
-    `You are the current agent. Author a production-quality ${title} as a static HTML artifact.`,
-    "Zero is not generating this artifact on the server. You are the author.",
+    "This is an Open Design resource-selection packet for the current agent.",
+    `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
     options.prompt,
+    "",
+    "## Stage 1: Resource Selection",
+    "- Choose the Open Design resources from the bundled registry slice below.",
+    "- Select one template, one or more skills, and zero or one design system.",
+    "- Choose only IDs present in this packet; do not invent registry IDs.",
+    "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
+    "- Treat the selection JSON as internal working state, then continue to authoring.",
+    "",
+    "## Selection Output Schema",
+    "```json",
+    JSON.stringify(selectionSchema, null, 2),
+    "```",
+    "",
+    "## Candidate Registry Slice",
+    `Registry: \`${candidateSlice.registryVersion}\``,
+    "",
+    "```json",
+    JSON.stringify(candidateSlice.candidates, null, 2),
+    "```",
+    "",
+    "## Stage 2: Resolve Selected Resources",
+    "- For every selected resource, fetch or read the referenced Open Design source before authoring.",
+    "- Source refs are pinned as `repo@commit:path`; use the commit in the packet for reproducibility.",
+    "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
+    "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
+    "",
+    "## Stage 3: Author Artifact",
+    `Author a production-quality ${title} as a static HTML artifact using the selected Open Design resources.`,
     "",
     "## Output Contract",
     `- Write the artifact under \`${outputDir}/\`.`,
@@ -69,9 +143,9 @@ export function createHtmlArtifactAuthoringPacket(
       return `- ${detail}`;
     }),
     "",
-    "## OpenDesign-Style Authoring Rules",
-    "- Read the local codebase, brand assets, and existing design systems before choosing a visual direction.",
-    "- If no design system is available, choose one clear aesthetic direction and hold it across the artifact.",
+    "## Open Design Authoring Rules",
+    "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.",
+    "- Read the local codebase, brand assets, and existing design systems when the prompt depends on this repository.",
     "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
     "- Build the actual artifact first, not a marketing explanation of the artifact.",
     "- Make controls and interactions real when they are visible.",
@@ -95,9 +169,18 @@ export function createHtmlArtifactAuthoringPacket(
   ].join("\n");
 
   return {
-    type: "html-artifact-authoring",
+    type: "open-design-resource-selection",
     kind: options.kind,
     prompt: options.prompt,
+    registryVersion: candidateSlice.registryVersion,
+    selection: {
+      candidates: candidateSlice.candidates,
+      outputSchema: selectionSchema,
+    },
+    authoring: {
+      details: options.details,
+      artifactRules: options.artifactRules,
+    },
     outputDir,
     site,
     hostCommand,

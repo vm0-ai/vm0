@@ -78,7 +78,7 @@ describe("parseBodyRenderBlocks", () => {
         type: "preview",
         id: "preview-1",
         preview: {
-          filename: "demo-site-a1b2c3d4.html",
+          filename: url,
           url,
           kind: "html",
         },
@@ -97,7 +97,7 @@ describe("parseBodyRenderBlocks", () => {
         type: "preview",
         id: "preview-1",
         preview: {
-          filename: "li-hua-mao-guide-0520-35a4112d.html",
+          filename: url,
           url,
           kind: "html",
         },
@@ -116,6 +116,44 @@ describe("parseBodyRenderBlocks", () => {
         type: "markdown",
         id: "markdown-1",
         content: url,
+      },
+    ]);
+  });
+
+  it("uses markdown link text as the hosted site preview title", () => {
+    vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.example.com");
+    const url = "https://demo-site-a1b2c3d4.sites.example.com";
+
+    const { blocks } = parseBodyRenderBlocks(`[Launch deck preview](${url})`);
+
+    expect(blocks).toStrictEqual([
+      {
+        type: "preview",
+        id: "preview-1",
+        preview: {
+          filename: "Launch deck preview",
+          url,
+          kind: "html",
+        },
+      },
+    ]);
+  });
+
+  it("uses markdown link text as the platform HTML preview title", () => {
+    const url =
+      "https://cdn.vm7.io/artifacts/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
+
+    const { blocks } = parseBodyRenderBlocks(`[Quarterly report](${url})`);
+
+    expect(blocks).toStrictEqual([
+      {
+        type: "preview",
+        id: "preview-1",
+        preview: {
+          filename: "Quarterly report",
+          url,
+          kind: "html",
+        },
       },
     ]);
   });

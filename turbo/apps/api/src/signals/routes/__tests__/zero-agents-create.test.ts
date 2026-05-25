@@ -48,8 +48,6 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
 const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
-const GH_TOKEN_TEMPLATE = ["$", "{{ secrets.GH_TOKEN }}"].join("");
-const GITHUB_TOKEN_TEMPLATE = ["$", "{{ secrets.GITHUB_TOKEN }}"].join("");
 const ORG_SENTINEL_USER_ID = "__org__";
 
 function authHeaders() {
@@ -267,8 +265,8 @@ describe("POST /api/zero/agents", () => {
     expect(storedAgent.instructions).toBe("CLAUDE.md");
     expect(environment.ZERO_AGENT_ID).toBe(ZERO_AGENT_ID_TEMPLATE);
     expect(environment.ZERO_TOKEN).toBe(ZERO_TOKEN_TEMPLATE);
-    expect(environment.GH_TOKEN).toBe(GH_TOKEN_TEMPLATE);
-    expect(environment.GITHUB_TOKEN).toBe(GITHUB_TOKEN_TEMPLATE);
+    expect(environment.GH_TOKEN).toBeUndefined();
+    expect(environment.GITHUB_TOKEN).toBeUndefined();
     expect(content.volumes).toBeUndefined();
 
     const [instructionsStorage] = await db

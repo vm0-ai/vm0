@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.11...sandbox-fc-v0.35.12) (2026-05-25)
+
+
+### Bug Fixes
+
+* pass guest reseed entropy over exec stdin ([#14758](https://github.com/vm0-ai/vm0/issues/14758)) ([6f9a4aa](https://github.com/vm0-ai/vm0/commit/6f9a4aac941effcad301911f5dfec055bb758667))
+
 ## [0.35.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.10...sandbox-fc-v0.35.11) (2026-05-25)
 
 

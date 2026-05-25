@@ -1,6 +1,6 @@
 [package]
 name = "guest-reseed"
-version = "0.3.2"
+version = "0.3.3"
 edition.workspace = true
 description = "Inject entropy and force CRNG reseed after Firecracker snapshot restore"
 

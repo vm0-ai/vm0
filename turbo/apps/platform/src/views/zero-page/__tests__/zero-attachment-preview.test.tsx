@@ -21,6 +21,7 @@ import { http, HttpResponse } from "msw";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { fetchPreviewText } from "../../../signals/chat-page/parse-body-blocks.ts";
+import { lightboxUrl$ } from "../../../signals/zero-page/zero-attachment-chips.ts";
 import { AttachmentPreview } from "../zero-attachment-preview.tsx";
 
 const context = testContext();
@@ -531,5 +532,48 @@ describe("document thumbnail preview", () => {
 
     const preview = screen.getByTestId("attachment-preview-html");
     expect(preview).toBeInTheDocument();
+    expect(preview.tagName).toBe("A");
+    expect(preview).toHaveAttribute("href", "https://example.com/page.html");
+    expect(preview).toHaveTextContent("page.html");
+  });
+
+  it("opens HTML previews in the lightbox on plain left click", () => {
+    render(
+      <StoreProvider value={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "page.html",
+            url: "https://example.com/page.html",
+          }}
+        />
+      </StoreProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("attachment-preview-html"));
+
+    expect(context.store.get(lightboxUrl$)).toStrictEqual({
+      kind: "html",
+      filename: "page.html",
+      url: "https://example.com/page.html",
+    });
+  });
+
+  it("keeps modified HTML preview clicks as native anchor navigation", () => {
+    render(
+      <StoreProvider value={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "page.html",
+            url: "https://example.com/page.html",
+          }}
+        />
+      </StoreProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("attachment-preview-html"), {
+      metaKey: true,
+    });
+
+    expect(context.store.get(lightboxUrl$)).toBeNull();
   });
 });

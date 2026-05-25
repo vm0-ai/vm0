@@ -211,13 +211,13 @@ impl CowLayer {
         }
 
         self.ensure_cow_fd()?;
-        // try_clone dups the fd to detach from &mut self; lets flush_buffered own &mut self.
-        let fd = self
+        let cow_fd = self
             .cow_fd
-            .as_ref()
-            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure")))?
-            .try_clone()?;
-        self.flush_buffered(|offset, data| fd.write_all_at(data, offset))
+            .take()
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure")))?;
+        let result = self.flush_buffered(|offset, data| cow_fd.write_all_at(data, offset));
+        self.cow_fd = Some(cow_fd);
+        result
     }
 
     /// Drain `write_buffer` through `write_fn`. On failure, restores the failed

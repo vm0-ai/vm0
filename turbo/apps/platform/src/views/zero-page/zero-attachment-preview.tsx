@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
   IconChevronDown,
   IconChevronUp,
@@ -77,6 +77,19 @@ function formatPreviewText(kind: "text" | "json", text: string): string {
     return parsed === null ? text : JSON.stringify(parsed, null, 2);
   }
   return text;
+}
+
+function shouldUseNativeAnchorNavigation(
+  event: ReactMouseEvent<HTMLAnchorElement>,
+): boolean {
+  return (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  );
 }
 
 type TextPreviewProps = {
@@ -178,14 +191,43 @@ function DocumentThumbnailPreview({
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
+  const publicUrl = publicAttachmentUrl(url);
+
+  if (kind === "html") {
+    return (
+      <a
+        href={publicUrl}
+        data-testid="attachment-preview-html"
+        onClick={(event) => {
+          if (shouldUseNativeAnchorNavigation(event)) {
+            return;
+          }
+          event.preventDefault();
+          event.currentTarget.blur();
+          openDocumentLightbox({ kind, url, filename });
+        }}
+        aria-label={`Open html preview for ${filename}`}
+        title={filename}
+        className="inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
+      >
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-sky-500/15 bg-sky-500/10 text-sky-700 dark:text-sky-300">
+          <FilePreviewIcon
+            filename={filename}
+            contentType={contentTypeForDocumentPreviewKind(kind)}
+            testId="attachment-preview-html-icon"
+          />
+        </span>
+        <span className="min-w-0 truncate font-medium">{filename}</span>
+      </a>
+    );
+  }
+
   const accentClass =
     kind === "markdown"
       ? "from-emerald-500/15 via-lime-500/10 to-background"
       : kind === "csv"
         ? "from-teal-500/15 via-emerald-500/10 to-background"
-        : kind === "html"
-          ? "from-sky-500/15 via-cyan-500/10 to-background"
-          : "from-rose-500/15 via-orange-500/10 to-background";
+        : "from-rose-500/15 via-orange-500/10 to-background";
 
   return (
     <button

@@ -51,6 +51,7 @@ interface ChatAttachmentDescriptor {
 type ExtractedPreviewUrl = {
   url: string;
   source: "markdown-link" | "bare-url" | "preview-url-line";
+  title?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -365,7 +366,10 @@ function isHostedSiteUrl(url: string): boolean {
   return hostedSitePublicSlug(parsed.hostname) !== null;
 }
 
-function hostedSiteAttachment(url: string): ChatAttachmentDescriptor | null {
+function hostedSiteAttachment(
+  url: string,
+  title?: string,
+): ChatAttachmentDescriptor | null {
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
   if (!URL.canParse(url, baseUrl)) {
@@ -379,7 +383,7 @@ function hostedSiteAttachment(url: string): ChatAttachmentDescriptor | null {
   }
 
   return {
-    filename: `${publicSlug}.html`,
+    filename: title?.trim() || url,
     url,
     contentType: "text/html",
   };
@@ -389,8 +393,21 @@ function isPreviewableChatUrl(url: string): boolean {
   return isPlatformFileUrl(url) || isHostedSiteUrl(url);
 }
 
-function previewAttachmentFromUrl(url: string): ChatAttachmentDescriptor {
-  return hostedSiteAttachment(url) ?? { filename: filenameFromUrl(url), url };
+function previewAttachmentFromUrl(
+  url: string,
+  title?: string,
+): ChatAttachmentDescriptor {
+  const hosted = hostedSiteAttachment(url, title);
+  if (hosted) {
+    return hosted;
+  }
+
+  const filename = filenameFromUrl(url);
+  const trimmedTitle = title?.trim();
+  if (trimmedTitle && /\.(?:html|htm)$/i.test(filename)) {
+    return { filename: trimmedTitle, url, contentType: "text/html" };
+  }
+  return { filename, url };
 }
 
 function stripMarkdownLineDecorations(value: string): string {
@@ -450,6 +467,7 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
     return {
       url: trimPreviewUrl(markdownLinkMatch[2]),
       source: "markdown-link",
+      title: markdownLinkMatch[1]?.trim(),
     };
   }
   if (bareUrlMatch?.[1]) {
@@ -681,8 +699,8 @@ export function parseBodyRenderBlocks(
       continue;
     }
 
-    const { url } = extracted;
-    const attachment = previewAttachmentFromUrl(url);
+    const { title, url } = extracted;
+    const attachment = previewAttachmentFromUrl(url, title);
     const kind = classifyChatAttachment(attachment);
 
     if (

@@ -340,7 +340,7 @@ describe("zero built-in generate website command", () => {
     );
   });
 
-  it("should print OpenDesign-style website authoring instructions", async () => {
+  it("should print Open Design resource selection instructions for website", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
@@ -360,8 +360,11 @@ describe("zero built-in generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero built-in generate website");
-    expect(stdout).toContain("You are the current agent");
+    expect(stdout).toContain("Open Design resource-selection packet");
+    expect(stdout).toContain("## Stage 1: Resource Selection");
+    expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
+    expect(stdout).toContain("od:template:web-prototype-taste-editorial");
     expect(stdout).toContain(
       "Write the artifact under `./opendesign/mockups/clearpath-demo/`.",
     );
@@ -372,7 +375,7 @@ describe("zero built-in generate website command", () => {
     expect(stdout).toContain("Audience: small engineering teams");
   });
 
-  it("should print JSON authoring metadata when --json is provided", async () => {
+  it("should print JSON resource selection metadata when --json is provided", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
@@ -388,7 +391,7 @@ describe("zero built-in generate website command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      type: "html-artifact-authoring",
+      type: "open-design-resource-selection",
       kind: "website",
       prompt: "observability launch site",
       outputDir: "./opendesign/mockups/clearpath-demo",
@@ -396,7 +399,22 @@ describe("zero built-in generate website command", () => {
       hostCommand:
         "zero host ./opendesign/mockups/clearpath-demo --site clearpath-demo --spa",
     });
-    expect(parsed.instructions).toEqual(expect.stringContaining("Publish"));
+    expect(parsed.selection).toEqual(
+      expect.objectContaining({
+        candidates: expect.objectContaining({
+          skills: expect.any(Array),
+          templates: expect.arrayContaining([
+            expect.objectContaining({
+              id: "od:template:web-prototype-taste-editorial",
+            }),
+          ]),
+          designSystems: expect.any(Array),
+        }),
+      }),
+    );
+    expect(parsed.instructions).toEqual(
+      expect.stringContaining("## Stage 3: Author Artifact"),
+    );
   });
 
   it("should require a prompt", async () => {

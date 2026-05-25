@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.387.3](https://github.com/vm0-ai/vm0/compare/web-v12.387.2...web-v12.387.3) (2026-05-25)
+
+
+### Refactoring
+
+* remove trinity voice chat ([#14814](https://github.com/vm0-ai/vm0/issues/14814)) ([512de4a](https://github.com/vm0-ai/vm0/commit/512de4a0c22e356065e32a66596ae450e6e647cf))
+* remove web agent compose leftovers ([#14821](https://github.com/vm0-ai/vm0/issues/14821)) ([03150f3](https://github.com/vm0-ai/vm0/commit/03150f3f8ae823b9e3456b7704ba6444197c5f73))
+* remove web realtime leftovers ([#14817](https://github.com/vm0-ai/vm0/issues/14817)) ([1df512d](https://github.com/vm0-ai/vm0/commit/1df512d6640eb0707c2499bd2a5431223016bf0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.2
+    * @vm0/connectors bumped to 1.33.0
+    * @vm0/core bumped to 8.293.1
+    * @vm0/db bumped to 1.18.10
+
 ## [12.387.2](https://github.com/vm0-ai/vm0/compare/web-v12.387.1...web-v12.387.2) (2026-05-25)
 
 
