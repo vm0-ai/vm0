@@ -483,6 +483,13 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "DENY"
         assert flow.metadata["firewall_error"] == "invalid_sni"
         assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
+        proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+        assert proxy_log_entry["type"] == "authority_validation"
+        assert proxy_log_entry["reason"] == "invalid_sni"
+        assert proxy_log_entry["sni"] == "..."
+        assert proxy_log_entry["request_host"] == "203.0.113.10"
+        assert proxy_log_entry["host_header"] == "api.github.com"
+        assert proxy_log_entry["request_port"] == 443
         auth_fetch.assert_not_called()
         assert "Authorization" not in flow.request.headers
 
