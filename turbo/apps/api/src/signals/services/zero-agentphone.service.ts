@@ -42,7 +42,7 @@ import {
 import { safeUrlParse, settle } from "../utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -2051,13 +2051,14 @@ export const handleAgentPhoneMessage$ = command(
     await refreshTypingIfSupported(params.event, signal);
     signal.throwIfAborted();
 
-    const modelRoute = await resolveIntegrationModelRouteForUser({
-      get,
-      set,
-      orgId: params.userLink.orgId,
-      userId: params.userLink.vm0UserId,
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: params.userLink.orgId,
+        userId: params.userLink.vm0UserId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const rootMessageId = agentPhoneThreadRootMessageId(params.event);
