@@ -420,24 +420,6 @@ function ComputerUseContent({
   return (
     <>
       <AutoStartRuntime state={state} />
-      <div className="summary-bar">
-        <div>
-          <span>Platform</span>
-          <strong>{state.platform}</strong>
-        </div>
-        <div>
-          <span>Accessibility</span>
-          <strong>
-            {state.permissions.accessibility ? "Granted" : "Missing"}
-          </strong>
-        </div>
-        <div>
-          <span>Screen Recording</span>
-          <strong>
-            {state.permissions.screenRecording ? "Granted" : "Missing"}
-          </strong>
-        </div>
-      </div>
       {!state.supported ? (
         <UnsupportedPanel platform={state.platform} />
       ) : (
@@ -494,9 +476,8 @@ function Header() {
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   return (
     <header className="app-header">
-      <div>
-        <p className="eyebrow">Zero Desktop</p>
-        <h1>Computer Use</h1>
+      <div className="titlebar-title">
+        <h1>Zero Computer Use</h1>
       </div>
       <div className="header-actions">
         {hasDesktopAuthBridge() && (
