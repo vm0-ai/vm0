@@ -254,7 +254,7 @@ export function GithubCard() {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="text-sm font-medium text-foreground">GitHub</div>
           <div className="truncate text-sm text-muted-foreground">
-            <span>Run agents from GitHub issue and PR labels or @mentions</span>
+            <span>Run agents from GitHub issue and PR labels or @Zero</span>
             {installationTarget ? (
               <>
                 {" "}

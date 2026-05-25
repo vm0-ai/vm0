@@ -197,7 +197,7 @@ describe("works page - GitHub integration card", () => {
       ).toBeInTheDocument();
       expect(
         within(getGithubCard()).getByText(
-          "Run agents from GitHub issue and PR labels or @mentions",
+          "Run agents from GitHub issue and PR labels or @Zero",
         ),
       ).toBeInTheDocument();
     });

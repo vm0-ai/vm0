@@ -46,6 +46,7 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
   "An unexpected error occurred. Please try again later.";
+const GITHUB_ALIAS_MENTION_HANDLES = ["@Zero[bot]", "@Zero"] as const;
 const MAX_GITHUB_CONTEXT_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 const gitHubUserSchema = z.object({
@@ -218,12 +219,15 @@ function githubAppBotUsername(): string | undefined {
 }
 
 function githubAppMentionHandles(): readonly string[] {
+  const handles: string[] = [...GITHUB_ALIAS_MENTION_HANDLES];
   const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim().replace(/^@+/, "");
   if (!appSlug) {
-    return [];
+    return handles;
   }
   const normalizedSlug = appSlug.replace(/\[bot\]$/iu, "");
-  return [`@${normalizedSlug}[bot]`, `@${normalizedSlug}`];
+  return Array.from(
+    new Set([`@${normalizedSlug}[bot]`, `@${normalizedSlug}`, ...handles]),
+  );
 }
 
 function escapeRegExp(value: string): string {

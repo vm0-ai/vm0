@@ -1676,6 +1676,41 @@ describe("POST /api/webhooks/github", () => {
     });
   });
 
+  it("dispatches GitHub issue comments that mention the Zero alias", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        commentId: 88,
+        commentBody: "@Zero please handle this",
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toBe("please handle this");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "Matched trigger: @vm0-agent[bot] mention",
+    );
+
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
+    expect(callbacks[0]?.payload).toMatchObject({
+      triggerCommentId: "88",
+      triggerCommentBody: "@Zero please handle this",
+    });
+  });
+
   it("mirrors GitHub issue comment files to artifacts and uses file blocks in the prompt", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),

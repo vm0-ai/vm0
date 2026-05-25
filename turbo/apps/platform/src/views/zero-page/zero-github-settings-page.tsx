@@ -802,7 +802,7 @@ export function ZeroGithubSettingsPage() {
                 </h1>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   <span>
-                    Run agents from GitHub issue and PR labels or @mentions
+                    Run agents from GitHub issue and PR labels or @Zero
                   </span>
                   {installationTarget ? (
                     <>
