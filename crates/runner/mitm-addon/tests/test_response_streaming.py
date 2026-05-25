@@ -190,6 +190,19 @@ class TestXJsonFinalize:
         response_streaming.finalize_x_json_state(flow)
         assert flow.metadata["x_json_state"] == state
 
+    def test_finalizes_non_object_x_json_without_parse_error(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+        assert "x_json_response_finish" in flow.metadata
+
+        _response_stream(flow)(b"[1,2,3]")
+        response_streaming.finalize_x_json_state(flow)
+
+        state = flow.metadata["x_json_state"]
+        assert "x_json_response_finish" not in flow.metadata
+        assert state["body_parsed"] is False
+        assert "parse_error" not in state
+
 
 class TestResponseHeadersSseParser:
     """Tests for SSE parser setup in responseheaders()."""
