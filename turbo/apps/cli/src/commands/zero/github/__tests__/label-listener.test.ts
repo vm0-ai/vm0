@@ -126,22 +126,25 @@ describe("zero github label-listener command", () => {
 
   it("updates a GitHub label listener", async () => {
     server.use(
-      http.patch(`${LABEL_LISTENERS_URL}/${LISTENER_ID}`, async ({
-        request,
-      }) => {
-        expect(request.headers.get("authorization")).toBe("Bearer test-token");
-        await expect(request.json()).resolves.toMatchObject({
-          labelName: "triage",
-          enabled: false,
-        });
-        return HttpResponse.json({
-          listener: {
-            ...installationBody().labelListeners[0],
+      http.patch(
+        `${LABEL_LISTENERS_URL}/${LISTENER_ID}`,
+        async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-token",
+          );
+          await expect(request.json()).resolves.toMatchObject({
             labelName: "triage",
             enabled: false,
-          },
-        });
-      }),
+          });
+          return HttpResponse.json({
+            listener: {
+              ...installationBody().labelListeners[0],
+              labelName: "triage",
+              enabled: false,
+            },
+          });
+        },
+      ),
     );
 
     await labelListenerCommand.parseAsync([

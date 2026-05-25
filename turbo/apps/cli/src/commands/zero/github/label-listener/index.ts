@@ -100,7 +100,10 @@ const createCommand = new Command()
   .name("create")
   .description("Create a GitHub label listener")
   .requiredOption("--label <name>", "GitHub label name to watch")
-  .requiredOption("--agent-id <id>", "Agent ID to run when the label is applied")
+  .requiredOption(
+    "--agent-id <id>",
+    "Agent ID to run when the label is applied",
+  )
   .requiredOption("--prompt <text>", "Prompt to pass to the agent")
   .option(
     "--trigger-mode <mode>",
