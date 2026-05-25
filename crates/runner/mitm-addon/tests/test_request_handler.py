@@ -541,11 +541,12 @@ class TestRequestHandler:
         auth_fetch.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("request_port", "raw_sni", "expected_sni", "expected_original_url"),
+        ("request_host", "request_port", "raw_sni", "expected_sni", "expected_original_url"),
         [
-            (443, "...", "...", "https://203.0.113.10/repos"),
-            (8443, "...", "...", "https://203.0.113.10:8443/repos"),
-            (443, "\ud800", "\ud800", "https://203.0.113.10/repos"),
+            ("203.0.113.10", 443, "...", "...", "https://203.0.113.10/repos"),
+            ("203.0.113.10", 8443, "...", "...", "https://203.0.113.10:8443/repos"),
+            ("203.0.113.10", 443, "\ud800", "\ud800", "https://203.0.113.10/repos"),
+            ("2001:db8::1", 8443, "...", "...", "https://[2001:db8::1]:8443/repos"),
         ],
     )
     async def test_rejects_invalid_https_sni_before_firewall_auth(
@@ -555,6 +556,7 @@ class TestRequestHandler:
         mitm_ctx,
         fake_firewall_headers,
         headers,
+        request_host,
         request_port,
         raw_sni,
         expected_sni,
@@ -564,7 +566,7 @@ class TestRequestHandler:
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
-            host="203.0.113.10",
+            host=request_host,
             port=request_port,
             sni=raw_sni,
             path="/repos",
@@ -582,7 +584,7 @@ class TestRequestHandler:
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_sni"
         assert body["sni"] == expected_sni
-        assert body["request_host"] == "203.0.113.10"
+        assert body["request_host"] == request_host
         assert body["host_header"] == "api.github.com"
         assert body["request_port"] == request_port
         assert flow.metadata["firewall_action"] == "DENY"
@@ -592,7 +594,7 @@ class TestRequestHandler:
         assert proxy_log_entry["type"] == "authority_validation"
         assert proxy_log_entry["reason"] == "invalid_sni"
         assert proxy_log_entry["sni"] == expected_sni
-        assert proxy_log_entry["request_host"] == "203.0.113.10"
+        assert proxy_log_entry["request_host"] == request_host
         assert proxy_log_entry["host_header"] == "api.github.com"
         assert proxy_log_entry["request_port"] == request_port
         auth_fetch.assert_not_called()
