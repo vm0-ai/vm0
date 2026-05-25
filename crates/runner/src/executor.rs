@@ -3228,20 +3228,32 @@ mod tests {
     async fn sync_guest_timezone_skips_when_none() {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
-        // No timezone — should skip without calling exec.
-        // Push an error to detect if exec is called unexpectedly.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
+
+        assert!(sandbox.exec_calls().is_empty());
     }
 
     #[tokio::test]
-    async fn sync_guest_timezone_rejects_shell_injection() {
-        let sandbox = MockSandbox::new("test");
-        let mut ctx = minimal_context();
-        ctx.user_timezone = Some("$(rm -rf /)".into());
-        // Push an error to detect if exec is called — it should NOT be.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
-        sync_guest_timezone(&sandbox, &ctx).await;
+    async fn sync_guest_timezone_rejects_invalid_timezone_names() {
+        for invalid_tz in [
+            "$(rm -rf /)",
+            "../UTC",
+            "Etc/../UTC",
+            "America/New York",
+            "UTC;id",
+            "UTC'",
+        ] {
+            let sandbox = MockSandbox::new("test");
+            let mut ctx = minimal_context();
+            ctx.user_timezone = Some(invalid_tz.into());
+
+            sync_guest_timezone(&sandbox, &ctx).await;
+
+            assert!(
+                sandbox.exec_calls().is_empty(),
+                "timezone {invalid_tz:?} should be rejected before guest exec"
+            );
+        }
     }
 
     #[tokio::test]
@@ -3249,8 +3261,23 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.user_timezone = Some(String::new());
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
+
+        assert!(sandbox.exec_calls().is_empty());
+    }
+
+    async fn capture_sync_guest_timezone_events(
+        sandbox: &dyn Sandbox,
+        ctx: &ExecutionContext,
+    ) -> Vec<CapturedEvent> {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+
+        sync_guest_timezone(sandbox, ctx).await;
+
+        captured.entries()
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -3264,14 +3291,7 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.user_timezone = Some("America/New_York".into());
 
-        let captured = CapturedEvents::default();
-        let subscriber = tracing_subscriber::registry().with(captured.clone());
-        let _guard = tracing::subscriber::set_default(subscriber);
-        tracing::callsite::rebuild_interest_cache();
-
-        sync_guest_timezone(&sandbox, &ctx).await;
-
-        let events = captured.entries();
+        let events = capture_sync_guest_timezone_events(&sandbox, &ctx).await;
         let event = events
             .iter()
             .find(|event| {
@@ -3302,6 +3322,41 @@ mod tests {
                 .fields
                 .get("stdout_excerpt")
                 .is_some_and(|value| value.contains("timezone stdout")),
+            "event={event:#?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_guest_timezone_logs_exec_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock disconnected")));
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("America/New_York".into());
+
+        let events = capture_sync_guest_timezone_events(&sandbox, &ctx).await;
+
+        let event = events
+            .iter()
+            .find(|event| {
+                event.level == Level::WARN
+                    && event.fields.get("message").map(String::as_str)
+                        == Some("failed to set guest timezone")
+            })
+            .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+        let run_id = RunId::nil().to_string();
+        assert_eq!(
+            event.fields.get("run_id").map(String::as_str),
+            Some(run_id.as_str())
+        );
+        assert_eq!(
+            event.fields.get("tz").map(String::as_str),
+            Some("America/New_York")
+        );
+        assert!(
+            event
+                .fields
+                .get("error")
+                .is_some_and(|value| value.contains("vsock disconnected")),
             "event={event:#?}"
         );
     }
