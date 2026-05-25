@@ -295,30 +295,3 @@ export const updateChatThreadTitle$ = command(
     signal.throwIfAborted();
   },
 );
-
-// Mirrors web's transitionRunStatus: stamps a run with a new status +
-// completedAt + error. Used for the timeout-doesn't-mask-event-content test
-// (the regression #12372 fixed).
-export const transitionRunStatus$ = command(
-  async (
-    { set },
-    args: {
-      readonly runId: string;
-      readonly status: string;
-      readonly completedAt?: Date | null;
-      readonly error?: string | null;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .update(agentRuns)
-      .set({
-        status: args.status,
-        completedAt: args.completedAt ?? null,
-        error: args.error ?? null,
-      })
-      .where(eq(agentRuns.id, args.runId));
-    signal.throwIfAborted();
-  },
-);
