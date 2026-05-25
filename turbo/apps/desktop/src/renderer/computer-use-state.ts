@@ -1,12 +1,16 @@
 import { command, computed, state } from "ccstate";
-import type { DesktopAuthApi, DesktopComputerUseApi } from "../desktop-bridge";
+import type {
+  DesktopAuthApi,
+  DesktopAuthState,
+  DesktopComputerUseApi,
+} from "../desktop-bridge";
 import {
   hasRequiredComputerUsePermissions,
-  type ComputerUseApprovalAction,
   type DesktopComputerUseState,
 } from "../computer-use-types";
 
 const reloadComputerUseState$ = state(0);
+const reloadDesktopAuthState$ = state(0);
 const autoStartAttempted$ = state(false);
 
 function desktopComputerUseApi(): DesktopComputerUseApi {
@@ -51,8 +55,19 @@ export const computerUseData$ = computed(
   },
 );
 
+export const desktopAuthData$ = computed((get): Promise<DesktopAuthState> => {
+  get(reloadDesktopAuthState$);
+  return desktopAuthApi().getState();
+});
+
 export const refreshComputerUse$ = command(({ set }) => {
   set(reloadComputerUseState$, (count) => {
+    return count + 1;
+  });
+});
+
+const refreshDesktopAuth$ = command(({ set }) => {
+  set(reloadDesktopAuthState$, (count) => {
     return count + 1;
   });
 });
@@ -64,6 +79,7 @@ export const setupComputerUseBridge$ = command(
     });
     const unsubscribeAuth = window.vm0DesktopAuth?.subscribe(() => {
       set(autoStartAttempted$, false);
+      set(refreshDesktopAuth$);
       set(refreshComputerUse$);
     });
 
@@ -75,6 +91,7 @@ export const setupComputerUseBridge$ = command(
       },
       { once: true },
     );
+    set(refreshDesktopAuth$);
     set(refreshComputerUse$);
   },
 );
@@ -108,13 +125,6 @@ export const openScreenRecordingSettings$ = command(async () => {
   await desktopComputerUseApi().openScreenRecordingSettings();
 });
 
-export const decideComputerUseCommand$ = command(
-  async ({ set }, action: ComputerUseApprovalAction) => {
-    await desktopComputerUseApi().decideCommand(action);
-    set(refreshComputerUse$);
-  },
-);
-
 export const openDesktopSignIn$ = command(async () => {
   await desktopAuthApi().openSignIn();
 });
@@ -122,5 +132,6 @@ export const openDesktopSignIn$ = command(async () => {
 export const openDesktopOrgSelection$ = command(async ({ set }) => {
   await desktopAuthApi().openOrgSelection();
   set(autoStartAttempted$, false);
+  set(refreshDesktopAuth$);
   set(refreshComputerUse$);
 });

@@ -2,24 +2,22 @@ import { useEffect, type ReactNode } from "react";
 import {
   IconAlertCircle,
   IconBuilding,
+  IconChevronDown,
   IconCheck,
-  IconClock,
   IconExternalLink,
   IconHistory,
   IconPlayerPlay,
   IconRefresh,
   IconShieldCheck,
-  IconX,
+  IconUserCircle,
 } from "@tabler/icons-react";
 import { useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type {
-  ComputerUseApprovalAction,
-  DesktopComputerUseState,
-} from "../computer-use-types";
+import type { DesktopAuthState } from "../desktop-bridge";
+import type { DesktopComputerUseState } from "../computer-use-types";
 import {
   computerUseData$,
-  decideComputerUseCommand$,
+  desktopAuthData$,
   hasDesktopAuthBridge,
   hasDesktopComputerUseBridge,
   maybeAutoStartComputerUse$,
@@ -316,74 +314,6 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
-function PendingApprovalRow({
-  action,
-}: {
-  readonly action: DesktopComputerUseState["host"]["pendingApprovals"][number];
-}) {
-  const [decisionLoadable, decide] = useLoadableSet(decideComputerUseCommand$);
-  const disabled = decisionLoadable.state === "loading";
-  const decideWith = (decision: ComputerUseApprovalAction["decision"]) => {
-    void decide({ commandId: action.commandId, decision });
-  };
-
-  return (
-    <div className="approval-row">
-      <div>
-        <div className="row-title">{action.kind}</div>
-        <div className="row-meta">
-          {action.app ?? "No target app"} - {formatTimestamp(action.createdAt)}
-        </div>
-      </div>
-      <div className="row-actions">
-        <IconButton
-          tone="primary"
-          icon={<IconCheck size={15} />}
-          onClick={() => {
-            decideWith("approve");
-          }}
-          disabled={disabled}
-        >
-          Approve
-        </IconButton>
-        <IconButton
-          tone="danger"
-          icon={<IconX size={15} />}
-          onClick={() => {
-            decideWith("deny");
-          }}
-          disabled={disabled}
-        >
-          Deny
-        </IconButton>
-      </div>
-    </div>
-  );
-}
-
-function PendingApprovalsPanel({
-  state,
-}: {
-  readonly state: DesktopComputerUseState;
-}) {
-  const approvals = state.host.pendingApprovals;
-  return (
-    <Panel title="Pending Approvals" icon={<IconClock size={18} />}>
-      {approvals.length === 0 ? (
-        <div className="empty-state">No commands are waiting.</div>
-      ) : (
-        <div className="approval-list">
-          {approvals.map((action) => {
-            return (
-              <PendingApprovalRow key={action.commandId} action={action} />
-            );
-          })}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
 function HistoryPanel({ state }: { readonly state: DesktopComputerUseState }) {
   const events = state.host.recentAuditEvents;
   return (
@@ -445,7 +375,6 @@ function ComputerUseContent({
         <>
           <PermissionsPanel state={state} />
           <RuntimePanel state={state} />
-          <PendingApprovalsPanel state={state} />
           <HistoryPanel state={state} />
         </>
       )}
@@ -490,9 +419,99 @@ function ComputerUsePage() {
   );
 }
 
+function AccountMenu({
+  authState,
+  loading,
+  onSelectOrg,
+  onSignIn,
+  orgSelectionLoading,
+  signInLoading,
+}: {
+  readonly authState: DesktopAuthState | null;
+  readonly loading: boolean;
+  readonly onSelectOrg: () => void;
+  readonly onSignIn: () => void;
+  readonly orgSelectionLoading: boolean;
+  readonly signInLoading: boolean;
+}) {
+  if (!authState || authState.status === "signed_out") {
+    return (
+      <IconButton
+        icon={<IconExternalLink size={15} />}
+        onClick={onSignIn}
+        disabled={loading || signInLoading}
+      >
+        {loading ? "Checking" : "Sign in"}
+      </IconButton>
+    );
+  }
+
+  const workspaceLabel = authState.organization?.name ?? "Select workspace";
+  const workspaceMeta = authState.organization?.slug
+    ? `/${authState.organization.slug}`
+    : "No active workspace";
+
+  return (
+    <details className="account-menu">
+      <summary className="account-summary">
+        <IconUserCircle size={17} />
+        <span className="account-copy">
+          <span className="account-email">{authState.user.email}</span>
+          <span
+            className={
+              authState.organization
+                ? "account-workspace"
+                : "account-workspace account-workspace-missing"
+            }
+          >
+            {workspaceLabel}
+          </span>
+        </span>
+        <IconChevronDown size={14} />
+      </summary>
+      <div className="account-popover">
+        <div className="account-popover-heading">
+          <span>Signed in as</span>
+          <strong>{authState.user.email}</strong>
+        </div>
+        <div className="account-popover-heading">
+          <span>Workspace</span>
+          <strong>{workspaceLabel}</strong>
+          <small>{workspaceMeta}</small>
+        </div>
+        <button
+          type="button"
+          className="account-menu-item"
+          onClick={onSelectOrg}
+          disabled={orgSelectionLoading}
+        >
+          <IconBuilding size={15} />
+          <span>
+            {authState.organization ? "Switch workspace" : "Select workspace"}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="account-menu-item"
+          onClick={onSignIn}
+          disabled={signInLoading}
+        >
+          <IconExternalLink size={15} />
+          <span>Sign in again</span>
+        </button>
+      </div>
+    </details>
+  );
+}
+
 function Header() {
+  const authLoadable = useLastLoadable(desktopAuthData$);
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
-  const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
+  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
+    openDesktopOrgSelection$,
+  );
+  const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
+  const authLoading = authLoadable.state === "loading";
   return (
     <header className="app-header">
       <div className="titlebar-title">
@@ -500,25 +519,19 @@ function Header() {
       </div>
       <div className="header-actions">
         {hasDesktopAuthBridge() && (
-          <IconButton
-            icon={<IconExternalLink size={15} />}
-            onClick={() => {
+          <AccountMenu
+            authState={authState}
+            loading={authLoading}
+            onSignIn={() => {
               void signIn();
             }}
-            disabled={signInLoadable.state === "loading"}
-          >
-            Sign in
-          </IconButton>
+            onSelectOrg={() => {
+              void selectOrg();
+            }}
+            orgSelectionLoading={orgSelectionLoadable.state === "loading"}
+            signInLoading={signInLoadable.state === "loading"}
+          />
         )}
-        <IconButton
-          icon={<IconRefresh size={15} />}
-          onClick={() => {
-            void refresh();
-          }}
-          disabled={refreshLoadable.state === "loading"}
-        >
-          Refresh
-        </IconButton>
       </div>
     </header>
   );

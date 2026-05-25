@@ -5,9 +5,7 @@ import type {
 } from "./computer-use-accessibility";
 import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
 import type {
-  ComputerUseApprovalAction,
   ComputerUseHostRuntimeState,
-  ComputerUsePendingApprovalRuntimeEvent,
   ComputerUsePermissionState,
   ComputerUseRuntimeAuditEvent,
 } from "./computer-use-types";
@@ -102,7 +100,6 @@ export class ComputerUseHostRuntime {
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
-    pendingApprovals: [],
     recentAuditEvents: [],
   };
 
@@ -137,28 +134,6 @@ export class ComputerUseHostRuntime {
 
   getState(): ComputerUseHostRuntimeState {
     return this.state;
-  }
-
-  async decideCommand(args: ComputerUseApprovalAction): Promise<void> {
-    const response = await this.sessionFetch(
-      `${this.apiBaseUrl}/api/zero/computer-use/commands/${encodeURIComponent(args.commandId)}/approval`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision: args.decision }),
-      },
-    );
-    if (!response.ok) {
-      const message = `Computer Use approval failed: ${response.status}`;
-      this.setState({ lastError: message });
-      throw new Error(message);
-    }
-
-    this.setState({
-      lastError: null,
-      lastCommandAt: new Date().toISOString(),
-    });
-    await this.refreshAuditEvents();
   }
 
   private runtimeBody(): Record<string, unknown> {
@@ -310,7 +285,7 @@ export class ComputerUseHostRuntime {
 
     const response = await this.sessionFetch(url.toString(), { method: "GET" });
     if (response.status === 401 || response.status === 403) {
-      this.setState({ pendingApprovals: [], recentAuditEvents: [] });
+      this.setState({ recentAuditEvents: [] });
       return;
     }
     if (!response.ok) {
@@ -321,7 +296,6 @@ export class ComputerUseHostRuntime {
 
     const body = (await response.json()) as ComputerUseAuditEventsResponse;
     this.setState({
-      pendingApprovals: derivePendingApprovals(body.auditEvents),
       recentAuditEvents: body.auditEvents,
     });
   }
@@ -381,33 +355,4 @@ export class ComputerUseHostRuntime {
       },
     });
   }
-}
-
-function derivePendingApprovals(
-  auditEvents: readonly ComputerUseRuntimeAuditEvent[],
-): readonly ComputerUsePendingApprovalRuntimeEvent[] {
-  const resolvedCommandIds = new Set(
-    auditEvents
-      .filter((event) => {
-        return event.event !== "created";
-      })
-      .map((event) => {
-        return event.commandId;
-      }),
-  );
-
-  return auditEvents
-    .filter((event) => {
-      return (
-        event.event === "created" && !resolvedCommandIds.has(event.commandId)
-      );
-    })
-    .map((event) => {
-      return {
-        commandId: event.commandId,
-        kind: event.kind,
-        app: event.app,
-        createdAt: event.createdAt,
-      };
-    });
 }

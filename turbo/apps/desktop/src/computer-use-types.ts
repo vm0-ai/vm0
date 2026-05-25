@@ -14,13 +14,6 @@ export type ComputerUseHostRuntimeStatus =
   | "disabled"
   | "error";
 
-export interface ComputerUsePendingApprovalRuntimeEvent {
-  readonly commandId: string;
-  readonly kind: string;
-  readonly app: string | null;
-  readonly createdAt: string;
-}
-
 export interface ComputerUseRuntimeAuditEvent {
   readonly commandId: string;
   readonly kind: string;
@@ -37,13 +30,7 @@ export interface ComputerUseHostRuntimeState {
   readonly lastHeartbeatAt: string | null;
   readonly lastCommandAt: string | null;
   readonly lastError: string | null;
-  readonly pendingApprovals: readonly ComputerUsePendingApprovalRuntimeEvent[];
   readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
-}
-
-export interface ComputerUseApprovalAction {
-  readonly commandId: string;
-  readonly decision: "approve" | "deny";
 }
 
 export interface DesktopComputerUseState {
@@ -67,6 +54,5 @@ export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
-    pendingApprovals: [],
     recentAuditEvents: [],
   });
