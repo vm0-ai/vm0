@@ -8,6 +8,8 @@ export default defineConfig({
     exclude: ["node_modules/**", "dist/**", "**/__benches__/**"],
     benchmark: {
       include: ["src/**/__benches__/**/*.bench.ts"],
+      includeSamples: true,
+      reporters: ["default", "./scripts/bench-p90-reporter.ts"],
     },
   },
 });

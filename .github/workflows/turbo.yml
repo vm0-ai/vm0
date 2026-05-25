@@ -497,13 +497,15 @@ jobs:
       - name: Print bench summary
         if: success() || failure()
         working-directory: turbo/apps/api
-        run: node scripts/print-bench-summary.mjs bench-results.json
+        run: node scripts/print-bench-summary.mjs bench-results-p90.json
       - name: Upload bench results
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: bench-api-results
-          path: turbo/apps/api/bench-results.json
+          path: |
+            turbo/apps/api/bench-results.json
+            turbo/apps/api/bench-results-p90.json
           if-no-files-found: warn
 
   test-migrate:
