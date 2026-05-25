@@ -3,6 +3,7 @@
 
 @import "tailwindcss";
 @import "@vm0/ui/styles/globals.css";
+@import "katex/dist/katex.min.css";
 
 @plugin "@tailwindcss/typography";
 @custom-variant pointer-coarse (@media (pointer: coarse));
@@ -878,6 +879,18 @@
 .wmde-markdown pre tt {
   background-color: transparent;
   border: 0;
+}
+
+/* --- Math --------------------------------------------------------------- */
+.wmde-markdown .katex {
+  color: hsl(var(--foreground));
+}
+
+.wmde-markdown .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
 
 /* Code block scrollbar */
