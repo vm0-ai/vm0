@@ -436,7 +436,12 @@ class TestRequestHandler:
         assert flow.response.status_code == 403
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_sni"
+        assert body["sni"] == "..."
+        assert body["request_host"] == "203.0.113.10"
+        assert body["host_header"] == "api.github.com"
+        assert body["request_port"] == 443
         assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == "invalid_sni"
         assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
         auth_fetch.assert_not_called()
         assert "Authorization" not in flow.request.headers
