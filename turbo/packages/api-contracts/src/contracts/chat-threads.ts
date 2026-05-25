@@ -281,9 +281,9 @@ export const chatThreadsContract = c.router({
     responses: {
       200: z.object({
         /**
-         * All pinned threads, ordered by last activity desc. Always returned
-         * in full on the first page (no `cursor`) and empty on subsequent
-         * pages — pagination only applies to the non-pinned segment.
+         * All pinned threads in the caller's org, ordered by last activity desc.
+         * Always returned in full on the first page (no `cursor`) and empty on
+         * subsequent pages — pagination only applies to the non-pinned segment.
          */
         pinned: z.array(chatThreadListItemSchema),
         /**
@@ -309,7 +309,7 @@ export const chatThreadsContract = c.router({
       404: apiErrorSchema,
     },
     summary:
-      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. Pinned threads are returned in full on the first page; non-pinned threads are cursor-paginated.",
+      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads are cursor-paginated.",
   },
 });
 
