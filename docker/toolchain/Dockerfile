@@ -1,5 +1,5 @@
 # Stage 1: Base toolchain for CI/CD and minimal development
-FROM ubuntu:22.04 AS toolchain
+FROM ubuntu:24.04 AS toolchain
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
@@ -127,6 +127,7 @@ RUN apt-get update && apt-get install -y \
     sudo \
     zsh \
     vim \
+    gawk \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
