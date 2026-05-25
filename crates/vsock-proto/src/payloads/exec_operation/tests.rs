@@ -1423,6 +1423,29 @@ fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
 }
 
 #[test]
+fn exec_control_result_status_wire_values_are_stable() {
+    let cases: &[(ExecControlStatus, u8)] = &[
+        (ExecControlStatus::Delivered, 0x00),
+        (ExecControlStatus::Inactive, 0x01),
+        (ExecControlStatus::NonceMismatch, 0x02),
+        (ExecControlStatus::Unsupported, 0x03),
+        (ExecControlStatus::Rejected, 0x04),
+        (ExecControlStatus::SinkUnavailable, 0x05),
+        (ExecControlStatus::SinkTimeout, 0x06),
+        (ExecControlStatus::QueueFull, 0x07),
+        (ExecControlStatus::SinkError, 0x08),
+    ];
+    let status_offset = 4 + EXEC_CONTROL_NONCE_LEN + 2 + "message".len();
+
+    for &(status, expected_wire) in cases {
+        let payload = encode_exec_control_result(7, NONCE, "message", status, "ok").unwrap();
+
+        assert_eq!(payload[status_offset], expected_wire);
+        assert_eq!(decode_exec_control_result(&payload).unwrap().status, status);
+    }
+}
+
+#[test]
 fn exec_control_result_rejects_truncated_fields() {
     let payload =
         encode_exec_control_result(7, NONCE, "message", ExecControlStatus::Delivered, "ok")

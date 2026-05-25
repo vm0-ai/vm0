@@ -56,9 +56,7 @@
 //! `[1B control_flags][16B nonce]` where `control_flags` uses `SINK=0x01`.
 //! `exec_start.stdin_policy` uses 0=no explicit stdin, or 1 followed by
 //! `[4B stdin_len][stdin_bytes]` with a bounded payload.
-//! `exec_control_result.status` uses 0=delivered, 1=inactive,
-//! 2=nonce_mismatch, 3=unsupported, 4=rejected, 5=sink_unavailable,
-//! 6=sink_timeout, 7=queue_full, and 8=sink_error.
+//! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
 //! `exec_control.request_timeout_ms` is the caller-visible budget, counted
 //! from guest receipt through local sink connection, request write, and response
 //! read. Host encoders round non-zero sub-millisecond durations up to 1ms and

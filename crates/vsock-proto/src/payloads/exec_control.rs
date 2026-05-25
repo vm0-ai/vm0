@@ -4,35 +4,47 @@ use crate::read::{
     expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
 };
 
+/// Number of bytes in an exec-control nonce.
 pub const EXEC_CONTROL_NONCE_LEN: usize = 16;
 /// Mirrors `process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES` so host-side
 /// encoding rejects requests that the guest-side local IPC channel cannot carry.
 pub const EXEC_CONTROL_MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
 
+/// Opaque token registered with an exec operation and echoed by control messages.
 pub type ExecControlNonce = [u8; EXEC_CONTROL_NONCE_LEN];
 
-const EXEC_CONTROL_STATUS_DELIVERED: u8 = 0x00;
-const EXEC_CONTROL_STATUS_INACTIVE: u8 = 0x01;
-const EXEC_CONTROL_STATUS_NONCE_MISMATCH: u8 = 0x02;
-const EXEC_CONTROL_STATUS_UNSUPPORTED: u8 = 0x03;
-const EXEC_CONTROL_STATUS_REJECTED: u8 = 0x04;
-const EXEC_CONTROL_STATUS_SINK_UNAVAILABLE: u8 = 0x05;
-const EXEC_CONTROL_STATUS_SINK_TIMEOUT: u8 = 0x06;
-const EXEC_CONTROL_STATUS_QUEUE_FULL: u8 = 0x07;
-const EXEC_CONTROL_STATUS_SINK_ERROR: u8 = 0x08;
-
+/// Terminal status carried by the `exec_control_result.status` byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecControlStatus {
-    Delivered,
-    Inactive,
-    NonceMismatch,
-    Unsupported,
-    Rejected,
-    SinkUnavailable,
-    SinkTimeout,
-    QueueFull,
-    SinkError,
+    /// Wire value `0x00`: the control request reached the sink and was accepted.
+    Delivered = 0x00,
+    /// Wire value `0x01`: no active exec operation exists for the target sequence.
+    Inactive = 0x01,
+    /// Wire value `0x02`: the target operation exists, but the nonce did not match.
+    NonceMismatch = 0x02,
+    /// Wire value `0x03`: the target operation does not support exec control.
+    Unsupported = 0x03,
+    /// Wire value `0x04`: the sink received the request and rejected it.
+    Rejected = 0x04,
+    /// Wire value `0x05`: the peer reports that the control sink is unavailable.
+    SinkUnavailable = 0x05,
+    /// Wire value `0x06`: the sink did not respond before the request timeout.
+    SinkTimeout = 0x06,
+    /// Wire value `0x07`: the target operation cannot queue another control request.
+    QueueFull = 0x07,
+    /// Wire value `0x08`: the sink failed while processing or exchanging the request.
+    SinkError = 0x08,
 }
+
+const EXEC_CONTROL_STATUS_DELIVERED: u8 = ExecControlStatus::Delivered as u8;
+const EXEC_CONTROL_STATUS_INACTIVE: u8 = ExecControlStatus::Inactive as u8;
+const EXEC_CONTROL_STATUS_NONCE_MISMATCH: u8 = ExecControlStatus::NonceMismatch as u8;
+const EXEC_CONTROL_STATUS_UNSUPPORTED: u8 = ExecControlStatus::Unsupported as u8;
+const EXEC_CONTROL_STATUS_REJECTED: u8 = ExecControlStatus::Rejected as u8;
+const EXEC_CONTROL_STATUS_SINK_UNAVAILABLE: u8 = ExecControlStatus::SinkUnavailable as u8;
+const EXEC_CONTROL_STATUS_SINK_TIMEOUT: u8 = ExecControlStatus::SinkTimeout as u8;
+const EXEC_CONTROL_STATUS_QUEUE_FULL: u8 = ExecControlStatus::QueueFull as u8;
+const EXEC_CONTROL_STATUS_SINK_ERROR: u8 = ExecControlStatus::SinkError as u8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedControl<'a> {
