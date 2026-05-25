@@ -1913,6 +1913,28 @@ while true; do read -r _ <&3 || true; done
     }
 
     #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_throttles_buffered_flush_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        std::fs::write(dir.path().join("usage-pending"), usage_state(0, 2, 0)).unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let requests = std::sync::Arc::clone(&request_count);
+        let flushed = wait_usage_flush_requesting(
+            dir.path(),
+            USAGE_FLUSH_REQUEST_INTERVAL - Duration::from_millis(1),
+            &target,
+            || {
+                requests.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .await;
+
+        assert!(!flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_timeout() {
         let dir = tempfile::tempdir().unwrap();
         let target = usage_target();

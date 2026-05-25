@@ -185,6 +185,37 @@ def test_flushes_when_buffered_webhook_batch_count_reaches_bound(tmp_path):
     ]
 
 
+def test_flushes_when_source_event_count_reaches_bound(tmp_path):
+    events = [
+        _event(source_key=f"source-{index}", quantity=1)
+        for index in range(usage_buffer.MAX_BUFFERED_SOURCE_EVENTS)
+    ]
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        accepted = usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            events,
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+    assert accepted == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
+    enqueue.assert_called_once()
+    payload = enqueue.call_args.args[2]
+    assert payload["runId"] == "run-1"
+    assert payload["events"] == [
+        {
+            "idempotencyKey": payload["events"][0]["idempotencyKey"],
+            "kind": "model",
+            "provider": "claude-sonnet-4-6",
+            "category": "tokens.input",
+            "quantity": usage_buffer.MAX_BUFFERED_SOURCE_EVENTS,
+        }
+    ]
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_empty_flush_is_noop():
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         assert usage.flush_usage_events(trigger="test") == 0
