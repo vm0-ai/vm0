@@ -17,6 +17,7 @@ DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
 DEFAULT_FLUSH_JITTER_RATIO = 0.2
 MAX_BUFFERED_SOURCE_EVENTS = 1_000
 MAX_AGGREGATE_BUCKETS = 100
+MAX_BUFFERED_WEBHOOK_BATCHES = 4
 MAX_SOURCE_IDEMPOTENCY_KEYS = 10_000
 USAGE_EVENT_BATCH_SIZE = 100
 _jitter_rng = random.SystemRandom()
@@ -171,7 +172,21 @@ class UsageEventBuffer:
     def _should_flush_locked(self) -> bool:
         if self._source_event_count >= MAX_BUFFERED_SOURCE_EVENTS:
             return True
-        return sum(len(buckets) for buckets in self._buckets.values()) >= MAX_AGGREGATE_BUCKETS
+        if sum(len(buckets) for buckets in self._buckets.values()) >= MAX_AGGREGATE_BUCKETS:
+            return True
+        return self._estimated_webhook_batch_count_locked() >= MAX_BUFFERED_WEBHOOK_BATCHES
+
+    def _estimated_webhook_batch_count_locked(self) -> int:
+        count = 0
+        for buckets in self._buckets.values():
+            events_by_run: dict[str, int] = {}
+            for aggregate_key in buckets:
+                events_by_run[aggregate_key.run_id] = events_by_run.get(aggregate_key.run_id, 0) + 1
+            count += sum(
+                (event_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
+                for event_count in events_by_run.values()
+            )
+        return count
 
     def _schedule_timer_locked(self) -> _TimerHandle | None:
         if not self._timer_enabled or self._timer is not None:

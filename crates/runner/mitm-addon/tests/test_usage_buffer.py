@@ -134,6 +134,35 @@ def test_flush_splits_aggregate_events_at_webhook_limit(tmp_path):
     assert {payload["runId"] for payload in payloads} == {"run-1"}
 
 
+def test_flushes_when_buffered_webhook_batch_count_reaches_bound(tmp_path):
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        for index in range(3):
+            usage.buffer_usage_events(
+                "https://api.test/api/webhooks/agent/usage-event",
+                "token-a",
+                f"run-{index}",
+                [_event(source_key=f"source-{index}")],
+                str(tmp_path / "proxy.jsonl"),
+            )
+        enqueue.assert_not_called()
+
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-3",
+            [_event(source_key="source-3")],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+    payloads = _payloads_from_enqueue_calls(enqueue.call_args_list)
+    assert [payload["runId"] for payload in payloads] == [
+        "run-0",
+        "run-1",
+        "run-2",
+        "run-3",
+    ]
+
+
 def test_empty_flush_is_noop():
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         assert usage.flush_usage_events() == 0
