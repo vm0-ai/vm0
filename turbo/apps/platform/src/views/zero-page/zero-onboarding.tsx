@@ -11,8 +11,6 @@ import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import upsellCrownSrc from "./assets/upsell-crown.webp";
-import marketingWebUiSrc from "./assets/marketing-web-ui.webp";
-import marketingSlackSrc from "./assets/marketing-slack.webp";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -489,34 +487,23 @@ function TrialStepContent() {
   );
 }
 
-/** Left-panel illustration for step 4 — mirrors the vm0.ai marketing
- *  shots so users see the product they're about to unlock. The web-ui
- *  mockup sits behind a Slack-thread snippet so the two strongest
- *  surfaces (workspace + Slack-native) read at a glance. */
+/** Left-panel illustration for step 4 — Zero avatar + trial framing,
+ *  matching the rest of the onboarding steps. */
 function OnboardingTrialPanel() {
   return (
     <>
-      <h3 className="text-2xl font-semibold text-foreground text-center leading-snug max-w-[360px]">
+      <img
+        src={zeroAnimatedSrc}
+        alt=""
+        role="presentation"
+        className="h-24 w-24 object-contain mb-7"
+      />
+      <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
         7 days of Pro, on us
       </h3>
-      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[320px]">
+      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
         Full access while you explore. This is what your agent will do for you.
       </p>
-
-      <div className="relative w-full max-w-[460px] mt-10 aspect-[5/4]">
-        <img
-          src={marketingWebUiSrc}
-          alt=""
-          role="presentation"
-          className="absolute top-0 left-0 w-[88%] rounded-xl shadow-[0_18px_44px_-18px_rgba(15,23,42,0.25)] zero-border"
-        />
-        <img
-          src={marketingSlackSrc}
-          alt=""
-          role="presentation"
-          className="absolute bottom-0 right-0 w-[52%] rounded-xl shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] zero-border bg-background"
-        />
-      </div>
     </>
   );
 }
