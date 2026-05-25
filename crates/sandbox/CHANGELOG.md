@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.3...sandbox-v0.17.4) (2026-05-25)
+
+
+### Bug Fixes
+
+* pass guest reseed entropy over exec stdin ([#14758](https://github.com/vm0-ai/vm0/issues/14758)) ([6f9a4aa](https://github.com/vm0-ai/vm0/commit/6f9a4aac941effcad301911f5dfec055bb758667))
+
 ## [0.17.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.2...sandbox-v0.17.3) (2026-05-22)
 
 

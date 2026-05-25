@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.2...guest-reseed-v0.3.3) (2026-05-25)
+
+
+### Bug Fixes
+
+* pass guest reseed entropy over exec stdin ([#14758](https://github.com/vm0-ai/vm0/issues/14758)) ([6f9a4aa](https://github.com/vm0-ai/vm0/commit/6f9a4aac941effcad301911f5dfec055bb758667))
+
 ## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.1...guest-reseed-v0.3.2) (2026-05-01)
 
 
