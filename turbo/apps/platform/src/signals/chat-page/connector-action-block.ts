@@ -86,7 +86,9 @@ export function parseConnectorAuthorizeUrl(
     return null;
   }
 
-  const match = url.pathname.match(/^\/connectors\/([^/]+)\/authorize$/);
+  const match = url.pathname.match(
+    /^\/connectors\/([^/]+)\/(?:authorize|connect)$/,
+  );
   const connectorType = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
   if (!connectorType || !agentId || !isConnectorType(connectorType)) {
