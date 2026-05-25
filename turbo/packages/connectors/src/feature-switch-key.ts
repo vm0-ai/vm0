@@ -59,7 +59,6 @@ export enum FeatureSwitchKey {
 
   ZapierConnector = "zapierConnector",
   HostedSites = "hostedSites",
-  OpenDesignGenerate = "openDesignGenerate",
   SandboxIoLimiters = "sandboxIoLimiters",
   ZeroMaps = "zeroMaps",
   AgentsPageSplitSections = "agentsPageSplitSections",

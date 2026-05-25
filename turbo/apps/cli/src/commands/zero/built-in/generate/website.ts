@@ -1,17 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command, InvalidArgumentError } from "commander";
-import chalk from "chalk";
-import { generateWebWebsite } from "../../../../lib/api";
-import { zeroTokenAllowsFeatureSwitch } from "../../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../../lib/command";
-import { publishStaticSite } from "../../../../lib/host/publish-static-site";
 import { createHtmlArtifactAuthoringPacket } from "../../shared/html-artifact-authoring";
-import { buildGeneratedWebsite } from "../../shared/website-build";
 
 const WEBSITE_TEMPLATES = ["auto", "launch", "profile"] as const;
 const WEBSITE_MAX_IMAGES = 3;
@@ -24,7 +15,6 @@ interface WebsiteOptions {
   readonly site?: string;
   readonly title?: string;
   readonly audience?: string;
-  readonly keepBuildDir?: boolean;
   readonly json?: boolean;
 }
 
@@ -75,15 +65,9 @@ function readPrompt(options: WebsiteOptions): string {
   });
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export const websiteCommand = new Command()
   .name("website")
-  .description("Generate a hosted website from a prompt")
+  .description("Prepare website authoring instructions from a prompt")
   .option("--prompt <text>", "Website prompt; can also be piped via stdin")
   .option(
     "--template <template>",
@@ -104,7 +88,6 @@ export const websiteCommand = new Command()
   .option("--site <slug>", "Hosted site slug; defaults to the generated name")
   .option("--title <text>", "Requested site title or name")
   .option("--audience <text>", "Audience context")
-  .option("--keep-build-dir", "Keep the temporary static build directory")
   .option("--json", "Print metadata as JSON")
   .addHelpText(
     "after",
@@ -116,142 +99,41 @@ Examples:
   Pipe prompt:           cat brief.txt | zero built-in generate website
 
 Output:
-  Generates and publishes a hosted website. With openDesignGenerate enabled, prints an Open Design registry-selection packet for the current agent instead.
+  Prints an Open Design registry-selection packet for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - Default path charges org credits for model-generated website content
-  - OpenDesign path is gated by the openDesignGenerate feature switch`,
+  - The agent authors the HTML artifact and hosts it with zero host`,
   )
   .action(
     withErrorHandler(async (options: WebsiteOptions) => {
       const prompt = readPrompt(options);
-      if (zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)) {
-        const packet = createHtmlArtifactAuthoringPacket({
-          kind: "website",
-          prompt,
-          slugSource: options.title,
-          site: options.site,
-          details: [
-            `Template direction: ${options.template}`,
-            `Suggested generated visual count: ${options.images}`,
-            `Image model preference if visuals are generated separately: ${
-              options.imageModel ?? "default"
-            }`,
-            `Requested title/site name: ${options.title ?? "not specified"}`,
-            `Audience: ${options.audience ?? "not specified"}`,
-          ],
-          artifactRules: [
-            "Build the usable website as the first screen; do not output a landing-page plan.",
-            "If it is a marketing site, make the product or offer visible in the first viewport.",
-            "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
-            "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
-          ],
-        });
-
-        if (options.json) {
-          console.log(JSON.stringify(packet));
-          return;
-        }
-        console.log(packet.instructions);
-        return;
-      }
-
-      if (!options.json) {
-        console.log(chalk.dim("Generating website content..."));
-      }
-      const generation = await generateWebWebsite({
+      const packet = createHtmlArtifactAuthoringPacket({
+        kind: "website",
         prompt,
-        template: options.template,
-        imageCount: options.images,
-        imageModel: options.imageModel,
-        title: options.title,
-        audience: options.audience,
+        slugSource: options.title,
+        site: options.site,
+        details: [
+          `Template direction: ${options.template}`,
+          `Suggested generated visual count: ${options.images}`,
+          `Image model preference if visuals are generated separately: ${
+            options.imageModel ?? "default"
+          }`,
+          `Requested title/site name: ${options.title ?? "not specified"}`,
+          `Audience: ${options.audience ?? "not specified"}`,
+        ],
+        artifactRules: [
+          "Build the usable website as the first screen; do not output a landing-page plan.",
+          "If it is a marketing site, make the product or offer visible in the first viewport.",
+          "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
+          "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
+        ],
       });
 
-      const buildRoot = await mkdtemp(join(tmpdir(), "zero-website-"));
-      const outDir = join(buildRoot, "dist");
-      try {
-        if (!options.json) {
-          console.log(chalk.dim("Building React template..."));
-        }
-        await buildGeneratedWebsite({
-          outDir,
-          templateId: generation.templateId,
-          siteData: generation.siteData,
-          generatedVisuals: generation.generatedVisuals,
-        });
-
-        const site = options.site ?? generation.slugSuggestion;
-        const hosted = await publishStaticSite({
-          dir: outDir,
-          site,
-          onProgress: options.json
-            ? undefined
-            : (progress) => {
-                if (progress.phase === "preparing") {
-                  console.log(
-                    chalk.dim(`Preparing ${progress.fileCount} files...`),
-                  );
-                  return;
-                }
-                console.log(chalk.dim(`Uploading ${progress.path}`));
-              },
-        });
-
-        const result = {
-          url: hosted.url,
-          siteId: hosted.siteId,
-          deploymentId: hosted.deploymentId,
-          publicSlug: hosted.publicSlug,
-          site,
-          templateId: generation.templateId,
-          templateLabel: generation.templateLabel,
-          fileCount: hosted.fileCount,
-          size: hosted.size,
-          creditsCharged: generation.creditsCharged,
-          textCreditsCharged: generation.textCreditsCharged,
-          imageCreditsCharged: generation.imageCreditsCharged,
-          model: generation.model,
-          imageCount: generation.imageCount,
-          imageModel: generation.imageModel,
-          imageUrls: generation.imageUrls,
-          responseId: generation.responseId,
-          generationId: generation.generationId,
-          usage: generation.usage,
-          ...(options.keepBuildDir ? { buildDir: outDir } : {}),
-        };
-
-        if (options.json) {
-          console.log(JSON.stringify(result));
-          return;
-        }
-
-        console.log(chalk.green(`✓ Website generated: ${hosted.url}`));
-        console.log(chalk.dim(`  Site: ${hosted.publicSlug}`));
-        console.log(chalk.dim(`  Deployment: ${hosted.deploymentId}`));
-        console.log(chalk.dim(`  Template: ${generation.templateLabel}`));
-        console.log(chalk.dim(`  Files: ${hosted.fileCount.toLocaleString()}`));
-        console.log(chalk.dim(`  Size: ${formatBytes(hosted.size)}`));
-        console.log(chalk.dim(`  Images: ${generation.imageCount}`));
-        console.log(chalk.dim(`  Image model: ${generation.imageModel}`));
-        console.log(
-          chalk.dim(`  Credits charged: ${generation.creditsCharged}`),
-        );
-        console.log(
-          chalk.dim(`  Text credits: ${generation.textCreditsCharged}`),
-        );
-        console.log(
-          chalk.dim(`  Image credits: ${generation.imageCreditsCharged}`),
-        );
-        console.log(chalk.dim(`  Model: ${generation.model}`));
-        if (options.keepBuildDir) {
-          console.log(chalk.dim(`  Build dir: ${outDir}`));
-        }
-      } finally {
-        if (!options.keepBuildDir) {
-          await rm(buildRoot, { recursive: true, force: true });
-        }
+      if (options.json) {
+        console.log(JSON.stringify(packet));
+        return;
       }
+      console.log(packet.instructions);
     }),
   );
