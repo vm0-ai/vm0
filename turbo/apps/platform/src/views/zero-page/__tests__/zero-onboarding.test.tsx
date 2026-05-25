@@ -214,7 +214,7 @@ describe("zero onboarding - does not render when not needed", () => {
 // ---------------------------------------------------------------------------
 
 describe("onboarding step indicator renders (AGENT-D-056)", () => {
-  it("renders a two-segment progress bar for the admin flow", async () => {
+  it("renders a three-segment progress bar for the admin flow", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -224,10 +224,10 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
       ).toBeInTheDocument();
     });
 
-    // The regular admin flow has exactly two steps: name workspace + pick tools.
-    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
+    // Admin flow: name workspace + pick tools + Pro trial.
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
 
-    // Selecting a connector on step 2 doesn't add steps — step 2 is terminal.
+    // Selecting a connector on step 2 doesn't change the step count.
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
     click(screen.getByText("Next"));
@@ -243,7 +243,7 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
     });
-    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
   });
 });
 

@@ -51,6 +51,7 @@ import {
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  IconCheck,
   IconCircleCheck,
   IconCircleCheckFilled,
   IconLoader,
@@ -435,17 +436,17 @@ function TrialStepContent() {
         Your 7-day Pro trial is ready
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
-        Here&apos;s everything Pro unlocks. Your trial starts the moment you
-        finish setup.
+        Everything below is included while you explore. Your trial starts the
+        moment you finish setup.
       </p>
 
       {connectorEntries.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="flex flex-wrap gap-1.5 mb-5">
           {connectorEntries.map(([type, config]) => {
             return (
               <span
                 key={type}
-                className="flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1 text-xs text-foreground"
+                className="zero-border flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs text-foreground"
               >
                 <ConnectorIcon type={type} size={14} />
                 {config.label}
@@ -457,18 +458,25 @@ function TrialStepContent() {
 
       <ul
         data-testid="onboarding-trial-benefits"
-        className="w-full flex flex-col"
+        className="zero-border w-full flex flex-col rounded-2xl bg-background overflow-hidden"
       >
-        {PRO_TRIAL_BENEFITS.map((benefit) => {
+        {PRO_TRIAL_BENEFITS.map((benefit, index) => {
           return (
-            <li key={benefit.title} className="flex items-start gap-3 py-2.5">
-              <IconCircleCheckFilled className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+            <li
+              key={benefit.title}
+              className={`flex items-start gap-3 px-4 py-3 ${
+                index === 0 ? "" : "border-t border-border/40"
+              }`}
+            >
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <IconCheck size={12} stroke={2.5} className="text-primary" />
+              </span>
               <span className="min-w-0">
-                <span className="block text-sm font-medium text-foreground">
+                <span className="block text-sm font-medium text-foreground leading-snug">
                   {benefit.title}
                 </span>
                 {benefit.description && (
-                  <span className="block text-xs text-muted-foreground mt-0.5">
+                  <span className="block text-xs text-muted-foreground mt-1 leading-relaxed">
                     {benefit.description}
                   </span>
                 )}
@@ -489,9 +497,21 @@ function OnboardingTrialPanel() {
   const chargeDate = formatTrialDate(TRIAL_LENGTH_DAYS);
 
   const stops = [
-    { label: "Today", detail: "Trial begins", active: true },
-    { label: reminderDate, detail: "Email reminder", active: false },
-    { label: chargeDate, detail: "First charge", active: false },
+    {
+      label: "Today",
+      detail: "Trial begins — full Pro access",
+      active: true,
+    },
+    {
+      label: reminderDate,
+      detail: "We email you a heads-up",
+      active: false,
+    },
+    {
+      label: chargeDate,
+      detail: "Trial ends — cancel anytime before this",
+      active: false,
+    },
   ];
 
   return (
@@ -500,7 +520,7 @@ function OnboardingTrialPanel() {
         src={zeroAnimatedSrc}
         alt=""
         role="presentation"
-        className="h-24 w-24 object-contain mb-8"
+        className="h-24 w-24 object-contain mb-7"
       />
       <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
         7 days of Pro, on us
@@ -510,40 +530,49 @@ function OnboardingTrialPanel() {
         ends.
       </p>
 
-      <div className="relative w-full max-w-[320px] mt-8">
-        <div
-          className="absolute top-[5px] h-px bg-border"
-          style={{ left: "16.66%", right: "16.66%" }}
-        />
-        <div className="relative flex justify-between">
-          {stops.map((stop) => {
+      <div className="zero-border relative w-full max-w-[340px] mt-8 rounded-2xl bg-background px-5 py-5">
+        <ol className="flex flex-col">
+          {stops.map((stop, index) => {
+            const isLast = index === stops.length - 1;
             return (
-              <div
+              <li
                 key={stop.detail}
-                className="flex w-1/3 flex-col items-center text-center"
+                className={`flex items-start gap-3.5 ${isLast ? "" : "pb-5"}`}
               >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    stop.active
-                      ? "bg-foreground"
-                      : "border border-muted-foreground/40 bg-background"
-                  }`}
-                />
-                <span className="text-xs font-medium text-foreground mt-2">
-                  {stop.label}
+                <div className="flex flex-col items-center self-stretch">
+                  <span
+                    className={`mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full ${
+                      stop.active
+                        ? "bg-primary ring-4 ring-primary/15"
+                        : "border border-border bg-background"
+                    }`}
+                  />
+                  {!isLast && (
+                    <span
+                      aria-hidden
+                      className="my-1.5 w-px flex-1 bg-border"
+                    />
+                  )}
+                </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground leading-snug">
+                    {stop.label}
+                  </span>
+                  <span className="block text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    {stop.detail}
+                  </span>
                 </span>
-                <span className="text-[11px] text-muted-foreground mt-0.5">
-                  {stop.detail}
-                </span>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ol>
       </div>
 
-      <p className="text-[11px] text-muted-foreground text-center mt-6">
-        $0 today&ensp;|&ensp;Cancel anytime
-      </p>
+      <div className="zero-border mt-4 inline-flex items-center gap-2 rounded-full bg-background px-3 py-1.5">
+        <span className="text-xs font-medium text-foreground">$0 today</span>
+        <span className="h-3 w-px bg-border" aria-hidden />
+        <span className="text-xs text-muted-foreground">Cancel anytime</span>
+      </div>
     </>
   );
 }
