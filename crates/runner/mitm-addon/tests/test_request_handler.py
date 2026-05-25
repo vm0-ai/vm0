@@ -385,6 +385,7 @@ class TestRequestHandler:
     @pytest.mark.parametrize(
         ("request_port", "host_header", "expected_error", "expected_original_url"),
         [
+            (443, None, "missing_authority", "https://api.github.com/repos"),
             (443, "", "missing_authority", "https://api.github.com/repos"),
             (8443, "", "missing_authority", "https://api.github.com:8443/repos"),
             (443, "api.github.com:bad", "invalid_authority", "https://api.github.com/repos"),
@@ -409,6 +410,7 @@ class TestRequestHandler:
         expected_original_url,
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
+        request_headers = headers() if host_header is None else headers(("Host", host_header))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -416,7 +418,7 @@ class TestRequestHandler:
             port=request_port,
             sni="api.github.com",
             path="/repos",
-            request_headers=headers(("Host", host_header)),
+            request_headers=request_headers,
         )
 
         with (
@@ -429,6 +431,10 @@ class TestRequestHandler:
         assert flow.response.status_code == 403
         body = json.loads(flow.response.content)
         assert body["error"] == expected_error
+        assert body["sni"] == "api.github.com"
+        assert body["request_host"] == "203.0.113.10"
+        assert body["host_header"] == host_header
+        assert body["request_port"] == request_port
         assert flow.metadata["firewall_action"] == "DENY"
         assert flow.metadata["firewall_error"] == expected_error
         assert flow.metadata["original_url"] == expected_original_url
