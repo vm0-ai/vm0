@@ -101,9 +101,11 @@ describe("org usage tab - credit balance display", () => {
       );
     });
 
-    await user.click(screen.getByText("Compare plans"));
+    await user.click(screen.getByRole("button", { name: "Compare plans" }));
     await waitFor(() => {
-      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+      expect(
+        screen.getByText("Upgrade or downgrade anytime."),
+      ).toBeInTheDocument();
     });
   });
 
