@@ -986,17 +986,33 @@ class TestReportConnectorUsage:
         assert p["quantity"] == 3
 
     @pytest.mark.parametrize(
-        ("query", "expected_quantity"),
+        ("path", "query", "permission", "rule", "expected_category", "expected_quantity"),
         [
-            ("ids=1,2,3", 3),
-            ("max_results=50", 50),
+            ("/2/tweets", "ids=1,2,3", "tweet.read", "GET /2/tweets", "posts.read", 3),
+            ("/2/tweets", "max_results=50", "tweet.read", "GET /2/tweets", "posts.read", 50),
+            ("/2/users/by", "usernames=a,b", "users.read", "GET /2/users/by", "user.read", 2),
         ],
     )
     def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
-        self, tmp_path, real_flow, query, expected_quantity
+        self,
+        tmp_path,
+        real_flow,
+        path,
+        query,
+        permission,
+        rule,
+        expected_category,
+        expected_quantity,
     ):
         """Recoverable parser failures should bill from hints without lost-visibility logs."""
-        flow = self._make_x_flow(real_flow, tmp_path, query=query)
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query=query,
+            permission=permission,
+            rule=rule,
+        )
         flow.metadata["x_json_state"] = {
             "body_parsed": False,
             "body_truncated": False,
@@ -1006,7 +1022,7 @@ class TestReportConnectorUsage:
 
         p = self._call_and_get_single_billing(flow)
 
-        assert p["category"] == "posts.read"
+        assert p["category"] == expected_category
         assert p["quantity"] == expected_quantity
         assert proxy_log.exists()
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
