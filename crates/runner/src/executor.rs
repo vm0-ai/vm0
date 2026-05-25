@@ -3207,21 +3207,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_guest_timezone_valid_tz() {
-        let sandbox = MockSandbox::new("test");
-        let mut ctx = minimal_context();
-        ctx.user_timezone = Some("America/New_York".into());
-        // Should exec one command and not panic.
-        sync_guest_timezone(&sandbox, &ctx).await;
+    async fn sync_guest_timezone_accepts_common_timezone_name_shapes() {
+        for tz in [
+            "UTC",
+            "Etc/GMT+1",
+            "Etc/GMT-14",
+            "America/Argentina/Buenos_Aires",
+        ] {
+            let sandbox = MockSandbox::new("test");
+            let mut ctx = minimal_context();
+            ctx.user_timezone = Some(tz.into());
 
-        let calls = sandbox.exec_calls();
-        assert_eq!(calls.len(), 1);
-        assert!(
-            calls[0]
-                .cmd
-                .starts_with("if test -f /usr/share/zoneinfo/America/New_York; then ")
-        );
-        assert!(calls[0].cmd.ends_with(" fi"));
+            sync_guest_timezone(&sandbox, &ctx).await;
+
+            let calls = sandbox.exec_calls();
+            assert_eq!(calls.len(), 1, "timezone {tz:?} should call guest exec");
+            assert!(
+                calls[0]
+                    .cmd
+                    .starts_with(&format!("if test -f /usr/share/zoneinfo/{tz}; then ")),
+                "unexpected timezone command: {}",
+                calls[0].cmd
+            );
+            assert!(
+                calls[0]
+                    .cmd
+                    .contains(&format!("echo '{tz}' > /etc/timezone")),
+                "unexpected timezone command: {}",
+                calls[0].cmd
+            );
+            assert!(
+                calls[0]
+                    .cmd
+                    .contains(&format!("echo 'TZ={tz}' >> /etc/environment")),
+                "unexpected timezone command: {}",
+                calls[0].cmd
+            );
+            assert!(calls[0].cmd.ends_with(" fi"));
+        }
     }
 
     #[tokio::test]
