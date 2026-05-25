@@ -1124,7 +1124,7 @@ class TestRequestHandler:
 
             assert flow.metadata["_usage_flow_tracked"] is True
             assert usage.counters._in_flight_flows == 1
-            assert_pending(pending_path, flows=1, reports=0)
+            assert_pending(pending_path, flows=1, buffered=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1173,7 +1173,7 @@ class TestRequestHandler:
             assert flow.metadata["firewall_error"] == "auth_unavailable"
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, reports=0)
+            assert_pending(pending_path, flows=0, buffered=0, reports=0)
         finally:
             usage.set_pending_path("")
 
@@ -1221,7 +1221,7 @@ class TestRequestHandler:
             assert flow.id not in mitm_addon._request_start_times
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, reports=0)
+            assert_pending(pending_path, flows=0, buffered=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1278,7 +1278,7 @@ class TestRequestHandler:
             assert flow.metadata["firewall_billable"] is False
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, reports=0)
+            assert_pending(pending_path, flows=0, buffered=0, reports=0)
         finally:
             usage.set_pending_path("")
 
@@ -1338,7 +1338,7 @@ class TestRequestHandler:
             assert flow.metadata["firewall_billable"] is True
             assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
             assert flow.metadata["_usage_flow_tracked"] is True
-            assert_pending(pending_path, flows=1, reports=0)
+            assert_pending(pending_path, flows=1, buffered=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1395,7 +1395,7 @@ class TestRequestHandler:
         async def forward_request(*_args):
             assert flow.metadata["_usage_flow_tracked"] is True
             assert usage.counters._in_flight_flows == 1
-            assert_pending(pending_path, flows=1, reports=0)
+            assert_pending(pending_path, flows=1, buffered=0, reports=0)
             return (200, b'{"delivered":true}', {"Content-Type": "application/json"})
 
         try:
@@ -1418,13 +1418,13 @@ class TestRequestHandler:
                 assert flow.metadata["auth_url_rewrite"] is True
                 assert flow.metadata["_usage_flow_tracked"] is True
                 assert usage.counters._in_flight_flows == 1
-                assert_pending(pending_path, flows=1, reports=0)
+                assert_pending(pending_path, flows=1, buffered=0, reports=0)
 
                 mitm_addon.response(flow)
 
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, reports=0)
+            assert_pending(pending_path, flows=0, buffered=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1481,7 +1481,7 @@ class TestRequestHandler:
         async def fail_forward_request(*_args):
             assert flow.metadata["_usage_flow_tracked"] is True
             assert usage.counters._in_flight_flows == 1
-            assert_pending(pending_path, flows=1, reports=0)
+            assert_pending(pending_path, flows=1, buffered=0, reports=0)
             raise RuntimeError("upstream unavailable")
 
         try:
@@ -1506,7 +1506,7 @@ class TestRequestHandler:
             assert "auth_url_rewrite" not in flow.metadata
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, reports=0)
+            assert_pending(pending_path, flows=0, buffered=0, reports=0)
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
