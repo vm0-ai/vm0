@@ -1,5 +1,6 @@
 """Tests for buffered usage-event aggregation."""
 
+import json
 import uuid
 from unittest.mock import patch
 
@@ -59,7 +60,7 @@ def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
         )
 
         enqueue.assert_not_called()
-        assert usage.flush_usage_events() == 1
+        assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
     payload = enqueue.call_args.args[2]
@@ -114,7 +115,7 @@ def test_flush_keeps_runs_categories_providers_and_destinations_separate(tmp_pat
             proxy_b_log_path,
         )
 
-        assert usage.flush_usage_events() == 3
+        assert usage.flush_usage_events(trigger="test") == 3
 
     payloads = _payloads_from_enqueue_calls(enqueue.call_args_list)
     assert {(payload["runId"], len(payload["events"])) for payload in payloads} == {
@@ -186,9 +187,44 @@ def test_flushes_when_buffered_webhook_batch_count_reaches_bound(tmp_path):
 
 def test_empty_flush_is_noop():
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
-        assert usage.flush_usage_events() == 0
+        assert usage.flush_usage_events(trigger="test") == 0
 
     enqueue.assert_not_called()
+
+
+def test_flush_logs_aggregate_summary_without_token(tmp_path):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "secret-token",
+            "run-1",
+            [
+                _event(source_key="source-1", category="tokens.input", quantity=10),
+                _event(source_key="source-2", category="tokens.output", quantity=5),
+            ],
+            str(proxy_log_path),
+        )
+
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    [entry] = [
+        json.loads(line)
+        for line in proxy_log_path.read_text().splitlines()
+        if '"usage_event_buffer_flush"' in line
+    ]
+    assert entry["level"] == "info"
+    assert entry["message"] == "Usage event buffer flushed"
+    assert entry["type"] == "usage_event_buffer_flush"
+    assert entry["trigger"] == "test"
+    assert entry["flush_sequence"] == 1
+    assert entry["source_event_count"] == 2
+    assert entry["aggregate_event_count"] == 2
+    assert entry["webhook_batch_count"] == 1
+    assert entry["run_count"] == 1
+    assert entry["destination_count"] == 1
+    assert "secret-token" not in json.dumps(entry)
 
 
 def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
@@ -214,13 +250,13 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
         assert usage.counters._buffered_usage_events == 2
 
     with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook) as enqueue:
-        assert usage.flush_usage_events() == 1
+        assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
     assert usage.counters._buffered_usage_events == 1
 
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
-        assert usage.flush_usage_events() == 1
+        assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
     assert usage.counters._buffered_usage_events == 0
@@ -264,7 +300,7 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         assert len(usage_buffer._usage_event_buffer._buckets) == 1
 
-        assert usage.flush_usage_events() == 1
+        assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
 
@@ -359,7 +395,7 @@ def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
             [_event(source_key="source-1", quantity=10)],
             proxy_log_path,
         )
-        usage.flush_usage_events()
+        usage.flush_usage_events(trigger="test")
         usage.buffer_usage_events(
             "https://api.test/api/webhooks/agent/usage-event",
             "token-a",
@@ -367,7 +403,7 @@ def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
             [_event(source_key="source-2", quantity=10)],
             proxy_log_path,
         )
-        usage.flush_usage_events()
+        usage.flush_usage_events(trigger="test")
 
     keys = [
         payload["events"][0]["idempotencyKey"]
@@ -390,7 +426,7 @@ def test_aggregate_idempotency_key_separates_webhook_destinations(tmp_path):
                 [_event(source_key=f"source-{token}", quantity=10)],
                 proxy_log_path,
             )
-        usage.flush_usage_events()
+        usage.flush_usage_events(trigger="test")
 
     keys = [
         payload["events"][0]["idempotencyKey"]

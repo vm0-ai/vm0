@@ -77,7 +77,7 @@ class TestUsagePendingCounter:
             assert_pending(pending_path, flows=0, buffered=1, reports=0)
             mock_opener.open.assert_not_called()
 
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
@@ -234,7 +234,7 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.side_effect = ConnectionError("boom")
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
@@ -258,7 +258,7 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
@@ -304,7 +304,7 @@ class TestUsagePendingCounter:
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         # Shut down the executor so _enqueue_webhook takes the sync fallback.
-        usage.flush_usage_events()
+        usage.flush_usage_events(trigger="test")
         usage.webhook.usage_executor.shutdown(wait=True)
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -320,7 +320,7 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
 
         assert usage.counters._pending_reports == 0
         assert_pending(pending_path, flows=0, reports=0)

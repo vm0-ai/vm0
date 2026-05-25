@@ -34,7 +34,7 @@ class TestReportModelProviderUsage:
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-abc-123")
             mock_opener.open.assert_not_called()
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
@@ -93,7 +93,7 @@ class TestReportModelProviderUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         body = json.loads(mock_opener.open.call_args[0][0].data)
@@ -106,7 +106,7 @@ class TestReportModelProviderUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         body = json.loads(mock_opener.open.call_args[0][0].data)
@@ -130,7 +130,7 @@ class TestReportModelProviderUsage:
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -153,7 +153,7 @@ class TestReportModelProviderUsage:
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -166,7 +166,7 @@ class TestReportModelProviderUsage:
 
         with patch.object(usage.webhook, "_opener") as mock_opener:
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -183,7 +183,7 @@ class TestReportModelProviderUsage:
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -196,7 +196,7 @@ class TestReportModelProviderUsage:
 
         with patch.object(usage.webhook, "_opener") as mock_opener:
             usage.report_model_provider_usage(flow, "")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -216,7 +216,7 @@ class TestReportModelProviderUsage:
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -238,7 +238,7 @@ class TestReportModelProviderUsage:
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
@@ -264,7 +264,7 @@ class TestReportModelProviderUsage:
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-fallback")
             usage.report_model_provider_usage(flow, "run-fallback")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         body = json.loads(mock_opener.open.call_args[0][0].data)
@@ -292,7 +292,7 @@ class TestReportModelProviderUsage:
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(first, "run-preserved")
             usage.report_model_provider_usage(second, "run-preserved")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         body = json.loads(mock_opener.open.call_args[0][0].data)

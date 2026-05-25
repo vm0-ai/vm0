@@ -23,7 +23,7 @@ class TestDoneHook:
             patch.object(usage.webhook, "usage_executor", mock_executor),
         ):
             mitm_addon.done()
-        flush_usage_events.assert_called_once_with()
+        flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
 

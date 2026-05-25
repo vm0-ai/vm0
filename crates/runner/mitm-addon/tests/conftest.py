@@ -340,7 +340,7 @@ def fresh_usage_executor():
     try:
         yield usage.webhook.usage_executor
     finally:
-        usage.flush_usage_events()
+        usage.flush_usage_events(trigger="test")
         usage.webhook.usage_executor.shutdown(wait=True)
         usage.webhook.usage_executor = original
 

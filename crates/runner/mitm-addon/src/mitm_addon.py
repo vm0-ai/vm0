@@ -626,7 +626,7 @@ def done():
     ``shutdown(wait=True)`` drains already-submitted futures during graceful
     stop.
     """
-    usage.flush_usage_events()
+    usage.flush_usage_events(trigger="shutdown")
     usage.webhook.usage_executor.shutdown(wait=True)
 
 

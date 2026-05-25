@@ -113,7 +113,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
@@ -151,7 +151,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.side_effect = http_err
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # Cleanup must run once per HTTPError — tracks attempt count so the
@@ -167,7 +167,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         req = mock_opener.open.call_args[0][0]
@@ -181,7 +181,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
@@ -220,7 +220,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.side_effect = ConnectionError("fail")
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
@@ -256,7 +256,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
@@ -307,7 +307,7 @@ class TestUsageWebhookDelivery:
         """After executor shutdown, delivery happens synchronously before return."""
         flow = self._model_flow(real_flow, tmp_path)
         flow.metadata["model_provider_usage"] = {"tokens.input": 42}
-        usage.flush_usage_events()
+        usage.flush_usage_events(trigger="test")
         usage.webhook.usage_executor.shutdown(wait=True)
 
         with (
@@ -316,7 +316,7 @@ class TestUsageWebhookDelivery:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
-            usage.flush_usage_events()
+            usage.flush_usage_events(trigger="test")
             # Sync fallback: _opener must have been called before the call returned.
             mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
 
