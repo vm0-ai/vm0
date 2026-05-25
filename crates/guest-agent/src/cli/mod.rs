@@ -339,13 +339,11 @@ pub async fn execute_cli(
                                     diagnostic.event_type,
                                     candidate.message
                                 );
-                                if should_replace_failure_diagnostic(
+                                if let Some(selected) = select_failure_diagnostic(
                                     failure_diagnostic.as_ref(),
-                                    &candidate,
+                                    candidate,
                                 ) {
-                                    let candidate =
-                                        with_carried_failure_reason(failure_diagnostic.as_ref(), candidate);
-                                    failure_diagnostic = Some(candidate);
+                                    failure_diagnostic = Some(selected);
                                 }
                             }
                             // Capture checkpoint metadata before event payload preparation
@@ -654,27 +652,41 @@ pub async fn execute_cli(
     })
 }
 
-fn should_replace_failure_diagnostic(
+fn select_failure_diagnostic(
     existing: Option<&CliFailureDiagnostic>,
-    candidate: &CliFailureDiagnostic,
-) -> bool {
+    candidate: CliFailureDiagnostic,
+) -> Option<CliFailureDiagnostic> {
     if candidate.source != FailureDetailSource::CodexJsonl {
-        return true;
+        return Some(candidate);
     }
 
     match existing {
-        None => true,
+        None => Some(candidate),
         Some(existing) => {
-            has_specific_failure_diagnostic(candidate)
-                || (existing.source == FailureDetailSource::CodexJsonl
-                    && !has_specific_failure_diagnostic(existing))
+            if has_specific_failure_message(&candidate) {
+                return Some(with_carried_failure_reason(Some(existing), candidate));
+            }
+            if candidate.failure_reason.is_some() {
+                let mut selected = existing.clone();
+                selected.failure_reason = candidate.failure_reason;
+                return Some(selected);
+            }
+            if existing.source == FailureDetailSource::CodexJsonl
+                && !has_specific_failure_diagnostic(existing)
+            {
+                return Some(candidate);
+            }
+            None
         }
     }
 }
 
 fn has_specific_failure_diagnostic(diagnostic: &CliFailureDiagnostic) -> bool {
-    diagnostic.failure_reason.is_some()
-        || !events::is_generic_codex_failure_diagnostic(&diagnostic.message)
+    diagnostic.failure_reason.is_some() || has_specific_failure_message(diagnostic)
+}
+
+fn has_specific_failure_message(diagnostic: &CliFailureDiagnostic) -> bool {
+    !events::is_generic_codex_failure_diagnostic(&diagnostic.message)
 }
 
 fn with_carried_failure_reason(
@@ -689,57 +701,88 @@ fn with_carried_failure_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CliFailureDiagnostic, should_replace_failure_diagnostic, with_carried_failure_reason,
-    };
+    use super::{CliFailureDiagnostic, select_failure_diagnostic, with_carried_failure_reason};
     use agent_diagnostics::{FailureDetailSource, FailureReason};
 
     #[test]
     fn specific_codex_failure_diagnostic_survives_later_generic_event() {
-        assert!(!should_replace_failure_diagnostic(
-            Some(&CliFailureDiagnostic {
-                message: "You've hit your usage limit.".to_string(),
-                source: FailureDetailSource::CodexJsonl,
-                failure_reason: None,
-            }),
-            &CliFailureDiagnostic {
-                message: "turn failed".to_string(),
-                source: FailureDetailSource::CodexJsonl,
-                failure_reason: None,
-            },
-        ));
+        assert_eq!(
+            select_failure_diagnostic(
+                Some(&CliFailureDiagnostic {
+                    message: "You've hit your usage limit.".to_string(),
+                    source: FailureDetailSource::CodexJsonl,
+                    failure_reason: None,
+                }),
+                CliFailureDiagnostic {
+                    message: "turn failed".to_string(),
+                    source: FailureDetailSource::CodexJsonl,
+                    failure_reason: None,
+                },
+            ),
+            None,
+        );
     }
 
     #[test]
     fn specific_codex_failure_diagnostic_replaces_generic_event() {
-        assert!(should_replace_failure_diagnostic(
+        let selected = select_failure_diagnostic(
             Some(&CliFailureDiagnostic {
                 message: "error".to_string(),
                 source: FailureDetailSource::CodexJsonl,
                 failure_reason: None,
             }),
-            &CliFailureDiagnostic {
+            CliFailureDiagnostic {
                 message: "You've hit your usage limit.".to_string(),
                 source: FailureDetailSource::CodexJsonl,
                 failure_reason: None,
             },
-        ));
+        );
+
+        assert_eq!(
+            selected.map(|diagnostic| diagnostic.message),
+            Some("You've hit your usage limit.".to_string())
+        );
     }
 
     #[test]
     fn codex_failure_reason_replaces_generic_diagnostic() {
-        assert!(should_replace_failure_diagnostic(
+        let selected = select_failure_diagnostic(
             Some(&CliFailureDiagnostic {
                 message: "error".to_string(),
                 source: FailureDetailSource::CodexJsonl,
                 failure_reason: None,
             }),
-            &CliFailureDiagnostic {
+            CliFailureDiagnostic {
                 message: "turn failed".to_string(),
                 source: FailureDetailSource::CodexJsonl,
                 failure_reason: Some(FailureReason::InvalidApiKey),
             },
-        ));
+        );
+
+        assert_eq!(
+            selected.map(|diagnostic| diagnostic.failure_reason),
+            Some(Some(FailureReason::InvalidApiKey))
+        );
+    }
+
+    #[test]
+    fn generic_codex_reason_preserves_existing_specific_message() {
+        let selected = select_failure_diagnostic(
+            Some(&CliFailureDiagnostic {
+                message: "request failed before shutdown".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            }),
+            CliFailureDiagnostic {
+                message: "turn failed".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: Some(FailureReason::InvalidApiKey),
+            },
+        )
+        .expect("reason-bearing generic diagnostic should update existing diagnostic");
+
+        assert_eq!(selected.message, "request failed before shutdown");
+        assert_eq!(selected.failure_reason, Some(FailureReason::InvalidApiKey));
     }
 
     #[test]
