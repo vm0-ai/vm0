@@ -139,14 +139,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     featureGate: FeatureSwitchKey.ComputerUse,
   },
   {
-    id: "localAgents",
-    activeKeys: ["desktopLocalAgents"],
-    pathname: "/local-agents",
-    label: "Local agents",
-    icon: IconDeviceDesktop as NavIcon,
-    featureGate: FeatureSwitchKey.DesktopLocalAgent,
-  },
-  {
     id: "schedules",
     activeKeys: ["schedules", "scheduleDetail"],
     pathname: "/schedules",
@@ -228,17 +220,12 @@ function useResolvedNavItems() {
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const desktopComputerUseAvailable =
     typeof window !== "undefined" && Boolean(window.vm0DesktopComputerUse);
-  const desktopLocalAgentAvailable =
-    typeof window !== "undefined" && Boolean(window.vm0DesktopLocalAgent);
   const manageNav = MANAGE_NAV.filter((item) => {
     if (item.id === "activities") {
       return features?.[FeatureSwitchKey.ZeroDebug];
     }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
-    }
-    if (item.id === "localAgents") {
-      return desktopLocalAgentAvailable;
     }
     if (item.id === "computerUse") {
       return desktopComputerUseAvailable;

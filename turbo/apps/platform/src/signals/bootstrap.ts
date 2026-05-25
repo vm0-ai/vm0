@@ -57,7 +57,6 @@ import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
-import { setupDesktopLocalAgentPage$ } from "./desktop-local-agent-page/desktop-local-agent-page-setup.ts";
 import { setupDesktopComputerUsePage$ } from "./desktop-computer-use-page/desktop-computer-use-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
@@ -138,10 +137,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.desktopComputerUse,
     setup: setupAuthPageWrapper(setupDesktopComputerUsePage$),
-  },
-  {
-    path: ROUTES.desktopLocalAgents,
-    setup: setupAuthPageWrapper(setupDesktopLocalAgentPage$),
   },
   {
     path: ROUTES.localBrowserConnect,

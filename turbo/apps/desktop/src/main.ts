@@ -21,21 +21,7 @@ import {
   requestComputerUseAccessibilityPermission,
 } from "./computer-use-permissions";
 import { resolveDesktopConfig } from "./config";
-import { createDesktopLocalAgentApiClient } from "./desktop-local-agent-api";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
-import {
-  installDesktopLocalAgentIpc,
-  notifyDesktopLocalAgentsChanged,
-  openLocalAgentFolder,
-  selectLocalAgentFolder,
-} from "./desktop-local-agent-electron";
-import { DesktopLocalAgentManager } from "./desktop-local-agent-manager";
-import {
-  detectLocalAgentBackends,
-  executeLocalAgentBackend,
-  preflightLocalAgentBackend,
-} from "./desktop-local-agent-runtime";
-import { createDesktopLocalAgentStore } from "./desktop-local-agent-store";
 import {
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthStartUrl,
@@ -62,9 +48,7 @@ const desktopAuthStartUrl = buildDesktopAuthStartUrl(
 const signedOutPageUrl = buildSignedOutPageUrl(desktopAuthStartUrl);
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
-let desktopLocalAgentManager: DesktopLocalAgentManager | null = null;
 let appIsQuitting = false;
-let quittingAfterLocalAgentStop = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
@@ -86,35 +70,6 @@ function applyDockIcon(): void {
   if (process.platform === "darwin" && app.dock) {
     app.dock.setIcon(appIconPath());
   }
-}
-
-function createDesktopLocalAgentManager(): DesktopLocalAgentManager {
-  const electronSession = session.fromPartition(config.sessionPartition);
-  return new DesktopLocalAgentManager({
-    store: createDesktopLocalAgentStore(
-      path.join(app.getPath("userData"), "local-agents.json"),
-    ),
-    api: createDesktopLocalAgentApiClient({
-      platformUrl: config.platformUrl,
-      session: electronSession,
-    }),
-    selectFolder: selectLocalAgentFolder,
-    openFolder: openLocalAgentFolder,
-    detectBackends: detectLocalAgentBackends,
-    preflightBackend: preflightLocalAgentBackend,
-    executeBackend: executeLocalAgentBackend,
-    onChange: notifyDesktopLocalAgentsChanged,
-  });
-}
-
-function installDesktopLocalAgent(): void {
-  if (desktopLocalAgentManager) {
-    return;
-  }
-  desktopLocalAgentManager = createDesktopLocalAgentManager();
-  installDesktopLocalAgentIpc(desktopLocalAgentManager, {
-    allowedAppOrigins: config.allowedAppOrigins,
-  });
 }
 
 function getComputerUseBridgeState(): DesktopComputerUseState {
@@ -492,22 +447,8 @@ if (!hasSingleInstanceLock) {
     handleDesktopAuthCallback(url);
   });
 
-  app.on("before-quit", (event) => {
+  app.on("before-quit", () => {
     appIsQuitting = true;
-    const manager = desktopLocalAgentManager;
-    if (
-      !manager ||
-      !manager.hasRunningAgents() ||
-      quittingAfterLocalAgentStop
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    quittingAfterLocalAgentStop = true;
-    void manager.stopAll().finally(() => {
-      app.quit();
-    });
   });
 
   void app.whenReady().then(async () => {
@@ -518,7 +459,6 @@ if (!hasSingleInstanceLock) {
       allowedAppOrigins: config.allowedAppOrigins,
       platform: process.platform,
     });
-    installDesktopLocalAgent();
     installComputerUse();
     queueDesktopAuthCallbackArgv(process.argv);
 

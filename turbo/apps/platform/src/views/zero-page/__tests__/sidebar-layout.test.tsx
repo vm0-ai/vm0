@@ -29,7 +29,6 @@ const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 afterEach(() => {
-  Reflect.deleteProperty(window, "vm0DesktopLocalAgent");
   Reflect.deleteProperty(window, "vm0DesktopComputerUse");
   Reflect.deleteProperty(window, "vm0DesktopWindowChrome");
 });
@@ -214,9 +213,9 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
 });
 
 describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", () => {
-  it("marks the app shell as desktop-only when the local agent bridge is available", async () => {
+  it("marks the app shell as desktop-only when the computer use bridge is available", async () => {
     mockBaseAPIs();
-    Object.defineProperty(window, "vm0DesktopLocalAgent", {
+    Object.defineProperty(window, "vm0DesktopComputerUse", {
       configurable: true,
       value: {},
     });
@@ -248,9 +247,13 @@ describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", 
 
   it("renders a workspace titlebar drag region in desktop shell mode", async () => {
     mockBaseAPIs();
-    Object.defineProperty(window, "vm0DesktopLocalAgent", {
+    Object.defineProperty(window, "vm0DesktopWindowChrome", {
       configurable: true,
-      value: {},
+      value: {
+        setSidebarCollapsed: () => {
+          return Promise.resolve();
+        },
+      },
     });
 
     detachedSetupPage({ context, path: "/" });

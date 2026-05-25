@@ -24,10 +24,7 @@ describe("isDesktopComputerUsePageUrl", () => {
 
   it("rejects other pages and origins", () => {
     expect(
-      isDesktopComputerUsePageUrl(
-        "https://app.vm0.ai/local-agents",
-        ALLOWED_ORIGINS,
-      ),
+      isDesktopComputerUsePageUrl("https://app.vm0.ai/agents", ALLOWED_ORIGINS),
     ).toBe(false);
     expect(
       isDesktopComputerUsePageUrl(

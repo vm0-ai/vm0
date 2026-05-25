@@ -293,8 +293,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const setExpanded = useSet(setSidebarExpanded$);
   const isDesktopShell =
     typeof window !== "undefined" &&
-    (window.vm0DesktopLocalAgent !== undefined ||
-      window.vm0DesktopComputerUse !== undefined ||
+    (window.vm0DesktopComputerUse !== undefined ||
       window.vm0DesktopWindowChrome !== undefined);
 
   return (
