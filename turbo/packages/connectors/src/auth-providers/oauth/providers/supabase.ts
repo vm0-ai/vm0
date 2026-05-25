@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const SUPABASE_AUTHORIZATION_URL =
@@ -68,7 +69,7 @@ export async function buildSupabaseAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("supabase");
+  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -76,7 +77,7 @@ export async function buildSupabaseAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -95,12 +96,12 @@ export async function refreshSupabaseToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<SupabaseRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("supabase");
+  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -152,13 +153,13 @@ export async function exchangeSupabaseCode(
   redirectUri: string,
   state: string,
 ): Promise<SupabaseTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("supabase");
+  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

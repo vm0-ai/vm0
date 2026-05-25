@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const CLOSE_AUTHORIZATION_URL = "https://app.close.com/oauth2/authorize/";
@@ -51,8 +52,8 @@ export async function exchangeCloseCode(
   code: string,
   redirectUri: string,
 ): Promise<CloseTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("close");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("close");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -97,7 +98,7 @@ export async function exchangeCloseCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : oauthConfig.scopes,
+    scopes: data.scope ? data.scope.split(" ") : authCodeGrant.scopes,
     userInfo: {
       id: userInfo.id ?? data.user_id ?? "unknown",
       email: userInfo.email,
@@ -115,8 +116,8 @@ export async function refreshCloseToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<CloseRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("close");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("close");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

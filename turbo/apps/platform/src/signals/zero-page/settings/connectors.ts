@@ -16,7 +16,7 @@ import {
   getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethod,
-  getConnectorCliAuthModes,
+  getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
   hasRequiredScopes,
   isGoogleOAuthConnector,
@@ -1388,7 +1388,10 @@ function getConnectorCliAuthMode(
 }
 
 function connectorCliAuthRequiresMode(type: ConnectorType): boolean {
-  return getConnectorCliAuthModes(type).length > 0;
+  return (
+    (getConnectorInteractivePairingGrantConfigIfSupported(type)?.modes
+      ?.length ?? 0) > 0
+  );
 }
 
 function connectorCliAuthModeIsAllowed(

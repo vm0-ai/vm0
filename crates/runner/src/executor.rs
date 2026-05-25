@@ -1358,7 +1358,7 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             .as_secs_f64()
     );
     let date_cmd = format!("date -s \"@{timestamp}\"");
-    sandbox
+    let result = sandbox
         .exec(&ExecRequest {
             cmd: &date_cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
@@ -1368,6 +1368,12 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
+    if result.exit_code != 0 {
+        return Err(RunnerError::Internal(format_guest_exec_failure(
+            "guest clock sync",
+            &result,
+        )));
+    }
     Ok(())
 }
 
@@ -1436,14 +1442,15 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
         return;
     }
     let cmd = format!(
-        "test -f /usr/share/zoneinfo/{tz} && \
+        "if test -f /usr/share/zoneinfo/{tz}; then \
          echo '{tz}' > /etc/timezone && \
          ln -sf /usr/share/zoneinfo/{tz} /etc/localtime && \
          sed -i '/^TZ=/d' /etc/environment && \
-         echo 'TZ={tz}' >> /etc/environment"
+         echo 'TZ={tz}' >> /etc/environment; \
+         fi"
     );
     // Best-effort: don't fail the run if timezone setup fails.
-    if let Err(e) = sandbox
+    match sandbox
         .exec(&ExecRequest {
             cmd: &cmd,
             timeout: DEFAULT_EXEC_TIMEOUT,
@@ -1454,7 +1461,24 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
         })
         .await
     {
-        tracing::warn!(tz = %tz, error = %e, "failed to set guest timezone");
+        Ok(result) if result.exit_code != 0 => {
+            let stderr_excerpt =
+                format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
+            let stdout_excerpt =
+                format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
+            tracing::warn!(
+                run_id = %context.run_id,
+                tz = %tz,
+                exit_code = result.exit_code,
+                stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+                stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+                "failed to set guest timezone"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(run_id = %context.run_id, tz = %tz, error = %e, "failed to set guest timezone");
+        }
     }
 }
 
@@ -1607,7 +1631,11 @@ async fn download_storages(
 }
 
 fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {
-    let mut message = format!("storage download failed (exit code {})", result.exit_code);
+    format_guest_exec_failure("storage download", result)
+}
+
+fn format_guest_exec_failure(operation: &str, result: &sandbox::ExecResult) -> String {
+    let mut message = format!("{operation} failed (exit code {})", result.exit_code);
 
     if let Some(stderr) =
         format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated)
@@ -2074,9 +2102,73 @@ mod tests {
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
-    use std::sync::Arc;
+    use std::collections::BTreeMap;
+    use std::fmt;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Level, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
 
     const RUN_IN_SANDBOX_TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+    #[derive(Clone, Debug)]
+    struct CapturedEvent {
+        level: Level,
+        fields: BTreeMap<String, String>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<CapturedEvent>>>,
+    }
+
+    impl CapturedEvents {
+        fn entries(&self) -> Vec<CapturedEvent> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = CapturedFields::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(CapturedEvent {
+                level: *event.metadata().level(),
+                fields: visitor.fields,
+            });
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields {
+        fields: BTreeMap<String, String>,
+    }
+
+    impl Visit for CapturedFields {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_i64(&mut self, field: &Field, value: i64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
 
     fn api_storage(name: &str, mount_path: &str, version: &str, archive_url: &str) -> StorageEntry {
         StorageEntry {
@@ -3052,6 +3144,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fix_guest_clock_fails_on_nonzero_exit() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            2,
+            b"date stdout".to_vec(),
+            b"date stderr".to_vec(),
+        )));
+
+        let result = fix_guest_clock(&sandbox).await;
+
+        let message = result.unwrap_err().to_string();
+        assert!(
+            message.contains("guest clock sync failed (exit code 2)"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("stderr (captured): date stderr"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("stdout (captured): date stdout"),
+            "got: {message}"
+        );
+    }
+
+    #[tokio::test]
     async fn reseed_guest_entropy_succeeds() {
         let sandbox = MockSandbox::new("test");
         reseed_guest_entropy(&sandbox).await.unwrap();
@@ -3089,32 +3207,76 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_guest_timezone_valid_tz() {
-        let sandbox = MockSandbox::new("test");
-        let mut ctx = minimal_context();
-        ctx.user_timezone = Some("America/New_York".into());
-        // Should exec one command and not panic.
-        sync_guest_timezone(&sandbox, &ctx).await;
+    async fn sync_guest_timezone_accepts_common_timezone_name_shapes() {
+        for tz in [
+            "UTC",
+            "Etc/GMT+1",
+            "Etc/GMT-14",
+            "America/Argentina/Buenos_Aires",
+        ] {
+            let sandbox = MockSandbox::new("test");
+            let mut ctx = minimal_context();
+            ctx.user_timezone = Some(tz.into());
+
+            sync_guest_timezone(&sandbox, &ctx).await;
+
+            let calls = sandbox.exec_calls();
+            assert_eq!(calls.len(), 1, "timezone {tz:?} should call guest exec");
+            assert!(
+                calls[0]
+                    .cmd
+                    .starts_with(&format!("if test -f /usr/share/zoneinfo/{tz}; then ")),
+                "unexpected timezone command: {}",
+                calls[0].cmd
+            );
+            assert!(
+                calls[0]
+                    .cmd
+                    .contains(&format!("echo '{tz}' > /etc/timezone")),
+                "unexpected timezone command: {}",
+                calls[0].cmd
+            );
+            assert!(
+                calls[0]
+                    .cmd
+                    .contains(&format!("echo 'TZ={tz}' >> /etc/environment")),
+                "unexpected timezone command: {}",
+                calls[0].cmd
+            );
+            assert!(calls[0].cmd.ends_with(" fi"));
+        }
     }
 
     #[tokio::test]
     async fn sync_guest_timezone_skips_when_none() {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
-        // No timezone — should skip without calling exec.
-        // Push an error to detect if exec is called unexpectedly.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
+
+        assert!(sandbox.exec_calls().is_empty());
     }
 
     #[tokio::test]
-    async fn sync_guest_timezone_rejects_shell_injection() {
-        let sandbox = MockSandbox::new("test");
-        let mut ctx = minimal_context();
-        ctx.user_timezone = Some("$(rm -rf /)".into());
-        // Push an error to detect if exec is called — it should NOT be.
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
-        sync_guest_timezone(&sandbox, &ctx).await;
+    async fn sync_guest_timezone_rejects_invalid_timezone_names() {
+        for invalid_tz in [
+            "$(rm -rf /)",
+            "../UTC",
+            "Etc/../UTC",
+            "America/New York",
+            "UTC;id",
+            "UTC'",
+        ] {
+            let sandbox = MockSandbox::new("test");
+            let mut ctx = minimal_context();
+            ctx.user_timezone = Some(invalid_tz.into());
+
+            sync_guest_timezone(&sandbox, &ctx).await;
+
+            assert!(
+                sandbox.exec_calls().is_empty(),
+                "timezone {invalid_tz:?} should be rejected before guest exec"
+            );
+        }
     }
 
     #[tokio::test]
@@ -3122,8 +3284,104 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.user_timezone = Some(String::new());
-        sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         sync_guest_timezone(&sandbox, &ctx).await;
+
+        assert!(sandbox.exec_calls().is_empty());
+    }
+
+    async fn capture_sync_guest_timezone_events(
+        sandbox: &dyn Sandbox,
+        ctx: &ExecutionContext,
+    ) -> Vec<CapturedEvent> {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+
+        sync_guest_timezone(sandbox, ctx).await;
+
+        captured.entries()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_guest_timezone_logs_nonzero_exit() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            2,
+            b"timezone stdout".to_vec(),
+            b"timezone stderr".to_vec(),
+        )));
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("America/New_York".into());
+
+        let events = capture_sync_guest_timezone_events(&sandbox, &ctx).await;
+        let event = events
+            .iter()
+            .find(|event| {
+                event.level == Level::WARN
+                    && event.fields.get("message").map(String::as_str)
+                        == Some("failed to set guest timezone")
+            })
+            .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+        let run_id = RunId::nil().to_string();
+        assert_eq!(
+            event.fields.get("run_id").map(String::as_str),
+            Some(run_id.as_str())
+        );
+        assert_eq!(
+            event.fields.get("tz").map(String::as_str),
+            Some("America/New_York")
+        );
+        assert_eq!(event.fields.get("exit_code").map(String::as_str), Some("2"));
+        assert!(
+            event
+                .fields
+                .get("stderr_excerpt")
+                .is_some_and(|value| value.contains("timezone stderr")),
+            "event={event:#?}"
+        );
+        assert!(
+            event
+                .fields
+                .get("stdout_excerpt")
+                .is_some_and(|value| value.contains("timezone stdout")),
+            "event={event:#?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_guest_timezone_logs_exec_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Err(sandbox_exec_error("vsock disconnected")));
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("America/New_York".into());
+
+        let events = capture_sync_guest_timezone_events(&sandbox, &ctx).await;
+
+        let event = events
+            .iter()
+            .find(|event| {
+                event.level == Level::WARN
+                    && event.fields.get("message").map(String::as_str)
+                        == Some("failed to set guest timezone")
+            })
+            .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+        let run_id = RunId::nil().to_string();
+        assert_eq!(
+            event.fields.get("run_id").map(String::as_str),
+            Some(run_id.as_str())
+        );
+        assert_eq!(
+            event.fields.get("tz").map(String::as_str),
+            Some("America/New_York")
+        );
+        assert!(
+            event
+                .fields
+                .get("error")
+                .is_some_and(|value| value.contains("vsock disconnected")),
+            "event={event:#?}"
+        );
     }
 
     #[tokio::test]

@@ -266,7 +266,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable synchronous math rendering for inline and block formulas in chat Markdown.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
@@ -314,10 +314,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show category sections and the hover-reveal outline menu on the Connectors settings page. " +
-      "Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Show category sections and the hover-reveal outline menu on the Connectors settings page.",
+    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -345,12 +343,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable managed Zero Maps CLI access for geocoding, directions, and places. Staff-only during rollout.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AgentsPageSplitSections]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Split the Agents page into separate Public and Private sections, each with its own heading and Create button. The Public section also shows a remaining-slot counter with a workspace cap tooltip and disables creation once the cap is reached.",
-    enabled: true,
   },
 };
 

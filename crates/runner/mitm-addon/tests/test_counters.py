@@ -12,10 +12,11 @@ from usage.providers import model_provider as usage_model_provider
 
 
 class TestUsagePendingCounter:
-    """Tests for the dual pending counter (in-flight flows + pending reports)."""
+    """Tests for usage pending counters."""
 
     def setup_method(self):
         usage.counters._in_flight_flows = 0
+        usage.counters._buffered_usage_events = 0
         usage.counters._pending_reports = 0
         usage.counters._pending_path = ""
         usage.counters._usage_state_id = "test-usage-state-id"
@@ -27,23 +28,60 @@ class TestUsagePendingCounter:
         usage.increment_in_flight_flows()
         usage.increment_in_flight_flows()
         assert usage.counters._in_flight_flows == 2
-        assert_pending(pending_path, flows=2, reports=0)
+        assert_pending(pending_path, flows=2, buffered=0, reports=0)
 
         usage.decrement_in_flight_flows()
-        assert_pending(pending_path, flows=1, reports=0)
+        assert_pending(pending_path, flows=1, buffered=0, reports=0)
 
         usage.decrement_in_flight_flows()
-        assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     def test_increment_decrement_pending_reports(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         usage.counters.increment_pending_reports()
         assert usage.counters._pending_reports == 1
-        assert_pending(pending_path, flows=0, reports=1)
+        assert_pending(pending_path, flows=0, buffered=0, reports=1)
 
         usage.counters.decrement_pending_reports()
-        assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+
+    def test_set_buffered_usage_events(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        usage.counters.set_buffered_usage_events(3)
+        assert_pending(pending_path, flows=0, buffered=3, reports=0)
+
+        usage.counters.set_buffered_usage_events(0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+
+    def test_buffered_usage_blocks_pending_until_flush(
+        self, tmp_path, real_flow, fresh_usage_executor
+    ):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
+
+        with (
+            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_model_provider_usage(flow, "run-1")
+            assert_pending(pending_path, flows=0, buffered=1, reports=0)
+            mock_opener.open.assert_not_called()
+
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert usage.counters._pending_reports == 0
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     def test_enqueue_deep_copies_nested_payload(self):
         payload = {
@@ -121,12 +159,12 @@ class TestUsagePendingCounter:
             )
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="explicit-usage-state-id")
-        state = assert_pending(pending_path, flows=0, reports=0)
+        state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "explicit-usage-state-id"
 
     def test_decrement_does_not_go_negative(self, tmp_path):
@@ -196,10 +234,11 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.side_effect = ConnectionError("boom")
             usage.report_model_provider_usage(flow, "run-1")
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     def test_enqueue_increments_and_drains_reports(self, tmp_path, real_flow, fresh_usage_executor):
         """Public entry increments pending on enqueue; executor drain decrements to 0."""
@@ -219,10 +258,11 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
 
     def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
@@ -264,6 +304,7 @@ class TestUsagePendingCounter:
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         # Shut down the executor so _enqueue_webhook takes the sync fallback.
+        usage.flush_usage_events(trigger="test")
         usage.webhook.usage_executor.shutdown(wait=True)
 
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -279,6 +320,7 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
+            usage.flush_usage_events(trigger="test")
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)

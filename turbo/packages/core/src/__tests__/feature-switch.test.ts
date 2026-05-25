@@ -31,7 +31,7 @@ describe("isFeatureEnabled", () => {
 
   it("should return true when orgId hash matches enabledOrgIdHashes", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
+      isFeatureEnabled(FeatureSwitchKey.Lab, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -39,21 +39,19 @@ describe("isFeatureEnabled", () => {
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
+      isFeatureEnabled(FeatureSwitchKey.Lab, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
   });
 
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {})).toBe(
-      false,
-    );
+    expect(isFeatureEnabled(FeatureSwitchKey.Lab, {})).toBe(false);
   });
 
   it("should return true when orgId matches even if userId does not", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ConnectorCategories, {
+      isFeatureEnabled(FeatureSwitchKey.Lab, {
         userId: "non-matching-user",
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
@@ -112,7 +110,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(true);
+    expect(states[FeatureSwitchKey.Lab]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
@@ -123,7 +121,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(false);
+    expect(states[FeatureSwitchKey.Lab]).toBe(false);
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 

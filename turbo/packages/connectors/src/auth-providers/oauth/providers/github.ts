@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const GITHUB_AUTHORIZATION_URL = "https://github.com/login/oauth/authorize";
@@ -20,11 +21,11 @@ export function buildGitHubAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("github");
+  const authCodeGrant = getAuthCodeGrantConfig("github");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -40,7 +41,7 @@ export async function exchangeGitHubCode(
   code: string,
   redirectUri?: string,
 ): Promise<{ accessToken: string; scopes: string[] }> {
-  const oauthConfig = getConnectorOAuthConfig("github");
+  const authCodeGrant = getAuthCodeGrantConfig("github");
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -50,7 +51,7 @@ export async function exchangeGitHubCode(
     body.set("redirect_uri", redirectUri);
   }
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Accept: "application/json",

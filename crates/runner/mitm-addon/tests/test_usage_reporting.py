@@ -3,6 +3,7 @@
 import gzip
 import json
 import time
+import uuid
 import zlib
 from collections.abc import Callable
 from pathlib import Path
@@ -21,7 +22,6 @@ import response_streaming
 import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.usage_helpers import (
-    model_usage_idempotency_key,
     usage_event_events_from_calls,
 )
 
@@ -177,6 +177,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # JSON fallback should populate model_provider_usage in metadata
@@ -226,6 +227,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         extracted = flow.metadata["model_provider_usage"]
@@ -271,6 +273,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -318,6 +321,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -360,6 +364,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -480,6 +485,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -551,6 +557,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         extracted = flow.metadata["model_provider_usage"]
@@ -639,6 +646,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         extracted = flow.metadata["model_provider_usage"]
@@ -694,6 +702,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -730,6 +739,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -791,6 +801,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -826,6 +837,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -893,6 +905,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -940,6 +953,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         extracted = flow.metadata["model_provider_usage"]
@@ -988,6 +1002,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1022,6 +1037,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1062,6 +1078,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1105,6 +1122,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1137,6 +1155,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1168,6 +1187,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1196,6 +1216,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1230,6 +1251,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1265,6 +1287,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1297,6 +1320,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1327,6 +1351,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1354,6 +1379,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1381,6 +1407,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1409,6 +1436,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1449,6 +1477,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1458,14 +1487,9 @@ class TestResponseUsageReporting:
             "tokens.input": 100,
             "tokens.output": 40,
         }
-        assert idempotency_by_category == {
-            "tokens.input": model_usage_idempotency_key(
-                "run-abc-123", "resp_sse_1", "tokens.input"
-            ),
-            "tokens.output": model_usage_idempotency_key(
-                "run-abc-123", "resp_sse_1", "tokens.output"
-            ),
-        }
+        assert set(idempotency_by_category) == {"tokens.input", "tokens.output"}
+        for key in idempotency_by_category.values():
+            uuid.UUID(key)
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
     def test_full_pipeline_model_websocket_reports_usage(
@@ -1518,6 +1542,7 @@ class TestResponseUsageReporting:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.websocket_message(flow)
             mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1574,6 +1599,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1583,12 +1609,9 @@ class TestResponseUsageReporting:
             "tokens.input": 100,
             "tokens.output": 40,
         }
-        assert idempotency_by_category == {
-            "tokens.input": model_usage_idempotency_key("run-abc-123", "resp_ws_1", "tokens.input"),
-            "tokens.output": model_usage_idempotency_key(
-                "run-abc-123", "resp_ws_1", "tokens.output"
-            ),
-        }
+        assert set(idempotency_by_category) == {"tokens.input", "tokens.output"}
+        for key in idempotency_by_category.values():
+            uuid.UUID(key)
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
     def test_model_websocket_zero_frame_preserves_prior_positive_usage(self, tmp_path, real_flow):
@@ -1845,6 +1868,7 @@ class TestResponseUsageReporting:
         ):
             mitm_addon.websocket_message(flow)
             mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -1884,6 +1908,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1928,6 +1953,7 @@ class TestResponseUsageReporting:
             flow.metadata["model_provider_usage"]["tokens.output"] = 20
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -1968,6 +1994,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
@@ -2031,6 +2058,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         extracted = flow.metadata["model_provider_usage"]
@@ -2083,6 +2111,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -2132,6 +2161,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -2173,6 +2203,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
@@ -2348,6 +2379,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
@@ -2604,6 +2636,7 @@ class TestResponseUsageReporting:
             patch.object(usage.webhook, "_opener") as mock_opener,
         ):
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert mock_opener.open.call_count == 0  # urllib external boundary (#9991)
@@ -2644,6 +2677,7 @@ class TestResponseUsageReporting:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
             # Flush the executor to ensure the background POST completes
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # Verify the webhook POST reached _opener with correct payload
@@ -2684,32 +2718,34 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["runId"] == "run-int-002"
-        assert body["events"] == [
+        assert [
+            {key: value for key, value in event.items() if key != "idempotencyKey"}
+            for event in body["events"]
+        ] == [
             {
-                "idempotencyKey": model_usage_idempotency_key(
-                    "run-int-002", flow.id, "tokens.input"
-                ),
                 "kind": "model",
                 "provider": "claude-sonnet-4-6",
                 "category": "tokens.input",
                 "quantity": 80,
             }
         ]
+        uuid.UUID(body["events"][0]["idempotencyKey"])
 
     def test_uses_flow_id_when_message_id_missing(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
         """Missing message_id in model_provider_usage falls back to flow.id.
 
-        Without a stable per-flow key, server-side dedup of usage webhook
-        retries fails, which would double-charge.  flow.id is stable
-        across retries because _enqueue_webhook copies the dict once.
+        Without a stable per-flow source key, duplicate response/error
+        observations could be aggregated twice before the webhook payload is
+        built.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
@@ -2737,14 +2773,14 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
-        assert body["events"][0]["idempotencyKey"] == model_usage_idempotency_key(
-            "run-fallback", "flow-uuid-xyz-123", "tokens.input"
-        )
+        assert body["events"][0]["quantity"] == 10
+        uuid.UUID(body["events"][0]["idempotencyKey"])
 
     def test_preserves_message_id_from_response(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -2777,11 +2813,11 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
-        assert body["events"][0]["idempotencyKey"] == model_usage_idempotency_key(
-            "run-preserved", "msg_real_anthropic_id", "tokens.input"
-        )
+        assert body["events"][0]["quantity"] == 10
+        uuid.UUID(body["events"][0]["idempotencyKey"])

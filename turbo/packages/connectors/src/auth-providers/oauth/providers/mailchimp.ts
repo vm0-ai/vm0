@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const MAILCHIMP_AUTHORIZATION_URL =
@@ -47,8 +48,8 @@ export async function exchangeMailchimpCode(
   code: string,
   redirectUri: string,
 ): Promise<MailchimpTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("mailchimp");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("mailchimp");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -85,7 +86,7 @@ export async function exchangeMailchimpCode(
 
   return {
     accessToken: data.access_token,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     apiEndpoint: metadata.apiEndpoint,
     userInfo: metadata.userInfo,
   };

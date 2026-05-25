@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const ZOOM_AUTHORIZATION_URL = "https://zoom.us/oauth/authorize";
@@ -34,12 +35,12 @@ export function buildZoomAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("zoom");
+  const authCodeGrant = getAuthCodeGrantConfig("zoom");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -58,12 +59,12 @@ export async function exchangeZoomCode(
   code: string,
   redirectUri: string,
 ): Promise<ZoomTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("zoom");
+  const authCodeGrant = getAuthCodeGrantConfig("zoom");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -120,12 +121,12 @@ export async function refreshZoomToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<ZoomRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("zoom");
+  const authCodeGrant = getAuthCodeGrantConfig("zoom");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

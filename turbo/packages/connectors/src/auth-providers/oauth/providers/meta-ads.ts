@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const META_ADS_AUTHORIZATION_URL =
@@ -30,13 +31,13 @@ export function buildMetaAdsAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("meta-ads");
+  const authCodeGrant = getAuthCodeGrantConfig("meta-ads");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
     response_type: "code",
-    scope: oauthConfig.scopes.join(","),
+    scope: authCodeGrant.scopes.join(","),
   });
 
   return `${META_ADS_AUTHORIZATION_URL}?${params.toString()}`;
@@ -52,9 +53,9 @@ export async function exchangeMetaAdsCode(
   code: string,
   redirectUri: string,
 ): Promise<MetaAdsTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("meta-ads");
+  const authCodeGrant = getAuthCodeGrantConfig("meta-ads");
   // Step 1: Exchange code for short-lived token
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -107,7 +108,7 @@ export async function exchangeMetaAdsCode(
     accessToken: longLivedToken.accessToken,
     refreshToken: null,
     expiresIn: longLivedToken.expiresIn,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     userInfo,
   };
 }

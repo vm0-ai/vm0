@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const REDDIT_AUTHORIZATION_URL = "https://www.reddit.com/api/v1/authorize";
@@ -38,14 +39,14 @@ export function buildRedditAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("reddit");
+  const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
     state,
     redirect_uri: redirectUri,
     duration: "permanent",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
   });
 
   return `${REDDIT_AUTHORIZATION_URL}?${params.toString()}`;
@@ -61,8 +62,8 @@ export async function exchangeRedditCode(
   code: string,
   redirectUri: string,
 ): Promise<RedditTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("reddit");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("reddit");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,
@@ -160,8 +161,8 @@ export async function refreshRedditToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<RedditRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("reddit");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("reddit");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,

@@ -235,6 +235,7 @@ class TestErrorHandler:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # Connector billing webhook should have been posted to _opener.
@@ -291,6 +292,7 @@ class TestErrorHandler:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)

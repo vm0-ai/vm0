@@ -42,15 +42,13 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
     expect(
-      screen.queryByTestId("connector-category-ai"),
-    ).not.toBeInTheDocument();
+      screen.getByTestId("connector-category-ai-general-models"),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByTestId("connector-category-ai-general-models"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("connector-category-engineering-team-execution"),
-    ).not.toBeInTheDocument();
+      screen.getByTestId("connector-category-engineering-team-execution"),
+    ).toBeInTheDocument();
   });
 
   it("shows connected connectors", async () => {

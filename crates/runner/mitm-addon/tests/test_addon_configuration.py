@@ -11,11 +11,19 @@ class TestAddonConfiguration:
     def test_load_registers_usage_state_id_without_pending_write(self):
         loader = MagicMock()
 
-        with patch.object(usage, "set_pending_path") as set_pending_path:
+        with (
+            patch.object(usage, "set_pending_path") as set_pending_path,
+            patch.object(mitm_addon.signal, "signal") as signal_handler,
+        ):
             mitm_addon.load(loader)
 
         option_names = [call.kwargs["name"] for call in loader.add_option.call_args_list]
         assert "vm0_usage_state_id" in option_names
+        assert "vm0_usage_flush_interval_seconds" in option_names
+        signal_handler.assert_called_once_with(
+            mitm_addon._RUNNER_USAGE_FLUSH_SIGNAL,
+            mitm_addon._handle_runner_usage_flush_signal,
+        )
         set_pending_path.assert_not_called()
 
     def test_configure_initializes_pending_path_with_usage_state_id(self):
@@ -54,3 +62,14 @@ class TestAddonConfiguration:
             mitm_addon.configure({"vm0_api_url"})
 
         set_pending_path.assert_not_called()
+
+    def test_configure_updates_usage_flush_interval(self):
+        options = MagicMock(vm0_usage_flush_interval_seconds=15.0)
+
+        with (
+            patch.object(mitm_addon.ctx, "options", options, create=True),
+            patch.object(usage, "configure_usage_buffer") as configure_usage_buffer,
+        ):
+            mitm_addon.configure({"vm0_usage_flush_interval_seconds"})
+
+        configure_usage_buffer.assert_called_once_with(flush_interval_seconds=15.0)

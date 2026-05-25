@@ -11,8 +11,6 @@ import {
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
-  getConnectorCliAuthFlow,
-  getConnectorCliAuthModes,
   getConnectorDeviceAuthGrantConfigIfSupported,
   getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorManagedSecretNames,
@@ -20,11 +18,7 @@ import {
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
   getConnectorOAuthClientConfig,
-  getConnectorOAuthDeviceAuthConfig,
   getConnectorOAuthCredentials,
-  getConnectorOAuthConfig,
-  getConnectorOAuthConfigIfSupported,
-  getConnectorOAuthFlow,
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthScopes,
   getConnectorManualGrantFields,
@@ -200,8 +194,12 @@ describe("connector auth method config", () => {
     expect(
       getConnectorInteractivePairingGrantConfigIfSupported("github"),
     ).toBeUndefined();
-    expect(getConnectorCliAuthFlow("stripe")).toBe("browser-verification");
-    expect(getConnectorCliAuthModes("stripe")).toStrictEqual([
+    expect(
+      getConnectorInteractivePairingGrantConfigIfSupported("stripe")?.flow,
+    ).toBe("browser-verification");
+    expect(
+      getConnectorInteractivePairingGrantConfigIfSupported("stripe")?.modes,
+    ).toStrictEqual([
       {
         value: "test",
         label: "Test mode",
@@ -232,7 +230,7 @@ describe("isOAuthConnectorType", () => {
   it("matches exactly the connector types that declare OAuth grants", () => {
     const oauthConnectorTypes = connectorTypeSchema.options
       .filter((type) => {
-        return getConnectorOAuthConfigIfSupported(type) !== undefined;
+        return getConnectorOAuthGrantConfigIfSupported(type) !== undefined;
       })
       .sort();
 
@@ -392,9 +390,13 @@ describe("isOAuthConnectorType", () => {
       );
 
       for (const type of providerTypes) {
-        const oauthConfig = getConnectorOAuthConfig(type);
+        const client = getConnectorOAuthClientConfig(type);
+        expect(client, `${type}: OAuth client config`).toBeDefined();
+        if (!client) {
+          throw new Error(`${type} OAuth client config not found`);
+        }
         const credentials = resolveConnectorOAuthClientCredentials(
-          oauthConfig.client,
+          client,
           () => {
             return "test-client-credential";
           },
@@ -969,7 +971,7 @@ describe("getConnectorEnvironmentMapping", () => {
     //   environmentMapping: all values -> $secrets.XXX_ACCESS_TOKEN
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
-      if (!getConnectorOAuthConfigIfSupported(type)) continue;
+      if (!getConnectorOAuthGrantConfigIfSupported(type)) continue;
 
       const oauthSecrets = getConnectorSecretNames(type, "oauth");
       const prefix = oauthSecrets
@@ -1020,7 +1022,7 @@ describe("getConnectorEnvironmentMapping", () => {
 
   it("api-token-only connectors expose all secrets via environmentMapping with same name", () => {
     for (const type of connectorTypeSchema.options) {
-      if (getConnectorOAuthConfigIfSupported(type)) continue;
+      if (getConnectorOAuthGrantConfigIfSupported(type)) continue;
       const fields = getConnectorManualGrantFields(type, "api-token");
       if (!fields) continue;
 
@@ -1268,7 +1270,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
-      return getConnectorOAuthConfigIfSupported(type);
+      return getConnectorOAuthGrantConfigIfSupported(type);
     });
 
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
@@ -1336,11 +1338,11 @@ describe("getConnectorProvidedSecretNames", () => {
   });
 });
 
-describe("getConnectorOAuthConfig - google-meet scopes", () => {
+describe("getConnectorOAuthScopes - google-meet scopes", () => {
   it("uses meetings.space.readonly for google meet oauth scopes", () => {
-    const config = getConnectorOAuthConfig("google-meet");
+    const grant = getConnectorAuthCodeGrantConfigIfSupported("google-meet");
     const scopes = getConnectorOAuthScopes("google-meet");
-    expect(scopes).toStrictEqual(config.scopes);
+    expect(scopes).toStrictEqual(grant?.scopes);
     expect(scopes).toContain(
       "https://www.googleapis.com/auth/meetings.space.readonly",
     );
@@ -1417,76 +1419,35 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorDeviceAuthGrantConfigIfSupported("github"),
     ).toBeUndefined();
   });
-
-  it("keeps legacy OAuth config equivalent to lifecycle grant projections", () => {
-    for (const type of connectorTypeSchema.options) {
-      const grant = getConnectorOAuthGrantConfigIfSupported(type);
-      const config = getConnectorOAuthConfigIfSupported(type);
-
-      switch (grant?.kind) {
-        case "auth-code":
-          expect(config, `${type}: auth-code OAuth config`).toStrictEqual({
-            flow: "authorization-code",
-            tokenUrl: grant.tokenUrl,
-            client: grant.client,
-            scopes: [...grant.scopes],
-          });
-          break;
-        case "device-auth":
-          expect(config, `${type}: device-auth OAuth config`).toStrictEqual({
-            flow: "device-authorization",
-            deviceAuthUrl: grant.deviceAuthUrl,
-            tokenUrl: grant.tokenUrl,
-            client: grant.client,
-            scopes: [...grant.scopes],
-          });
-          break;
-        case undefined:
-          expect(config, `${type}: no OAuth config`).toBeUndefined();
-          break;
-      }
-    }
-  });
-});
-
-describe("getConnectorOAuthConfigIfSupported", () => {
-  it("returns OAuth config for OAuth connectors", () => {
-    expect(getConnectorOAuthConfigIfSupported("github")).toEqual(
-      getConnectorOAuthConfig("github"),
-    );
-  });
-
-  it("returns undefined for connectors without OAuth", () => {
-    expect(getConnectorOAuthConfigIfSupported("axiom")).toBeUndefined();
-  });
 });
 
 describe("connector OAuth authorization-code config", () => {
-  it("declares the current OAuth connectors as authorization-code flows", () => {
+  it("declares the current auth-code OAuth connectors with auth-code grants", () => {
     for (const type of connectorTypeSchema.options) {
       if (!isOAuthAuthCodeConnectorType(type)) {
         continue;
       }
 
-      expect(getConnectorOAuthFlow(type), `${type}: OAuth flow`).toBe(
-        "authorization-code",
-      );
+      expect(
+        getConnectorAuthCodeGrantConfigIfSupported(type)?.kind,
+        `${type}: OAuth grant kind`,
+      ).toBe("auth-code");
     }
   });
 
-  it("keeps provider authorization URLs out of connector OAuth config", () => {
+  it("keeps provider authorization URLs out of connector OAuth grants", () => {
     for (const type of connectorTypeSchema.options) {
-      const oauthConfig = getConnectorOAuthConfigIfSupported(type);
-      if (!oauthConfig) {
+      const grant = getConnectorOAuthGrantConfigIfSupported(type);
+      if (!grant) {
         continue;
       }
 
       expect(
-        "authorizationEndpoint" in oauthConfig,
+        "authorizationEndpoint" in grant,
         `${type}: authorization endpoint should be provider-owned`,
       ).toBe(false);
       expect(
-        "authorizationUrl" in oauthConfig,
+        "authorizationUrl" in grant,
         `${type}: authorization URL should be provider-owned`,
       ).toBe(false);
     }
@@ -1496,13 +1457,10 @@ describe("connector OAuth authorization-code config", () => {
 describe("connector OAuth device authorization config", () => {
   it("declares the test OAuth device connector as a device authorization flow", () => {
     expect(isOAuthDeviceAuthConnectorType("test-oauth-device")).toBe(true);
-    expect(getConnectorOAuthFlow("test-oauth-device")).toBe(
-      "device-authorization",
-    );
     expect(
-      getConnectorOAuthDeviceAuthConfig("test-oauth-device"),
+      getConnectorDeviceAuthGrantConfigIfSupported("test-oauth-device"),
     ).toMatchObject({
-      flow: "device-authorization",
+      kind: "device-auth",
       deviceAuthUrl: "/api/test/oauth-provider/device/code",
       tokenUrl: "/api/test/oauth-provider/token",
       client: {
@@ -1517,9 +1475,10 @@ describe("connector OAuth device authorization config", () => {
 
   it("declares the Base44 connector as a device authorization flow", () => {
     expect(isOAuthDeviceAuthConnectorType("base44")).toBe(true);
-    expect(getConnectorOAuthFlow("base44")).toBe("device-authorization");
-    expect(getConnectorOAuthDeviceAuthConfig("base44")).toMatchObject({
-      flow: "device-authorization",
+    expect(
+      getConnectorDeviceAuthGrantConfigIfSupported("base44"),
+    ).toMatchObject({
+      kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
       tokenUrl: "https://app.base44.com/oauth/token",
       client: {

@@ -1,10 +1,12 @@
 """Tests for mitm addon connection-level hooks."""
 
 import json
+import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mitmproxy.flow import Error
 
 import mitm_addon
@@ -18,10 +20,47 @@ class TestDoneHook:
     def test_done_shuts_down_executor(self):
         """done() should call shutdown(wait=True) on the executor."""
         mock_executor = MagicMock()
-        with patch.object(usage.webhook, "usage_executor", mock_executor):
+        with (
+            patch.object(usage, "flush_usage_events") as flush_usage_events,
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+        ):
             mitm_addon.done()
+        flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
+
+    def test_done_shuts_down_executor_when_flush_fails(self):
+        mock_executor = MagicMock()
+
+        with (
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=RuntimeError("flush failed"),
+            ) as flush_usage_events,
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+            pytest.raises(RuntimeError, match="flush failed"),
+        ):
+            mitm_addon.done()
+
+        flush_usage_events.assert_called_once_with(trigger="shutdown")
+        mock_executor.shutdown.assert_called_once_with(wait=True)
+
+
+class TestRunnerUsageFlushSignal:
+    """Tests for runner-triggered usage buffer flush requests."""
+
+    def test_signal_handler_flushes_usage_in_background(self):
+        flushed = threading.Event()
+
+        def flush_usage_events(*, trigger: str) -> int:
+            assert trigger == "runner"
+            flushed.set()
+            return 0
+
+        with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            assert flushed.wait(timeout=1)
 
 
 class TestTlsClienthello:

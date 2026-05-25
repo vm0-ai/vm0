@@ -1,10 +1,11 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const LINEAR_AUTHORIZATION_URL = "https://linear.app/oauth/authorize";
 
-// User info URL is not part of ConnectorOAuthConfig since it uses GraphQL (POST), not a standard
+// User info URL is not part of the auth-code grant config since it uses GraphQL (POST), not a standard
 // REST GET endpoint. Same pattern as GMAIL_PROFILE_URL in gmail.ts.
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 
@@ -36,12 +37,12 @@ export function buildLinearAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("linear");
+  const authCodeGrant = getAuthCodeGrantConfig("linear");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(","),
+    scope: authCodeGrant.scopes.join(","),
     state,
     actor: "user",
     prompt: "consent",
@@ -60,8 +61,8 @@ export async function exchangeLinearCode(
   code: string,
   redirectUri: string,
 ): Promise<LinearTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("linear");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("linear");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -119,8 +120,8 @@ export async function refreshLinearToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<LinearRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("linear");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("linear");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const ASANA_AUTHORIZATION_URL = "https://app.asana.com/-/oauth_authorize";
@@ -52,8 +53,8 @@ export async function exchangeAsanaCode(
   code: string,
   redirectUri: string,
 ): Promise<AsanaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("asana");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("asana");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -108,7 +109,7 @@ export async function exchangeAsanaCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     userInfo,
   };
 }
@@ -159,8 +160,8 @@ export async function refreshAsanaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AsanaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("asana");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("asana");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

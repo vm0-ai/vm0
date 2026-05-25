@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const SENTRY_AUTHORIZATION_URL = "https://sentry.io/oauth/authorize/";
@@ -32,12 +33,12 @@ export function buildSentryAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("sentry");
+  const authCodeGrant = getAuthCodeGrantConfig("sentry");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -54,8 +55,8 @@ export async function exchangeSentryCode(
   code: string,
   redirectUri: string,
 ): Promise<SentryTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("sentry");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("sentry");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -126,8 +127,8 @@ export async function refreshSentryToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<SentryRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("sentry");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("sentry");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

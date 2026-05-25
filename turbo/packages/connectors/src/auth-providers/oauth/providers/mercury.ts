@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const MERCURY_AUTHORIZATION_URL = "https://oauth2.mercury.com/oauth2/auth";
@@ -35,12 +36,12 @@ export function buildMercuryAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("mercury");
+  const authCodeGrant = getAuthCodeGrantConfig("mercury");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -56,8 +57,8 @@ export async function exchangeMercuryCode(
   code: string,
   redirectUri: string,
 ): Promise<MercuryTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("mercury");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("mercury");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -115,8 +116,8 @@ export async function refreshMercuryToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<MercuryRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("mercury");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("mercury");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

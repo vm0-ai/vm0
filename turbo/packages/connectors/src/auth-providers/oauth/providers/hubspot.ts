@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const HUBSPOT_AUTHORIZATION_URL = "https://app.hubspot.com/oauth/authorize";
@@ -34,11 +35,11 @@ export function buildHubSpotAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("hubspot");
+  const authCodeGrant = getAuthCodeGrantConfig("hubspot");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -54,8 +55,8 @@ export async function exchangeHubSpotCode(
   code: string,
   redirectUri: string,
 ): Promise<HubSpotTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("hubspot");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("hubspot");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -97,7 +98,7 @@ export async function exchangeHubSpotCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     userInfo,
   };
 }
@@ -111,8 +112,8 @@ export async function refreshHubSpotToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<HubSpotRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("hubspot");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("hubspot");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

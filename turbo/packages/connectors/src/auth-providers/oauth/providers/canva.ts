@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize";
@@ -68,7 +69,7 @@ export async function buildCanvaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("canva");
+  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -76,7 +77,7 @@ export async function buildCanvaAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -95,12 +96,12 @@ export async function refreshCanvaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<CanvaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("canva");
+  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -151,13 +152,13 @@ export async function exchangeCanvaCode(
   redirectUri: string,
   state: string,
 ): Promise<CanvaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("canva");
+  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

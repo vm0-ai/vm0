@@ -1,6 +1,6 @@
-import { getConnectorOAuthDeviceAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 
+import { getDeviceAuthGrantConfig } from "../grant-config";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -51,8 +51,8 @@ const userInfoResponseSchema = z
   })
   .passthrough();
 
-function base44OauthConfig() {
-  return getConnectorOAuthDeviceAuthConfig("base44");
+function base44DeviceAuthGrant() {
+  return getDeviceAuthGrantConfig("base44");
 }
 
 function parseScopes(scope: string | undefined): string[] {
@@ -107,7 +107,7 @@ export async function startBase44DeviceAuth(args: {
   readonly clientId: string;
   readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(base44OauthConfig().deviceAuthUrl, {
+  const response = await fetch(base44DeviceAuthGrant().deviceAuthUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -137,7 +137,7 @@ export async function pollBase44DeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(base44OauthConfig().tokenUrl, {
+  const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -189,7 +189,7 @@ export async function refreshBase44Token(args: {
   readonly clientId: string;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(base44OauthConfig().tokenUrl, {
+  const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

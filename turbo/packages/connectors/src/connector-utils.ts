@@ -7,21 +7,17 @@ import {
   type ConnectorAuthMethodType,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
-  type ConnectorCliAuthConfig,
-  type ConnectorCliAuthFlow,
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorGenerationType,
   type ConnectorInteractivePairingGrantConfig,
   type DynamicPublicConnectorOAuthClientConfig,
   type ConnectorOAuthClientConfig,
-  type ConnectorOAuthConfig,
   type ConnectorManualGrantFieldConfig,
   type StaticConfidentialConnectorOAuthClientConfig,
   type StaticPublicConnectorOAuthClientConfig,
   type ConnectorType,
   type OAuthAuthCodeConnectorType,
-  type OAuthConnectorType,
   type OAuthDeviceAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
@@ -170,23 +166,6 @@ export function getConnectorInteractivePairingGrantConfigIfSupported(
     case undefined:
       return undefined;
   }
-}
-
-/**
- * Get the frontend CLI auth flow for connector types that support it.
- */
-export function getConnectorCliAuthFlow(
-  type: ConnectorType,
-): ConnectorCliAuthFlow | undefined {
-  return getConnectorInteractivePairingGrantConfigIfSupported(type)?.flow;
-}
-
-export function getConnectorCliAuthModes(
-  type: ConnectorType,
-): NonNullable<ConnectorCliAuthConfig["modes"]> {
-  return (
-    getConnectorInteractivePairingGrantConfigIfSupported(type)?.modes ?? []
-  );
 }
 
 export function getConnectorGenerationTypes(
@@ -575,53 +554,6 @@ export function getConnectorProvidedSecretNames(
   return provided;
 }
 
-/**
- * Get OAuth configuration for a connector type if it supports OAuth.
- */
-export function getConnectorOAuthConfigIfSupported(
-  type: ConnectorType,
-): ConnectorOAuthConfig | undefined {
-  const grant = getConnectorOAuthGrantConfigIfSupported(type);
-  switch (grant?.kind) {
-    case "auth-code":
-      return {
-        flow: "authorization-code",
-        tokenUrl: grant.tokenUrl,
-        client: grant.client,
-        scopes: [...grant.scopes],
-      };
-    case "device-auth":
-      return {
-        flow: "device-authorization",
-        deviceAuthUrl: grant.deviceAuthUrl,
-        tokenUrl: grant.tokenUrl,
-        client: grant.client,
-        scopes: [...grant.scopes],
-      };
-    case undefined:
-      return undefined;
-  }
-}
-
-/**
- * Get OAuth configuration for a connector type known to support OAuth.
- */
-export function getConnectorOAuthConfig(
-  type: OAuthConnectorType,
-): ConnectorOAuthConfig {
-  const oauthConfig = getConnectorOAuthConfigIfSupported(type);
-  if (!oauthConfig) {
-    throw new Error(`${type} OAuth config not found`);
-  }
-  return oauthConfig;
-}
-
-export function getConnectorOAuthFlow(
-  type: OAuthConnectorType,
-): ConnectorOAuthConfig["flow"] {
-  return getConnectorOAuthConfig(type).flow;
-}
-
 export function isOAuthAuthCodeConnectorType(
   type: ConnectorType,
 ): type is OAuthAuthCodeConnectorType {
@@ -632,16 +564,6 @@ export function isOAuthDeviceAuthConnectorType(
   type: ConnectorType,
 ): type is OAuthDeviceAuthConnectorType {
   return getConnectorOAuthGrantConfigIfSupported(type)?.kind === "device-auth";
-}
-
-export function getConnectorOAuthDeviceAuthConfig(
-  type: OAuthDeviceAuthConnectorType,
-): Extract<ConnectorOAuthConfig, { readonly flow: "device-authorization" }> {
-  const oauthConfig = getConnectorOAuthConfig(type);
-  if (oauthConfig.flow !== "device-authorization") {
-    throw new Error(`${type} OAuth device authorization config not found`);
-  }
-  return oauthConfig;
 }
 
 /**

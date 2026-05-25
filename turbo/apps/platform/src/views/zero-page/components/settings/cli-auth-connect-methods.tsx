@@ -4,8 +4,7 @@ import { Button } from "@vm0/ui/components/ui/button";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
-  getConnectorCliAuthFlow,
-  getConnectorCliAuthModes,
+  getConnectorInteractivePairingGrantConfigIfSupported,
 } from "@vm0/connectors/connector-utils";
 import type { MouseEventHandler, ReactElement } from "react";
 
@@ -52,7 +51,9 @@ function stateForConnector(
 }
 
 function cliAuthModeOptions(type: ConnectorType): readonly CliAuthModeOption[] {
-  return getConnectorCliAuthModes(type);
+  return (
+    getConnectorInteractivePairingGrantConfigIfSupported(type)?.modes ?? []
+  );
 }
 
 function CliAuthModePicker({
@@ -260,7 +261,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
 export function getCliAuthConnectMethodContentComponent(
   type: ConnectorType,
 ): CliAuthConnectMethodContentComponent | null {
-  switch (getConnectorCliAuthFlow(type)) {
+  switch (getConnectorInteractivePairingGrantConfigIfSupported(type)?.flow) {
     case "browser-verification": {
       return BrowserVerificationCliAuthConnectMethodContent;
     }

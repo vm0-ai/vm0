@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const WEBFLOW_AUTHORIZATION_URL = "https://webflow.com/oauth/authorize";
@@ -22,11 +23,11 @@ export function buildWebflowAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("webflow");
+  const authCodeGrant = getAuthCodeGrantConfig("webflow");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     redirect_uri: redirectUri,
   });
@@ -44,8 +45,8 @@ export async function exchangeWebflowCode(
   code: string,
   redirectUri: string,
 ): Promise<WebflowTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("webflow");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("webflow");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -74,7 +75,7 @@ export async function exchangeWebflowCode(
 
   return {
     accessToken: data.access_token,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     userInfo,
   };
 }

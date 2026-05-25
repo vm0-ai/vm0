@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const FIGMA_AUTHORIZATION_URL = "https://www.figma.com/oauth";
@@ -34,12 +35,12 @@ export function buildFigmaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("figma");
+  const authCodeGrant = getAuthCodeGrantConfig("figma");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(","),
+    scope: authCodeGrant.scopes.join(","),
     state,
   });
 
@@ -56,12 +57,12 @@ export async function exchangeFigmaCode(
   code: string,
   redirectUri: string,
 ): Promise<FigmaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("figma");
+  const authCodeGrant = getAuthCodeGrantConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -118,12 +119,12 @@ export async function refreshFigmaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<FigmaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("figma");
+  const authCodeGrant = getAuthCodeGrantConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

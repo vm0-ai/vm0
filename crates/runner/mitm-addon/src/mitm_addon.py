@@ -11,7 +11,9 @@ This addon runs on the runner HOST (not inside VMs) and:
 
 import functools
 import json
+import signal
 import tempfile
+import threading
 import time
 import urllib.parse
 from pathlib import Path
@@ -47,6 +49,8 @@ from url_utils import AuthorityValidationError, get_trusted_authority
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
+_RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
+_usage_flush_signal_lock = threading.Lock()
 
 # ============================================================================
 # Addon Configuration
@@ -55,6 +59,7 @@ _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
+    signal.signal(_RUNNER_USAGE_FLUSH_SIGNAL, _handle_runner_usage_flush_signal)
     loader.add_option(
         name="vm0_api_url",
         typespec=str,
@@ -78,9 +83,19 @@ def load(loader: Loader) -> None:
         default="",
         help="Runner-generated usage-pending state id",
     )
+    loader.add_option(
+        name="vm0_usage_flush_interval_seconds",
+        typespec=float,
+        default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
+        help="Usage-event buffer flush interval in seconds",
+    )
 
 
 def configure(updated: set[str]) -> None:
+    if "vm0_usage_flush_interval_seconds" in updated:
+        usage.configure_usage_buffer(
+            flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
+        )
     if "vm0_usage_state_id" in updated:
         # Custom --set options are deferred until after load() registers them,
         # so initialize this file here where ctx.options has the runner value.
@@ -88,6 +103,27 @@ def configure(updated: set[str]) -> None:
             str(Path(__file__).resolve().parent / "usage-pending"),
             usage_state_id=ctx.options.vm0_usage_state_id or None,
         )
+
+
+def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
+    del signum
+    thread = threading.Thread(
+        target=_flush_usage_for_runner_request,
+        name="usage-flush-request",
+        daemon=True,
+    )
+    thread.start()
+
+
+def _flush_usage_for_runner_request() -> None:
+    if not _usage_flush_signal_lock.acquire(blocking=False):
+        return
+    try:
+        usage.flush_usage_events(trigger="runner")
+    except Exception as exc:
+        ctx.log.warn(f"Failed to flush usage events after runner request: {exc}")
+    finally:
+        _usage_flush_signal_lock.release()
 
 
 def get_api_url() -> str:
@@ -612,10 +648,14 @@ def done():
     """Flush pending usage reports before mitmproxy exits.
 
     The runner waits for pending flow/report counters before stopping the
-    proxy. ``shutdown(wait=True)`` is the final mitmproxy-side drain for
-    already-submitted futures during graceful stop.
+    proxy. Buffered usage is converted into webhook reports before
+    ``shutdown(wait=True)`` drains already-submitted futures during graceful
+    stop.
     """
-    usage.webhook.usage_executor.shutdown(wait=True)
+    try:
+        usage.flush_usage_events(trigger="shutdown")
+    finally:
+        usage.webhook.usage_executor.shutdown(wait=True)
 
 
 # ============================================================================

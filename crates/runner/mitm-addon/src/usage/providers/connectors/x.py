@@ -1,8 +1,7 @@
 """X (Twitter) connector billing.
 
 Computes per-permission billable resource counts from successful requests
-through the X firewall and forwards them to the platform for persistence
-in the ``usage_event`` table.
+through the X firewall and buffers them for aggregate platform upload.
 """
 
 import json
@@ -18,9 +17,9 @@ import body_utils
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
+from ...buffer import UsageEvent, buffer_usage_events
 from ...json_selective import JsonSelectiveExtractor, ScalarField
 from ...namespaces import USAGE_EVENT_NAMESPACE_CONNECTOR
-from ...webhook import _enqueue_webhook
 from .x_billing import (
     classify_bucket,
     classify_includes_bucket,
@@ -34,7 +33,6 @@ from .x_billing import (
 # ambiguity of an ``OK_MAX`` that is itself excluded from the OK range.
 _HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
-_USAGE_EVENT_BATCH_SIZE = 100
 
 # X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
 # is a regular request/response endpoint for rules management, NOT a stream).
@@ -474,12 +472,11 @@ def _compute_billable_counts(
 
 
 def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
-    """Compute billable resource counts and forward to the platform.
+    """Compute billable resource counts and buffer them for upload.
 
     Derives per-permission billable resource counts from the request and
-    response, then forwards them to the platform via
-    ``/api/webhooks/agent/usage-event`` for persistence in the
-    ``usage_event`` table.
+    response, then buffers them for aggregate upload via
+    ``/api/webhooks/agent/usage-event``.
 
     **Caller contract**: the dispatcher in
     :mod:`usage.providers.connectors` guarantees ``run_id`` is non-empty,
@@ -577,7 +574,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
             **log_extra,
         )
 
-    # Forward usage events to the platform for persistence.
+    # Buffer usage events for aggregate platform upload.
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:
@@ -589,11 +586,10 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         )
         return
     url = f"{api_url}/api/webhooks/agent/usage-event"
-    events = []
+    events: list[UsageEvent] = []
     for category, qty in billable_counts.items():
-        # UUIDv5 from stable inputs — retries produce the same key, so the
-        # server-side UNIQUE(idempotency_key) dedups duplicate deliveries
-        # without the addon needing to persist anything across restarts.
+        # UUIDv5 from stable source inputs. The usage buffer uses this key to
+        # dedupe duplicate response/error observations before aggregation.
         idempotency_key = str(
             uuid.uuid5(
                 USAGE_EVENT_NAMESPACE_CONNECTOR,
@@ -609,14 +605,4 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 "quantity": qty,
             }
         )
-    for start in range(0, len(events), _USAGE_EVENT_BATCH_SIZE):
-        _enqueue_webhook(
-            url,
-            sandbox_token,
-            {
-                "runId": run_id,
-                "events": events[start : start + _USAGE_EVENT_BATCH_SIZE],
-            },
-            proxy_log_path,
-            "usage_event",
-        )
+    buffer_usage_events(url, sandbox_token, run_id, events, proxy_log_path)

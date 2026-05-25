@@ -101,6 +101,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_connector_usage(flow, run_id)
+            usage.flush_usage_events(trigger="test")
         return [
             event
             for body in request_bodies_from_calls(mock_opener.open.call_args_list)
@@ -183,6 +184,8 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_connector_usage(flow, "run-abc-123")
+            mock_opener.open.assert_not_called()
+            usage.flush_usage_events(trigger="test")
 
         mock_opener.open.assert_called_once()
         [payload] = request_bodies_from_calls(mock_opener.open.call_args_list)
@@ -211,6 +214,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_connector_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
 
         bodies = request_bodies_from_calls(mock_opener.open.call_args_list)
         assert [len(body["events"]) for body in bodies] == [100, 1]
@@ -443,6 +447,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_category = {event["category"]: event["quantity"] for event in events}
@@ -480,6 +485,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
@@ -529,6 +535,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
 
         mock_opener.open.assert_not_called()
 
@@ -564,6 +571,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
@@ -1266,6 +1274,7 @@ class TestReportConnectorUsage:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
