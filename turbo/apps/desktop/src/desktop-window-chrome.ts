@@ -3,30 +3,7 @@ type DesktopWindowChromeOptions = Pick<
   "titleBarStyle" | "trafficLightPosition"
 >;
 
-type DesktopWindowTrafficLightLayout = "expanded" | "collapsed";
-
-const EXPANDED_TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 16, y: 18 };
-const COLLAPSED_TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 8, y: 18 };
-
-export function desktopWindowTrafficLightPosition(
-  layout: DesktopWindowTrafficLightLayout,
-): Electron.Point {
-  if (layout === "collapsed") {
-    return COLLAPSED_TRAFFIC_LIGHT_POSITION;
-  }
-  return EXPANDED_TRAFFIC_LIGHT_POSITION;
-}
-
-export function applyDesktopWindowTrafficLightLayout(
-  window: Pick<Electron.BrowserWindow, "setWindowButtonPosition">,
-  platform: NodeJS.Platform,
-  layout: DesktopWindowTrafficLightLayout,
-): void {
-  if (platform !== "darwin") {
-    return;
-  }
-  window.setWindowButtonPosition(desktopWindowTrafficLightPosition(layout));
-}
+const TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 16, y: 18 };
 
 export function buildDesktopWindowChromeOptions(
   platform: NodeJS.Platform,
@@ -37,6 +14,6 @@ export function buildDesktopWindowChromeOptions(
 
   return {
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: desktopWindowTrafficLightPosition("expanded"),
+    trafficLightPosition: TRAFFIC_LIGHT_POSITION,
   };
 }

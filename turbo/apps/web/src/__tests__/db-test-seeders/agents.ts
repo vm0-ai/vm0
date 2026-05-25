@@ -1,7 +1,7 @@
+import { computeTestComposeVersionId } from "../api-test-helpers/compose-content";
+import type { TestAgentComposeContent } from "../api-test-helpers/compose-content";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { computeComposeVersionId } from "../../lib/infra/agent-compose/content-hash";
-import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
 import {
   agentComposes,
   agentComposeVersions,
@@ -41,7 +41,7 @@ type TestChatMessageRow = {
 export async function seedApiCompatibleCompose(opts: {
   userId: string;
   orgId: string;
-  content: AgentComposeYaml;
+  content: TestAgentComposeContent;
 }): Promise<{ composeId: string; versionId: string; name: string }> {
   initServices();
 
@@ -61,13 +61,13 @@ export async function seedApiCompatibleCompose(opts: {
   }
 
   const normalizedAgentName = agentName.toLowerCase();
-  const resolvedContent: AgentComposeYaml = {
+  const resolvedContent: TestAgentComposeContent = {
     ...opts.content,
     agents: {
       [normalizedAgentName]: agent,
     },
   };
-  const versionId = computeComposeVersionId(resolvedContent);
+  const versionId = computeTestComposeVersionId(resolvedContent);
   const db = globalThis.services.db;
 
   const [existingCompose] = await db

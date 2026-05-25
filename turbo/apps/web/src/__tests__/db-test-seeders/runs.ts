@@ -298,7 +298,7 @@ export async function seedTestRun(
   if (!compose) {
     throw new Error(`Compose ${agentComposeId} not found`);
   }
-  // Create a version for the run. Content follows AgentComposeYaml shape so
+  // Create a version for the run. Content follows compose API shape so
   // downstream consumers (checkpoint writer, session/conversation resolvers)
   // can resolve workingDir via `extractWorkingDir`.
   const versionId = uniqueId("version");

@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "12.387.1",
+  "version": "12.387.2",
   "type": "module",
   "private": true,
   "scripts": {
@@ -33,7 +33,6 @@
     "@tabler/icons-react": "^3.36.1",
     "@vercel/functions": "^3.4.4",
     "@vm0/api-contracts": "workspace:*",
-    "@vm0/api-services": "workspace:*",
     "@vm0/connectors": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/db": "workspace:*",

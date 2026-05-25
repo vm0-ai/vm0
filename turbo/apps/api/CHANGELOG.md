@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.70.2](https://github.com/vm0-ai/vm0/compare/api-v1.70.1...api-v1.70.2) (2026-05-25)
+
+
+### Refactoring
+
+* **api:** wrap integration model route in command ([#14798](https://github.com/vm0-ai/vm0/issues/14798)) ([725f1fb](https://github.com/vm0-ai/vm0/commit/725f1fbc971e38b33a167f1fad328f61994b7a45))
+* remove web callback infra leftovers ([#14790](https://github.com/vm0-ai/vm0/issues/14790)) ([dfe62f1](https://github.com/vm0-ai/vm0/commit/dfe62f16a1e118c65feba1e5063774428c44ebec))
+* remove web org metadata leftovers ([#14800](https://github.com/vm0-ai/vm0/issues/14800)) ([419aa86](https://github.com/vm0-ai/vm0/commit/419aa86ab579c277050e96aa3fb26abf490e8183))
+
 ## [1.70.1](https://github.com/vm0-ai/vm0/compare/api-v1.70.0...api-v1.70.1) (2026-05-25)
 
 

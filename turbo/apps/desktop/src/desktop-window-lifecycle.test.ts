@@ -2,11 +2,7 @@ import {
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
 } from "./desktop-window-lifecycle";
-import {
-  applyDesktopWindowTrafficLightLayout,
-  buildDesktopWindowChromeOptions,
-  desktopWindowTrafficLightPosition,
-} from "./desktop-window-chrome";
+import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 
 describe("desktop window lifecycle", () => {
   it("uses integrated macOS window chrome", () => {
@@ -18,28 +14,6 @@ describe("desktop window lifecycle", () => {
 
   it("keeps non-macOS window chrome default", () => {
     expect(buildDesktopWindowChromeOptions("linux")).toStrictEqual({});
-  });
-
-  it("uses a left-aligned traffic light position for the collapsed sidebar", () => {
-    expect(desktopWindowTrafficLightPosition("collapsed")).toStrictEqual({
-      x: 8,
-      y: 18,
-    });
-  });
-
-  it("updates traffic lights on macOS only", () => {
-    const window = {
-      setWindowButtonPosition: vi.fn(),
-    };
-
-    applyDesktopWindowTrafficLightLayout(window, "darwin", "collapsed");
-    expect(window.setWindowButtonPosition).toHaveBeenCalledWith({
-      x: 8,
-      y: 18,
-    });
-
-    applyDesktopWindowTrafficLightLayout(window, "linux", "expanded");
-    expect(window.setWindowButtonPosition).toHaveBeenCalledOnce();
   });
 
   it("hides the main window on macOS close unless the app is quitting", () => {

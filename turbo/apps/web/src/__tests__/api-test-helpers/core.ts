@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
 import { createSingleFileTar } from "../../lib/infra/tar";
+import type {
+  TestAgentComposeContent,
+  TestAgentDefinition,
+} from "./compose-content";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -24,13 +27,24 @@ export function createTestRequest(
 
 export interface ComposeConfigOptions {
   /** Override agent properties (merged with defaults) */
-  overrides?: Partial<AgentComposeYaml["agents"][string]>;
+  overrides?: Partial<TestAgentDefinition>;
   /** Optional top-level compose volume definitions */
-  composeVolumes?: AgentComposeYaml["volumes"];
+  composeVolumes?: TestAgentComposeContent["volumes"];
   /** Skip adding default ANTHROPIC_API_KEY (creates empty environment: {}) */
   skipDefaultApiKey?: boolean;
   /** Skip adding environment block entirely (for testing auto-injection) */
   noEnvironmentBlock?: boolean;
+}
+
+function isComposeConfigOptions(
+  options: ComposeConfigOptions | Partial<TestAgentDefinition>,
+): options is ComposeConfigOptions {
+  return (
+    "skipDefaultApiKey" in options ||
+    "noEnvironmentBlock" in options ||
+    "composeVolumes" in options ||
+    "overrides" in options
+  );
 }
 
 /**
@@ -43,37 +57,36 @@ export interface ComposeConfigOptions {
  */
 export function createDefaultComposeConfig(
   agentName: string,
-  options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
-): AgentComposeYaml {
+  options?: ComposeConfigOptions | Partial<TestAgentDefinition>,
+): TestAgentComposeContent {
   // Support both old signature (overrides only) and new signature (options object)
   const opts: ComposeConfigOptions =
-    options &&
-    ("skipDefaultApiKey" in options ||
-      "noEnvironmentBlock" in options ||
-      "composeVolumes" in options ||
-      "overrides" in options)
+    options && isComposeConfigOptions(options)
       ? options
-      : { overrides: options as Partial<AgentComposeYaml["agents"][string]> };
+      : { overrides: options };
 
-  // Build base agent config without environment
-  const baseAgent: Record<string, unknown> = {
+  const baseAgent: TestAgentDefinition = {
     framework: "claude-code",
   };
 
-  // Add environment unless noEnvironmentBlock is set
   if (!opts.noEnvironmentBlock) {
     baseAgent.environment = opts.skipDefaultApiKey
       ? {}
       : { ANTHROPIC_API_KEY: "test-api-key" };
   }
 
-  const config: AgentComposeYaml = {
+  const { framework = baseAgent.framework, ...agentOverrides } =
+    opts.overrides ?? {};
+  const agent: TestAgentDefinition = {
+    ...baseAgent,
+    ...agentOverrides,
+    framework,
+  };
+
+  const config: TestAgentComposeContent = {
     version: "1.0",
     agents: {
-      [agentName]: {
-        ...baseAgent,
-        ...opts.overrides,
-      } as AgentComposeYaml["agents"][string],
+      [agentName]: agent,
     },
   };
 

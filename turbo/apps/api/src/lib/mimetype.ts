@@ -2,9 +2,7 @@
  * Map filename extensions to canonical MIME types.
  *
  * Used to fill in the `Content-Type` header on uploaded files when the
- * client does not provide one. Verbatim port of the web-side helper at
- * apps/web/src/lib/shared/mimetype.ts so the api and web emit the same
- * content-type for the same filename.
+ * client does not provide one.
  */
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   png: "image/png",
