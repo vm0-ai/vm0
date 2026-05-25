@@ -67,8 +67,6 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
     // OpenAI (voice-chat ephemeral token minting, STT, TTS) — required env
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    // OpenRouter lightweight model tests mock the network boundary with MSW.
-    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
     // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake_for_testing");

@@ -78,9 +78,6 @@ OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 # Required: OpenAI Webhook signing secret (for built-in generations webhook)
 OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
 
-# Optional: LLM API (OpenRouter)
-OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
-
 # Optional: fal media generation
 FAL_KEY=op://Development/fal/FAL_KEY
 

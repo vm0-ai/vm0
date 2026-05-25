@@ -242,8 +242,6 @@ function initEnv() {
       BYTEPLUS_API_KEY: z.string().min(1).optional(),
       // Vercel cron job authentication
       CRON_SECRET: z.string().min(1).optional(),
-      // Lightweight model (OpenRouter) — used for internal tasks like title generation
-      OPENROUTER_API_KEY: z.string().min(1).optional(),
       // Web Push (VAPID) — used for sending push notifications to PWA users
       VAPID_PUBLIC_KEY: z.string().min(1).optional(),
       VAPID_PRIVATE_KEY: z.string().min(1).optional(),
@@ -449,7 +447,6 @@ function initEnv() {
       FAL_KEY: process.env.FAL_KEY,
       BYTEPLUS_API_KEY: process.env.BYTEPLUS_API_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
       VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
       USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
