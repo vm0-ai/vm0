@@ -352,6 +352,17 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     response_streaming.feed_model_websocket_usage(flow, message.content)
 
 
+def _response_size(flow: http.HTTPFlow) -> int:
+    if flow.response is None:
+        return 0
+
+    streamed_size = response_streaming.streamed_response_size(flow)
+    if streamed_size is not None:
+        return streamed_size
+
+    return int(flow.response.headers.get("content-length", 0))
+
+
 def _track_usage_flow(fn):
     """Decorator ensuring decrement_in_flight_flows runs after response/error handlers.
 
@@ -400,19 +411,9 @@ def response(flow: http.HTTPFlow) -> None:
     original_url = flow.metadata["original_url"]
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
 
-    # Calculate sizes
     request_size = len(flow.request.raw_content or b"")
-    # Use buffered body length when complete; fall back to Content-Length header.
+    response_size = _response_size(flow)
     stream_buf = flow.metadata.get("stream_buffer")
-    stream_state = flow.metadata.get("stream_buffer_state")
-    if stream_buf is not None and stream_state and "total_bytes" in stream_state:
-        response_size = int(stream_state["total_bytes"])
-    elif stream_buf is not None and stream_state and not stream_state["truncated"]:
-        response_size = len(stream_buf)
-    elif flow.response:
-        response_size = int(flow.response.headers.get("content-length", 0))
-    else:
-        response_size = 0
     status_code = flow.response.status_code if flow.response else 0
 
     # Parse URL for host

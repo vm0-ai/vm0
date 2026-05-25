@@ -93,7 +93,6 @@ class TestResponseUsageReporting:
             }
         ).encode()
         flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map(
@@ -145,7 +144,6 @@ class TestResponseUsageReporting:
             }
         ).encode()
         flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map(
@@ -203,7 +201,6 @@ class TestResponseUsageReporting:
             }
         ).encode()
         flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map(
@@ -254,7 +251,6 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_billable"] = False
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
