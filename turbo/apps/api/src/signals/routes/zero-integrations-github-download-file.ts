@@ -5,27 +5,21 @@ import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import {
+  buildArtifactKey,
+  buildArtifactPrefix,
+  buildFileUrl,
+} from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { db$ } from "../external/db";
-import {
-  getGithubIntegrationAccessToken,
-  loadActiveGithubInstallationForOrg,
-} from "../services/github-integration-files.service";
+import { listS3Objects } from "../external/s3";
 import type { RouteEntry } from "../route";
 import { settle } from "../utils";
 
 const c = initContract();
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-const ALLOWED_HOSTS = [
-  "github.com",
-  "objects.githubusercontent.com",
-  "private-user-images.githubusercontent.com",
-  "raw.githubusercontent.com",
-  "user-images.githubusercontent.com",
-] as const;
 
 const githubDownloadFileContract = c.router({
   download: {
@@ -33,7 +27,7 @@ const githubDownloadFileContract = c.router({
     path: "/api/zero/integrations/github/download-file",
     headers: authHeadersSchema,
     query: z.object({
-      url: z.string().url(),
+      file_id: z.string().uuid("file_id must be a GitHub file ID"),
       filename: z.string().min(1).max(255).optional(),
     }),
     responses: {
@@ -48,7 +42,7 @@ const githubDownloadFileContract = c.router({
       413: apiErrorSchema,
       502: apiErrorSchema,
     },
-    summary: "Download a GitHub attachment or raw file",
+    summary: "Download a GitHub context file",
   },
 });
 
@@ -64,97 +58,34 @@ function parseContentLength(value: string | null): number | undefined {
   return Number.isSafeInteger(size) && size >= 0 ? size : undefined;
 }
 
-function isAllowedGithubFileUrl(url: URL): boolean {
-  const hostAllowed = ALLOWED_HOSTS.some((host) => {
-    return host === url.hostname;
-  });
-  if (url.protocol !== "https:" || !hostAllowed) {
-    return false;
-  }
-
-  if (url.hostname !== "github.com") {
-    return true;
-  }
-
-  return (
-    url.pathname.startsWith("/user-attachments/assets/") ||
-    url.pathname.startsWith("/user-attachments/files/")
-  );
-}
-
-function isAllowedArtifactUrl(url: URL): boolean {
-  const artifactsBaseUrl = new URL(env("PUBLIC_ARTIFACTS_BASE_URL"));
-  return (
-    url.origin === artifactsBaseUrl.origin &&
-    url.pathname.startsWith("/artifacts/")
-  );
-}
-
-function isAllowedDownloadUrl(url: URL): boolean {
-  return isAllowedGithubFileUrl(url) || isAllowedArtifactUrl(url);
-}
-
-function needsGithubAuthorization(url: URL): boolean {
-  return !isAllowedArtifactUrl(url);
-}
-
-function filenameFromUrl(url: URL): string {
-  const basename = url.pathname.split("/").filter(Boolean).pop();
-  return basename ?? "github-file";
-}
-
-function filenameFromContentDisposition(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/iu);
-  if (utf8Match?.[1]) {
-    return utf8Match[1].trim();
-  }
-
-  const quotedMatch = value.match(/filename="([^"]+)"/iu);
-  return quotedMatch?.[1] ?? null;
+function filenameFromArtifactKey(key: string, fallback: string): string {
+  const basename = key.split("/").filter(Boolean).pop();
+  return basename ? decodeURIComponent(basename) : fallback;
 }
 
 const download$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(githubDownloadFileContract.download));
-  const url = new URL(query.url);
-  if (!isAllowedDownloadUrl(url)) {
-    return jsonResponse(
-      400,
-      "Only GitHub attachment, raw file, and VM0 artifact URLs are supported",
-      "BAD_REQUEST",
-    );
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const prefix = buildArtifactPrefix(auth.userId, query.file_id);
+  const objects = await get(listS3Objects(bucket, prefix));
+  signal.throwIfAborted();
+  const expectedKey = query.filename
+    ? buildArtifactKey(auth.userId, query.file_id, query.filename)
+    : undefined;
+  const object =
+    expectedKey !== undefined
+      ? objects.find((candidate) => {
+          return candidate.key === expectedKey;
+        })
+      : objects[0];
+  if (!object) {
+    return jsonResponse(404, "GitHub file not found", "NOT_FOUND");
   }
 
-  let token: string | null = null;
-  if (needsGithubAuthorization(url)) {
-    const db = get(db$);
-    const installation = await loadActiveGithubInstallationForOrg({
-      db,
-      orgId: auth.orgId,
-    });
-    signal.throwIfAborted();
-    if (!installation) {
-      return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
-    }
-
-    token = await getGithubIntegrationAccessToken({
-      installation,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (!token) {
-      return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
-    }
-  }
-
+  const filename = filenameFromArtifactKey(object.key, query.file_id);
+  const url = buildFileUrl(auth.userId, query.file_id, filename);
   const headers = new Headers({ Accept: "application/octet-stream" });
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
   const downloadResult = await settle(
     fetch(url, {
       headers,
@@ -165,7 +96,7 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   if (!downloadResult.ok) {
     return jsonResponse(
       502,
-      "Failed to download file from GitHub",
+      "Failed to download GitHub file artifact",
       "BAD_GATEWAY",
     );
   }
@@ -173,7 +104,7 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   if (!downloadResponse.ok) {
     return jsonResponse(
       502,
-      `Failed to download file from GitHub: ${downloadResponse.status}`,
+      `Failed to download GitHub file artifact: ${downloadResponse.status}`,
       "BAD_GATEWAY",
     );
   }
@@ -198,17 +129,11 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
     );
   }
 
-  const filename =
-    query.filename ??
-    filenameFromContentDisposition(
-      downloadResponse.headers.get("content-disposition"),
-    ) ??
-    filenameFromUrl(url);
   const responseContentType = downloadResponse.headers.get("content-type");
   if (responseContentType?.includes("text/html")) {
     return jsonResponse(
       502,
-      "GitHub returned an unexpected HTML response",
+      "GitHub file artifact returned an unexpected HTML response",
       "BAD_GATEWAY",
     );
   }

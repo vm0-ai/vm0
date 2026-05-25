@@ -141,6 +141,7 @@ type GitHubTriggerKind = "issue" | "pull_request";
 
 interface GitHubFileReference {
   readonly url: string;
+  readonly id?: string;
   readonly filename?: string;
 }
 
@@ -372,6 +373,13 @@ function githubMarkdownFileLinkRegex(): RegExp {
   );
 }
 
+function githubHtmlImageTagRegex(): RegExp {
+  return new RegExp(
+    `<img\\b[^>]*\\bsrc\\s*=\\s*["'](${GITHUB_FILE_URL_SOURCE})["'][^>]*>`,
+    "giu",
+  );
+}
+
 function githubFileUrlRegex(): RegExp {
   return new RegExp(GITHUB_FILE_URL_SOURCE, "giu");
 }
@@ -402,25 +410,83 @@ function isUsefulFilenameCandidate(candidate: string): boolean {
   );
 }
 
+function htmlAttributeValue(
+  tag: string,
+  attribute: string,
+): string | undefined {
+  const match = tag.match(
+    new RegExp(
+      `\\b${escapeRegExp(attribute)}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`,
+      "iu",
+    ),
+  );
+  return match?.[1] ?? match?.[2];
+}
+
+function pushGithubFileReferenceMatch(
+  matches: GitHubFileReferenceMatch[],
+  args: {
+    readonly start: number;
+    readonly end: number;
+    readonly url: string;
+    readonly filenameCandidate?: string;
+  },
+): void {
+  const normalizedUrl = normalizeGithubFileUrl(args.url);
+  const filename =
+    args.filenameCandidate && isUsefulFilenameCandidate(args.filenameCandidate)
+      ? args.filenameCandidate.trim()
+      : filenameFromGithubUrl(normalizedUrl);
+  matches.push({
+    start: args.start,
+    end: args.end,
+    url: normalizedUrl,
+    ...(filename ? { filename } : {}),
+  });
+}
+
+function overlapsGithubFileReferenceMatch(
+  matches: readonly GitHubFileReferenceMatch[],
+  start: number,
+): boolean {
+  return matches.some((candidate) => {
+    return start >= candidate.start && start < candidate.end;
+  });
+}
+
 function findGithubFileReferenceMatches(
   body: string,
 ): readonly GitHubFileReferenceMatch[] {
   const matches: GitHubFileReferenceMatch[] = [];
+  for (const match of body.matchAll(githubHtmlImageTagRegex())) {
+    const matchedText = match[0];
+    const url = match[1];
+    if (match.index !== undefined && matchedText && url) {
+      const filenameCandidate = htmlAttributeValue(matchedText, "alt");
+      pushGithubFileReferenceMatch(matches, {
+        start: match.index,
+        end: match.index + matchedText.length,
+        url,
+        ...(filenameCandidate ? { filenameCandidate } : {}),
+      });
+    }
+  }
+
   for (const match of body.matchAll(githubMarkdownFileLinkRegex())) {
     const matchedText = match[0];
     const filenameCandidate = match[1];
     const url = match[2];
-    if (match.index !== undefined && matchedText && url) {
-      const normalizedUrl = normalizeGithubFileUrl(url);
-      const filename =
-        filenameCandidate && isUsefulFilenameCandidate(filenameCandidate)
-          ? filenameCandidate.trim()
-          : filenameFromGithubUrl(normalizedUrl);
-      matches.push({
+    if (
+      match.index !== undefined &&
+      matchedText &&
+      url &&
+      !overlapsGithubFileReferenceMatch(matches, match.index)
+    ) {
+      pushGithubFileReferenceMatch(matches, {
         start: match.index,
         end: match.index + matchedText.length,
-        url: normalizedUrl,
-        ...(filename ? { filename } : {}),
+        url,
+        ...(filenameCandidate ? { filenameCandidate } : {}),
       });
     }
   }
@@ -431,10 +497,7 @@ function findGithubFileReferenceMatches(
     if (matchIndex === undefined || !matchedText) {
       continue;
     }
-    const overlapsMarkdown = matches.some((candidate) => {
-      return matchIndex >= candidate.start && matchIndex < candidate.end;
-    });
-    if (overlapsMarkdown) {
+    if (overlapsGithubFileReferenceMatch(matches, matchIndex)) {
       continue;
     }
 
@@ -456,7 +519,7 @@ function findGithubFileReferenceMatches(
 function formatGithubFileReference(file: GitHubFileReference): string {
   return [
     "[GitHub file]",
-    `[URL] ${file.url}`,
+    file.id ? `[ID] ${file.id}` : "[ERROR] File could not be uploaded",
     file.filename ? `[FILENAME] ${file.filename}` : null,
   ]
     .filter((line): line is string => {
@@ -574,6 +637,7 @@ async function downloadAndMirrorGithubFile(
   context.signal.throwIfAborted();
 
   return {
+    id: uploadId,
     url: buildFileUrl(context.userId, uploadId, filename),
     filename,
   };

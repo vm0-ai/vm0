@@ -165,16 +165,17 @@ describe("GitHub zero file integration routes", () => {
     };
   }
 
-  it("streams a GitHub attachment through the active installation", async () => {
+  it("streams a mirrored GitHub context file by file id", async () => {
     const fixture = await seedFixture();
-    mockGitHubAppCredentials();
-    setupGitHubTokenMock(fixture.remoteInstallationId);
-    const fileUrl = "https://github.com/user-attachments/assets/abc123";
+    const fileId = randomUUID();
+    const s3Key = `artifacts/${fixture.userId}/${fileId}/screenshot.png`;
+    const fileUrl = `https://cdn.vm7.io/artifacts/${fixture.userId}/${fileId}/screenshot.png`;
+    mocks.s3.listObjects([
+      { bucket: "test-user-artifacts", key: s3Key, size: 9 },
+    ]);
     server.use(
       http.get(fileUrl, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer ghs_test_token",
-        );
+        expect(request.headers.get("authorization")).toBeNull();
         expect(request.headers.get("accept")).toBe("application/octet-stream");
         return new HttpResponse("png-bytes", {
           status: 200,
@@ -188,7 +189,7 @@ describe("GitHub zero file integration routes", () => {
 
     const app = createApp({ signal: context.signal });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?url=${encodeURIComponent(fileUrl)}&filename=screenshot.png`,
+      `/api/zero/integrations/github/download-file?file_id=${fileId}&filename=screenshot.png`,
       {
         method: "GET",
         headers: {
@@ -208,9 +209,14 @@ describe("GitHub zero file integration routes", () => {
     await expect(response.text()).resolves.toBe("png-bytes");
   });
 
-  it("streams a mirrored VM0 artifact without GitHub authorization", async () => {
+  it("uses the stored artifact filename when no filename hint is provided", async () => {
     const fixture = await seedFixture();
-    const fileUrl = `https://cdn.vm7.io/artifacts/${fixture.userId}/upload-1/github-file.png`;
+    const fileId = randomUUID();
+    const s3Key = `artifacts/${fixture.userId}/${fileId}/github-file.png`;
+    const fileUrl = `https://cdn.vm7.io/artifacts/${fixture.userId}/${fileId}/github-file.png`;
+    mocks.s3.listObjects([
+      { bucket: "test-user-artifacts", key: s3Key, size: 14 },
+    ]);
     server.use(
       http.get(fileUrl, ({ request }) => {
         expect(request.headers.get("authorization")).toBeNull();
@@ -227,7 +233,7 @@ describe("GitHub zero file integration routes", () => {
 
     const app = createApp({ signal: context.signal });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?url=${encodeURIComponent(fileUrl)}&filename=github-file.png`,
+      `/api/zero/integrations/github/download-file?file_id=${fileId}`,
       {
         method: "GET",
         headers: {
@@ -246,30 +252,13 @@ describe("GitHub zero file integration routes", () => {
     await expect(response.text()).resolves.toBe("artifact-bytes");
   });
 
-  it("streams GitHub uploaded file links through the active installation", async () => {
+  it("returns 404 when a GitHub context file id has no artifact", async () => {
     const fixture = await seedFixture();
-    mockGitHubAppCredentials();
-    setupGitHubTokenMock(fixture.remoteInstallationId);
-    const fileUrl =
-      "https://github.com/user-attachments/files/123456/report.pdf";
-    server.use(
-      http.get(fileUrl, ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer ghs_test_token",
-        );
-        return new HttpResponse("pdf-bytes", {
-          status: 200,
-          headers: {
-            "content-type": "application/pdf",
-            "content-length": "9",
-          },
-        });
-      }),
-    );
+    mocks.s3.listObjects([]);
 
     const app = createApp({ signal: context.signal });
     const response = await app.request(
-      `/api/zero/integrations/github/download-file?url=${encodeURIComponent(fileUrl)}`,
+      `/api/zero/integrations/github/download-file?file_id=${randomUUID()}`,
       {
         method: "GET",
         headers: {
@@ -282,18 +271,18 @@ describe("GitHub zero file integration routes", () => {
       },
     );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("application/pdf");
-    expect(response.headers.get("x-file-name")).toBe("report.pdf");
-    await expect(response.text()).resolves.toBe("pdf-bytes");
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "NOT_FOUND" },
+    });
   });
 
-  it("requires github read capability for attachment downloads", async () => {
+  it("requires github read capability for context file downloads", async () => {
     const fixture = await seedFixture();
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(
-      "/api/zero/integrations/github/download-file?url=https%3A%2F%2Fgithub.com%2Fuser-attachments%2Fassets%2Fabc123",
+      `/api/zero/integrations/github/download-file?file_id=${randomUUID()}`,
       {
         method: "GET",
         headers: {

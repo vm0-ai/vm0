@@ -39,12 +39,12 @@ describe("zero github download-file command", () => {
   it("streams file bytes to the provided output path and prints JSON result", async () => {
     const payload = Buffer.from("hello github");
     const outPath = join(tmpDir, "screenshot.png");
-    const fileUrl = "https://github.com/user-attachments/assets/abc123";
+    const fileId = "8a6e1f02-0a08-4cf0-b3ac-f2892ed6f0ba";
 
     server.use(
       http.get(DOWNLOAD_URL, ({ request }) => {
         const url = new URL(request.url);
-        expect(url.searchParams.get("url")).toBe(fileUrl);
+        expect(url.searchParams.get("file_id")).toBe(fileId);
         expect(url.searchParams.get("filename")).toBe("screenshot.png");
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         return new HttpResponse(payload, {
@@ -61,7 +61,7 @@ describe("zero github download-file command", () => {
     await downloadFileCommand.parseAsync([
       "node",
       "cli",
-      fileUrl,
+      fileId,
       "--filename",
       "screenshot.png",
       "-o",
@@ -99,7 +99,7 @@ describe("zero github download-file command", () => {
       await downloadFileCommand.parseAsync([
         "node",
         "cli",
-        "https://github.com/user-attachments/assets/missing",
+        "8a6e1f02-0a08-4cf0-b3ac-f2892ed6f0ba",
         "-o",
         join(tmpDir, "missing.bin"),
       ]);

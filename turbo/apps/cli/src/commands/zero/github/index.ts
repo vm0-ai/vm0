@@ -14,6 +14,6 @@ export const zeroGithubCommand = new Command()
     `
 Examples:
   Upload a file:    zero github upload-file -f /tmp/report.pdf -r vm0-ai/vm0 -i 42
-  Download a file:  zero github download-file https://github.com/user-attachments/assets/abc123 -o /tmp/out.png
+  Download a file:  zero github download-file 8a6e1f02-0a08-4cf0-b3ac-f2892ed6f0ba -o /tmp/out.png
   List labels:      zero github label-listener list`,
   );

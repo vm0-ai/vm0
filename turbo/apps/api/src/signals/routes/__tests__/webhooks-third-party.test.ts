@@ -1221,10 +1221,13 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.appendSystemPrompt).toContain("[GitHub file]");
-    expect(runs[0]?.appendSystemPrompt).toContain(
-      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    expect(runs[0]?.appendSystemPrompt).toMatch(
+      /\[ID\] [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/u,
     );
     expect(runs[0]?.appendSystemPrompt).toContain("[FILENAME] screenshot.png");
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    );
     expect(runs[0]?.appendSystemPrompt).not.toContain(fileUrl);
     expect(runs[0]?.appendSystemPrompt).not.toContain(
       `![screenshot.png](${fileUrl})`,
@@ -1703,7 +1706,7 @@ describe("POST /api/webhooks/github", () => {
     const response = await postGitHubWebhook({
       event: "issue_comment",
       payload: buildGitHubIssueCommentPayload(fixture, {
-        commentBody: `@${GITHUB_APP_SLUG}[bot] please inspect\n\n![Image](${fileUrl})`,
+        commentBody: `@${GITHUB_APP_SLUG}[bot] please inspect\n\n<img width="480" height="480" alt="Image" src="${fileUrl}">`,
       }),
     });
     await clearAllDetached();
@@ -1713,11 +1716,16 @@ describe("POST /api/webhooks/github", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toContain("please inspect");
     expect(runs[0]?.prompt).toContain("[GitHub file]");
-    expect(runs[0]?.prompt).toContain(
-      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    expect(runs[0]?.prompt).toMatch(
+      /\[ID\] [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/u,
     );
     expect(runs[0]?.prompt).toContain("[FILENAME] github-file.png");
+    expect(runs[0]?.prompt).not.toContain(
+      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    );
     expect(runs[0]?.prompt).not.toContain(fileUrl);
+    expect(runs[0]?.prompt).not.toContain("<img");
+    expect(runs[0]?.prompt).not.toContain("src=");
     expect(runs[0]?.prompt).not.toContain(
       "[FILENAME] 4a354666-2014-433a-82c3-dc6941d6f0ec",
     );
