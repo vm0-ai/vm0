@@ -2379,6 +2379,7 @@ class TestResponseUsageReporting:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
 
         events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
