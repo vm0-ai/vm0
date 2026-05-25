@@ -539,10 +539,11 @@ class TestRequestHandler:
         auth_fetch.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("request_port", "expected_original_url"),
+        ("request_port", "raw_sni", "expected_sni", "expected_original_url"),
         [
-            (443, "https://203.0.113.10/repos"),
-            (8443, "https://203.0.113.10:8443/repos"),
+            (443, "...", "...", "https://203.0.113.10/repos"),
+            (8443, "...", "...", "https://203.0.113.10:8443/repos"),
+            (443, "\ud800", "\ud800", "https://203.0.113.10/repos"),
         ],
     )
     async def test_rejects_invalid_https_sni_before_firewall_auth(
@@ -553,6 +554,8 @@ class TestRequestHandler:
         fake_firewall_headers,
         headers,
         request_port,
+        raw_sni,
+        expected_sni,
         expected_original_url,
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
@@ -561,7 +564,7 @@ class TestRequestHandler:
             client_ip="10.200.0.5",
             host="203.0.113.10",
             port=request_port,
-            sni="...",
+            sni=raw_sni,
             path="/repos",
             request_headers=headers(("Host", "api.github.com")),
         )
@@ -576,7 +579,7 @@ class TestRequestHandler:
         assert flow.response.status_code == 403
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_sni"
-        assert body["sni"] == "..."
+        assert body["sni"] == expected_sni
         assert body["request_host"] == "203.0.113.10"
         assert body["host_header"] == "api.github.com"
         assert body["request_port"] == request_port
@@ -586,7 +589,7 @@ class TestRequestHandler:
         proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
         assert proxy_log_entry["type"] == "authority_validation"
         assert proxy_log_entry["reason"] == "invalid_sni"
-        assert proxy_log_entry["sni"] == "..."
+        assert proxy_log_entry["sni"] == expected_sni
         assert proxy_log_entry["request_host"] == "203.0.113.10"
         assert proxy_log_entry["host_header"] == "api.github.com"
         assert proxy_log_entry["request_port"] == request_port
