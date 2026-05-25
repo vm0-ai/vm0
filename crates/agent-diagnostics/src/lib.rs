@@ -113,6 +113,7 @@ impl FailureClass {
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
     InsufficientCredits,
+    InvalidApiKey,
     UsageLimit,
 }
 
@@ -121,6 +122,7 @@ impl FailureReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::InsufficientCredits => "insufficient_credits",
+            Self::InvalidApiKey => "invalid_api_key",
             Self::UsageLimit => "usage_limit",
         }
     }
@@ -316,6 +318,23 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "usage_limit");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_invalid_api_key_reason() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::InvalidApiKey);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "invalid_api_key");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

@@ -380,11 +380,18 @@ fn log_job_execution_failed(
 }
 
 fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
-    diagnostic.failure_class == FailureClass::CliNonzero
-        && matches!(
+    match diagnostic.failure_class {
+        FailureClass::CliNonzero => matches!(
             diagnostic.failure_reason,
-            Some(FailureReason::InsufficientCredits | FailureReason::UsageLimit)
-        )
+            Some(
+                FailureReason::InsufficientCredits
+                    | FailureReason::InvalidApiKey
+                    | FailureReason::UsageLimit
+            )
+        ),
+        FailureClass::ClaudeZeroTurnNoHistory => true,
+        _ => false,
+    }
 }
 
 pub(super) async fn cleanup_panicked_job(
@@ -566,9 +573,10 @@ mod tests {
     }
 
     #[test]
-    fn quota_failure_reasons_log_job_execution_failed_at_info() {
+    fn expected_cli_failure_reasons_log_job_execution_failed_at_info() {
         for reason in [
             FailureReason::InsufficientCredits,
+            FailureReason::InvalidApiKey,
             FailureReason::UsageLimit,
         ] {
             let diagnostic = job_failure_diagnostic(Some(reason));
@@ -592,28 +600,57 @@ mod tests {
     }
 
     #[test]
-    fn quota_reason_on_non_cli_failure_logs_job_execution_failed_at_error() {
+    fn claude_zero_turn_no_history_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
-            FailureClass::CheckpointFailed,
-            AgentFramework::Codex,
-            PromptMetadata::from_prompt("plain prompt"),
+            FailureClass::ClaudeZeroTurnNoHistory,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("/help"),
         )
-        .with_failure_reason(FailureReason::UsageLimit);
+        .with_cli_exit_code(0)
+        .with_claude_num_turns(Some(0))
+        .with_session_history_status(SessionHistoryStatus::Missing);
         let failure = executor::ExecutionFailure::new(
             1,
-            "checkpoint upload failed after usage limit event",
+            "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint",
             Some(diagnostic),
         );
 
         let event = capture_job_failure_log(&failure);
 
-        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(event.level, Level::INFO);
         assert_eq!(
             event.fields.get("message").map(String::as_str),
             Some("job execution failed")
         );
-        assert_field_eq(&event, "failure_reason", "usage_limit");
-        assert_field_eq(&event, "failure_class", "checkpoint_failed");
+        assert_field_eq(&event, "failure_class", "claude_zero_turn_no_history");
+        assert_field_eq(&event, "session_history_status", "missing");
+    }
+
+    #[test]
+    fn info_level_reason_on_non_cli_failure_logs_job_execution_failed_at_error() {
+        for reason in [FailureReason::InvalidApiKey, FailureReason::UsageLimit] {
+            let diagnostic = FailureDiagnostic::new(
+                FailureClass::CheckpointFailed,
+                AgentFramework::Codex,
+                PromptMetadata::from_prompt("plain prompt"),
+            )
+            .with_failure_reason(reason);
+            let failure = executor::ExecutionFailure::new(
+                1,
+                format!("checkpoint upload failed after {} event", reason.as_str()),
+                Some(diagnostic),
+            );
+
+            let event = capture_job_failure_log(&failure);
+
+            assert_eq!(event.level, Level::ERROR);
+            assert_eq!(
+                event.fields.get("message").map(String::as_str),
+                Some("job execution failed")
+            );
+            assert_field_eq(&event, "failure_reason", reason.as_str());
+            assert_field_eq(&event, "failure_class", "checkpoint_failed");
+        }
     }
 
     #[test]

@@ -34,7 +34,7 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
-use agent_diagnostics::FailureDetailSource;
+use agent_diagnostics::{FailureDetailSource, FailureReason};
 use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
@@ -61,6 +61,7 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
 pub struct CliFailureDiagnostic {
     pub message: String,
     pub source: FailureDetailSource,
+    pub failure_reason: Option<FailureReason>,
 }
 
 /// Result returned after the configured CLI process exits.
@@ -294,6 +295,7 @@ pub async fn execute_cli(
                                     let candidate = CliFailureDiagnostic {
                                         message: diagnostic.message,
                                         source: FailureDetailSource::ClaudeResult,
+                                        failure_reason: None,
                                     };
                                     log_warn!(
                                         LOG_TAG,
@@ -329,6 +331,7 @@ pub async fn execute_cli(
                                 let candidate = CliFailureDiagnostic {
                                     message: diagnostic.message,
                                     source: FailureDetailSource::CodexJsonl,
+                                    failure_reason: diagnostic.failure_reason,
                                 };
                                 log_warn!(
                                     LOG_TAG,
@@ -660,17 +663,22 @@ fn should_replace_failure_diagnostic(
     match existing {
         None => true,
         Some(existing) => {
-            !events::is_generic_codex_failure_diagnostic(&candidate.message)
+            has_specific_failure_diagnostic(candidate)
                 || (existing.source == FailureDetailSource::CodexJsonl
-                    && events::is_generic_codex_failure_diagnostic(&existing.message))
+                    && !has_specific_failure_diagnostic(existing))
         }
     }
+}
+
+fn has_specific_failure_diagnostic(diagnostic: &CliFailureDiagnostic) -> bool {
+    diagnostic.failure_reason.is_some()
+        || !events::is_generic_codex_failure_diagnostic(&diagnostic.message)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CliFailureDiagnostic, should_replace_failure_diagnostic};
-    use agent_diagnostics::FailureDetailSource;
+    use agent_diagnostics::{FailureDetailSource, FailureReason};
 
     #[test]
     fn specific_codex_failure_diagnostic_survives_later_generic_event() {
@@ -678,10 +686,12 @@ mod tests {
             Some(&CliFailureDiagnostic {
                 message: "You've hit your usage limit.".to_string(),
                 source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
             }),
             &CliFailureDiagnostic {
                 message: "turn failed".to_string(),
                 source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
             },
         ));
     }
@@ -692,10 +702,28 @@ mod tests {
             Some(&CliFailureDiagnostic {
                 message: "error".to_string(),
                 source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
             }),
             &CliFailureDiagnostic {
                 message: "You've hit your usage limit.".to_string(),
                 source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn codex_failure_reason_replaces_generic_diagnostic() {
+        assert!(should_replace_failure_diagnostic(
+            Some(&CliFailureDiagnostic {
+                message: "error".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: None,
+            }),
+            &CliFailureDiagnostic {
+                message: "turn failed".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: Some(FailureReason::InvalidApiKey),
             },
         ));
     }
