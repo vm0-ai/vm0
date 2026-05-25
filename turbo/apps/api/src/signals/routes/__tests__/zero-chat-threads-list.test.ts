@@ -1014,9 +1014,11 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
         return t.id;
       }),
     ).toStrictEqual([scopedFixture.threadId]);
-    expect(allListedThreads(response.body).map((t) => t.id)).not.toContain(
-      otherUnpinnedFixture.threadId,
-    );
+    expect(
+      allListedThreads(response.body).map((t) => {
+        return t.id;
+      }),
+    ).not.toContain(otherUnpinnedFixture.threadId);
     expect(response.body.totalCount).toBe(1);
   });
 
