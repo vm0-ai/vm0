@@ -732,8 +732,8 @@ function OAuthDeviceAuthCodePanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Open the provider's verification page, then enter this verification code
-        to approve access.
+        Open the provider&apos;s verification page, then enter this verification
+        code to approve access.
       </p>
       <div className="rounded-lg border border-border bg-muted/30 p-3">
         <div className="flex items-start justify-between gap-3">
@@ -836,7 +836,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Connect to get a verification code, then use it on the provider's
+        Connect to get a verification code, then use it on the provider&apos;s
         verification page to approve access.
       </p>
       <Button
