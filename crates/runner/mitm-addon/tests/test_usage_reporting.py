@@ -694,6 +694,42 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_not_called()
         assert "model_provider_usage" not in flow.metadata
 
+    def test_non_billable_json_fallback_parse_error_stays_quiet(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """Non-billable model-provider fallback must not emit usage warnings."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = False
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-type": "application/json"}),
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert "model_provider_usage" not in flow.metadata
+        assert not proxy_log_path.exists()
+
     def test_full_pipeline_model_sse_finalizes_trailing_event(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
