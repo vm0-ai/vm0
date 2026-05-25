@@ -934,6 +934,71 @@ export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   keyof ConnectorAuthMethodsOf<Type>,
   string
 >;
+type ConnectorAuthMethodKeys<Type extends ConnectorType> =
+  ConnectorAuthMethodIds<Type> & ConnectorAuthMethodType;
+
+type ConnectorAuthMethodGrantKindById = {
+  readonly oauth: "auth-code" | "device-auth";
+  readonly "api-token": "manual";
+  readonly api: "managed";
+  readonly "cli-auth": "interactive-pairing";
+};
+
+type ConnectorAuthMethodAccessKindById = {
+  readonly oauth: "refresh-token" | "static";
+  readonly "api-token": "static";
+  readonly api: "managed" | "none";
+  readonly "cli-auth": "none";
+};
+
+type ConnectorAuthMethodRevokeKindById = {
+  readonly oauth: "none" | "token-revoke";
+  readonly "api-token": "none";
+  readonly api: "none";
+  readonly "cli-auth": "none";
+};
+
+type InvalidAuthMethodGrantKindConnectorType = {
+  [Type in ConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly grant: {
+        readonly kind: ConnectorAuthMethodGrantKindById[Method];
+      };
+    }
+      ? never
+      : Type;
+  }[ConnectorAuthMethodKeys<Type>];
+}[ConnectorType];
+export type ConnectorAuthMethodGrantKindsMatchKeys =
+  AssertNever<InvalidAuthMethodGrantKindConnectorType>;
+
+type InvalidAuthMethodAccessKindConnectorType = {
+  [Type in ConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly access: {
+        readonly kind: ConnectorAuthMethodAccessKindById[Method];
+      };
+    }
+      ? never
+      : Type;
+  }[ConnectorAuthMethodKeys<Type>];
+}[ConnectorType];
+export type ConnectorAuthMethodAccessKindsMatchKeys =
+  AssertNever<InvalidAuthMethodAccessKindConnectorType>;
+
+type InvalidAuthMethodRevokeKindConnectorType = {
+  [Type in ConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly revoke: {
+        readonly kind: ConnectorAuthMethodRevokeKindById[Method];
+      };
+    }
+      ? never
+      : Type;
+  }[ConnectorAuthMethodKeys<Type>];
+}[ConnectorType];
+export type ConnectorAuthMethodRevokeKindsMatchKeys =
+  AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {

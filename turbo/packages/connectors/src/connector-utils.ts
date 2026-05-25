@@ -395,8 +395,9 @@ export function getConnectorOAuthEnvKeys(
  * Return connector types the current runtime can offer as connection candidates.
  *
  * This is not user connected state and it does not evaluate feature switches.
- * It includes API-token default connectors because they do not require server
- * credentials, while OAuth connectors require their runtime OAuth env to exist.
+ * It includes connectors with user-entered manual grant methods because they
+ * do not require server credentials, while OAuth connectors require their
+ * runtime OAuth env to exist unless their client config is static inline.
  */
 export function getRuntimeAvailableConnectorTypes(
   readEnv: ConnectorEnvReader,

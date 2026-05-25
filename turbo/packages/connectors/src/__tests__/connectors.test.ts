@@ -1051,7 +1051,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     return undefined;
   };
 
-  it("includes api-token default connectors without environment credentials or feature switches", () => {
+  it("includes manual-grant connectors without environment credentials or feature switches", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(runtimeAvailableTypes).toContain("amplitude");
