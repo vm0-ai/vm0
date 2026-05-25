@@ -18,7 +18,6 @@ import {
   type BuiltInGenerationUsageIdempotency,
 } from "./built-in-generation-usage-idempotency";
 
-const FAL_IMAGE_RUN_URL_PREFIX = "https://fal.run";
 const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
 export const IMAGE_IO_MODEL = "gpt-image-1";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
@@ -338,7 +337,7 @@ export interface ImageOptions {
   readonly imagePromptStrength: number | undefined;
 }
 
-export interface ParsedImageGeneration {
+interface ParsedImageGeneration {
   readonly model: ImageModel;
   readonly provider: ImageProvider;
   readonly imageBytes: Buffer;
@@ -445,10 +444,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isErrorResponse(value: unknown): value is ErrorResponse {
-  return isRecord(value) && "status" in value && "body" in value;
-}
-
 function readString(
   body: Record<string, unknown>,
   key: string,
@@ -535,7 +530,7 @@ function hasString(values: readonly string[], value: string): boolean {
   return values.includes(value);
 }
 
-export function normalizeImageModel(value: string): ImageModel | null {
+function normalizeImageModel(value: string): ImageModel | null {
   if (value in IMAGE_MODEL_CONFIGS) {
     return value as ImageModel;
   }
@@ -545,12 +540,8 @@ export function normalizeImageModel(value: string): ImageModel | null {
   return null;
 }
 
-export function imageModelList(): string {
+function imageModelList(): string {
   return Object.keys(IMAGE_MODEL_ALIASES).join(", ");
-}
-
-export function imageModelConfig(model: ImageModel): ImageModelConfig {
-  return IMAGE_MODEL_CONFIGS[model];
 }
 
 export function imagePricingKey(
@@ -1345,33 +1336,6 @@ async function readFalErrorBody(
   return body.slice(0, 4000);
 }
 
-async function submitFalImageGeneration(
-  options: ImageOptions,
-  falKey: string,
-  signal: AbortSignal,
-): Promise<unknown | ErrorResponse> {
-  const endpointId = falImageEndpointId(options);
-  const response = await fetch(`${FAL_IMAGE_RUN_URL_PREFIX}/${endpointId}`, {
-    method: "POST",
-    headers: falHeaders(falKey),
-    body: JSON.stringify(falImageInput(options)),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errorBody = await readFalErrorBody(response, signal);
-    L.error("Fal image request failed", {
-      endpointId,
-      model: options.model,
-      status: response.status,
-      body: errorBody,
-    });
-    return badGateway("Image generation failed", "FAL_IMAGE_REQUEST_FAILED");
-  }
-
-  return await response.json();
-}
-
 export async function submitFalImageQueueGeneration(
   options: ImageOptions,
   falKey: string,
@@ -1553,38 +1517,6 @@ export async function downloadFalImage(
     inputFidelity: options.inputFidelity,
     imagePromptStrength: options.imagePromptStrength,
   };
-}
-
-async function generateFalImage(
-  options: ImageOptions,
-  signal: AbortSignal,
-): Promise<ParsedImageGeneration | ErrorResponse> {
-  const falKey = env("FAL_KEY");
-  if (!falKey) {
-    return serviceUnavailable(
-      "Fal image generation is not configured",
-      "NOT_CONFIGURED",
-    );
-  }
-
-  const responseBody = await submitFalImageGeneration(options, falKey, signal);
-  signal.throwIfAborted();
-  if (isErrorResponse(responseBody)) {
-    return responseBody;
-  }
-
-  const falResult = parseFalImageResult(responseBody);
-  if ("status" in falResult) {
-    return falResult;
-  }
-  return await downloadFalImage(falResult, options, signal);
-}
-
-export function generateImageWithProvider(
-  options: ImageOptions,
-  signal: AbortSignal,
-): Promise<ParsedImageGeneration | ErrorResponse> {
-  return generateFalImage(options, signal);
 }
 
 export const recordGeneratedImage$ = command(
