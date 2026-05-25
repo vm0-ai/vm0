@@ -567,7 +567,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
             "body_truncated": bool(resp_meta.get("body_truncated")),
         }
         parse_error = resp_meta.get("parse_error")
-        if isinstance(parse_error, str) and parse_error:
+        if isinstance(parse_error, str) and (parse_error := parse_error.strip()):
             log_extra["parse_error"] = parse_error
         log_proxy_entry(
             proxy_log_path,
