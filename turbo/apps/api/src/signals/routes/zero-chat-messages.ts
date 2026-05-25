@@ -11,6 +11,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -213,6 +214,7 @@ const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 const ORG_SENTINEL_USER_ID = "__org__";
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const INSUFFICIENT_CREDITS_USER_MESSAGE_MARKER = "insufficient_credits";
 
 function forbidden(message: string) {
   return {
@@ -1791,6 +1793,97 @@ async function resolveProviderAdmission(params: {
   return { effectiveModelProvider, error };
 }
 
+async function buildInsufficientCreditsAssistantMessage(params: {
+  readonly db: Db;
+  readonly orgId: string;
+}): Promise<string> {
+  const [org] = await params.db
+    .select({ tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, params.orgId))
+    .limit(1);
+  const appUrl = env("APP_URL").replace(/\/$/, "");
+  const usageUrl = `${appUrl}/?settings=usage`;
+  const billingUrl = `${appUrl}/?settings=billing`;
+  if (org?.tier === "free" || !org) {
+    return [
+      "Insufficient credits. This workspace has no spendable credits right now.",
+      "",
+      `Upgrade to Pro to get more credits: ${billingUrl}`,
+    ].join("\n");
+  }
+  return [
+    "Insufficient credits. This workspace has no spendable credits right now.",
+    "",
+    `Buy more credits or adjust auto-recharge: ${usageUrl}`,
+  ].join("\n");
+}
+
+async function appendInsufficientCreditsMessages(params: {
+  readonly prepared: PreparedNormalSend;
+  readonly body: NormalSendBody;
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<CreatedChatMessageResponse> {
+  const assistantContent = await buildInsufficientCreditsAssistantMessage({
+    db: params.prepared.db,
+    orgId: params.orgId,
+  });
+  const result = await params.prepared.db.transaction(async (tx) => {
+    await tx
+      .update(chatThreads)
+      .set({ draftContent: null, draftAttachments: null })
+      .where(
+        and(
+          eq(chatThreads.id, params.prepared.thread.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      );
+
+    const explicitId = params.body.clientMessageId ?? undefined;
+    const attachFileIds = params.body.attachFiles?.map((file) => {
+      return file.id;
+    });
+    const [userMessage] = await tx
+      .insert(chatMessages)
+      .values({
+        ...(explicitId ? { id: explicitId } : {}),
+        chatThreadId: params.prepared.thread.threadId,
+        role: "user",
+        content: params.body.prompt,
+        runId: null,
+        error: INSUFFICIENT_CREDITS_USER_MESSAGE_MARKER,
+        attachFiles:
+          attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+      })
+      .onConflictDoNothing({ target: chatMessages.id })
+      .returning({ createdAt: chatMessages.createdAt });
+
+    const createdAt = userMessage?.createdAt ?? nowDate();
+    await tx.insert(chatMessages).values({
+      chatThreadId: params.prepared.thread.threadId,
+      role: "assistant",
+      content: assistantContent,
+      runId: null,
+    });
+    return { createdAt };
+  });
+
+  await publishChatMessageCreated(
+    params.userId,
+    params.prepared.thread.threadId,
+  );
+
+  return {
+    status: 201,
+    body: {
+      runId: null,
+      threadId: params.prepared.thread.threadId,
+      createdAt: result.createdAt.toISOString(),
+    },
+  };
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -1828,7 +1921,12 @@ const createNormalChatRun$ = command(
     });
     signal.throwIfAborted();
     if (providerAdmission.error) {
-      return providerAdmission.error;
+      return await appendInsufficientCreditsMessages({
+        prepared,
+        body: args.body,
+        userId: args.userId,
+        orgId: args.orgId,
+      });
     }
 
     const runResult = await set(

@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
@@ -61,19 +62,22 @@ function mockEmptyMessages(threadId: string) {
 function mockThreadList(threads: { id: string; title: string }[]) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        threads: threads.map((t) => {
-          return {
-            id: t.id,
-            title: t.title,
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
-            running: false,
-          };
-        }),
-      });
+      return respond(
+        200,
+        splitChatThreadListResponse(
+          threads.map((t) => {
+            return {
+              id: t.id,
+              title: t.title,
+              agent: { id: AGENT_ID, avatarUrl: null },
+              createdAt: "2026-03-10T00:00:00Z",
+              updatedAt: "2026-03-10T00:00:00Z",
+              isRead: true,
+              running: false,
+            };
+          }),
+        ),
+      );
     }),
   );
 }
@@ -179,8 +183,9 @@ describe("chat page keyboard shortcuts", () => {
     ]);
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, {
-          threads: [
+        return respond(
+          200,
+          splitChatThreadListResponse([
             {
               id: "thread-agent-obj",
               title: "With agent object",
@@ -190,8 +195,8 @@ describe("chat page keyboard shortcuts", () => {
               isRead: true,
               running: false,
             },
-          ],
-        });
+          ]),
+        );
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {
         return respond(200, {

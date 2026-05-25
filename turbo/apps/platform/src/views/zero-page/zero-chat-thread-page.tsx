@@ -188,7 +188,6 @@ const CHAT_SHORTCUT_SECTIONS = [
     shortcuts: [
       { key: "enter", label: "Send message" },
       { key: "escape", label: "Blur composer" },
-      { key: "mod+alt+.", label: "Switch model" },
     ],
   },
 ] as const;

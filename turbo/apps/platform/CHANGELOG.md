@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.381.0](https://github.com/vm0-ai/vm0/compare/app-v0.380.1...app-v0.381.0) (2026-05-25)
+
+
+### Features
+
+* **platform:** cap sidebar at 25 with cursor-paginated All Threads page ([#14686](https://github.com/vm0-ai/vm0/issues/14686)) ([6a88691](https://github.com/vm0-ai/vm0/commit/6a88691078dba8a04696c55bb6c0701e8a6be151))
+
+
+### Bug Fixes
+
+* add credit recharge guidance ([#14687](https://github.com/vm0-ai/vm0/issues/14687)) ([d02621e](https://github.com/vm0-ai/vm0/commit/d02621e0b1bc47605cd5c9611ec2979e1f57610a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.0
+    * @vm0/core bumped to 8.292.4
+
 ## [0.380.1](https://github.com/vm0-ai/vm0/compare/app-v0.380.0...app-v0.380.1) (2026-05-24)
 
 

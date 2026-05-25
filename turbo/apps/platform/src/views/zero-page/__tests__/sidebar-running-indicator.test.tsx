@@ -25,6 +25,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { threadListChanged } from "../../../mocks/mock-helpers.ts";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -44,7 +45,7 @@ interface ThreadFixture {
 function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: threadsRef.current });
+      return respond(200, splitChatThreadListResponse(threadsRef.current));
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {

@@ -31,6 +31,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -67,7 +68,7 @@ describe("sidebar new-chat flicker", () => {
         if (holdNextListCalls) {
           await reloadDeferred.promise;
         }
-        return respond(200, { threads: listResponseThreads });
+        return respond(200, splitChatThreadListResponse(listResponseThreads));
       }),
       mockApi(chatThreadsContract.create, async ({ body, respond }) => {
         await createDeferred.promise;

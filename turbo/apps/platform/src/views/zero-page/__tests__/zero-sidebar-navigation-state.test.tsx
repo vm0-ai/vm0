@@ -10,6 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
@@ -105,7 +106,7 @@ function mockBaseAPIs(options?: {
   setMockTeam(agents);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
   );
 }
@@ -290,7 +291,13 @@ describe("zero sidebar - chat section stable during agent id reload (SIDEBAR-D-0
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
     );
 

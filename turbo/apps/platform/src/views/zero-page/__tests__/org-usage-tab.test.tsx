@@ -81,6 +81,32 @@ describe("org usage tab - credit balance display", () => {
     });
   });
 
+  it("shows upgrade guidance when a free workspace has no credits", async () => {
+    const user = userEvent.setup();
+    setMockBillingStatus({
+      tier: "free",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      creditBreakdown: [],
+      creditGrants: [],
+    });
+    setupMockAPIs([]);
+
+    await openUsageTab();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("free-empty-credit-prompt")).toHaveTextContent(
+        "Upgrade to Pro to get more credits",
+      );
+    });
+
+    await user.click(screen.getByText("Compare plans"));
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+  });
+
   it("should show credit addition records with expiry on hover", async () => {
     const user = userEvent.setup({
       pointerEventsCheck: PointerEventsCheckLevel.Never,

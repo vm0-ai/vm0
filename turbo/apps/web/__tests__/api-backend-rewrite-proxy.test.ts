@@ -1890,6 +1890,19 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero billing credit checkout rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/credit-checkout"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/credit-checkout/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/credit-checkout-session"),
+    ).toBe(false);
+  });
+
   it("matches the zero billing downgrade rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/billing/downgrade")).toBe(
       true,

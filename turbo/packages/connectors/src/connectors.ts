@@ -154,9 +154,11 @@ import { openweather } from "./connectors/openweather";
 import { outlookCalendar } from "./connectors/outlook-calendar";
 import { outlookMail } from "./connectors/outlook-mail";
 import { pandadoc } from "./connectors/pandadoc";
+import { parallel } from "./connectors/parallel";
 import { pdf4me } from "./connectors/pdf4me";
 import { pdfco } from "./connectors/pdfco";
 import { pdforge } from "./connectors/pdforge";
+import { peopleDataLabs } from "./connectors/people-data-labs";
 import { perplexity } from "./connectors/perplexity";
 import { pika } from "./connectors/pika";
 import { pinecone } from "./connectors/pinecone";
@@ -714,9 +716,11 @@ const CONNECTOR_TYPES_DEF = {
   ...outlookCalendar,
   ...outlookMail,
   ...pandadoc,
+  ...parallel,
   ...pdf4me,
   ...pdfco,
   ...pdforge,
+  ...peopleDataLabs,
   ...perplexity,
   ...pika,
   ...pinecone,

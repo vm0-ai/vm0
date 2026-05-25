@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.387.0](https://github.com/vm0-ai/vm0/compare/web-v12.386.1...web-v12.387.0) (2026-05-25)
+
+
+### Features
+
+* add GPT Image 2 to web models ([#14688](https://github.com/vm0-ai/vm0/issues/14688)) ([63d66e4](https://github.com/vm0-ai/vm0/commit/63d66e40fc41c6a90076a6c41835521a74d6c8db))
+
+
+### Bug Fixes
+
+* add credit recharge guidance ([#14687](https://github.com/vm0-ai/vm0/issues/14687)) ([d02621e](https://github.com/vm0-ai/vm0/commit/d02621e0b1bc47605cd5c9611ec2979e1f57610a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.0
+    * @vm0/core bumped to 8.292.4
+    * @vm0/db bumped to 1.18.8
+
 ## [12.386.1](https://github.com/vm0-ai/vm0/compare/web-v12.386.0...web-v12.386.1) (2026-05-24)
 
 

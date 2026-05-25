@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
@@ -63,8 +64,9 @@ function mockChatSidebarApis(): {
 
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        threads: [
+      return respond(
+        200,
+        splitChatThreadListResponse([
           ...createdThreadIds.map((id) => {
             const thread = createdThreads.get(id);
             return {
@@ -91,8 +93,8 @@ function mockChatSidebarApis(): {
               running: false,
             };
           }),
-        ],
-      });
+        ]),
+      );
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const id = String(params.id);

@@ -1,4 +1,4 @@
-import { useLoadable } from "ccstate-react";
+import { useLoadable, useSet } from "ccstate-react";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
@@ -15,6 +15,10 @@ import {
   billingStatusAsync$,
   apiTierToBillingTier,
 } from "../../../../signals/zero-page/billing.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -186,12 +190,39 @@ function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
     return s.credits > 0;
   });
   const total = billing.credits;
+  const showFreeEmptyPrompt = billing.tier === "free" && total <= 0;
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setBillingSubPage = useSet(setBillingSubPage$);
 
   return (
     <div className="px-5 py-4" data-testid="credit-balance-info">
       <p className="text-sm font-medium tabular-nums text-foreground">
         {total.toLocaleString()}
       </p>
+
+      {showFreeEmptyPrompt ? (
+        <div
+          className="mt-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-3"
+          data-testid="free-empty-credit-prompt"
+        >
+          <p className="text-sm font-medium text-foreground">
+            Upgrade to Pro to get more credits
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Pro includes monthly credits and unlocks additional credit options.
+          </p>
+          <button
+            type="button"
+            className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            onClick={() => {
+              setTab("billing");
+              setBillingSubPage(true);
+            }}
+          >
+            Compare plans
+          </button>
+        </div>
+      ) : null}
 
       {total > 0 && segments.length > 0 && (
         <div className="mt-3 flex flex-col gap-2">
