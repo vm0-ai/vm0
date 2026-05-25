@@ -380,16 +380,18 @@ function UseCasePromptComposer() {
 // config rather than being hardcoded here.
 // ---------------------------------------------------------------------------
 
-// Pro features below the hero credit card. Phrased as "what you get",
-// not feature names — these read top-to-bottom in a single column.
+// Pro features below the hero credit card. Phrased as "what your agent
+// can do", not feature names — these read top-to-bottom in a single column.
 const PRO_TRIAL_BENEFITS: readonly string[] = [
-  "Run 2 agents at the same time",
-  "Every Pro feature unlocked — nothing held back",
-  "Generate images, video and voice from a prompt",
-  "Trigger Zero from Slack and Telegram",
-  "Plug in your own OpenAI, Anthropic or Gemini keys",
-  "Connect 200+ apps and APIs",
-  "Schedule agents to run on their own",
+  "Unlock 100+ ready-made automations",
+  "All flagship models — Claude, GPT, Gemini and more",
+  "Run 2 tasks at the same time",
+  "Slack-native — agent in threads and @mentions",
+  "Telegram and iMessage agents",
+  "Persistent workspace context across chats",
+  "200+ integrations with real tool execution",
+  "Scheduled tasks that run on their own",
+  "Artifacts — files, code and assets the agent ships back",
 ];
 
 /** Step 4: what Pro unlocks + the 7-day trial framing. */
@@ -456,7 +458,7 @@ function TrialStepContent() {
       </div>
 
       <p className="text-sm font-semibold text-foreground mb-3">
-        Plus everything in Pro
+        Plus, everything your agent can do
       </p>
       <ul
         data-testid="onboarding-trial-benefits"
