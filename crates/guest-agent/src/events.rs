@@ -125,7 +125,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
                 message: raw_message_from_field(event.get("message"))
                     .or_else(|| codex_error_message(error))
                     .unwrap_or_else(|| "error".into()),
-                failure_reason: codex_error_failure_reason(error),
+                failure_reason: codex_event_failure_reason(event, error),
             })
         }
         "turn.failed" => {
@@ -133,7 +133,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: codex_error_message(error).unwrap_or_else(|| "turn failed".into()),
-                failure_reason: codex_error_failure_reason(error),
+                failure_reason: codex_event_failure_reason(event, error),
             })
         }
         "turn.completed" => {
@@ -142,7 +142,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
                 message: codex_error_message(error).unwrap_or_else(|| format!("turn {status}")),
-                failure_reason: codex_error_failure_reason(error),
+                failure_reason: codex_event_failure_reason(event, error),
             })
         }
         _ => None,
@@ -200,6 +200,10 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
         return Some(FailureReason::InvalidApiKey);
     }
     None
+}
+
+fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
+    codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
 }
 
 fn raw_message_from_field(value: Option<&Value>) -> Option<String> {
@@ -545,6 +549,24 @@ mod tests {
                 event_type: "error",
                 message: "server rejected request".to_string(),
                 failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_invalid_api_key_code_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "invalid_api_key",
+            "message": "Incorrect API key provided"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Incorrect API key provided".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
             })
         );
     }

@@ -449,6 +449,7 @@ fn cli_failure_message(
     stderr_lines: &[String],
     failure_diagnostic: Option<&cli::CliFailureDiagnostic>,
 ) -> CliFailureMessage {
+    let stdout_failure_reason = failure_diagnostic.and_then(|diagnostic| diagnostic.failure_reason);
     if let Some((message, source, failure_reason)) = failure_diagnostic.and_then(|diagnostic| {
         let message = diagnostic.message.trim();
         if message.is_empty() {
@@ -456,9 +457,7 @@ fn cli_failure_message(
         } else {
             Some((message, diagnostic.source, diagnostic.failure_reason))
         }
-    }) && (failure_reason.is_some()
-        || !is_generic_stdout_failure_diagnostic(message)
-        || stderr_lines.is_empty())
+    }) && (!is_generic_stdout_failure_diagnostic(message) || stderr_lines.is_empty())
     {
         return CliFailureMessage {
             message: message.to_string(),
@@ -500,7 +499,7 @@ fn cli_failure_message(
     CliFailureMessage {
         message: message_lines.join(" "),
         source: FailureDetailSource::Stderr,
-        failure_reason: None,
+        failure_reason: stdout_failure_reason,
     }
 }
 
@@ -908,8 +907,8 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_message_preserves_structured_reason_over_stderr_noise() {
-        let stderr_lines = vec!["background task noise".to_string()];
+    fn cli_failure_message_preserves_structured_reason_with_stderr_message() {
+        let stderr_lines = vec!["specific stderr failure".to_string()];
         let diagnostic = cli::CliFailureDiagnostic {
             message: "turn failed".to_string(),
             source: FailureDetailSource::CodexJsonl,
@@ -917,8 +916,8 @@ mod tests {
         };
         let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
 
-        assert_eq!(msg.source, FailureDetailSource::CodexJsonl);
-        assert_eq!(msg.message, "turn failed");
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
+        assert_eq!(msg.message, "specific stderr failure");
         assert_eq!(msg.failure_reason, Some(FailureReason::InvalidApiKey));
     }
 
