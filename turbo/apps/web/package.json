@@ -18,7 +18,6 @@
     "db:reset": "tsx scripts/reset-db.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1053.0",
     "@aws-sdk/client-s3": "^3.1053.0",
     "@aws-sdk/s3-request-presigner": "^3.1053.0",
     "@clerk/backend": "^3.4.13",

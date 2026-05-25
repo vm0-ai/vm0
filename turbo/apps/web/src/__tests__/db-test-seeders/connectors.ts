@@ -7,7 +7,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
-import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import { encryptTestSecretValue } from "../secret-encryption-fixtures";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ export async function insertTestConnectorSecret(
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   await globalThis.services.db.insert(secrets).values({
     name,
-    encryptedValue: encryptSecretValue(value, encryptionKey),
+    encryptedValue: encryptTestSecretValue(value, encryptionKey),
     type: "connector",
     userId,
     orgId,
@@ -89,11 +89,15 @@ export async function createTestOAuthConnectorRecord(options: {
     ? new Date(Date.now() + 60 * 60 * 1000)
     : null;
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptedAccessToken = encryptTestSecretValue(
+    options.accessToken,
+    encryptionKey,
+  );
   await globalThis.services.db
     .insert(secrets)
     .values({
       name: secretMetadata.accessSecretName,
-      encryptedValue: encryptSecretValue(options.accessToken, encryptionKey),
+      encryptedValue: encryptedAccessToken,
       type: "connector",
       userId: options.userId,
       orgId: options.orgId,
@@ -102,7 +106,7 @@ export async function createTestOAuthConnectorRecord(options: {
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: {
-        encryptedValue: encryptSecretValue(options.accessToken, encryptionKey),
+        encryptedValue: encryptedAccessToken,
         description: `OAuth token for ${options.type} connector`,
         updatedAt: new Date(),
       },

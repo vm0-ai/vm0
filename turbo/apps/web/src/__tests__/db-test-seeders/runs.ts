@@ -17,7 +17,7 @@ import { usageDaily } from "@vm0/db/schema/usage-daily";
 import type { ContextArtifact } from "@vm0/db/types";
 import { initServices } from "../../lib/init-services";
 import { uniqueId } from "../test-helpers";
-import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import { encryptTestSecretValue } from "../secret-encryption-fixtures";
 
 const TEST_SESSION_HISTORY_HASH =
   "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e";
@@ -559,7 +559,10 @@ export async function createTestCallback(params: {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
   const secret = randomBytes(32).toString("hex");
-  const encryptedSecret = encryptSecretValue(secret, SECRETS_ENCRYPTION_KEY);
+  const encryptedSecret = encryptTestSecretValue(
+    secret,
+    SECRETS_ENCRYPTION_KEY,
+  );
 
   const [callback] = await globalThis.services.db
     .insert(agentRunCallbacks)
