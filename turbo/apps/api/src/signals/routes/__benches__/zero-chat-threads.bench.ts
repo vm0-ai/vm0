@@ -119,8 +119,50 @@ function targetAttachmentId(index: number): string {
   return `bench-attachment-${String(index).padStart(2, "0")}`;
 }
 
+function commandName(command: unknown): string {
+  return command instanceof Object && "constructor" in command
+    ? command.constructor.name
+    : "";
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command !== "object" ||
+    command === null ||
+    !("input" in command) ||
+    typeof command.input !== "object" ||
+    command.input === null
+  ) {
+    return {};
+  }
+  return command.input as Record<string, unknown>;
+}
+
 function installR2ListMock(): void {
   mockEnv("S3_FORCE_PATH_STYLE", "true");
+  context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+    if (commandName(command) !== "ListObjectsV2Command") {
+      return {};
+    }
+
+    const input = commandInput(command);
+    const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
+    const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
+    if (bucket !== "test-user-artifacts") {
+      return {};
+    }
+
+    await delay(MOCK_R2_LIST_DELAY_MS);
+    return {
+      Contents: [
+        {
+          Key: `${prefix}bench-attachment.md`,
+          LastModified: new Date("2026-05-25T00:00:00.000Z"),
+          Size: 4096,
+        },
+      ],
+    };
+  });
   server.use(
     http.get("*", async ({ request }) => {
       const url = new URL(request.url);
@@ -557,7 +599,7 @@ const ensureSeeded: () => Promise<ZeroChatThreadFixture> = (() => {
   };
 })();
 
-const benchOptions = { time: 5000, warmupIterations: 5 } as const;
+const benchOptions = { time: 5000, warmupIterations: 5, throws: true } as const;
 const authHeaders = { authorization: "Bearer clerk-session" } as const;
 
 describe("bench side-effect-free GET API routes", () => {

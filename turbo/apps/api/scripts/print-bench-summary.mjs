@@ -13,11 +13,13 @@ if (!existsSync(path)) {
 
 const report = JSON.parse(readFileSync(path, "utf8"));
 const lines = [];
+let hasMissingSamples = false;
 for (const file of report.files ?? []) {
   for (const group of file.groups ?? []) {
     lines.push(`\n${group.fullName}`);
     for (const bench of group.benchmarks ?? []) {
       if (typeof bench.mean !== "number") {
+        hasMissingSamples = true;
         lines.push(`  ${bench.name}: no samples`);
         continue;
       }
@@ -33,3 +35,7 @@ for (const file of report.files ?? []) {
   }
 }
 stdout.write(lines.join("\n") + "\n");
+if (hasMissingSamples) {
+  stderr.write("::error::bench report contains benchmarks with no samples\n");
+  exit(1);
+}
