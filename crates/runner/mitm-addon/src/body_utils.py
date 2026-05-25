@@ -291,6 +291,8 @@ def decompress_json_usage_body(
             if not obj.eof:
                 return body, "incomplete compressed body"
         return body, None
+    if encoding and encoding != "identity" and data:
+        return b"", "unsupported content encoding"
     return decompress_body(data, headers, max_output=max_output), None
 
 

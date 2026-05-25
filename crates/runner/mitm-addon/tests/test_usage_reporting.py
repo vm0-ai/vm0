@@ -370,6 +370,7 @@ class TestResponseUsageReporting:
         "encoding_case",
         [
             "chained-gzip",
+            "raw-json-with-unknown-header",
             "raw-deflate",
             "raw-json-with-gzip-header",
             "raw-json-with-br-header",
@@ -406,7 +407,11 @@ class TestResponseUsageReporting:
         if encoding_case == "chained-gzip":
             body = gzip.compress(payload)
             content_encoding = "gzip, identity"
-            expected_error = "expected json value"
+            expected_error = "unsupported content encoding"
+        elif encoding_case == "raw-json-with-unknown-header":
+            body = payload
+            content_encoding = "x-custom"
+            expected_error = "unsupported content encoding"
         elif encoding_case == "raw-json-with-gzip-header":
             body = payload
             content_encoding = "gzip"
