@@ -4,9 +4,6 @@ export const bitrefill = {
   bitrefill: {
     label: "Bitrefill",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      BITREFILL_TOKEN: "$secrets.BITREFILL_TOKEN",
-    },
     helpText:
       "Connect your Bitrefill account to browse products, create invoices, track orders, and manage purchases programmatically",
     authMethods: {
@@ -18,12 +15,22 @@ export const bitrefill = {
           "3. Generate an API key\n" +
           "4. Copy the Personal API token\n\n" +
           "This connector currently supports Bitrefill Personal API Bearer tokens. Business and Affiliate Basic auth credentials are not supported yet.",
-        secrets: {
-          BITREFILL_TOKEN: {
-            label: "Personal API Token",
-            required: true,
+        grant: {
+          kind: "manual",
+          fields: {
+            BITREFILL_TOKEN: {
+              label: "Personal API Token",
+              required: true,
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            BITREFILL_TOKEN: "$secrets.BITREFILL_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",
