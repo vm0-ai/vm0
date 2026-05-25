@@ -539,6 +539,41 @@ class TestResponseUsageReporting:
         assert warning["event"] == "response.completed"
         assert warning["error"]
 
+    def test_full_pipeline_openai_sse_logs_truncated_late_event_name(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            cli_agent_type="codex",
+        )
+        _response_stream(flow)(
+            b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt\n'
+            b"event: response.completed\n\n"
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        usage_warnings = _model_sse_parse_warnings(flow)
+        assert len(usage_warnings) == 1
+        warning = usage_warnings[0]
+        assert warning["level"] == "warn"
+        assert warning["type"] == "usage_event"
+        assert warning["usage_protocol"] == "openai_responses_sse"
+        assert warning["event"] == "response.completed"
+        assert warning["error"]
+
     def test_full_pipeline_eventless_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
