@@ -368,16 +368,28 @@ class TestResponseUsageReporting:
     @pytest.mark.parametrize(
         "encoding_case", ["chained-gzip", "raw-deflate", "truncated-gzip-prefix"]
     )
+    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case, provider_case
     ):
         """One-shot decompression failures leave compressed bytes and log parse failure."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        if provider_case == "openai":
+            flow = real_flow(with_response=False, host="api.openai.com")
+            flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+            flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+            flow.metadata["cli_agent_type"] = "codex"
+            payload = (
+                b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50,"output_tokens":200}}'
+            )
+        else:
+            flow = real_flow(with_response=False, host="api.anthropic.com")
+            flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+            payload = (
+                b'{"id":"msg_1","model":"claude-sonnet-4-6",'
+                b'"usage":{"input_tokens":50,"output_tokens":200}}'
+            )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        payload = (
-            b'{"id":"msg_1","model":"claude-sonnet-4-6",'
-            b'"usage":{"input_tokens":50,"output_tokens":200}}'
-        )
         if encoding_case == "chained-gzip":
             body = gzip.compress(payload)
             content_encoding = "gzip, identity"
@@ -397,8 +409,6 @@ class TestResponseUsageReporting:
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["stream_buffer"] = bytearray(body)
@@ -504,27 +514,39 @@ class TestResponseUsageReporting:
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
-    @pytest.mark.parametrize("encoding_case", ["identity", "gzip"])
+    @pytest.mark.parametrize("encoding_case", ["identity", "gzip", "deflate"])
+    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_empty_body_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case, provider_case
     ):
         """Empty model-provider bodies are not JSON parser failures."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        if provider_case == "openai":
+            flow = real_flow(with_response=False, host="api.openai.com")
+            flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+            flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+            flow.metadata["cli_agent_type"] = "codex"
+        else:
+            flow = real_flow(with_response=False, host="api.anthropic.com")
+            flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         proxy_log_path = tmp_path / "proxy.jsonl"
-        body = gzip.compress(b"") if encoding_case == "gzip" else b""
+        if encoding_case == "gzip":
+            body = gzip.compress(b"")
+        elif encoding_case == "deflate":
+            body = zlib.compress(b"")
+        else:
+            body = b""
         response_headers = {
             "content-type": "application/json",
             "content-length": str(len(body)),
         }
-        if encoding_case == "gzip":
-            response_headers["content-encoding"] = "gzip"
+        if encoding_case != "identity":
+            response_headers["content-encoding"] = encoding_case
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["stream_buffer"] = bytearray(body)
