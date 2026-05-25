@@ -109,12 +109,22 @@ fn send_exec_start_with_stdin(
     command: &str,
     stdin_bytes: Option<&[u8]>,
 ) {
+    send_exec_start_with_stdin_timeout(stream, seq, command, 5000, stdin_bytes);
+}
+
+fn send_exec_start_with_stdin_timeout(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    timeout_ms: u32,
+    stdin_bytes: Option<&[u8]>,
+) {
     send_exec_start_request(
         stream,
         seq,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
-            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms },
             command,
             env: &[],
             sudo: false,
@@ -240,6 +250,61 @@ fn exec_operation_returns_when_grandchild_holds_stdin_without_reading() {
         elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
         "exec result should not wait for an inherited stdin pipe, took {elapsed:?}",
     );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn exec_operation_timeout_with_stdin_kills_child() {
+    let pid_path = unique_pid_path("exec-operation-stdin-timeout");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let (handle, mut host_stream) = start_guest_connection();
+    let stdin = vec![b'x'; vsock_proto::MAX_EXEC_STDIN_BYTES];
+
+    let command = sleep_command_with_pid(pid_path.as_str());
+    send_exec_start_with_stdin_timeout(&mut host_stream, 125, &command, 200, Some(&stdin));
+    let pid = child_guard.read_pid();
+    assert!(
+        pid_alive(pid),
+        "exec operation child should be running before timeout"
+    );
+
+    let (_chunks, result) = read_exec_result(&mut host_stream, 125);
+
+    assert_eq!(result.termination, ExecTermination::TimedOut);
+    wait_for_pid_exit(pid, "exec operation stdin timeout");
+    child_guard.disarm();
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn exec_operation_explicit_cancel_with_stdin_kills_child() {
+    let pid_path = unique_pid_path("exec-operation-stdin-cancel");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let (handle, mut host_stream) = start_guest_connection();
+    let stdin = vec![b'x'; vsock_proto::MAX_EXEC_STDIN_BYTES];
+
+    let command = sleep_command_with_pid(pid_path.as_str());
+    send_exec_start_with_stdin_timeout(
+        &mut host_stream,
+        126,
+        &command,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
+        Some(&stdin),
+    );
+    let pid = child_guard.read_pid();
+    assert!(
+        pid_alive(pid),
+        "exec operation child should be running before cancel"
+    );
+
+    send_exec_cancel(&mut host_stream, 126);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 126);
+
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+    wait_for_pid_exit(pid, "exec operation stdin cancel");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
