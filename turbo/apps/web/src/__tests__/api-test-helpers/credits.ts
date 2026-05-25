@@ -23,9 +23,6 @@ export {
   seedUsageEventRecord,
   seedInsightsDaily,
   createCompletedRun,
-  grantCreditsToOrg,
-  testDeductFromExpiresRecords,
-  testExpireCredits,
 } from "../db-test-seeders/credits";
 
 // ---------------------------------------------------------------------------

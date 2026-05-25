@@ -14,17 +14,24 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { ensureTestAgentSession } from "./runs";
-import { grantOrgCredits } from "../../lib/zero/org/org-service";
-import {
-  deductFromExpiresRecords,
-  expireCredits,
-} from "../../lib/zero/credit/credit-expires-service";
-import {
-  REALTIME_PROVIDER,
-  REALTIME_TOKEN_CATEGORIES,
-  TRANSCRIPTION_PROVIDER,
-  TRANSCRIPTION_TOKEN_CATEGORIES,
-} from "../../lib/zero/billing/model-usage-categories";
+
+const REALTIME_PROVIDER = "gpt-realtime-2";
+const TRANSCRIPTION_PROVIDER = "gpt-4o-mini-transcribe";
+
+const REALTIME_TOKEN_CATEGORIES = [
+  "tokens.input.text",
+  "tokens.input.audio",
+  "tokens.input.cached_text",
+  "tokens.input.cached_audio",
+  "tokens.output.text",
+  "tokens.output.audio",
+] as const;
+
+const TRANSCRIPTION_TOKEN_CATEGORIES = [
+  "tokens.input.audio",
+  "tokens.input.text",
+  "tokens.output.text",
+] as const;
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for billing / Stripe test setup.
@@ -649,59 +656,4 @@ export async function createCompletedRun(
     });
   }
   return run!.id;
-}
-
-// ---------------------------------------------------------------------------
-// Transaction wrappers.
-//
-// These functions wrap production service functions that expect a transaction
-// parameter (tx). They provide the transaction context for test usage.
-// ---------------------------------------------------------------------------
-
-/**
- * Grant credits to an org atomically. Wraps grantOrgCredits in a transaction.
- *
- * @why-db-direct Requires a database transaction wrapper to call grantOrgCredits
- * service; no API endpoint provides atomic credit grants
- */
-export async function grantCreditsToOrg(
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db.transaction(async (tx) => {
-    await grantOrgCredits(tx, orgId, amount);
-  });
-}
-
-/**
- * Deduct from expires records within a transaction (test helper).
- *
- * @why-db-direct Requires a database transaction wrapper to call
- * deductFromExpiresRecords service; service expects tx parameter
- */
-export async function testDeductFromExpiresRecords(
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db.transaction(async (tx) => {
-    await deductFromExpiresRecords(tx, orgId, amount);
-  });
-}
-
-/**
- * Expire credits within a transaction (test helper).
- * Returns the total expired amount.
- *
- * @why-db-direct Requires a database transaction wrapper to call expireCredits
- * service; service expects tx parameter
- */
-export async function testExpireCredits(orgId: string): Promise<number> {
-  initServices();
-  let result = 0;
-  await globalThis.services.db.transaction(async (tx) => {
-    result = await expireCredits(tx, orgId);
-  });
-  return result;
 }
