@@ -10,6 +10,9 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
+import upsellCrownSrc from "./assets/upsell-crown.webp";
+import marketingWebUiSrc from "./assets/marketing-web-ui.webp";
+import marketingSlackSrc from "./assets/marketing-slack.webp";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -54,7 +57,6 @@ import {
   IconCheck,
   IconCircleCheck,
   IconCircleCheckFilled,
-  IconCoins,
   IconLoader,
   IconSearch,
 } from "@tabler/icons-react";
@@ -381,17 +383,19 @@ function UseCasePromptComposer() {
 // ---------------------------------------------------------------------------
 
 // Pro features below the hero credit card. Phrased as "what your agent
-// can do", not feature names — these read top-to-bottom in a single column.
+// can do", not feature names. Single column, no em-dashes in the copy.
 const PRO_TRIAL_BENEFITS: readonly string[] = [
   "Unlock 100+ ready-made automations",
-  "All flagship models — Claude, GPT, Gemini and more",
+  "All flagship models including Claude, GPT and Gemini",
   "Run 2 tasks at the same time",
-  "Slack-native — agent in threads and @mentions",
+  "Slack-native agent in threads and @mentions",
   "Telegram and iMessage agents",
   "Persistent workspace context across chats",
   "200+ integrations with real tool execution",
   "Scheduled tasks that run on their own",
-  "Artifacts — slide decks, HTML pages, video, audio and more",
+  "Artifacts including slide decks, HTML pages, video and audio",
+  "Voice input",
+  "Unlimited workspace members",
 ];
 
 /** Step 4: what Pro unlocks + the 7-day trial framing. */
@@ -440,9 +444,12 @@ function TrialStepContent() {
           real spending power, not a token allowance. The $20 is the visual
           anchor of the entire step. */}
       <div className="zero-border rounded-2xl bg-primary/5 px-6 py-6 mb-6 relative overflow-hidden">
-        <div className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
-          <IconCoins size={20} stroke={1.75} className="text-primary" />
-        </div>
+        <img
+          src={upsellCrownSrc}
+          alt=""
+          role="presentation"
+          className="absolute top-3 right-3 h-14 w-14 object-contain"
+        />
         <div className="flex items-baseline gap-2">
           <span className="text-5xl font-semibold text-foreground leading-none tracking-tight">
             $20
@@ -453,7 +460,7 @@ function TrialStepContent() {
         </div>
         <p className="text-sm text-foreground mt-3 leading-relaxed">
           <span className="font-medium">20,000 VM0 credits</span> to spend on
-          Zero — enough agent runs to draft, build and ship from day one.
+          Zero. Enough agent runs to draft, build and ship from day one.
         </p>
       </div>
 
@@ -483,23 +490,34 @@ function TrialStepContent() {
   );
 }
 
-/** Left-panel trial-status illustration for step 4. */
+/** Left-panel illustration for step 4 — mirrors the vm0.ai marketing
+ *  shots so users see the product they're about to unlock. The web-ui
+ *  mockup sits behind a Slack-thread snippet so the two strongest
+ *  surfaces (workspace + Slack-native) read at a glance. */
 function OnboardingTrialPanel() {
   return (
     <>
-      <img
-        src={zeroAnimatedSrc}
-        alt=""
-        role="presentation"
-        className="h-24 w-24 object-contain mb-7"
-      />
-      <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
+      <h3 className="text-2xl font-semibold text-foreground text-center leading-snug max-w-[360px]">
         7 days of Pro, on us
       </h3>
-      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
-        Full access while you explore. We&apos;ll remind you before your trial
-        ends.
+      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[320px]">
+        Full access while you explore. This is what your agent will do for you.
       </p>
+
+      <div className="relative w-full max-w-[460px] mt-10 aspect-[5/4]">
+        <img
+          src={marketingWebUiSrc}
+          alt=""
+          role="presentation"
+          className="absolute top-0 left-0 w-[88%] rounded-xl shadow-[0_18px_44px_-18px_rgba(15,23,42,0.25)] zero-border"
+        />
+        <img
+          src={marketingSlackSrc}
+          alt=""
+          role="presentation"
+          className="absolute bottom-0 right-0 w-[52%] rounded-xl shadow-[0_18px_44px_-12px_rgba(15,23,42,0.28)] zero-border bg-background"
+        />
+      </div>
     </>
   );
 }
