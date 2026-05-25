@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.103.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.17...runner-rs-v0.103.18) (2026-05-25)
+
+
+### Refactoring
+
+* **mitm-addon:** centralize authority validation error context ([#14751](https://github.com/vm0-ai/vm0/issues/14751)) ([63e8d3c](https://github.com/vm0-ai/vm0/commit/63e8d3c0636eb6bc5d156f838d2276f9c2d1a727))
+* share executor sandbox run finalization ([#14787](https://github.com/vm0-ai/vm0/issues/14787)) ([f63d971](https://github.com/vm0-ai/vm0/commit/f63d971ff6957de3db3e7695f6e51036b5d4c6a0))
+
 ## [0.103.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.16...runner-rs-v0.103.17) (2026-05-25)
 
 

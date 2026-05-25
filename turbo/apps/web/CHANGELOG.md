@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.387.2](https://github.com/vm0-ai/vm0/compare/web-v12.387.1...web-v12.387.2) (2026-05-25)
+
+
+### Refactoring
+
+* remove web callback infra leftovers ([#14790](https://github.com/vm0-ai/vm0/issues/14790)) ([dfe62f1](https://github.com/vm0-ai/vm0/commit/dfe62f16a1e118c65feba1e5063774428c44ebec))
+* remove web org metadata leftovers ([#14800](https://github.com/vm0-ai/vm0/issues/14800)) ([419aa86](https://github.com/vm0-ai/vm0/commit/419aa86ab579c277050e96aa3fb26abf490e8183))
+
 ## [12.387.1](https://github.com/vm0-ai/vm0/compare/web-v12.387.0...web-v12.387.1) (2026-05-25)
 
 

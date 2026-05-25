@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.382.1](https://github.com/vm0-ai/vm0/compare/app-v0.382.0...app-v0.382.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* show disabled github install for members ([#14795](https://github.com/vm0-ai/vm0/issues/14795)) ([960dafc](https://github.com/vm0-ai/vm0/commit/960dafcc77e01780379dae52a25b006dc3678172))
+
 ## [0.382.0](https://github.com/vm0-ai/vm0/compare/app-v0.381.0...app-v0.382.0) (2026-05-25)
 
 
