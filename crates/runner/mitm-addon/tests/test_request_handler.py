@@ -453,14 +453,29 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == expected_original_url
         auth_fetch.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("request_port", "expected_original_url"),
+        [
+            (443, "https://203.0.113.10/repos"),
+            (8443, "https://203.0.113.10:8443/repos"),
+        ],
+    )
     async def test_rejects_invalid_https_sni_before_firewall_auth(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        headers,
+        request_port,
+        expected_original_url,
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
             host="203.0.113.10",
+            port=request_port,
             sni="...",
             path="/repos",
             request_headers=headers(("Host", "api.github.com")),
@@ -479,17 +494,17 @@ class TestRequestHandler:
         assert body["sni"] == "..."
         assert body["request_host"] == "203.0.113.10"
         assert body["host_header"] == "api.github.com"
-        assert body["request_port"] == 443
+        assert body["request_port"] == request_port
         assert flow.metadata["firewall_action"] == "DENY"
         assert flow.metadata["firewall_error"] == "invalid_sni"
-        assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
+        assert flow.metadata["original_url"] == expected_original_url
         proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
         assert proxy_log_entry["type"] == "authority_validation"
         assert proxy_log_entry["reason"] == "invalid_sni"
         assert proxy_log_entry["sni"] == "..."
         assert proxy_log_entry["request_host"] == "203.0.113.10"
         assert proxy_log_entry["host_header"] == "api.github.com"
-        assert proxy_log_entry["request_port"] == 443
+        assert proxy_log_entry["request_port"] == request_port
         auth_fetch.assert_not_called()
         assert "Authorization" not in flow.request.headers
 
