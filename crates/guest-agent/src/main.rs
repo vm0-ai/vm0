@@ -339,8 +339,8 @@ fn with_cli_failure_reason(
     failure_message: &str,
     failure_reason: Option<FailureReason>,
 ) -> FailureDiagnostic {
-    if let Some(reason) = failure_reason
-        .or_else(|| classify_cli_failure_reason(diagnostic.framework, failure_message))
+    if let Some(reason) =
+        classify_cli_failure_reason(diagnostic.framework, failure_message).or(failure_reason)
     {
         diagnostic.with_failure_reason(reason)
     } else {
@@ -1039,6 +1039,23 @@ mod tests {
         let reason = classify_cli_failure_reason(AgentFramework::Codex, "401 unauthorized");
 
         assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_prefers_message_classification_over_carried_reason() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1);
+        let diagnostic = with_cli_failure_reason(
+            diagnostic,
+            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
+            Some(FailureReason::InvalidApiKey),
+        );
+
+        assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
