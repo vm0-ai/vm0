@@ -1,4 +1,5 @@
 import {
+  type GenerationOutputKind,
   type OpenDesignCandidateSlice,
   type OpenDesignTarget,
   selectOpenDesignCandidates,
@@ -20,12 +21,30 @@ interface HtmlArtifactAuthoringPacket {
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
   readonly registryVersion: string;
+  readonly artifact: {
+    readonly outputMode: "primary-artifact-with-supporting-assets";
+    readonly primaryArtifact: {
+      readonly kind: GenerationOutputKind;
+      readonly path: string;
+    };
+    readonly supportingAssets: readonly {
+      readonly kind: GenerationOutputKind | "metadata";
+      readonly path: string;
+      readonly optional: boolean;
+    }[];
+    readonly previewKind: "hosted-url";
+    readonly outputDir: string;
+  };
   readonly selection: {
     readonly candidates: OpenDesignCandidateSlice["candidates"];
     readonly outputSchema: {
       readonly skills: "string[]";
       readonly template: "string";
       readonly designSystem: "string | null";
+      readonly imageStyle: "string | null";
+      readonly audioStyle: "string | null";
+      readonly videoTemplate: "string | null";
+      readonly bundleTemplate: "string | null";
       readonly rationale: "string";
     };
   };
@@ -91,20 +110,55 @@ export function createHtmlArtifactAuthoringPacket(
     skills: "string[]",
     template: "string",
     designSystem: "string | null",
+    imageStyle: "string | null",
+    audioStyle: "string | null",
+    videoTemplate: "string | null",
+    bundleTemplate: "string | null",
     rationale: "string",
+  } as const;
+  const artifact = {
+    outputMode: "primary-artifact-with-supporting-assets",
+    primaryArtifact: {
+      kind: options.kind as GenerationOutputKind,
+      path: `${outputDir}/index.html`,
+    },
+    supportingAssets: [
+      {
+        kind: "image",
+        path: `${outputDir}/assets/`,
+        optional: true,
+      },
+      {
+        kind: "audio",
+        path: `${outputDir}/assets/`,
+        optional: true,
+      },
+      {
+        kind: "video",
+        path: `${outputDir}/assets/`,
+        optional: true,
+      },
+      {
+        kind: "metadata",
+        path: `${outputDir}/metadata.json`,
+        optional: true,
+      },
+    ],
+    previewKind: "hosted-url",
+    outputDir,
   } as const;
   const instructions = [
     `# Zero built-in generate ${options.kind}`,
     "",
-    "This is an Open Design resource-selection packet for the current agent.",
+    "This is a federated generation resource-selection packet for the current agent.",
     `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
     options.prompt,
     "",
     "## Stage 1: Resource Selection",
-    "- Choose the Open Design resources from the bundled registry slice below.",
-    "- Select one template, one or more skills, and zero or one design system.",
+    "- Choose generation resources from the bundled federated registry slice below.",
+    "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
     "- Treat the selection JSON as internal working state, then continue to authoring.",
@@ -122,13 +176,19 @@ export function createHtmlArtifactAuthoringPacket(
     "```",
     "",
     "## Stage 2: Resolve Selected Resources",
-    "- For every selected resource, fetch or read the referenced Open Design source before authoring.",
+    "- For every selected resource, fetch or read the referenced source before authoring.",
     "- Source refs are pinned as `repo@commit:path`; use the commit in the packet for reproducibility.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",
     "## Stage 3: Author Artifact",
-    `Author a production-quality ${title} as a static HTML artifact using the selected Open Design resources.`,
+    `Author a production-quality ${title} as a static HTML artifact using the selected generation resources.`,
+    "",
+    "## Artifact Output Model",
+    `- Primary artifact: \`${artifact.primaryArtifact.kind}\` at \`${artifact.primaryArtifact.path}\`.`,
+    `- Output mode: \`${artifact.outputMode}\`.`,
+    "- Supporting images, audio, video, or metadata may live inside the same output directory when the result needs them.",
+    "- Treat the output directory as a project bundle when multiple media types are generated, while keeping the HTML entry point primary.",
     "",
     "## Output Contract",
     `- Write the artifact under \`${outputDir}/\`.`,
@@ -173,6 +233,7 @@ export function createHtmlArtifactAuthoringPacket(
     kind: options.kind,
     prompt: options.prompt,
     registryVersion: candidateSlice.registryVersion,
+    artifact,
     selection: {
       candidates: candidateSlice.candidates,
       outputSchema: selectionSchema,

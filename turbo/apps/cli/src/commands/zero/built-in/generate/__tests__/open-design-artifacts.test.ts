@@ -72,10 +72,16 @@ describe("zero built-in generate Open Design artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(`# Zero built-in generate ${command}`);
-      expect(stdout).toContain("Open Design resource-selection packet");
+      expect(stdout).toContain(
+        "federated generation resource-selection packet",
+      );
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(template);
       expect(stdout).toContain(`Artifact kind: ${command}`);
+      expect(stdout).toContain("## Artifact Output Model");
+      expect(stdout).toContain(
+        `Primary artifact: \`${command}\` at \`./opendesign/mockups/${command}-demo/index.html\`.`,
+      );
       expect(stdout).toContain(
         `Write the artifact under \`./opendesign/mockups/${command}-demo/\`.`,
       );
@@ -105,6 +111,13 @@ describe("zero built-in generate Open Design artifact commands", () => {
       prompt: "A mobile review screen",
       outputDir: "./opendesign/mockups/mobile-review",
       site: "mobile-review",
+      artifact: {
+        outputMode: "primary-artifact-with-supporting-assets",
+        primaryArtifact: {
+          kind: "mobile-app-design",
+          path: "./opendesign/mockups/mobile-review/index.html",
+        },
+      },
     });
   });
 });

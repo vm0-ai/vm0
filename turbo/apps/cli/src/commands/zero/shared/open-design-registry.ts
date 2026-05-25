@@ -8,8 +8,46 @@ export type OpenDesignTarget =
   | "report"
   | "docs-design";
 
-type OpenDesignResourceKind = "skill" | "template" | "design-system";
+export type GenerationOutputKind =
+  | "website"
+  | "image"
+  | "audio"
+  | "video"
+  | "presentation"
+  | "report"
+  | "poster"
+  | "dashboard-design"
+  | "mobile-app-design"
+  | "docs-design"
+  | "bundle";
+
+type OpenDesignResourceKind =
+  | "skill"
+  | "template"
+  | "design-system"
+  | "image-style"
+  | "audio-style"
+  | "video-template"
+  | "bundle-template";
 type OpenDesignResourceStatus = "curated" | "experimental" | "hidden";
+type OpenDesignExecutorHint =
+  | "agent-authored-html"
+  | "built-in-image"
+  | "built-in-video"
+  | "built-in-voice"
+  | "connector-backed"
+  | "skill-authored";
+type OpenDesignPreviewHint =
+  | "hosted-url"
+  | "image"
+  | "video"
+  | "audio"
+  | "mixed-directory"
+  | "file";
+type OpenDesignRemixHint =
+  | "prompt"
+  | "prompt-with-resource-hints"
+  | "source-assets";
 
 interface OpenDesignSourceRef {
   readonly repo: string;
@@ -29,6 +67,12 @@ export interface OpenDesignRegistryEntry {
   readonly bestFor?: readonly string[];
   readonly avoidFor?: readonly string[];
   readonly compatibleWith?: readonly string[];
+  readonly outputKinds?: readonly GenerationOutputKind[];
+  readonly primaryOutputKind?: GenerationOutputKind;
+  readonly supportingOutputKinds?: readonly GenerationOutputKind[];
+  readonly executorHints?: readonly OpenDesignExecutorHint[];
+  readonly previewHint?: OpenDesignPreviewHint;
+  readonly remixHint?: OpenDesignRemixHint;
   readonly status: OpenDesignResourceStatus;
   readonly priority?: number;
 }
@@ -39,24 +83,42 @@ export interface OpenDesignCandidateSlice {
     readonly repo: string;
     readonly commit: string;
   };
+  readonly sources: readonly {
+    readonly repo: string;
+    readonly commit: string;
+  }[];
   readonly candidates: {
     readonly skills: readonly OpenDesignRegistryEntry[];
     readonly templates: readonly OpenDesignRegistryEntry[];
     readonly designSystems: readonly OpenDesignRegistryEntry[];
+    readonly imageStyles: readonly OpenDesignRegistryEntry[];
+    readonly audioStyles: readonly OpenDesignRegistryEntry[];
+    readonly videoTemplates: readonly OpenDesignRegistryEntry[];
+    readonly bundleTemplates: readonly OpenDesignRegistryEntry[];
   };
 }
 
 const OPEN_DESIGN_REPO = "vm0-ai/open-design";
 const OPEN_DESIGN_COMMIT = "d021b04720ace133f1d6133d1487326f5fc28f07";
+const VM0_REPO = "vm0-ai/vm0";
+const NOTION_ILLUSTRATION_COMMIT = "12d5aa42de4323c034cfb6e8005c69304dd510e5";
 
-const OPEN_DESIGN_REGISTRY_VERSION = `${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
+const OPEN_DESIGN_REGISTRY_VERSION = `federated:${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
 
-function source(path: string): OpenDesignSourceRef {
+function sourceRef(
+  repo: string,
+  commit: string,
+  path: string,
+): OpenDesignSourceRef {
   return {
-    repo: OPEN_DESIGN_REPO,
-    commit: OPEN_DESIGN_COMMIT,
+    repo,
+    commit,
     path,
   };
+}
+
+function source(path: string): OpenDesignSourceRef {
+  return sourceRef(OPEN_DESIGN_REPO, OPEN_DESIGN_COMMIT, path);
 }
 
 const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
@@ -333,6 +395,39 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "curated",
     priority: 34,
   },
+  {
+    id: "vm0:image-style:notion-illustration",
+    kind: "image-style",
+    name: "Notion Illustration",
+    description:
+      "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
+    source: sourceRef(
+      VM0_REPO,
+      NOTION_ILLUSTRATION_COMMIT,
+      ".claude/skills/notion-illustration",
+    ),
+    targets: ["website", "poster", "presentation", "report"],
+    tags: ["image", "illustration", "notion", "spot", "hand-drawn", "product"],
+    triggers: [
+      "illustration",
+      "notion illustration",
+      "spot illustration",
+      "hand drawn",
+      "product illustration",
+    ],
+    bestFor: [
+      "in-app empty states",
+      "gallery previews",
+      "product narrative artwork",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 18,
+  },
 ];
 
 export function toOpenDesignTarget(value: string): OpenDesignTarget {
@@ -460,6 +555,16 @@ export function selectOpenDesignCandidates(options: {
       repo: OPEN_DESIGN_REPO,
       commit: OPEN_DESIGN_COMMIT,
     },
+    sources: [
+      {
+        repo: OPEN_DESIGN_REPO,
+        commit: OPEN_DESIGN_COMMIT,
+      },
+      {
+        repo: VM0_REPO,
+        commit: NOTION_ILLUSTRATION_COMMIT,
+      },
+    ],
     candidates: {
       skills: selectByKind(
         "skill",
@@ -475,6 +580,30 @@ export function selectOpenDesignCandidates(options: {
       ),
       designSystems: selectByKind(
         "design-system",
+        options.target,
+        options.prompt,
+        limitPerKind,
+      ),
+      imageStyles: selectByKind(
+        "image-style",
+        options.target,
+        options.prompt,
+        limitPerKind,
+      ),
+      audioStyles: selectByKind(
+        "audio-style",
+        options.target,
+        options.prompt,
+        limitPerKind,
+      ),
+      videoTemplates: selectByKind(
+        "video-template",
+        options.target,
+        options.prompt,
+        limitPerKind,
+      ),
+      bundleTemplates: selectByKind(
+        "bundle-template",
         options.target,
         options.prompt,
         limitPerKind,
