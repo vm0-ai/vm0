@@ -2,9 +2,8 @@
 
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from mitmproxy import http
 
@@ -333,7 +332,18 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
     async def test_sets_auth_url_rewrite_metadata_and_response(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is set and flow.response is populated via forward_request."""
-        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            token_overrides={
+                "resolved_secrets": ["WEBHOOK"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         mock_forward = AsyncMock(
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
@@ -344,11 +354,45 @@ class TestAuthBaseUrlRewriteEdgeCases:
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["auth_resolved_secrets"] == ["WEBHOOK"]
+        assert flow.metadata["auth_refreshed_connectors"] == ["discord"]
+        assert flow.metadata["auth_refreshed_secrets"] == ["WEBHOOK"]
+        assert flow.metadata["auth_cache_hit"] is False
         assert flow.response is not None
         assert flow.response.status_code == 200
         # forward_request called with the rewritten URL
         call_args = mock_forward.call_args
         assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
+        log_text = await asyncio.to_thread(
+            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
+        )
+        assert "Firewall URL rewrite:" in log_text
+        assert f"Firewall {allow.api_entry['base']}:" in log_text
+
+    async def test_upstream_error_response_is_forwarded(self, real_flow, mitm_ctx, tmp_path):
+        """A non-2xx upstream response is still a successful local forward."""
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        mock_forward = AsyncMock(
+            return_value=(
+                500,
+                b'{"error":"upstream"}',
+                {"Content-Type": "application/json"},
+            )
+        )
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 500
+        assert flow.response.content == b'{"error":"upstream"}'
+        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert "firewall_error" not in flow.metadata
 
     async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
@@ -380,14 +424,23 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
 
-    async def test_forward_request_includes_auth_headers(self, real_flow, mitm_ctx, tmp_path):
-        """auth.headers are included in the forwarded request to the real URL."""
+    async def test_forward_request_includes_auth_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.headers are forwarded without mutating the placeholder request."""
         flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://discord.com/api/webhooks/123/abc",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
         )
-        token_meta["headers"] = {"X-Custom": "injected-value"}
+        token_meta["headers"] = {
+            "Authorization": "Bearer real-token",
+            "X-Custom": "injected-value",
+        }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -399,7 +452,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # Auth headers passed to forward_request.
         call_args = mock_forward.call_args
         req_headers = call_args[0][2]
+        assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("Authorization", "Bearer real-token") in req_headers
         assert ("X-Custom", "injected-value") in req_headers
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
 
     async def test_forward_request_preserves_duplicate_headers_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
@@ -564,7 +621,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert mock_forward.call_args[0][3] is None
 
-    async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
+    async def test_forward_failure_returns_502(self, headers, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
         firewall_error without falling through to the success-path metadata.
 
@@ -573,7 +630,28 @@ class TestAuthBaseUrlRewriteEdgeCases:
         log were emitted on failure, and ``firewall_error`` was left unset —
         making failed rewrites indistinguishable from successful ones in
         dashboards."""
-        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+                "resolved_secrets": ["WEBHOOK"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -581,6 +659,14 @@ class TestAuthBaseUrlRewriteEdgeCases:
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
+        failed_url = mock_forward.call_args[0][0]
+        failed_query = parse_qs(urlparse(failed_url).query, keep_blank_values=True)
+        failed_headers = mock_forward.call_args[0][2]
+        assert failed_query["api_key"] == ["resolved-key"]
+        assert failed_query["client"] == ["visible"]
+        assert ("Authorization", "Bearer agent") not in failed_headers
+        assert ("Authorization", "Bearer real-token") in failed_headers
+        assert ("X-Custom", "injected-value") in failed_headers
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.response.headers["Content-Type"] == "application/json"
@@ -594,12 +680,21 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "auth_resolved_secrets" not in flow.metadata
+        assert "auth_refreshed_connectors" not in flow.metadata
+        assert "auth_refreshed_secrets" not in flow.metadata
+        assert "auth_cache_hit" not in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
         # Success-path log line must not be written.
-        log_path = Path(vm_info["networkLogPath"])
         log_text = await asyncio.to_thread(
-            lambda: log_path.read_text() if log_path.exists() else ""
+            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
         )
+        assert "URL rewrite forward failed" in log_text
         assert "Firewall URL rewrite:" not in log_text
+        assert f"Firewall {allow.api_entry['base']}:" not in log_text
 
     async def test_forward_failure_does_not_log_resolved_url_secret(
         self, real_flow, mitm_ctx, tmp_path
@@ -624,20 +719,37 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert flow.response is not None
         assert b"super-secret-token" not in flow.response.content
-        log_args = mock_log.call_args.args
-        log_kwargs = mock_log.call_args.kwargs
-        assert "super-secret-token" not in json.dumps(log_args)
-        assert "super-secret-token" not in json.dumps(log_kwargs)
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
-        """Empty string base from server is treated as absent — no URL rewrite."""
-        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        """Empty string base from server uses standard auth injection."""
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            auth_overrides={
+                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
+            token_overrides={
+                "headers": {"Authorization": "Bearer real-token"},
+                "query": {"api_key": "resolved-key"},
+                "resolved_secrets": ["TOKEN", "API_KEY"],
+            },
+        )
         token_meta["base"] = ""
-        original_url = flow.request.url
+        original_url = urlparse(flow.request.url)
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
-        assert flow.request.url == original_url
+        updated_url = urlparse(flow.request.url)
+        assert updated_url.scheme == original_url.scheme
+        assert updated_url.netloc == original_url.netloc
+        assert updated_url.path == original_url.path
         assert "auth_url_rewrite" not in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer real-token"
+        assert flow.request.query["api_key"] == "resolved-key"
+        assert flow.metadata["auth_resolved_secrets"] == ["TOKEN", "API_KEY"]

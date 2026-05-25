@@ -20,6 +20,7 @@ function computerUseState(
       lastCommandAt: null,
       lastError: null,
       recentAuditEvents: [],
+      localCommandLog: [],
     },
     ...overrides,
   };

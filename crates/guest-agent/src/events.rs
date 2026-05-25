@@ -11,6 +11,7 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::urls;
+use agent_diagnostics::FailureReason;
 use guest_common::{log_error, log_info};
 use serde_json::{Value, json};
 
@@ -22,6 +23,7 @@ const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
 pub(crate) struct CodexFailureDiagnostic {
     pub event_type: &'static str,
     pub message: String,
+    pub failure_reason: Option<FailureReason>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -90,6 +92,7 @@ pub(crate) fn masked_codex_failure_diagnostic(
     Some(CodexFailureDiagnostic {
         event_type: diagnostic.event_type,
         message: mask_and_truncate_diagnostic(&diagnostic.message, masker),
+        failure_reason: diagnostic.failure_reason,
     })
 }
 
@@ -115,25 +118,31 @@ pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
 
 fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnostic> {
     match event.get("type").and_then(Value::as_str)? {
-        "error" => Some(CodexFailureDiagnostic {
-            event_type: "error",
-            message: raw_message_from_field(event.get("message"))
-                .or_else(|| codex_error_message(event.get("error")))
-                .unwrap_or_else(|| "error".into()),
-        }),
-        "turn.failed" => Some(CodexFailureDiagnostic {
-            event_type: "turn.failed",
-            message: codex_error_message(event.get("error"))
-                .unwrap_or_else(|| "turn failed".into()),
-        }),
+        "error" => {
+            let error = event.get("error");
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: raw_message_from_field(event.get("message"))
+                    .or_else(|| codex_error_message(error))
+                    .unwrap_or_else(|| "error".into()),
+                failure_reason: codex_event_failure_reason(event, error),
+            })
+        }
+        "turn.failed" => {
+            let error = event.get("error");
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: codex_error_message(error).unwrap_or_else(|| "turn failed".into()),
+                failure_reason: codex_event_failure_reason(event, error),
+            })
+        }
         "turn.completed" => {
             let status = codex_turn_completed_failure_status(event)?;
+            let error = event.pointer("/turn/error").or_else(|| event.get("error"));
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
-                message: codex_error_message(
-                    event.pointer("/turn/error").or_else(|| event.get("error")),
-                )
-                .unwrap_or_else(|| format!("turn {status}")),
+                message: codex_error_message(error).unwrap_or_else(|| format!("turn {status}")),
+                failure_reason: codex_event_failure_reason(event, error),
             })
         }
         _ => None,
@@ -183,6 +192,18 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
     let message = error.get("message").and_then(Value::as_str);
     let details = error.get("additional_details").and_then(Value::as_str);
     combined_message_and_details(message, details)
+}
+
+fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
+    let error = error?;
+    if error.get("code").and_then(Value::as_str) == Some("invalid_api_key") {
+        return Some(FailureReason::InvalidApiKey);
+    }
+    None
+}
+
+fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
+    codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
 }
 
 fn raw_message_from_field(value: Option<&Value>) -> Option<String> {
@@ -527,6 +548,25 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "error",
                 message: "server rejected request".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_invalid_api_key_code_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "invalid_api_key",
+            "message": "Incorrect API key provided"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Incorrect API key provided".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
             })
         );
     }
@@ -543,6 +583,27 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "turn failed from server".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_invalid_api_key_code_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "code": "invalid_api_key",
+                "message": "Incorrect API key provided"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Incorrect API key provided".to_string(),
+                failure_reason: Some(FailureReason::InvalidApiKey),
             })
         );
     }
@@ -562,6 +623,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "turn failed from server (rate limit exceeded)".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -578,6 +640,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "legacy turn failure".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -594,6 +657,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.failed",
                 message: "turn failed".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -613,6 +677,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "error",
                 message: "server rejected request (policy denied)".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -632,6 +697,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "turn.completed",
                 message: "failed TurnCompleted reason".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -649,6 +715,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "error",
                 message: "request failed with token ***".to_string(),
+                failure_reason: None,
             })
         );
     }
@@ -665,6 +732,7 @@ mod tests {
             Some(CodexFailureDiagnostic {
                 event_type: "error",
                 message: "first line\\nsecond line\\rthird line".to_string(),
+                failure_reason: None,
             })
         );
     }

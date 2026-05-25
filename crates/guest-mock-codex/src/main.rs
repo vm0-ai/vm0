@@ -117,6 +117,10 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     ("turn-failed", include_str!("../fixtures/turn-failed.jsonl")),
     ("error-event", include_str!("../fixtures/error-event.jsonl")),
+    (
+        "invalid-api-key",
+        include_str!("../fixtures/invalid-api-key.jsonl"),
+    ),
 ];
 
 fn main() -> io::Result<()> {

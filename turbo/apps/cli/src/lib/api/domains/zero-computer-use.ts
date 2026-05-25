@@ -62,8 +62,6 @@ interface ComputerUseCommandParams<
   Kind extends ComputerUseReadCommandKind | ComputerUseWriteCommandKind,
 > {
   readonly kind: Kind;
-  readonly hostId?: string;
-  readonly hostName?: string;
   readonly app?: string;
   readonly snapshotId?: string;
   readonly elementId?: string;
@@ -87,8 +85,6 @@ function commandBody<
   return {
     kind: params.kind,
     timeoutMs: params.timeoutMs ?? 15_000,
-    ...(params.hostId ? { hostId: params.hostId } : {}),
-    ...(params.hostName ? { hostName: params.hostName } : {}),
     ...(params.app ? { app: params.app } : {}),
     ...(params.snapshotId ? { snapshotId: params.snapshotId } : {}),
     ...(params.elementId ? { elementId: params.elementId } : {}),

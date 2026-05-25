@@ -2056,7 +2056,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.23"
+version = "0.4.24"
 dependencies = [
  "bitvec",
  "libc",
@@ -2547,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.103.19"
+version = "0.103.20"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2762,7 +2762,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.35.12"
+version = "0.35.13"
 dependencies = [
  "async-trait",
  "base64",

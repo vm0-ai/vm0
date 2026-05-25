@@ -555,6 +555,8 @@ class TestHandleFirewallRequest:
     ):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         api_entry = {
             "id": "run-1:0",
             "base": "https://api.github.com",
@@ -602,6 +604,10 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_permission"] == "repo-read"
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+        log_text = await asyncio.to_thread(
+            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
+        )
+        assert "Firewall https://api.github.com: api.github.com" in log_text
 
     async def test_missing_billable_firewalls_falls_back_to_empty(
         self, real_flow, headers, mitm_ctx, tmp_path

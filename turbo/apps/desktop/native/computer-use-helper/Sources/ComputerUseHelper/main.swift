@@ -77,46 +77,6 @@ final class LaunchResultBox: @unchecked Sendable {
     var error: Error?
 }
 
-final class CoreRunLoopThread: @unchecked Sendable {
-    static let shared = CoreRunLoopThread()
-
-    private final class RunLoopBox: @unchecked Sendable {
-        var runLoop: CFRunLoop?
-    }
-
-    private let runLoop: CFRunLoop
-
-    private init() {
-        let condition = NSCondition()
-        let box = RunLoopBox()
-        let thread = Thread {
-            let timer = Timer(timeInterval: 3600, repeats: true) { _ in }
-            RunLoop.current.add(timer, forMode: .common)
-
-            condition.lock()
-            box.runLoop = CFRunLoopGetCurrent()
-            condition.signal()
-            condition.unlock()
-
-            RunLoop.current.run()
-        }
-        thread.name = "ComputerUseHelper.FocusSuppression"
-        thread.start()
-
-        condition.lock()
-        while box.runLoop == nil {
-            condition.wait()
-        }
-        runLoop = box.runLoop!
-        condition.unlock()
-    }
-
-    func addSource(_ source: CFRunLoopSource, mode: CFRunLoopMode = .commonModes) {
-        CFRunLoopAddSource(runLoop, source, mode)
-        CFRunLoopWakeUp(runLoop)
-    }
-}
-
 enum BackgroundWindowLocalEvent {
     private typealias SetWindowLocationFn = @convention(c) (CGEvent, CGPoint) -> Void
 
@@ -212,221 +172,6 @@ struct AddressedEventDispatcher {
         event.setWindowAddressingFields(windowNumber: target.windowNumber)
         event.postToPid(target.pid)
     }
-}
-
-final class BackgroundActivationSession: @unchecked Sendable {
-    enum TapKind {
-        case previous
-        case target
-    }
-
-    enum Phase {
-        case deliveringToTarget
-        case holding
-        case finished
-    }
-
-    final class TapContext {
-        let session: BackgroundActivationSession
-        let kind: TapKind
-
-        init(session: BackgroundActivationSession, kind: TapKind) {
-            self.session = session
-            self.kind = kind
-        }
-    }
-
-    private static let focusSuppressionEventMask = CGEventMask.max
-
-    private let target: WindowTarget
-    private let previousApp: NSRunningApplication?
-    private let stateLock = NSLock()
-    private var phase: Phase = .deliveringToTarget
-    private var taps: [CFMachPort] = []
-    private var contexts: [TapContext] = []
-    private var finished = false
-
-    private init(target: WindowTarget, previousApp: NSRunningApplication?) {
-        self.target = target
-        self.previousApp = previousApp
-    }
-
-    static func start(target: WindowTarget) throws -> BackgroundActivationSession {
-        let previousApp = NSWorkspace.shared.frontmostApplication
-        let session = BackgroundActivationSession(target: target, previousApp: previousApp)
-        do {
-            try session.installTapsIfNeeded()
-            return session
-        } catch {
-            session.finish()
-            throw error
-        }
-    }
-
-    func activateWindow() throws {
-        beginTargetDelivery()
-        postWindowActivationEvent()
-        try postWindowCenterPrimer()
-        holdFocusSuppressionUntilFinish()
-    }
-
-    func restoreBackgroundActivationIfNeeded() {
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier != target.pid else {
-            restorePreviousFrontmostIfNeeded()
-            return
-        }
-        beginTargetDelivery()
-        postApplicationFocusEvent(subtype: 2)
-        usleep(20_000)
-    }
-
-    func finish() {
-        let shouldFinish = stateLock.withLock {
-            guard !finished else { return false }
-            finished = true
-            phase = .finished
-            return true
-        }
-        guard shouldFinish else { return }
-        for tap in taps {
-            CFMachPortInvalidate(tap)
-        }
-        taps.removeAll()
-        contexts.removeAll()
-    }
-
-    deinit {
-        finish()
-    }
-
-    private func beginTargetDelivery() {
-        setPhase(.deliveringToTarget)
-    }
-
-    private func holdFocusSuppressionUntilFinish() {
-        setPhase(.holding)
-    }
-
-    private func setPhase(_ newPhase: Phase) {
-        stateLock.withLock {
-            phase = newPhase
-        }
-    }
-
-    private func installTapsIfNeeded() throws {
-        guard let previousApp, previousApp.processIdentifier != target.pid else { return }
-        try installTap(kind: .previous, pid: previousApp.processIdentifier)
-        try installTap(kind: .target, pid: target.pid)
-    }
-
-    private func installTap(kind: TapKind, pid: pid_t) throws {
-        let context = TapContext(session: self, kind: kind)
-        let pointer = Unmanaged.passUnretained(context).toOpaque()
-        guard let tap = CGEvent.tapCreateForPid(
-            pid: pid,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: Self.focusSuppressionEventMask,
-            callback: backgroundActivationEventTapCallback,
-            userInfo: pointer
-        ) else {
-            throw HelperFailure(
-                code: "accessibility_unavailable",
-                message: "Unable to install focus suppression event tap for pid \(pid)"
-            )
-        }
-        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-            CFMachPortInvalidate(tap)
-            throw HelperFailure(
-                code: "accessibility_unavailable",
-                message: "Unable to create focus suppression run loop source for pid \(pid)"
-            )
-        }
-        CoreRunLoopThread.shared.addSource(source)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        contexts.append(context)
-        taps.append(tap)
-    }
-
-    private func postWindowActivationEvent() {
-        guard target.windowNumber != 0 else { return }
-        let event = NSEvent.otherEvent(
-            with: .appKitDefined,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: target.windowNumber,
-            context: nil,
-            subtype: Int16(1),
-            data1: 0,
-            data2: 0
-        )?.cgEvent
-        guard let event else { return }
-        event.setWindowAddressingFields(windowNumber: target.windowNumber)
-        event.postToPid(target.pid)
-        usleep(20_000)
-    }
-
-    private func postApplicationFocusEvent(subtype: Int16) {
-        let event = NSEvent.otherEvent(
-            with: .appKitDefined,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: target.windowNumber,
-            context: nil,
-            subtype: subtype,
-            data1: 0,
-            data2: 0
-        )?.cgEvent
-        guard let event else { return }
-        event.setWindowAddressingFields(windowNumber: target.windowNumber)
-        event.postToPid(target.pid)
-    }
-
-    private func postWindowCenterPrimer() throws {
-        guard target.windowNumber != 0, target.frame.width > 0, target.frame.height > 0 else { return }
-        let point = CGPoint(x: target.frame.midX, y: target.frame.midY)
-        let dispatcher = AddressedEventDispatcher(target: target)
-        try dispatcher.postMouse(.leftMouseDown, at: point, button: .left, clickState: 1, pressure: 1)
-        usleep(30_000)
-        try dispatcher.postMouse(.leftMouseUp, at: point, button: .left, clickState: 1, pressure: 0)
-        usleep(20_000)
-    }
-
-    private func restorePreviousFrontmostIfNeeded() {
-        guard let previousApp, previousApp.processIdentifier != target.pid else { return }
-        _ = previousApp.activate(options: [.activateIgnoringOtherApps])
-    }
-
-    func shouldDrop(kind: TapKind, type: CGEventType) -> Bool {
-        guard type.rawValue == 13 || type.rawValue == 19 || type.rawValue == 20 else { return false }
-        let currentPhase = stateLock.withLock { phase }
-        switch currentPhase {
-        case .deliveringToTarget, .holding:
-            return kind == .previous
-        case .finished:
-            return false
-        }
-    }
-}
-
-private func backgroundActivationEventTapCallback(
-    _: CGEventTapProxy,
-    type: CGEventType,
-    event: CGEvent,
-    rawContext: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    guard let rawContext else {
-        return Unmanaged.passUnretained(event)
-    }
-    let context = Unmanaged<BackgroundActivationSession.TapContext>
-        .fromOpaque(rawContext)
-        .takeUnretainedValue()
-    if context.session.shouldDrop(kind: context.kind, type: type) {
-        return nil
-    }
-    return Unmanaged.passUnretained(event)
 }
 
 func isRecord(_ value: Any) -> [String: Any]? {
@@ -901,42 +646,7 @@ func performWithRequiredBackgroundTarget<T>(
         )
     }
 
-    if NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid {
-        return try action(target)
-    }
-
-    let session = try BackgroundActivationSession.start(target: target)
-    defer {
-        session.restoreBackgroundActivationIfNeeded()
-        session.finish()
-    }
-    try session.activateWindow()
     return try action(target)
-}
-
-func performWithOptionalBackgroundActivation<T>(
-    appName: String,
-    preferredScreenPoint: CGPoint? = nil,
-    _ action: () throws -> T
-) throws -> T {
-    let app = try resolveRunningApp(named: appName)
-    guard NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier,
-          let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint),
-          let session = try? BackgroundActivationSession.start(target: target)
-    else {
-        return try action()
-    }
-
-    defer {
-        session.restoreBackgroundActivationIfNeeded()
-        session.finish()
-    }
-    do {
-        try session.activateWindow()
-    } catch {
-        return try action()
-    }
-    return try action()
 }
 
 func applicationURL(named appName: String) -> URL? {
@@ -1361,26 +1071,6 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
 
     let root = AXUIElementCreateApplication(runningApp.processIdentifier)
     enableBestEffortAccessibilityModes(root)
-    let target = resolveWindowTarget(app: runningApp, root: root)
-    let backgroundSession: BackgroundActivationSession?
-    if NSWorkspace.shared.frontmostApplication?.processIdentifier != runningApp.processIdentifier,
-       let target,
-       let session = try? BackgroundActivationSession.start(target: target)
-    {
-        do {
-            try session.activateWindow()
-            backgroundSession = session
-        } catch {
-            session.finish()
-            backgroundSession = nil
-        }
-    } else {
-        backgroundSession = nil
-    }
-    defer {
-        backgroundSession?.restoreBackgroundActivationIfNeeded()
-        backgroundSession?.finish()
-    }
 
     var nodeCount = 0
     var truncationReasons: [String] = []
@@ -1435,18 +1125,7 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
 func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let previousApp = NSWorkspace.shared.frontmostApplication
-    if let runningApp = findRunningApp(named: appName) {
-        if let target = resolveWindowTarget(app: runningApp),
-           NSWorkspace.shared.frontmostApplication?.processIdentifier != runningApp.processIdentifier
-        {
-            let session = try BackgroundActivationSession.start(target: target)
-            defer {
-                session.restoreBackgroundActivationIfNeeded()
-                session.finish()
-                restorePreviousFrontmostIfNeeded(previousApp: previousApp, targetPID: runningApp.processIdentifier)
-            }
-            try session.activateWindow()
-        }
+    if findRunningApp(named: appName) != nil {
         return [:]
     }
 
@@ -1456,17 +1135,6 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
         throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
     }
     restorePreviousFrontmostIfNeeded(previousApp: previousApp, targetPID: launchedApp.processIdentifier)
-    if let target = waitForWindowTarget(app: launchedApp),
-       NSWorkspace.shared.frontmostApplication?.processIdentifier != launchedApp.processIdentifier
-    {
-        let session = try BackgroundActivationSession.start(target: target)
-        defer {
-            session.restoreBackgroundActivationIfNeeded()
-            session.finish()
-            restorePreviousFrontmostIfNeeded(previousApp: previousApp, targetPID: launchedApp.processIdentifier)
-        }
-        try session.activateWindow()
-    }
     return [:]
 }
 
@@ -1474,19 +1142,17 @@ func handleElementClick(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let elementId = try requiredString(request, "elementId")
     let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
-    try performWithOptionalBackgroundActivation(appName: appName) {
-        let element = try resolveElement(appName: appName, elementId: elementId)
-        for index in 0..<clickCount {
-            let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
-            if error != .success {
-                throw HelperFailure(
-                    code: "accessibility_unavailable",
-                    message: "Unable to press \(elementId): \(error.rawValue)"
-                )
-            }
-            if index + 1 < clickCount {
-                usleep(50_000)
-            }
+    let element = try resolveElement(appName: appName, elementId: elementId)
+    for index in 0..<clickCount {
+        let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        if error != .success {
+            throw HelperFailure(
+                code: "accessibility_unavailable",
+                message: "Unable to press \(elementId): \(error.rawValue)"
+            )
+        }
+        if index + 1 < clickCount {
+            usleep(50_000)
         }
     }
     return [:]

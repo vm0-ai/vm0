@@ -2787,6 +2787,13 @@
       "when": 1779810000002,
       "tag": "0397_new_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 398,
+      "version": "7",
+      "when": 1779810000003,
+      "tag": "0398_useful_jack_power",
+      "breakpoints": true
     }
   ]
 }

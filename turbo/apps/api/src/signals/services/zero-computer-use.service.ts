@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type {
   ComputerUseCommandError,
   ComputerUseCommandKind,
@@ -69,7 +69,6 @@ type CreateComputerUseCommandResult =
       readonly commandStatus: "queued" | "pending_approval";
     }
   | { readonly status: "no_host" }
-  | { readonly status: "host_not_found" }
   | { readonly status: "host_ambiguous" }
   | { readonly status: "host_offline" }
   | { readonly status: "host_unsupported" };
@@ -83,13 +82,20 @@ type ApproveComputerUseWriteCommandResult =
 type ResolveComputerUseCommandTargetsResult =
   | {
       readonly status: "resolved";
-      readonly targetHostId?: string;
+      readonly targetHostId: string;
       readonly notifyHosts: readonly ComputerUseHostRow[];
     }
-  | { readonly status: "host_not_found" }
   | { readonly status: "host_ambiguous" }
   | { readonly status: "host_offline" }
   | { readonly status: "host_unsupported" };
+
+type StartComputerUseHostResult =
+  | {
+      readonly status: "started";
+      readonly hostId: string;
+      readonly hostToken: string;
+    }
+  | { readonly status: "active_host_exists"; readonly hostId: string };
 
 type ClaimNextComputerUseHostCommandResult =
   | { readonly status: "invalid_token" }
@@ -357,70 +363,31 @@ async function insertComputerUseCommandAuditEvent(
 }
 
 function resolveComputerUseCommandTargets(params: {
-  readonly hosts: readonly ComputerUseHostRow[];
   readonly onlineHosts: readonly ComputerUseHostRow[];
   readonly kind: ComputerUseCommandKind;
-  readonly hostId?: string;
-  readonly hostName?: string;
 }): ResolveComputerUseCommandTargetsResult {
-  if (params.hostId) {
-    const host = params.hosts.find((candidate) => {
-      return candidate.id === params.hostId;
-    });
-    if (!host) {
-      return { status: "host_not_found" };
-    }
-    if (
-      !params.onlineHosts.some((candidate) => {
-        return candidate.id === host.id;
-      })
-    ) {
-      return { status: "host_offline" };
-    }
-    if (!hostSupportsCommand(host, params.kind)) {
-      return { status: "host_unsupported" };
-    }
-    return { status: "resolved", targetHostId: host.id, notifyHosts: [host] };
+  if (params.onlineHosts.length === 0) {
+    return { status: "host_offline" };
   }
 
-  let candidates = params.onlineHosts;
-  if (params.hostName) {
-    const normalized = normalizeHostName(params.hostName).toLowerCase();
-    candidates = candidates.filter((host) => {
-      return host.displayName.toLowerCase() === normalized;
-    });
-    if (candidates.length === 0) {
-      const namedHosts = params.hosts.filter((host) => {
-        return host.displayName.toLowerCase() === normalized;
-      });
-      return namedHosts.length === 0
-        ? { status: "host_not_found" }
-        : { status: "host_offline" };
-    }
-    if (candidates.length > 1) {
-      return { status: "host_ambiguous" };
-    }
-  }
-
-  const supported = candidates.filter((host) => {
+  const supported = params.onlineHosts.filter((host) => {
     return hostSupportsCommand(host, params.kind);
   });
   if (supported.length === 0) {
     return { status: "host_unsupported" };
   }
-
-  if (supported.length === 1 || params.hostName) {
-    const [host] = supported;
-    return {
-      status: "resolved",
-      targetHostId: host?.id,
-      notifyHosts: host ? [host] : [],
-    };
+  if (supported.length > 1) {
+    return { status: "host_ambiguous" };
   }
 
+  const [host] = supported;
+  if (!host) {
+    throw new Error("Expected a supported computer-use host");
+  }
   return {
     status: "resolved",
-    notifyHosts: supported,
+    targetHostId: host.id,
+    notifyHosts: [host],
   };
 }
 
@@ -460,36 +427,67 @@ export const startComputerUseHost$ = command(
       };
     },
     signal: AbortSignal,
-  ): Promise<{ readonly hostId: string; readonly hostToken: string }> => {
+  ): Promise<StartComputerUseHostResult> => {
     const db = set(writeDb$);
     const hostToken = generateOpaqueToken("vm0_computer_use_host");
     const now = nowDate();
-    const [host] = await db
-      .insert(computerUseHosts)
-      .values({
-        orgId: params.orgId,
-        userId: params.userId,
-        displayName: normalizeHostName(params.hostName),
-        tokenHash: hashSecret(hostToken),
-        appVersion: normalizeVersion(params.appVersion),
-        osVersion: normalizeOsVersion(params.osVersion),
-        supportedCapabilities: normalizeCapabilities(
-          params.supportedCapabilities,
-        ),
-        permissions: params.permissions,
-        status: "online",
-        lastSeenAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning({ id: computerUseHosts.id });
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('computer_use_host:' || ${params.orgId} || ':' || ${params.userId}))`,
+      );
+
+      const existingHosts = await tx
+        .select()
+        .from(computerUseHosts)
+        .where(
+          and(
+            eq(computerUseHosts.orgId, params.orgId),
+            eq(computerUseHosts.userId, params.userId),
+            isNull(computerUseHosts.revokedAt),
+          ),
+        )
+        .for("update");
+      signal.throwIfAborted();
+
+      const activeHost = existingHosts.find((host) => {
+        return hostIsOnline(host, now);
+      });
+      if (activeHost) {
+        return {
+          status: "active_host_exists" as const,
+          hostId: activeHost.id,
+        };
+      }
+
+      const [host] = await tx
+        .insert(computerUseHosts)
+        .values({
+          orgId: params.orgId,
+          userId: params.userId,
+          displayName: normalizeHostName(params.hostName),
+          tokenHash: hashSecret(hostToken),
+          appVersion: normalizeVersion(params.appVersion),
+          osVersion: normalizeOsVersion(params.osVersion),
+          supportedCapabilities: normalizeCapabilities(
+            params.supportedCapabilities,
+          ),
+          permissions: params.permissions,
+          status: "online",
+          lastSeenAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: computerUseHosts.id });
+      signal.throwIfAborted();
+
+      if (!host) {
+        throw new Error("Failed to start computer-use host");
+      }
+
+      return { status: "started" as const, hostId: host.id, hostToken };
+    });
     signal.throwIfAborted();
-
-    if (!host) {
-      throw new Error("Failed to start computer-use host");
-    }
-
-    return { hostId: host.id, hostToken };
+    return result;
   },
 );
 
@@ -611,8 +609,6 @@ export const createComputerUseCommand$ = command(
       readonly kind: ComputerUseCommandKind;
       readonly payload: ComputerUseCommandPayload;
       readonly timeoutMs?: number;
-      readonly hostId?: string;
-      readonly hostName?: string;
       readonly requiresApproval: boolean;
     },
     signal: AbortSignal,
@@ -644,11 +640,8 @@ export const createComputerUseCommand$ = command(
       return hostIsOnline(host, now);
     });
     const target = resolveComputerUseCommandTargets({
-      hosts,
       onlineHosts,
       kind: params.kind,
-      hostId: params.hostId,
-      hostName: params.hostName,
     });
     if (target.status !== "resolved") {
       return target;
@@ -665,7 +658,7 @@ export const createComputerUseCommand$ = command(
           orgId: params.orgId,
           userId: params.userId,
           runId: params.runId ?? null,
-          hostId: target.targetHostId ?? null,
+          hostId: target.targetHostId,
           kind: params.kind,
           status: commandStatus,
           payload,

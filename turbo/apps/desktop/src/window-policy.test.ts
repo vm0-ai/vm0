@@ -487,7 +487,7 @@ describe("computer use desktop runtime", () => {
     });
   });
 
-  it("reports app open as a background target preparation", async () => {
+  it("reports app open as a background launch without target preparation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     const result = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.open", payload: { app: "Safari" } },
@@ -507,7 +507,7 @@ describe("computer use desktop runtime", () => {
         app: "Safari",
         dispatchMode: "background_app_open",
         dispatchTarget: "target_app",
-        inputRisk: "background_target_prepare",
+        inputRisk: "background_app_launch",
       },
     });
     expect(openApp).toHaveBeenCalledWith("Safari");
@@ -1182,9 +1182,9 @@ describe("computer use desktop runtime", () => {
         screenY: 800,
         button: "right",
         clickCount: 2,
-        dispatchMode: "targeted_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "app_process",
-        inputRisk: "targeted_app_pointer",
+        inputRisk: "background_app_pointer",
       },
     });
     expect(clickPoint).toHaveBeenCalledWith({
@@ -1253,9 +1253,9 @@ describe("computer use desktop runtime", () => {
         screenY: 380,
         button: "left",
         clickCount: 1,
-        dispatchMode: "targeted_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "app_process",
-        inputRisk: "targeted_app_pointer",
+        inputRisk: "background_app_pointer",
       },
     });
     expect(captureCount).toBe(1);
@@ -1289,7 +1289,7 @@ describe("computer use desktop runtime", () => {
     });
   });
 
-  it("parses press-key combinations before posting targeted input", async () => {
+  it("parses press-key combinations before posting background input", async () => {
     const cases = [
       {
         key: "Command+K",
@@ -1378,9 +1378,9 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         key: "Command+K",
-        dispatchMode: "targeted_keyboard_event",
+        dispatchMode: "background_keyboard_event",
         dispatchTarget: "app_process",
-        inputRisk: "targeted_app_shortcut",
+        inputRisk: "background_app_shortcut",
       },
     });
     expect(pressKey).toHaveBeenCalledWith({

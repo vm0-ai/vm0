@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.383.1](https://github.com/vm0-ai/vm0/compare/app-v0.383.0...app-v0.383.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* render html previews as link badges ([#14826](https://github.com/vm0-ai/vm0/issues/14826)) ([72e085f](https://github.com/vm0-ai/vm0/commit/72e085f06ece63b8c9fb44fb91287c109fe6ac71))
+* separate queue message strip from page bg in dark mode ([#14682](https://github.com/vm0-ai/vm0/issues/14682)) ([729dccb](https://github.com/vm0-ai/vm0/commit/729dccb12d417d1ee7f3867bb330a99c6b3900df)), closes [#14680](https://github.com/vm0-ai/vm0/issues/14680)
+
 ## [0.383.0](https://github.com/vm0-ai/vm0/compare/app-v0.382.1...app-v0.383.0) (2026-05-25)
 
 

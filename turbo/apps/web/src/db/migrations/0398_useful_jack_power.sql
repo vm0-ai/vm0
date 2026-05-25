@@ -1,0 +1,1 @@
+ALTER TABLE "chat_messages" ADD COLUMN "attach_file_metadata" jsonb;

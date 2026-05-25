@@ -7,7 +7,10 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageAttachFileMetadata,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -40,6 +43,7 @@ import {
 import { now, nowDate } from "../external/time";
 import { badRequestMessage, notFound, providerDeleted } from "../../lib/error";
 import { env } from "../../lib/env";
+import { buildArtifactKey } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
@@ -301,6 +305,31 @@ function buildFullPrompt(
     return prompt;
   }
   return `${prompt}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
+}
+
+function attachFileIds(
+  attachFiles: readonly AttachFile[] | undefined,
+): string[] | null {
+  const ids = attachFiles?.map((file) => {
+    return file.id;
+  });
+  return ids && ids.length > 0 ? ids : null;
+}
+
+function attachFileMetadata(
+  userId: string,
+  attachFiles: readonly AttachFile[] | undefined,
+): ChatMessageAttachFileMetadata[] | null {
+  const metadata = attachFiles?.map((file) => {
+    return {
+      id: file.id,
+      filename: file.filename,
+      contentType: file.contentType,
+      size: file.size,
+      objectKey: buildArtifactKey(userId, file.id, file.filename),
+    };
+  });
+  return metadata && metadata.length > 0 ? metadata : null;
 }
 
 function truncatePrior(value: string): string {
@@ -1189,9 +1218,8 @@ function appendUnassociatedUserMessage(params: {
       );
 
     const explicitId = params.clientMessageId ?? undefined;
-    const attachFileIds = params.attachFiles?.map((file) => {
-      return file.id;
-    });
+    const fileIds = attachFileIds(params.attachFiles);
+    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
     const [inserted] = await tx
       .insert(chatMessages)
       .values({
@@ -1200,8 +1228,8 @@ function appendUnassociatedUserMessage(params: {
         role: "user",
         content: params.prompt,
         runId: null,
-        attachFiles:
-          attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+        attachFiles: fileIds,
+        attachFileMetadata: fileMetadata,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -1253,9 +1281,8 @@ async function appendAssociatedUserMessage(params: {
         ),
       );
     const explicitId = params.clientMessageId ?? undefined;
-    const attachFileIds = params.attachFiles?.map((file) => {
-      return file.id;
-    });
+    const fileIds = attachFileIds(params.attachFiles);
+    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
     await tx
       .insert(chatMessages)
       .values({
@@ -1264,8 +1291,8 @@ async function appendAssociatedUserMessage(params: {
         role: "user",
         content: params.prompt,
         runId: params.runId,
-        attachFiles:
-          attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+        attachFiles: fileIds,
+        attachFileMetadata: fileMetadata,
       })
       .onConflictDoNothing({ target: chatMessages.id });
     await touchChatThreadLastMessageAt(tx, params.threadId);
@@ -1841,9 +1868,11 @@ async function appendInsufficientCreditsMessages(params: {
       );
 
     const explicitId = params.body.clientMessageId ?? undefined;
-    const attachFileIds = params.body.attachFiles?.map((file) => {
-      return file.id;
-    });
+    const fileIds = attachFileIds(params.body.attachFiles);
+    const fileMetadata = attachFileMetadata(
+      params.userId,
+      params.body.attachFiles,
+    );
     const [userMessage] = await tx
       .insert(chatMessages)
       .values({
@@ -1853,8 +1882,8 @@ async function appendInsufficientCreditsMessages(params: {
         content: params.body.prompt,
         runId: null,
         error: INSUFFICIENT_CREDITS_USER_MESSAGE_MARKER,
-        attachFiles:
-          attachFileIds && attachFileIds.length > 0 ? attachFileIds : null,
+        attachFiles: fileIds,
+        attachFileMetadata: fileMetadata,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });

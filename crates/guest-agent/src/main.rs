@@ -216,8 +216,11 @@ async fn execute(
                     cli_result.claude_result,
                 )
                 .with_failure_detail_source(failure_message.source);
-                let diagnostic =
-                    with_cli_failure_reason(diagnostic, failure_message.message.as_str());
+                let diagnostic = with_cli_failure_reason(
+                    diagnostic,
+                    failure_message.message.as_str(),
+                    failure_message.failure_reason,
+                );
                 (
                     cli_exit_code,
                     cli_exit_code,
@@ -334,8 +337,11 @@ fn diagnostic_framework() -> AgentFramework {
 fn with_cli_failure_reason(
     diagnostic: FailureDiagnostic,
     failure_message: &str,
+    failure_reason: Option<FailureReason>,
 ) -> FailureDiagnostic {
-    if let Some(reason) = classify_cli_failure_reason(diagnostic.framework, failure_message) {
+    if let Some(reason) =
+        classify_cli_failure_reason(diagnostic.framework, failure_message).or(failure_reason)
+    {
         diagnostic.with_failure_reason(reason)
     } else {
         diagnostic
@@ -349,6 +355,12 @@ fn classify_cli_failure_reason(
     let normalized = failure_message.to_ascii_lowercase();
     if normalized.contains("402 insufficient credits") {
         return Some(FailureReason::InsufficientCredits);
+    }
+    if matches!(framework, AgentFramework::Codex)
+        && (normalized.contains("invalid_api_key")
+            || normalized.contains("incorrect api key provided"))
+    {
+        return Some(FailureReason::InvalidApiKey);
     }
     if matches!(framework, AgentFramework::Codex) && normalized.contains("usage limit") {
         return Some(FailureReason::UsageLimit);
@@ -429,6 +441,7 @@ fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
 struct CliFailureMessage {
     message: String,
     source: FailureDetailSource,
+    failure_reason: Option<FailureReason>,
 }
 
 fn cli_failure_message(
@@ -436,18 +449,20 @@ fn cli_failure_message(
     stderr_lines: &[String],
     failure_diagnostic: Option<&cli::CliFailureDiagnostic>,
 ) -> CliFailureMessage {
-    if let Some((message, source)) = failure_diagnostic.and_then(|diagnostic| {
+    let stdout_failure_reason = failure_diagnostic.and_then(|diagnostic| diagnostic.failure_reason);
+    if let Some((message, source, failure_reason)) = failure_diagnostic.and_then(|diagnostic| {
         let message = diagnostic.message.trim();
         if message.is_empty() {
             None
         } else {
-            Some((message, diagnostic.source))
+            Some((message, diagnostic.source, diagnostic.failure_reason))
         }
     }) && (!is_generic_stdout_failure_diagnostic(message) || stderr_lines.is_empty())
     {
         return CliFailureMessage {
             message: message.to_string(),
             source,
+            failure_reason,
         };
     }
 
@@ -455,6 +470,7 @@ fn cli_failure_message(
         return CliFailureMessage {
             message: format!("Agent exited with code {code}"),
             source: FailureDetailSource::FallbackExitCode,
+            failure_reason: None,
         };
     }
 
@@ -483,6 +499,7 @@ fn cli_failure_message(
     CliFailureMessage {
         message: message_lines.join(" "),
         source: FailureDetailSource::Stderr,
+        failure_reason: stdout_failure_reason,
     }
 }
 
@@ -717,6 +734,7 @@ mod tests {
         cli::CliFailureDiagnostic {
             message: message.to_string(),
             source,
+            failure_reason: None,
         }
     }
 
@@ -889,6 +907,21 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_message_preserves_structured_reason_with_stderr_message() {
+        let stderr_lines = vec!["specific stderr failure".to_string()];
+        let diagnostic = cli::CliFailureDiagnostic {
+            message: "turn failed".to_string(),
+            source: FailureDetailSource::CodexJsonl,
+            failure_reason: Some(FailureReason::InvalidApiKey),
+        };
+        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
+
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
+        assert_eq!(msg.message, "specific stderr failure");
+        assert_eq!(msg.failure_reason, Some(FailureReason::InvalidApiKey));
+    }
+
+    #[test]
     fn cli_failure_reason_uses_selected_stderr_over_generic_diagnostic() {
         let _test_state_guard = lock_test_state();
         let tmp = tempfile::tempdir().unwrap();
@@ -907,7 +940,8 @@ mod tests {
         )
         .with_cli_exit_code(1)
         .with_failure_detail_source(msg.source);
-        let diagnostic = with_cli_failure_reason(diagnostic, msg.message.as_str());
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
 
         assert_eq!(msg.source, FailureDetailSource::Stderr);
         assert_eq!(
@@ -981,6 +1015,60 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_codex_invalid_api_key_code() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "OpenAI API request failed: invalid_api_key",
+        );
+
+        assert_eq!(reason, Some(FailureReason::InvalidApiKey));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_incorrect_api_key_message() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "Incorrect API key provided: sk-...",
+        );
+
+        assert_eq!(reason, Some(FailureReason::InvalidApiKey));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_codex_401() {
+        let reason = classify_cli_failure_reason(AgentFramework::Codex, "401 unauthorized");
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_prefers_message_classification_over_carried_reason() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1);
+        let diagnostic = with_cli_failure_reason(
+            diagnostic,
+            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
+            Some(FailureReason::InvalidApiKey),
+        );
+
+        assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_codex_invalid_api_key_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "OpenAI API request failed: invalid_api_key",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
     fn cli_failure_reason_ignores_non_codex_usage_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
@@ -1012,6 +1100,7 @@ mod tests {
         let unchanged = with_cli_failure_reason(
             diagnostic.clone(),
             "permission denied while running command",
+            None,
         );
 
         assert_eq!(unchanged, diagnostic);
@@ -1029,6 +1118,7 @@ mod tests {
         let diagnostic = with_cli_failure_reason(
             diagnostic,
             "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage.",
+            None,
         );
 
         assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);

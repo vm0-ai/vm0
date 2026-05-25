@@ -6,6 +6,7 @@ import type {
 import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
 import type {
   ComputerUseHostRuntimeState,
+  ComputerUseLocalCommandLogEntry,
   ComputerUsePermissionState,
   ComputerUseRuntimeAuditEvent,
 } from "./computer-use-types";
@@ -101,6 +102,7 @@ export class ComputerUseHostRuntime {
     lastCommandAt: null,
     lastError: null,
     recentAuditEvents: [],
+    localCommandLog: [],
   };
 
   constructor(options: ComputerUseHostRuntimeOptions) {
@@ -147,6 +149,58 @@ export class ComputerUseHostRuntime {
   private setState(update: Partial<ComputerUseHostRuntimeState>): void {
     this.state = { ...this.state, ...update };
     this.onChange();
+  }
+
+  private startLocalCommandLogEntry(
+    command: ComputerUseCommand,
+    startedAt: string,
+  ): void {
+    const app = command.payload.app;
+    const entry: ComputerUseLocalCommandLogEntry = {
+      commandId: command.id,
+      kind: command.kind,
+      app: typeof app === "string" ? app : null,
+      status: "running",
+      payload: command.payload,
+      result: null,
+      error: null,
+      startedAt,
+      completedAt: null,
+      durationMs: null,
+    };
+    this.setState({
+      localCommandLog: [
+        entry,
+        ...this.state.localCommandLog.filter((candidate) => {
+          return candidate.commandId !== command.id;
+        }),
+      ],
+    });
+  }
+
+  private finishLocalCommandLogEntry(args: {
+    readonly commandId: string;
+    readonly status: "succeeded" | "failed";
+    readonly result: Record<string, unknown> | null;
+    readonly error: Record<string, unknown> | null;
+    readonly completedAt: string;
+    readonly durationMs: number;
+  }): void {
+    this.setState({
+      localCommandLog: this.state.localCommandLog.map((entry) => {
+        if (entry.commandId !== args.commandId) {
+          return entry;
+        }
+        return {
+          ...entry,
+          status: args.status,
+          result: args.result,
+          error: args.error,
+          completedAt: args.completedAt,
+          durationMs: args.durationMs,
+        };
+      }),
+    });
   }
 
   private schedule(delayMs: number): void {
@@ -216,6 +270,15 @@ export class ComputerUseHostRuntime {
       this.setState({
         status: "disabled",
         lastError: "Computer Use is disabled for this account.",
+      });
+      return null;
+    }
+    if (response.status === 409) {
+      this.setState({
+        status: "error",
+        hostId: null,
+        lastError:
+          "Computer Use is already active in another Zero Desktop session.",
       });
       return null;
     }
@@ -318,10 +381,39 @@ export class ComputerUseHostRuntime {
       return;
     }
 
-    const completed = await this.executeCommand(
-      body.command,
-      this.getPermissions(),
-    );
+    const startedAtMs = Date.now();
+    const startedAt = new Date(startedAtMs).toISOString();
+    this.startLocalCommandLogEntry(body.command, startedAt);
+
+    let completed: ComputerUseCommandExecutionResult;
+    try {
+      completed = await this.executeCommand(
+        body.command,
+        this.getPermissions(),
+      );
+    } catch (error) {
+      const completedAtMs = Date.now();
+      this.finishLocalCommandLogEntry({
+        commandId: body.command.id,
+        status: "failed",
+        result: null,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+        completedAt: new Date(completedAtMs).toISOString(),
+        durationMs: completedAtMs - startedAtMs,
+      });
+      throw error;
+    }
+    const completedAtMs = Date.now();
+    this.finishLocalCommandLogEntry({
+      commandId: body.command.id,
+      status: completed.status,
+      result: completed.status === "succeeded" ? completed.result : null,
+      error: completed.status === "failed" ? completed.error : null,
+      completedAt: new Date(completedAtMs).toISOString(),
+      durationMs: completedAtMs - startedAtMs,
+    });
     const response = await this.hostFetch(
       `/api/zero/computer-use/host/commands/${body.command.id}/complete`,
       {

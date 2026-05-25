@@ -18,7 +18,10 @@ import {
 import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageAttachFileMetadata,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -40,7 +43,11 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
+import {
+  buildArtifactPrefix,
+  buildFileUrl,
+  buildFileUrlFromKey,
+} from "../../lib/file-url";
 import { type Db, db$, writeDb$ } from "../external/db";
 import {
   publishThreadListChanged,
@@ -95,6 +102,7 @@ type ChatMessageRow = {
   readonly runStatus: string | null;
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
+  readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
 };
@@ -184,6 +192,7 @@ const messageColumns = {
   runStatus: agentRuns.status,
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
+  attachFileMetadata: chatMessages.attachFileMetadata,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
 } as const;
@@ -372,6 +381,35 @@ export function resolveAttachFileUrls(
   });
 }
 
+export function resolveAttachFileMetadataUrls(
+  metadata: readonly ChatMessageAttachFileMetadata[],
+): readonly ResolvedAttachFile[] {
+  return metadata.map((file) => {
+    return {
+      id: file.id,
+      filename: file.filename,
+      contentType: file.contentType,
+      size: file.size,
+      url: buildFileUrlFromKey(file.objectKey),
+    };
+  });
+}
+
+function chatMessageAttachFiles(
+  userId: string,
+  row: ChatMessageRow,
+): Computed<Promise<readonly ResolvedAttachFile[] | undefined>> {
+  return computed(async (get) => {
+    if (row.attachFileMetadata && row.attachFileMetadata.length > 0) {
+      return resolveAttachFileMetadataUrls(row.attachFileMetadata);
+    }
+    if (row.attachFiles && row.attachFiles.length > 0) {
+      return await get(resolveAttachFileUrls(userId, row.attachFiles));
+    }
+    return undefined;
+  });
+}
+
 function genericErrorStreakForRun(params: {
   readonly chatThreadId: string;
   readonly runId: string;
@@ -475,10 +513,7 @@ function toStoredMessage(
               }),
             )
           : rawEffectiveError;
-      const attachFiles =
-        row.attachFiles && row.attachFiles.length > 0
-          ? await get(resolveAttachFileUrls(userId, row.attachFiles))
-          : undefined;
+      const attachFiles = await get(chatMessageAttachFiles(userId, row));
 
       const role = messageRoleSchema.parse(row.role);
       const message = {
@@ -528,10 +563,7 @@ function toPagedMessage(
             }),
           )
         : rawEffectiveError;
-    const attachFiles =
-      row.attachFiles && row.attachFiles.length > 0
-        ? await get(resolveAttachFileUrls(userId, row.attachFiles))
-        : undefined;
+    const attachFiles = await get(chatMessageAttachFiles(userId, row));
 
     const role = messageRoleSchema.parse(row.role);
     const message = {

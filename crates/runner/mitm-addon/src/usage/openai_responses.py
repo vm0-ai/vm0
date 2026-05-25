@@ -13,6 +13,9 @@ model-provider usage billing:
 - Single-frame WebSocket event JSON via
   ``extract_openai_responses_usage_from_event_json``, consumed by
   ``response_streaming.py`` for Responses events received over upgrades.
+- Per-event usage aggregation via ``merge_openai_responses_usage_result``,
+  used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
+  usage into a per-flow accumulator.
 """
 
 from collections.abc import Callable
@@ -126,6 +129,22 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
 
 
 def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
+    """Fold a Responses usage event into a per-flow usage accumulator.
+
+    ``response_streaming.py`` uses this for terminal SSE events and
+    single-frame WebSocket event JSON, where multiple events may describe the
+    same upstream response. Usage quantities use positive-wins semantics:
+    positive source values replace the accumulator value, while zero values are
+    only stored for categories the accumulator has not seen yet. This preserves
+    real token counts when a later empty event reports zeros.
+
+    Metadata follows usage ownership. When the accumulator already has positive
+    usage and the source has no positive usage quantity, source metadata is
+    ignored so trailing no-usage events cannot relabel the billed model or
+    ``message_id``. Otherwise non-empty ``model`` and ``message_id`` values from
+    the source are copied.
+    """
+
     target_has_positive_quantity = _has_positive_usage_quantity(target)
     source_has_positive_quantity = _has_positive_usage_quantity(source)
     for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:

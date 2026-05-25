@@ -243,6 +243,7 @@ async function firstUserMessage(threadId: string) {
       revokesMessageId: chatMessages.revokesMessageId,
       interruptsRunId: chatMessages.interruptsRunId,
       attachFiles: chatMessages.attachFiles,
+      attachFileMetadata: chatMessages.attachFileMetadata,
     })
     .from(chatMessages)
     .where(eq(chatMessages.chatThreadId, threadId))
@@ -727,6 +728,15 @@ describe("POST /api/zero/chat/messages", () => {
     const message = await firstUserMessage(response.body.threadId);
     expect(message?.content).toBe("read this file");
     expect(message?.attachFiles).toStrictEqual([fileId]);
+    expect(message?.attachFileMetadata).toStrictEqual([
+      {
+        id: fileId,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        size: 42,
+        objectKey: `artifacts/${fixture.userId}/${fileId}/notes.txt`,
+      },
+    ]);
   });
 
   it("generates a chat thread title when the lightweight model is configured", async () => {

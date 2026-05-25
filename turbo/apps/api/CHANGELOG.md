@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.1](https://github.com/vm0-ai/vm0/compare/api-v1.71.0...api-v1.71.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* inject connector env at run creation ([#14820](https://github.com/vm0-ai/vm0/issues/14820)) ([68a4844](https://github.com/vm0-ai/vm0/commit/68a48441b4c05ccd25d9599dd2b4e7be808aa450))
+
 ## [1.71.0](https://github.com/vm0-ai/vm0/compare/api-v1.70.2...api-v1.71.0) (2026-05-25)
 
 

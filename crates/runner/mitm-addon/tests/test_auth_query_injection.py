@@ -157,8 +157,12 @@ class TestAuthQueryInjection:
         assert flow.request.query["key"] == "resolved-query-value"
 
     async def test_query_params_merged_into_rewrite_url(self, real_flow, mitm_ctx):
-        """auth.query params are appended to the forwarded URL in the URL rewrite path."""
-        flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
+        """auth.query params are forwarded without mutating the placeholder request."""
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/hook?client=visible",
+        )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
@@ -193,8 +197,12 @@ class TestAuthQueryInjection:
         # Verify the forwarded URL contains the auth.query params
         call_args = mock_forward.call_args
         forwarded_url = call_args[0][0]
-        assert "api_key=resolved-key-456" in forwarded_url
+        query = parse_qs(urlparse(forwarded_url).query)
+        assert query["api_key"] == ["resolved-key-456"]
+        assert query["client"] == ["visible"]
         assert forwarded_url.startswith("https://real-api.com/webhook/secret")
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
 
     async def test_query_params_overwrite_existing_rewrite_url_keys(self, real_flow, mitm_ctx):
         """auth.query overwrites duplicate keys while preserving other query values."""
