@@ -75,6 +75,44 @@ async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame(
 }
 
 #[tokio::test]
+async fn exec_operation_stream_rejects_oversized_stdin_without_sending_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let stdin_bytes = vec![0; vsock_proto::MAX_EXEC_STDIN_BYTES + 1];
+
+    let err = match host
+        .exec_operation_stream(ExecStreamRequest {
+            timeout_ms: 5000,
+            command: "cat",
+            env: &[],
+            sudo: false,
+            label: "stream-oversized-stdin",
+            stdout: ExecOutputPolicy::Stream {
+                limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+            },
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            stdin_bytes: Some(&stdin_bytes),
+            stream_queue_capacity: None,
+        })
+        .await
+    {
+        Ok(_) => panic!("oversized stdin should be rejected"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+        err.to_string().contains("stdin_bytes"),
+        "unexpected error: {err}",
+    );
+    assert_eq!(operation_count(&host), 0);
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn exec_start_stream_policy_uses_default_receiver() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

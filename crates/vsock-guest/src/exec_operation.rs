@@ -1364,6 +1364,34 @@ mod tests {
     }
 
     #[test]
+    fn stdin_writer_spawn_failure_returns_wait_failed_and_cleans_registry() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let registry = ExecOperationRegistry::default();
+        let mut request = request(46, "sleep 60");
+        request.stdin_bytes = Some(b"stdin".to_vec());
+
+        start_exec_operation_with_spawner(
+            request,
+            operation_guard(),
+            writer,
+            Arc::new(AtomicBool::new(false)),
+            registry.clone(),
+            FailingThreadSpawner::fail_once(THREAD_EXEC_OPERATION_STDIN),
+        )
+        .unwrap();
+
+        let msg = read_message(&mut host);
+        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
+        assert_eq!(msg.seq, 46);
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::WaitFailed);
+        assert!(result.diagnostic.contains("stdin writer thread"));
+        assert_registry_released(&registry, 46);
+    }
+
+    #[test]
     fn stderr_drain_spawn_failure_returns_wait_failed_and_cleans_registry() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();

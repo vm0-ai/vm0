@@ -124,6 +124,13 @@ mod tests {
     }
 
     #[test]
+    fn read_entropy_accepts_max_size_stdin() {
+        let input = vec![7; MAX_ENTROPY_BYTES];
+        let entropy = read_entropy(&input[..]).unwrap();
+        assert_eq!(entropy, input);
+    }
+
+    #[test]
     fn run_with_reseed_passes_raw_entropy_to_reseed() {
         let mut stderr = Vec::new();
         let mut seen = Vec::new();
