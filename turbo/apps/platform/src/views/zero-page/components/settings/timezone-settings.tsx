@@ -46,9 +46,6 @@ export function TimezoneSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        Used to schedule tasks and send notifications at the right time.
-      </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">

@@ -106,7 +106,7 @@ interface SidebarGroup {
 }
 
 const PERSONAL_GROUP = {
-  label: null,
+  label: "Personal",
   items: [
     {
       id: "preference",
