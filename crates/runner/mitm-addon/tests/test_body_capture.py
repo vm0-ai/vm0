@@ -42,6 +42,9 @@ def _track_brotli_decompressor(monkeypatch):
             stats["max_output"] = max(stats["max_output"], len(out))
             return out
 
+        def is_finished(self) -> bool:
+            return self._inner.is_finished()
+
     monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
     return stats
 

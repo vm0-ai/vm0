@@ -46,13 +46,6 @@ _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
 
 
-def _brotli_is_finished(dec: object) -> bool:
-    is_finished = getattr(dec, "is_finished", None)
-    if callable(is_finished):
-        return bool(is_finished())
-    return True
-
-
 # ---------------------------------------------------------------------------
 # Body capture helpers (opt-in per run via captureNetworkBodies registry flag)
 # ---------------------------------------------------------------------------
@@ -212,10 +205,10 @@ def _decompress_brotli_bounded_with_finished(data: bytes, max_output: int) -> tu
         remaining = max_output - len(out)
         if len(decoded) >= remaining:
             out.extend(decoded[:remaining])
-            return bytes(out), _brotli_is_finished(dec)
+            return bytes(out), dec.is_finished()
         out.extend(decoded)
 
-    return bytes(out), _brotli_is_finished(dec)
+    return bytes(out), dec.is_finished()
 
 
 def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
