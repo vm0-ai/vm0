@@ -22,9 +22,9 @@ import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
 
 /**
  * Build canonical compose content for a zero agent. Pure function — same
- * inputs always yield the same output. Mirrors
- * apps/web/src/lib/zero/build-compose-content.ts so the version hash
- * computed here matches the existing web route behavior.
+ * inputs always yield the same output. The API owns this zero-agent compose
+ * shape now; keep it stable because existing compose version hashes depend on
+ * the canonical content.
  */
 function buildZeroAgentComposeContent(
   agentName: string,
@@ -100,10 +100,9 @@ function sortObjectKeys(obj: unknown): unknown {
 }
 
 /**
- * SHA-256 of the canonical-JSON form of `content`. Mirrors
- * apps/web/src/lib/infra/agent-compose/content-hash.ts:computeComposeVersionId
- * so api and web produce the same hash for the same content during the
- * shadow-compare rollout window.
+ * SHA-256 of the canonical-JSON form of `content`. This matches the compose
+ * create service so API-authored compose versions use the same content
+ * addressing.
  */
 function computeComposeVersionId(content: Record<string, unknown>): string {
   const canonical = JSON.stringify(sortObjectKeys(content));

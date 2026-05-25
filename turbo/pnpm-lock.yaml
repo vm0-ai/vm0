@@ -713,9 +713,6 @@ importers:
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
-      '@vm0/api-services':
-        specifier: workspace:*
-        version: link:../../packages/api-services
       '@vm0/connectors':
         specifier: workspace:*
         version: link:../../packages/connectors

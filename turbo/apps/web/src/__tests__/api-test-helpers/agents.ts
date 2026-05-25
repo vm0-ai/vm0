@@ -3,11 +3,11 @@ import {
   getTestAuthContext,
   type ComposeConfigOptions,
 } from "./core";
-import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
 import {
   ensureZeroAgentRow,
   seedApiCompatibleCompose,
 } from "../db-test-seeders/agents";
+import type { TestAgentDefinition } from "./compose-content";
 
 // ---------------------------------------------------------------------------
 // Re-exports: DB-direct seeders and assertion helpers.
@@ -66,7 +66,7 @@ export {
  */
 export async function createTestCompose(
   agentName: string,
-  options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
+  options?: ComposeConfigOptions | Partial<TestAgentDefinition>,
 ): Promise<{
   composeId: string;
   versionId: string;
