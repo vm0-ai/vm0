@@ -1760,9 +1760,12 @@ exit 0
             format!(
                 r#"#!/usr/bin/env bash
 set -euo pipefail
+fifo="$0.fifo"
+mkfifo "$fifo"
+exec 3<>"$fifo"
 trap 'touch "{}"; exit 0' USR1
 echo ready
-while true; do sleep 1; done
+while true; do read -r _ <&3 || true; done
 "#,
                 signal_file.display()
             ),
