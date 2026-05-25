@@ -64,6 +64,7 @@ import {
   onRef,
   resetSignal,
   settle,
+  setLoop,
   withCleanup,
 } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
@@ -1443,83 +1444,95 @@ const pollConnectorCliAuthBrowserVerification$ = command(
     }: PollConnectorCliAuthBrowserVerificationArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    while (Date.now() < expiresAtMs) {
-      const latest = get(internalConnectorCliAuthState$);
-      if (!isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
-        return false;
-      }
+    let completed = false;
+    let expired = false;
 
-      if (!latest.approvalOpened) {
+    await setLoop(
+      async (sig) => {
         const remainingMs = expiresAtMs - Date.now();
         if (remainingMs <= 0) {
-          break;
+          expired = true;
+          return true;
         }
-        await delay(Math.min(CLI_AUTH_MIN_POLL_INTERVAL_MS, remainingMs), {
-          signal,
-        });
-        signal.throwIfAborted();
-        continue;
-      }
 
-      set(internalConnectorCliAuthState$, {
-        ...latest,
-        status: "polling",
-      });
+        const latest = get(internalConnectorCliAuthState$);
+        if (!isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
+          return true;
+        }
 
-      const completeSettled = await settle(
-        adapter.complete({
-          createClient,
-          sessionToken: latest.sessionToken,
-          signal,
-        }),
-        signal,
-      );
-      const completeResult = completeSettled.ok
-        ? completeSettled.value
-        : {
-            status: "error" as const,
-            message: cliAuthErrorMessage(completeSettled.error),
-          };
+        if (!latest.approvalOpened) {
+          await delay(Math.min(CLI_AUTH_MIN_POLL_INTERVAL_MS, remainingMs), {
+            signal: sig,
+          });
+          sig.throwIfAborted();
+          return false;
+        }
 
-      const current = get(internalConnectorCliAuthState$);
-      if (!isCurrentConnectorCliAuthRequest(current, type, requestId)) {
-        return false;
-      }
-
-      if (completeResult.status === "complete") {
-        return set(finishConnectorCliAuthConnection$, type, options);
-      }
-
-      if (completeResult.status === "error") {
         set(internalConnectorCliAuthState$, {
-          status: "error",
-          connectorType: type,
-          mode: current.mode,
-          message: completeResult.message,
+          ...latest,
+          status: "polling",
         });
+
+        const completeSettled = await settle(
+          adapter.complete({
+            createClient,
+            sessionToken: latest.sessionToken,
+            signal: sig,
+          }),
+          sig,
+        );
+        const completeResult = completeSettled.ok
+          ? completeSettled.value
+          : {
+              status: "error" as const,
+              message: cliAuthErrorMessage(completeSettled.error),
+            };
+
+        const current = get(internalConnectorCliAuthState$);
+        if (!isCurrentConnectorCliAuthRequest(current, type, requestId)) {
+          return true;
+        }
+
+        if (completeResult.status === "complete") {
+          completed = set(finishConnectorCliAuthConnection$, type, options);
+          return true;
+        }
+
+        if (completeResult.status === "error") {
+          set(internalConnectorCliAuthState$, {
+            status: "error",
+            connectorType: type,
+            mode: current.mode,
+            message: completeResult.message,
+          });
+          return true;
+        }
+
+        set(internalConnectorCliAuthState$, {
+          ...current,
+          status: "pending",
+          errorMessage: completeResult.errorMessage
+            ? userFacingConnectorCliAuthMessage(completeResult.errorMessage)
+            : null,
+        });
+
+        const nextRemainingMs = expiresAtMs - Date.now();
+        if (nextRemainingMs <= 0) {
+          expired = true;
+          return true;
+        }
+        await delay(Math.min(pollIntervalMs, nextRemainingMs), {
+          signal: sig,
+        });
+        sig.throwIfAborted();
         return false;
-      }
-
-      set(internalConnectorCliAuthState$, {
-        ...current,
-        status: "pending",
-        errorMessage: completeResult.errorMessage
-          ? userFacingConnectorCliAuthMessage(completeResult.errorMessage)
-          : null,
-      });
-
-      const remainingMs = expiresAtMs - Date.now();
-      if (remainingMs <= 0) {
-        break;
-      }
-      await delay(Math.min(pollIntervalMs, remainingMs), {
-        signal,
-      });
-      signal.throwIfAborted();
-    }
+      },
+      0,
+      signal,
+    );
 
     const latest = get(internalConnectorCliAuthState$);
-    if (isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
+    if (expired && isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
       set(internalConnectorCliAuthState$, {
         status: "expired",
         connectorType: type,
@@ -1527,7 +1540,7 @@ const pollConnectorCliAuthBrowserVerification$ = command(
         message: "Connection session expired. Start again to retry.",
       });
     }
-    return false;
+    return completed;
   },
 );
 
@@ -1765,105 +1778,122 @@ const pollConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const client = createClient(zeroConnectorOauthDeviceAuthSessionContract);
+    let completed = false;
+    let expired = false;
 
-    while (true) {
-      const current = get(internalConnectorOAuthDeviceAuthState$);
-      if (!isCurrentConnectorOAuthDeviceAuthRequest(current, type, requestId)) {
-        return false;
-      }
+    await setLoop(
+      async (sig) => {
+        const current = get(internalConnectorOAuthDeviceAuthState$);
+        if (
+          !isCurrentConnectorOAuthDeviceAuthRequest(current, type, requestId)
+        ) {
+          return true;
+        }
 
-      const remainingMs = current.expiresAtMs - Date.now();
-      if (remainingMs <= 0) {
-        break;
-      }
+        const remainingMs = current.expiresAtMs - Date.now();
+        if (remainingMs <= 0) {
+          expired = true;
+          return true;
+        }
 
-      if (!current.approvalOpened) {
-        await delay(
-          Math.min(OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS, remainingMs),
-          { signal },
-        );
-        signal.throwIfAborted();
-        continue;
-      }
+        if (!current.approvalOpened) {
+          await delay(
+            Math.min(OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS, remainingMs),
+            { signal: sig },
+          );
+          sig.throwIfAborted();
+          return false;
+        }
 
-      set(internalConnectorOAuthDeviceAuthState$, {
-        ...current,
-        status: "polling",
-      });
-
-      const pollSettled = await settle(
-        accept(
-          client.poll({
-            params: { type, sessionId: current.sessionId },
-            body: { sessionToken: current.sessionToken },
-            fetchOptions: { signal },
-          }),
-          [200],
-          { toast: false },
-        ),
-        signal,
-      );
-      const pollResult = pollSettled.ok
-        ? pollSettled.value.body
-        : {
-            status: "error" as const,
-            errorMessage: oauthDeviceAuthErrorMessage(pollSettled.error),
-          };
-
-      const latest = get(internalConnectorOAuthDeviceAuthState$);
-      if (!isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)) {
-        return false;
-      }
-
-      if (pollResult.status === "complete") {
-        set(finishConnectorConnection$, type, {
-          ...options,
-          clearSelectedConnector: true,
-        });
-        set(
-          internalConnectorOAuthDeviceAuthState$,
-          createIdleConnectorOAuthDeviceAuthState(),
-        );
-        return true;
-      }
-
-      if (pollResult.status !== "pending") {
         set(internalConnectorOAuthDeviceAuthState$, {
-          status: pollResult.status,
-          connectorType: type,
-          message: getOAuthDeviceAuthTerminalMessage(pollResult),
+          ...current,
+          status: "polling",
         });
+
+        const pollSettled = await settle(
+          accept(
+            client.poll({
+              params: { type, sessionId: current.sessionId },
+              body: { sessionToken: current.sessionToken },
+              fetchOptions: { signal: sig },
+            }),
+            [200],
+            { toast: false },
+          ),
+          sig,
+        );
+        const pollResult = pollSettled.ok
+          ? pollSettled.value.body
+          : {
+              status: "error" as const,
+              errorMessage: oauthDeviceAuthErrorMessage(pollSettled.error),
+            };
+
+        const latest = get(internalConnectorOAuthDeviceAuthState$);
+        if (
+          !isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)
+        ) {
+          return true;
+        }
+
+        if (pollResult.status === "complete") {
+          set(finishConnectorConnection$, type, {
+            ...options,
+            clearSelectedConnector: true,
+          });
+          set(
+            internalConnectorOAuthDeviceAuthState$,
+            createIdleConnectorOAuthDeviceAuthState(),
+          );
+          completed = true;
+          return true;
+        }
+
+        if (pollResult.status !== "pending") {
+          set(internalConnectorOAuthDeviceAuthState$, {
+            status: pollResult.status,
+            connectorType: type,
+            message: getOAuthDeviceAuthTerminalMessage(pollResult),
+          });
+          return true;
+        }
+
+        const pollIntervalMs = Math.max(
+          secondsToMilliseconds(pollResult.interval),
+          OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
+        );
+        set(internalConnectorOAuthDeviceAuthState$, {
+          ...latest,
+          status: "pending",
+          pollIntervalMs,
+          errorMessage: null,
+        });
+
+        const nextRemainingMs = latest.expiresAtMs - Date.now();
+        if (nextRemainingMs <= 0) {
+          expired = true;
+          return true;
+        }
+        await delay(Math.min(pollIntervalMs, nextRemainingMs), { signal: sig });
+        sig.throwIfAborted();
         return false;
-      }
-
-      const pollIntervalMs = Math.max(
-        secondsToMilliseconds(pollResult.interval),
-        OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
-      );
-      set(internalConnectorOAuthDeviceAuthState$, {
-        ...latest,
-        status: "pending",
-        pollIntervalMs,
-        errorMessage: null,
-      });
-
-      const nextRemainingMs = latest.expiresAtMs - Date.now();
-      if (nextRemainingMs <= 0) {
-        break;
-      }
-      await delay(Math.min(pollIntervalMs, nextRemainingMs), { signal });
-      signal.throwIfAborted();
-    }
+      },
+      0,
+      signal,
+    );
 
     const latest = get(internalConnectorOAuthDeviceAuthState$);
-    if (isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)) {
+    if (
+      expired &&
+      isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)
+    ) {
       set(internalConnectorOAuthDeviceAuthState$, {
         status: "expired",
         connectorType: type,
         message: "Connection session expired. Start again to retry.",
       });
     }
-    return false;
+    return completed;
   },
 );
 
