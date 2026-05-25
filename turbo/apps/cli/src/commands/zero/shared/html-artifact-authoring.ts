@@ -1,4 +1,4 @@
-export type HtmlArtifactKind = "presentation" | "website";
+type HtmlArtifactKind = "presentation" | "website";
 
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
@@ -9,7 +9,7 @@ interface HtmlArtifactAuthoringOptions {
   readonly artifactRules: readonly string[];
 }
 
-export interface HtmlArtifactAuthoringPacket {
+interface HtmlArtifactAuthoringPacket {
   readonly type: "html-artifact-authoring";
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
