@@ -23,6 +23,7 @@ _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _X_JSON_RESPONSE_FINISH = "x_json_response_finish"
 
 _ResponseChunkParser = Callable[[bytes], None]
+_SseUsageParseErrorLogger = Callable[[str, str], None]
 
 
 def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
@@ -41,6 +42,27 @@ def _make_response_chunk_parser(
         feed(decompressor(chunk))
 
     return parse_chunk
+
+
+def _make_model_sse_parse_error_logger(
+    flow: http.HTTPFlow,
+    *,
+    usage_protocol: str,
+) -> _SseUsageParseErrorLogger:
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+
+    def log_parse_error(event: str, error: str) -> None:
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Model provider SSE usage extraction failed",
+            type="usage_event",
+            usage_protocol=usage_protocol,
+            event=event,
+            error=error,
+        )
+
+    return log_parse_error
 
 
 def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParser | None:
@@ -94,9 +116,19 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             if uses_openai_responses_usage_protocol(flow):
-                parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor()
+                parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
+                    on_parse_error=_make_model_sse_parse_error_logger(
+                        flow,
+                        usage_protocol="openai_responses_sse",
+                    )
+                )
             else:
-                parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor()
+                parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
+                    on_parse_error=_make_model_sse_parse_error_logger(
+                        flow,
+                        usage_protocol="anthropic_messages_sse",
+                    )
+                )
             flow.metadata["model_provider_usage"] = usage_dict
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = parser_fn.finish
             return _make_response_chunk_parser(parser_fn, flow.response.headers)
