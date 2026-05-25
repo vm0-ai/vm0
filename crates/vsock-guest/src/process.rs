@@ -540,11 +540,10 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn snapshotted_process_tree_target_kills_setsid_child_after_parent_exit() {
-        use std::io::Write;
+        use std::io::{BufRead, BufReader, Write};
         use std::os::unix::process::CommandExt;
 
         let (dir, _guard) = temp_dir("snapshot-target");
-        let ready = dir.join("ready");
         let fifo = dir.join("parent-fifo");
         let child_pid_path = dir.join("setsid-child-pid");
 
@@ -553,21 +552,20 @@ mod tests {
             .arg("-c")
             .arg(
                 "mkfifo \"$FIFO\"; \
-                 setsid sh -c 'printf %s \"$$\" > \"$CHILD_PID\"; touch \"$READY\"; sleep 60' & \
+                 setsid sh -c 'printf %s \"$$\" > \"$CHILD_PID\"; printf \"ready\\n\"; sleep 60' & \
                  read _ < \"$FIFO\"",
             )
-            .env("READY", &ready)
             .env("FIFO", &fifo)
             .env("CHILD_PID", &child_pid_path)
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null());
         command.process_group(0);
 
         let mut child = Some(command.spawn().unwrap());
-        if !wait_for_path(&ready, Duration::from_secs(2)) {
-            kill_spawned_child(&mut child);
-            panic!("setsid child should be started before snapshot target is tested");
-        }
+        let stdout = child.as_mut().unwrap().stdout.take().unwrap();
+        let mut ready = String::new();
+        BufReader::new(stdout).read_line(&mut ready).unwrap();
+        assert_eq!(ready, "ready\n");
         let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
             Ok(pid) => pid,
             Err(e) => {
