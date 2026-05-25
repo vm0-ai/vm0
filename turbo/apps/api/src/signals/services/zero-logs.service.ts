@@ -1,10 +1,11 @@
 import { computed, type Computed } from "ccstate";
-import type {
-  LogDetail,
-  LogEntry,
-  LogStatus,
-  LogsFilters,
-  TriggerSource,
+import {
+  triggerSourceSchema,
+  type LogDetail,
+  type LogEntry,
+  type LogStatus,
+  type LogsFilters,
+  type TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
 import type {
   LogsSearchResponse,
@@ -54,6 +55,13 @@ function extractFramework(composeContent: unknown): string | null {
   const firstAgent =
     agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
   return firstAgent?.framework ?? null;
+}
+
+function normalizeTriggerSource(
+  source: string | null | undefined,
+): TriggerSource | null {
+  const parsed = triggerSourceSchema.safeParse(source);
+  return parsed.success ? parsed.data : null;
 }
 
 function buildCursorCondition(cursor: string): SQL | null {
@@ -210,7 +218,7 @@ export function zeroLogsList(
           agentId: run.agentId ?? null,
           displayName: run.displayName ?? null,
           framework: extractFramework(run.composeContent),
-          triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
+          triggerSource: normalizeTriggerSource(run.triggerSource ?? "cli"),
           triggerAgentName: run.triggerAgentName ?? null,
           scheduleId: run.scheduleId ?? null,
           status: run.status as LogStatus,
@@ -337,7 +345,6 @@ async function getAvailableFilters(
         "github",
         "cli",
         "agent",
-        "voice-chat",
       ].includes(s as string);
     });
 
@@ -448,7 +455,7 @@ export function zeroLogDetail(
       framework: extractFramework(composeContent),
       modelProvider: modelProvider ?? null,
       selectedModel: selectedModel ?? null,
-      triggerSource: (triggerSource ?? "cli") as TriggerSource,
+      triggerSource: normalizeTriggerSource(triggerSource ?? "cli"),
       triggerAgentName: triggerAgentName ?? null,
       scheduleId: scheduleId ?? null,
       status: run.status as LogStatus,

@@ -3,7 +3,6 @@ export const ROUTES = {
   agents: "/agents",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",
-  agentTalk: "/agents/:agentId/talk",
   agentIdeas: "/agents/:agentId/ideas",
   agentPermissions: "/agents/:agentId/permissions",
   activities: "/activities",

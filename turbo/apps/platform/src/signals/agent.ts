@@ -78,7 +78,6 @@ export const currentAgentId$ = computed((get) => {
   if (
     route !== "agentDetail" &&
     route !== "agentChat" &&
-    route !== "agentTalk" &&
     route !== "agentIdeas" &&
     route !== "agentPermissions"
   ) {

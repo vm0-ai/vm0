@@ -161,11 +161,8 @@ export {
   insertTestUser,
   seedUserCacheEntry,
   insertUserCacheEntry,
-  insertTestVoiceChatSession,
   countUserRows,
   getPushSubscriptionsByEndpoint,
-  getTestVoiceChatSession,
-  countTestVoiceChatSessionsByReasoningStatus,
   createTestPushSubscription,
 } from "./users";
 export {

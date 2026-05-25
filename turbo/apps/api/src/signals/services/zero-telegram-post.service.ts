@@ -730,7 +730,7 @@ export const registerTelegramBot$ = command(
 
 function resolveProbeOrigin(origin: string | undefined): string {
   if (!origin) {
-    return env("VM0_WEB_URL");
+    return env("APP_URL");
   }
 
   const parsed = safeUrlParse(origin);
@@ -738,7 +738,7 @@ function resolveProbeOrigin(origin: string | undefined): string {
     return parsed.origin;
   }
 
-  return env("VM0_WEB_URL");
+  return env("APP_URL");
 }
 
 function isInvalidTelegramTokenError(error: unknown): boolean {
@@ -1201,7 +1201,7 @@ function buildConnectUrl(args: {
   if (displayName) {
     params.set("tgDisplayName", displayName);
   }
-  return `${env("VM0_WEB_URL")}/telegram/connect?${params.toString()}`;
+  return `${env("APP_URL")}/telegram/connect?${params.toString()}`;
 }
 
 function buildTelegramConnectReplyMarkup(connectUrl: string) {

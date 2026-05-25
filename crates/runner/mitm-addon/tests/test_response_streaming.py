@@ -359,3 +359,146 @@ class TestResponseHeadersSseParser:
         mitm_addon.responseheaders(flow)
 
         assert "model_provider_usage" not in flow.metadata
+
+
+class TestReleaseResponseStreamState:
+    """Tests for direct response streaming cleanup."""
+
+    def test_preserves_externally_replaced_stream_callback(self, real_flow):
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=_header_map({"content-type": "application/json"})
+        )
+
+        def external_stream(chunk):
+            return chunk
+
+        mitm_addon.responseheaders(flow)
+        assert callable(_response_stream(flow))
+
+        flow.response.stream = external_stream
+
+        response_streaming.release_response_stream_state(flow)
+
+        assert flow.response.stream is external_stream
+        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+
+    @pytest.mark.parametrize(
+        ("host", "path", "response_content_type", "metadata", "finish_key"),
+        [
+            pytest.param(
+                "api.anthropic.com",
+                "/v1/messages",
+                "application/json",
+                {
+                    "firewall_name": "model-provider:anthropic-api-key",
+                    "firewall_billable": True,
+                },
+                "model_json_usage_finish",
+                id="model-json",
+            ),
+            pytest.param(
+                "api.openai.com",
+                "/v1/responses",
+                "text/event-stream",
+                {
+                    "firewall_name": "model-provider:openai-api-key",
+                    "cli_agent_type": "codex",
+                    "firewall_billable": True,
+                },
+                "model_sse_usage_finish",
+                id="model-sse",
+            ),
+            pytest.param(
+                "api.x.com",
+                "/2/tweets",
+                "application/json",
+                {
+                    "firewall_name": "x",
+                    "firewall_billable": True,
+                    "original_url": "https://api.x.com/2/tweets",
+                },
+                "x_json_response_finish",
+                id="x-json",
+            ),
+        ],
+    )
+    def test_removes_unfinalized_parser_finish_callback(
+        self,
+        real_flow,
+        host,
+        path,
+        response_content_type,
+        metadata,
+        finish_key,
+    ):
+        flow = real_flow(with_response=False, host=host, path=path)
+        flow.metadata.update(metadata)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-type": response_content_type}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert finish_key in flow.metadata
+
+        response_streaming.release_response_stream_state(flow)
+
+        assert finish_key not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert flow.response.stream is False
+
+    def test_unconfigured_flow_is_noop(self, real_flow):
+        flow = real_flow(with_response=True, host="api.example.com")
+
+        def external_stream(chunk):
+            return chunk
+
+        assert flow.response is not None
+        flow.response.stream = external_stream
+
+        response_streaming.release_response_stream_state(flow)
+
+        assert flow.response.stream is external_stream
+
+    def test_configured_release_is_idempotent(self, real_flow):
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=_header_map({"content-type": "application/json"})
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert callable(_response_stream(flow))
+
+        response_streaming.release_response_stream_state(flow)
+        response_streaming.release_response_stream_state(flow)
+
+        assert flow.response.stream is False
+        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+
+    def test_release_after_response_is_removed_still_drops_metadata(self, real_flow):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200, headers=_header_map({"content-type": "application/json"})
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert callable(_response_stream(flow))
+        assert "model_json_usage_finish" in flow.metadata
+
+        flow.response = None
+
+        response_streaming.release_response_stream_state(flow)
+
+        assert flow.response is None
+        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata

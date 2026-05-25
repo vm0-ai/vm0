@@ -68,7 +68,7 @@ function jsonErrorResponse(error: string, status: number): Response {
 }
 
 function appUrl(path: string): string {
-  return `${env("VM0_WEB_URL")}${path}`;
+  return `${env("APP_URL")}${path}`;
 }
 
 function failedRedirect(message: string): Response {

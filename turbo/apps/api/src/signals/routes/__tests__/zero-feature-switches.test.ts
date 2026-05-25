@@ -136,7 +136,7 @@ describe("POST /api/zero/feature-switches", () => {
     const response = await accept(
       client.update({
         headers: {},
-        body: { switches: { voiceChat: true } },
+        body: { switches: { dummy: true } },
       }),
       [401],
     );
@@ -155,7 +155,7 @@ describe("POST /api/zero/feature-switches", () => {
     const response = await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { voiceChat: true } },
+        body: { switches: { dummy: true } },
       }),
       [401],
     );
@@ -176,15 +176,15 @@ describe("POST /api/zero/feature-switches", () => {
     const response = await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { voiceChat: true } },
+        body: { switches: { dummy: true } },
       }),
       [200],
     );
 
-    expect(response.body).toStrictEqual({ switches: { voiceChat: true } });
+    expect(response.body).toStrictEqual({ switches: { dummy: true } });
 
     await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
-      voiceChat: true,
+      dummy: true,
     });
   });
 
@@ -199,7 +199,7 @@ describe("POST /api/zero/feature-switches", () => {
     await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { voiceChat: true } },
+        body: { switches: { dummy: true } },
       }),
       [200],
     );
@@ -213,11 +213,11 @@ describe("POST /api/zero/feature-switches", () => {
     );
 
     expect(response.body).toStrictEqual({
-      switches: { voiceChat: true, lab: false },
+      switches: { dummy: true, lab: false },
     });
 
     await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
-      voiceChat: true,
+      dummy: true,
       lab: false,
     });
   });
@@ -233,7 +233,7 @@ describe("POST /api/zero/feature-switches", () => {
     await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { voiceChat: true } },
+        body: { switches: { dummy: true } },
       }),
       [200],
     );
@@ -241,15 +241,15 @@ describe("POST /api/zero/feature-switches", () => {
     const response = await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { voiceChat: false } },
+        body: { switches: { dummy: false } },
       }),
       [200],
     );
 
-    expect(response.body).toStrictEqual({ switches: { voiceChat: false } });
+    expect(response.body).toStrictEqual({ switches: { dummy: false } });
 
     await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
-      voiceChat: false,
+      dummy: false,
     });
   });
 
@@ -264,7 +264,7 @@ describe("POST /api/zero/feature-switches", () => {
     await accept(
       client.update({
         headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { voiceChat: true, lab: false } },
+        body: { switches: { dummy: true, lab: false } },
       }),
       [200],
     );
@@ -275,7 +275,7 @@ describe("POST /api/zero/feature-switches", () => {
     );
 
     expect(response.body).toStrictEqual({
-      switches: { voiceChat: true, lab: false },
+      switches: { dummy: true, lab: false },
     });
   });
 });
@@ -315,7 +315,7 @@ describe("DELETE /api/zero/feature-switches", () => {
     const fixture = await track(
       store.set(
         seedFeatureSwitches$,
-        { voiceChat: true, lab: false },
+        { dummy: true, lab: false },
         context.signal,
       ),
     );

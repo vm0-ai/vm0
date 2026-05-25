@@ -68,11 +68,6 @@ const cronTelegramCleanupResponseSchema = z.object({
   deleted: z.number(),
 });
 
-const cronVoiceChatCleanupResponseSchema = z.object({
-  success: z.literal(true),
-  reasonerReset: z.number(),
-});
-
 const cronDrainEmailOutboxResponseSchema = z.object({
   success: z.literal(true),
   drained: z.number(),
@@ -163,19 +158,6 @@ export const cronTelegramCleanupContract = c.router({
   },
 });
 
-export const cronVoiceChatCleanupContract = c.router({
-  cleanup: {
-    method: "GET",
-    path: "/api/cron/voice-chat-cleanup",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronVoiceChatCleanupResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Reset stuck voice-chat reasoners",
-  },
-});
-
 export const cronDrainEmailOutboxContract = c.router({
   drain: {
     method: "GET",
@@ -236,7 +218,6 @@ export type CronReconcileBillingEntitlementsContract =
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
-export type CronVoiceChatCleanupContract = typeof cronVoiceChatCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronExecuteSchedulesContract = typeof cronExecuteSchedulesContract;
@@ -249,7 +230,6 @@ export {
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
-  cronVoiceChatCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
   cronExecuteSchedulesResponseSchema,

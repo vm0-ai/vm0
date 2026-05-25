@@ -230,8 +230,7 @@ export async function deleteTestUsagePricing(params: {
 }
 
 /**
- * Seed the full Realtime + transcription pricing matrix used by the
- * voice-chat realtime billing path (Plan D). Idempotent (each row upserts on
+ * Seed the full Realtime + transcription pricing matrix. Idempotent (each row upserts on
  * `(kind, provider, category)`), so it is safe to call from any test that
  * needs the realtime billable categories priced. Tests that exercise the
  * missing-pricing-503 path can call `deleteTestUsagePricing(...)` for one

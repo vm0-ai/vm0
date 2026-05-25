@@ -21,7 +21,6 @@ export const RUN_UPLOADED_FILE_SOURCES = [
   "github",
   "cli",
   "agent",
-  "voice-chat",
 ] as const;
 export type RunUploadedFileSource = (typeof RUN_UPLOADED_FILE_SOURCES)[number];
 
