@@ -11,7 +11,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
-import { settle } from "../utils";
+import { safeJsonParse, safeSync, settle } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
@@ -557,19 +557,10 @@ function stringifyCompact(value: unknown): string | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  try {
+  const serialized = safeSync(() => {
     return JSON.stringify(value);
-  } catch {
-    return undefined;
-  }
-}
-
-function parseJsonSafely(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
+  });
+  return "ok" in serialized ? serialized.ok : undefined;
 }
 
 function readBytePlusProviderError(
@@ -618,7 +609,7 @@ function bytePlusProviderErrorFromText(
   status: number,
   statusText: string,
 ): BytePlusProviderError {
-  const parsed = text ? parseJsonSafely(text) : undefined;
+  const parsed = text ? safeJsonParse(text) : undefined;
   const providerError = readBytePlusProviderError(parsed);
   if (providerError) {
     return providerError;
@@ -631,9 +622,7 @@ function bytePlusProviderErrorFromText(
   };
 }
 
-export function bytePlusProviderFailureError(
-  payload: unknown,
-): BytePlusProviderError {
+function bytePlusProviderFailureError(payload: unknown): BytePlusProviderError {
   return (
     readBytePlusProviderError(payload) ?? {
       message: "Generation failed",
