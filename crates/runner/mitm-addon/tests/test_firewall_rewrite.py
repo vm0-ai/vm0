@@ -587,7 +587,16 @@ class TestAuthBaseUrlRewriteEdgeCases:
         log were emitted on failure, and ``firewall_error`` was left unset —
         making failed rewrites indistinguishable from successful ones in
         dashboards."""
-        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            token_overrides={
+                "resolved_secrets": ["WEBHOOK"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -608,6 +617,10 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "auth_resolved_secrets" not in flow.metadata
+        assert "auth_refreshed_connectors" not in flow.metadata
+        assert "auth_refreshed_secrets" not in flow.metadata
+        assert "auth_cache_hit" not in flow.metadata
         # Success-path log line must not be written.
         log_path = Path(vm_info["networkLogPath"])
         log_text = await asyncio.to_thread(
