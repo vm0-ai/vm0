@@ -153,28 +153,23 @@ describe("Rust type bindings", () => {
 
   it("keeps webhook storage file overrides aligned with shared file schema", () => {
     const requestFileSchema = { ...z.toJSONSchema(fileEntryWithHashSchema) };
-    delete requestFileSchema.$schema;
+    const prepareFileSchema = {
+      ...z.toJSONSchema(
+        webhookStoragesPrepareContract.prepare.body.shape.files.element,
+      ),
+    };
+    const commitFileSchema = {
+      ...z.toJSONSchema(
+        webhookStoragesCommitContract.commit.body.shape.files.element,
+      ),
+    };
 
-    expect(
-      z.toJSONSchema(webhookStoragesPrepareContract.prepare.body),
-    ).toMatchObject({
-      properties: {
-        files: {
-          type: "array",
-          items: requestFileSchema,
-        },
-      },
-    });
-    expect(
-      z.toJSONSchema(webhookStoragesCommitContract.commit.body),
-    ).toMatchObject({
-      properties: {
-        files: {
-          type: "array",
-          items: requestFileSchema,
-        },
-      },
-    });
+    delete requestFileSchema.$schema;
+    delete prepareFileSchema.$schema;
+    delete commitFileSchema.$schema;
+
+    expect(prepareFileSchema).toEqual(requestFileSchema);
+    expect(commitFileSchema).toEqual(requestFileSchema);
   });
 
   it("renders common JSON schema shapes", () => {
