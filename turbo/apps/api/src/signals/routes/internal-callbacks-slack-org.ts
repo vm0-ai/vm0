@@ -95,7 +95,7 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 }
 
 function buildLogsUrl(runId: string): string {
-  return `${env("VM0_WEB_URL")}/activities/${encodeURIComponent(runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(runId)}`;
 }
 
 async function loadInstallation(args: {

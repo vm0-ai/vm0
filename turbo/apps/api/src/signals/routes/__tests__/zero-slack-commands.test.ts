@@ -24,7 +24,8 @@ const COMMAND_PATH = "/api/zero/slack/commands";
 function configureSlackWebhookTest(): void {
   mockOptionalEnv("SLACK_SIGNING_SECRET", SIGNING_SECRET);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockEnv("VM0_WEB_URL", "https://app.vm0.test");
+  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+  mockEnv("APP_URL", "https://app.vm0.test");
   mockEnv("VM0_API_URL", "https://api.vm0.test");
   context.mocks.slack.chat.postMessage.mockResolvedValue({
     ok: true,
@@ -233,7 +234,9 @@ describe("POST /api/zero/slack/commands", () => {
       }),
     );
     expect(login.status).toBe(200);
-    expect(JSON.stringify(login.body)).toContain("Connect");
+    const loginBody = JSON.stringify(login.body);
+    expect(loginBody).toContain("Connect");
+    expect(loginBody).toContain("https://app.vm0.test/settings/slack");
 
     const connected = await track(
       store.set(

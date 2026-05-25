@@ -1942,7 +1942,7 @@ async function resolveAgentPhoneRunFailureAuditLogsUrl(args: {
   if (!enabled) {
     return undefined;
   }
-  return `${env("VM0_WEB_URL")}/activities/${encodeURIComponent(args.runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }
 
 export function formatAgentPhoneAuditLink(logsUrl: string): string {
@@ -2253,7 +2253,7 @@ export async function resolveAgentPhoneAuditLogsUrl(args: {
   if (!enabled) {
     return undefined;
   }
-  return `${env("VM0_WEB_URL")}/activities/${encodeURIComponent(args.runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }
 
 export async function publishAgentPhoneUserChanged(

@@ -37,7 +37,7 @@ interface AppHomeOptions {
 }
 
 function appUrl(): string {
-  return env("VM0_WEB_URL");
+  return env("APP_URL");
 }
 
 function buildAppHomeHeaderBlocks(): SlackBlocks {

@@ -633,7 +633,9 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     expect(response.status).toBe(200);
     expect(capturedComments).toHaveLength(1);
     expect(capturedComments[0]!.body).toContain("Audit");
-    expect(capturedComments[0]!.body).toContain(`/activities/${runId}`);
+    expect(capturedComments[0]!.body).toContain(
+      `http://localhost:3002/activities/${runId}`,
+    );
   });
 
   it("posts a failed run comment with the run error", async () => {

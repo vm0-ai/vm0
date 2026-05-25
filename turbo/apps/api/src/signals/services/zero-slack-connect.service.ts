@@ -173,7 +173,7 @@ function buildSlackConnectUrl(
   slackUserId: string,
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
-  return `${env("VM0_WEB_URL")}/settings/slack?${params.toString()}`;
+  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
 async function refreshSlackAppHome(args: {
@@ -201,7 +201,7 @@ async function refreshSlackAppHome(args: {
     await args.client.views.publish({
       user_id: args.slackUserId,
       view: buildAppHomeView({
-        appUrl: env("VM0_WEB_URL"),
+        appUrl: env("APP_URL"),
         isLinked: false,
         loginUrl: buildSlackConnectUrl(
           args.installation.slackWorkspaceId,
@@ -243,7 +243,7 @@ async function refreshSlackAppHome(args: {
   await args.client.views.publish({
     user_id: args.slackUserId,
     view: buildAppHomeView({
-      appUrl: env("VM0_WEB_URL"),
+      appUrl: env("APP_URL"),
       isLinked: true,
       vm0UserId: connection.vm0UserId,
       userEmail: await getPrimaryUserEmail(

@@ -644,6 +644,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       .set({ selectedModel: "claude-opus-4-7" })
       .where(eq(zeroRuns.id, fixture.runId));
     const telegram = telegramApiMocks();
+    mockEnv("APP_URL", "https://app.vm0.test");
     completedOutput("Plain result");
 
     const response = await postSignedCallback({
@@ -656,7 +657,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     expect(response.status).toBe(200);
     const text = telegram.sentMessages[0]?.text ?? "";
     expect(text).toContain("📋 Audit");
-    expect(text).toContain(`/activities/${fixture.runId}`);
+    expect(text).toContain(`https://app.vm0.test/activities/${fixture.runId}`);
     expect(text).toContain("Claude Opus 4.7");
     expect(text).not.toContain("Responded by");
   });

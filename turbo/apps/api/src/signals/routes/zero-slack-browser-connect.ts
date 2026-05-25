@@ -29,15 +29,15 @@ function redirectResponse(url: string): Response {
 }
 
 function appRedirect(path: string): Response {
-  return redirectResponse(`${env("VM0_WEB_URL")}${path}`);
+  return redirectResponse(`${env("APP_URL")}${path}`);
 }
 
 function connectError(message: string): Response {
-  return appRedirect(`/slack/connect?error=${encodeURIComponent(message)}`);
+  return appRedirect(`/settings/slack?error=${encodeURIComponent(message)}`);
 }
 
 function connectSuccess(): Response {
-  return appRedirect("/slack/connect?status=connected");
+  return appRedirect("/settings/slack?status=connected");
 }
 
 function signInRedirect(requestUrl: string): Response {

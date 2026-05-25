@@ -15,6 +15,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
@@ -456,6 +457,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     await setOrgDefaultAgent(fixture, null);
     await setRunSelectedModel(fixture.runId, "claude-opus-4-7");
     await seedAdditionalMentioner(fixture);
+    mockEnv("APP_URL", "https://app.vm0.test");
     completedOutput("footer output");
 
     const response = await postSignedCallback({
@@ -468,7 +470,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(response.status).toBe(200);
     const blocks = JSON.stringify(firstPostMessageCall().blocks);
     expect(blocks).toContain("Audit");
-    expect(blocks).toContain(`/activities/${fixture.runId}`);
+    expect(blocks).toContain(
+      `https://app.vm0.test/activities/${fixture.runId}`,
+    );
     expect(blocks).toContain("Responded by Slack Agent");
     expect(blocks).toContain(`Reply to <@${fixture.slackUserId}>`);
     expect(blocks).toContain("Claude Opus 4.7");
