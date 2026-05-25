@@ -1576,7 +1576,7 @@ describe("POST /api/zero/chat/messages", () => {
         role: "assistant",
         content: expect.stringContaining("Upgrade to Pro"),
         runId: null,
-        error: null,
+        error: "insufficient_credits",
       },
     ]);
   });

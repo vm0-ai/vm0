@@ -218,7 +218,7 @@ const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 const ORG_SENTINEL_USER_ID = "__org__";
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
-const INSUFFICIENT_CREDITS_USER_MESSAGE_MARKER = "insufficient_credits";
+const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 
 function forbidden(message: string) {
   return {
@@ -1881,7 +1881,7 @@ async function appendInsufficientCreditsMessages(params: {
         role: "user",
         content: params.body.prompt,
         runId: null,
-        error: INSUFFICIENT_CREDITS_USER_MESSAGE_MARKER,
+        error: INSUFFICIENT_CREDITS_MARKER,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
       })
@@ -1893,6 +1893,7 @@ async function appendInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       role: "assistant",
       content: assistantContent,
+      error: INSUFFICIENT_CREDITS_MARKER,
       runId: null,
     });
     return { createdAt };

@@ -147,7 +147,11 @@ import {
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -2579,10 +2583,54 @@ function isImageFilename(filename: string): boolean {
   );
 }
 
+function InsufficientCreditsCard() {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const pageSignal = useGet(pageSignal$);
+
+  const tier =
+    billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
+  const isFree = tier === "free" || tier === null;
+
+  const headline = isFree
+    ? "You've used your free credits"
+    : "You're out of credits";
+  const helper = isFree
+    ? "Upgrade to Pro to keep chatting with Zero."
+    : "Add credits to keep chatting with Zero.";
+  const cta = isFree ? "Upgrade to Pro" : "Add credits";
+
+  const handleClick = () => {
+    setTab("billing");
+    setSubPage(true);
+    detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
+      <p className="text-sm font-medium text-foreground">{headline}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      <button
+        type="button"
+        onClick={handleClick}
+        className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        {cta}
+      </button>
+    </div>
+  );
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
+
+  if (error === "insufficient_credits") {
+    return <InsufficientCreditsCard />;
+  }
 
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
