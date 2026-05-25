@@ -21,7 +21,7 @@ from tests.auth_state_helpers import (
     require_last_force_refresh_at,
     set_cached_headers,
 )
-from tests.firewall_helpers import _cancel_pending_task
+from tests.firewall_helpers import cancel_pending_task
 
 
 def _upstream_headers(*pairs: tuple[str, str]) -> Message:
@@ -439,7 +439,7 @@ class TestGetFirewallHeaders:
                 result = await task
             finally:
                 allow_fetch_return.set()
-                await _cancel_pending_task(task)
+                await cancel_pending_task(task)
 
         assert first_force_refresh_values == [False]
         assert result["headers"] == {"Authorization": "Bearer maybe-stale"}
@@ -505,7 +505,7 @@ class TestGetFirewallHeaders:
             finally:
                 allow_first_fetch_return.set()
                 for task in (leader, waiter):
-                    await _cancel_pending_task(task)
+                    await cancel_pending_task(task)
 
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}

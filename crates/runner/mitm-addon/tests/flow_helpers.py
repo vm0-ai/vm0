@@ -5,11 +5,11 @@ from collections.abc import Callable, Iterable
 from mitmproxy import http
 
 
-def _header_map(values: dict[str, str]) -> http.Headers:
+def header_map(values: dict[str, str]) -> http.Headers:
     return http.Headers([(name.encode(), value.encode()) for name, value in values.items()])
 
 
-def _response_stream(flow: http.HTTPFlow) -> Callable[[bytes], bytes | Iterable[bytes]]:
+def response_stream(flow: http.HTTPFlow) -> Callable[[bytes], bytes | Iterable[bytes]]:
     assert flow.response is not None
     stream = flow.response.stream
     assert callable(stream)

@@ -10,10 +10,10 @@ from mitmproxy.test import tutils
 
 import mitm_addon
 import usage
-from tests.flow_helpers import _header_map, _response_stream
+from tests.flow_helpers import header_map, response_stream
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 from tests.usage_helpers import (
-    _usage_event_events_from_calls,
+    usage_event_events_from_calls,
 )
 
 
@@ -46,11 +46,11 @@ class TestErrorHandler:
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"model":"claude-sonnet-4-6","usage":')
+        response_stream(flow)(b'{"model":"claude-sonnet-4-6","usage":')
         flow.error = Error("connection reset")
 
         with mitm_ctx():
@@ -70,11 +70,11 @@ class TestErrorHandler:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"data":[{"id":"1"}')
+        response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "x_json_response_finish" in flow.metadata
         flow.error = Error("connection reset")
 
@@ -103,11 +103,11 @@ class TestErrorHandler:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"data":[{"id":"1"}')
+        response_stream(flow)(b'{"data":[{"id":"1"}')
         flow.error = Error("connection reset")
 
         with (
@@ -223,7 +223,7 @@ class TestErrorHandler:
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         flow.response = tutils.tresp(status_code=200)
         # X streams return application/json with chunked transfer, not x-ndjson.
-        flow.response.headers = _header_map({"content-type": "application/json"})
+        flow.response.headers = header_map({"content-type": "application/json"})
         flow.error = Error("connection reset by peer")
         flow.metadata["vm_sandbox_token"] = "test-token"
 
@@ -239,7 +239,7 @@ class TestErrorHandler:
 
         # Connector billing webhook should have been posted to _opener.
         assert mock_opener.open.called
-        payloads = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 23
         assert by_cat["user.read"] == 5
@@ -266,12 +266,12 @@ class TestErrorHandler:
         flow.metadata["firewall_permission"] = "tweet.read"
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         # 1. Register parser
         mitm_addon.responseheaders(flow)
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
 
         # 2. Receive two complete tweets, then a partial third (cut off)
@@ -294,7 +294,7 @@ class TestErrorHandler:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
-        payloads = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 2  # not 3 — partial trailing dropped
         assert by_cat["user.read"] == 1

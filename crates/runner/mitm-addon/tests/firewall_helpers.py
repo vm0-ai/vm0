@@ -3,12 +3,12 @@
 import asyncio
 
 
-def _wrap_firewalls(apis, name="test"):
+def wrap_firewalls(apis, name="test"):
     """Wrap a list of API entries into a firewall entry list."""
     return [{"name": name, "apis": apis}]
 
 
-def _grant_all(firewalls, unknown_policy="deny"):
+def grant_all(firewalls, unknown_policy="deny"):
     """Build networkPolicies that grants all permissions for each firewall."""
     result = {}
     for fw in firewalls or []:
@@ -25,7 +25,7 @@ def _grant_all(firewalls, unknown_policy="deny"):
     return result
 
 
-async def _cancel_pending_task(task: asyncio.Task | None) -> None:
+async def cancel_pending_task(task: asyncio.Task | None) -> None:
     if task is None or task.done():
         return
     task.cancel()

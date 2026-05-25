@@ -7,7 +7,7 @@ import pytest
 
 import mitm_addon
 import usage
-from tests.pending_helpers import _assert_pending
+from tests.pending_helpers import assert_pending
 from usage.providers import model_provider as usage_model_provider
 
 
@@ -27,23 +27,23 @@ class TestUsagePendingCounter:
         usage.increment_in_flight_flows()
         usage.increment_in_flight_flows()
         assert usage.counters._in_flight_flows == 2
-        _assert_pending(pending_path, flows=2, reports=0)
+        assert_pending(pending_path, flows=2, reports=0)
 
         usage.decrement_in_flight_flows()
-        _assert_pending(pending_path, flows=1, reports=0)
+        assert_pending(pending_path, flows=1, reports=0)
 
         usage.decrement_in_flight_flows()
-        _assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, reports=0)
 
     def test_increment_decrement_pending_reports(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         usage.counters.increment_pending_reports()
         assert usage.counters._pending_reports == 1
-        _assert_pending(pending_path, flows=0, reports=1)
+        assert_pending(pending_path, flows=0, reports=1)
 
         usage.counters.decrement_pending_reports()
-        _assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, reports=0)
 
     def test_enqueue_deep_copies_nested_payload(self):
         payload = {
@@ -121,12 +121,12 @@ class TestUsagePendingCounter:
             )
 
         assert usage.counters._pending_reports == 0
-        _assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, reports=0)
 
     def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="explicit-usage-state-id")
-        state = _assert_pending(pending_path, flows=0, reports=0)
+        state = assert_pending(pending_path, flows=0, reports=0)
         assert state["usageStateId"] == "explicit-usage-state-id"
 
     def test_decrement_does_not_go_negative(self, tmp_path):
@@ -199,7 +199,7 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        _assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, reports=0)
 
     def test_enqueue_increments_and_drains_reports(self, tmp_path, real_flow, fresh_usage_executor):
         """Public entry increments pending on enqueue; executor drain decrements to 0."""
@@ -222,7 +222,7 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        _assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, reports=0)
 
     def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
@@ -281,4 +281,4 @@ class TestUsagePendingCounter:
             usage.report_model_provider_usage(flow, "run-1")
 
         assert usage.counters._pending_reports == 0
-        _assert_pending(pending_path, flows=0, reports=0)
+        assert_pending(pending_path, flows=0, reports=0)

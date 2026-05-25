@@ -13,7 +13,7 @@ import pytest
 import auth
 import usage
 from tests.usage_helpers import (
-    _model_usage_idempotency_key,
+    model_usage_idempotency_key,
 )
 from usage.providers import model_provider as usage_model_provider
 
@@ -128,7 +128,7 @@ class TestUsageWebhookDelivery:
         assert set(body) == {"runId", "events"}
         assert body["events"] == [
             {
-                "idempotencyKey": _model_usage_idempotency_key("run-1", flow.id, "tokens.input"),
+                "idempotencyKey": model_usage_idempotency_key("run-1", flow.id, "tokens.input"),
                 "kind": "model",
                 "provider": "claude-sonnet-4-6",
                 "category": "tokens.input",

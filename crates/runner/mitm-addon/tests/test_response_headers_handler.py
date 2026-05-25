@@ -7,7 +7,7 @@ from mitmproxy.test import tutils
 
 import body_utils
 import mitm_addon
-from tests.flow_helpers import _header_map, _response_stream
+from tests.flow_helpers import header_map, response_stream
 
 
 class TestResponseHeadersHandler:
@@ -17,12 +17,12 @@ class TestResponseHeadersHandler:
         """All responses should be streamed via a buffer callback."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert callable(_response_stream(flow))
+        assert callable(response_stream(flow))
         assert "stream_buffer" in flow.metadata
         assert isinstance(flow.metadata["stream_buffer"], bytearray)
 
@@ -30,12 +30,12 @@ class TestResponseHeadersHandler:
         """The stream callback should accumulate chunks in the buffer."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         result1 = callback(b"hello ")
         result2 = callback(b"world")
 
@@ -48,12 +48,12 @@ class TestResponseHeadersHandler:
         """Buffering should stop when exceeding the size limit."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         # Fill buffer to just under limit
         chunk = b"x" * body_utils.STREAM_BUFFER_LIMIT
         result = callback(chunk)
@@ -71,12 +71,12 @@ class TestResponseHeadersHandler:
         """A single chunk larger than the limit should still capture the first part."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         big_chunk = b"A" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         result = callback(big_chunk)
         assert result == big_chunk  # full chunk forwarded to client
@@ -87,12 +87,12 @@ class TestResponseHeadersHandler:
         """Partial fill followed by an oversized chunk should capture up to the limit."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         half = body_utils.STREAM_BUFFER_LIMIT // 2
         callback(b"A" * half)
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
@@ -109,25 +109,25 @@ class TestResponseHeadersHandler:
         """When capture_body is set, streaming should still be enabled."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["capture_body"] = True
 
         mitm_addon.responseheaders(flow)
 
-        assert callable(_response_stream(flow))
+        assert callable(response_stream(flow))
         assert "stream_buffer" in flow.metadata
 
     def test_stream_callback_empty_chunk(self, real_flow, headers):
         """Empty chunks should be forwarded without affecting the buffer."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         result = callback(b"")
         assert result == b""
         assert len(flow.metadata["stream_buffer"]) == 0
@@ -157,13 +157,13 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
         assert "x_ndjson_state" in flow.metadata
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         callback(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n')
         state = flow.metadata["x_ndjson_state"]
@@ -176,12 +176,12 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         # First parseable line, then ~200 KB of junk.  Parser sees the first
         # line; buffer truncates at STREAM_BUFFER_LIMIT.
         callback(b'{"data":{"id":"1"}}\n' + b"x" * (200 * 1024))
@@ -196,12 +196,12 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/users/by?ids=1,2,3"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (200 * 1024))
         callback(b'"}],"includes":{"users":[{"id":"u1"}]}}')
@@ -222,7 +222,7 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream/rules"
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-type": "application/json"})
+            status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
@@ -242,7 +242,7 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
-            status_code=401, headers=_header_map({"content-type": "application/json"})
+            status_code=401, headers=header_map({"content-type": "application/json"})
         )
 
         mitm_addon.responseheaders(flow)
@@ -250,7 +250,7 @@ class TestResponseHeadersHandler:
         # No NDJSON parser — error body would fail NDJSON parsing anyway.
         assert "x_ndjson_state" not in flow.metadata
         assert "x_json_response_finish" not in flow.metadata
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         error_body = b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}'
         callback(error_body)
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
@@ -270,7 +270,7 @@ class TestResponseHeadersHandler:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map(
+            headers=header_map(
                 {
                     "content-type": "application/json",
                     "content-encoding": "gzip",
@@ -280,7 +280,7 @@ class TestResponseHeadersHandler:
 
         mitm_addon.responseheaders(flow)
 
-        callback = _response_stream(flow)
+        callback = response_stream(flow)
         # Feed compressed bytes in two chunks to exercise incremental decompression.
         mid = len(compressed) // 2
         callback(compressed[:mid])
@@ -303,12 +303,12 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json", "content-encoding": "gzip"}),
+            headers=header_map({"content-type": "application/json", "content-encoding": "gzip"}),
         )
 
         mitm_addon.responseheaders(flow)
 
-        _response_stream(flow)(gzip.compress(body))
+        response_stream(flow)(gzip.compress(body))
         usage_result, error = flow.metadata["model_json_usage_finish"]()
         assert error is None
         assert usage_result["message_id"] == "msg_1"
@@ -334,12 +334,12 @@ class TestResponseHeadersHandler:
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json", "content-encoding": "gzip"}),
+            headers=header_map({"content-type": "application/json", "content-encoding": "gzip"}),
         )
 
         mitm_addon.responseheaders(flow)
 
-        _response_stream(flow)(gzip.compress(body))
+        response_stream(flow)(gzip.compress(body))
         usage_result, error = flow.metadata["model_json_usage_finish"]()
         assert error is None
         assert usage_result["message_id"] == "resp_1"
@@ -363,12 +363,12 @@ class TestResponseHeadersHandler:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json", "content-encoding": "gzip"}),
+            headers=header_map({"content-type": "application/json", "content-encoding": "gzip"}),
         )
 
         mitm_addon.responseheaders(flow)
 
-        _response_stream(flow)(gzip.compress(body))
+        response_stream(flow)(gzip.compress(body))
         json_state, error = flow.metadata["x_json_response_finish"]()
         assert error is None
         assert json_state["response_data_count"] == 2

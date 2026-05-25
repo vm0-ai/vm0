@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 import matching
-from tests.firewall_helpers import _wrap_firewalls
+from tests.firewall_helpers import wrap_firewalls
 
 
 class TestCompiledFirewallMatching:
@@ -29,7 +29,7 @@ class TestCompiledFirewallMatching:
         assert compiled is raw
 
     def test_matches_raw_for_mixed_base_and_greedy_rule(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api-{region}.example.com/v1/{org}",
@@ -61,7 +61,7 @@ class TestCompiledFirewallMatching:
         }
 
     def test_matches_raw_for_greedy_host_base_params(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://{sub+}.example.com",
@@ -114,7 +114,7 @@ class TestCompiledFirewallMatching:
         assert compiled.params == {"sub": "", "id": "123"}
 
     def test_matches_raw_for_static_base_boundary_and_query(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.anthropic.com/v1/messages",
@@ -153,7 +153,7 @@ class TestCompiledFirewallMatching:
         assert compiled is None
 
     def test_matches_raw_for_parameterized_host_nonstandard_port_rejection(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api-{region}.example.com",
@@ -180,7 +180,7 @@ class TestCompiledFirewallMatching:
         assert compiled is None
 
     def test_matches_raw_for_unknown_policy_when_api_has_no_permissions(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.example.com",
@@ -218,7 +218,7 @@ class TestCompiledFirewallMatching:
         assert compiled.reason == "unknown_endpoint"
 
     def test_matches_raw_for_ask_permission_block(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -311,7 +311,7 @@ class TestCompiledFirewallMatching:
                 }
             ],
         }
-        fws = _wrap_firewalls([api_entry], name="github")
+        fws = wrap_firewalls([api_entry], name="github")
         policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
 
         result = matching.match_compiled_firewall_request(
@@ -326,7 +326,7 @@ class TestCompiledFirewallMatching:
         assert result.rule == "ANY /repos/{owner}/{repo}"
 
     def test_later_allowed_permission_still_wins_after_earlier_denied_match(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -361,7 +361,7 @@ class TestCompiledFirewallMatching:
         assert compiled.permission == "repo-admin"
 
     def test_denied_permission_names_keep_encounter_order_and_deduplicate(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -403,7 +403,7 @@ class TestCompiledFirewallMatching:
         assert compiled.reason == "permission_denied"
 
     def test_malformed_rule_fails_closed_without_allowing_permission(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -429,7 +429,7 @@ class TestCompiledFirewallMatching:
         assert result.reason == "malformed_firewall_config"
 
     def test_malformed_rule_blocks_unknown_policy_allow(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -455,7 +455,7 @@ class TestCompiledFirewallMatching:
         assert result.reason == "malformed_firewall_config"
 
     def test_denied_match_takes_priority_over_malformed_config_reason(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -488,7 +488,7 @@ class TestCompiledFirewallMatching:
         assert result.reason == "permission_denied"
 
     def test_valid_later_permission_can_still_allow_after_malformed_rule(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -520,7 +520,7 @@ class TestCompiledFirewallMatching:
         assert result.permission == "repo-read"
 
     def test_malformed_rules_shape_fails_closed_without_compile_error(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {
                     "base": "https://api.github.com",
@@ -549,7 +549,7 @@ class TestCompiledFirewallMatching:
         assert matching.compile_firewalls([{"name": "github", "apis": None}]) is None
 
     def test_request_url_is_parsed_once_for_multiple_api_entries(self):
-        fws = _wrap_firewalls(
+        fws = wrap_firewalls(
             [
                 {"base": "https://one.example.com", "permissions": []},
                 {

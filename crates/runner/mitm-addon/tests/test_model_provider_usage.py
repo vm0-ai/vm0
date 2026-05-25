@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import usage
 from tests.usage_helpers import (
-    _model_usage_idempotency_key,
+    model_usage_idempotency_key,
 )
 from usage.providers import model_provider as usage_model_provider
 
@@ -45,7 +45,7 @@ class TestReportModelProviderUsage:
         assert set(body) == {"runId", "events"}
         assert body["events"] == [
             {
-                "idempotencyKey": _model_usage_idempotency_key(
+                "idempotencyKey": model_usage_idempotency_key(
                     "run-abc-123", "msg-usage-1", "tokens.input"
                 ),
                 "kind": "model",
@@ -54,7 +54,7 @@ class TestReportModelProviderUsage:
                 "quantity": 100,
             },
             {
-                "idempotencyKey": _model_usage_idempotency_key(
+                "idempotencyKey": model_usage_idempotency_key(
                     "run-abc-123", "msg-usage-1", "tokens.output"
                 ),
                 "kind": "model",
@@ -63,7 +63,7 @@ class TestReportModelProviderUsage:
                 "quantity": 50,
             },
             {
-                "idempotencyKey": _model_usage_idempotency_key(
+                "idempotencyKey": model_usage_idempotency_key(
                     "run-abc-123", "msg-usage-1", "tokens.cache_read"
                 ),
                 "kind": "model",
@@ -72,7 +72,7 @@ class TestReportModelProviderUsage:
                 "quantity": 25,
             },
             {
-                "idempotencyKey": _model_usage_idempotency_key(
+                "idempotencyKey": model_usage_idempotency_key(
                     "run-abc-123", "msg-usage-1", "tokens.cache_creation"
                 ),
                 "kind": "model",
