@@ -99,12 +99,6 @@ const resetEnv = vi.hoisted(() => {
 // Import reloadEnv AFTER vi.hoisted() has set up the stubs
 import { reloadEnv } from "../env";
 
-// Mock server-only package (no-op in tests)
-// This package throws when imported outside of a server component
-vi.mock("server-only", () => {
-  return {};
-});
-
 // Mock Next.js after() to capture callbacks for controlled execution in tests.
 // Tests can drain the queue with context.mocks.flushAfter().
 // Supports both function and promise arguments to match Next.js behavior.
@@ -194,26 +188,6 @@ vi.mock("@axiomhq/logging", () => {
       };
     }),
     AxiomJSTransport: vi.fn(),
-  };
-});
-
-// Mock Ably (external real-time service)
-// Uses shared spy instances from ably-mock.ts so test files can import
-// mockAblyPublish / mockAblyCreateTokenRequest without repeating vi.mock.
-vi.mock("ably", async () => {
-  const { mockAblyCreateTokenRequest, mockAblyChannelsGet } =
-    await import("./ably-mock");
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: mockAblyCreateTokenRequest },
-          channels: {
-            get: mockAblyChannelsGet,
-          },
-        };
-      }),
-    },
   };
 });
 
