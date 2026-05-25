@@ -413,6 +413,33 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "DENY"
         auth_fetch.assert_not_called()
 
+    async def test_rejects_invalid_https_sni_before_firewall_auth(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="...",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers() as auth_fetch,
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "invalid_sni"
+        assert flow.metadata["firewall_action"] == "DENY"
+        auth_fetch.assert_not_called()
+        assert "Authorization" not in flow.request.headers
+
     async def test_http_host_spoof_does_not_match_domain_firewall(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
