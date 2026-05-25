@@ -28,6 +28,21 @@ def _payloads_from_enqueue_calls(call_args_list):
     return [call.args[2] for call in call_args_list]
 
 
+class _FakeTimer:
+    def __init__(self, delay: float, callback):
+        self.delay = delay
+        self.callback = callback
+        self.daemon = False
+        self.cancelled = False
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+
 def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
@@ -170,25 +185,54 @@ def test_empty_flush_is_noop():
     enqueue.assert_not_called()
 
 
+def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert (
+            usage.buffer_usage_events(
+                "https://api-empty.test/api/webhooks/agent/usage-event",
+                "token-empty",
+                "run-empty",
+                [],
+                str(tmp_path / "empty-proxy.jsonl"),
+            )
+            == 0
+        )
+        assert usage_buffer._usage_event_buffer._buckets == {}
+
+        assert (
+            usage.buffer_usage_events(
+                "https://api-a.test/api/webhooks/agent/usage-event",
+                "token-a",
+                "run-1",
+                [_event(source_key="source-1")],
+                str(tmp_path / "proxy-a.jsonl"),
+            )
+            == 1
+        )
+        assert len(usage_buffer._usage_event_buffer._buckets) == 1
+
+        assert (
+            usage.buffer_usage_events(
+                "https://api-b.test/api/webhooks/agent/usage-event",
+                "token-b",
+                "run-2",
+                [_event(source_key="source-1")],
+                str(tmp_path / "proxy-b.jsonl"),
+            )
+            == 0
+        )
+        assert len(usage_buffer._usage_event_buffer._buckets) == 1
+
+        assert usage.flush_usage_events() == 1
+
+    enqueue.assert_called_once()
+
+
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
     timers = []
 
-    class FakeTimer:
-        def __init__(self, delay: float, callback):
-            self.delay = delay
-            self.callback = callback
-            self.daemon = False
-            self.cancelled = False
-            self.started = False
-
-        def start(self) -> None:
-            self.started = True
-
-        def cancel(self) -> None:
-            self.cancelled = True
-
     def timer_factory(delay: float, callback):
-        timer = FakeTimer(delay, callback)
+        timer = _FakeTimer(delay, callback)
         timers.append(timer)
         return timer
 
@@ -211,6 +255,7 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
         timers[0].callback()
 
     enqueue.assert_called_once()
+    assert timers[0].cancelled is True
     assert enqueue.call_args.args[2]["events"][0]["quantity"] == 10
 
 

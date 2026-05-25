@@ -145,13 +145,15 @@ class UsageEventBuffer:
         events: Iterable[UsageEvent],
         proxy_log_path: str,
     ) -> int:
-        destination = _DestinationKey(url, sandbox_token, proxy_log_path)
-        buckets = self._buckets.setdefault(destination, {})
+        buckets: dict[_AggregateKey, int] | None = None
         accepted_count = 0
         for event in events:
             source_key = event["idempotencyKey"]
             if source_key in self._seen_source_keys:
                 continue
+            if buckets is None:
+                destination = _DestinationKey(url, sandbox_token, proxy_log_path)
+                buckets = self._buckets.setdefault(destination, {})
             self._seen_source_keys[source_key] = None
             aggregate_key = _AggregateKey(
                 run_id=run_id,
