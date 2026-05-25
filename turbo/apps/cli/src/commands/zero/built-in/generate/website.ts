@@ -3,11 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebWebsite } from "../../../../lib/api";
+import { zeroTokenAllowsFeatureSwitch } from "../../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../../lib/command";
 import { publishStaticSite } from "../../../../lib/host/publish-static-site";
+import { createHtmlArtifactAuthoringPacket } from "../../shared/html-artifact-authoring";
 import { buildGeneratedWebsite } from "../../shared/website-build";
 
 const WEBSITE_TEMPLATES = ["auto", "launch", "profile"] as const;
@@ -80,7 +83,7 @@ function formatBytes(bytes: number): string {
 
 export const websiteCommand = new Command()
   .name("website")
-  .description("Generate, build, and publish a hosted website from a prompt")
+  .description("Generate a hosted website from a prompt")
   .option("--prompt <text>", "Website prompt; can also be piped via stdin")
   .option(
     "--template <template>",
@@ -113,16 +116,47 @@ Examples:
   Pipe prompt:           cat brief.txt | zero built-in generate website
 
 Output:
-  Builds a React template into a static website, publishes it with zero host, and prints the hosted URL
+  Generates and publishes a hosted website. With openDesignGenerate enabled, prints an OpenDesign-style authoring packet for the current agent instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires host:write capability)
-  - Charges org credits for model-generated website content
-  - Uses OpenAI gpt-5.5 for website content and fal.ai for generated visuals`,
+  - Authenticates via ZERO_TOKEN
+  - Default path charges org credits for model-generated website content
+  - OpenDesign path is gated by the openDesignGenerate feature switch`,
   )
   .action(
     withErrorHandler(async (options: WebsiteOptions) => {
       const prompt = readPrompt(options);
+      if (zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)) {
+        const packet = createHtmlArtifactAuthoringPacket({
+          kind: "website",
+          prompt,
+          slugSource: options.title,
+          site: options.site,
+          details: [
+            `Template direction: ${options.template}`,
+            `Suggested generated visual count: ${options.images}`,
+            `Image model preference if visuals are generated separately: ${
+              options.imageModel ?? "default"
+            }`,
+            `Requested title/site name: ${options.title ?? "not specified"}`,
+            `Audience: ${options.audience ?? "not specified"}`,
+          ],
+          artifactRules: [
+            "Build the usable website as the first screen; do not output a landing-page plan.",
+            "If it is a marketing site, make the product or offer visible in the first viewport.",
+            "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
+            "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
+          ],
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(packet));
+          return;
+        }
+        console.log(packet.instructions);
+        return;
+      }
+
       if (!options.json) {
         console.log(chalk.dim("Generating website content..."));
       }

@@ -1,8 +1,11 @@
 import { readFileSync } from "fs";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebPresentation } from "../../../lib/api";
+import { zeroTokenAllowsFeatureSwitch } from "../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../lib/command";
+import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
 
 const PRESENTATION_MAX_IMAGES = 8;
 
@@ -76,7 +79,7 @@ export function createPresentationGenerateCommand(
 ): Command {
   return new Command()
     .name(config.name)
-    .description("Generate a billed HTML presentation from a prompt")
+    .description("Generate an HTML presentation from a prompt")
     .option(
       "--prompt <text>",
       "Presentation prompt; can also be piped via stdin",
@@ -107,16 +110,49 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ HTML presentation URL and metadata
+  Prints the generated /f/ HTML presentation URL and metadata. With openDesignGenerate enabled, prints an OpenDesign-style authoring packet for the current agent instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires file:write capability)
-  - Charges org credits after successful presentation generation
-  - Uses OpenAI gpt-5.5 for deck text and fal.ai for generated visuals`,
+  - Authenticates via ZERO_TOKEN
+  - Default path charges org credits after successful presentation generation
+  - OpenDesign path is gated by the openDesignGenerate feature switch`,
     )
     .action(
       withErrorHandler(async (options: PresentationOptions) => {
         const prompt = readPrompt(options, config.usageCommand);
+        if (zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)) {
+          const packet = createHtmlArtifactAuthoringPacket({
+            kind: "presentation",
+            prompt,
+            slugSource: options.title,
+            details: [
+              `Style: ${options.style}`,
+              `Slide count: ${options.slides}`,
+              `Suggested generated visual count: ${options.images}`,
+              `Image model preference if visuals are generated separately: ${
+                options.imageModel ?? "default"
+              }`,
+              `Theme: ${options.theme ?? "agent decides from style"}`,
+              `Audience: ${options.audience ?? "not specified"}`,
+              `Requested deck title: ${options.title ?? "not specified"}`,
+            ],
+            artifactRules: [
+              "Think like a presentation designer, not a web page designer.",
+              "Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
+              "Use one section per slide and keep repeated elements in consistent positions.",
+              "Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
+              "Keep slide text readable from across a room; avoid memo-like walls of text.",
+            ],
+          });
+
+          if (options.json) {
+            console.log(JSON.stringify(packet));
+            return;
+          }
+          console.log(packet.instructions);
+          return;
+        }
+
         const result = await generateWebPresentation({
           prompt,
           style: options.style,
