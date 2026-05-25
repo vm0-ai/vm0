@@ -47,6 +47,8 @@ pub struct ExecRequest<'a> {
     pub env: &'a [(&'a str, &'a str)],
     /// Run the command with guest-side sudo privileges.
     pub sudo: bool,
+    /// Optional bounded stdin payload written to the child and then closed.
+    pub stdin_bytes: Option<&'a [u8]>,
     /// Maximum captured stdout/stderr bytes.
     pub output_limits: ExecOutputLimits,
 }
@@ -437,6 +439,7 @@ mod tests {
             timeout: Duration::from_millis(5000),
             env: &[],
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), 5000);
@@ -449,6 +452,7 @@ mod tests {
             timeout: Duration::ZERO,
             env: &[],
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), 0);
@@ -461,6 +465,7 @@ mod tests {
             timeout: Duration::from_nanos(1),
             env: &[],
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), 1);
@@ -496,6 +501,7 @@ mod tests {
             timeout: Duration::from_secs(u64::MAX / 1000),
             env: &[],
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
@@ -508,6 +514,7 @@ mod tests {
             timeout: Duration::from_millis(u32::MAX as u64),
             env: &[],
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), u32::MAX);

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, Write};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -17,7 +17,10 @@ use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancel
 use crate::error::to_io_error;
 use crate::exec_control::ExecControlGuard;
 use crate::log::log;
-use crate::process::{extract_exit_code, kill_and_reap_child};
+use crate::process::{
+    ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child, kill_process_tree_target,
+    process_tree_kill_target,
+};
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -31,6 +34,7 @@ use crate::wait::{
 use crate::writer::GuestWriter;
 
 const THREAD_EXEC_OPERATION_WORKER: &str = "vsock-exec-operation-worker";
+const THREAD_EXEC_OPERATION_STDIN: &str = "vsock-exec-operation-stdin";
 const THREAD_EXEC_OPERATION_STDOUT: &str = "vsock-exec-operation-stdout";
 const THREAD_EXEC_OPERATION_STDERR: &str = "vsock-exec-operation-stderr";
 const THREAD_EXEC_OPERATION_OUTPUT: &str = "vsock-exec-operation-output";
@@ -162,6 +166,7 @@ pub(crate) struct ExecOperationWorkerRequest {
     stdout: ExecOutputPolicy,
     stderr: ExecOutputPolicy,
     expected_exit_codes: Vec<i32>,
+    stdin_bytes: Option<Vec<u8>>,
     control: ExecControlPolicy,
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
@@ -220,6 +225,7 @@ impl ExecOperationWorkerRequest {
             stdout: decoded.stdout,
             stderr: decoded.stderr,
             expected_exit_codes: decoded.expected_exit_codes,
+            stdin_bytes: decoded.stdin_bytes.map(Vec::from),
             control: decoded.control,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
@@ -260,6 +266,12 @@ struct StreamEvent {
     stream: ExecOutputStream,
     chunk: Vec<u8>,
     truncated: bool,
+}
+
+struct StdinWriter {
+    handle: JoinHandle<()>,
+    done_rx: mpsc::Receiver<()>,
+    result_rx: mpsc::Receiver<io::Result<()>>,
 }
 
 #[derive(Clone, Copy)]
@@ -412,37 +424,42 @@ fn run_exec_operation_worker<S>(
     } else {
         env_refs.as_slice()
     };
-    let spawned =
-        match spawn_shell_command_with_pipes(&request.command, effective_env, request.sudo) {
-            Ok(spawned) => spawned,
-            Err(e) => {
-                let diagnostic = format!(
-                    "Failed to execute: {e} ({})",
-                    format_env_diagnostics(&request.command, &env_refs)
-                );
-                send_final_and_complete(
-                    &registration,
-                    ExecResultFrame {
-                        seq: request.seq,
-                        termination: ExecTermination::StartFailed,
-                        duration_ms: duration_ms(started),
-                        stdout: empty_output_for_policy(request.stdout),
-                        stderr: empty_output_for_policy(request.stderr),
-                        diagnostic: &diagnostic,
-                    },
-                    &writer,
-                    &operation_guard,
-                    request.exec_control_guard.as_ref(),
-                );
-                return;
-            }
-        };
+    let spawned = match spawn_shell_command_with_pipes(
+        &request.command,
+        effective_env,
+        request.sudo,
+        request.stdin_bytes.is_some(),
+    ) {
+        Ok(spawned) => spawned,
+        Err(e) => {
+            let diagnostic = format!(
+                "Failed to execute: {e} ({})",
+                format_env_diagnostics(&request.command, &env_refs)
+            );
+            send_final_and_complete(
+                &registration,
+                ExecResultFrame {
+                    seq: request.seq,
+                    termination: ExecTermination::StartFailed,
+                    duration_ms: duration_ms(started),
+                    stdout: empty_output_for_policy(request.stdout),
+                    stderr: empty_output_for_policy(request.stderr),
+                    diagnostic: &diagnostic,
+                },
+                &writer,
+                &operation_guard,
+                request.exec_control_guard.as_ref(),
+            );
+            return;
+        }
+    };
 
     let SpawnedShellCommand {
         mut child,
         env_script,
     } = spawned;
     let _env_script = env_script;
+    let child_pid = child.id();
     let failure = WaitFailureContext {
         seq: request.seq,
         started,
@@ -486,6 +503,26 @@ fn run_exec_operation_worker<S>(
             return;
         }
     };
+    let stdin_writer = match request.stdin_bytes.as_ref() {
+        Some(stdin_bytes) => {
+            let Some(stdin) = child.stdin.take() else {
+                kill_and_send_wait_failed(child, "missing stdin pipe", failure);
+                return;
+            };
+            match spawn_exec_operation_stdin(stdin, stdin_bytes.clone(), spawner.clone()) {
+                Ok(writer) => Some(writer),
+                Err(e) => {
+                    kill_and_send_wait_failed(
+                        child,
+                        &format!("failed to spawn stdin writer thread: {e}"),
+                        failure,
+                    );
+                    return;
+                }
+            }
+        }
+        None => None,
+    };
 
     let stdout_settings = output_settings(request.stdout);
     let stderr_settings = output_settings(request.stderr);
@@ -507,8 +544,9 @@ fn run_exec_operation_worker<S>(
         ) {
             Ok(handle) => (Some(tx), Some(handle)),
             Err(e) => {
-                kill_and_send_wait_failed(
+                kill_join_stdin_and_send_wait_failed(
                     child,
+                    stdin_writer,
                     &format!("failed to spawn exec output writer thread: {e}"),
                     failure,
                 );
@@ -536,8 +574,9 @@ fn run_exec_operation_worker<S>(
         Err(e) => {
             drain_cancel.store(true, Ordering::Release);
             drop(output_tx);
-            kill_and_send_wait_failed(
+            kill_join_stdin_and_send_wait_failed(
                 child,
+                stdin_writer,
                 &format!("failed to spawn stdout drain thread: {e}"),
                 failure,
             );
@@ -565,6 +604,7 @@ fn run_exec_operation_worker<S>(
             drain_cancel.store(true, Ordering::Release);
             drop(output_tx);
             kill_and_reap_child(child);
+            join_stdin_writer_after_kill(stdin_writer);
             let _ = stdout_handle.join();
             join_output_writer(output_handle);
             send_final_and_complete(
@@ -587,11 +627,19 @@ fn run_exec_operation_worker<S>(
     drop(drain_done_tx);
     drop(output_tx);
 
+    let kill_target = process_tree_kill_target(child_pid);
     let outcome = wait_with_kill_timeout_or_cancelled_either(
         child,
         request.timeout.wait_timeout_ms(),
         &connection_cancel,
         &exec_cancel,
+    );
+    join_stdin_writer_after_wait(
+        stdin_writer,
+        kill_target,
+        &outcome,
+        request.seq,
+        &request.label,
     );
     if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
         || connection_cancel.load(Ordering::Acquire)
@@ -876,8 +924,104 @@ where
     Ok((handle, result_rx))
 }
 
+fn spawn_exec_operation_stdin<W, S>(
+    mut stdin: W,
+    stdin_bytes: Vec<u8>,
+    spawner: S,
+) -> io::Result<StdinWriter>
+where
+    W: Write + Send + 'static,
+    S: ThreadSpawner,
+{
+    let (done_tx, done_rx) = mpsc::channel();
+    let (result_tx, result_rx) = mpsc::channel();
+    let handle = spawner.spawn_unit(
+        THREAD_EXEC_OPERATION_STDIN,
+        Box::new(move || {
+            let result = stdin.write_all(&stdin_bytes);
+            let _ = result_tx.send(result);
+            let _ = done_tx.send(());
+        }),
+    )?;
+    Ok(StdinWriter {
+        handle,
+        done_rx,
+        result_rx,
+    })
+}
+
+fn join_stdin_writer_after_wait(
+    writer: Option<StdinWriter>,
+    kill_target: ProcessTreeKillTarget,
+    outcome: &WaitOutcome,
+    seq: u32,
+    label: &str,
+) {
+    let Some(writer) = writer else {
+        return;
+    };
+    if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
+        && matches!(writer.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty))
+    {
+        // The direct shell exited or wait failed, but a descendant can still
+        // keep stdin open. Kill the process tree before joining the writer so
+        // bounded stdin cannot strand this worker thread.
+        let _ = unsafe { kill_process_tree_target(kill_target) };
+    }
+    join_stdin_writer(writer, seq, label);
+}
+
+fn join_stdin_writer_after_kill(writer: Option<StdinWriter>) {
+    if let Some(writer) = writer {
+        join_stdin_writer(writer, 0, "");
+    }
+}
+
+fn join_stdin_writer(writer: StdinWriter, seq: u32, label: &str) {
+    match writer.handle.join() {
+        Ok(()) => {}
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+    match writer.result_rx.recv() {
+        Ok(Ok(())) | Err(_) => {}
+        Ok(Err(e)) => {
+            let label_preview = truncate_command_preview(label);
+            log(
+                "WARN",
+                &format!(
+                    "exec operation: stdin writer finished with error seq={seq} label={label_preview}: {e}"
+                ),
+            );
+        }
+    }
+}
+
 fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailureContext<'_>) {
     kill_and_reap_child(child);
+    send_final_and_complete(
+        failure.registration,
+        ExecResultFrame {
+            seq: failure.seq,
+            termination: ExecTermination::WaitFailed,
+            duration_ms: duration_ms(failure.started),
+            stdout: empty_output_for_policy(failure.stdout_policy),
+            stderr: empty_output_for_policy(failure.stderr_policy),
+            diagnostic,
+        },
+        failure.writer,
+        failure.operation_guard,
+        failure.exec_control_guard,
+    );
+}
+
+fn kill_join_stdin_and_send_wait_failed(
+    child: Child,
+    stdin_writer: Option<StdinWriter>,
+    diagnostic: &str,
+    failure: WaitFailureContext<'_>,
+) {
+    kill_and_reap_child(child);
+    join_stdin_writer_after_kill(stdin_writer);
     send_final_and_complete(
         failure.registration,
         ExecResultFrame {
@@ -1068,6 +1212,7 @@ mod tests {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: Vec::new(),
+            stdin_bytes: None,
             control: ExecControlPolicy::Disabled,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,

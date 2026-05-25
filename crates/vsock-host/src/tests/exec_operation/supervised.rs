@@ -34,6 +34,7 @@ fn supervised_request(command: &str) -> SupervisedExecRequest<'_> {
         stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
         expected_exit_codes: &[],
         control: SupervisedExecControl::Disabled,
+        stdin_bytes: None,
         stream_queue_capacity: None,
         start_timeout: Duration::from_secs(5),
     }
@@ -46,6 +47,7 @@ fn supervised_stream_request(command: &str) -> SupervisedExecRequest<'_> {
             chunk_limit_bytes: 16,
         },
         stderr: ExecOutputPolicy::Discard,
+        stdin_bytes: None,
         stream_queue_capacity: Some(1),
         ..supervised_request(command)
     }
@@ -105,6 +107,7 @@ async fn send_guest_error(stream: &mut tokio::net::UnixStream, seq: u32, message
 async fn supervised_exec_rejects_zero_stream_capacity_without_sending_frame() {
     assert_supervised_start_rejected_without_frame(
         SupervisedExecRequest {
+            stdin_bytes: None,
             stream_queue_capacity: Some(0),
             ..supervised_stream_request("zero-stream-capacity")
         },
@@ -117,6 +120,7 @@ async fn supervised_exec_rejects_zero_stream_capacity_without_sending_frame() {
 async fn supervised_exec_rejects_receiver_without_stream_policy() {
     assert_supervised_start_rejected_without_frame(
         SupervisedExecRequest {
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
             ..supervised_request("receiver-without-stream")
         },
@@ -133,6 +137,7 @@ async fn supervised_exec_rejects_invalid_output_policy_without_sending_frame() {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 0,
             },
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
             ..supervised_request("invalid-output-policy")
         },

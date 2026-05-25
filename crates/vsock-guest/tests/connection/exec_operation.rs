@@ -47,6 +47,7 @@ fn send_supervised_exec_start(
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
             control,
+            stdin_bytes: None,
         },
     );
 }
@@ -102,6 +103,31 @@ fn assert_exec_control_result(
     assert_eq!(decoded.diagnostic, expected_diagnostic);
 }
 
+fn send_exec_start_with_stdin(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    stdin_bytes: Option<&[u8]>,
+) {
+    send_exec_start_request(
+        stream,
+        seq,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::OneShot,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+            command,
+            env: &[],
+            sudo: false,
+            label: "stdin-test",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Disabled,
+            stdin_bytes,
+        },
+    );
+}
+
 #[test]
 fn exec_operation_capture_only_stdout_stderr_success() {
     let (handle, mut host_stream) = start_guest_connection();
@@ -128,6 +154,65 @@ fn exec_operation_capture_only_stdout_stderr_success() {
 }
 
 #[test]
+fn exec_operation_writes_stdin_and_closes_pipe() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_exec_start_with_stdin(
+        &mut host_stream,
+        106,
+        "cat; printf ':after'",
+        Some(b"payload"),
+    );
+    let (chunks, result) = read_exec_result(&mut host_stream, 106);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(b"payload:after".to_vec()));
+    assert_eq!(result.stderr, Some(Vec::new()));
+    assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn exec_operation_empty_stdin_is_immediate_eof() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_exec_start_with_stdin(
+        &mut host_stream,
+        107,
+        "if read line; then printf unexpected; else printf eof; fi",
+        Some(&[]),
+    );
+    let (chunks, result) = read_exec_result(&mut host_stream, 107);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(b"eof".to_vec()));
+    assert_eq!(result.stderr, Some(Vec::new()));
+    assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn exec_operation_child_can_exit_without_reading_stdin() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let stdin = vec![b'x'; vsock_proto::MAX_EXEC_STDIN_BYTES];
+
+    send_exec_start_with_stdin(&mut host_stream, 108, "true", Some(&stdin));
+    let (chunks, result) = read_exec_result(&mut host_stream, 108);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(Vec::new()));
+    assert_eq!(result.stderr, Some(Vec::new()));
+    assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn exec_operation_expected_nonzero_exit_still_returns_result() {
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -143,6 +228,7 @@ fn exec_operation_expected_nonzero_exit_still_returns_result() {
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[66],
             control: ExecControlPolicy::Disabled,
+            stdin_bytes: None,
         },
     );
     let msg = vsock_proto::encode(MSG_EXEC_START, 102, &payload.unwrap()).unwrap();
@@ -179,6 +265,7 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             control: ExecControlPolicy::Disabled,
+            stdin_bytes: None,
         },
     );
     assert_eq!(
@@ -221,6 +308,7 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
                 control_nonce: *b"0123456789abcdef",
                 sink: false,
             },
+            stdin_bytes: None,
         },
     );
     assert_eq!(
@@ -387,6 +475,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
                 control_nonce,
                 sink: true,
             },
+            stdin_bytes: None,
         },
     );
     assert!(read_exec_started(&mut host_stream, target_seq) > 0);

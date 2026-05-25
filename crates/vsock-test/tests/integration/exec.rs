@@ -145,6 +145,7 @@ async fn test_exec_while_waiting_for_exit() {
             stdout: ExecOutputPolicy::Discard,
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             control: SupervisedExecControl::Disabled,
             stream_queue_capacity: None,
             start_timeout: Duration::from_secs(5),

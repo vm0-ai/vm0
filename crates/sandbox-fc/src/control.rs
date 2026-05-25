@@ -461,6 +461,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
             stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
         })
         .await;

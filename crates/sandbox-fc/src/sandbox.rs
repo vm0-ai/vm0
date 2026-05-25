@@ -1882,6 +1882,7 @@ impl Sandbox for FirecrackerSandbox {
                     stdout_limit_bytes: limits.stdout_limit_bytes,
                     stderr_limit_bytes: limits.stderr_limit_bytes,
                     expected_exit_codes: &[],
+                    stdin_bytes: request.stdin_bytes,
                     wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
                 })
                 .await
@@ -1960,6 +1961,7 @@ impl Sandbox for FirecrackerSandbox {
                     stdout: process_stdout_policy(request.output),
                     stderr: process_stderr_policy(request.output),
                     expected_exit_codes: &[],
+                    stdin_bytes: None,
                     control: match request.control {
                         ProcessControlMode::None => SupervisedExecControl::Disabled,
                         ProcessControlMode::Enabled => {
@@ -3033,6 +3035,7 @@ mod tests {
                     stdout: ExecOutputPolicy::Discard,
                     stderr: ExecOutputPolicy::Discard,
                     expected_exit_codes: &[],
+                    stdin_bytes: None,
                     control: SupervisedExecControl::Enabled { sink: true },
                     stream_queue_capacity: None,
                     start_timeout: Duration::from_secs(5),

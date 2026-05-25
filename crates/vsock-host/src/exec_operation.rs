@@ -77,6 +77,8 @@ pub struct ExecOperationRequest<'a> {
     pub stdout: ExecOutputPolicy,
     pub stderr: ExecOutputPolicy,
     pub expected_exit_codes: &'a [i32],
+    /// Optional bounded stdin payload written to the child and then closed.
+    pub stdin_bytes: Option<&'a [u8]>,
     /// Optional bounded host-side output event queue override.
     ///
     /// `None` uses the default queue capacity when either output policy
@@ -96,6 +98,8 @@ pub struct ExecCaptureRequest<'a> {
     pub stdout_limit_bytes: u32,
     pub stderr_limit_bytes: u32,
     pub expected_exit_codes: &'a [i32],
+    /// Optional bounded stdin payload written to the child and then closed.
+    pub stdin_bytes: Option<&'a [u8]>,
     pub wait_timeout: Duration,
 }
 
@@ -109,6 +113,8 @@ pub struct ExecStreamRequest<'a> {
     pub stdout: ExecOutputPolicy,
     pub stderr: ExecOutputPolicy,
     pub expected_exit_codes: &'a [i32],
+    /// Optional bounded stdin payload written to the child and then closed.
+    pub stdin_bytes: Option<&'a [u8]>,
     /// Optional host-side output event queue capacity override.
     ///
     /// `None` uses the default queue capacity. Zero and oversized capacities
@@ -149,6 +155,8 @@ pub struct SupervisedExecRequest<'a> {
     pub stderr: ExecOutputPolicy,
     /// Exit codes that should not be treated as notable in diagnostics.
     pub expected_exit_codes: &'a [i32],
+    /// Optional bounded stdin payload written to the child and then closed.
+    pub stdin_bytes: Option<&'a [u8]>,
     /// Optional exec-control route for this supervised operation.
     pub control: SupervisedExecControl,
     /// Optional bounded host-side output event queue override.
@@ -2238,6 +2246,7 @@ async fn start_exec_operation_on_shared_with_tracking(
             stderr: request.stderr,
             expected_exit_codes: request.expected_exit_codes,
             control: ExecControlPolicy::Disabled,
+            stdin_bytes: request.stdin_bytes,
         },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -2377,6 +2386,7 @@ where
             stderr: request.stderr,
             expected_exit_codes: request.expected_exit_codes,
             control,
+            stdin_bytes: request.stdin_bytes,
         },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -2540,6 +2550,7 @@ pub(crate) async fn exec_operation_capture_on_shared(
                 limit_bytes: request.stderr_limit_bytes,
             },
             expected_exit_codes: request.expected_exit_codes,
+            stdin_bytes: request.stdin_bytes,
             stream_queue_capacity: None,
         },
     )
@@ -2568,6 +2579,7 @@ async fn exec_operation_capture_on_shared_with_tracking(
                 limit_bytes: request.stderr_limit_bytes,
             },
             expected_exit_codes: request.expected_exit_codes,
+            stdin_bytes: request.stdin_bytes,
             stream_queue_capacity: None,
         },
         tracking,
@@ -2614,6 +2626,7 @@ async fn exec_operation_stream_on_shared_with_tracking(
             stdout: request.stdout,
             stderr: request.stderr,
             expected_exit_codes: request.expected_exit_codes,
+            stdin_bytes: request.stdin_bytes,
             stream_queue_capacity: request.stream_queue_capacity,
         },
         tracking,
@@ -2656,6 +2669,7 @@ pub(crate) async fn exec_on_shared(
             stdout_limit_bytes: DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             wait_timeout: request_timeout,
         },
     )
@@ -2681,6 +2695,7 @@ pub(crate) async fn exec_cleanup_untracked_on_shared_with_write_observer(
             stdout_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             wait_timeout: Duration::from_millis(timeout_ms as u64),
         },
         ExecOperationTracking::Untracked,
@@ -2710,6 +2725,7 @@ pub(crate) async fn exec_cleanup_with_composite_on_shared_and_observer(
             stdout_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
             stderr_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             wait_timeout: Duration::from_millis(timeout_ms as u64),
         },
         ExecOperationTracking::Composite(normal_operation),

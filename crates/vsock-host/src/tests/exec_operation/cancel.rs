@@ -25,6 +25,7 @@ fn capture_request(command: &str) -> ExecCaptureRequest<'_> {
         stdout_limit_bytes: 1024,
         stderr_limit_bytes: 1024,
         expected_exit_codes: &[],
+        stdin_bytes: None,
         wait_timeout: Duration::from_secs(5),
     }
 }

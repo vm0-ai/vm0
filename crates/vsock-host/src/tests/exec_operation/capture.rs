@@ -30,6 +30,7 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
                 stdout_limit_bytes: 7,
                 stderr_limit_bytes: 9,
                 expected_exit_codes: &[],
+                stdin_bytes: None,
                 wait_timeout: Duration::from_secs(5),
             })
             .await
@@ -82,6 +83,43 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
 }
 
 #[tokio::test]
+async fn exec_operation_capture_sends_stdin_bytes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+
+    let handle = host
+        .start_exec_operation(ExecOperationRequest {
+            timeout_ms: 5000,
+            command: "cat",
+            env: &[],
+            sudo: false,
+            label: "stdin-capture",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            stdin_bytes: Some(b"host-stdin"),
+            stream_queue_capacity: None,
+        })
+        .await
+        .unwrap();
+
+    let msg = read_guest_message(&mut guest).await;
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
+    assert_eq!(decoded.command, "cat");
+    assert_eq!(decoded.stdin_bytes, Some(&b"host-stdin"[..]));
+
+    send_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"host-stdin",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+}
+
+#[tokio::test]
 async fn exec_start_sends_expected_exit_codes() {
     let (host, mut guest) = setup_host_and_guest().await;
 
@@ -95,6 +133,7 @@ async fn exec_start_sends_expected_exit_codes() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 16 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 16 },
             expected_exit_codes: &[66],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -136,6 +175,7 @@ async fn exec_operation_capture_repeated_short_operations_soak() {
                 stdout: ExecOutputPolicy::Capture { limit_bytes: 16 },
                 stderr: ExecOutputPolicy::Capture { limit_bytes: 16 },
                 expected_exit_codes: &[],
+                stdin_bytes: None,
                 stream_queue_capacity: None,
             })
             .await
@@ -187,6 +227,7 @@ async fn exec_operation_capture_large_stdout_stderr_within_limits_soak() {
                 limit_bytes: stderr.len() as u32,
             },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -235,6 +276,7 @@ async fn exec_result_preserves_non_default_metadata() {
             stdout: ExecOutputPolicy::Discard,
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -283,6 +325,7 @@ async fn exec_result_capture_for_discard_policy_poisons_connection() {
             stdout: ExecOutputPolicy::Discard,
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -322,6 +365,7 @@ async fn exec_result_over_capture_limit_poisons_connection() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 4 },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -361,6 +405,7 @@ async fn exec_result_discard_for_capture_policy_poisons_connection() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 4 },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -397,6 +442,7 @@ async fn exec_result_zero_capture_limit_accepts_empty_capture() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 0 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 0 },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await

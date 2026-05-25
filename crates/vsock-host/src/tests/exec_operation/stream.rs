@@ -28,6 +28,7 @@ async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(0),
         })
         .await
@@ -59,6 +60,7 @@ async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame(
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(exec_operation_impl::test_support::MAX_STREAM_CAPACITY + 1),
         })
         .await
@@ -91,6 +93,7 @@ async fn exec_start_stream_policy_uses_default_receiver() {
                 chunk_limit_bytes: 16,
             },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -138,6 +141,7 @@ async fn exec_start_rejects_receiver_without_stream_policy() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -166,6 +170,7 @@ async fn exec_operation_stream_rejects_non_streaming_policy() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -197,6 +202,7 @@ async fn exec_start_encode_error_does_not_register_or_send_frame() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -225,6 +231,7 @@ async fn exec_start_rejects_zero_timeout_without_sending_frame() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -257,6 +264,7 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
                 chunk_limit_bytes: 16,
             },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: None,
         })
         .await
@@ -323,6 +331,7 @@ async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -380,6 +389,7 @@ async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result()
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(2),
         })
         .await
@@ -438,6 +448,7 @@ async fn exec_output_for_non_streamed_side_poisons_connection() {
                 chunk_limit_bytes: 16,
             },
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -477,6 +488,7 @@ async fn exec_output_seq_gap_poisons_connection() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -516,6 +528,7 @@ async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -555,6 +568,7 @@ async fn exec_output_empty_non_truncated_poisons_connection() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
@@ -586,6 +600,7 @@ async fn exec_output_over_requested_chunk_limit_poisons_connection() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(4),
         })
         .await
@@ -625,6 +640,7 @@ async fn exec_output_over_requested_stream_limit_poisons_connection() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(4),
         })
         .await
@@ -673,6 +689,7 @@ async fn exec_output_after_truncation_poisons_connection() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(4),
         })
         .await
@@ -713,6 +730,7 @@ async fn exec_operation_stream_dropped_receiver_does_not_block_result() {
             },
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
+            stdin_bytes: None,
             stream_queue_capacity: Some(1),
         })
         .await
