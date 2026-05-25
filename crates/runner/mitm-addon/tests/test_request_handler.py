@@ -350,6 +350,43 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
+    async def test_rejects_unbracketed_ipv6_host_authority(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(
+            tmp_path,
+            base="https://[2001:db8::1]:8443",
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="2001:db8::1",
+            port=8443,
+            sni="2001:db8::1",
+            path="/repos",
+            request_headers=headers(("Host", "2001:db8::1")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers() as auth_fetch,
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "invalid_authority"
+        assert body["sni"] == "2001:db8::1"
+        assert body["request_host"] == "2001:db8::1"
+        assert body["host_header"] == "2001:db8::1"
+        assert body["request_port"] == 8443
+        assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == "invalid_authority"
+        assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
+        auth_fetch.assert_not_called()
+        assert "Authorization" not in flow.request.headers
+
     @pytest.mark.parametrize(
         ("request_port", "host_header", "expected_original_url"),
         [
