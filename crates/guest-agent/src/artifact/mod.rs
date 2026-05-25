@@ -306,15 +306,21 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
         std::fs::write(root.join("target.txt"), "content").unwrap();
-        let files = archive::collect_file_metadata(root.to_str().unwrap());
-        let file = files.iter().find(|file| file.path == "target.txt").unwrap();
-
-        let expected_file = serde_json::json!({
-            "path": file.path.clone(),
-            "hash": file.hash.clone(),
-            "size": file.size,
-        });
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files: Vec<serde_json::Value> = files
+            .iter()
+            .map(|file| {
+                serde_json::json!({
+                    "path": file.path,
+                    "hash": file.hash,
+                    "size": file.size,
+                })
+            })
+            .collect();
+        let total_size: u64 = files.iter().map(|file| file.size).sum();
 
         let prepare = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
@@ -323,7 +329,7 @@ mod tests {
                     "runId": "run-id",
                     "storageName": "storage",
                     "storageType": "artifact",
-                    "files": [expected_file.clone()],
+                    "files": expected_files,
                     "parentVersionId": "parent-v1",
                 }));
             then.status(200).json_body(serde_json::json!({
@@ -340,14 +346,14 @@ mod tests {
                     "storageType": "artifact",
                     "versionId": "v-existing",
                     "parentVersionId": "parent-v1",
-                    "files": [expected_file.clone()],
+                    "files": expected_files,
                 }));
             then.status(200).json_body(serde_json::json!({
                 "success": true,
                 "versionId": "v-existing",
                 "storageName": "storage",
-                "size": file.size,
-                "fileCount": 1,
+                "size": total_size,
+                "fileCount": expected_files.len(),
             }));
         });
 
@@ -381,7 +387,7 @@ mod tests {
                     "runId": "run-id",
                     "storageName": "storage",
                     "storageType": "artifact",
-                    "files": [expected_file],
+                    "files": expected_files,
                 }));
             then.status(200).json_body(serde_json::json!({
                 "versionId": "v-existing",
