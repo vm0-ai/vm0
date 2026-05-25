@@ -60,7 +60,7 @@ describe("zero built-in generate presentation command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero built-in generate presentation");
-    expect(stdout).toContain("Open Design resource-selection packet");
+    expect(stdout).toContain("federated generation resource-selection packet");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");

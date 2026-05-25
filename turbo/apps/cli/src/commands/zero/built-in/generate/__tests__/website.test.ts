@@ -53,7 +53,7 @@ describe("zero built-in generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero built-in generate website");
-    expect(stdout).toContain("Open Design resource-selection packet");
+    expect(stdout).toContain("federated generation resource-selection packet");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
