@@ -5,11 +5,11 @@ import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route";
 import { resetStuckVoiceChatReasoners$ } from "../services/cron-voice-chat-cleanup.service";
 import { triggerVoiceChatReasoning$ } from "../services/zero-voice-chat.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const voiceChatCleanupRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!hasValidCronSecret(get)) {
+    if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 

@@ -3,11 +3,11 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route";
 import { processStaleUsageEvents$ } from "../services/cron-process-usage-events.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const processUsageEventsRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!hasValidCronSecret(get)) {
+    if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 

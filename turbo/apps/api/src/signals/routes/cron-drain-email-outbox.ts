@@ -6,11 +6,11 @@ import {
   cleanupExpiredEmailOutbox$,
   drainEmailOutboxBatch$,
 } from "../services/zero-email-common.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const drainEmailOutboxRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!hasValidCronSecret(get)) {
+    if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 
