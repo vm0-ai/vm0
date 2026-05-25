@@ -4,9 +4,6 @@ export const twenty = {
   twenty: {
     label: "Twenty",
     category: "sales-crm-business-operations",
-    environmentMapping: {
-      TWENTY_TOKEN: "$secrets.TWENTY_TOKEN",
-    },
     helpText:
       "Connect your Twenty CRM account to manage contacts, companies, and deals",
     authMethods: {
@@ -14,13 +11,23 @@ export const twenty = {
         label: "API Key",
         helpText:
           "1. Log in to your [Twenty](https://twenty.com) workspace\n2. Go to **Settings > APIs & Webhooks**\n3. Click **+ Create key**\n4. Enter a descriptive **Name** and set an **Expiration Date**\n5. Click **Save**\n6. Copy the key immediately — it is only shown once",
-        secrets: {
-          TWENTY_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "your-twenty-api-key",
+        grant: {
+          kind: "manual",
+          fields: {
+            TWENTY_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "your-twenty-api-key",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            TWENTY_TOKEN: "$secrets.TWENTY_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

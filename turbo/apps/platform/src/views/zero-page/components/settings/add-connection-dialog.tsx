@@ -18,12 +18,14 @@ import {
   CONNECTOR_AUTH_METHOD_TYPES,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodType,
+  type ConnectorGrantKind,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
 import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
   getConnectorAuthMethod,
+  getConnectorManualGrantFields,
   isGoogleOAuthConnector,
   isOAuthAuthCodeConnectorType,
   isOAuthDeviceAuthConnectorType,
@@ -237,12 +239,13 @@ function ApiTokenForm({
   const clearForm = useSet(clearTokenForm$);
   const pageSignal = useGet(pageSignal$);
   const secretValues = useGet(tokenFormValuesFor$(type));
+  const apiTokenFields = getConnectorManualGrantFields(type, "api-token");
 
-  if (!apiTokenConfig) {
+  if (!apiTokenConfig || !apiTokenFields) {
     return null;
   }
 
-  const secretEntries = Object.entries(apiTokenConfig.secrets);
+  const secretEntries = Object.entries(apiTokenFields);
   const allFilled = secretEntries.every(([name, cfg]) => {
     return !cfg.required || hasTokenInputValue(secretValues[name]);
   });
@@ -920,6 +923,16 @@ function getConnectMethodContentEntries(
   });
 }
 
+function hasAuthMethodGrantKind(
+  type: ConnectorType,
+  authMethods: readonly ConnectorAuthMethodType[],
+  kind: ConnectorGrantKind,
+): boolean {
+  return authMethods.some((authMethod) => {
+    return getConnectorAuthMethod(type, authMethod)?.grant.kind === kind;
+  });
+}
+
 function AuthMethodDivider() {
   return (
     <div className="relative py-1">
@@ -1018,9 +1031,13 @@ function StandardConnectMethodsContent({
   entries: readonly ConnectMethodContentEntry[];
 }) {
   const isGoogleOAuth =
-    entries.some((entry) => {
-      return entry.authMethod === "oauth";
-    }) && isGoogleOAuthConnector(item.type);
+    hasAuthMethodGrantKind(
+      item.type,
+      entries.map((entry) => {
+        return entry.authMethod;
+      }),
+      "auth-code",
+    ) && isGoogleOAuthConnector(item.type);
 
   return (
     <div className="flex flex-col gap-4">
@@ -1068,7 +1085,7 @@ function ConnectModalContent({
   };
 
   const progressContent =
-    item.availableAuthMethods.includes("oauth") &&
+    hasAuthMethodGrantKind(item.type, item.availableAuthMethods, "auth-code") &&
     isOAuthAuthCodeConnectorType(item.type)
       ? getOAuthAuthCodeProgressContent({
           isPolling,

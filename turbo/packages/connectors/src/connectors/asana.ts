@@ -4,39 +4,35 @@ export const asana = {
   asana: {
     label: "Asana",
     category: "engineering-team-execution",
-    environmentMapping: {
-      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Asana account to manage tasks, projects, portfolios, goals, and team workflows",
     authMethods: {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Asana to grant access.",
-        secrets: {
-          ASANA_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://app.asana.com/-/oauth_token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "ASANA_OAUTH_CLIENT_ID",
+            clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
           },
-          ASANA_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: [],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "ASANA_ACCESS_TOKEN",
+          refreshToken: "ASANA_REFRESH_TOKEN",
+          outputs: {
+            ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://app.asana.com/-/oauth_token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "ASANA_OAUTH_CLIENT_ID",
-        clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
-      },
-      scopes: [],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

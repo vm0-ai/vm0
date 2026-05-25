@@ -5,9 +5,6 @@ export const reddit = {
   reddit: {
     label: "Reddit",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Reddit account to access Reddit discussions and content",
     authMethods: {
@@ -15,30 +12,29 @@ export const reddit = {
         featureFlag: FeatureSwitchKey.RedditConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Reddit to grant access.",
-        secrets: {
-          REDDIT_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://www.reddit.com/api/v1/access_token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_basic",
+            clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
+            clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
           },
-          REDDIT_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: ["identity", "read"],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "REDDIT_ACCESS_TOKEN",
+          refreshToken: "REDDIT_REFRESH_TOKEN",
+          outputs: {
+            REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://www.reddit.com/api/v1/access_token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_basic",
-        clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
-        clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
-      },
-      scopes: ["identity", "read"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

@@ -6,9 +6,6 @@ export const gemini = {
     category: "ai-general-models",
     generation: ["image", "text"],
     tags: ["llm", "ai", "google", "gemini", "multimodal"],
-    environmentMapping: {
-      GEMINI_TOKEN: "$secrets.GEMINI_TOKEN",
-    },
     helpText:
       "Connect your Google AI Studio account to access Gemini models for text generation, multimodal reasoning, embeddings, and function calling",
     authMethods: {
@@ -16,13 +13,23 @@ export const gemini = {
         label: "API Key",
         helpText:
           "1. Go to [Google AI Studio](https://aistudio.google.com/apikey)\n2. Sign in with your Google account\n3. Click **Create API key**\n4. Copy the key (starts with `AIza`) and store it in a safe location",
-        secrets: {
-          GEMINI_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "AIza...",
+        grant: {
+          kind: "manual",
+          fields: {
+            GEMINI_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "AIza...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            GEMINI_TOKEN: "$secrets.GEMINI_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

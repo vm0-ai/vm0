@@ -4,9 +4,6 @@ export const plain = {
   plain: {
     label: "Plain",
     category: "communication-collaboration",
-    environmentMapping: {
-      PLAIN_TOKEN: "$secrets.PLAIN_TOKEN",
-    },
     helpText:
       "Connect your Plain account to manage customer support threads, customers, and labels via Plain's GraphQL API",
     authMethods: {
@@ -14,13 +11,23 @@ export const plain = {
         label: "API Key",
         helpText:
           "1. Log in to [Plain](https://app.plain.com)\n2. Go to **Settings → Machine Users**\n3. Click **New machine user** and generate an API key\n4. Copy the API key",
-        secrets: {
-          PLAIN_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "plainApiKey__...",
+        grant: {
+          kind: "manual",
+          fields: {
+            PLAIN_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "plainApiKey__...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            PLAIN_TOKEN: "$secrets.PLAIN_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

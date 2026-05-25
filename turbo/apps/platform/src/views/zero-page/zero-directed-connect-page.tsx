@@ -6,6 +6,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
+  getConnectorManualGrantFields,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
@@ -69,7 +70,16 @@ function runDirectedConnect(params: {
     type: params.connectorType,
     availableAuthMethods: params.authMethods,
   });
-  if (launchMode === "modal" && params.authMethods.includes("oauth")) {
+  const hasProviderDrivenConnectMethod = params.authMethods.some(
+    (authMethod) => {
+      const grant = getConnectorAuthMethod(
+        params.connectorType,
+        authMethod,
+      )?.grant;
+      return grant?.kind !== undefined && grant.kind !== "manual";
+    },
+  );
+  if (launchMode === "modal" && hasProviderDrivenConnectMethod) {
     params.openConnectModal();
     return;
   }
@@ -130,12 +140,13 @@ function ApiTokenForm({
   const submittingType = useGet(tokenFormSubmitting$);
   const setSubmitting = useSet(setTokenFormSubmitting$);
   const submitting = submittingType === type;
+  const apiTokenFields = getConnectorManualGrantFields(type, "api-token");
 
-  if (!apiTokenConfig) {
+  if (!apiTokenConfig || !apiTokenFields) {
     return null;
   }
 
-  const secretEntries = Object.entries(apiTokenConfig.secrets);
+  const secretEntries = Object.entries(apiTokenFields);
   const allFilled = secretEntries.every(([name, cfg]) => {
     return !cfg.required || secretValues[name];
   });

@@ -5,9 +5,6 @@ export const mercury = {
   mercury: {
     label: "Mercury",
     category: "sales-crm-business-operations",
-    environmentMapping: {
-      MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Mercury account to access banking and financial data",
     authMethods: {
@@ -15,42 +12,51 @@ export const mercury = {
         featureFlag: FeatureSwitchKey.MercuryConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Mercury to grant access.",
-        secrets: {
-          MERCURY_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
+            clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
           },
-          MERCURY_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: ["offline_access"],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "MERCURY_ACCESS_TOKEN",
+          refreshToken: "MERCURY_REFRESH_TOKEN",
+          outputs: {
+            MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
       "api-token": {
         label: "API Token",
         helpText:
           "1. Log in to your [Mercury Dashboard](https://mercury.com)\n2. Go to **Settings → Tokens**\n3. Generate a new API token\n4. Copy the token",
-        secrets: {
-          MERCURY_TOKEN: {
-            label: "API Token",
-            required: true,
-            placeholder: "secret-token:mercury_production_...",
+        grant: {
+          kind: "manual",
+          fields: {
+            MERCURY_TOKEN: {
+              label: "API Token",
+              required: true,
+              placeholder: "secret-token:mercury_production_...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            MERCURY_TOKEN: "$secrets.MERCURY_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://oauth2.mercury.com/oauth2/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
-        clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
-      },
-      scopes: ["offline_access"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

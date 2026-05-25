@@ -5,9 +5,6 @@ export const fal = {
     label: "fal.ai",
     category: "ai-image-video",
     generation: ["image", "video"],
-    environmentMapping: {
-      FAL_TOKEN: "$secrets.FAL_TOKEN",
-    },
     helpText:
       "Connect your fal.ai account to run AI models for image generation, video generation, and other AI tasks",
     authMethods: {
@@ -15,13 +12,23 @@ export const fal = {
         label: "API Key",
         helpText:
           "1. Go to the [fal Dashboard Keys page](https://fal.ai/dashboard/keys)\n2. Click the **Create Key** button\n3. Provide a name for your key and select the appropriate scope (**API** for calling models, or **ADMIN** for full access)\n4. Copy the key immediately — you will not be able to see it again",
-        secrets: {
-          FAL_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "fal_...",
+        grant: {
+          kind: "manual",
+          fields: {
+            FAL_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "fal_...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            FAL_TOKEN: "$secrets.FAL_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

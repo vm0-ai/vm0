@@ -1,5 +1,5 @@
 import {
-  getConnectorAuthMethod,
+  getConnectorOAuthConfigIfSupported,
   getConnectorOAuthCredentials,
   isOAuthAuthCodeConnectorType,
   type ConnectorEnvReader,
@@ -54,7 +54,7 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
 export function resolveConnectorOAuthStartType(
   type: ConnectorType,
 ): ResolveConnectorOAuthStartTypeResult {
-  if (!getConnectorAuthMethod(type, "oauth")) {
+  if (!getConnectorOAuthConfigIfSupported(type)) {
     return { ok: false, reason: "connector_does_not_use_oauth" };
   }
   if (!isOAuthConnectorType(type)) {

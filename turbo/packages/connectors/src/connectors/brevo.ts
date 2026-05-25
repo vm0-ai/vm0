@@ -4,9 +4,6 @@ export const brevo = {
   brevo: {
     label: "Brevo",
     category: "communication-collaboration",
-    environmentMapping: {
-      BREVO_TOKEN: "$secrets.BREVO_TOKEN",
-    },
     helpText:
       "Connect your Brevo account to manage email campaigns, transactional emails, and CRM contacts",
     authMethods: {
@@ -14,13 +11,23 @@ export const brevo = {
         label: "API Key",
         helpText:
           "1. Log in to [Brevo](https://app.brevo.com)\n2. Go to **Settings** → **SMTP & API** → **API Keys**\n3. Copy your API key",
-        secrets: {
-          BREVO_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "xkeysib-...",
+        grant: {
+          kind: "manual",
+          fields: {
+            BREVO_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "xkeysib-...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            BREVO_TOKEN: "$secrets.BREVO_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

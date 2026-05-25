@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { connectorTypeSchema } from "../connectors";
+import {
+  CONNECTOR_AUTH_METHOD_TYPES,
+  connectorTypeSchema,
+} from "../connectors";
 import {
   getConnectorEnvironmentMapping,
-  getConnectorAuthMethods,
+  getConnectorManualGrantFields,
 } from "../connector-utils";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
@@ -16,8 +19,8 @@ const PLATFORM_INJECTED_SECRET_NAMES: Partial<
  * Verify that every builtin firewall's placeholder secret names match
  * the env var names exposed by the connector that references it.
  *
- * OAuth connectors expose env vars via `environmentMapping` (e.g. SLACK_TOKEN).
- * API-token connectors expose secrets via `authMethods["api-token"].secrets`.
+ * OAuth connectors expose env vars via derived environment mapping (e.g. SLACK_TOKEN).
+ * API-token connectors expose manual grant fields.
  * The firewall's `placeholders` keys must be a subset of these names,
  * otherwise the proxy won't find the secret to inject.
  */
@@ -29,8 +32,8 @@ describe("firewall secret name consistency", () => {
 
     it(`${connectorType} → firewall placeholder keys match connector secret names`, () => {
       // Collect env var names the connector exposes.
-      // If environmentMapping exists (OAuth), use ONLY those keys —
-      // authMethods.secrets holds internal names that the firewall must NOT use.
+      // If environmentMapping exists (OAuth), use ONLY those keys because
+      // internal token storage names are not always firewall placeholders.
       const connectorSecretNames = new Set<string>();
 
       const mapping = getConnectorEnvironmentMapping(connectorType);
@@ -45,10 +48,13 @@ describe("firewall secret name consistency", () => {
           }
         }
       } else {
-        // API-token path: use authMethods secrets directly
-        const authMethods = getConnectorAuthMethods(connectorType);
-        for (const method of Object.values(authMethods)) {
-          for (const name of Object.keys(method.secrets)) {
+        // API-token path: use manual grant fields directly.
+        for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
+          const fields = getConnectorManualGrantFields(
+            connectorType,
+            authMethod,
+          );
+          for (const name of Object.keys(fields ?? {})) {
             connectorSecretNames.add(name);
           }
         }

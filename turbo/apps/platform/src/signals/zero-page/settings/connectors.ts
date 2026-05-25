@@ -150,8 +150,10 @@ export function getConnectorConnectLaunchMode({
   readonly availableAuthMethods: readonly ConnectorAuthMethodType[];
   readonly preferModalForGoogleOAuth?: boolean;
 }): ConnectorConnectLaunchMode {
-  const hasOAuth = availableAuthMethods.includes("oauth");
-  if (!hasOAuth) {
+  const hasAuthCodeGrant = availableAuthMethods.some((authMethod) => {
+    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
+  });
+  if (!hasAuthCodeGrant) {
     return "modal";
   }
   if (!isOAuthAuthCodeConnectorType(type)) {
