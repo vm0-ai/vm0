@@ -33,6 +33,7 @@ import {
 } from "../../../signals/zero-page/zero-nav.ts";
 import { threadListChanged } from "../../../mocks/mock-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -53,7 +54,7 @@ interface ThreadFixture {
 function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: threadsRef.current });
+      return respond(200, splitChatThreadListResponse(threadsRef.current));
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {

@@ -12,7 +12,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
 import { nowDate } from "../../../external/time";
@@ -169,6 +169,7 @@ export const seedZeroChatMessage$ = command(
     signal: AbortSignal,
   ): Promise<string> => {
     const id = randomUUID();
+    const createdAt = options.createdAt ?? nowDate();
     const writeDb = set(writeDb$);
     await writeDb.insert(chatMessages).values({
       id,
@@ -178,8 +179,23 @@ export const seedZeroChatMessage$ = command(
       attachFiles: options.attachFiles ? [...options.attachFiles] : null,
       sequenceNumber: options.sequenceNumber ?? null,
       runId: options.runId ?? null,
-      createdAt: options.createdAt ?? nowDate(),
+      createdAt,
     });
+    signal.throwIfAborted();
+    // Resync the denormalized recency column with the seeded message set so
+    // backdated test fixtures order deterministically instead of all bunching
+    // at the thread's defaultNow() lastMessageAt.
+    await writeDb
+      .update(chatThreads)
+      .set({
+        lastMessageAt: sql`COALESCE(
+          (SELECT MAX(${chatMessages.createdAt})
+             FROM ${chatMessages}
+            WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}),
+          ${chatThreads.lastMessageAt}
+        )`,
+      })
+      .where(eq(chatThreads.id, fixture.threadId));
     signal.throwIfAborted();
     return id;
   },

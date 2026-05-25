@@ -10,6 +10,7 @@ import {
   chatThreadPinContract,
   chatThreadUnpinContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -64,7 +65,10 @@ function setupMocks(initial: ThreadFixture[]) {
 
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: sortThreadsLikeServer(threads) });
+      return respond(
+        200,
+        splitChatThreadListResponse(sortThreadsLikeServer(threads)),
+      );
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = threads.find((t) => {

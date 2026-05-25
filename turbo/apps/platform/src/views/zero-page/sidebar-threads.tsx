@@ -63,7 +63,11 @@ import {
   type OptimisticChatPane,
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+import {
+  chatThreadsHasMore$,
+  chatThreadsTotalCount$,
+  currentChatAgentId$,
+} from "../../signals/agent-chat.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -576,6 +580,22 @@ function ChatThreadRenameDialog() {
   );
 }
 
+function AllThreadsLink({ totalCount }: { totalCount: number }) {
+  const setSidebarExpanded = useSet(setSidebarExpanded$);
+  return (
+    <Link
+      pathname="/chats"
+      onClick={() => {
+        setSidebarExpanded(false);
+      }}
+      className="flex h-8 items-center gap-2 rounded-lg px-2 text-left text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+      data-testid="sidebar-all-threads-link"
+    >
+      <span className="truncate">All threads ({totalCount})</span>
+    </Link>
+  );
+}
+
 function ChatThreads() {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -583,6 +603,8 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
+  const hasMore = useLastResolved(chatThreadsHasMore$) ?? false;
+  const totalCount = useLastResolved(chatThreadsTotalCount$) ?? 0;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -605,6 +627,7 @@ function ChatThreads() {
       {chatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
+      {hasMore && <AllThreadsLink totalCount={totalCount} />}
       <ChatThreadRenameDialog />
       <Dialog
         open={pendingDeleteThreadId !== null}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -52,7 +53,7 @@ function mockAPIs() {
 
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
     mockApi(chatThreadsContract.create, ({ body, respond }) => {
       const now = "2026-03-11T00:00:00Z";
@@ -274,7 +275,7 @@ describe("sidebar chat delete", () => {
 
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads });
+        return respond(200, splitChatThreadListResponse(threads));
       }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {

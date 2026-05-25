@@ -122,12 +122,20 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
-export const chatThreads$ = computed(async (get) => {
+/**
+ * First-page sidebar fetch: pinned (full) + up to 25 non-pinned. Returns the
+ * raw page so derived signals (chatThreads$, hasMore, totalCount) can share a
+ * single network round-trip.
+ *
+ * The /chats All Threads page does its own cursor-paginated state separately
+ * so loading more there never re-renders the sidebar.
+ */
+export const chatThreadsFirstPage$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
   const agentId = await get(currentChatAgentId$);
   if (!agentId) {
-    return [];
+    return null;
   }
 
   const client = get(zeroClient$)(chatThreadsContract);
@@ -135,7 +143,35 @@ export const chatThreads$ = computed(async (get) => {
     client.list({ query: { agentId: agentId } }),
     [200],
   );
-  return result.body.threads;
+  return result.body;
+});
+
+export const chatThreads$ = computed(
+  async (get): Promise<ChatThreadListItem[]> => {
+    const page = await get(chatThreadsFirstPage$);
+    if (!page) {
+      return [];
+    }
+    return [...page.pinned, ...page.threads];
+  },
+);
+
+/**
+ * True when more non-pinned threads exist beyond the sidebar's 25-row cap.
+ * Drives the "All Threads" link rendered at the bottom of the sidebar list.
+ */
+export const chatThreadsHasMore$ = computed(async (get) => {
+  const page = await get(chatThreadsFirstPage$);
+  return page?.hasMore ?? false;
+});
+
+/**
+ * Total count of non-pinned threads in scope. Used to label the "All Threads
+ * (N)" entry so users know the size of the full list before clicking.
+ */
+export const chatThreadsTotalCount$ = computed(async (get) => {
+  const page = await get(chatThreadsFirstPage$);
+  return page?.totalCount ?? 0;
 });
 
 /**

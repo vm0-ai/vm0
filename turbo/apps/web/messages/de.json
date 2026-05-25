@@ -4308,17 +4308,38 @@
         ],
         "architecture": "GPT-5.5 behält das 400K-Token-Kontextfenster von GPT-5.4 und berechnet über das gesamte Fenster den Standard-Input-Preis. Es unterstützt den `reasoning_effort`-Parameter auf vier Stufen (minimal, niedrig, mittel, hoch), Prompt Caching, wobei gecachter Input zu einem Zehntel des Input-Preises berechnet wird, und die Responses API, die codex CLI standardmäßig nutzt. Tool-Use, Structured Outputs und Computer-Use sind gegenüber 5.4 unverändert. Eingaben sind multimodal über Text, Vision und Code; das Modell hat keine native Bildgenerierung (nutze dafür die Images API).",
         "specs": [
-          { "label": "Familie", "value": "GPT-5 Generation" },
-          { "label": "Modalitäten", "value": "Text, Vision, Code" },
-          { "label": "Sprachen", "value": "Englisch-zentriert, mehrsprachig" },
-          { "label": "Prompt Caching", "value": "Unterstützt (OpenAI)" },
-          { "label": "Kontextfenster", "value": "400K Token" },
-          { "label": "Max Output", "value": "Bis zu 128K Token" },
+          {
+            "label": "Familie",
+            "value": "GPT-5 Generation"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text, Vision, Code"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Englisch-zentriert, mehrsprachig"
+          },
+          {
+            "label": "Prompt Caching",
+            "value": "Unterstützt (OpenAI)"
+          },
+          {
+            "label": "Kontextfenster",
+            "value": "400K Token"
+          },
+          {
+            "label": "Max Output",
+            "value": "Bis zu 128K Token"
+          },
           {
             "label": "Reasoning Effort",
             "value": "Minimal / Niedrig / Mittel / Hoch"
           },
-          { "label": "Listenpreis", "value": "$5 Input / $30 Output pro 1M" }
+          {
+            "label": "Listenpreis",
+            "value": "$5 Input / $30 Output pro 1M"
+          }
         ],
         "benchmarksNote": "Vom Anbieter gemeldete Werte aus OpenAIs GPT-5.5-Release-Materialien, mit Deltas gegenüber den öffentlichen GPT-5.4-Zahlen. Unabhängige Reviews platzieren 5.5 bei agentischen Coding-Aufgaben innerhalb weniger Punkte von Claude Opus 4.7. Behandle absolute Prozente als richtungsweisend; OpenAI hat Trainingsdaten-Kontamination bei SWE-bench Verified über alle Frontier-Modelle gemeldet.",
         "benchmarks": [
@@ -4437,7 +4458,10 @@
           }
         ],
         "alternatives": [
-          { "slug": "gpt-5-4", "reason": "Halbe Credits, gleiche Familie" },
+          {
+            "slug": "gpt-5-4",
+            "reason": "Halbe Credits, gleiche Familie"
+          },
           {
             "slug": "claude-opus-4-7",
             "reason": "Peer-Flaggschiff auf der Claude-Seite"
@@ -4614,17 +4638,38 @@
         ],
         "architecture": "GPT-5.4 nutzt dieselbe Architektur wie der Rest der GPT-5-Familie: 400K-Token-Kontextfenster, `reasoning_effort`-Parameter auf vier Stufen (minimal, niedrig, mittel, hoch), Prompt Caching, wobei gecachter Input zu einem Zehntel des Input-Preises berechnet wird, und die Responses API, die codex CLI standardmäßig nutzt. Tool-Use, Structured Outputs und Computer-Use werden unterstützt. Eingaben sind multimodal über Text, Vision und Code.",
         "specs": [
-          { "label": "Familie", "value": "GPT-5 Generation" },
-          { "label": "Modalitäten", "value": "Text, Vision, Code" },
-          { "label": "Sprachen", "value": "Englisch-zentriert, mehrsprachig" },
-          { "label": "Prompt Caching", "value": "Unterstützt (OpenAI)" },
-          { "label": "Kontextfenster", "value": "400K Token" },
-          { "label": "Max Output", "value": "Bis zu 128K Token" },
+          {
+            "label": "Familie",
+            "value": "GPT-5 Generation"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text, Vision, Code"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Englisch-zentriert, mehrsprachig"
+          },
+          {
+            "label": "Prompt Caching",
+            "value": "Unterstützt (OpenAI)"
+          },
+          {
+            "label": "Kontextfenster",
+            "value": "400K Token"
+          },
+          {
+            "label": "Max Output",
+            "value": "Bis zu 128K Token"
+          },
           {
             "label": "Reasoning Effort",
             "value": "Minimal / Niedrig / Mittel / Hoch"
           },
-          { "label": "Listenpreis", "value": "$2,5 Input / $15 Output pro 1M" }
+          {
+            "label": "Listenpreis",
+            "value": "$2,5 Input / $15 Output pro 1M"
+          }
         ],
         "benchmarksNote": "Vom Anbieter gemeldete Werte aus OpenAIs GPT-5-Release-Materialien, mit Deltas gegenüber der vorherigen OpenAI-Generation. Unabhängige Reviews platzieren GPT-5.4 im selben Coding-Qualitätsband wie Claude Sonnet 4.6. Behandle absolute Prozente als richtungsweisend.",
         "benchmarks": [
@@ -5053,12 +5098,30 @@
         ],
         "architecture": "GPT-5.4 Mini nutzt dieselbe Architektur wie der Rest der GPT-5-Familie: 400K-Token-Kontextfenster, `reasoning_effort`-Parameter auf vier Stufen, Prompt Caching, wobei gecachter Input zu einem Zehntel des Input-Preises berechnet wird, und die Responses-API-Oberfläche. Tool-Use, Structured Outputs und multimodale Vision-Eingaben werden unterstützt. Das Modell ist ein kleinerer, schnellerer Verwandter — weniger Parameter pro Token, mehr Durchsatz pro Dollar.",
         "specs": [
-          { "label": "Familie", "value": "GPT-5 Generation" },
-          { "label": "Modalitäten", "value": "Text, Vision, Code" },
-          { "label": "Sprachen", "value": "Englisch-zentriert, mehrsprachig" },
-          { "label": "Prompt Caching", "value": "Unterstützt (OpenAI)" },
-          { "label": "Kontextfenster", "value": "400K Token" },
-          { "label": "Max Output", "value": "Bis zu 128K Token" },
+          {
+            "label": "Familie",
+            "value": "GPT-5 Generation"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text, Vision, Code"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Englisch-zentriert, mehrsprachig"
+          },
+          {
+            "label": "Prompt Caching",
+            "value": "Unterstützt (OpenAI)"
+          },
+          {
+            "label": "Kontextfenster",
+            "value": "400K Token"
+          },
+          {
+            "label": "Max Output",
+            "value": "Bis zu 128K Token"
+          },
           {
             "label": "Reasoning Effort",
             "value": "Minimal / Niedrig / Mittel / Hoch"
@@ -5952,6 +6015,124 @@
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Default model on the DeepSeek provider; also available on VM0 Managed.",
         "vm0Notes": "V4 Flash carries the lowest credit multiplier of any Built-in model (×0.02), roughly 50× less than Sonnet 4.6. Cache reads bill while cache writes are free, and VM0 sets a 10-minute API timeout for the DeepSeek provider that pairs naturally with Flash's short single-shot work."
       },
+      "gpt-image-2": {
+        "name": "GPT Image 2",
+        "pageTitle": "GPT Image 2 auf VM0. OpenAIs neueres Bildgenerierungsmodell",
+        "tagline": "OpenAIs neueres Bildmodell fuer Text-zu-Bild-Generierung und Bearbeitungen. Nutze es, wenn du den GPT-Image-Workflow mit staerkerer Prompt-Treue und flexiblen Groessen willst.",
+        "cardIntro": "OpenAIs neueres Bildmodell fuer Generierung und Bearbeitung, mit flexiblen Groessen und staerkerer Prompt-Treue als GPT Image 1.",
+        "metaTitle": "GPT Image 2 auf VM0: Preise, Spezifikationen & Vergleich",
+        "metaDescription": "GPT Image 2 auf VM0. OpenAIs neueres Modell fuer Bildgenerierung und Bearbeitung mit flexiblen Groessen, Qualitaetsstufen und Vergleich mit GPT Image 1 und SeedDream 4.",
+        "summary": "GPT Image 2 ist OpenAIs neueres Bildgenerierungsmodell auf VM0. Es behaelt den GPT-Image-Workflow fuer Text-zu-Bild und Bearbeitung bei und ergaenzt flexible Groessen sowie staerkere Prompt-Treue fuer produktive Bildaufgaben.\n\nDie VM0-Abrechnung ist stufenbasiert: von etwa $0.007 pro Bild in der Low/Standard-Stufe bis $0.481 in der High/Large-Stufe. Die Medium-Standard-Stufe (etwa $0.064 pro 1024x1024-Bild auf VM0) ist der sinnvolle Standard fuer die meisten Built-in-Generierungsaufrufe.",
+        "releaseDate": "April 2026",
+        "familyPosition": "OpenAIs neueres GPT-Image-Modell, oberhalb von GPT Image 1 fuer Prompt-Treue und flexible Ausgabegroessen positioniert.",
+        "background": [
+          "GPT Image 2 ist das neuere OpenAI-Bildmodell, das ueber VM0s Built-in-Bildgenerierung verfuegbar ist. Es unterstuetzt Text-zu-Bild-Generierung und Bildbearbeitungen im selben agentenorientierten Workflow wie GPT Image 1.",
+          "Das Modell ist eine gute Standardwahl, wenn der Aufrufer OpenAI-artige Prompt-Befolgung moechte, aber flexiblere Ausgabegroessen als die Standardstufen von GPT Image 1 benoetigt. Die Abrechnung erfolgt nach Qualitaet und Groesse, sodass Agenten Entwurfsrunden guenstiger halten und hohe Qualitaet fuer finale Renderings reservieren koennen."
+        ],
+        "architecture": "Text-zu-Bild- und Bildbearbeitungsmodell, das ueber OpenAIs GPT-Image-2-Endpunkt auf fal verfuegbar ist. Unterstuetzt Qualitaetsstufen und flexible Bildgroessen; transparente Hintergruende werden fuer dieses Modell auf VM0 nicht unterstuetzt.",
+        "specs": [
+          {
+            "label": "Familie",
+            "value": "OpenAI Images"
+          },
+          {
+            "label": "Modalitaeten",
+            "value": "Text-zu-Bild, Bild-zu-Bild-Bearbeitung"
+          },
+          {
+            "label": "Ausgabestufen",
+            "value": "Standard / Large x Low / Medium / High"
+          },
+          {
+            "label": "VM0-abgerechneter Preis",
+            "value": "Von $0.007 bis $0.481 pro Bild"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Mehrsprachige Prompts"
+          },
+          {
+            "label": "Auf VM0 verfuegbar",
+            "value": "April 2026"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Prompt-Treue",
+            "body": "Der wichtigste Grund, GPT Image 2 statt GPT Image 1 zu waehlen, ist die genauere Umsetzung detaillierter Prompts, besonders wenn der Auftrag Komposition, Seitenverhaeltnis und Stilvorgaben enthaelt."
+          },
+          {
+            "title": "Flexible Groessen",
+            "body": "Unterstuetzt VM0s flexiblen Bildgroessenpfad, sodass Agenten quadratische, Hochformat-, Querformat- und groessere Ausgaben anfordern koennen, ohne die Modellfamilie zu wechseln."
+          },
+          {
+            "title": "Bearbeitungsablaeufe",
+            "body": "Unterstuetzt Bild-zu-Bild-Bearbeitungen und Masken. Nutze es, wenn ein Workflow ein Quellbild erhalten und zugleich einen beschriebenen Bereich veraendern muss."
+          },
+          {
+            "title": "Kosten",
+            "body": "Teurer als GPT Image 1 in Medium- und High-Stufen. Halte Entwurfsrunden auf niedrigerer Qualitaet und reserviere hohe Qualitaet fuer finale Ausgaben."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "Der Agent, der exakte Prompt-Befolgung braucht",
+            "body": "Wenn der Prompt konkrete Vorgaben zu Bildausschnitt, Stil oder Groesse enthaelt, ist GPT Image 2 die sicherere OpenAI-Bildwahl als GPT Image 1."
+          },
+          {
+            "title": "Der Bildworkflow, der mehrere Seitenverhaeltnisse braucht",
+            "body": "Marketing-, Social- und Website-Assets brauchen oft quadratische, Hochformat- und Querformat-Ausgaben. GPT Image 2 passt zu diesen Workflows, ohne den Prompt-Stil zu wechseln."
+          },
+          {
+            "title": "Die Bearbeitungsschleife im OpenAI-Stack",
+            "body": "Wenn ein Agent bereits OpenAI-Modelle fuer Planung und Text nutzt, haelt GPT Image 2 die Bildgenerierung in derselben Prompt-Following-Familie."
+          }
+        ],
+        "avoidFor": "Ueberspringe GPT Image 2, wenn Kosten dominieren oder echte transparente Hintergruende erforderlich sind. GPT Image 1, GPT Image 1.5 oder SeedDream 4 koennen je nach Constraint besser passen.",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "GPT Image 2 ist das neuere, flexiblere Modell mit staerkerer Prompt-Treue. GPT Image 1 bleibt bei gaengigen Medium-Standard-Einstellungen guenstiger und ist weiterhin stark fuer stilisierte Illustration."
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4 ist guenstiger und tendiert zu Fotorealismus. GPT Image 2 ist die bessere OpenAI-Stack-Wahl, wenn Prompt-Treue, Bearbeitungsworkflow und flexible Groessen wichtiger sind als niedrigste Kosten."
+          }
+        ],
+        "verdict": "Waehle GPT Image 2, wenn du OpenAI-Bildgenerierung mit staerkerer Prompt-Treue und flexiblen Groessen willst. Nutze GPT Image 1 oder SeedDream 4, wenn Kosten der wichtigste Faktor sind.",
+        "faqs": [
+          {
+            "q": "Wie wird GPT Image 2 abgerechnet?",
+            "a": "Es wird nach Qualitaet und Groesse abgerechnet. Auf VM0 kostet die Medium-Standard-Stufe etwa $0.064 pro Bild und die High/Large-Stufe etwa $0.481 pro Bild."
+          },
+          {
+            "q": "Unterstuetzt GPT Image 2 Bildbearbeitung?",
+            "a": "Ja. VM0 stellt Bild-zu-Bild-Bearbeitung und Maskenunterstuetzung fuer GPT Image 2 bereit."
+          },
+          {
+            "q": "Unterstuetzt GPT Image 2 transparente Hintergruende?",
+            "a": "Nein. VM0s GPT-Image-2-Pfad unterstuetzt keine Ausgabe mit transparentem Hintergrund."
+          },
+          {
+            "q": "Wann sollte ich GPT Image 2 statt GPT Image 1 nutzen?",
+            "a": "Nutze GPT Image 2 fuer genauere Prompt-Befolgung und flexible Groessen. Nutze GPT Image 1, wenn der Auftrag einfacher ist oder Kosten wichtiger sind."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "gpt-image-1",
+            "reason": "Guenstiger OpenAI-Bildstandard"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "Guenstigere fotorealistische Alternative"
+          }
+        ],
+        "routingNotes": "Wird ueber VM0s Built-in-Generierungspfad an OpenAIs GPT-Image-2-Endpunkt geroutet und pro Ausgabebildstufe abgerechnet.",
+        "vm0Notes": "GPT Image 2 ist ueber VM0 Managed Generation mit Qualitaets- und Groesseneinstellungen verfuegbar. Nutze mittlere Qualitaet fuer normale Agentenarbeit und hohe Qualitaet, wenn das generierte Bild das Lieferergebnis ist."
+      },
       "gpt-image-1": {
         "name": "GPT Image 1",
         "pageTitle": "GPT Image 1 on VM0. OpenAI's text-to-image model",
@@ -5968,7 +6149,10 @@
         ],
         "architecture": "Diffusion-basiertes Text-zu-Bild mit nativer Edit-Unterstützung. Der Stufenpreis skaliert nach Ausgabeauflösung (Standard / Groß) und Qualität (Niedrig / Mittel / Hoch), wobei die Stufe Mittel/Standard der typische Standard ist. Eingaben akzeptieren Text plus optionale Referenzbilder für Edits und Masken.",
         "specs": [
-          { "label": "Familie", "value": "OpenAI Images" },
+          {
+            "label": "Familie",
+            "value": "OpenAI Images"
+          },
           {
             "label": "Modalitäten",
             "value": "Text-zu-Bild, Bild-zu-Bild-Edit"
@@ -5977,9 +6161,18 @@
             "label": "Ausgabestufen",
             "value": "Standard / Groß × Niedrig / Mittel / Hoch"
           },
-          { "label": "Listenpreis", "value": "Von $0,011 bis $0,25 pro Bild" },
-          { "label": "Sprachen", "value": "Mehrsprachige Prompts" },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
+          {
+            "label": "Listenpreis",
+            "value": "Von $0,011 bis $0,25 pro Bild"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Mehrsprachige Prompts"
+          },
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6046,7 +6239,10 @@
             "slug": "flux-pro-1-1-ultra",
             "reason": "Higher photoreal aesthetic ceiling"
           },
-          { "slug": "seedream-4", "reason": "Better photoreal default" }
+          {
+            "slug": "seedream-4",
+            "reason": "Better photoreal default"
+          }
         ],
         "routingNotes": "Routed to OpenAI's Images surface and billed per generated image at the selected tier.",
         "vm0Notes": "GPT Image 1 ist der OpenAI-Stack-Standard für stilisierte Illustration und Edit-Loop-Agent-Workflows. Die Stufe Mittel/Standard ist der sinnvolle Überall-Standard; reserviere die Stufe Hoch/Groß für Deliverable-Grade-Ausgabe."
@@ -6067,11 +6263,26 @@
         ],
         "architecture": "Hochauflösendes Diffusion-Modell mit auf Kompositionstreue abgestimmtem Prompt-Following. Abrechnung pro generiertem Bild. Eingaben akzeptieren Textprompts; erzeugt hochauflösende Ausgabe, die für die Lieferung geeignet ist.",
         "specs": [
-          { "label": "Familie", "value": "Flux 1.1 Pro" },
-          { "label": "Modalitäten", "value": "Text-zu-Bild" },
-          { "label": "Listenpreis", "value": "$0,072 pro Bild" },
-          { "label": "Sprachen", "value": "Mehrsprachige Prompts" },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
+          {
+            "label": "Familie",
+            "value": "Flux 1.1 Pro"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text-zu-Bild"
+          },
+          {
+            "label": "Listenpreis",
+            "value": "$0,072 pro Bild"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Mehrsprachige Prompts"
+          },
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6138,8 +6349,14 @@
           }
         ],
         "alternatives": [
-          { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" },
-          { "slug": "seedream-4", "reason": "Cheaper photoreal alternative" }
+          {
+            "slug": "gpt-image-1",
+            "reason": "Stronger stylised illustration"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "Cheaper photoreal alternative"
+          }
         ],
         "routingNotes": "Routed to Black Forest Labs' Flux Pro 1.1 Ultra endpoint and billed per generated image.",
         "vm0Notes": "Flux Pro 1.1 Ultra ist die Premium-Stufe des kuratierten Bild-Lineups. Verwende es für den Final-Render-Schritt statt für die Iteration; paare es mit SeedDream 4 oder SeedDream 4 als günstigem Vorfilter."
@@ -6160,14 +6377,26 @@
         ],
         "architecture": "Diffusion-basiertes Text-zu-Bild-Modell. Abrechnung pro generiertem Bild. Eingaben akzeptieren Textprompts; erzeugt photorealistisch ausgerichtete Ausgabe, die für Porträts, Produkte und Lifestyle-Bilder geeignet ist.",
         "specs": [
-          { "label": "Familie", "value": "Seedream V4" },
-          { "label": "Modalitäten", "value": "Text-zu-Bild" },
-          { "label": "Listenpreis", "value": "$0,036 pro Bild" },
+          {
+            "label": "Familie",
+            "value": "Seedream V4"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text-zu-Bild"
+          },
+          {
+            "label": "Listenpreis",
+            "value": "$0,036 pro Bild"
+          },
           {
             "label": "Sprachen",
             "value": "Mehrsprachige Prompts (Englisch + Chinesisch stark)"
           },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6238,7 +6467,10 @@
             "slug": "flux-pro-1-1-ultra",
             "reason": "Premium hero-shot quality"
           },
-          { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" }
+          {
+            "slug": "gpt-image-1",
+            "reason": "Stronger stylised illustration"
+          }
         ],
         "routingNotes": "Routed to ByteDance's SeedDream V4 text-to-image endpoint and billed per generated image.",
         "vm0Notes": "SeedDream 4 ist der photorealistik-spezifische Standard im kuratierten Bild-Lineup. Paare es mit Flux Pro 1.1 Ultra für Hero-Shots und mit SeedDream 4 für Nicht-Foto-Iteration."
@@ -6259,18 +6491,30 @@
         ],
         "architecture": "Text-zu-Video- und Bild-zu-Video-Diffusion-Modell mit nativer Audio-Synthese im selben Durchgang. Ausgabedauern sind 4, 6 oder 8 Sekunden bei 720p, 1080p oder 4K. Abrechnung pro generierter Videosekunde mit Qualitätsstufen-Modifikatoren.",
         "specs": [
-          { "label": "Familie", "value": "Google Veo 3" },
+          {
+            "label": "Familie",
+            "value": "Google Veo 3"
+          },
           {
             "label": "Modalitäten",
             "value": "Text-zu-Video, Bild-zu-Video, natives Audio"
           },
-          { "label": "Cliplängen", "value": "4s / 6s / 8s" },
-          { "label": "Ausgabeauflösungen", "value": "720p / 1080p / 4K" },
+          {
+            "label": "Cliplängen",
+            "value": "4s / 6s / 8s"
+          },
+          {
+            "label": "Ausgabeauflösungen",
+            "value": "720p / 1080p / 4K"
+          },
           {
             "label": "Listenpreis",
             "value": "~$0,15 pro Sekunde (720p + Audio)"
           },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6341,7 +6585,10 @@
             "slug": "kling-v3-4k",
             "reason": "Stylised / anime ceiling, longer clips"
           },
-          { "slug": "dreamina-seedance-2-0", "reason": "Cheaper per second" }
+          {
+            "slug": "dreamina-seedance-2-0",
+            "reason": "Cheaper per second"
+          }
         ],
         "routingNotes": "Routed to Google's Veo 3.1 Fast video generation endpoint and billed per generated video-second with quality-tier modifiers.",
         "vm0Notes": "Veo 3.1 Fast ist der kinoreife/Audio-tragende Standard im kuratierten Video-Lineup auf VM0. Paare es mit Dreamina Seedance 2.0 für günstige Iteration und mit Kling V3 4K für stilisierte oder Long-Form-Clips."
@@ -6362,12 +6609,30 @@
         ],
         "architecture": "Text-zu-Video- und Bild-zu-Video-Diffusion-Modell. Die Standardstufe rendert in 4K mit Cliplängen von 3 bis 15 Sekunden. Abrechnung pro generierter Videosekunde.",
         "specs": [
-          { "label": "Familie", "value": "Kling V3" },
-          { "label": "Modalitäten", "value": "Text-zu-Video, Bild-zu-Video" },
-          { "label": "Cliplängen", "value": "3 bis 15 Sekunden" },
-          { "label": "Ausgabeauflösung", "value": "4K (Standardstufe)" },
-          { "label": "Listenpreis", "value": "~$0,28 pro Sekunde (4K)" },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
+          {
+            "label": "Familie",
+            "value": "Kling V3"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text-zu-Video, Bild-zu-Video"
+          },
+          {
+            "label": "Cliplängen",
+            "value": "3 bis 15 Sekunden"
+          },
+          {
+            "label": "Ausgabeauflösung",
+            "value": "4K (Standardstufe)"
+          },
+          {
+            "label": "Listenpreis",
+            "value": "~$0,28 pro Sekunde (4K)"
+          },
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6434,7 +6699,10 @@
           }
         ],
         "alternatives": [
-          { "slug": "veo-3-1-fast", "reason": "Cinematic / native audio" },
+          {
+            "slug": "veo-3-1-fast",
+            "reason": "Cinematic / native audio"
+          },
           {
             "slug": "dreamina-seedance-2-0",
             "reason": "Cheaper bulk generation"
@@ -6459,15 +6727,30 @@
         ],
         "architecture": "Text-zu-Video- und Bild-zu-Video-Diffusion-Modell mit drei Qualitätsstufen (Fast, Standard, Pro). Der kuratierte Eintrag deckt die Standard-2.0-Stufe ab. Abrechnung pro generierter Videosekunde mit Modifikatoren für Auflösung und ob Bildkonditionierung verwendet wird.",
         "specs": [
-          { "label": "Familie", "value": "Seedance 2.0" },
-          { "label": "Modalitäten", "value": "Text-zu-Video, Bild-zu-Video" },
-          { "label": "Cliplängen", "value": "4 bis 15 Sekunden" },
-          { "label": "Ausgabeauflösungen", "value": "480p / 720p / 1080p" },
+          {
+            "label": "Familie",
+            "value": "Seedance 2.0"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text-zu-Video, Bild-zu-Video"
+          },
+          {
+            "label": "Cliplängen",
+            "value": "4 bis 15 Sekunden"
+          },
+          {
+            "label": "Ausgabeauflösungen",
+            "value": "480p / 720p / 1080p"
+          },
           {
             "label": "Listenpreis",
             "value": "~$0,05 pro Sekunde (1080p + Bild)"
           },
-          { "label": "Verfügbar auf VM0", "value": "April 2026" }
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6538,7 +6821,10 @@
             "slug": "veo-3-1-fast",
             "reason": "Native audio, cinematic motion"
           },
-          { "slug": "kling-v3-4k", "reason": "Stylised, longer, 4K" }
+          {
+            "slug": "kling-v3-4k",
+            "reason": "Stylised, longer, 4K"
+          }
         ],
         "routingNotes": "Routed to ByteDance's Dreamina Seedance 2.0 endpoint and billed per generated video-second with resolution and image-conditioning modifiers.",
         "vm0Notes": "Dreamina Seedance 2.0 ist der kostenoptimierte Standard im kuratierten Video-Lineup auf VM0. Das Standardmuster ist, es für Iteration und Fan-out zu verwenden und dann die gewählte Variante nur auf Veo 3.1 Fast oder Kling V3 4K zu eskalieren, wenn der Final-Render den Aufpreis rechtfertigt."

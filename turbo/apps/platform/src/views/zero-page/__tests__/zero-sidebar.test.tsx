@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
@@ -60,7 +61,7 @@ function mockAPIs({
       ]);
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
