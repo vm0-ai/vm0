@@ -415,6 +415,29 @@ def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
         uuid.UUID(key)
 
 
+def test_source_dedupe_survives_flush_boundary(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [_event(source_key="source-1", quantity=10)],
+            proxy_log_path,
+        )
+        usage.flush_usage_events(trigger="test")
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [_event(source_key="source-1", quantity=10)],
+            proxy_log_path,
+        )
+        usage.flush_usage_events(trigger="test")
+
+    enqueue.assert_called_once()
+
+
 def test_aggregate_idempotency_key_separates_webhook_destinations(tmp_path):
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:

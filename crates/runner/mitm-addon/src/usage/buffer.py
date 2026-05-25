@@ -100,6 +100,8 @@ class UsageEventBuffer:
         self._timer_factory = timer_factory or self._make_timer
         self._timer: _TimerHandle | None = None
         self._buckets: dict[_DestinationKey, dict[_AggregateKey, int]] = {}
+        # Keep source keys across flushes so aggregate idempotency does not
+        # turn response/error duplicates into distinct server-side rows.
         self._seen_source_keys: OrderedDict[str, None] = OrderedDict()
         self._destination_source_event_counts: dict[_DestinationKey, int] = {}
         self._source_event_count = 0
@@ -275,7 +277,6 @@ class UsageEventBuffer:
         destination_source_event_counts = self._destination_source_event_counts
         self._destination_source_event_counts = {}
         if not self._buckets:
-            self._seen_source_keys.clear()
             self._source_event_count = 0
             return 0, 0, [], []
 
@@ -283,7 +284,6 @@ class UsageEventBuffer:
         flush_sequence = self._flush_sequence
         buckets = self._buckets
         self._buckets = {}
-        self._seen_source_keys.clear()
         self._source_event_count = 0
         batches = self._build_flush_batches_locked(buckets, flush_sequence)
         return (

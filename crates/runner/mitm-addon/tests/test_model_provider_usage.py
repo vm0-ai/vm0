@@ -99,6 +99,7 @@ class TestReportModelProviderUsage:
         body = json.loads(mock_opener.open.call_args[0][0].data)
         assert body["events"][0]["provider"] == "unknown"
 
+        flow.metadata["model_provider_usage"]["message_id"] = "msg-usage-2"
         flow.metadata["model_provider_usage"]["model"] = "claude-sonnet-4-6"
         with (
             patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
