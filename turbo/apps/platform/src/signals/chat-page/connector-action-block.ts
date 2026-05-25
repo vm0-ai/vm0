@@ -69,19 +69,18 @@ export const completeChatConnectorActionConnect$ = command(
   },
 );
 
-export function isConnectorType(value: string): value is ConnectorType {
+function isConnectorType(value: string): value is ConnectorType {
   return value in CONNECTOR_TYPES;
 }
 
 export function parseConnectorAuthorizeUrl(
   value: string,
 ): ConnectorActionDescriptor | null {
-  let url: URL;
-  try {
-    url = new URL(value, "https://app.vm0.ai");
-  } catch {
+  const baseUrl = "https://app.vm0.ai";
+  if (!URL.canParse(value, baseUrl)) {
     return null;
   }
+  const url = new URL(value, baseUrl);
 
   const match = url.pathname.match(/^\/connectors\/([^/]+)\/authorize$/);
   const connectorType = match?.[1]?.toLowerCase();

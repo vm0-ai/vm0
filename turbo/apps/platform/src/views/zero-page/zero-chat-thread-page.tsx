@@ -2456,7 +2456,7 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
         type="button"
         disabled={complete || activating}
         onClick={() => {
-          return activate(pageSignal);
+          detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
