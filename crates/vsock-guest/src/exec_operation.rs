@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -39,7 +39,6 @@ const THREAD_EXEC_OPERATION_STDIN: &str = "vsock-exec-operation-stdin";
 const THREAD_EXEC_OPERATION_STDOUT: &str = "vsock-exec-operation-stdout";
 const THREAD_EXEC_OPERATION_STDERR: &str = "vsock-exec-operation-stderr";
 const THREAD_EXEC_OPERATION_OUTPUT: &str = "vsock-exec-operation-output";
-const STDIN_WRITE_CANCEL_POLL_MS: i32 = 50;
 const STDIN_WRITE_CANCELLED: &str = "stdin write cancelled";
 const OUTPUT_CHANNEL_CAPACITY: usize = 32;
 const FRAME_BODY_HEADER_LEN: usize = 1 + 4; // message type + sequence
@@ -276,6 +275,7 @@ struct StdinWriter {
     done_rx: mpsc::Receiver<()>,
     result_rx: mpsc::Receiver<io::Result<()>>,
     cancel: Arc<AtomicBool>,
+    cancel_wake_writer: OwnedFd,
 }
 
 #[derive(Clone, Copy)]
@@ -937,6 +937,7 @@ where
     S: ThreadSpawner,
 {
     set_nonblocking(stdin.as_raw_fd())?;
+    let (cancel_wake_reader, cancel_wake_writer) = stdin_cancel_pipe()?;
     let cancel = Arc::new(AtomicBool::new(false));
     let writer_cancel = Arc::clone(&cancel);
     let (done_tx, done_rx) = mpsc::channel();
@@ -944,7 +945,12 @@ where
     let handle = spawner.spawn_unit(
         THREAD_EXEC_OPERATION_STDIN,
         Box::new(move || {
-            let result = write_stdin_cancellable(&mut stdin, &stdin_bytes, &writer_cancel);
+            let result = write_stdin_cancellable(
+                &mut stdin,
+                &stdin_bytes,
+                &writer_cancel,
+                cancel_wake_reader.as_raw_fd(),
+            );
             let _ = result_tx.send(result);
             let _ = done_tx.send(());
         }),
@@ -954,7 +960,23 @@ where
         done_rx,
         result_rx,
         cancel,
+        cancel_wake_writer,
     })
+}
+
+fn stdin_cancel_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0; 2];
+    // SAFETY: `pipe` initializes two file descriptors in `fds` on success.
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors were freshly returned by `pipe`.
+    let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    // SAFETY: both descriptors were freshly returned by `pipe`.
+    let write_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    set_nonblocking(read_fd.as_raw_fd())?;
+    set_nonblocking(write_fd.as_raw_fd())?;
+    Ok((read_fd, write_fd))
 }
 
 fn set_nonblocking(fd: RawFd) -> io::Result<()> {
@@ -978,6 +1000,7 @@ fn write_stdin_cancellable<W>(
     stdin: &mut W,
     stdin_bytes: &[u8],
     cancel: &AtomicBool,
+    cancel_fd: RawFd,
 ) -> io::Result<()>
 where
     W: AsRawFd + Write,
@@ -995,7 +1018,7 @@ where
             Ok(n) => written += n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                wait_stdin_writable_or_cancelled(stdin.as_raw_fd(), cancel)?;
+                wait_stdin_writable_or_cancelled(stdin.as_raw_fd(), cancel_fd, cancel)?;
             }
             Err(e) => return Err(e),
         }
@@ -1003,26 +1026,48 @@ where
     Ok(())
 }
 
-fn wait_stdin_writable_or_cancelled(fd: RawFd, cancel: &AtomicBool) -> io::Result<()> {
+fn wait_stdin_writable_or_cancelled(
+    fd: RawFd,
+    cancel_fd: RawFd,
+    cancel: &AtomicBool,
+) -> io::Result<()> {
     loop {
         if cancel.load(Ordering::Acquire) {
             return Err(stdin_write_cancelled());
         }
-        let mut pollfd = libc::pollfd {
-            fd,
-            events: libc::POLLOUT,
-            revents: 0,
-        };
-        // SAFETY: `pollfd` points to one initialized descriptor entry.
-        let result = unsafe { libc::poll(&mut pollfd, 1, STDIN_WRITE_CANCEL_POLL_MS) };
+        let mut pollfds = [
+            libc::pollfd {
+                fd,
+                events: libc::POLLOUT,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: cancel_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: `pollfds` points to two initialized descriptor entries.
+        let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, -1) };
         if result > 0 {
-            if pollfd.revents & libc::POLLNVAL != 0 {
+            let stdin_revents = pollfds[0].revents;
+            let cancel_revents = pollfds[1].revents;
+            if cancel.load(Ordering::Acquire)
+                || cancel_revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR | libc::POLLNVAL)
+                    != 0
+            {
+                return Err(stdin_write_cancelled());
+            }
+            if stdin_revents & libc::POLLNVAL != 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::BrokenPipe,
                     "stdin pipe fd invalid",
                 ));
             }
-            return Ok(());
+            if stdin_revents & (libc::POLLOUT | libc::POLLHUP | libc::POLLERR) != 0 {
+                return Ok(());
+            }
+            continue;
         }
         if result == 0 {
             continue;
@@ -1030,6 +1075,37 @@ fn wait_stdin_writable_or_cancelled(fd: RawFd, cancel: &AtomicBool) -> io::Resul
         let err = io::Error::last_os_error();
         if err.kind() != io::ErrorKind::Interrupted {
             return Err(err);
+        }
+    }
+}
+
+fn request_stdin_writer_cancel(writer: &StdinWriter) {
+    writer.cancel.store(true, Ordering::Release);
+    let byte = [1u8];
+    loop {
+        // SAFETY: `cancel_wake_writer` is an open nonblocking pipe descriptor
+        // owned by `writer`; the byte buffer is valid for this call.
+        let result = unsafe {
+            libc::write(
+                writer.cancel_wake_writer.as_raw_fd(),
+                byte.as_ptr().cast(),
+                byte.len(),
+            )
+        };
+        if result >= 0 {
+            return;
+        }
+        let err = io::Error::last_os_error();
+        match err.kind() {
+            io::ErrorKind::Interrupted => {}
+            io::ErrorKind::WouldBlock | io::ErrorKind::BrokenPipe => return,
+            _ => {
+                log(
+                    "WARN",
+                    &format!("exec operation: failed to wake stdin writer cancel: {err}"),
+                );
+                return;
+            }
         }
     }
 }
@@ -1055,7 +1131,7 @@ fn join_stdin_writer_after_wait(
         // The direct shell is no longer running, but a descendant can still
         // keep stdin open. Stop the writer before joining it so bounded stdin
         // cannot strand this worker thread.
-        writer.cancel.store(true, Ordering::Release);
+        request_stdin_writer_cancel(&writer);
         let _ = unsafe { kill_process_tree_target(kill_target) };
     }
     join_stdin_writer(writer, seq, label);
@@ -1063,7 +1139,7 @@ fn join_stdin_writer_after_wait(
 
 fn join_stdin_writer_after_kill(writer: Option<StdinWriter>) {
     if let Some(writer) = writer {
-        writer.cancel.store(true, Ordering::Release);
+        request_stdin_writer_cancel(&writer);
         join_stdin_writer(writer, 0, "");
     }
 }
