@@ -74,21 +74,26 @@ const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
-/// Must be long enough for mitmproxy's shutdown hook to drain any reports that
-/// race with the pre-stop usage flush wait below.
-const STOP_TIMEOUT: Duration = Duration::from_secs(30);
+/// Usage upload drain is handled before SIGTERM; this only bounds mitmproxy's
+/// own graceful process exit.
+const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Maximum time to wait for buffered and pending usage reports before stopping.
 ///
 /// The runner polls `{addon_dir}/usage-pending` (written by the Python
 /// addon) and waits until all counters reach zero or this timeout expires.
-/// 70 s covers the default buffered flush timer max (30 s + 20% jitter) plus
-/// one webhook retry cycle (10 s timeout × 2 attempts plus 0.5 s backoff) with
-/// headroom for mitmproxy event-loop drain.
-pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(70);
+/// Before polling and while buffered events remain, the runner asks the addon
+/// to flush buffered usage; 30 s covers one webhook retry cycle (10 s timeout
+/// × 2 attempts plus 0.5 s backoff) with headroom for request delivery and
+/// mitmproxy event-loop drain.
+pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
+
+/// Minimum interval between runner-triggered usage flush requests while the
+/// addon still reports buffered events.
+const USAGE_FLUSH_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Tolerated wall-clock skew when validating addon timestamps.
 const USAGE_PENDING_CLOCK_SKEW: Duration = Duration::from_secs(300);
@@ -294,6 +299,16 @@ impl MitmProxy {
         })
     }
 
+    /// Ask the running addon to flush buffered usage before shutdown.
+    pub fn request_usage_flush(&self) {
+        let Some(child) = self.child.as_ref() else {
+            return;
+        };
+        if !send_usage_flush_signal(child) {
+            warn!("failed to request mitmdump usage flush");
+        }
+    }
+
     /// Prepare for restart: kill any lingering child, permanently silence
     /// its stdout monitor, and return fresh parameters for
     /// [`spawn_mitmdump`].
@@ -422,13 +437,22 @@ fn validate_usage_pending_state(
 /// until timeout. The JSON `pid` is diagnostic only: mitmdump launchers can
 /// keep the runner's direct child as a wrapper while the Python addon runs in a
 /// child process.
-pub async fn wait_usage_flush(
+#[cfg(test)]
+async fn wait_usage_flush(addon_dir: &Path, timeout: Duration, target: &UsageFlushTarget) -> bool {
+    wait_usage_flush_requesting(addon_dir, timeout, target, || {}).await
+}
+
+/// Wait for proxy usage drain while actively asking the addon to flush buffered events.
+pub async fn wait_usage_flush_requesting(
     addon_dir: &Path,
     timeout: Duration,
     target: &UsageFlushTarget,
+    mut request_flush: impl FnMut(),
 ) -> bool {
     let path = addon_dir.join("usage-pending");
-    let deadline = tokio::time::Instant::now() + timeout;
+    let started_at = tokio::time::Instant::now();
+    let deadline = started_at + timeout;
+    let mut next_flush_request_at = started_at + USAGE_FLUSH_REQUEST_INTERVAL;
     loop {
         let (not_ready, snapshot) = match tokio::fs::read_to_string(&path).await {
             Ok(content) => match parse_usage_pending_state(&content) {
@@ -438,6 +462,11 @@ pub async fn wait_usage_flush(
                         Ok(()) => {
                             if state.flows == 0 && state.buffered == 0 && state.reports == 0 {
                                 return true;
+                            }
+                            let now = tokio::time::Instant::now();
+                            if state.buffered > 0 && now >= next_flush_request_at {
+                                request_flush();
+                                next_flush_request_at = now + USAGE_FLUSH_REQUEST_INTERVAL;
                             }
                             (
                                 format!(
@@ -857,6 +886,17 @@ fn send_sigterm(child: &tokio::process::Child) {
             nix::sys::signal::Signal::SIGTERM,
         );
     }
+}
+
+fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
+    let Some(pid) = child.id() else {
+        return false;
+    };
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(pid as i32),
+        nix::sys::signal::Signal::SIGUSR1,
+    )
+    .is_ok()
 }
 
 #[cfg(test)]
@@ -1710,6 +1750,55 @@ exit 0
         assert!(proxy.child.is_none());
     }
 
+    #[tokio::test]
+    async fn request_usage_flush_signals_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let signal_file = dir.path().join("usage-flush-requested");
+        let script = dir.path().join("trap-usage-flush.sh");
+        std::fs::write(
+            &script,
+            format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+trap 'touch "{}"; exit 0' USR1
+echo ready
+while true; do sleep 1; done
+"#,
+                signal_file.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let mut child = tokio::process::Command::new(&script)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
+        proxy.child = Some(child);
+
+        let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+            .await
+            .expect("child did not install SIGUSR1 trap")
+            .unwrap();
+        assert_eq!(ready.as_deref(), Some("ready"));
+
+        proxy.request_usage_flush();
+
+        let status =
+            tokio::time::timeout(Duration::from_secs(2), proxy.child.as_mut().unwrap().wait())
+                .await
+                .expect("child did not observe SIGUSR1")
+                .unwrap();
+        assert!(status.success(), "child exited with {status}");
+        assert!(signal_file.exists(), "child did not observe SIGUSR1");
+        proxy.child = None;
+    }
+
     fn usage_target() -> UsageFlushTarget {
         UsageFlushTarget {
             expected_usage_state_id: "state-test".to_string(),
@@ -1797,6 +1886,27 @@ exit 0
         let d = dir.path().to_path_buf();
         assert!(wait_usage_flush(&d, Duration::from_secs(5), &target).await);
         handle.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_requests_flush_when_buffered() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(&path, usage_state(0, 2, 0)).unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &target, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test(start_paused = true)]

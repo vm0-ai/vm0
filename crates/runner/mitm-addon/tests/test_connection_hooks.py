@@ -1,6 +1,7 @@
 """Tests for mitm addon connection-level hooks."""
 
 import json
+import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -26,6 +27,22 @@ class TestDoneHook:
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
+
+
+class TestRunnerUsageFlushSignal:
+    """Tests for runner-triggered usage buffer flush requests."""
+
+    def test_signal_handler_flushes_usage_in_background(self):
+        flushed = threading.Event()
+
+        def flush_usage_events(*, trigger: str) -> int:
+            assert trigger == "runner"
+            flushed.set()
+            return 0
+
+        with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            assert flushed.wait(timeout=1)
 
 
 class TestTlsClienthello:
