@@ -433,6 +433,37 @@ class TestResponseUsageReporting:
         assert warning["event"] == "message_start"
         assert warning["error"]
 
+    def test_full_pipeline_anthropic_sse_logs_malformed_message_start(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        usage_warnings = _model_sse_parse_warnings(flow)
+        assert len(usage_warnings) == 1
+        warning = usage_warnings[0]
+        assert warning["level"] == "warn"
+        assert warning["type"] == "usage_event"
+        assert warning["usage_protocol"] == "anthropic_messages_sse"
+        assert warning["event"] == "message_start"
+        assert warning["error"]
+
     def test_full_pipeline_anthropic_sse_logs_truncated_message_delta_after_start(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
