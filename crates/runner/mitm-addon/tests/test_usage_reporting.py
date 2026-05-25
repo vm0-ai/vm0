@@ -1,5 +1,6 @@
 """Tests for response usage reporting flows."""
 
+import gzip
 import json
 import time
 from collections.abc import Callable
@@ -312,6 +313,55 @@ class TestResponseUsageReporting:
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == "incomplete json"
+
+    def test_json_fallback_chained_content_encoding_logs_proxy_warning(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """Unsupported one-shot encoding leaves compressed bytes, then logs parse failure."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        body = gzip.compress(
+            b'{"id":"msg_1","model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50,"output_tokens":200}}'
+        )
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map(
+                {
+                    "content-type": "application/json",
+                    "content-encoding": "gzip, identity",
+                }
+            ),
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert "model_provider_usage" not in flow.metadata
+        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        assert len(entries) == 1
+        assert entries[0]["level"] == "warn"
+        assert entries[0]["message"] == "Model provider JSON usage extraction failed"
+        assert entries[0]["type"] == "usage_event"
+        assert entries[0]["error"] == "expected json value"
 
     def test_json_fallback_valid_body_without_usage_stays_quiet(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
