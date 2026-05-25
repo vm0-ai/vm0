@@ -366,17 +366,31 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == expected_original_url
         auth_fetch.assert_not_called()
 
-    async def test_accepts_authority_host_case_differences(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    @pytest.mark.parametrize(
+        ("sni", "host_header"),
+        [
+            ("api.github.com", "API.GITHUB.COM"),
+            ("API.GITHUB.COM.", "api.github.com."),
+        ],
+    )
+    async def test_accepts_authority_host_normalization_equivalence(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        headers,
+        sni,
+        host_header,
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
             host="203.0.113.10",
-            sni="api.github.com",
+            sni=sni,
             path="/repos",
-            request_headers=headers(("Host", "API.GITHUB.COM")),
+            request_headers=headers(("Host", host_header)),
         )
 
         with (
