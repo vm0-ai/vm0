@@ -333,7 +333,16 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
     async def test_sets_auth_url_rewrite_metadata_and_response(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is set and flow.response is populated via forward_request."""
-        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            token_overrides={
+                "resolved_secrets": ["WEBHOOK"],
+                "refreshed_connectors": ["discord"],
+                "refreshed_secrets": ["WEBHOOK"],
+                "cache_hit": False,
+            },
+        )
         mock_forward = AsyncMock(
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
@@ -344,6 +353,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
         assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["auth_resolved_secrets"] == ["WEBHOOK"]
+        assert flow.metadata["auth_refreshed_connectors"] == ["discord"]
+        assert flow.metadata["auth_refreshed_secrets"] == ["WEBHOOK"]
+        assert flow.metadata["auth_cache_hit"] is False
         assert flow.response is not None
         assert flow.response.status_code == 200
         # forward_request called with the rewritten URL
