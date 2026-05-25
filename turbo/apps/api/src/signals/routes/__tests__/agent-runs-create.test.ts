@@ -618,15 +618,15 @@ describe("POST /api/agent/runs", () => {
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      name: "DECLARED_SECRET",
-      encryptedValue: encryptSecretForTests("declared-value"),
+      name: "ZENDESK_API_TOKEN",
+      encryptedValue: encryptSecretForTests("zendesk-real-token"),
       type: "user",
     });
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      name: "ZENDESK_API_TOKEN",
-      encryptedValue: encryptSecretForTests("zendesk-real-token"),
+      name: "MERCURY_TOKEN",
+      encryptedValue: encryptSecretForTests("mercury-real-token"),
       type: "user",
     });
     const compose = await createCompose({
@@ -634,7 +634,6 @@ describe("POST /api/agent/runs", () => {
       overrides: {
         environment: {
           ANTHROPIC_API_KEY: "test-key",
-          DECLARED_SECRET: vm0Template("{{ secrets.DECLARED_SECRET }}"),
           ZENDESK_EMAIL: "compose@example.com",
         },
       },
@@ -670,10 +669,16 @@ describe("POST /api/agent/runs", () => {
       "compose@example.com",
     );
     expect(executionContext.environment.ZENDESK_SUBDOMAIN).toBe("acme");
+    expect(executionContext.environment.MERCURY_TOKEN).toBe(
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
+    );
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      DECLARED_SECRET: "declared-value",
       ZENDESK_API_TOKEN: "zendesk-real-token",
+      MERCURY_TOKEN: "mercury-real-token",
     });
+    expect(
+      decryptSecretsMap(executionContext.encryptedSecrets),
+    ).not.toHaveProperty("MERCURY_ACCESS_TOKEN");
     const zendesk = executionContext.firewalls.find((firewall) => {
       return firewall.name === "zendesk";
     });

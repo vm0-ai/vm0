@@ -653,6 +653,21 @@ function connectorEnvironmentTemplates(
   return compactRecord(environment);
 }
 
+function connectorEnvironmentSecretTemplateNames(
+  connectorTypes: readonly ConnectorType[],
+): Set<string> {
+  const names = new Set<string>();
+  for (const connectorType of connectorTypes) {
+    const mapping = getConnectorEnvironmentMapping(connectorType);
+    for (const [envName, valueRef] of Object.entries(mapping)) {
+      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        names.add(envName);
+      }
+    }
+  }
+  return names;
+}
+
 function environmentTemplates(args: {
   readonly content: AgentComposeContent;
   readonly additionalEnvironment: Record<string, string> | undefined;
@@ -754,6 +769,18 @@ function missingEnvironmentReferences(args: {
       return `secrets.${ref.name}`;
     });
   return [...missingVars, ...missingSecrets];
+}
+
+function allowedApiTokenConnectorTypes(args: {
+  readonly apiTokenTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+}): readonly ConnectorType[] {
+  if (!args.allowedConnectorTypes) {
+    return args.apiTokenTypes;
+  }
+  return args.apiTokenTypes.filter((type) => {
+    return args.allowedConnectorTypes?.includes(type);
+  });
 }
 
 function hasExplicitFrameworkApiKey(
@@ -1261,16 +1288,22 @@ async function loadReferencedSecrets(
   },
 ): Promise<Record<string, string> | undefined> {
   const environment = firstAgent(args.content)?.environment;
-  if (!environment) {
-    return args.runSecrets;
-  }
-
-  const referencedNames = extractAndGroupVariables(environment).secrets.map(
-    (ref) => {
-      return ref.name;
-    },
+  const referencedNames = environment
+    ? extractAndGroupVariables(environment).secrets.map((ref) => {
+        return ref.name;
+      })
+    : [];
+  const apiTokenTypes = await loadApiTokenConnectorTypes(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  const dynamicConnectorSecretNames = connectorEnvironmentSecretTemplateNames(
+    allowedApiTokenConnectorTypes({
+      apiTokenTypes,
+      allowedConnectorTypes: args.allowedConnectorTypes,
+    }),
   );
-  if (referencedNames.length === 0) {
+  if (referencedNames.length === 0 && dynamicConnectorSecretNames.size === 0) {
     return args.runSecrets;
   }
 
@@ -1278,29 +1311,23 @@ async function loadReferencedSecrets(
   // api-token connector credentials are consumed by firewall auth templates,
   // which the compose environment never references. Connector-owned secrets
   // are still scoped by filterDbSecretsByConnectorPermissions below.
-  const [rows, apiTokenTypes] = await Promise.all([
-    db
-      .select({
-        name: secretsTable.name,
-        encryptedValue: secretsTable.encryptedValue,
-        userId: secretsTable.userId,
-      })
-      .from(secretsTable)
-      .where(
-        and(
-          eq(secretsTable.orgId, args.orgId),
-          eq(secretsTable.type, "user"),
-          or(
-            eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
-            eq(secretsTable.userId, args.userId),
-          ),
+  const rows = await db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+      userId: secretsTable.userId,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.type, "user"),
+        or(
+          eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
+          eq(secretsTable.userId, args.userId),
         ),
       ),
-    loadApiTokenConnectorTypes(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-    }),
-  ]);
+    );
 
   const orgSecrets: Record<string, string> = {};
   const userSecrets: Record<string, string> = {};
@@ -1318,7 +1345,11 @@ async function loadReferencedSecrets(
     allApiTokenTypes: apiTokenTypes,
     allowedConnectorTypes: args.allowedConnectorTypes,
   });
-  const merged = { ...filteredSecrets, ...args.runSecrets };
+  const connectorSecrets =
+    referencedNames.length === 0
+      ? filterRecordKeys(filteredSecrets, dynamicConnectorSecretNames)
+      : filteredSecrets;
+  const merged = { ...connectorSecrets, ...args.runSecrets };
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
@@ -1401,6 +1432,22 @@ function compactRecord(
   values: Record<string, string>,
 ): Record<string, string> | undefined {
   return Object.keys(values).length > 0 ? values : undefined;
+}
+
+function filterRecordKeys(
+  values: Record<string, string> | undefined,
+  keys: ReadonlySet<string>,
+): Record<string, string> | undefined {
+  if (!values) {
+    return undefined;
+  }
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (keys.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return compactRecord(filtered);
 }
 
 function mergeRecords(
