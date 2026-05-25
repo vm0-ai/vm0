@@ -5,7 +5,7 @@
       "entry": [
         "app/**/page.{ts,tsx}",
         "app/**/layout.{ts,tsx}",
-        "app/api/**/route.{ts,tsx}",
+        "app/**/route.{ts,tsx}!",
         "proxy.{ts,tsx}",
         "proxy.cors.ts",
         "i18n.ts",
@@ -16,7 +16,14 @@
         "src/__tests__/api-test-helpers/index.ts",
         "src/__tests__/webhook-simulators/index.ts"
       ],
-      "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
+      "project": [
+        "**/*.{ts,tsx}!",
+        "!**/__tests__/**!",
+        "!**/*.{test,spec}.{ts,tsx}!",
+        "!src/lib/test-endpoints/**!",
+        "!src/mocks/**!",
+        "scripts/**/*.ts"
+      ],
       "ignoreDependencies": [
         "@vm0/ui",
         "e2b",
