@@ -117,6 +117,19 @@ async fn supervised_exec_rejects_zero_stream_capacity_without_sending_frame() {
 }
 
 #[tokio::test]
+async fn supervised_exec_rejects_oversized_stdin_without_sending_frame() {
+    let stdin_bytes = vec![0; vsock_proto::MAX_EXEC_STDIN_BYTES + 1];
+    assert_supervised_start_rejected_without_frame(
+        SupervisedExecRequest {
+            stdin_bytes: Some(&stdin_bytes),
+            ..supervised_request("oversized-stdin")
+        },
+        "stdin_bytes",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn supervised_exec_rejects_receiver_without_stream_policy() {
     assert_supervised_start_rejected_without_frame(
         SupervisedExecRequest {
