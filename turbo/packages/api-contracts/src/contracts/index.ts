@@ -212,12 +212,6 @@ export {
   type SlackOrgCallbackPayload,
 } from "./internal-callbacks-slack-org";
 export {
-  internalCallbacksVoiceChatContract,
-  voiceChatCallbackPayloadSchema,
-  type InternalCallbacksVoiceChatContract,
-  type VoiceChatCallbackPayload,
-} from "./internal-callbacks-voice-chat";
-export {
   zeroEmailInboundContract,
   zeroEmailReplyCallbackContract,
   zeroEmailReplyCallbackPayloadSchema,
@@ -387,12 +381,10 @@ export {
   internalEventConsumerAgentPhoneTypingContract,
   internalEventConsumerChatAssistantContract,
   internalEventConsumerTelegramTypingContract,
-  internalEventConsumerVoiceChatContract,
   type InternalEventConsumerAgentPhoneTypingContract,
   type InternalEventConsumerAxiomContract,
   type InternalEventConsumerChatAssistantContract,
   type InternalEventConsumerTelegramTypingContract,
-  type InternalEventConsumerVoiceChatContract,
 } from "./internal-event-consumers";
 export {
   cronAggregateInsightsContract,
@@ -412,8 +404,6 @@ export {
   cronSyncSkillsResponseSchema,
   cronTelegramCleanupContract,
   cronTelegramCleanupResponseSchema,
-  cronVoiceChatCleanupContract,
-  cronVoiceChatCleanupResponseSchema,
   cleanupResultSchema,
   cleanupResponseSchema,
   type CronAggregateInsightsContract,
@@ -425,7 +415,6 @@ export {
   type CronReconcileBillingEntitlementsContract,
   type CronSyncSkillsContract,
   type CronTelegramCleanupContract,
-  type CronVoiceChatCleanupContract,
 } from "./cron";
 export {
   orgDefaultAgentContract,
@@ -1556,29 +1545,6 @@ export {
   type ZeroVoiceIoTtsContract,
   type ZeroVoiceIoTtsRequest,
 } from "./zero-voice-io-tts";
-export {
-  zeroVoiceChatContract,
-  voiceChatItemRoleSchema,
-  voiceChatTaskStatusSchema,
-  voiceChatReasoningStatusSchema,
-  voiceChatSessionSchema,
-  voiceChatItemSchema,
-  voiceChatTaskSchema,
-  voiceChatTaskResultEntrySchema,
-  type ZeroVoiceChatContract,
-  type VoiceChatItemRole,
-  type VoiceChatTaskStatus,
-  type VoiceChatReasoningStatus,
-  type VoiceChatSession,
-  type VoiceChatItem,
-  type VoiceChatTask,
-  type VoiceChatTaskResultEntry,
-  type VoiceChatTokenBody,
-  type VoiceChatTokenResponse,
-  type CreateVoiceChatSessionBody,
-  type AppendVoiceChatItemBody,
-  type CreateVoiceChatTaskBody,
-} from "./zero-voice-chat";
 export {
   zeroUploadsContract,
   type ZeroUploadsContract,

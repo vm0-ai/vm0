@@ -222,7 +222,7 @@ async function publishAppHome(
 
 function buildConnectUrl(workspaceId: string, slackUserId: string): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
-  return `${env("VM0_WEB_URL")}/settings/slack?${params.toString()}`;
+  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
 function buildDisconnectedAppHomeView(args: {
@@ -293,7 +293,7 @@ function buildUninstalledAppHomeView(): View {
           {
             type: "button",
             text: { type: "plain_text", text: "Open Zero Settings" },
-            url: `${env("VM0_WEB_URL")}/works`,
+            url: `${env("APP_URL")}/works`,
             action_id: "home_open_settings",
             style: "primary",
           },

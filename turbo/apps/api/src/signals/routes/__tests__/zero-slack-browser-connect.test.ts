@@ -3,6 +3,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
@@ -20,6 +21,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const CONNECT_PATH = "http://api.test/api/zero/slack/connect";
+const APP_ORIGIN = "https://app.vm0.test";
 
 function connectUrl(params: {
   readonly workspaceId?: string;
@@ -62,6 +64,7 @@ describe("GET /api/zero/slack/connect", () => {
   });
 
   beforeEach(() => {
+    mockEnv("APP_URL", APP_ORIGIN);
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
       ts: "mock.ts",
@@ -91,7 +94,7 @@ describe("GET /api/zero/slack/connect", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
-    expect(location).toContain("/slack/connect?error=");
+    expect(location).toContain(`${APP_ORIGIN}/settings/slack?error=`);
     expect(decodeURIComponent(location ?? "")).toContain(
       "Invalid connect link.",
     );
@@ -115,7 +118,9 @@ describe("GET /api/zero/slack/connect", () => {
     );
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("status=connected");
+    expect(response.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/slack?status=connected`,
+    );
 
     const connection = await store.set(
       findSlackOrgConnection$,
@@ -147,7 +152,7 @@ describe("GET /api/zero/slack/connect", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
-    expect(location).toContain("/slack/connect?error=");
+    expect(location).toContain(`${APP_ORIGIN}/settings/slack?error=`);
     expect(decodeURIComponent(location ?? "")).toContain("Workspace not found");
   });
 
@@ -170,7 +175,7 @@ describe("GET /api/zero/slack/connect", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
-    expect(location).toContain("/slack/connect?error=");
+    expect(location).toContain(`${APP_ORIGIN}/settings/slack?error=`);
     expect(decodeURIComponent(location ?? "")).toContain("admin");
   });
 
@@ -192,9 +197,13 @@ describe("GET /api/zero/slack/connect", () => {
     const second = await requestConnect(url);
 
     expect(first.status).toBe(307);
-    expect(first.headers.get("location")).toContain("status=connected");
+    expect(first.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/slack?status=connected`,
+    );
     expect(second.status).toBe(307);
-    expect(second.headers.get("location")).toContain("status=connected");
+    expect(second.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/slack?status=connected`,
+    );
     await expect(
       store.set(
         countSlackOrgConnections$,
@@ -219,7 +228,9 @@ describe("GET /api/zero/slack/connect", () => {
     );
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("status=connected");
+    expect(response.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/slack?status=connected`,
+    );
   });
 
   it("redirects org mismatch to the legacy organization error", async () => {
@@ -238,7 +249,7 @@ describe("GET /api/zero/slack/connect", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
-    expect(location).toContain("/slack/connect?error=");
+    expect(location).toContain(`${APP_ORIGIN}/settings/slack?error=`);
     expect(decodeURIComponent(location ?? "")).toContain("active organization");
   });
 

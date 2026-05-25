@@ -128,7 +128,7 @@ async function resolveTelegramAuditLogsUrl(args: {
     return undefined;
   }
 
-  return `${env("VM0_WEB_URL")}/activities/${encodeURIComponent(args.runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }
 
 async function deleteThinkingMessageIfPresent(args: {

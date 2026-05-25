@@ -11,7 +11,6 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconArrowUpRight,
-  IconMicrophone,
   IconPin,
   IconPlus,
   IconUserPlus,
@@ -26,10 +25,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  featureSwitch$,
-  trinityEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -62,7 +58,6 @@ import {
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { activeRoute$ } from "../../signals/active-route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
@@ -71,7 +66,6 @@ import {
   sendNewThreadOptimistically$,
   type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import {
   typewriterDisplayed$,
@@ -218,7 +212,7 @@ function NewChatButton() {
   );
 }
 
-export function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
+function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
   const features = useLastResolved(featureSwitch$);
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
@@ -265,66 +259,7 @@ function PinPill() {
   );
 }
 
-export function VoiceChatLauncher() {
-  const trinityEnabled = useLastResolved(trinityEnabled$) ?? false;
-  const voiceChatStatus = useGet(voiceChatStatus$);
-  const activeRoute = useGet(activeRoute$);
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const navigate = useSet(detachedNavigateTo$);
-
-  if (!trinityEnabled) {
-    return null;
-  }
-
-  const onTalk = activeRoute === "agentTalk";
-
-  const handleClick = () => {
-    if (!currentChatAgentId) {
-      return;
-    }
-    navigate(onTalk ? "/agents/:agentId/chat" : "/agents/:agentId/talk", {
-      pathParams: { agentId: currentChatAgentId },
-    });
-  };
-
-  const isConnecting = onTalk && voiceChatStatus === "connecting";
-  const isConnected = onTalk && voiceChatStatus === "connected";
-  const colorClass = isConnected
-    ? "text-green-600 hover:text-green-700"
-    : isConnecting
-      ? "text-primary animate-pulse"
-      : "text-muted-foreground hover:text-foreground";
-
-  const tooltipText = onTalk ? "Exit voice chat" : "Start voice chat";
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handleClick}
-            data-testid="voice-chat-launcher"
-            aria-label={tooltipText}
-            aria-pressed={onTalk}
-            className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-accent cursor-pointer ${colorClass}`}
-          >
-            <IconMicrophone size={20} stroke={1.5} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs">{tooltipText}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-export function ChatAgentAvatar({
-  agentId,
-}: {
-  agentId: string | null | undefined;
-}) {
+function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
   return (
     <div className="relative shrink-0">
       {agentId ? (
@@ -599,7 +534,6 @@ export function AgentChatPage() {
           <div className="flex items-center gap-4 w-full">
             <ChatAgentAvatar agentId={currentChatAgentId} />
             <div className="flex-1 min-w-0 flex items-center gap-3">
-              <VoiceChatLauncher />
               <h2
                 aria-label={tagline}
                 data-testid="chat-tagline"

@@ -7,7 +7,6 @@
  * Both axiom/client.ts and logger.ts import from here to share the same
  * Axiom SDK instances, ensuring a single flush covers all datasets.
  */
-import "server-only";
 import { Axiom } from "@axiomhq/js";
 
 let sessionsClient: Axiom | null = null;

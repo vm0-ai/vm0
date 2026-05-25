@@ -725,9 +725,6 @@ importers:
       '@vm0/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      ably:
-        specifier: ^2.17.0
-        version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       cpu-features:
         specifier: 0.0.10
         version: 0.0.10
@@ -767,9 +764,6 @@ importers:
       require-in-the-middle:
         specifier: ^8.0.1
         version: 8.0.1
-      server-only:
-        specifier: ^0.0.1
-        version: 0.0.1
       stripe:
         specifier: ^20.4.1
         version: 20.4.1(@types/node@24.3.0)

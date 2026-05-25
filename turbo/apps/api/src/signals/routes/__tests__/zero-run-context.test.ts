@@ -60,7 +60,7 @@ function makeSnapshot(runId: string): Record<string, unknown> {
       vasVersionId: "art-ver-1",
     },
     networkPolicies: null,
-    featureFlags: { computerUse: true, voiceChat: false },
+    featureFlags: { computerUse: true, dummy: false },
   };
 }
 
@@ -250,7 +250,7 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(response.body.networkPolicies).toBeNull();
     expect(response.body.featureFlags).toStrictEqual({
       computerUse: true,
-      voiceChat: false,
+      dummy: false,
     });
   });
 
@@ -296,7 +296,7 @@ describe("GET /api/zero/runs/:id/context", () => {
         },
         featureFlags: {
           apiBackend: true,
-          voiceChat: null,
+          dummy: null,
         },
       },
     ]);

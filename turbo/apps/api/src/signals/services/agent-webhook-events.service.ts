@@ -67,11 +67,6 @@ const EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
     path: "/api/internal/event-consumers/chat-assistant",
     eventTypes: ["assistant", "item.completed"],
   },
-  {
-    name: "voice-chat",
-    path: "/api/internal/event-consumers/voice-chat",
-    eventTypes: ["assistant"],
-  },
 ];
 
 class RequiredEventConsumerDispatchError extends Error {

@@ -15,6 +15,7 @@ import { createDeferredPromise, resetSignal, settle } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { stopTts$ } from "./voice-io-tts.ts";
 import { accept } from "../../lib/accept.ts";
+import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 
 const L = logger("VoiceIO:STT");
 
@@ -110,15 +111,13 @@ const refreshAudioInputQuota$ = command(({ set }) => {
 });
 
 async function openMedia(signal: AbortSignal) {
+  const audioConfig = await resolveAudioConfig();
+  signal.throwIfAborted();
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax -- getUserMedia rejects on permission denied
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+      audio: audioConfig.constraints,
     });
     signal.throwIfAborted();
     return stream;

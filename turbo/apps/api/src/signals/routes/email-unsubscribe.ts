@@ -18,7 +18,7 @@ function invalidTokenResponse() {
 }
 
 function confirmationHtmlResponse(): Response {
-  const appUrl = env("VM0_WEB_URL");
+  const appUrl = env("APP_URL");
   const html = `<!DOCTYPE html>
 <html>
 <head>

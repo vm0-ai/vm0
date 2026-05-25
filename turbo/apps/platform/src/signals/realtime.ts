@@ -55,8 +55,8 @@ async function runWithChannel({
   signal: AbortSignal;
 }): Promise<void> {
   // No implicit prime on subscribe. Callers whose loop body sets up baseline
-  // state (voice-chat session instructions, connector `initialUpdatedAt`) must
-  // run the body themselves before calling this. Chat / queue / slack
+  // state (for example connector `initialUpdatedAt`) must run the body
+  // themselves before calling this. Chat / queue / slack
   // subscribers don't need a baseline because their data is fetched through
   // separate computeds.
   signal.throwIfAborted();

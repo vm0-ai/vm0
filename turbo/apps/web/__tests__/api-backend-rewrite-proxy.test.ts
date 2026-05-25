@@ -40,7 +40,6 @@ const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_LOG_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_CONNECTOR_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
-const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -576,16 +575,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
-  it("matches the cron voice chat cleanup rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/cron/voice-chat-cleanup")).toBe(
-      true,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/cron/voice-chat-cleanup/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
-  });
-
   it("matches the internal agent callback rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks/agent")).toBe(
       true,
@@ -670,16 +659,6 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/telegram/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
-  });
-
-  it("matches the internal voice-chat callback rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/voice-chat"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/voice-chat/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
@@ -2167,20 +2146,6 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the internal event consumer voice chat rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/internal/event-consumers/voice-chat"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/internal/event-consumers/voice-chat/extra",
-      ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/internal/event-consumers/voice-chats"),
-    ).toBe(false);
-  });
-
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(
@@ -3174,32 +3139,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/logos")).toBe(false);
   });
 
-  it("matches the zero voice-chat token rewrite exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
-      true,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/token/extra"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/token/items"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/token/tasks"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/zero/voice-chat/token/trigger-reasoning",
-      ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid/items"),
-    ).toBe(false);
-  });
-
   it("matches the zero uploads complete rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/uploads/complete")).toBe(
       true,
@@ -3208,20 +3147,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/zero/uploads/complete/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/uploads/other")).toBe(false);
-  });
-
-  it("matches only UUID-shaped zero voice-chat task rewrites", () => {
-    expect(
-      matchesApiBackendRewritePath(
-        `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}/tasks`,
-      ),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/token/tasks"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid/tasks"),
-    ).toBe(false);
   });
 
   it("forwards method, query, cookies, and request body", async () => {

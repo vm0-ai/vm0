@@ -239,7 +239,7 @@ function buildConnectUrl(args: {
   if (telegramDisplayName) {
     params.set("tgDisplayName", telegramDisplayName);
   }
-  return `${env("VM0_WEB_URL")}/telegram/connect?${params.toString()}`;
+  return `${env("APP_URL")}/telegram/connect?${params.toString()}`;
 }
 
 function agentDisplayLabel(agent: TelegramAgent): string {
@@ -437,7 +437,7 @@ async function sendAgentError(args: {
   readonly replyToMessageId?: number;
 }): Promise<void> {
   const logsUrl = args.runId
-    ? `${env("VM0_WEB_URL")}/activities/${encodeURIComponent(args.runId)}`
+    ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
     : undefined;
   await sendMessage(
     args.botToken,

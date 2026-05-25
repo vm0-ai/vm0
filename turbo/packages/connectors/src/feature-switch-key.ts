@@ -57,9 +57,7 @@ export enum FeatureSwitchKey {
   ApiBackend = "apiBackend",
   ConnectorCategories = "connectorCategories",
 
-  Trinity = "trinity",
   ZapierConnector = "zapierConnector",
-  VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
   HostedSites = "hostedSites",
   OpenDesignGenerate = "openDesignGenerate",
   SandboxIoLimiters = "sandboxIoLimiters",

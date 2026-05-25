@@ -105,20 +105,6 @@ export const internalEventConsumerChatAssistantContract = c.router({
   },
 });
 
-export const internalEventConsumerVoiceChatContract = c.router({
-  process: {
-    method: "POST",
-    path: "/api/internal/event-consumers/voice-chat",
-    headers: eventConsumerHeadersSchema,
-    body: eventConsumerPayloadSchema,
-    responses: {
-      200: z.object({ processed: z.number() }),
-      401: eventConsumerUnauthorizedSchema,
-    },
-    summary: "Append assistant run events into voice-chat tasks",
-  },
-});
-
 export type InternalEventConsumerAxiomContract =
   typeof internalEventConsumerAxiomContract;
 
@@ -130,6 +116,3 @@ export type InternalEventConsumerTelegramTypingContract =
 
 export type InternalEventConsumerAgentPhoneTypingContract =
   typeof internalEventConsumerAgentPhoneTypingContract;
-
-export type InternalEventConsumerVoiceChatContract =
-  typeof internalEventConsumerVoiceChatContract;

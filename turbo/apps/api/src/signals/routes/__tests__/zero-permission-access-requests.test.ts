@@ -595,7 +595,7 @@ describe("POST /api/zero/permission-access-requests", () => {
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining(
-          `/agents/${fixture.agentId}/permissions?request=${response.body.id}`,
+          `http://localhost:3002/agents/${fixture.agentId}/permissions?request=${response.body.id}`,
         ),
       }),
     );

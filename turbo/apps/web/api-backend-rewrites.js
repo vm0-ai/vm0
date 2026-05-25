@@ -1,22 +1,6 @@
 const UUID_PATH_SEGMENT_PATTERN =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
-const ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE = `/api/zero/voice-chat/:id(${UUID_PATH_SEGMENT_PATTERN})`;
-const ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE = new RegExp(
-  `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}$`,
-);
-const ZERO_VOICE_CHAT_ITEM_APPEND_REWRITE_SOURCE = `${ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE}/items`;
-const ZERO_VOICE_CHAT_ITEM_APPEND_PATH_RE = new RegExp(
-  `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}/items$`,
-);
-const ZERO_VOICE_CHAT_TASKS_REWRITE_SOURCE = `/api/zero/voice-chat/:id(${UUID_PATH_SEGMENT_PATTERN})/tasks`;
-const ZERO_VOICE_CHAT_TASKS_PATH_RE = new RegExp(
-  `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}/tasks$`,
-);
-const ZERO_VOICE_CHAT_TRIGGER_REASONING_REWRITE_SOURCE = `${ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE}/trigger-reasoning`;
-const ZERO_VOICE_CHAT_TRIGGER_REASONING_PATH_RE = new RegExp(
-  `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}/trigger-reasoning$`,
-);
 const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/me/model-providers/:type";
 const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
@@ -464,7 +448,6 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cron/sync-skills", "/api/cron/sync-skills"],
   ["/api/cron/telegram-cleanup", "/api/cron/telegram-cleanup"],
-  ["/api/cron/voice-chat-cleanup", "/api/cron/voice-chat-cleanup"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
@@ -588,7 +571,6 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/internal/callbacks/slack/org", "/api/internal/callbacks/slack/org"],
   ["/api/internal/callbacks/telegram", "/api/internal/callbacks/telegram"],
-  ["/api/internal/callbacks/voice-chat", "/api/internal/callbacks/voice-chat"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
     "/api/internal/cron/aggregate-model-stats",
@@ -609,10 +591,6 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/internal/event-consumers/telegram-typing",
     "/api/internal/event-consumers/telegram-typing",
-  ],
-  [
-    "/api/internal/event-consumers/voice-chat",
-    "/api/internal/event-consumers/voice-chat",
   ],
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/oauth-provider/authorize", "/api/test/oauth-provider/authorize"],
@@ -983,15 +961,6 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/voice-io/stt", "/api/zero/voice-io/stt"],
   ["/api/zero/voice-io/tts", "/api/zero/voice-io/tts"],
   [
-    "/api/zero/voice-chat/:id/session-ended",
-    "/api/zero/voice-chat/:id/session-ended",
-  ],
-  [
-    "/api/zero/voice-chat/:id/session-started",
-    "/api/zero/voice-chat/:id/session-started",
-  ],
-  ["/api/zero/voice-chat/:id/usage", "/api/zero/voice-chat/:id/usage"],
-  [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",
   ],
@@ -1144,28 +1113,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE,
     "/api/zero/variables/:name",
     ZERO_VARIABLE_BY_NAME_PATH_RE,
-  ],
-  ["/api/zero/voice-chat", "/api/zero/voice-chat"],
-  ["/api/zero/voice-chat/token", "/api/zero/voice-chat/token"],
-  [
-    ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE,
-    "/api/zero/voice-chat/:id",
-    ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE,
-  ],
-  [
-    ZERO_VOICE_CHAT_ITEM_APPEND_REWRITE_SOURCE,
-    "/api/zero/voice-chat/:id/items",
-    ZERO_VOICE_CHAT_ITEM_APPEND_PATH_RE,
-  ],
-  [
-    ZERO_VOICE_CHAT_TASKS_REWRITE_SOURCE,
-    "/api/zero/voice-chat/:id/tasks",
-    ZERO_VOICE_CHAT_TASKS_PATH_RE,
-  ],
-  [
-    ZERO_VOICE_CHAT_TRIGGER_REASONING_REWRITE_SOURCE,
-    "/api/zero/voice-chat/:id/trigger-reasoning",
-    ZERO_VOICE_CHAT_TRIGGER_REASONING_PATH_RE,
   ],
   ["/api/zero/web/download-file", "/api/zero/web/download-file"],
 ];
