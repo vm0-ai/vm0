@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
+use std::os::fd::{AsRawFd, RawFd};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -38,6 +39,8 @@ const THREAD_EXEC_OPERATION_STDIN: &str = "vsock-exec-operation-stdin";
 const THREAD_EXEC_OPERATION_STDOUT: &str = "vsock-exec-operation-stdout";
 const THREAD_EXEC_OPERATION_STDERR: &str = "vsock-exec-operation-stderr";
 const THREAD_EXEC_OPERATION_OUTPUT: &str = "vsock-exec-operation-output";
+const STDIN_WRITE_CANCEL_POLL_MS: i32 = 50;
+const STDIN_WRITE_CANCELLED: &str = "stdin write cancelled";
 const OUTPUT_CHANNEL_CAPACITY: usize = 32;
 const FRAME_BODY_HEADER_LEN: usize = 1 + 4; // message type + sequence
 const EXEC_OUTPUT_PAYLOAD_OVERHEAD: usize = 1 + 4 + 1 + 4;
@@ -272,6 +275,7 @@ struct StdinWriter {
     handle: JoinHandle<()>,
     done_rx: mpsc::Receiver<()>,
     result_rx: mpsc::Receiver<io::Result<()>>,
+    cancel: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Copy)]
@@ -639,13 +643,7 @@ fn run_exec_operation_worker<S>(
         &connection_cancel,
         &exec_cancel,
     );
-    join_stdin_writer_after_wait(
-        stdin_writer,
-        kill_target,
-        &outcome,
-        request.seq,
-        &request.label,
-    );
+    join_stdin_writer_after_wait(stdin_writer, kill_target, request.seq, &request.label);
     if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
         || connection_cancel.load(Ordering::Acquire)
         || exec_cancel.load(Ordering::Acquire)
@@ -935,15 +933,18 @@ fn spawn_exec_operation_stdin<W, S>(
     spawner: S,
 ) -> io::Result<StdinWriter>
 where
-    W: Write + Send + 'static,
+    W: AsRawFd + Write + Send + 'static,
     S: ThreadSpawner,
 {
+    set_nonblocking(stdin.as_raw_fd())?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let writer_cancel = Arc::clone(&cancel);
     let (done_tx, done_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
     let handle = spawner.spawn_unit(
         THREAD_EXEC_OPERATION_STDIN,
         Box::new(move || {
-            let result = stdin.write_all(&stdin_bytes);
+            let result = write_stdin_cancellable(&mut stdin, &stdin_bytes, &writer_cancel);
             let _ = result_tx.send(result);
             let _ = done_tx.send(());
         }),
@@ -952,25 +953,109 @@ where
         handle,
         done_rx,
         result_rx,
+        cancel,
     })
+}
+
+fn set_nonblocking(fd: RawFd) -> io::Result<()> {
+    // SAFETY: `fcntl` reads flags for an open file descriptor owned by the caller.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK != 0 {
+        return Ok(());
+    }
+    // SAFETY: `fcntl` updates flags for the same open file descriptor.
+    let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn write_stdin_cancellable<W>(
+    stdin: &mut W,
+    stdin_bytes: &[u8],
+    cancel: &AtomicBool,
+) -> io::Result<()>
+where
+    W: AsRawFd + Write,
+{
+    let mut written = 0usize;
+    while written < stdin_bytes.len() {
+        if cancel.load(Ordering::Acquire) {
+            return Err(stdin_write_cancelled());
+        }
+        let remaining = stdin_bytes
+            .get(written..)
+            .ok_or_else(|| io::Error::other("stdin write offset out of range"))?;
+        match stdin.write(remaining) {
+            Ok(0) => return Err(io::Error::new(io::ErrorKind::WriteZero, "write stdin")),
+            Ok(n) => written += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                wait_stdin_writable_or_cancelled(stdin.as_raw_fd(), cancel)?;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+fn wait_stdin_writable_or_cancelled(fd: RawFd, cancel: &AtomicBool) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(stdin_write_cancelled());
+        }
+        let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+        // SAFETY: `pollfd` points to one initialized descriptor entry.
+        let result = unsafe { libc::poll(&mut pollfd, 1, STDIN_WRITE_CANCEL_POLL_MS) };
+        if result > 0 {
+            if pollfd.revents & libc::POLLNVAL != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "stdin pipe fd invalid",
+                ));
+            }
+            return Ok(());
+        }
+        if result == 0 {
+            continue;
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() != io::ErrorKind::Interrupted {
+            return Err(err);
+        }
+    }
+}
+
+fn stdin_write_cancelled() -> io::Error {
+    io::Error::new(io::ErrorKind::Interrupted, STDIN_WRITE_CANCELLED)
+}
+
+fn is_stdin_write_cancelled(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::Interrupted && error.to_string() == STDIN_WRITE_CANCELLED
 }
 
 fn join_stdin_writer_after_wait(
     writer: Option<StdinWriter>,
     kill_target: ProcessTreeKillTarget,
-    outcome: &WaitOutcome,
     seq: u32,
     label: &str,
 ) {
     let Some(writer) = writer else {
         return;
     };
-    if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
-        && matches!(writer.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty))
-    {
-        // The direct shell exited or wait failed, but a descendant can still
-        // keep stdin open. Kill the process tree before joining the writer so
-        // bounded stdin cannot strand this worker thread.
+    if matches!(writer.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+        // The direct shell is no longer running, but a descendant can still
+        // keep stdin open. Stop the writer before joining it so bounded stdin
+        // cannot strand this worker thread.
+        writer.cancel.store(true, Ordering::Release);
         let _ = unsafe { kill_process_tree_target(kill_target) };
     }
     join_stdin_writer(writer, seq, label);
@@ -978,6 +1063,7 @@ fn join_stdin_writer_after_wait(
 
 fn join_stdin_writer_after_kill(writer: Option<StdinWriter>) {
     if let Some(writer) = writer {
+        writer.cancel.store(true, Ordering::Release);
         join_stdin_writer(writer, 0, "");
     }
 }
@@ -989,6 +1075,7 @@ fn join_stdin_writer(writer: StdinWriter, seq: u32, label: &str) {
     }
     match writer.result_rx.recv() {
         Ok(Ok(())) | Err(_) => {}
+        Ok(Err(e)) if is_stdin_write_cancelled(&e) => {}
         Ok(Err(e)) => {
             let label_preview = truncate_command_preview(label);
             log(
@@ -1191,7 +1278,9 @@ fn join_output_writer(handle: Option<JoinHandle<()>>) {
 mod tests {
     use super::*;
     use crate::threading::test_support::FailingThreadSpawner;
-    use std::io::Read;
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::os::unix::net::UnixStream;
     use std::time::Duration;
 
@@ -1396,6 +1485,34 @@ mod tests {
         assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("stdin writer thread"));
         assert_registry_released(&registry, 46);
+    }
+
+    #[test]
+    fn stdin_writer_cancel_unblocks_full_pipe() {
+        let mut fds = [0; 2];
+        // SAFETY: `pipe` initializes two file descriptors in `fds` on success.
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        // SAFETY: both descriptors were freshly returned by `pipe`.
+        let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        // SAFETY: both descriptors were freshly returned by `pipe`.
+        let mut write_file = unsafe { File::from_raw_fd(fds[1]) };
+        set_nonblocking(write_file.as_raw_fd()).unwrap();
+
+        let fill = [0u8; 4096];
+        loop {
+            match write_file.write(&fill) {
+                Ok(0) => panic!("pipe write returned zero while filling"),
+                Ok(_) => {}
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(e) => panic!("failed to fill pipe: {e}"),
+            }
+        }
+
+        let writer =
+            spawn_exec_operation_stdin(write_file, b"blocked".to_vec(), SystemThreadSpawner)
+                .unwrap();
+        join_stdin_writer_after_kill(Some(writer));
+        drop(read_fd);
     }
 
     #[test]
