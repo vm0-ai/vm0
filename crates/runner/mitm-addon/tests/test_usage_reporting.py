@@ -496,12 +496,20 @@ class TestResponseUsageReporting:
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
+    @pytest.mark.parametrize("encoding_case", ["identity", "gzip"])
     def test_json_fallback_empty_body_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case
     ):
         """Empty model-provider bodies are not JSON parser failures."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        body = gzip.compress(b"") if encoding_case == "gzip" else b""
+        response_headers = {
+            "content-type": "application/json",
+            "content-length": str(len(body)),
+        }
+        if encoding_case == "gzip":
+            response_headers["content-encoding"] = "gzip"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
@@ -511,12 +519,9 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray()
+        flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=_header_map({"content-type": "application/json", "content-length": "0"}),
-        )
+        flow.response = tutils.tresp(status_code=200, headers=_header_map(response_headers))
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (

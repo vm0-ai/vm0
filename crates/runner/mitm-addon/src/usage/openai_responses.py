@@ -260,19 +260,21 @@ def extract_openai_responses_usage_with_error_from_json(
     provided, their content encoding controls one-shot decompression before
     parsing; ``None`` skips decompression.
 
-    Returns ``(None, error)`` when parsing fails and ``(None, None)`` when no
-    platform usage categories can be extracted from valid JSON. Otherwise
-    returns a dict keyed by platform model usage categories such as
-    ``MODEL_USAGE_CATEGORY_INPUT``, ``MODEL_USAGE_CATEGORY_OUTPUT``, and
-    ``MODEL_USAGE_CATEGORY_CACHE_READ``. OpenAI ``input_tokens`` include cached
-    tokens, so this extractor splits them into uncached input and cache-read
-    categories before reporting.
+    Returns ``(None, error)`` when parsing fails and ``(None, None)`` when the
+    decoded body is empty or no platform usage categories can be extracted from
+    valid JSON. Otherwise returns a dict keyed by platform model usage
+    categories such as ``MODEL_USAGE_CATEGORY_INPUT``,
+    ``MODEL_USAGE_CATEGORY_OUTPUT``, and ``MODEL_USAGE_CATEGORY_CACHE_READ``.
+    OpenAI ``input_tokens`` include cached tokens, so this extractor splits
+    them into uncached input and cache-read categories before reporting.
     """
 
     if headers:
         body = body_utils.decompress_body(
             body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
+    if not body:
+        return None, None
     extractor = create_openai_responses_json_usage_extractor()
     extractor.feed(body)
     return extractor.finish()

@@ -176,12 +176,15 @@ def extract_anthropic_messages_usage_with_error_from_json(
 
     Falls back to decompressing the body if *headers* indicate compression.
     Returns ``(None, error)`` when JSON usage parsing fails and
-    ``(None, None)`` when no selected usage or metadata fields are found.
+    ``(None, None)`` when the decoded body is empty or no selected usage or
+    metadata fields are found.
     """
     if headers:
         body = body_utils.decompress_body(
             body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
+    if not body:
+        return None, None
     extractor = create_anthropic_messages_json_usage_extractor()
     extractor.feed(body)
     return extractor.finish()
