@@ -216,6 +216,42 @@ async fn supervised_exec_returns_handle_after_exec_started() {
 }
 
 #[tokio::test]
+async fn supervised_exec_sends_stdin_bytes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                stdin_bytes: Some(b"supervised-stdin"),
+                ..supervised_request("cat")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    assert_eq!(decoded.lifecycle, ExecLifecyclePolicy::Supervised);
+    assert_eq!(decoded.command, "cat");
+    assert_eq!(decoded.stdin_bytes, Some(&b"supervised-stdin"[..]));
+
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+}
+
+#[tokio::test]
 async fn supervised_exec_start_failed_before_started_returns_error() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

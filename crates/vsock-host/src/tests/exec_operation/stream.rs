@@ -127,6 +127,45 @@ async fn exec_start_stream_policy_uses_default_receiver() {
 }
 
 #[tokio::test]
+async fn exec_operation_stream_sends_stdin_bytes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+
+    let handle = host
+        .exec_operation_stream(ExecStreamRequest {
+            timeout_ms: 5000,
+            command: "cat",
+            env: &[],
+            sudo: false,
+            label: "stream-stdin",
+            stdout: ExecOutputPolicy::Stream {
+                limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+            },
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            stdin_bytes: Some(b"stream-stdin"),
+            stream_queue_capacity: None,
+        })
+        .await
+        .unwrap();
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
+    assert_eq!(decoded.command, "cat");
+    assert_eq!(decoded.stdin_bytes, Some(&b"stream-stdin"[..]));
+
+    send_discarded_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+}
+
+#[tokio::test]
 async fn exec_start_rejects_receiver_without_stream_policy() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
