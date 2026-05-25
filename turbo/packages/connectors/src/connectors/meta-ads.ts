@@ -5,9 +5,6 @@ export const metaAds = {
   "meta-ads": {
     label: "Meta Ads",
     category: "marketing-content-growth",
-    environmentMapping: {
-      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
     authMethods: {
@@ -15,26 +12,27 @@ export const metaAds = {
         featureFlag: FeatureSwitchKey.MetaAdsConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Facebook to grant access to Ads Manager.",
-        secrets: {
-          META_ADS_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "META_ADS_OAUTH_CLIENT_ID",
+            clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
+          },
+          scopes: ["ads_management", "ads_read", "business_management"],
+        },
+        access: {
+          kind: "static",
+          outputs: {
+            META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "META_ADS_OAUTH_CLIENT_ID",
-        clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
-      },
-      scopes: ["ads_management", "ads_read", "business_management"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

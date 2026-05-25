@@ -251,28 +251,18 @@ import { zeptomail } from "./connectors/zeptomail";
 import { zoom } from "./connectors/zoom";
 
 /**
- * Secret field configuration for connector auth methods
+ * User-entered field configuration for manual connector grant methods.
  */
-export interface ConnectorSecretConfig {
+export interface ConnectorManualGrantFieldConfig {
   label: string;
   required: boolean;
   placeholder?: string;
   /** Storage type: "secret" (default, encrypted) or "variable" (plain text). */
-  type?: "secret" | "variable";
+  storage?: "secret" | "variable";
 }
 
-/**
- * Auth method configuration for user-selectable connector connection flows.
- */
-export interface ConnectorAuthMethodConfig {
-  label: string;
-  helpText?: string;
-  /** When set, this auth method is only available while the feature is enabled. */
-  featureFlag?: FeatureSwitchKey;
-  /** When false, feature-gated UI surfaces should not add an experimental label. */
-  showExperimentalLabel?: boolean;
-  secrets: Record<string, ConnectorSecretConfig>;
-}
+/** @deprecated Use ConnectorManualGrantFieldConfig. */
+export type ConnectorSecretConfig = ConnectorManualGrantFieldConfig;
 
 /**
  * OAuth configuration for connectors that support OAuth flow.
@@ -382,6 +372,123 @@ export interface ConnectorCliAuthConfig {
     label: string;
     description?: string;
   }[];
+}
+
+export type ConnectorGrantKind =
+  | "manual"
+  | "auth-code"
+  | "device-auth"
+  | "interactive-pairing"
+  | "managed";
+
+export interface ConnectorManualGrantConfig {
+  readonly kind: "manual";
+  readonly fields: Record<string, ConnectorManualGrantFieldConfig>;
+}
+
+export interface ConnectorAuthCodeGrantConfig {
+  readonly kind: "auth-code";
+  readonly tokenUrl: string;
+  readonly client: ConnectorOAuthClientConfig;
+  readonly scopes: string[];
+}
+
+export interface ConnectorDeviceAuthGrantConfig {
+  readonly kind: "device-auth";
+  readonly deviceAuthUrl: string;
+  readonly tokenUrl: string;
+  readonly client: StaticPublicConnectorOAuthClientConfig;
+  readonly scopes: string[];
+}
+
+export interface ConnectorInteractivePairingGrantConfig {
+  readonly kind: "interactive-pairing";
+  readonly flow: ConnectorCliAuthFlow;
+  readonly modes?: readonly {
+    value: string;
+    label: string;
+    description?: string;
+  }[];
+  readonly importsAuthMethod?: ConnectorAuthMethodType;
+}
+
+export interface ConnectorManagedGrantConfig {
+  readonly kind: "managed";
+  readonly fields?: Record<string, ConnectorManualGrantFieldConfig>;
+}
+
+export type ConnectorGrantConfig =
+  | ConnectorManualGrantConfig
+  | ConnectorAuthCodeGrantConfig
+  | ConnectorDeviceAuthGrantConfig
+  | ConnectorInteractivePairingGrantConfig
+  | ConnectorManagedGrantConfig;
+
+export type ConnectorAccessKind =
+  | "static"
+  | "refresh-token"
+  | "credential-exchange"
+  | "managed"
+  | "none";
+
+export interface ConnectorStaticAccessConfig {
+  readonly kind: "static";
+  readonly outputs: Record<string, string>;
+}
+
+export interface ConnectorRefreshTokenAccessConfig {
+  readonly kind: "refresh-token";
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly outputs: Record<string, string>;
+}
+
+export interface ConnectorCredentialExchangeAccessConfig {
+  readonly kind: "credential-exchange";
+  readonly provider: string;
+  readonly inputs: Record<string, string>;
+  readonly outputs: Record<string, string>;
+}
+
+export interface ConnectorManagedAccessConfig {
+  readonly kind: "managed";
+  readonly outputs?: Record<string, string>;
+}
+
+export interface ConnectorNoAccessConfig {
+  readonly kind: "none";
+}
+
+export type ConnectorAccessConfig =
+  | ConnectorStaticAccessConfig
+  | ConnectorRefreshTokenAccessConfig
+  | ConnectorCredentialExchangeAccessConfig
+  | ConnectorManagedAccessConfig
+  | ConnectorNoAccessConfig;
+
+export type ConnectorRevokeKind = "none" | "token-revoke";
+
+export type ConnectorRevokeConfig =
+  | {
+      readonly kind: "none";
+    }
+  | {
+      readonly kind: "token-revoke";
+    };
+
+/**
+ * Auth method configuration for user-selectable connector connection flows.
+ */
+export interface ConnectorAuthMethodConfig {
+  label: string;
+  helpText?: string;
+  /** When set, this auth method is only available while the feature is enabled. */
+  featureFlag?: FeatureSwitchKey;
+  /** When false, feature-gated UI surfaces should not add an experimental label. */
+  showExperimentalLabel?: boolean;
+  readonly grant: ConnectorGrantConfig;
+  readonly access: ConnectorAccessConfig;
+  readonly revoke: ConnectorRevokeConfig;
 }
 
 /**
@@ -530,26 +637,15 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
     "data-automation-infrastructure",
   ];
 
-type ConnectorAuthMethodsBase = Partial<
-  Record<Exclude<ConnectorAuthMethodType, "oauth">, ConnectorAuthMethodConfig>
+type ConnectorAuthMethods = Partial<
+  Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
 >;
-
-type ConnectorAuthMethodsWithOAuth = ConnectorAuthMethodsBase & {
-  readonly oauth: ConnectorAuthMethodConfig;
-};
-
-type ConnectorAuthMethodsWithoutOAuth = ConnectorAuthMethodsBase & {
-  readonly oauth?: never;
-};
 
 type ConnectorConfigBase = {
   readonly label: string;
   readonly helpText: string;
   readonly category: ConnectorDisplayCategory;
   readonly defaultAuthMethod?: ConnectorAuthMethodType;
-  readonly cliAuth?: ConnectorCliAuthConfig;
-  /** Environment mapping declaring which env vars this connector provides. */
-  readonly environmentMapping: Record<string, string>;
   /**
    * Output categories this connector skill can generate. This is product
    * metadata for discovery and routing, not a permission/capability grant.
@@ -558,7 +654,7 @@ type ConnectorConfigBase = {
   /**
    * Optional concept words and common-guess aliases used by connector search.
    * Lowercase only. Avoid duplicating content already in `label`,
-   * `environmentMapping` keys, or `authMethods[*].secrets` keys.
+   * runtime output keys, or auth method field keys.
    */
   readonly tags?: readonly string[];
 };
@@ -566,15 +662,9 @@ type ConnectorConfigBase = {
 /**
  * Base configuration shape for all connector types.
  */
-export type ConnectorConfig =
-  | (ConnectorConfigBase & {
-      readonly authMethods: ConnectorAuthMethodsWithOAuth;
-      readonly oauth: ConnectorOAuthConfig;
-    })
-  | (ConnectorConfigBase & {
-      readonly authMethods: ConnectorAuthMethodsWithoutOAuth;
-      readonly oauth?: never;
-    });
+export type ConnectorConfig = ConnectorConfigBase & {
+  readonly authMethods: ConnectorAuthMethods;
+};
 
 /**
  * Connector type configuration
@@ -837,33 +927,141 @@ const CONNECTOR_TYPES_DEF = {
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = Extract<keyof typeof CONNECTOR_TYPES_DEF, string>;
-export type OAuthConnectorType = {
-  [Type in ConnectorType]: "oauth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
-    ? Type
-    : never;
+type ConnectorAuthMethodsOf<Type extends ConnectorType> =
+  (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"];
+
+export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
+  keyof ConnectorAuthMethodsOf<Type>,
+  string
+>;
+type ConnectorAuthMethodKeys<Type extends ConnectorType> =
+  ConnectorAuthMethodIds<Type> & ConnectorAuthMethodType;
+
+type ConnectorAuthMethodGrantKindById = {
+  readonly oauth: "auth-code" | "device-auth";
+  readonly "api-token": "manual";
+  readonly api: "managed";
+  readonly "cli-auth": "interactive-pairing";
+};
+
+type ConnectorAuthMethodAccessKindById = {
+  readonly oauth: "refresh-token" | "static";
+  readonly "api-token": "static";
+  readonly api: "managed" | "none";
+  readonly "cli-auth": "none";
+};
+
+type ConnectorAuthMethodRevokeKindById = {
+  readonly oauth: "none" | "token-revoke";
+  readonly "api-token": "none";
+  readonly api: "none";
+  readonly "cli-auth": "none";
+};
+
+type InvalidAuthMethodGrantKindConnectorType = {
+  [Type in ConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly grant: {
+        readonly kind: ConnectorAuthMethodGrantKindById[Method];
+      };
+    }
+      ? never
+      : Type;
+  }[ConnectorAuthMethodKeys<Type>];
 }[ConnectorType];
-export type OAuthAuthCodeConnectorType = {
-  [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "authorization-code"
-    ? Type
-    : never;
-}[OAuthConnectorType];
-export type OAuthDeviceAuthConnectorType = {
-  [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "device-authorization"
-    ? Type
-    : never;
-}[OAuthConnectorType];
-export type ConnectorCliAuthConnectorType = {
-  [Type in ConnectorType]: "cli-auth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
-    ? Type
-    : never;
+export type ConnectorAuthMethodGrantKindsMatchKeys =
+  AssertNever<InvalidAuthMethodGrantKindConnectorType>;
+
+type InvalidAuthMethodAccessKindConnectorType = {
+  [Type in ConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly access: {
+        readonly kind: ConnectorAuthMethodAccessKindById[Method];
+      };
+    }
+      ? never
+      : Type;
+  }[ConnectorAuthMethodKeys<Type>];
 }[ConnectorType];
+export type ConnectorAuthMethodAccessKindsMatchKeys =
+  AssertNever<InvalidAuthMethodAccessKindConnectorType>;
+
+type InvalidAuthMethodRevokeKindConnectorType = {
+  [Type in ConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly revoke: {
+        readonly kind: ConnectorAuthMethodRevokeKindById[Method];
+      };
+    }
+      ? never
+      : Type;
+  }[ConnectorAuthMethodKeys<Type>];
+}[ConnectorType];
+export type ConnectorAuthMethodRevokeKindsMatchKeys =
+  AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
+
+export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
+  [Type in ConnectorType]: {
+    [Method in keyof ConnectorAuthMethodsOf<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly grant: { readonly kind: Kind };
+    }
+      ? Type
+      : never;
+  }[keyof ConnectorAuthMethodsOf<Type>];
+}[ConnectorType];
+
+export type ConnectorTypesByAccessKind<Kind extends ConnectorAccessKind> = {
+  [Type in ConnectorType]: {
+    [Method in keyof ConnectorAuthMethodsOf<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly access: { readonly kind: Kind };
+    }
+      ? Type
+      : never;
+  }[keyof ConnectorAuthMethodsOf<Type>];
+}[ConnectorType];
+
+export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
+  [Type in ConnectorType]: {
+    [Method in keyof ConnectorAuthMethodsOf<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly revoke: { readonly kind: Kind };
+    }
+      ? Type
+      : never;
+  }[keyof ConnectorAuthMethodsOf<Type>];
+}[ConnectorType];
+
+export type OAuthConnectorType = ConnectorTypesByGrantKind<
+  "auth-code" | "device-auth"
+>;
+export type OAuthAuthCodeConnectorType = ConnectorTypesByGrantKind<"auth-code">;
+export type OAuthDeviceAuthConnectorType =
+  ConnectorTypesByGrantKind<"device-auth">;
+export type ConnectorCliAuthConnectorType =
+  ConnectorTypesByGrantKind<"interactive-pairing">;
 export type ConnectorBrowserVerificationCliAuthConnectorType = {
-  [Type in ConnectorCliAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type] extends {
-    readonly cliAuth: { readonly flow: "browser-verification" };
+  [Type in ConnectorType]: {
+    [Method in keyof ConnectorAuthMethodsOf<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly grant: {
+        readonly kind: "interactive-pairing";
+        readonly flow: "browser-verification";
+      };
+    }
+      ? Type
+      : never;
+  }[keyof ConnectorAuthMethodsOf<Type>];
+}[ConnectorType];
+
+type InvalidDefaultAuthMethodConnectorType = {
+  [Type in ConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type] extends {
+    readonly defaultAuthMethod: infer DefaultMethod;
   }
-    ? Type
+    ? DefaultMethod extends ConnectorAuthMethodIds<Type>
+      ? never
+      : Type
     : never;
-}[ConnectorCliAuthConnectorType];
+}[ConnectorType];
+export type ConnectorDefaultAuthMethodsMatchConfig =
+  AssertNever<InvalidDefaultAuthMethodConnectorType>;
 
 export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
 export const CONNECTOR_TYPE_KEYS = Object.freeze(

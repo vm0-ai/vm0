@@ -127,8 +127,17 @@ export type OAuthDeviceAuthPollResult =
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
-type ConnectorOAuthClientFor<T extends OAuthConnectorType> =
-  (typeof CONNECTOR_TYPES)[T]["oauth"]["client"];
+type ConnectorOAuthClientFor<T extends OAuthConnectorType> = {
+  [Method in keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]]: (typeof CONNECTOR_TYPES)[T]["authMethods"][Method] extends {
+    readonly grant: {
+      readonly kind: "auth-code" | "device-auth";
+      readonly client: infer Client;
+    };
+  }
+    ? Client
+    : never;
+}[keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]] &
+  ConnectorOAuthClientConfig;
 
 type NoClientCredentialArgs = Record<never, never>;
 

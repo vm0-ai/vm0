@@ -6,10 +6,8 @@ import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorOAuthClientConfig,
-} from "@vm0/connectors/connectors";
+import type { ConnectorOAuthClientConfig } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
@@ -313,20 +311,20 @@ function useDynamicTestOAuthRefresh(): {
 function configureDynamicTestOAuthRefresh(
   refreshes: CapturedOAuthRefresh[],
 ): () => void {
-  const oauth = CONNECTOR_TYPES["test-oauth"].oauth;
-  if (!oauth) {
+  const grant = getConnectorAuthMethod("test-oauth", "oauth")?.grant;
+  if (grant?.kind !== "auth-code") {
     throw new Error("test-oauth OAuth config is missing");
   }
 
-  const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
-  const originalClient = oauth.client;
+  const mutableGrant = grant as { client: ConnectorOAuthClientConfig };
+  const originalClient = grant.client;
   const access = testOauthProvider.access;
   if (access.kind !== "refresh-token") {
     throw new Error("test-oauth provider should support refresh");
   }
   const originalRefreshToken = access.refreshToken;
 
-  mutableOAuth.client = dynamicPublicClient;
+  mutableGrant.client = dynamicPublicClient;
   access.refreshToken = (args) => {
     refreshes.push({
       clientId: args.clientId,
@@ -341,7 +339,7 @@ function configureDynamicTestOAuthRefresh(
   };
 
   return () => {
-    mutableOAuth.client = originalClient;
+    mutableGrant.client = originalClient;
     access.refreshToken = originalRefreshToken;
   };
 }

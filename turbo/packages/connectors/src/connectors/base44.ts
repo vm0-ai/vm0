@@ -5,9 +5,6 @@ export const base44 = {
   base44: {
     label: "Base44",
     category: "ai-agent-apps",
-    environmentMapping: {
-      BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Base44 account to let agents access and manage your Base44 apps",
     authMethods: {
@@ -15,30 +12,29 @@ export const base44 = {
         featureFlag: FeatureSwitchKey.Base44Connector,
         label: "OAuth",
         helpText: "Sign in with Base44 to grant access.",
-        secrets: {
-          BASE44_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "device-auth",
+          deviceAuthUrl: "https://app.base44.com/oauth/device/code",
+          tokenUrl: "https://app.base44.com/oauth/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "public",
+            tokenEndpointAuthMethod: "none",
+            clientId: "base44_cli",
           },
-          BASE44_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: false,
+          scopes: ["apps:read", "apps:write", "offline"],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "BASE44_ACCESS_TOKEN",
+          refreshToken: "BASE44_REFRESH_TOKEN",
+          outputs: {
+            BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "device-authorization",
-      deviceAuthUrl: "https://app.base44.com/oauth/device/code",
-      tokenUrl: "https://app.base44.com/oauth/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "public",
-        tokenEndpointAuthMethod: "none",
-        clientId: "base44_cli",
-      },
-      scopes: ["apps:read", "apps:write", "offline"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

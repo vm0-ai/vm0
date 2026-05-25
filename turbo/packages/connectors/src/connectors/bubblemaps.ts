@@ -4,9 +4,6 @@ export const bubblemaps = {
   bubblemaps: {
     label: "Bubblemaps",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      BUBBLEMAPS_API_KEY: "$secrets.BUBBLEMAPS_API_KEY",
-    },
     helpText:
       "Connect your Bubblemaps account to access token maps, holders, wallet labels, clusters, and scores through the Data API",
     authMethods: {
@@ -14,13 +11,23 @@ export const bubblemaps = {
         label: "API Key",
         helpText:
           "1. Log in to the [Bubblemaps Pro platform](https://pro.bubblemaps.io)\n2. Get your Data API key\n3. Use this key in the `X-ApiKey` request header",
-        secrets: {
-          BUBBLEMAPS_API_KEY: {
-            label: "API Key",
-            required: true,
-            placeholder: "Coffee5afe10ca1Coffee5afe10ca1Co",
+        grant: {
+          kind: "manual",
+          fields: {
+            BUBBLEMAPS_API_KEY: {
+              label: "API Key",
+              required: true,
+              placeholder: "Coffee5afe10ca1Coffee5afe10ca1Co",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            BUBBLEMAPS_API_KEY: "$secrets.BUBBLEMAPS_API_KEY",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

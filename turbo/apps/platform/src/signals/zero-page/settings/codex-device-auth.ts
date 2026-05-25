@@ -10,7 +10,7 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
-import { onRef, resetSignal, settle } from "../../utils.ts";
+import { onRef, resetSignal, settle, setLoop } from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
 
 type CodexDeviceAuthDialogMode = "connect" | "reconnect";
@@ -243,67 +243,84 @@ async function pollCodexDeviceAuth(args: {
   readonly closeDialog: () => void;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  while (Date.now() < activeFlowOrExpired(args.getFlow(), args.requestId)) {
-    const current = args.getFlow();
-    if (!isCurrentActive(current, args.requestId)) {
-      return false;
-    }
+  let completed = false;
+  let expired = false;
 
-    args.setFlow({ ...current, status: "polling" });
-    const completed = await settle(
-      completeCodexDeviceAuth({
-        createClient: args.createClient,
-        sessionToken: current.sessionToken,
-        signal: args.signal,
-      }),
-      args.signal,
-    );
-    args.signal.throwIfAborted();
+  await setLoop(
+    async (signal) => {
+      const remainingMs =
+        activeFlowOrExpired(args.getFlow(), args.requestId) - Date.now();
+      if (remainingMs <= 0) {
+        expired = true;
+        return true;
+      }
 
-    const latest = args.getFlow();
-    if (!isCurrentActive(latest, args.requestId)) {
-      return false;
-    }
+      const current = args.getFlow();
+      if (!isCurrentActive(current, args.requestId)) {
+        return true;
+      }
 
-    if (!completed.ok) {
+      args.setFlow({ ...current, status: "polling" });
+      const completion = await settle(
+        completeCodexDeviceAuth({
+          createClient: args.createClient,
+          sessionToken: current.sessionToken,
+          signal,
+        }),
+        signal,
+      );
+      signal.throwIfAborted();
+
+      const latest = args.getFlow();
+      if (!isCurrentActive(latest, args.requestId)) {
+        return true;
+      }
+
+      if (!completion.ok) {
+        args.setFlow({
+          status: "error",
+          message: codexDeviceAuthErrorMessage(completion.error),
+        });
+        return true;
+      }
+
+      if (completion.value.status === "complete") {
+        args.reloadProviders();
+        toast.success("ChatGPT connected");
+        args.closeDialog();
+        completed = true;
+        return true;
+      }
+
       args.setFlow({
-        status: "error",
-        message: codexDeviceAuthErrorMessage(completed.error),
+        ...latest,
+        status: "pending",
+        errorMessage: completion.value.errorMessage,
       });
+
+      const nextRemainingMs = latest.expiresAtMs - Date.now();
+      if (nextRemainingMs <= 0) {
+        expired = true;
+        return true;
+      }
+      await delay(Math.min(latest.pollIntervalMs, nextRemainingMs), {
+        signal,
+      });
+      signal.throwIfAborted();
       return false;
-    }
-
-    if (completed.value.status === "complete") {
-      args.reloadProviders();
-      toast.success("ChatGPT connected");
-      args.closeDialog();
-      return true;
-    }
-
-    args.setFlow({
-      ...latest,
-      status: "pending",
-      errorMessage: completed.value.errorMessage,
-    });
-
-    const remainingMs = latest.expiresAtMs - Date.now();
-    if (remainingMs <= 0) {
-      break;
-    }
-    await delay(Math.min(latest.pollIntervalMs, remainingMs), {
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
-  }
+    },
+    0,
+    args.signal,
+  );
 
   const latest = args.getFlow();
-  if (isCurrentActive(latest, args.requestId)) {
+  if (expired && isCurrentActive(latest, args.requestId)) {
     args.setFlow({
       status: "expired",
       message: "Codex connection session expired. Start again to retry.",
     });
   }
-  return false;
+  return completed;
 }
 
 function activeFlowOrExpired(

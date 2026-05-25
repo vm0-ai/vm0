@@ -6,21 +6,28 @@ export const langsmith = {
     category: "ai-memory-tracing-eval",
     helpText:
       "Connect to LangSmith for LLM tracing, evaluation, and dataset management.",
-    environmentMapping: {
-      LANGSMITH_TOKEN: "$secrets.LANGSMITH_TOKEN",
-    },
     authMethods: {
       "api-token": {
         label: "API Key",
         helpText:
           "Go to [smith.langchain.com](https://smith.langchain.com) → Settings → API Keys → Create API Key.",
-        secrets: {
-          LANGSMITH_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "lsv2_pt_...",
+        grant: {
+          kind: "manual",
+          fields: {
+            LANGSMITH_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "lsv2_pt_...",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            LANGSMITH_TOKEN: "$secrets.LANGSMITH_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

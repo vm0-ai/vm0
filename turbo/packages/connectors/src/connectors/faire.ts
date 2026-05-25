@@ -12,9 +12,6 @@ export const faire = {
       "inventory",
       "products",
     ],
-    environmentMapping: {
-      FAIRE_TOKEN: "$secrets.FAIRE_TOKEN",
-    },
     helpText:
       "Connect your Faire brand account to manage wholesale products, orders, inventory, shipments, and brand profile data",
     authMethods: {
@@ -22,13 +19,23 @@ export const faire = {
         label: "Access Token",
         helpText:
           "1. In the Faire portal, go to **Settings > Integrations**\n2. Generate an API key for a direct integration, or request one from Faire for a custom integration\n3. Copy the access token for the brand account you want to connect",
-        secrets: {
-          FAIRE_TOKEN: {
-            label: "Access Token",
-            required: true,
-            placeholder: "your-faire-access-token",
+        grant: {
+          kind: "manual",
+          fields: {
+            FAIRE_TOKEN: {
+              label: "Access Token",
+              required: true,
+              placeholder: "your-faire-access-token",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            FAIRE_TOKEN: "$secrets.FAIRE_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

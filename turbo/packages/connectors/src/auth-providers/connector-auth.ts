@@ -129,20 +129,24 @@ function connectorAccessProviderFor<T extends OAuthConnectorType>(
   type: T,
 ): OAuthConnectorAccessProvider<T> {
   if (isOAuthAuthCodeConnectorType(type)) {
-    return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type].access;
+    return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type]
+      .access as OAuthConnectorAccessProvider<T>;
   }
 
-  return deviceAuthConnectorProviderFor(type).access;
+  return deviceAuthConnectorProviderFor(type)
+    .access as OAuthConnectorAccessProvider<T>;
 }
 
 function connectorRevokeProviderFor<T extends OAuthConnectorType>(
   type: T,
 ): OAuthConnectorRevokeProvider<T> {
   if (isOAuthAuthCodeConnectorType(type)) {
-    return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type].revoke;
+    return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type]
+      .revoke as OAuthConnectorRevokeProvider<T>;
   }
 
-  return deviceAuthConnectorProviderFor(type).revoke;
+  return deviceAuthConnectorProviderFor(type)
+    .revoke as OAuthConnectorRevokeProvider<T>;
 }
 
 function connectorCredentialArgs(

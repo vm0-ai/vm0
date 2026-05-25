@@ -5,9 +5,6 @@ export const outlookCalendar = {
   "outlook-calendar": {
     label: "Outlook Calendar",
     category: "meetings-scheduling",
-    environmentMapping: {
-      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
-    },
     helpText:
       "Connect your Microsoft account to access and manage Outlook calendar events",
     authMethods: {
@@ -15,30 +12,30 @@ export const outlookCalendar = {
         featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
-        secrets: {
-          OUTLOOK_CALENDAR_ACCESS_TOKEN: {
-            label: "Access Token",
-            required: true,
+        grant: {
+          kind: "auth-code",
+          tokenUrl:
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          client: {
+            clientRegistration: "static",
+            clientType: "confidential",
+            tokenEndpointAuthMethod: "client_secret_post",
+            clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
+            clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
           },
-          OUTLOOK_CALENDAR_REFRESH_TOKEN: {
-            label: "Refresh Token",
-            required: true,
+          scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
+        },
+        access: {
+          kind: "refresh-token",
+          accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
+          refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          outputs: {
+            OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
           },
         },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "oauth",
-    oauth: {
-      flow: "authorization-code",
-      tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      client: {
-        clientRegistration: "static",
-        clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
-        clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
-        clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
-      },
-      scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

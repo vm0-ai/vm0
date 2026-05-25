@@ -5,9 +5,6 @@ export const printful = {
     label: "Printful",
     category: "data-automation-infrastructure",
     tags: ["ecommerce", "fulfillment", "products", "orders"],
-    environmentMapping: {
-      PRINTFUL_TOKEN: "$secrets.PRINTFUL_TOKEN",
-    },
     helpText:
       "Connect your Printful account to manage catalog data, products, orders, stores, and fulfillment workflows through the Printful API",
     authMethods: {
@@ -18,12 +15,22 @@ export const printful = {
           "2. Generate a **Private Token** with the scopes your workflow needs\n" +
           "3. Copy the token and use it as a Bearer token\n\n" +
           "For account-level Private Tokens, Printful requires an `X-PF-Store-Id` header on store-scoped requests.",
-        secrets: {
-          PRINTFUL_TOKEN: {
-            label: "Private Token",
-            required: true,
+        grant: {
+          kind: "manual",
+          fields: {
+            PRINTFUL_TOKEN: {
+              label: "Private Token",
+              required: true,
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            PRINTFUL_TOKEN: "$secrets.PRINTFUL_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

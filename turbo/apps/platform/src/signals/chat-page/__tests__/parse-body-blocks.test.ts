@@ -196,6 +196,25 @@ describe("parseBodyRenderBlocks", () => {
     });
   });
 
+  it("renders markdown connector connect links with agent IDs as connector action blocks", () => {
+    const url =
+      "https://app.vm0.ai/connectors/strapi/connect?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Connect and authorize Strapi](${url})`,
+    );
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "connector-action",
+      id: "connector-action-1",
+      connectorType: "strapi",
+      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+      originalUrl: url,
+    });
+  });
+
   it("does not render external connector authorize URLs as action blocks", () => {
     const url =
       "https://evil.example/connectors/strapi/authorize?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";

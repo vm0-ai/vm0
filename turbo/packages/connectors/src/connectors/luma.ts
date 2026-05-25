@@ -12,18 +12,25 @@ export const luma = {
         label: "API Key",
         helpText:
           "1. Log in at [lu.ma](https://lu.ma)\n2. Go to Calendars Home → select your calendar → Settings → Developer\n3. Generate or copy your API key\n4. Paste the key here",
-        secrets: {
-          LUMA_API_KEY: {
-            label: "API Key",
-            required: true,
-            placeholder: "your-luma-api-key",
+        grant: {
+          kind: "manual",
+          fields: {
+            LUMA_API_KEY: {
+              label: "API Key",
+              required: true,
+              placeholder: "your-luma-api-key",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            LUMA_API_KEY: "$secrets.LUMA_API_KEY",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",
-    environmentMapping: {
-      LUMA_API_KEY: "$secrets.LUMA_API_KEY",
-    },
   },
 } as const satisfies Record<string, ConnectorConfig>;

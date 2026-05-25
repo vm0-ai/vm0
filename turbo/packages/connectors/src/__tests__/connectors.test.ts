@@ -2,7 +2,6 @@ import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
-  CONNECTOR_TYPES,
   connectorTypeSchema,
   type OAuthAuthCodeConnectorType,
 } from "../connectors";
@@ -17,15 +16,16 @@ import {
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
-  getConnectorAuthMethods,
   getConnectorOAuthClientConfig,
   getConnectorOAuthDeviceAuthConfig,
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
   getConnectorOAuthFlow,
+  getConnectorManualGrantFields,
   getEligibleConnectorTypes,
   getRuntimeAvailableConnectorTypes,
+  getConnectorSecretNames,
   isOAuthAuthCodeConnectorType,
   isOAuthDeviceAuthConnectorType,
   isStaticConfidentialConnectorOAuthCredentials,
@@ -182,7 +182,12 @@ describe("connector auth method config", () => {
     const method = getConnectorAuthMethod("stripe", "cli-auth");
 
     expect(method).toBeDefined();
-    expect(method?.secrets).toStrictEqual({});
+    expect(method?.grant).toMatchObject({
+      kind: "interactive-pairing",
+      flow: "browser-verification",
+    });
+    expect(method?.access).toStrictEqual({ kind: "none" });
+    expect(method?.revoke).toStrictEqual({ kind: "none" });
     expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
     expect(getConnectorCliAuthFlow("stripe")).toBe("browser-verification");
     expect(getConnectorCliAuthModes("stripe")).toStrictEqual([
@@ -213,10 +218,10 @@ describe("connector auth method config", () => {
 });
 
 describe("isOAuthConnectorType", () => {
-  it("matches exactly the connector types that declare OAuth auth", () => {
+  it("matches exactly the connector types that declare OAuth grants", () => {
     const oauthConnectorTypes = connectorTypeSchema.options
       .filter((type) => {
-        return "oauth" in CONNECTOR_TYPES[type].authMethods;
+        return getConnectorOAuthConfigIfSupported(type) !== undefined;
       })
       .sort();
 
@@ -954,10 +959,8 @@ describe("getConnectorEnvironmentMapping", () => {
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
       if (!getConnectorOAuthConfigIfSupported(type)) continue;
-      const authMethods = getConnectorAuthMethods(type);
-      if (!authMethods["oauth"]) continue;
 
-      const oauthSecrets = Object.keys(authMethods["oauth"].secrets);
+      const oauthSecrets = getConnectorSecretNames(type, "oauth");
       const prefix = oauthSecrets
         .find((s) => {
           return s.endsWith("_ACCESS_TOKEN");
@@ -994,9 +997,10 @@ describe("getConnectorEnvironmentMapping", () => {
       }
 
       // api-token (if exists): exactly one secret XXX_TOKEN
-      if (authMethods["api-token"]) {
+      const apiTokenFields = getConnectorManualGrantFields(type, "api-token");
+      if (apiTokenFields) {
         expect(
-          Object.keys(authMethods["api-token"].secrets),
+          Object.keys(apiTokenFields),
           `${type}: api-token must have exactly ["${prefix}_TOKEN"]`,
         ).toEqual([`${prefix}_TOKEN`]);
       }
@@ -1005,11 +1009,11 @@ describe("getConnectorEnvironmentMapping", () => {
 
   it("api-token-only connectors expose all secrets via environmentMapping with same name", () => {
     for (const type of connectorTypeSchema.options) {
-      const authMethods = getConnectorAuthMethods(type);
-      if (authMethods["oauth"] || !authMethods["api-token"]) continue;
       if (getConnectorOAuthConfigIfSupported(type)) continue;
+      const fields = getConnectorManualGrantFields(type, "api-token");
+      if (!fields) continue;
 
-      const secrets = Object.keys(authMethods["api-token"].secrets);
+      const fieldNames = Object.keys(fields);
       const mapping = getConnectorEnvironmentMapping(type);
       const mapKeys = Object.keys(mapping);
 
@@ -1017,10 +1021,10 @@ describe("getConnectorEnvironmentMapping", () => {
       expect(
         mapKeys.sort(),
         `${type}: environmentMapping keys must match api-token secrets`,
-      ).toEqual(secrets.sort());
+      ).toEqual(fieldNames.sort());
 
       // each mapping value must be $secrets.KEY or $vars.KEY (same name)
-      for (const key of secrets) {
+      for (const key of fieldNames) {
         expect(
           mapping[key] === `$secrets.${key}` || mapping[key] === `$vars.${key}`,
           `${type}: environmentMapping["${key}"] = "${mapping[key]}", expected $secrets.${key} or $vars.${key}`,
@@ -1047,7 +1051,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     return undefined;
   };
 
-  it("includes api-token default connectors without environment credentials or feature switches", () => {
+  it("includes manual-grant connectors without environment credentials or feature switches", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(runtimeAvailableTypes).toContain("amplitude");
@@ -1291,12 +1295,12 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).not.toContain("local-browser");
   });
 
-  it("does not include Stripe without OAuth runtime env despite alternative auth methods", () => {
+  it("includes Stripe without OAuth runtime env because API-token auth is runtime-available", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(getConnectorAuthMethod("stripe", "api-token")).toBeDefined();
     expect(getConnectorAuthMethod("stripe", "cli-auth")).toBeDefined();
-    expect(runtimeAvailableTypes).not.toContain("stripe");
+    expect(runtimeAvailableTypes).toContain("stripe");
   });
 
   it("returns connector types in sorted order", () => {

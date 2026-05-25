@@ -5,22 +5,29 @@ export const zapier = {
   zapier: {
     label: "Zapier",
     category: "data-automation-infrastructure",
-    environmentMapping: {
-      ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
-    },
     helpText:
       "Connect your Zapier account to trigger zaps and use AI Actions (NLA) to automate workflows",
     authMethods: {
       "api-token": {
         featureFlag: FeatureSwitchKey.ZapierConnector,
         label: "API Key",
-        secrets: {
-          ZAPIER_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "your-zapier-api-key",
+        grant: {
+          kind: "manual",
+          fields: {
+            ZAPIER_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "your-zapier-api-key",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",

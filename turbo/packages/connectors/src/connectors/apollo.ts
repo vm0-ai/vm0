@@ -4,9 +4,6 @@ export const apollo = {
   apollo: {
     label: "Apollo",
     category: "sales-crm-business-operations",
-    environmentMapping: {
-      APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
-    },
     helpText:
       "Connect your Apollo account to search prospects, enrich contacts, manage accounts, deals, sequences, and more",
     authMethods: {
@@ -14,13 +11,23 @@ export const apollo = {
         label: "API Key",
         helpText:
           "1. Log in to [Apollo](https://app.apollo.io)\n2. Go to **Settings > Integrations**\n3. Click **Connect** beside Apollo API\n4. Select **API Keys > Create new key**\n5. Enter a name, select endpoint access (or toggle **Set as master key**)\n6. Copy the API key",
-        secrets: {
-          APOLLO_TOKEN: {
-            label: "API Key",
-            required: true,
-            placeholder: "your-apollo-api-key",
+        grant: {
+          kind: "manual",
+          fields: {
+            APOLLO_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "your-apollo-api-key",
+            },
           },
         },
+        access: {
+          kind: "static",
+          outputs: {
+            APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
       },
     },
     defaultAuthMethod: "api-token",
