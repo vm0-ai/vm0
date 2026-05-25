@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { computeComposeVersionId } from "../../lib/infra/agent-compose/content-hash";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
@@ -8,13 +8,30 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageAttachFiles,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { uniqueId } from "../test-helpers";
-import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
+
+type TestChatMessageRow = {
+  readonly id: string;
+  readonly role: string;
+  readonly content: string | null;
+  readonly runId: string | null;
+  readonly error: string | null;
+  readonly sequenceNumber: number | null;
+  readonly createdAt: Date;
+  readonly runStatus: string | null;
+  readonly runError: string | null;
+  readonly attachFiles: ChatMessageAttachFiles | null;
+  readonly revokesMessageId: string | null;
+  readonly interruptsRunId: string | null;
+};
 
 /**
  * @why-db-direct Seeds the compose create-route side effects after the legacy
@@ -334,6 +351,34 @@ export async function setTestChatThreadRenamedAt(
 }
 
 /**
+ * Update a chat thread title directly for test setup.
+ *
+ * @why-db-direct Generated title persistence is API-owned; web tests only
+ * need direct fixture setup after the legacy web service was removed.
+ */
+export async function updateTestChatThreadTitle(
+  threadId: string,
+  userId: string,
+  title: string,
+): Promise<void> {
+  initServices();
+  const [thread] = await globalThis.services.db
+    .select({ renamedAt: chatThreads.renamedAt })
+    .from(chatThreads)
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .limit(1);
+
+  if (thread?.renamedAt) {
+    return;
+  }
+
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ title })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
+}
+
+/**
  * Set the model-first pin columns on a chat thread.
  *
  * @why-db-direct Model pins are persisted by the chat send route. Tests need to
@@ -486,8 +531,27 @@ export async function insertTestChatMessage(params: {
  */
 export async function getTestChatMessagesByThread(
   threadId: string,
-): Promise<Awaited<ReturnType<typeof getMessagesByThreadId>>> {
-  return getMessagesByThreadId(threadId);
+): Promise<TestChatMessageRow[]> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      id: chatMessages.id,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      runId: chatMessages.runId,
+      error: chatMessages.error,
+      sequenceNumber: chatMessages.sequenceNumber,
+      createdAt: chatMessages.createdAt,
+      runStatus: agentRuns.status,
+      runError: agentRuns.error,
+      attachFiles: chatMessages.attachFiles,
+      revokesMessageId: chatMessages.revokesMessageId,
+      interruptsRunId: chatMessages.interruptsRunId,
+    })
+    .from(chatMessages)
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .where(eq(chatMessages.chatThreadId, threadId))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 }
 
 /**

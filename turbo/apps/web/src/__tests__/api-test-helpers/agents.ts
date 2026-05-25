@@ -1,4 +1,3 @@
-import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
 import {
   createDefaultComposeConfig,
   getTestAuthContext,
@@ -37,6 +36,7 @@ export {
   setTestChatThreadModelPin,
   setTestChatThreadPinnedAt,
   setTestChatThreadRenamedAt,
+  updateTestChatThreadTitle,
   setTestChatThreadDraft,
 } from "../db-test-seeders/agents";
 
@@ -85,16 +85,4 @@ export async function createTestCompose(
   await ensureZeroAgentRow(result.composeId);
 
   return { ...result, agentId: result.composeId };
-}
-
-/**
- * Update the title of a chat thread for test setup.
- * Wraps updateChatThreadTitle from chat-thread-service.
- */
-export async function updateTestChatThreadTitle(
-  threadId: string,
-  userId: string,
-  title: string,
-): Promise<void> {
-  return updateChatThreadTitle(threadId, userId, title);
 }
