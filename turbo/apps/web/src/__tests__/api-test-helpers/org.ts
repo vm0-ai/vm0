@@ -44,4 +44,4 @@ export {
 } from "../db-test-seeders/org-members-cache";
 
 // Re-exports: constants
-export { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
+export { ORG_SENTINEL_USER_ID } from "../test-constants/org";
