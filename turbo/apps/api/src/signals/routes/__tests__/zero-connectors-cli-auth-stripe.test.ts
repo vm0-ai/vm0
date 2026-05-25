@@ -33,6 +33,7 @@ import {
 } from "../../external/sandbox";
 import { writeDb$ } from "../../external/db";
 import { decryptSecretValue } from "../../services/crypto.utils";
+import { driveCliAuthStripeCompletion$ } from "../../services/cli-auth-stripe.service";
 import { upsertOAuthConnector$ } from "../../services/zero-connector-data.service";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -1663,5 +1664,74 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
     expect(calls.run).toHaveLength(1);
     expect(calls.stop).toHaveLength(0);
+  });
+
+  it("drives completion server-side until the sandbox terminal status", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+
+    await store.set(
+      driveCliAuthStripeCompletion$,
+      {
+        orgId,
+        userId,
+        sessionToken: start.body.sessionToken,
+      },
+      AbortSignal.timeout(30_000),
+    );
+
+    // Driver runs one complete iteration after start, hits terminal, stops.
+    expect(calls.run).toHaveLength(2);
+    expect(calls.stop).toHaveLength(1);
+    expect(getApiTestMocks().ably.publish).toHaveBeenCalledWith(
+      "connector:changed",
+      null,
+    );
+    const secret = await stripeTokenSecret(userId, orgId);
+    expect(secret).not.toBeNull();
+    expect(secret?.description).toBe("Stripe CLI test mode API key");
+  });
+
+  it("driver loop exits when the abort signal fires before completion", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ completeExitCode: 124 });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+
+    const driverController = new AbortController();
+    const drivePromise = store.set(
+      driveCliAuthStripeCompletion$,
+      {
+        orgId,
+        userId,
+        sessionToken: start.body.sessionToken,
+      },
+      driverController.signal,
+    );
+
+    // Let the first iteration's pending complete settle, then abort.
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    driverController.abort();
+    await expect(drivePromise).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(calls.stop).toHaveLength(0);
+    const secret = await stripeTokenSecret(userId, orgId);
+    expect(secret).toBeNull();
   });
 });

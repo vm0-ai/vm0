@@ -6,13 +6,16 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   completeCliAuthStripe$,
+  driveCliAuthStripeCompletion$,
   startCliAuthStripe,
 } from "../services/cli-auth-stripe.service";
 import { writeDb$ } from "../external/db";
+import { IN_VITEST } from "../utils";
 import type { RouteEntry } from "../route";
 
 const connectorWriteAuth = {
@@ -95,6 +98,26 @@ const startCliAuthStripeInner$ = command(
 
     if (!result.ok) {
       return cliAuthStripeUnavailable(result.message, result.code);
+    }
+
+    // Drive completion in the background so the client only needs to
+    // subscribe to `connector:changed` for terminal status. The driver
+    // uses a fresh signal tied to the session TTL, not the request signal
+    // (which aborts as soon as the response is returned). Tests exercise
+    // the driver directly — skipping here keeps existing start/complete
+    // route tests from observing background sandbox calls.
+    if (!IN_VITEST) {
+      waitUntil(
+        set(
+          driveCliAuthStripeCompletion$,
+          {
+            orgId: auth.orgId,
+            userId: auth.userId,
+            sessionToken: result.sessionToken,
+          },
+          AbortSignal.timeout(result.expiresIn * 1000),
+        ),
+      );
     }
 
     return {

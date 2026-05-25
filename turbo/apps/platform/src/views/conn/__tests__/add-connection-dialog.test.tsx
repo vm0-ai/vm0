@@ -29,6 +29,7 @@ import {
   setMockOauthDeviceAuthSessionPollResponses,
   setMockStripeCliAuthCompleteResponse,
 } from "../../../mocks/handlers/api-connectors.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -658,6 +659,7 @@ describe("connect modal - interactions", () => {
     });
 
     click(getButtonByText("Open approval page"));
+    triggerAblyEvent("connector:changed");
 
     await waitFor(() => {
       expect(screen.getByText("Approval is still pending")).toBeInTheDocument();
@@ -703,6 +705,7 @@ describe("connect modal - interactions", () => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
     });
     click(getButtonByText("Open approval page"));
+    triggerAblyEvent("connector:changed");
 
     await waitFor(() => {
       expect(
@@ -742,6 +745,7 @@ describe("connect modal - interactions", () => {
     expect(openSpy).not.toHaveBeenCalled();
 
     click(getButtonByText("Open approval page"));
+    triggerAblyEvent("connector:changed");
 
     await waitFor(() => {
       expect(
@@ -839,7 +843,7 @@ describe("connect modal - state management", () => {
     });
   });
 
-  it.skip("clears Stripe CLI auth state when the dialog closes", async () => {
+  it("clears Stripe CLI auth state when the dialog closes", async () => {
     vi.spyOn(window, "open").mockReturnValue(null);
 
     await openConnectModal("stripe", {
