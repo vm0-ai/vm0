@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const AHREFS_AUTHORIZATION_URL = "https://app.ahrefs.com/api/auth";
@@ -35,12 +36,12 @@ export function buildAhrefsAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("ahrefs");
+  const authCodeGrant = getAuthCodeGrantConfig("ahrefs");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -56,8 +57,8 @@ export async function exchangeAhrefsCode(
   code: string,
   redirectUri: string,
 ): Promise<AhrefsTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("ahrefs");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("ahrefs");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -115,8 +116,8 @@ export async function refreshAhrefsToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AhrefsRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("ahrefs");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("ahrefs");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

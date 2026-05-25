@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const DEEL_AUTHORIZATION_URL = "https://app.deel.com/oauth2/authorize";
@@ -67,7 +68,7 @@ export async function buildDeelAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("deel");
+  const authCodeGrant = getAuthCodeGrantConfig("deel");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -75,7 +76,7 @@ export async function buildDeelAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -95,12 +96,12 @@ export async function refreshDeelToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<DeelRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("deel");
+  const authCodeGrant = getAuthCodeGrantConfig("deel");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -151,13 +152,13 @@ export async function exchangeDeelCode(
   redirectUri: string,
   state: string,
 ): Promise<DeelTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("deel");
+  const authCodeGrant = getAuthCodeGrantConfig("deel");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

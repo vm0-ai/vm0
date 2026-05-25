@@ -5,7 +5,7 @@ import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/con
 import {
   isOAuthAuthCodeConnectorType,
   getConnectorOAuthCredentials,
-  getConnectorOAuthConfig,
+  getConnectorOAuthScopes,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -200,7 +200,7 @@ async function exchangeTokenForConnector(args: {
 function getRequestedScopes(
   connectorType: OAuthAuthCodeConnectorType,
 ): readonly string[] {
-  return getConnectorOAuthConfig(connectorType).scopes;
+  return getConnectorOAuthScopes(connectorType);
 }
 
 function resolveOAuthConnectorType(

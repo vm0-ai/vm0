@@ -5,7 +5,7 @@ import type {
   OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthDeviceAuthConfig,
+  getConnectorDeviceAuthGrantConfigIfSupported,
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   isOAuthAuthCodeConnectorType,
   isStaticConfidentialConnectorOAuthCredentials,
@@ -309,12 +309,15 @@ export async function startConnectorOAuthDeviceAuth<
   readonly credentials: ConnectorOAuthCredentials;
 }): Promise<OAuthDeviceAuthStartResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  const oauthConfig = getConnectorOAuthDeviceAuthConfig(args.type);
+  const grant = getConnectorDeviceAuthGrantConfigIfSupported(args.type);
+  if (!grant) {
+    throw new Error(`${args.type} device-auth grant config not found`);
+  }
   return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.startDeviceAuth({
     ...connectorCredentialArgs(args.credentials),
-    scopes: oauthConfig.scopes,
+    scopes: grant.scopes,
   } as ConnectorOAuthDeviceAuthStartArgs<T>);
 }
 

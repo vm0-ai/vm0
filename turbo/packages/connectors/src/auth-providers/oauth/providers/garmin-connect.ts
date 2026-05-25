@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const GARMIN_CONNECT_AUTHORIZATION_URL =
@@ -94,10 +95,10 @@ export async function exchangeGarminConnectCode(
   code: string,
   state: string,
 ): Promise<GarminConnectTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
+  const authCodeGrant = getAuthCodeGrantConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -156,8 +157,8 @@ export async function refreshGarminConnectToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GarminConnectRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("garmin-connect");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

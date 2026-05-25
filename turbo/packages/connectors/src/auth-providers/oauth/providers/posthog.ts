@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const POSTHOG_AUTHORIZATION_URL = "https://us.posthog.com/oauth/authorize";
@@ -34,12 +35,12 @@ export function buildPosthogAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("posthog");
+  const authCodeGrant = getAuthCodeGrantConfig("posthog");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -55,8 +56,8 @@ export async function exchangePosthogCode(
   code: string,
   redirectUri: string,
 ): Promise<PosthogTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("posthog");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("posthog");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -113,8 +114,8 @@ export async function refreshPosthogToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<PosthogRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("posthog");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("posthog");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

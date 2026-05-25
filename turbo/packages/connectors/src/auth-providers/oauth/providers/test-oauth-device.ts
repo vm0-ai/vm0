@@ -1,6 +1,6 @@
-import { getConnectorOAuthDeviceAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 
+import { getDeviceAuthGrantConfig } from "../grant-config";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -45,14 +45,14 @@ const tokenErrorResponseSchema = z.object({
 function getDeviceAuthUrl(): string {
   return resolveTestOAuthProviderUrl(
     "deviceAuthUrl",
-    getConnectorOAuthDeviceAuthConfig("test-oauth-device").deviceAuthUrl,
+    getDeviceAuthGrantConfig("test-oauth-device").deviceAuthUrl,
   );
 }
 
 function getDeviceTokenUrl(): string {
   return resolveTestOAuthProviderUrl(
     "tokenUrl",
-    getConnectorOAuthDeviceAuthConfig("test-oauth-device").tokenUrl,
+    getDeviceAuthGrantConfig("test-oauth-device").tokenUrl,
   );
 }
 

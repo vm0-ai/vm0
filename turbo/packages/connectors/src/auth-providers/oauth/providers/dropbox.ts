@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const DROPBOX_AUTHORIZATION_URL = "https://www.dropbox.com/oauth2/authorize";
@@ -36,12 +37,12 @@ export function buildDropboxAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("dropbox");
+  const authCodeGrant = getAuthCodeGrantConfig("dropbox");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     token_access_type: "offline",
     force_reapprove: "true",
@@ -59,8 +60,8 @@ export async function exchangeDropboxCode(
   code: string,
   redirectUri: string,
 ): Promise<DropboxTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("dropbox");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("dropbox");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -118,8 +119,8 @@ export async function refreshDropboxToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<DropboxRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("dropbox");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("dropbox");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

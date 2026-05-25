@@ -1,6 +1,7 @@
 import type { OAuthAuthCodeConnectorType } from "@vm0/connectors/connectors";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "./grant-config";
 import { throwOAuthError } from "./error";
 
 const MICROSOFT_AUTHORIZATION_URL =
@@ -43,12 +44,12 @@ export function buildMicrosoftAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     prompt: "consent",
   });
@@ -67,8 +68,8 @@ export async function exchangeMicrosoftOAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<MicrosoftTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -128,8 +129,8 @@ export async function refreshMicrosoftToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<MicrosoftRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

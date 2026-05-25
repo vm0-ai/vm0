@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const DOCUSIGN_AUTHORIZATION_URL = "https://account-d.docusign.com/oauth/auth";
@@ -67,7 +68,7 @@ export async function buildDocuSignAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("docusign");
+  const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -75,7 +76,7 @@ export async function buildDocuSignAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -95,13 +96,13 @@ export async function exchangeDocuSignCode(
   redirectUri: string,
   state: string,
 ): Promise<DocuSignTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("docusign");
+  const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const codeVerifier = await deriveCodeVerifier(state);
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -160,12 +161,12 @@ export async function refreshDocuSignToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<DocuSignRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("docusign");
+  const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

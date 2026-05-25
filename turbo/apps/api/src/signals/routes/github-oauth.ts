@@ -4,8 +4,8 @@ import {
   type GithubOauthConnectQuery,
 } from "@vm0/api-contracts/contracts/github-oauth";
 import {
-  getConnectorOAuthConfig,
   getConnectorOAuthCredentials,
+  getConnectorOAuthScopes,
   isStaticConfidentialConnectorOAuthCredentials,
   type StaticConfidentialConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
@@ -382,9 +382,7 @@ const connectGithubUserAfterSetup$ = command(
           accessToken,
           userInfo,
           oauthScopes:
-            scopes.length > 0
-              ? scopes
-              : getConnectorOAuthConfig("github").scopes,
+            scopes.length > 0 ? scopes : getConnectorOAuthScopes("github"),
         },
         signal,
       );
@@ -760,7 +758,7 @@ const callbackGithubUserOauth$ = command(
         type: "github",
         accessToken: token.accessToken,
         userInfo: token.userInfo,
-        oauthScopes: getConnectorOAuthConfig("github").scopes,
+        oauthScopes: getConnectorOAuthScopes("github"),
       },
       signal,
     );

@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const X_AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize";
@@ -68,7 +69,7 @@ export async function buildXAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("x");
+  const authCodeGrant = getAuthCodeGrantConfig("x");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -76,7 +77,7 @@ export async function buildXAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -95,12 +96,12 @@ export async function refreshXToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<XRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("x");
+  const authCodeGrant = getAuthCodeGrantConfig("x");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -151,13 +152,13 @@ export async function exchangeXCode(
   redirectUri: string,
   state: string,
 ): Promise<XTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("x");
+  const authCodeGrant = getAuthCodeGrantConfig("x");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

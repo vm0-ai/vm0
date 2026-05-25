@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const XERO_AUTHORIZATION_URL =
@@ -35,12 +36,12 @@ export function buildXeroAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("xero");
+  const authCodeGrant = getAuthCodeGrantConfig("xero");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -57,8 +58,8 @@ export async function exchangeXeroCode(
   code: string,
   redirectUri: string,
 ): Promise<XeroTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("xero");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("xero");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -117,8 +118,8 @@ export async function refreshXeroToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<XeroRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("xero");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("xero");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
