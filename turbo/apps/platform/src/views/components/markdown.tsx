@@ -4,6 +4,8 @@ import MarkdownPreview, {
 import { IconLoader2, IconPhoto } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
 import { theme$ } from "../../signals/theme.ts";
 import {
   imageLoadStatusByKey$,
@@ -354,10 +356,14 @@ export function Markdown({
   className,
   style,
   mediaPreview = false,
+  mathEnabled = false,
   onImageClick,
+  remarkPlugins,
+  rehypePlugins,
   ...rest
 }: MarkdownPreviewProps & {
   mediaPreview?: boolean;
+  mathEnabled?: boolean;
   onImageClick?: (url: string) => void;
 }) {
   const theme = useGet(theme$);
@@ -393,6 +399,12 @@ export function Markdown({
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
+      remarkPlugins={
+        mathEnabled ? [remarkMath, ...(remarkPlugins ?? [])] : remarkPlugins
+      }
+      rehypePlugins={
+        mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
+      }
       components={{
         table: ResponsiveTable,
         a: renderLink,

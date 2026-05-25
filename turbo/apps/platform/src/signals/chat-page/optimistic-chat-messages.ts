@@ -42,6 +42,7 @@ export function createQueuedOptimisticUserMessagesForThread(threadId: string) {
         message.runId === undefined &&
         message.revokesMessageId === undefined &&
         message.interruptsRunId === undefined &&
+        message.error === undefined &&
         !recalledIds.has(message.id)
       );
     });

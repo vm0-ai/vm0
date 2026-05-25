@@ -6,7 +6,7 @@ import { getStripe } from "../stripe";
 
 const log = logger("service:org-metadata");
 
-export interface OrgMetadata {
+interface OrgMetadata {
   orgId: string;
   tier: string;
   credits: number;

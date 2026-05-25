@@ -10,6 +10,11 @@ import {
   storageEntrySchema,
   storageManifestSchema,
 } from "../../contracts/runners";
+import { fileEntryWithHashSchema } from "../../contracts/storages";
+import {
+  webhookStoragesCommitContract,
+  webhookStoragesPrepareContract,
+} from "../../contracts/webhooks";
 
 const expectedBindings = [
   {
@@ -26,6 +31,11 @@ const expectedBindings = [
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageManifest",
     direction: "response",
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "storages"],
+    rustTypeName: "FileEntryWithHash",
+    direction: "request",
   },
   {
     rustModulePath: ["webhooks", "agent", "storages", "prepare"],
@@ -71,6 +81,21 @@ function summarizeBinding(binding: NormalizedTypeBinding) {
   };
 }
 
+function compareBindingName(
+  left: (typeof expectedBindings)[number],
+  right: (typeof expectedBindings)[number],
+): number {
+  const leftName = [...left.rustModulePath, left.rustTypeName].join("::");
+  const rightName = [...right.rustModulePath, right.rustTypeName].join("::");
+  if (leftName < rightName) {
+    return -1;
+  }
+  if (leftName > rightName) {
+    return 1;
+  }
+  return 0;
+}
+
 describe("Rust type bindings", () => {
   it("contains exactly the supported Rust DTO set", () => {
     const actualBindings = normalizeTypeBindings(rustTypeBindings).map(
@@ -80,13 +105,7 @@ describe("Rust type bindings", () => {
     );
 
     expect(actualBindings).toEqual(
-      [...expectedBindings].sort((left, right) => {
-        return [...left.rustModulePath, left.rustTypeName]
-          .join("::")
-          .localeCompare(
-            [...right.rustModulePath, right.rustTypeName].join("::"),
-          );
-      }),
+      [...expectedBindings].sort(compareBindingName),
     );
   });
 
@@ -97,9 +116,13 @@ describe("Rust type bindings", () => {
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod webhooks {");
     expect(firstRender).toContain("pub mod prepare {");
+    expect(firstRender).toContain("pub struct FileEntryWithHash {");
     expect(firstRender).toContain("pub struct Request {");
     expect(firstRender).toContain("pub struct Response {");
-    expect(firstRender).toContain("pub files: Vec<RequestFile>,");
+    expect(
+      firstRender.match(/pub files: Vec<super::FileEntryWithHash>,/g),
+    ).toHaveLength(2);
+    expect(firstRender).not.toContain("pub struct RequestFile {");
     expect(firstRender).toContain("pub uploads: Option<ResponseUploads>,");
     expect(firstRender).toContain("pub struct StorageManifest {");
     expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
@@ -126,6 +149,27 @@ describe("Rust type bindings", () => {
         },
       },
     });
+  });
+
+  it("keeps webhook storage file overrides aligned with shared file schema", () => {
+    const requestFileSchema = { ...z.toJSONSchema(fileEntryWithHashSchema) };
+    const prepareFileSchema = {
+      ...z.toJSONSchema(
+        webhookStoragesPrepareContract.prepare.body.shape.files.element,
+      ),
+    };
+    const commitFileSchema = {
+      ...z.toJSONSchema(
+        webhookStoragesCommitContract.commit.body.shape.files.element,
+      ),
+    };
+
+    delete requestFileSchema.$schema;
+    delete prepareFileSchema.$schema;
+    delete commitFileSchema.$schema;
+
+    expect(prepareFileSchema).toEqual(requestFileSchema);
+    expect(commitFileSchema).toEqual(requestFileSchema);
   });
 
   it("renders common JSON schema shapes", () => {

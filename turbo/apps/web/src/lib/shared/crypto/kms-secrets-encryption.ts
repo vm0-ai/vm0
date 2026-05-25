@@ -5,11 +5,7 @@ import {
   type DecryptCommandOutput,
   KMSClient,
 } from "@aws-sdk/client-kms";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../../env";
@@ -176,21 +172,9 @@ async function decryptSecretValueWithMode(
   throw new Error("Stored secret ciphertext does not include decryptable data");
 }
 
-function storedSecretReadMode(
-  featureSwitchKey: FeatureSwitchKey,
-  ctx: FeatureSwitchContext,
-): StoredSecretReadMode {
-  return isFeatureEnabled(featureSwitchKey, ctx)
-    ? "prefer-kms"
-    : "prefer-legacy";
-}
-
 export async function decryptPersistentSecretValue(
   encrypted: string,
-  ctx: FeatureSwitchContext = {},
+  _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  return await decryptSecretValueWithMode(
-    encrypted,
-    storedSecretReadMode(FeatureSwitchKey.PersistentSecretKmsRead, ctx),
-  );
+  return await decryptSecretValueWithMode(encrypted, "prefer-kms");
 }

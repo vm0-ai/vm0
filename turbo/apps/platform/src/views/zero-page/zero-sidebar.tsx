@@ -11,7 +11,6 @@ import {
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
-  IconDeviceDesktop,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -67,45 +66,6 @@ export { AccountDropdown } from "./zero-sidebar-account.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
-function syncDesktopTrafficLights(collapsed: boolean): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const promise = window.vm0DesktopWindowChrome?.setSidebarCollapsed(collapsed);
-  if (promise) {
-    detach(promise, Reason.DomCallback);
-  }
-}
-
-function syncCollapsedDesktopTrafficLightsRef(element: HTMLDivElement | null) {
-  if (!element) {
-    return;
-  }
-  syncDesktopTrafficLights(true);
-}
-
-function syncExpandedDesktopTrafficLightsRef(element: HTMLDivElement | null) {
-  if (!element) {
-    return;
-  }
-  syncDesktopTrafficLights(false);
-}
-
-function DesktopTrafficLightStateSync() {
-  const off = useGet(sidebarOff$);
-  return (
-    <div
-      ref={
-        off
-          ? syncCollapsedDesktopTrafficLightsRef
-          : syncExpandedDesktopTrafficLightsRef
-      }
-      hidden
-      aria-hidden="true"
-    />
-  );
-}
-
 interface ManageNavItem {
   readonly id: SidebarNavId;
   readonly activeKeys: readonly RouteKey[];
@@ -129,22 +89,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/connectors",
     label: "Connectors",
     icon: IconPlug as NavIcon,
-  },
-  {
-    id: "computerUse",
-    activeKeys: ["desktopComputerUse"],
-    pathname: "/computer-use",
-    label: "Computer use",
-    icon: IconDeviceDesktop as NavIcon,
-    featureGate: FeatureSwitchKey.ComputerUse,
-  },
-  {
-    id: "localAgents",
-    activeKeys: ["desktopLocalAgents"],
-    pathname: "/local-agents",
-    label: "Local agents",
-    icon: IconDeviceDesktop as NavIcon,
-    featureGate: FeatureSwitchKey.DesktopLocalAgent,
   },
   {
     id: "schedules",
@@ -226,22 +170,12 @@ function ManagePinnedAgentsDialogContainer() {
 function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
-  const desktopComputerUseAvailable =
-    typeof window !== "undefined" && Boolean(window.vm0DesktopComputerUse);
-  const desktopLocalAgentAvailable =
-    typeof window !== "undefined" && Boolean(window.vm0DesktopLocalAgent);
   const manageNav = MANAGE_NAV.filter((item) => {
     if (item.id === "activities") {
       return features?.[FeatureSwitchKey.ZeroDebug];
     }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
-    }
-    if (item.id === "localAgents") {
-      return desktopLocalAgentAvailable;
-    }
-    if (item.id === "computerUse") {
-      return desktopComputerUseAvailable;
     }
     return true;
   });
@@ -695,7 +629,6 @@ function ExpandedFooterAccountInsights() {
 export function ZeroSidebar() {
   return (
     <>
-      <DesktopTrafficLightStateSync />
       <CollapsedSidebar />
       <ExpandedSidebar />
       <ManagePinnedAgentsDialogContainer />

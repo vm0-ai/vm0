@@ -5976,6 +5976,109 @@
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Default model on the DeepSeek provider; also available on VM0 Managed.",
         "vm0Notes": "V4 Flash carries the lowest credit multiplier of any Built-in model (×0.02), roughly 50× less than Sonnet 4.6. Cache reads bill while cache writes are free, and VM0 sets a 10-minute API timeout for the DeepSeek provider that pairs naturally with Flash's short single-shot work."
       },
+      "gpt-image-2": {
+        "name": "GPT Image 2",
+        "pageTitle": "GPT Image 2 on VM0. OpenAI's newer image generation model",
+        "tagline": "OpenAI's newer image model for text-to-image generation and edits. Use it when you want the GPT Image workflow with stronger prompt adherence and flexible sizing.",
+        "cardIntro": "OpenAI's newer image model for generation and editing, with flexible sizing and stronger prompt adherence than GPT Image 1.",
+        "metaTitle": "GPT Image 2 on VM0: Pricing, Specs & Comparison",
+        "metaDescription": "GPT Image 2 on VM0. OpenAI's newer image generation and edit model with flexible sizing, quality tiers, and comparison to GPT Image 1 and SeedDream 4.",
+        "summary": "GPT Image 2 is OpenAI's newer image generation model on VM0. It keeps the GPT Image text-to-image and edit workflow while adding flexible sizing and stronger prompt adherence for production image tasks.\n\nVM0 billing is tier-based, from around $0.007 per image at the low/standard tier to $0.481 at the high/large tier. The medium-standard tier (around $0.064 per 1024×1024 on VM0) is the sensible default for most built-in generation calls.",
+        "releaseDate": "April 2026",
+        "familyPosition": "OpenAI's newer GPT Image model, positioned above GPT Image 1 for prompt adherence and flexible output sizing.",
+        "background": [
+          "GPT Image 2 is the newer OpenAI image model exposed through VM0's built-in image generation path. It supports text-to-image generation and image edits through the same agent-facing workflow as GPT Image 1.",
+          "The model is a good default when the caller wants OpenAI-style prompt following but needs more flexible output sizing than the standard GPT Image 1 tiers. It is priced by quality and size, so agents can keep draft loops cheaper and reserve high-quality output for final renders."
+        ],
+        "architecture": "Text-to-image and image-edit model exposed through OpenAI's GPT Image 2 endpoint on fal. Supports quality tiers and flexible image sizes; transparent backgrounds are not supported on VM0 for this model.",
+        "specs": [
+          { "label": "Family", "value": "OpenAI Images" },
+          {
+            "label": "Modalities",
+            "value": "Text-to-image, image-to-image edit"
+          },
+          {
+            "label": "Output tiers",
+            "value": "Standard / Large × Low / Medium / High"
+          },
+          {
+            "label": "VM0 billed price",
+            "value": "From $0.007 to $0.481 per image"
+          },
+          { "label": "Languages", "value": "Multilingual prompts" },
+          { "label": "Available on VM0", "value": "April 2026" }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Prompt adherence",
+            "body": "The main reason to pick GPT Image 2 over GPT Image 1 is stricter execution of detailed prompts, especially when the brief includes composition, aspect ratio and style constraints."
+          },
+          {
+            "title": "Flexible sizing",
+            "body": "Supports VM0's flexible image-size path, so agents can request square, portrait, landscape and larger delivery sizes without switching model families."
+          },
+          {
+            "title": "Edit flows",
+            "body": "Supports image-to-image edits and masks. Use it when a workflow needs to preserve a source image while changing a described region."
+          },
+          {
+            "title": "Cost",
+            "body": "More expensive than GPT Image 1 at medium and high tiers. Keep draft loops on lower quality and reserve high quality for final output."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The agent that needs exact prompt following",
+            "body": "When the prompt has specific framing, style or size requirements, GPT Image 2 is the safer OpenAI-image choice than GPT Image 1."
+          },
+          {
+            "title": "The image workflow that needs multiple aspect ratios",
+            "body": "Marketing, social and website assets often need square, portrait and landscape outputs. GPT Image 2 fits those workflows without changing the prompt style."
+          },
+          {
+            "title": "The OpenAI-stack edit loop",
+            "body": "If an agent is already using OpenAI models for planning and copy, GPT Image 2 keeps image generation in the same prompt-following family."
+          }
+        ],
+        "avoidFor": "Skip GPT Image 2 when cost dominates or when true transparent-background output is required. GPT Image 1, GPT Image 1.5 or SeedDream 4 may be better depending on the constraint.",
+        "comparisons": [
+          {
+            "vs": "GPT Image 1",
+            "body": "GPT Image 2 is the newer, more flexible model with stronger prompt adherence. GPT Image 1 remains cheaper at common medium-standard settings and is still strong for stylised illustration."
+          },
+          {
+            "vs": "SeedDream 4",
+            "body": "SeedDream 4 is cheaper and photoreal-leaning. GPT Image 2 is the better OpenAI-stack choice when prompt adherence, edit workflow and flexible sizing matter more than lowest cost."
+          }
+        ],
+        "verdict": "Pick GPT Image 2 when you want OpenAI image generation with stronger prompt adherence and flexible sizing. Use GPT Image 1 or SeedDream 4 when cost is the dominant constraint.",
+        "faqs": [
+          {
+            "q": "How is GPT Image 2 priced?",
+            "a": "It is priced by quality and size. On VM0, the medium-standard tier is about $0.064 per image and the high/large tier is about $0.481 per image."
+          },
+          {
+            "q": "Does GPT Image 2 support image editing?",
+            "a": "Yes. VM0 exposes image-to-image editing and mask support for GPT Image 2."
+          },
+          {
+            "q": "Does GPT Image 2 support transparent backgrounds?",
+            "a": "No. VM0's GPT Image 2 path does not support transparent-background output."
+          },
+          {
+            "q": "When should I use GPT Image 2 instead of GPT Image 1?",
+            "a": "Use GPT Image 2 for stricter prompt adherence and flexible sizing. Use GPT Image 1 when the brief is simpler or cost matters more."
+          }
+        ],
+        "alternatives": [
+          { "slug": "gpt-image-1", "reason": "Cheaper OpenAI image default" },
+          { "slug": "seedream-4", "reason": "Cheaper photoreal alternative" }
+        ],
+        "routingNotes": "Routed to OpenAI's GPT Image 2 endpoint through VM0's built-in generation path and billed per output image tier.",
+        "vm0Notes": "GPT Image 2 is available through VM0 Managed generation with quality and size controls. Use medium quality for normal agent work and high quality when the generated image is the deliverable."
+      },
       "gpt-image-1": {
         "name": "GPT Image 1",
         "pageTitle": "GPT Image 1 on VM0. OpenAI's text-to-image model",

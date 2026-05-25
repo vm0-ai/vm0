@@ -427,6 +427,23 @@ export const MODELS: ModelEntry[] = [
   // -------------------------------------------------------------------------
 
   {
+    slug: "gpt-image-2",
+    modelId: "gpt-image-2",
+    name: "GPT Image 2",
+    vendor: "OpenAI",
+    category: "image",
+    modalities: ["Image", "Text-to-image", "Image edit"],
+    releasedToVm0: "April 2026",
+    generationPricing: {
+      unit: "image",
+      priceUsd: 0.064,
+      note: "Medium standard tier (1024x1024)",
+    },
+    comparisonSlugs: ["GPT Image 1", "SeedDream 4"],
+    alternativeSlugs: ["gpt-image-1", "seedream-4"],
+  },
+
+  {
     slug: "gpt-image-1",
     modelId: "gpt-image-1",
     name: "GPT Image 1",
@@ -550,6 +567,8 @@ export function getModelBySlug(slug: string): ModelEntry | undefined {
 // English lets the agent reliably pass it as `--model` when it calls the
 // built-in generation tool, while keeping the surface copy natural.
 const GENERATION_CTA_PROMPTS: Readonly<Record<string, string>> = {
+  "gpt-image-2":
+    "Generate an illustration of a cute cat using the gpt-image-2 model.",
   "gpt-image-1":
     "Generate an illustration of a cute cat using the gpt-image-1 model.",
   "flux-pro-1-1-ultra":

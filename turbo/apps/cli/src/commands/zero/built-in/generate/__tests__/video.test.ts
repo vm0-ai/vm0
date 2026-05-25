@@ -15,6 +15,8 @@ import { zeroBuiltInCommand } from "../../index";
 import { videoCommand } from "../video";
 
 const VIDEO_URL = "http://localhost:3000/api/zero/video-io/generate";
+const FIRST_FRAME_URL = "https://example.com/first.png";
+const LAST_FRAME_URL = "https://example.com/last.png";
 const VIDEO_RESULT = {
   id: "video-file-id",
   filename: "video-video-fi.mp4",
@@ -32,6 +34,22 @@ const VIDEO_RESULT = {
   requestId: "video-request",
 };
 
+function pngWithDimensions(width: number, height: number): Buffer {
+  const buffer = Buffer.alloc(24);
+  buffer.write("\x89PNG\r\n\x1a\n", 0, "latin1");
+  buffer.writeUInt32BE(13, 8);
+  buffer.write("IHDR", 12, "ascii");
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  return buffer;
+}
+
+function imageResponse(width: number, height: number) {
+  return new HttpResponse(pngWithDimensions(width, height), {
+    headers: { "content-type": "image/png" },
+  });
+}
+
 describe("zero built-in generate video command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -44,6 +62,7 @@ describe("zero built-in generate video command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
@@ -54,6 +73,12 @@ describe("zero built-in generate video command", () => {
 
   it("should generate a video and print the /f file URL", async () => {
     server.use(
+      http.get(FIRST_FRAME_URL, () => {
+        return imageResponse(900, 1600);
+      }),
+      http.get(LAST_FRAME_URL, () => {
+        return imageResponse(900, 1600);
+      }),
       http.post(VIDEO_URL, async ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         expect(request.headers.get("content-type")).toBe("application/json");
@@ -70,8 +95,8 @@ describe("zero built-in generate video command", () => {
           imageUrls: ["https://example.com/reference.png"],
           videoUrls: ["https://example.com/reference.mp4"],
           audioUrls: ["https://example.com/reference.mp3"],
-          firstFrameImageUrl: "https://example.com/first.png",
-          lastFrameImageUrl: "https://example.com/last.png",
+          firstFrameImageUrl: FIRST_FRAME_URL,
+          lastFrameImageUrl: LAST_FRAME_URL,
         });
 
         return HttpResponse.json(VIDEO_RESULT);
@@ -106,9 +131,9 @@ describe("zero built-in generate video command", () => {
       "--audio-url",
       "https://example.com/reference.mp3",
       "--first-frame-image-url",
-      "https://example.com/first.png",
+      FIRST_FRAME_URL,
       "--last-frame-image-url",
-      "https://example.com/last.png",
+      LAST_FRAME_URL,
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
@@ -119,6 +144,41 @@ describe("zero built-in generate video command", () => {
     expect(stdout).toContain("Aspect ratio: 9:16");
     expect(stdout).toContain("Audio: off");
     expect(stdout).toContain("Credits charged: 720");
+  });
+
+  it("should reject frame images that do not match --aspect-ratio before generating", async () => {
+    const postVideo = vi.fn();
+    server.use(
+      http.get(FIRST_FRAME_URL, () => {
+        return imageResponse(1920, 1080);
+      }),
+      http.post(VIDEO_URL, () => {
+        postVideo();
+        return HttpResponse.json(VIDEO_RESULT);
+      }),
+    );
+
+    await expect(async () => {
+      await zeroBuiltInCommand.parseAsync([
+        "node",
+        "cli",
+        "generate",
+        "video",
+        "--prompt",
+        "Animate this frame",
+        "--aspect-ratio",
+        "9:16",
+        "--first-frame-image-url",
+        FIRST_FRAME_URL,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(postVideo).not.toHaveBeenCalled();
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--first-frame-image-url has aspect ratio 16:9 (1920x1080), but --aspect-ratio is 9:16",
+      ),
+    );
   });
 
   it("should print JSON metadata when --json is provided", async () => {

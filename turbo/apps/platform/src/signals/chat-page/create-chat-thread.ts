@@ -821,13 +821,18 @@ function createAllMessagesComputed(
             message.interruptsRunId,
           );
         }
-        const { blocks } = parseBodyRenderBlocks(message.content ?? "");
+        const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
+          previews: message.role === "assistant",
+        });
         const isUnassociatedUser =
           message.role === "user" && message.runId === undefined;
         const optimisticAssociation = entry.optimisticUserMessageAssociation;
         const isOptimisticRun =
           isUnassociatedUser && optimisticAssociation === "run";
-        const isQueued = isUnassociatedUser && optimisticAssociation !== "run";
+        const isQueued =
+          isUnassociatedUser &&
+          optimisticAssociation !== "run" &&
+          message.error === undefined;
         if (message.role !== "assistant") {
           return {
             ...message,

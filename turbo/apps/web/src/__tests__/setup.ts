@@ -175,65 +175,6 @@ vi.mock("@aws-sdk/s3-request-presigner", () => {
   };
 });
 
-// Mock Slack Web API — singleton pattern: every `new WebClient()` returns the same mock object.
-// `clearMocks: true` in vitest config only clears mock.calls/mock.results between tests,
-// so the implementations persist while call history resets automatically.
-vi.mock("@slack/web-api", () => {
-  const mockClient = {
-    chat: {
-      postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "mock.ts" }),
-      postEphemeral: vi
-        .fn()
-        .mockResolvedValue({ ok: true, message_ts: "mock.ts" }),
-      update: vi.fn().mockResolvedValue({ ok: true }),
-    },
-    views: {
-      publish: vi.fn().mockResolvedValue({ ok: true }),
-      open: vi.fn().mockResolvedValue({ ok: true, view: { id: "V-mock" } }),
-      update: vi.fn().mockResolvedValue({ ok: true }),
-    },
-    oauth: {
-      v2: {
-        access: vi.fn().mockResolvedValue({ ok: true }),
-      },
-    },
-    conversations: {
-      replies: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
-      history: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
-      list: vi.fn().mockResolvedValue({ ok: true, channels: [] }),
-      open: vi
-        .fn()
-        .mockResolvedValue({ ok: true, channel: { id: "D-mock-dm" } }),
-    },
-    reactions: {
-      add: vi.fn().mockResolvedValue({ ok: true }),
-      remove: vi.fn().mockResolvedValue({ ok: true }),
-    },
-    users: {
-      info: vi.fn().mockResolvedValue({ ok: true, user: undefined }),
-    },
-    files: {
-      getUploadURLExternal: vi.fn().mockResolvedValue({
-        ok: true,
-        upload_url: "https://slack.upload",
-        file_id: "F-mock",
-      }),
-      completeUploadExternal: vi.fn().mockResolvedValue({ ok: true }),
-      info: vi.fn().mockResolvedValue({ ok: false, error: "file_not_found" }),
-    },
-    assistant: {
-      threads: {
-        setStatus: vi.fn().mockResolvedValue({ ok: true }),
-      },
-    },
-  };
-  return {
-    WebClient: vi.fn().mockImplementation(function () {
-      return mockClient;
-    }),
-  };
-});
-
 // Mock Axiom packages
 // The @axiomhq/logging Logger class needs proper method implementations
 vi.mock("@axiomhq/js", () => {

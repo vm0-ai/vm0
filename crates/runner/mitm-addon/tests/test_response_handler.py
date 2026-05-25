@@ -68,10 +68,8 @@ class TestResponseHandler:
         assert entry["response_size"] == 256
         assert_utc_millisecond_timestamp(entry["timestamp"])
 
-    def test_response_size_from_stream_buffer(
-        self, registry_file, tmp_path, real_flow, mitm_ctx, headers
-    ):
-        """response_size should use stream_buffer length when not truncated."""
+    def test_response_size_tracks_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should use cumulative streamed bytes."""
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
@@ -80,14 +78,14 @@ class TestResponseHandler:
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
-        # Buffer has 100 bytes, not truncated
-        flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
-        flow.metadata["stream_buffer_state"] = {"truncated": False}
-
         flow.response = tutils.tresp(
-            status_code=200, headers=_header_map({"content-length": "999"})
+            status_code=200,
+            headers=_header_map({"content-length": "999", "content-type": "application/json"}),
         )
 
+        mitm_addon.responseheaders(flow)
+        _response_stream(flow)(b"x" * 40)
+        _response_stream(flow)(b"y" * 60)
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
@@ -95,12 +93,44 @@ class TestResponseHandler:
 
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
-        assert entry["response_size"] == 100  # from buffer, not Content-Length
+        assert entry["response_size"] == 100
 
-    def test_response_size_falls_back_when_truncated(
-        self, registry_file, tmp_path, real_flow, mitm_ctx, headers
+    def test_response_size_tracks_streamed_bytes_when_buffer_truncated(
+        self, tmp_path, real_flow, mitm_ctx
     ):
-        """response_size should fall back to Content-Length when buffer is truncated."""
+        """response_size should ignore Content-Length when stream metadata exists."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096)
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-length": "12", "content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        _response_stream(flow)(body[:123])
+        _response_stream(flow)(body[123:])
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == len(body)
+
+    def test_response_size_uses_content_length_without_stream_state(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """response_size should fall back to Content-Length without stream metadata."""
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
@@ -109,9 +139,6 @@ class TestResponseHandler:
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
-        flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
-        flow.metadata["stream_buffer_state"] = {"truncated": True}
-
         flow.response = tutils.tresp(
             status_code=200, headers=_header_map({"content-length": "50000"})
         )
@@ -123,7 +150,57 @@ class TestResponseHandler:
 
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
-        assert entry["response_size"] == 50000  # from Content-Length header
+        assert entry["response_size"] == 50000
+
+    def test_response_size_is_zero_without_stream_state_or_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """response_size should be 0 when no streamed size or Content-Length exists."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=_header_map({"content-type": "application/json"})
+        )
+
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
+
+    def test_response_size_keeps_zero_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should not treat a streamed byte count of 0 as missing."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-length": "50000", "content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
 
     def test_response_size_tracks_streamed_bytes_when_buffer_truncated_without_length(
         self, tmp_path, real_flow, mitm_ctx

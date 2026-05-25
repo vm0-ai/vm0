@@ -168,6 +168,13 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     flow.metadata[_RESPONSE_STREAM_CALLBACK] = stream_and_buffer
 
 
+def streamed_response_size(flow: http.HTTPFlow) -> int | None:
+    state = flow.metadata.get("stream_buffer_state")
+    if state is None:
+        return None
+    return int(state["total_bytes"])
+
+
 def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
     finish = flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
     if finish is None:

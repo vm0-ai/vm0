@@ -54,6 +54,12 @@ export {
   switchZeroOrg,
 } from "./domains/zero-orgs";
 
+// Domain modules - Zero Billing
+export {
+  getZeroBillingStatus,
+  createZeroCreditCheckout,
+} from "./domains/zero-billing";
+
 // Domain modules - Zero Secrets
 export {
   listZeroSecrets,

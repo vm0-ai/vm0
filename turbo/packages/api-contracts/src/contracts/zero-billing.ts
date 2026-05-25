@@ -91,6 +91,31 @@ const checkoutRequestSchema = z.object({
   cancelUrl: z.string().url(),
 });
 
+const creditCheckoutRequestSchema = z
+  .object({
+    credits: z.number().int().min(1000).max(10_000_000),
+    successUrl: z.string().url(),
+    cancelUrl: z.string().url(),
+    autoRecharge: z
+      .object({
+        enabled: z.boolean(),
+        threshold: z.number().int().positive().max(10_000_000).optional(),
+        amount: z.number().int().min(1000).max(10_000_000).optional(),
+      })
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      return (
+        data.autoRecharge?.enabled !== true ||
+        data.autoRecharge.threshold === undefined ||
+        data.autoRecharge.amount === undefined ||
+        data.autoRecharge.threshold < data.autoRecharge.amount
+      );
+    },
+    { message: "threshold must be less than amount to avoid recharge loops" },
+  );
+
 const portalRequestSchema = z.object({
   returnUrl: z.string().url(),
 });
@@ -163,6 +188,30 @@ export const zeroBillingCheckoutContract = c.router({
 });
 
 export type ZeroBillingCheckoutContract = typeof zeroBillingCheckoutContract;
+
+/**
+ * Zero contract for POST /api/zero/billing/credit-checkout
+ */
+export const zeroBillingCreditCheckoutContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/credit-checkout",
+    headers: authHeadersSchema,
+    body: creditCheckoutRequestSchema,
+    responses: {
+      200: checkoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Create Stripe checkout session for credits",
+  },
+});
+
+export type ZeroBillingCreditCheckoutContract =
+  typeof zeroBillingCreditCheckoutContract;
 
 /**
  * Zero contract for POST /api/zero/billing/portal
@@ -324,6 +373,7 @@ export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
+export type CreditCheckoutRequest = z.infer<typeof creditCheckoutRequestSchema>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
 export type BillingInvoice = z.infer<typeof invoiceSchema>;
 export type BillingInvoicesResponse = z.infer<

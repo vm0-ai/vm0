@@ -1513,7 +1513,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
-  it("returns 402 when VM0 model-first admission has no spendable credits", async () => {
+  it("stores no-credit user and assistant messages when VM0 model-first admission has no spendable credits", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await seedVm0Credits(fixture, 0);
@@ -1535,19 +1535,43 @@ describe("POST /api/zero/chat/messages", () => {
           prompt: "blocked by credits",
         },
       }),
-      [402],
+      [201],
     );
 
-    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(response.body.runId).toBeNull();
     const [run] = await writeDb
       .select({ id: agentRuns.id })
       .from(agentRuns)
       .where(eq(agentRuns.userId, fixture.userId))
       .limit(1);
     expect(run).toBeUndefined();
+    const messages = await writeDb
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        error: chatMessages.error,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, response.body.threadId))
+      .orderBy(chatMessages.createdAt);
+    expect(messages).toStrictEqual([
+      {
+        role: "user",
+        content: "blocked by credits",
+        runId: null,
+        error: "insufficient_credits",
+      },
+      {
+        role: "assistant",
+        content: expect.stringContaining("Upgrade to Pro"),
+        runId: null,
+        error: null,
+      },
+    ]);
   });
 
-  it("returns 402 when explicit VM0 modelSelection has no spendable credits", async () => {
+  it("stores no-credit guidance when explicit VM0 modelSelection has no spendable credits", async () => {
     const fixture = await track(seedFixture());
     await seedVm0Credits(fixture, 0);
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6", {
@@ -1566,10 +1590,10 @@ describe("POST /api/zero/chat/messages", () => {
           },
         },
       }),
-      [402],
+      [201],
     );
 
-    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(response.body.runId).toBeNull();
     const [run] = await store
       .set(writeDb$)
       .select({ id: agentRuns.id })

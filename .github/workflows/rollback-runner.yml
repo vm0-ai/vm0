@@ -50,7 +50,7 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     permissions:
       contents: read
     environment: production

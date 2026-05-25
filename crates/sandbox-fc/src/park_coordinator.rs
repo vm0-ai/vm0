@@ -72,33 +72,13 @@ impl ParkCoordinator {
     ) -> Result<(), PrepareParkError> {
         let PrepareParkEvidence::AgentQuiesced = evidence;
 
-        let mut inner = self.inner();
-        match inner.state.clone() {
-            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == attempt.id => {
-                inner.state = CoordinatorState::ReadyForPark { attempt_id };
-                Ok(())
-            }
-            CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
-            state => Err(PrepareParkError::StaleAttempt {
-                attempt_id: attempt.id,
-                state,
-            }),
-        }
+        self.inner()
+            .resolve_prepare_park(attempt, PrepareParkResolution::Complete)
     }
 
     pub(crate) fn abort_prepare_park(&self, attempt: &ParkAttempt) -> Result<(), PrepareParkError> {
-        let mut inner = self.inner();
-        match inner.state.clone() {
-            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == attempt.id => {
-                inner.state = CoordinatorState::Open;
-                Ok(())
-            }
-            CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
-            state => Err(PrepareParkError::StaleAttempt {
-                attempt_id: attempt.id,
-                state,
-            }),
-        }
+        self.inner()
+            .resolve_prepare_park(attempt, PrepareParkResolution::Abort)
     }
 
     pub(crate) fn mark_parked(&self, attempt: &ParkAttempt) -> Result<(), PrepareParkError> {
@@ -194,6 +174,20 @@ pub(crate) enum PrepareParkError {
     },
 }
 
+enum PrepareParkResolution {
+    Complete,
+    Abort,
+}
+
+impl PrepareParkResolution {
+    fn next_state(self, attempt_id: ParkAttemptId) -> CoordinatorState {
+        match self {
+            Self::Complete => CoordinatorState::ReadyForPark { attempt_id },
+            Self::Abort => CoordinatorState::Open,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Inner {
     state: CoordinatorState,
@@ -201,6 +195,24 @@ struct Inner {
 }
 
 impl Inner {
+    fn resolve_prepare_park(
+        &mut self,
+        attempt: &ParkAttempt,
+        resolution: PrepareParkResolution,
+    ) -> Result<(), PrepareParkError> {
+        match self.state.clone() {
+            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == attempt.id => {
+                self.state = resolution.next_state(attempt_id);
+                Ok(())
+            }
+            CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
+            state => Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state,
+            }),
+        }
+    }
+
     fn mark_dirty(&mut self, reason: DirtyReason) {
         if matches!(self.state, CoordinatorState::Dirty { .. }) {
             return;
@@ -410,14 +422,78 @@ mod tests {
         assert!(coordinator.abort_prepare_park(&stale).is_ok());
 
         let current = begin_attempt(&coordinator);
-        assert!(matches!(
+        assert_eq!(
             coordinator.complete_prepare_park(&stale, PrepareParkEvidence::AgentQuiesced),
-            Err(PrepareParkError::StaleAttempt { .. })
-        ));
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: stale.id,
+                state: CoordinatorState::ClosingForPark {
+                    attempt_id: current.id
+                },
+            })
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::ClosingForPark { attempt_id } if attempt_id == current.id
         ));
+    }
+
+    #[test]
+    fn stale_attempt_cannot_abort_current_prepare() {
+        let coordinator = ParkCoordinator::new();
+        let stale = begin_attempt(&coordinator);
+        assert!(coordinator.abort_prepare_park(&stale).is_ok());
+
+        let current = begin_attempt(&coordinator);
+        assert_eq!(
+            coordinator.abort_prepare_park(&stale),
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: stale.id,
+                state: CoordinatorState::ClosingForPark {
+                    attempt_id: current.id
+                },
+            })
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == current.id
+        ));
+    }
+
+    #[test]
+    fn completed_prepare_cannot_be_aborted() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+        complete_attempt(&coordinator, &attempt);
+
+        assert_eq!(
+            coordinator.abort_prepare_park(&attempt),
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state: CoordinatorState::ReadyForPark {
+                    attempt_id: attempt.id
+                },
+            })
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ReadyForPark { attempt_id } if attempt_id == attempt.id
+        ));
+    }
+
+    #[test]
+    fn aborted_prepare_cannot_later_complete() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+        assert!(coordinator.abort_prepare_park(&attempt).is_ok());
+
+        assert_eq!(
+            coordinator.complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced),
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state: CoordinatorState::Open,
+            })
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
 
     #[test]

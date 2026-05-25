@@ -424,7 +424,7 @@ function AgentSplitView({
               }}
             >
               <IconPlus size={14} stroke={2} />
-              Create agent
+              Create
             </Button>
           </div>
         }
@@ -443,7 +443,7 @@ function AgentSplitView({
             }}
           >
             <IconPlus size={14} stroke={2} />
-            Create agent
+            Create
           </Button>
         }
       />

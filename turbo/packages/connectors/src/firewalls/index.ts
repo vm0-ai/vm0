@@ -76,11 +76,13 @@ import { canvaFirewall } from "./canva.generated";
 import { chatwootFirewall } from "./chatwoot.generated";
 import { checkrFirewall } from "./checkr.generated";
 import { cladoFirewall } from "./clado.generated";
+import { clearbitFirewall } from "./clearbit.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
 import { coingeckoFirewall } from "./coingecko.generated";
+import { coresignalFirewall } from "./coresignal.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -177,10 +179,12 @@ import { openweatherFirewall } from "./openweather.generated";
 import { outlookCalendarFirewall } from "./outlook-calendar.generated";
 import { outlookMailFirewall } from "./outlook-mail.generated";
 import { pandadocFirewall } from "./pandadoc.generated";
+import { parallelFirewall } from "./parallel.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pineconeFirewall } from "./pinecone.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
+import { peopleDataLabsFirewall } from "./people-data-labs.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { pipedriveFirewall } from "./pipedrive.generated";
 import { plainFirewall } from "./plain.generated";
@@ -303,12 +307,14 @@ const CONNECTOR_FIREWALLS = {
   canva: canvaFirewall,
   chatwoot: chatwootFirewall,
   checkr: checkrFirewall,
+  clearbit: clearbitFirewall,
   clerk: clerkFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
   coda: codaFirewall,
   coingecko: coingeckoFirewall,
+  coresignal: coresignalFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
@@ -400,10 +406,12 @@ const CONNECTOR_FIREWALLS = {
   "outlook-calendar": outlookCalendarFirewall,
   "outlook-mail": outlookMailFirewall,
   pandadoc: pandadocFirewall,
+  parallel: parallelFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pinecone: pineconeFirewall,
   pdforge: pdforgeFirewall,
+  "people-data-labs": peopleDataLabsFirewall,
   perplexity: perplexityFirewall,
   pipedrive: pipedriveFirewall,
   plain: plainFirewall,

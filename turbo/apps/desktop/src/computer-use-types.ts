@@ -53,6 +53,12 @@ export interface DesktopComputerUseState {
   readonly host: ComputerUseHostRuntimeState;
 }
 
+export function hasRequiredComputerUsePermissions(
+  permissions: ComputerUsePermissionState,
+): boolean {
+  return permissions.accessibility && permissions.screenRecording;
+}
+
 export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
   Object.freeze({
     status: "idle",

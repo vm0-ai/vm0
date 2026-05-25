@@ -49,19 +49,6 @@ export function buildIntegrationPrompt(
   return context;
 }
 
-export interface UserInfoOptions {
-  name?: string;
-  email?: string;
-  timezone?: string;
-  slackDisplayName?: string;
-  slackUserId?: string;
-  telegramDisplayName?: string;
-  telegramUsername?: string;
-  telegramUserId?: string;
-  telegramLanguage?: string;
-  agentphoneHandle?: string;
-}
-
 // ---------------------------------------------------------------------------
 // Per-integration prompt builders
 // ---------------------------------------------------------------------------
