@@ -251,18 +251,18 @@ def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageEx
     return OpenAIResponsesJsonUsageExtractor()
 
 
-def extract_openai_responses_usage_from_json(
+def extract_openai_responses_usage_with_error_from_json(
     body: bytes, headers: http.Headers | None
-) -> dict | None:
+) -> tuple[dict | None, str | None]:
     """Extract usage from a complete non-streaming Responses JSON body.
 
     ``headers`` may be mitmproxy response headers or ``None``. When headers are
     provided, their content encoding controls one-shot decompression before
     parsing; ``None`` skips decompression.
 
-    Returns ``None`` when no platform usage categories can be extracted,
-    including invalid JSON and valid JSON without usage. Otherwise returns a
-    dict keyed by platform model usage categories such as
+    Returns ``(None, error)`` when parsing fails and ``(None, None)`` when no
+    platform usage categories can be extracted from valid JSON. Otherwise
+    returns a dict keyed by platform model usage categories such as
     ``MODEL_USAGE_CATEGORY_INPUT``, ``MODEL_USAGE_CATEGORY_OUTPUT``, and
     ``MODEL_USAGE_CATEGORY_CACHE_READ``. OpenAI ``input_tokens`` include cached
     tokens, so this extractor splits them into uncached input and cache-read
@@ -275,7 +275,15 @@ def extract_openai_responses_usage_from_json(
         )
     extractor = create_openai_responses_json_usage_extractor()
     extractor.feed(body)
-    usage, _error = extractor.finish()
+    return extractor.finish()
+
+
+def extract_openai_responses_usage_from_json(
+    body: bytes, headers: http.Headers | None
+) -> dict | None:
+    """Extract usage from a complete non-streaming Responses JSON body."""
+
+    usage, _error = extract_openai_responses_usage_with_error_from_json(body, headers)
     return usage
 
 

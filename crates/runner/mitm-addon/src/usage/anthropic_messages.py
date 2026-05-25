@@ -169,11 +169,14 @@ def create_anthropic_messages_json_usage_extractor() -> AnthropicMessagesJsonUsa
     return AnthropicMessagesJsonUsageExtractor()
 
 
-def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | None:
+def extract_anthropic_messages_usage_with_error_from_json(
+    body: bytes, headers
+) -> tuple[dict | None, str | None]:
     """Extract usage from a non-streaming Anthropic API JSON response.
 
     Falls back to decompressing the body if *headers* indicate compression.
-    Returns ``None`` when the body is not valid JSON or contains no usage.
+    Returns ``(None, error)`` when the body is not valid JSON and
+    ``(None, None)`` when the body contains no usage.
     """
     if headers:
         body = body_utils.decompress_body(
@@ -181,5 +184,14 @@ def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | N
         )
     extractor = create_anthropic_messages_json_usage_extractor()
     extractor.feed(body)
-    usage, _error = extractor.finish()
+    return extractor.finish()
+
+
+def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | None:
+    """Extract usage from a non-streaming Anthropic API JSON response.
+
+    Falls back to decompressing the body if *headers* indicate compression.
+    Returns ``None`` when the body is not valid JSON or contains no usage.
+    """
+    usage, _error = extract_anthropic_messages_usage_with_error_from_json(body, headers)
     return usage
