@@ -1587,7 +1587,13 @@ mod tests {
         let writer =
             spawn_exec_operation_stdin(write_file, b"blocked".to_vec(), SystemThreadSpawner)
                 .unwrap();
-        join_stdin_writer_after_kill(Some(writer));
+        request_stdin_writer_cancel(&writer);
+        if let Err(e) = writer.done_rx.recv_timeout(Duration::from_secs(5)) {
+            drop(read_fd);
+            join_stdin_writer(writer, 0, "");
+            panic!("stdin writer cancel did not wake blocked writer: {e}");
+        }
+        join_stdin_writer(writer, 0, "");
         drop(read_fd);
     }
 
