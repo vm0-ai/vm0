@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mitmproxy.flow import Error
 
 import mitm_addon
@@ -26,6 +27,23 @@ class TestDoneHook:
             mitm_addon.done()
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
+        mock_executor.shutdown.assert_called_once_with(wait=True)
+
+    def test_done_shuts_down_executor_when_flush_fails(self):
+        mock_executor = MagicMock()
+
+        with (
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=RuntimeError("flush failed"),
+            ) as flush_usage_events,
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+            pytest.raises(RuntimeError, match="flush failed"),
+        ):
+            mitm_addon.done()
+
+        flush_usage_events.assert_called_once_with(trigger="shutdown")
         mock_executor.shutdown.assert_called_once_with(wait=True)
 
 

@@ -185,6 +185,39 @@ def test_flushes_when_buffered_webhook_batch_count_reaches_bound(tmp_path):
     ]
 
 
+def test_flushes_when_aggregate_bucket_count_reaches_exact_bound(tmp_path):
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                _event(source_key=f"source-{index}", category=f"category-{index}")
+                for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS - 1)
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+        enqueue.assert_not_called()
+
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                _event(
+                    source_key=f"source-{usage_buffer.MAX_AGGREGATE_BUCKETS - 1}",
+                    category=f"category-{usage_buffer.MAX_AGGREGATE_BUCKETS - 1}",
+                )
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+    enqueue.assert_called_once()
+    payload = enqueue.call_args.args[2]
+    assert payload["runId"] == "run-1"
+    assert len(payload["events"]) == usage_buffer.MAX_AGGREGATE_BUCKETS
+
+
 def test_flushes_when_source_event_count_reaches_bound(tmp_path):
     events = [
         _event(source_key=f"source-{index}", quantity=1)
