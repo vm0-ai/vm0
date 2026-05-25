@@ -1124,6 +1124,12 @@ type ChatVideoPreviewButtonProps = {
   videoClassName: string;
 };
 
+function videoPosterFrameUrl(url: string): string {
+  const hashIndex = url.indexOf("#");
+  const urlWithoutHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
+  return `${urlWithoutHash}#t=0.001`;
+}
+
 function ChatVideoPreviewButton({
   ariaLabel,
   buttonClassName,
@@ -1134,6 +1140,7 @@ function ChatVideoPreviewButton({
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
   const videoUrl = publicAttachmentUrl(url);
+  const posterVideoUrl = videoPosterFrameUrl(videoUrl);
 
   return (
     <button
@@ -1156,7 +1163,7 @@ function ChatVideoPreviewButton({
         <IconVideo size={22} stroke={1.5} />
       </span>
       <video
-        src={videoUrl}
+        src={posterVideoUrl}
         preload="metadata"
         muted
         playsInline

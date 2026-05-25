@@ -971,7 +971,7 @@ describe("zero chat thread page display - attachment video preview", () => {
     expect(
       within(previewButton).getByTestId("chat-video-preview-poster"),
     ).toBeInTheDocument();
-    expect(posterVideo?.getAttribute("src")).toBe(videoUrl);
+    expect(posterVideo?.getAttribute("src")).toBe(`${videoUrl}#t=0.001`);
     expect(posterVideo?.hasAttribute("controls")).toBeFalsy();
     expect(
       screen.queryByLabelText("Video preview for clip.mp4"),
