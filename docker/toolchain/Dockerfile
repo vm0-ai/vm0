@@ -193,9 +193,15 @@ RUN apt-get update && apt-get install -y unzip \
 
 # Create vscode user with standard UID/GID for devcontainer compatibility
 # Following Microsoft's devcontainer pattern for better feature compatibility
-# Use -f flag to force group creation if GID already exists (1Password CLI creates GID 1000)
-RUN groupadd -f --gid 1000 vscode \
-    && useradd --uid 1000 --gid vscode --shell /usr/bin/zsh --create-home vscode \
+# Ubuntu 24.04 base images already include a UID/GID 1000 user/group, so
+# rename/reuse it instead of creating a duplicate UID.
+RUN existing_group="$(getent group 1000 | cut -d: -f1 || true)" \
+    && if [ -n "$existing_group" ] && [ "$existing_group" != "vscode" ]; then groupmod --new-name vscode "$existing_group"; fi \
+    && if [ -z "$existing_group" ]; then groupadd --gid 1000 vscode; fi \
+    && existing_user="$(getent passwd 1000 | cut -d: -f1 || true)" \
+    && if [ -n "$existing_user" ] && [ "$existing_user" != "vscode" ]; then usermod --login vscode --home /home/vscode --move-home --shell /usr/bin/zsh --gid vscode "$existing_user"; fi \
+    && if [ -z "$existing_user" ]; then useradd --uid 1000 --gid vscode --shell /usr/bin/zsh --create-home vscode; fi \
+    && if [ "$existing_user" = "vscode" ]; then usermod --shell /usr/bin/zsh --gid vscode vscode; fi \
     && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \
     && mkdir -p /home/vscode/.local/share /home/vscode/.local/share/agent-browser /home/vscode/.cache /home/vscode/.config \
