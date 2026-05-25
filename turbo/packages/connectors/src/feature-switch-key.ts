@@ -39,7 +39,6 @@ export enum FeatureSwitchKey {
   ComputerUse = "computerUse",
   LocalBrowserUse = "localBrowserUse",
   LocalAgentConnector = "localAgentConnector",
-  DesktopLocalAgent = "desktopLocalAgent",
   Lab = "lab",
   AuditLink = "auditLink",
   AudioOutput = "audioOutput",

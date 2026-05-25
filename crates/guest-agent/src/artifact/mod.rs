@@ -300,19 +300,95 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dedup_snapshot_validation_failure_does_not_commit() {
+    async fn dedup_snapshot_posts_file_payloads_before_validation_failure_blocks_commit() {
         disable_system_log();
+        let server = &*SNAPSHOT_MOCK_SERVER;
+
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = archive::collect_file_metadata(root.to_str().unwrap());
-        std::fs::write(root.join("target.txt"), "after!").unwrap();
-
-        let server = &*SNAPSHOT_MOCK_SERVER;
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        std::fs::write(root.join("target.txt"), "content").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files: Vec<serde_json::Value> = files
+            .iter()
+            .map(|file| {
+                serde_json::json!({
+                    "path": file.path,
+                    "hash": file.hash,
+                    "size": file.size,
+                })
+            })
+            .collect();
+        let total_size: u64 = files.iter().map(|file| file.size).sum();
 
         let prepare = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
-                .path("/api/webhooks/agent/storages/prepare");
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-id",
+                    "storageName": "storage",
+                    "storageType": "artifact",
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-existing",
+                "existing": true
+            }));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/webhooks/agent/storages/commit")
+                .json_body(serde_json::json!({
+                    "runId": "run-id",
+                    "storageName": "storage",
+                    "storageType": "artifact",
+                    "versionId": "v-existing",
+                    "parentVersionId": "parent-v1",
+                    "files": expected_files,
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "success": true,
+                "versionId": "v-existing",
+                "storageName": "storage",
+                "size": total_size,
+                "fileCount": expected_files.len(),
+            }));
+        });
+
+        let http = HttpClient::new().unwrap();
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files: files.clone(),
+                storage_name: "storage",
+                storage_type: "artifact",
+                run_id: "run-id",
+                message: "message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.version_id, "v-existing");
+        prepare.assert_calls(1);
+        commit.assert_calls(1);
+        prepare.delete_async().await;
+        commit.delete_async().await;
+
+        std::fs::write(root.join("target.txt"), "changed").unwrap();
+        let prepare = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-id",
+                    "storageName": "storage",
+                    "storageType": "artifact",
+                    "files": expected_files,
+                }));
             then.status(200).json_body(serde_json::json!({
                 "versionId": "v-existing",
                 "existing": true
@@ -349,5 +425,7 @@ mod tests {
         );
         prepare.assert_calls(1);
         commit.assert_calls(0);
+        prepare.delete_async().await;
+        commit.delete_async().await;
     }
 }

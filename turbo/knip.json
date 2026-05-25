@@ -5,7 +5,7 @@
       "entry": [
         "app/**/page.{ts,tsx}",
         "app/**/layout.{ts,tsx}",
-        "app/api/**/route.{ts,tsx}",
+        "app/**/route.{ts,tsx}!",
         "proxy.{ts,tsx}",
         "proxy.cors.ts",
         "i18n.ts",
@@ -16,7 +16,14 @@
         "src/__tests__/api-test-helpers/index.ts",
         "src/__tests__/webhook-simulators/index.ts"
       ],
-      "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
+      "project": [
+        "**/*.{ts,tsx}!",
+        "!**/__tests__/**!",
+        "!**/*.{test,spec}.{ts,tsx}!",
+        "!src/lib/test-endpoints/**!",
+        "!src/mocks/**!",
+        "scripts/**/*.ts"
+      ],
       "ignoreDependencies": [
         "@vm0/ui",
         "e2b",
@@ -87,11 +94,13 @@
     "apps/desktop": {
       "entry": [
         "forge.config.js",
+        "vite.renderer.config.ts",
         "src/main.ts",
         "src/preload.ts",
-        "src/**/*.{test,spec}.ts"
+        "src/renderer/main.tsx",
+        "src/**/*.{test,spec}.{ts,tsx}"
       ],
-      "project": ["src/**/*.ts", "*.js"],
+      "project": ["src/**/*.{ts,tsx}", "*.{js,ts}"],
       "ignoreDependencies": [
         "@electron-forge/cli",
         "@electron-forge/maker-zip",
@@ -151,7 +160,6 @@
     "apps/platform/src/mocks/ably.ts",
     "apps/platform/src/mocks/idb.ts",
     "apps/cli/src/lib/utils/paginate.ts",
-    "apps/web/src/lib/auth/sandbox-token.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",
     "scripts/analyze-cpuprofile.mjs",

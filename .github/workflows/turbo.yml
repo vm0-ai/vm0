@@ -105,7 +105,7 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
@@ -352,7 +352,7 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
         with:
@@ -376,7 +376,7 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -389,7 +389,7 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -402,7 +402,7 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -419,7 +419,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     services:
       postgres:
         image: postgres:17-alpine
@@ -470,7 +470,7 @@ jobs:
         (github.event_name == 'push' && github.ref == 'refs/heads/main')
       )
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     services:
       postgres:
         image: postgres:17-alpine
@@ -512,7 +512,7 @@ jobs:
     # Only run when migration or schema files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     services:
       postgres:
         image: postgres:17-alpine
@@ -569,7 +569,7 @@ jobs:
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -600,7 +600,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -628,7 +628,7 @@ jobs:
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
@@ -650,7 +650,7 @@ jobs:
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     services:
       postgres:
         image: postgres:17-alpine
@@ -697,7 +697,7 @@ jobs:
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -728,7 +728,7 @@ jobs:
       group: deploy-web-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and web, API, CLI, runner, or platform changed.
     # Web API-backend proxy changes also deploy API because the web preview points VM0_API_BACKEND_URL at the PR API alias.
@@ -1146,7 +1146,7 @@ jobs:
       group: deploy-app-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform/e2e/ci changed
     if: >-
@@ -1301,7 +1301,7 @@ jobs:
   build-api:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1320,7 +1320,7 @@ jobs:
   build-cli:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1981,7 +1981,7 @@ jobs:
   build-e2b-template:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
     # Build on PR or main push when E2B templates changed, skip release-please commits
     if: |

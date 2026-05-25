@@ -59,6 +59,7 @@ import { chatwoot } from "./connectors/chatwoot";
 import { checkr } from "./connectors/checkr";
 import { clado } from "./connectors/clado";
 import { clerk } from "./connectors/clerk";
+import { clearbit } from "./connectors/clearbit";
 import { clickup } from "./connectors/clickup";
 import { close } from "./connectors/close";
 import { cloudflare } from "./connectors/cloudflare";
@@ -621,6 +622,7 @@ const CONNECTOR_TYPES_DEF = {
   ...checkr,
   ...clado,
   ...clerk,
+  ...clearbit,
   ...clickup,
   ...close,
   ...cloudflare,

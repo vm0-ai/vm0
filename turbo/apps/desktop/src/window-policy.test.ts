@@ -23,11 +23,9 @@ import {
   buildDesktopAuthStartUrl,
   createDesktopAuthStartGate,
   isDesktopAuthStartNavigation,
-  isDesktopSignedOutNavigation,
   parseDesktopAuthCallbackArgv,
   parseDesktopAuthCallback,
 } from "./desktop-auth";
-import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 function createNativeBackend(
@@ -290,48 +288,6 @@ describe("desktop auth", () => {
         allowedOrigins,
       ),
     ).toBe(false);
-  });
-
-  it("detects app sign-in navigation that should show the signed-out page", () => {
-    expect(
-      isDesktopSignedOutNavigation(
-        "https://app.vm0.ai/sign-in",
-        allowedOrigins,
-      ),
-    ).toBe(true);
-    expect(
-      isDesktopSignedOutNavigation(
-        "https://www.vm0.ai/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai%2F",
-        allowedOrigins,
-      ),
-    ).toBe(true);
-    expect(
-      isDesktopSignedOutNavigation(
-        "https://app.vm0.ai/desktop-auth/start",
-        allowedOrigins,
-      ),
-    ).toBe(false);
-    expect(
-      isDesktopSignedOutNavigation(
-        "https://accounts.google.com/signin",
-        allowedOrigins,
-      ),
-    ).toBe(false);
-  });
-
-  it("builds a local signed-out page with an explicit auth start link", () => {
-    const authStartUrl = buildDesktopAuthStartUrl(
-      platformUrl,
-      "ai.vm0.zero.desktop",
-    );
-    const pageUrl = buildSignedOutPageUrl(authStartUrl);
-    const html = decodeURIComponent(pageUrl.split(",")[1] ?? "");
-
-    expect(pageUrl.startsWith("data:text/html;charset=utf-8,")).toBe(true);
-    expect(html).toContain(
-      'href="https://app.vm0.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop"',
-    );
-    expect(html).toContain("Sign in to Zero");
   });
 
   it("parses a valid desktop callback code", () => {

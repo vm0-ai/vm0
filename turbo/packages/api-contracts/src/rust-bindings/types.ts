@@ -4,6 +4,7 @@ import {
   storageEntrySchema,
   storageManifestSchema,
 } from "../contracts/runners";
+import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
@@ -41,12 +42,19 @@ export const rustTypeBindings = [
     },
   },
   {
+    schema: fileEntryWithHashSchema,
+    rustModulePath: ["webhooks", "agent", "storages"],
+    rustTypeName: "FileEntryWithHash",
+    direction: "request",
+  },
+  {
     schema: webhookStoragesPrepareContract.prepare.body,
     rustModulePath: ["webhooks", "agent", "storages", "prepare"],
     rustTypeName: "Request",
     direction: "request",
     fieldTypeOverrides: {
       storageType: "String",
+      files: "Vec<super::FileEntryWithHash>",
     },
   },
   {
@@ -62,6 +70,7 @@ export const rustTypeBindings = [
     direction: "request",
     fieldTypeOverrides: {
       storageType: "String",
+      files: "Vec<super::FileEntryWithHash>",
     },
   },
   {

@@ -53,6 +53,7 @@
     "generate:canva": "tsx src/index.ts canva",
     "generate:chatwoot": "tsx src/index.ts chatwoot",
     "generate:checkr": "tsx src/index.ts checkr",
+    "generate:clearbit": "tsx src/index.ts clearbit",
     "generate:clickup": "tsx src/index.ts clickup",
     "generate:close": "tsx src/index.ts close",
     "generate:cloudflare": "tsx src/index.ts cloudflare",

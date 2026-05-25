@@ -386,21 +386,15 @@ describe("schedule dialog - minute select (SCHED-D-060)", () => {
 
 describe("schedule dialog - timezone select (SCHED-D-061)", () => {
   it("renders timezone select and reflects selection change", async () => {
-    const user = userEvent.setup();
     await openCreateDialog();
     // Default freq is every_day which shows timezone select.
     const tzTrigger = screen.getByRole("combobox", { name: "Timezone" });
     expect(tzTrigger).toBeInTheDocument();
-    // Open via keyboard — pointer-events:none on body (set by the Radix Dialog) prevents
-    // click-based interactions with portalled SelectContent. Keyboard nav bypasses this.
-    // The test environment default timezone is "UTC" (prepended to the COMMON_TIMEZONES
-    // list). Two ArrowDown presses navigate past "UTC" (index 0) and "Etc/UTC" (index 1)
-    // to "America/New_York" = "Eastern Time (ET)" (index 2).
-    tzTrigger.focus();
-    await user.keyboard(" ");
-    await user.keyboard("{ArrowDown}");
-    await user.keyboard("{ArrowDown}");
-    await user.keyboard("{Enter}");
+    click(tzTrigger);
+    const easternOption = await waitFor(() => {
+      return screen.getByText(/Eastern Time \(ET\)/);
+    });
+    click(easternOption);
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "Timezone" }),

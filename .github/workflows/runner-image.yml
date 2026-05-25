@@ -197,7 +197,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     permissions:
       contents: read
     needs: [prepare]

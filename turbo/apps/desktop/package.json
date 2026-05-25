@@ -6,9 +6,10 @@
   "description": "Zero desktop shell",
   "main": "dist/main.js",
   "scripts": {
-    "build": "pnpm build:native && pnpm build:electron",
+    "build": "pnpm build:native && pnpm build:electron && pnpm build:renderer",
     "build:electron": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
     "build:native": "node scripts/build-native-helper.js",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
     "check-types": "tsc --noEmit",
     "dev": "pnpm build && electron-forge start",
     "lint": "oxlint src --deny-warnings",
@@ -17,15 +18,26 @@
     "start": "electron-forge start",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@tabler/icons-react": "^3.36.1",
+    "ccstate": "^5.3.0",
+    "ccstate-react": "^5.3.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
   "devDependencies": {
     "@electron-forge/cli": "7.11.1",
     "@electron-forge/maker-zip": "7.11.1",
     "@types/node": "24.3.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.1",
     "@vm0/typescript-config": "workspace:*",
     "electron": "42.1.0",
     "oxlint": "^1.57.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
+    "vite": "^8.0.0",
     "vitest": "^4.1.7"
   }
 }

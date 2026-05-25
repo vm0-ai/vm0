@@ -38,6 +38,7 @@ import { generate as generateCanva } from "./canva";
 import { generate as generateChatwoot } from "./chatwoot";
 import { generate as generateCheckr } from "./checkr";
 import { generate as generateClado } from "./clado";
+import { generate as generateClearbit } from "./clearbit";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateClerk } from "./clerk";
@@ -252,6 +253,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   chatwoot: generateChatwoot,
   checkr: generateCheckr,
   clerk: generateClerk,
+  clearbit: generateClearbit,
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,

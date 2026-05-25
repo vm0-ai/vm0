@@ -1,56 +1,28 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { DesktopAuthApi, DesktopComputerUseApi } from "./desktop-bridge";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
-import { DESKTOP_LOCAL_AGENT_CHANNELS } from "./desktop-local-agent-ipc-channels";
-import { DESKTOP_WINDOW_CHROME_CHANNELS } from "./desktop-window-chrome-ipc-channels";
+import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import type {
   ComputerUseApprovalAction,
   DesktopComputerUseState,
 } from "./computer-use-types";
-import type {
-  DesktopLocalAgentAddOptions,
-  DesktopLocalAgentBackendProbe,
-  DesktopLocalAgentEntry,
-} from "./desktop-local-agent-types";
 
-const desktopLocalAgentApi = {
-  setEnabled(enabled: boolean): Promise<void> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.setEnabled, enabled);
-  },
-  list(): Promise<DesktopLocalAgentEntry[]> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.list);
-  },
-  detectBackends(): Promise<DesktopLocalAgentBackendProbe[]> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.detectBackends);
-  },
-  add(
-    options: DesktopLocalAgentAddOptions = {},
-  ): Promise<DesktopLocalAgentEntry | null> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.add, options);
-  },
-  start(id: string): Promise<DesktopLocalAgentEntry> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.start, id);
-  },
-  stop(id: string): Promise<DesktopLocalAgentEntry> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.stop, id);
-  },
-  remove(id: string): Promise<void> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.remove, id);
-  },
-  openFolder(id: string): Promise<void> {
-    return ipcRenderer.invoke(DESKTOP_LOCAL_AGENT_CHANNELS.openFolder, id);
+const desktopAuthApi: DesktopAuthApi = {
+  openSignIn(): Promise<void> {
+    return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.openSignIn);
   },
   subscribe(callback: () => void): () => void {
     const listener = (): void => {
       callback();
     };
-    ipcRenderer.on(DESKTOP_LOCAL_AGENT_CHANNELS.changed, listener);
+    ipcRenderer.on(DESKTOP_AUTH_CHANNELS.changed, listener);
     return () => {
-      ipcRenderer.off(DESKTOP_LOCAL_AGENT_CHANNELS.changed, listener);
+      ipcRenderer.off(DESKTOP_AUTH_CHANNELS.changed, listener);
     };
   },
 };
 
-const desktopComputerUseApi = {
+const desktopComputerUseApi: DesktopComputerUseApi = {
   getState(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.getState);
   },
@@ -86,18 +58,5 @@ const desktopComputerUseApi = {
   },
 };
 
-const desktopWindowChromeApi = {
-  setSidebarCollapsed(collapsed: boolean): Promise<void> {
-    return ipcRenderer.invoke(
-      DESKTOP_WINDOW_CHROME_CHANNELS.setSidebarCollapsed,
-      collapsed,
-    );
-  },
-};
-
-contextBridge.exposeInMainWorld("vm0DesktopLocalAgent", desktopLocalAgentApi);
+contextBridge.exposeInMainWorld("vm0DesktopAuth", desktopAuthApi);
 contextBridge.exposeInMainWorld("vm0DesktopComputerUse", desktopComputerUseApi);
-contextBridge.exposeInMainWorld(
-  "vm0DesktopWindowChrome",
-  desktopWindowChromeApi,
-);

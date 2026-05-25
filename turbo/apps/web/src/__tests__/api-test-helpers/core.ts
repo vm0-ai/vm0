@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
-import { generateSandboxToken } from "../../lib/auth/sandbox-token";
 import { createSingleFileTar } from "../../lib/infra/tar";
 
 /**
@@ -83,21 +82,6 @@ export function createDefaultComposeConfig(
   }
 
   return config;
-}
-
-/**
- * Create a test sandbox JWT token for webhook endpoints
- * This generates a valid JWT that can be used to authenticate sandbox requests
- *
- * @param userId - The user ID to encode in the token
- * @param runId - The run ID to encode in the token
- * @returns A valid JWT token string
- */
-export async function createTestSandboxToken(
-  userId: string,
-  runId: string,
-): Promise<string> {
-  return generateSandboxToken(userId, runId, "org-test");
 }
 
 /**

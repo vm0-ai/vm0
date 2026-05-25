@@ -8,7 +8,7 @@ import type {
 } from "./computer-use-types";
 
 interface ComputerUseIpcOptions {
-  readonly allowedAppOrigins: ReadonlySet<string>;
+  readonly rendererUrl: string;
 }
 
 interface ComputerUseNativeApi {
@@ -51,7 +51,7 @@ export function installComputerUseIpc(
     if (
       !isDesktopComputerUsePageUrl(
         event.senderFrame?.url ?? "",
-        options.allowedAppOrigins,
+        options.rendererUrl,
       )
     ) {
       throw new Error("Desktop Computer Use is unavailable on this page");

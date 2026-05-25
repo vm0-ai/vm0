@@ -76,6 +76,7 @@ import { canvaFirewall } from "./canva.generated";
 import { chatwootFirewall } from "./chatwoot.generated";
 import { checkrFirewall } from "./checkr.generated";
 import { cladoFirewall } from "./clado.generated";
+import { clearbitFirewall } from "./clearbit.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
@@ -305,6 +306,7 @@ const CONNECTOR_FIREWALLS = {
   canva: canvaFirewall,
   chatwoot: chatwootFirewall,
   checkr: checkrFirewall,
+  clearbit: clearbitFirewall,
   clerk: clerkFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
