@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.384.2](https://github.com/vm0-ai/vm0/compare/app-v0.384.1...app-v0.384.2) (2026-05-25)
+
+
+### Performance Improvements
+
+* add side-effect-free API GET benches ([#14801](https://github.com/vm0-ai/vm0/issues/14801)) ([1756446](https://github.com/vm0-ai/vm0/commit/1756446b320d2e05bf374305af63956208482e52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.1
+    * @vm0/connectors bumped to 1.33.2
+    * @vm0/core bumped to 8.293.3
+
 ## [0.384.1](https://github.com/vm0-ai/vm0/compare/app-v0.384.0...app-v0.384.1) (2026-05-25)
 
 

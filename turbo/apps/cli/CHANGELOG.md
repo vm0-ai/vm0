@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.162.1](https://github.com/vm0-ai/vm0/compare/cli-v9.162.0...cli-v9.162.1) (2026-05-25)
+
+
+### Refactoring
+
+* remove open design generate switch ([#14873](https://github.com/vm0-ai/vm0/issues/14873)) ([f3c647a](https://github.com/vm0-ai/vm0/commit/f3c647a3a38bb841bcfbfd12c1193ff007529fe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.40.1
+    * @vm0/connectors bumped to 1.33.2
+    * @vm0/core bumped to 8.293.3
+
 ## [9.162.0](https://github.com/vm0-ai/vm0/compare/cli-v9.161.9...cli-v9.162.0) (2026-05-25)
 
 

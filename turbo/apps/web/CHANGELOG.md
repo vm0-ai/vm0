@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.387.5](https://github.com/vm0-ai/vm0/compare/web-v12.387.4...web-v12.387.5) (2026-05-25)
+
+
+### Refactoring
+
+* remove open design generate switch ([#14873](https://github.com/vm0-ai/vm0/issues/14873)) ([f3c647a](https://github.com/vm0-ai/vm0/commit/f3c647a3a38bb841bcfbfd12c1193ff007529fe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.1
+    * @vm0/core bumped to 8.293.3
+    * @vm0/db bumped to 1.18.12
+  * devDependencies
+    * @vm0/connectors bumped to 1.33.2
+
 ## [12.387.4](https://github.com/vm0-ai/vm0/compare/web-v12.387.3...web-v12.387.4) (2026-05-25)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.72.2](https://github.com/vm0-ai/vm0/compare/api-v1.72.1...api-v1.72.2) (2026-05-25)
+
+
+### Refactoring
+
+* remove open design generate switch ([#14873](https://github.com/vm0-ai/vm0/issues/14873)) ([f3c647a](https://github.com/vm0-ai/vm0/commit/f3c647a3a38bb841bcfbfd12c1193ff007529fe8))
+
+
+### Performance Improvements
+
+* add side-effect-free API GET benches ([#14801](https://github.com/vm0-ai/vm0/issues/14801)) ([1756446](https://github.com/vm0-ai/vm0/commit/1756446b320d2e05bf374305af63956208482e52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.1
+    * @vm0/connectors bumped to 1.33.2
+    * @vm0/core bumped to 8.293.3
+    * @vm0/db bumped to 1.18.12
+
 ## [1.72.1](https://github.com/vm0-ai/vm0/compare/api-v1.72.0...api-v1.72.1) (2026-05-25)
 
 

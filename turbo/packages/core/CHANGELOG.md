@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.293.3](https://github.com/vm0-ai/vm0/compare/core-v8.293.2...core-v8.293.3) (2026-05-25)
+
+
+### Refactoring
+
+* remove open design generate switch ([#14873](https://github.com/vm0-ai/vm0/issues/14873)) ([f3c647a](https://github.com/vm0-ai/vm0/commit/f3c647a3a38bb841bcfbfd12c1193ff007529fe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.1
+    * @vm0/connectors bumped to 1.33.2
+
 ## [8.293.2](https://github.com/vm0-ai/vm0/compare/core-v8.293.1...core-v8.293.2) (2026-05-25)
 
 
