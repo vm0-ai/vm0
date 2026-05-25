@@ -18,7 +18,7 @@ use crate::error::to_io_error;
 use crate::exec_control::ExecControlGuard;
 use crate::log::log;
 use crate::process::{
-    ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child, kill_and_reap_child_with_target,
+    ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child_with_target,
     kill_process_tree_target, process_tree_kill_target, refresh_process_tree_kill_target,
 };
 use crate::quiesce::OperationGuard;
@@ -493,21 +493,21 @@ fn run_exec_operation_worker<S>(
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
-            kill_and_send_wait_failed(child, "missing stdout pipe", failure);
+            kill_and_send_wait_failed(child, kill_target, "missing stdout pipe", failure);
             return;
         }
     };
     let stderr = match child.stderr.take() {
         Some(stderr) => stderr,
         None => {
-            kill_and_send_wait_failed(child, "missing stderr pipe", failure);
+            kill_and_send_wait_failed(child, kill_target, "missing stderr pipe", failure);
             return;
         }
     };
     let stdin_writer = match request.stdin_bytes.as_ref() {
         Some(stdin_bytes) => {
             let Some(stdin) = child.stdin.take() else {
-                kill_and_send_wait_failed(child, "missing stdin pipe", failure);
+                kill_and_send_wait_failed(child, kill_target, "missing stdin pipe", failure);
                 return;
             };
             match spawn_exec_operation_stdin(stdin, stdin_bytes.clone(), spawner.clone()) {
@@ -515,6 +515,7 @@ fn run_exec_operation_worker<S>(
                 Err(e) => {
                     kill_and_send_wait_failed(
                         child,
+                        kill_target,
                         &format!("failed to spawn stdin writer thread: {e}"),
                         failure,
                     );
@@ -999,8 +1000,13 @@ fn join_stdin_writer(writer: StdinWriter, seq: u32, label: &str) {
     }
 }
 
-fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailureContext<'_>) {
-    kill_and_reap_child(child);
+fn kill_and_send_wait_failed(
+    child: Child,
+    kill_target: ProcessTreeKillTarget,
+    diagnostic: &str,
+    failure: WaitFailureContext<'_>,
+) {
+    kill_and_reap_child_with_target(child, kill_target);
     send_final_and_complete(
         failure.registration,
         ExecResultFrame {
