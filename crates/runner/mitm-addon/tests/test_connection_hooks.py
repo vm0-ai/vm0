@@ -11,6 +11,7 @@ from mitmproxy.flow import Error
 
 import mitm_addon
 import usage
+from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -50,17 +51,107 @@ class TestDoneHook:
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
-    def test_signal_handler_flushes_usage_in_background(self):
+    def test_signal_handler_flushes_usage_in_background(self, tmp_path):
         flushed = threading.Event()
+        snapshotted = threading.Event()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
 
         def flush_usage_events(*, trigger: str) -> int:
             assert trigger == "runner"
+            usage.counters.increment_pending_reports()
+            usage.counters.decrement_pending_reports()
             flushed.set()
             return 0
 
-        with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
-            assert flushed.wait(timeout=1)
+        original_write_pending_snapshot = usage.write_pending_snapshot
+
+        def write_pending_snapshot(*, flush_request_id: str | None = None) -> None:
+            original_write_pending_snapshot(flush_request_id=flush_request_id)
+            snapshotted.set()
+
+        try:
+            with (
+                patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+                patch.object(
+                    usage,
+                    "write_pending_snapshot",
+                    side_effect=write_pending_snapshot,
+                ),
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                assert flushed.wait(timeout=1)
+                assert snapshotted.wait(timeout=1)
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.set_pending_path("")
+
+    def test_signal_handler_writes_snapshot_when_flush_fails(self, tmp_path):
+        snapshotted = threading.Event()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        usage.counters.increment_pending_reports()
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+
+        original_write_pending_snapshot = usage.write_pending_snapshot
+
+        def write_pending_snapshot(*, flush_request_id: str | None = None) -> None:
+            original_write_pending_snapshot(flush_request_id=flush_request_id)
+            snapshotted.set()
+
+        try:
+            with (
+                patch.object(
+                    usage,
+                    "flush_usage_events",
+                    side_effect=RuntimeError("flush failed"),
+                ),
+                patch.object(
+                    usage,
+                    "write_pending_snapshot",
+                    side_effect=write_pending_snapshot,
+                ),
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                assert snapshotted.wait(timeout=1)
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=1,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.counters.decrement_pending_reports()
+            usage.set_pending_path("")
 
 
 class TestTlsClienthello:

@@ -119,9 +119,13 @@ def _flush_usage_for_runner_request() -> None:
     if not _usage_flush_signal_lock.acquire(blocking=False):
         return
     try:
-        usage.flush_usage_events(trigger="runner")
-    except Exception as exc:
-        ctx.log.warn(f"Failed to flush usage events after runner request: {exc}")
+        flush_request_id = usage.read_usage_flush_request_id()
+        try:
+            usage.flush_usage_events(trigger="runner")
+        except Exception as exc:
+            ctx.log.warn(f"Failed to flush usage events after runner request: {exc}")
+        finally:
+            usage.write_pending_snapshot(flush_request_id=flush_request_id)
     finally:
         _usage_flush_signal_lock.release()
 
@@ -647,10 +651,9 @@ def error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports before mitmproxy exits.
 
-    The runner waits for pending flow/report counters before stopping the
-    proxy. Buffered usage is converted into webhook reports before
-    ``shutdown(wait=True)`` drains already-submitted futures during graceful
-    stop.
+    The runner requests fresh pending snapshots before stopping the proxy.
+    Buffered usage is converted into webhook reports before
+    ``shutdown(wait=True)`` drains already-submitted futures during graceful stop.
     """
     try:
         usage.flush_usage_events(trigger="shutdown")

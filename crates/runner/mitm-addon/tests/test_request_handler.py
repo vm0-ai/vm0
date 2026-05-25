@@ -1124,7 +1124,14 @@ class TestRequestHandler:
 
             assert flow.metadata["_usage_flow_tracked"] is True
             assert usage.counters._in_flight_flows == 1
-            assert_pending(pending_path, flows=1, buffered=0, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1338,7 +1345,14 @@ class TestRequestHandler:
             assert flow.metadata["firewall_billable"] is True
             assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
             assert flow.metadata["_usage_flow_tracked"] is True
-            assert_pending(pending_path, flows=1, buffered=0, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1395,7 +1409,14 @@ class TestRequestHandler:
         async def forward_request(*_args):
             assert flow.metadata["_usage_flow_tracked"] is True
             assert usage.counters._in_flight_flows == 1
-            assert_pending(pending_path, flows=1, buffered=0, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
             return (200, b'{"delivered":true}', {"Content-Type": "application/json"})
 
         try:
@@ -1418,13 +1439,27 @@ class TestRequestHandler:
                 assert flow.metadata["auth_url_rewrite"] is True
                 assert flow.metadata["_usage_flow_tracked"] is True
                 assert usage.counters._in_flight_flows == 1
-                assert_pending(pending_path, flows=1, buffered=0, reports=0)
+                usage.write_pending_snapshot(flush_request_id="request-1")
+                assert_pending(
+                    pending_path,
+                    flows=1,
+                    buffered=0,
+                    reports=0,
+                    flush_request_id="request-1",
+                )
 
                 mitm_addon.response(flow)
 
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, buffered=0, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()
@@ -1481,7 +1516,14 @@ class TestRequestHandler:
         async def fail_forward_request(*_args):
             assert flow.metadata["_usage_flow_tracked"] is True
             assert usage.counters._in_flight_flows == 1
-            assert_pending(pending_path, flows=1, buffered=0, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
             raise RuntimeError("upstream unavailable")
 
         try:
@@ -1506,7 +1548,14 @@ class TestRequestHandler:
             assert "auth_url_rewrite" not in flow.metadata
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, buffered=0, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
         finally:
             if usage.counters._in_flight_flows:
                 usage.decrement_in_flight_flows()

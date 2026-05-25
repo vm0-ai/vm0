@@ -35,7 +35,9 @@ from .buffer import (
 from .counters import (
     decrement_in_flight_flows,
     increment_in_flight_flows,
+    read_usage_flush_request_id,
     set_pending_path,
+    write_pending_snapshot,
 )
 from .openai_responses import (
     create_openai_responses_json_usage_extractor,
@@ -65,10 +67,12 @@ __all__ = [
     "flush_usage_events",
     "increment_in_flight_flows",
     "merge_openai_responses_usage_result",
+    "read_usage_flush_request_id",
     "report_connector_usage",
     "report_model_provider_usage",
     "reset_usage_buffer_for_tests",
     "set_pending_path",
     "webhook",
+    "write_pending_snapshot",
     "x",
 ]
