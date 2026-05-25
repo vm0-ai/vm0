@@ -1,5 +1,5 @@
+import { createHmac } from "crypto";
 import type { NextRequest } from "next/server";
-import { computeHmacSignature } from "../../lib/infra/callback/hmac";
 import { createTestRequest } from "./core";
 
 /**
@@ -28,7 +28,9 @@ export function createSignedCallbackRequest(
   const payload = JSON.stringify(body);
   const signature = options?.invalidSignature
     ? "invalid-signature"
-    : computeHmacSignature(payload, secret, timestamp);
+    : createHmac("sha256", secret)
+        .update(`${timestamp}.${payload}`)
+        .digest("hex");
   return createTestRequest(url, {
     method: "POST",
     headers: {

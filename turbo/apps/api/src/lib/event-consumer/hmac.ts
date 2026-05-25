@@ -20,8 +20,7 @@ export function computeHmacSignature(
 /**
  * Verify HMAC signature matches expected value.
  *
- * Uses timing-safe XOR comparison to prevent timing attacks. Identical to
- * the web implementation in `apps/web/src/lib/infra/callback/hmac.ts`.
+ * Uses timing-safe XOR comparison to prevent timing attacks.
  */
 export function verifyHmacSignature(
   payload: string,
@@ -43,8 +42,8 @@ export function verifyHmacSignature(
 }
 
 /**
- * Check if timestamp is within acceptable window. Defaults to 5 minutes,
- * matching web's replay window.
+ * Check if timestamp is within acceptable callback replay window. Defaults to
+ * 5 minutes.
  */
 export function isTimestampValid(
   timestamp: number,

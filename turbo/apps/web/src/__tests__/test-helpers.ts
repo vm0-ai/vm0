@@ -180,7 +180,7 @@ interface TestContext {
   ): Promise<{ id: string; type: string }>;
 }
 
-export interface UserContext {
+interface UserContext {
   readonly userId: string;
   readonly orgId: string;
 }
