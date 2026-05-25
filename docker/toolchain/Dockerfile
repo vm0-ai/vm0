@@ -115,6 +115,7 @@ RUN ARCH=$(dpkg --print-architecture) \
 
 # Install Python3 and Ansible for runner deployments via SSH.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
     ansible-core \
     && rm -rf /var/lib/apt/lists/*
 
