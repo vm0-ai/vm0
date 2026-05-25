@@ -424,14 +424,23 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
 
-    async def test_forward_request_includes_auth_headers(self, real_flow, mitm_ctx, tmp_path):
-        """auth.headers are included in the forwarded request to the real URL."""
+    async def test_forward_request_includes_auth_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.headers are forwarded without mutating the placeholder request."""
         flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://discord.com/api/webhooks/123/abc",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
         )
-        token_meta["headers"] = {"X-Custom": "injected-value"}
+        token_meta["headers"] = {
+            "Authorization": "Bearer real-token",
+            "X-Custom": "injected-value",
+        }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -443,7 +452,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # Auth headers passed to forward_request.
         call_args = mock_forward.call_args
         req_headers = call_args[0][2]
+        assert ("Authorization", "Bearer agent") not in req_headers
+        assert ("Authorization", "Bearer real-token") in req_headers
         assert ("X-Custom", "injected-value") in req_headers
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
 
     async def test_forward_request_preserves_duplicate_headers_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
