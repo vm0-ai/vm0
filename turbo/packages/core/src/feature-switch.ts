@@ -202,6 +202,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable remote desktop host registration",
     enabled: false,
   },
+  [FeatureSwitchKey.LarkConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the Lark connector while tenant access-token exchange is being repaired.",
+    enabled: false,
+  },
   [FeatureSwitchKey.LocalBrowserUse]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -345,6 +351,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable static hosted-site deployments from zero host. Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.OpenDesignGenerate]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use agent-authored OpenDesign-style HTML packets for website and presentation built-in generation. Staff-only during rollout.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

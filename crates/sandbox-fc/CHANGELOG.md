@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.10...sandbox-fc-v0.35.11) (2026-05-25)
+
+
+### Refactoring
+
+* **sandbox-fc:** share prepare park resolution ([#14737](https://github.com/vm0-ai/vm0/issues/14737)) ([937fe50](https://github.com/vm0-ai/vm0/commit/937fe50e169f0482e36021436153d79962eafe40))
+
 ## [0.35.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.9...sandbox-fc-v0.35.10) (2026-05-24)
 
 ## [0.35.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.8...sandbox-fc-v0.35.9) (2026-05-23)

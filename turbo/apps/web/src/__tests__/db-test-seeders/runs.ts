@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { and, eq, or, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -15,7 +16,6 @@ import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
 import { uniqueId } from "../test-helpers";
-import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import type {
   ArtifactSnapshotsPayload,
@@ -547,7 +547,7 @@ export async function createTestCallback(params: {
 }): Promise<{ callbackId: string; secret: string }> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const secret = generateCallbackSecret();
+  const secret = randomBytes(32).toString("hex");
   const encryptedSecret = encryptSecretValue(secret, SECRETS_ENCRYPTION_KEY);
 
   const [callback] = await globalThis.services.db

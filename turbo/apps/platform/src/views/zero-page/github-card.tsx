@@ -7,6 +7,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   connectGithubInstallation$,
@@ -19,6 +25,8 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
+
+const GITHUB_ADMIN_INSTALL_TOOLTIP = "Ask an org admin to install GitHub.";
 
 function openFreshOAuth(url: string) {
   const fresh = new URL(url, window.location.origin);
@@ -134,35 +142,67 @@ function GithubCardActions({
   const [uninstallLoadable, uninstall] = useLoadableSet(
     uninstallGithubInstallation$,
   );
+
+  if (!data) {
+    return null;
+  }
+
   const connecting = connectLoadable.state === "loading";
   const disconnecting = disconnectLoadable.state === "loading";
   const uninstalling = uninstallLoadable.state === "loading";
   const busy = connecting || disconnecting || uninstalling;
-  const isInstalled = data?.isInstalled ?? false;
-  const isConnected = data?.isConnected ?? false;
-  const installUrl = isInstalled ? null : data?.installUrl;
-  const connectUrl = data?.connectUrl ?? null;
-  const canUninstall = Boolean(data?.isInstalled && data.installation.isAdmin);
-
-  if (installUrl) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8 shrink-0 gap-1.5 rounded-lg"
-        disabled={busy}
-        onClick={() => {
-          openFreshOAuth(installUrl);
-        }}
-      >
-        Install GitHub
-      </Button>
-    );
-  }
+  const isInstalled = data.isInstalled;
+  const isConnected = data.isConnected;
+  const installUrl = isInstalled ? null : data.installUrl;
+  const connectUrl = data.connectUrl;
+  const canUninstall = Boolean(data.isInstalled && data.installation.isAdmin);
 
   if (!isInstalled) {
-    return null;
+    if (installUrl) {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 gap-1.5 rounded-lg"
+          disabled={busy}
+          onClick={() => {
+            openFreshOAuth(installUrl);
+          }}
+        >
+          Install GitHub
+        </Button>
+      );
+    }
+
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              data-testid="github-install-admin-required"
+              className="inline-flex shrink-0"
+              tabIndex={0}
+              title={GITHUB_ADMIN_INSTALL_TOOLTIP}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5 rounded-lg"
+                disabled
+                title={GITHUB_ADMIN_INSTALL_TOOLTIP}
+              >
+                Install GitHub
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {GITHUB_ADMIN_INSTALL_TOOLTIP}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   }
 
   return (

@@ -60,7 +60,7 @@ import {
   encryptPersistentSecretValue,
 } from "./crypto.utils";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
@@ -1954,13 +1954,14 @@ async function handleTelegramAgentMessage(args: {
   args.signal.throwIfAborted();
 
   const rootMessageId = rootMessageIdForAgentMessage(args);
-  const modelRoute = await resolveIntegrationModelRouteForUser({
-    get: args.get,
-    set: args.set,
-    orgId: args.orgId,
-    userId: args.userLink.vm0UserId,
-    signal: args.signal,
-  });
+  const modelRoute = await args.set(
+    resolveIntegrationModelRouteForUser$,
+    {
+      orgId: args.orgId,
+      userId: args.userLink.vm0UserId,
+    },
+    args.signal,
+  );
   args.signal.throwIfAborted();
   const session = await lookupAgentThreadSession({
     db: args.db,

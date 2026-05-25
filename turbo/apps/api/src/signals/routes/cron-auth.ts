@@ -1,9 +1,7 @@
-import type { Computed } from "ccstate";
+import { computed } from "ccstate";
 
 import { env } from "../../lib/env";
 import { authorization$ } from "../context/hono";
-
-type CronGetter = <T>(source: Computed<T>) => T;
 
 interface CronUnauthorizedResponse {
   readonly status: 401;
@@ -27,6 +25,6 @@ export function cronUnauthorized(): CronUnauthorizedResponse {
   };
 }
 
-export function hasValidCronSecret(get: CronGetter): boolean {
+export const hasValidCronSecret$ = computed((get): boolean => {
   return get(authorization$) === `Bearer ${env("CRON_SECRET")}`;
-}
+});

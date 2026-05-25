@@ -4,6 +4,7 @@ Pure parsers shared by both the SSE streaming path and the non-streaming
 JSON fallback.
 """
 
+from collections.abc import Callable
 from typing import TypeGuard
 
 import body_utils
@@ -13,6 +14,7 @@ from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
 from .sse import SseUsageParser
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
+_SseUsageParseErrorCallback = Callable[[str, str], None]
 
 _MODEL_JSON_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
@@ -49,7 +51,9 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
             target[category] = value
 
 
-def create_anthropic_messages_sse_usage_extractor() -> tuple[SseUsageParser, dict]:
+def create_anthropic_messages_sse_usage_extractor(
+    on_parse_error: _SseUsageParseErrorCallback | None = None,
+) -> tuple[SseUsageParser, dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
     Anthropic-shaped model providers use the Anthropic Messages API streaming
@@ -64,16 +68,22 @@ def create_anthropic_messages_sse_usage_extractor() -> tuple[SseUsageParser, dic
     """
     usage: dict = {}
     parser = SseUsageParser(
-        _AnthropicMessagesSseUsageHandler(usage),
+        _AnthropicMessagesSseUsageHandler(usage, on_parse_error=on_parse_error),
         capture_data_without_event=True,
     )
     return parser, usage
 
 
 class _AnthropicMessagesSseUsageHandler:
-    def __init__(self, usage: dict) -> None:
+    def __init__(
+        self,
+        usage: dict,
+        *,
+        on_parse_error: _SseUsageParseErrorCallback | None = None,
+    ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
+        self._on_parse_error = on_parse_error
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS
@@ -96,6 +106,13 @@ class _AnthropicMessagesSseUsageHandler:
 
         result = extractor.finish()
         if not result.complete:
+            if (
+                event_name is not None
+                and event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS
+                and result.error
+                and self._on_parse_error is not None
+            ):
+                self._on_parse_error(event_name, result.error)
             return
 
         event_type = event_name

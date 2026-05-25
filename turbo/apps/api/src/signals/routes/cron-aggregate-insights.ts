@@ -3,11 +3,11 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route";
 import { aggregateInsights$ } from "../services/cron-aggregate-insights.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const aggregateInsightsRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!hasValidCronSecret(get)) {
+    if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 

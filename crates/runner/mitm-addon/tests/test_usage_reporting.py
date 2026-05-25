@@ -44,6 +44,35 @@ def _openai_model_websocket_flow(
     return flow
 
 
+def _model_provider_sse_flow(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    *,
+    host: str,
+    original_url: str,
+    firewall_name: str,
+    cli_agent_type: str | None = None,
+) -> http.HTTPFlow:
+    flow = real_flow(with_response=False, host=host)
+    flow.metadata["vm_run_id"] = "run-abc-123"
+    flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+    flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+    flow.metadata["firewall_action"] = "ALLOW"
+    flow.metadata["original_url"] = original_url
+    flow.metadata["firewall_name"] = firewall_name
+    flow.metadata["firewall_billable"] = True
+    flow.metadata["vm_sandbox_token"] = "tok-xyz"
+    if cli_agent_type is not None:
+        flow.metadata["cli_agent_type"] = cli_agent_type
+    flow.response = tutils.tresp(
+        status_code=200,
+        headers=_header_map({"content-type": "text/event-stream"}),
+    )
+
+    mitm_addon.responseheaders(flow)
+    return flow
+
+
 def _set_websocket_message(
     flow: http.HTTPFlow,
     *,
@@ -64,6 +93,33 @@ def _set_websocket_message(
 def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
     _set_websocket_message(flow, from_client=False, content=content)
     mitm_addon.websocket_message(flow)
+
+
+def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
+    proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+    if not proxy_log.exists():
+        return []
+    return [
+        entry
+        for entry in (json.loads(line) for line in proxy_log.read_text().splitlines())
+        if entry.get("message") == "Model provider SSE usage extraction failed"
+    ]
+
+
+def _assert_single_model_sse_parse_warning(
+    flow: http.HTTPFlow,
+    *,
+    usage_protocol: str,
+    event: str,
+) -> None:
+    usage_warnings = _model_sse_parse_warnings(flow)
+    assert len(usage_warnings) == 1
+    warning = usage_warnings[0]
+    assert warning["level"] == "warn"
+    assert warning["type"] == "usage_event"
+    assert warning["usage_protocol"] == usage_protocol
+    assert warning["event"] == event
+    assert warning["error"]
 
 
 class TestResponseUsageReporting:
@@ -355,6 +411,304 @@ class TestResponseUsageReporting:
             "tokens.cache_read": 2000,
         }
         assert {event["provider"] for event in events} == {"gpt-5.5"}
+
+    def test_full_pipeline_anthropic_sse_logs_truncated_message_start(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(
+            b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
+
+    def test_full_pipeline_anthropic_sse_error_logs_truncated_message_start(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(
+            b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
+        )
+        flow.error = Error("connection reset by peer")
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.error(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
+
+    def test_full_pipeline_anthropic_sse_logs_malformed_message_start(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
+
+    def test_full_pipeline_anthropic_sse_logs_truncated_message_delta_after_start(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_1",'
+            b'"model":"claude-sonnet-4-6","usage":{"input_tokens":50}}}\n\n'
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta","usage":{"output_tokens":'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {"tokens.input": 50}
+        assert {event["provider"] for event in events} == {"claude-sonnet-4-6"}
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_delta",
+        )
+
+    def test_full_pipeline_openai_sse_logs_truncated_terminal_event(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            cli_agent_type="codex",
+        )
+        _response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="response.completed",
+        )
+
+    def test_full_pipeline_openai_sse_logs_truncated_late_event_name(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            cli_agent_type="codex",
+        )
+        _response_stream(flow)(
+            b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt\n'
+            b"event: response.completed\n\n"
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="openai_responses_sse",
+            event="response.completed",
+        )
+
+    def test_full_pipeline_eventless_incomplete_sse_does_not_warn(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(
+            b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert _model_sse_parse_warnings(flow) == []
+
+    def test_full_pipeline_anthropic_non_usage_incomplete_sse_does_not_warn(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta","delta":{"text":"hello'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert _model_sse_parse_warnings(flow) == []
+
+    def test_full_pipeline_openai_eventless_incomplete_sse_does_not_warn(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            cli_agent_type="codex",
+        )
+        _response_stream(flow)(
+            b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert _model_sse_parse_warnings(flow) == []
+
+    def test_full_pipeline_openai_non_terminal_incomplete_sse_does_not_warn(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            cli_agent_type="codex",
+        )
+        _response_stream(flow)(
+            b"event: response.in_progress\n"
+            b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert _model_sse_parse_warnings(flow) == []
 
     def test_full_pipeline_model_sse_zero_event_preserves_billed_usage_and_id(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor

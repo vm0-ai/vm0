@@ -24,7 +24,9 @@
         "!src/mocks/**!",
         "scripts/**/*.ts"
       ],
+      "ignore": ["src/lib/shared/crypto/kms-secrets-encryption.ts"],
       "ignoreDependencies": [
+        "@aws-sdk/client-kms",
         "@vm0/ui",
         "e2b",
         "import-in-the-middle",

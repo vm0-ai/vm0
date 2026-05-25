@@ -7,7 +7,7 @@ import {
   runVercelSandboxSmoke,
   type VercelSandboxSmokeResult,
 } from "../services/vercel-sandbox-smoke.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const c = initContract();
 
@@ -96,7 +96,7 @@ function failureMessage(
 
 const vercelSandboxSmokeRoute$ = command(
   async ({ get }, signal: AbortSignal) => {
-    if (!hasValidCronSecret(get)) {
+    if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 

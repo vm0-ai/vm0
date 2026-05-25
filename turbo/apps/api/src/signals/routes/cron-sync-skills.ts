@@ -3,10 +3,10 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route";
 import { syncSkills$ } from "../services/cron-sync-skills.service";
-import { cronUnauthorized, hasValidCronSecret } from "./cron-auth";
+import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const syncSkillsRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!hasValidCronSecret(get)) {
+  if (!get(hasValidCronSecret$)) {
     return cronUnauthorized();
   }
 

@@ -19,9 +19,8 @@ interface OrgBillingPeriod {
  *
  * Reads `orgMetadata.currentPeriodEnd` first; if missing or expired AND a
  * `stripeSubscriptionId` exists, falls back to `stripe.subscriptions.retrieve`
- * and writes the refreshed value back to orgMetadata. Mirrors apps/web's
- * `getOrgBillingPeriod` exactly (same Stripe-API rationale, same
- * past-dated guard).
+ * and writes the refreshed value back to orgMetadata. This API service owns the
+ * runtime behavior and preserves the Stripe-API rationale and past-dated guard.
  *
  * Returns `null` for free-tier orgs (no subscription, no period). Callers
  * MUST short-circuit on null — there is no synthetic period for the free

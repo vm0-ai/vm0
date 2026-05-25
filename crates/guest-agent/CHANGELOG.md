@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.15...guest-agent-v0.32.16) (2026-05-25)
+
+
+### Refactoring
+
+* share storage request file dto ([#14739](https://github.com/vm0-ai/vm0/issues/14739)) ([55dcc8d](https://github.com/vm0-ai/vm0/commit/55dcc8d2190ff326f5d0bcba3c18c36b2846e3ce))
+
 ## [0.32.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.14...guest-agent-v0.32.15) (2026-05-24)
 
 ## [0.32.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.13...guest-agent-v0.32.14) (2026-05-24)

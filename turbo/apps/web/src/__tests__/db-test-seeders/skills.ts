@@ -6,7 +6,7 @@ import { skills } from "@vm0/db/schema/skill";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { buildSeedSkillValues } from "../../lib/zero/seed-skills";
+import { buildSeedSkillValues } from "./seed-skill-values";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for skill test setup.

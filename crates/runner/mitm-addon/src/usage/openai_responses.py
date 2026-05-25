@@ -14,6 +14,7 @@ model-provider usage billing:
   ``response_streaming.py`` for Responses events received over upgrades.
 """
 
+from collections.abc import Callable
 from typing import TypeGuard
 
 from mitmproxy import http
@@ -33,6 +34,7 @@ from .sse import SseUsageParser
 _RESPONSES_TERMINAL_USAGE_EVENTS = frozenset(
     ("response.completed", "response.done", "response.incomplete", "response.failed")
 )
+_SseUsageParseErrorCallback = Callable[[str, str], None]
 
 _OPENAI_RESPONSES_USAGE_CATEGORIES = (
     MODEL_USAGE_CATEGORY_INPUT,
@@ -163,21 +165,29 @@ def _store_sse_result_values(
     merge_openai_responses_usage_result(target, source)
 
 
-def create_openai_responses_sse_usage_extractor() -> tuple[SseUsageParser, dict]:
+def create_openai_responses_sse_usage_extractor(
+    on_parse_error: _SseUsageParseErrorCallback | None = None,
+) -> tuple[SseUsageParser, dict]:
     """Create an incremental SSE parser for OpenAI Responses streams."""
 
     usage: dict = {}
     parser = SseUsageParser(
-        _OpenAIResponsesSseUsageHandler(usage),
+        _OpenAIResponsesSseUsageHandler(usage, on_parse_error=on_parse_error),
         capture_data_without_event=True,
     )
     return parser, usage
 
 
 class _OpenAIResponsesSseUsageHandler:
-    def __init__(self, usage: dict) -> None:
+    def __init__(
+        self,
+        usage: dict,
+        *,
+        on_parse_error: _SseUsageParseErrorCallback | None = None,
+    ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
+        self._on_parse_error = on_parse_error
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name is None or event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
@@ -200,6 +210,14 @@ class _OpenAIResponsesSseUsageHandler:
         result = extractor.finish()
         if result.complete:
             _store_sse_result_values(result.values, self._usage, event_name=event_name)
+            return
+        if (
+            event_name is not None
+            and event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
+            and result.error
+            and self._on_parse_error is not None
+        ):
+            self._on_parse_error(event_name, result.error)
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._extractor = None

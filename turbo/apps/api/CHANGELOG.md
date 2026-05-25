@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.70.1](https://github.com/vm0-ai/vm0/compare/api-v1.70.0...api-v1.70.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* show pinned chat threads across agents ([#14735](https://github.com/vm0-ai/vm0/issues/14735)) ([9764de2](https://github.com/vm0-ai/vm0/commit/9764de2797e676e31419c0d8012edc3b9a6407ce))
+
+
+### Refactoring
+
+* remove web oauth provider key bridge ([#14765](https://github.com/vm0-ai/vm0/issues/14765)) ([9209c1e](https://github.com/vm0-ai/vm0/commit/9209c1edcdbaca2a462b986249dfa131a5645072))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.1
+    * @vm0/connectors bumped to 1.32.0
+    * @vm0/core bumped to 8.293.0
+    * @vm0/db bumped to 1.18.9
+
 ## [1.70.0](https://github.com/vm0-ai/vm0/compare/api-v1.69.5...api-v1.70.0) (2026-05-25)
 
 

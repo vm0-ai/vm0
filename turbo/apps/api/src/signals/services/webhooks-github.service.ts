@@ -32,7 +32,7 @@ import {
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -1141,13 +1141,14 @@ const dispatchGithubAgentRun$ = command(
       composeId: params.composeId,
       signal,
     });
-    const modelRoute = await resolveIntegrationModelRouteForUser({
-      get,
-      set,
-      orgId: target.orgId,
-      userId: params.vm0UserId,
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: target.orgId,
+        userId: params.vm0UserId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const sessionResult = await resolveExistingSession({

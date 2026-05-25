@@ -235,6 +235,7 @@ const categories: readonly Category[] = [
         prompt:
           "Set up a message relay between a Lark group and a Slack channel so that messages are forwarded both ways",
         connectors: ["lark", "slack"],
+        featureFlag: FeatureSwitchKey.LarkConnector,
       },
       {
         title: "Google Drive file organizer",

@@ -70,7 +70,7 @@ import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import {
-  resolveIntegrationModelRouteForUser,
+  resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
@@ -1309,13 +1309,14 @@ async function buildRunAgentParams(
     client: resolved.client,
     userId: args.slackUserId,
   });
-  const modelRoute = await resolveIntegrationModelRouteForUser({
-    get: args.get,
-    set: args.set,
-    orgId: resolved.installation.orgId,
-    userId: resolved.connection.vm0UserId,
-    signal: args.signal,
-  });
+  const modelRoute = await args.set(
+    resolveIntegrationModelRouteForUser$,
+    {
+      orgId: resolved.installation.orgId,
+      userId: resolved.connection.vm0UserId,
+    },
+    args.signal,
+  );
   const existingSessionId = await resolveCompatibleThreadSession({
     db: args.db,
     channelId: args.channelId,
