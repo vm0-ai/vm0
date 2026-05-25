@@ -634,6 +634,33 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_not_called()
         assert _model_sse_parse_warnings(flow) == []
 
+    def test_full_pipeline_anthropic_non_usage_incomplete_sse_does_not_warn(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.anthropic.com",
+            original_url="https://api.anthropic.com/v1/messages",
+            firewall_name="model-provider:anthropic-api-key",
+        )
+        _response_stream(flow)(
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta","delta":{"text":"hello'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert _model_sse_parse_warnings(flow) == []
+
     def test_full_pipeline_openai_eventless_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
