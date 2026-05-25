@@ -597,6 +597,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
                 "cache_hit": False,
             },
         )
+        flow.metadata["vm_proxy_log_path"] = vm_info["networkLogPath"]
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -626,6 +627,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         log_text = await asyncio.to_thread(
             lambda: log_path.read_text() if log_path.exists() else ""
         )
+        assert "URL rewrite forward failed" in log_text
         assert "Firewall URL rewrite:" not in log_text
         assert f"Firewall {allow.api_entry['base']}:" not in log_text
 
