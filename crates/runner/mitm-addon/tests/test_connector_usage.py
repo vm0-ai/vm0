@@ -943,10 +943,11 @@ class TestReportConnectorUsage:
 
         assert p["category"] == "posts.read"
         assert p["quantity"] == 3
-        if proxy_log.exists():
-            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-            assert all("unparseable" not in entry["message"].lower() for entry in entries)
-            assert all("parse_error" not in entry for entry in entries)
+        assert proxy_log.exists()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert all(entry["level"] != "error" for entry in entries)
+        assert all("unparseable" not in entry["message"].lower() for entry in entries)
+        assert all("parse_error" not in entry for entry in entries)
 
     @pytest.mark.parametrize(
         ("query", "expected_quantity"),
