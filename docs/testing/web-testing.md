@@ -40,7 +40,6 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
 
 const context = testContext();
 
@@ -136,7 +135,6 @@ vi.mock("../../../lib/agent-session", () => ({
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
 ```
 
 ---
@@ -153,7 +151,7 @@ const context = testContext(); // Outside all describe blocks
 
 describe("...", () => {
   beforeEach(() => {
-    context.setupMocks(); // Set up default mock behavior for S3, Axiom, etc.
+    context.setupMocks(); // Set up default mock behavior for external services.
   });
 });
 ```
