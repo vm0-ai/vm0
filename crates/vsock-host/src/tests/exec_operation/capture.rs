@@ -30,7 +30,7 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
                 stdout_limit_bytes: 7,
                 stderr_limit_bytes: 9,
                 expected_exit_codes: &[],
-                stdin_bytes: None,
+                stdin_bytes: Some(b"capture-stdin"),
                 wait_timeout: Duration::from_secs(5),
             })
             .await
@@ -53,6 +53,7 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
     assert_eq!(decoded.stdout, ExecOutputPolicy::Capture { limit_bytes: 7 });
     assert_eq!(decoded.stderr, ExecOutputPolicy::Capture { limit_bytes: 9 });
     assert!(decoded.expected_exit_codes.is_empty());
+    assert_eq!(decoded.stdin_bytes, Some(&b"capture-stdin"[..]));
 
     send_exec_result(
         &mut guest,

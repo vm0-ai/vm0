@@ -370,6 +370,40 @@ fn supervised_exec_sends_started_before_output() {
 }
 
 #[test]
+fn supervised_exec_writes_stdin_and_closes_pipe() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_exec_start_request(
+        &mut host_stream,
+        211,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+            command: "cat; printf ':after'",
+            env: &[],
+            sudo: false,
+            label: "supervised-stdin-test",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Disabled,
+            stdin_bytes: Some(b"payload"),
+        },
+    );
+
+    assert!(read_exec_started(&mut host_stream, 211) > 0);
+    let (chunks, result) = read_exec_result(&mut host_stream, 211);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(b"payload:after".to_vec()));
+    assert_eq!(result.stderr, Some(Vec::new()));
+    assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn supervised_exec_spawn_failure_returns_start_failed_without_started_ack() {
     let (handle, mut host_stream) = start_guest_connection();
 
