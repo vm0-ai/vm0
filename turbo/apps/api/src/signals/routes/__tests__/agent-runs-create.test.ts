@@ -618,6 +618,13 @@ describe("POST /api/agent/runs", () => {
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
+      name: "DECLARED_SECRET",
+      encryptedValue: encryptSecretForTests("declared-value"),
+      type: "user",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
       name: "ZENDESK_API_TOKEN",
       encryptedValue: encryptSecretForTests("zendesk-real-token"),
       type: "user",
@@ -627,7 +634,8 @@ describe("POST /api/agent/runs", () => {
       overrides: {
         environment: {
           ANTHROPIC_API_KEY: "test-key",
-          ZENDESK_API_TOKEN: vm0Template("{{ secrets.ZENDESK_API_TOKEN }}"),
+          DECLARED_SECRET: vm0Template("{{ secrets.DECLARED_SECRET }}"),
+          ZENDESK_EMAIL: "compose@example.com",
         },
       },
     });
@@ -658,7 +666,12 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment.ZENDESK_API_TOKEN).toBe(
       "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
     );
+    expect(executionContext.environment.ZENDESK_EMAIL).toBe(
+      "compose@example.com",
+    );
+    expect(executionContext.environment.ZENDESK_SUBDOMAIN).toBe("acme");
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      DECLARED_SECRET: "declared-value",
       ZENDESK_API_TOKEN: "zendesk-real-token",
     });
     const zendesk = executionContext.firewalls.find((firewall) => {
