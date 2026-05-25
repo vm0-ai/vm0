@@ -1862,6 +1862,83 @@ class TestResponseUsageReporting:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50, "tokens.output": 200}
 
+    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    def test_full_pipeline_compressed_model_json_reports_usage(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, provider_case
+    ):
+        """responseheaders parser should decompress non-SSE model JSON before extraction."""
+        if provider_case == "openai":
+            flow = real_flow(with_response=False, host="api.openai.com")
+            flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+            flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+            flow.metadata["cli_agent_type"] = "codex"
+            payload = json.dumps(
+                {
+                    "id": "resp_1",
+                    "model": "gpt-5.5",
+                    "usage": {
+                        "input_tokens": 50,
+                        "output_tokens": 200,
+                        "input_tokens_details": {"cached_tokens": 10},
+                    },
+                }
+            ).encode()
+        else:
+            flow = real_flow(with_response=False, host="api.anthropic.com")
+            flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+            payload = json.dumps(
+                {
+                    "id": "msg_1",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {"input_tokens": 50, "output_tokens": 200},
+                }
+            ).encode()
+        compressed = gzip.compress(payload)
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map({"content-type": "application/json", "content-encoding": "gzip"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        midpoint = len(compressed) // 2
+        _response_stream(flow)(compressed[:midpoint])
+        _response_stream(flow)(compressed[midpoint:])
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        extracted = flow.metadata["model_provider_usage"]
+        assert extracted["model"] == (
+            "gpt-5.5" if provider_case == "openai" else "claude-sonnet-4-6"
+        )
+        assert extracted["tokens.input"] == (40 if provider_case == "openai" else 50)
+        assert extracted["tokens.output"] == 200
+        if provider_case == "openai":
+            assert extracted["tokens.cache_read"] == 10
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        expected = {
+            "tokens.input": 40 if provider_case == "openai" else 50,
+            "tokens.output": 200,
+        }
+        if provider_case == "openai":
+            expected["tokens.cache_read"] = 10
+        assert by_category == expected
+
     def test_full_pipeline_incomplete_model_json_does_not_report_partial_usage(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
