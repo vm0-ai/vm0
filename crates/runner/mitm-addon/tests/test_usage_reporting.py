@@ -126,6 +126,14 @@ def _assert_single_model_sse_parse_warning(
     assert warning["error"]
 
 
+def _set_stream_buffer(flow: http.HTTPFlow, body: bytes) -> None:
+    flow.metadata["stream_buffer"] = bytearray(body)
+    flow.metadata["stream_buffer_state"] = {
+        "truncated": False,
+        "total_bytes": len(body),
+    }
+
+
 class TestResponseUsageReporting:
     """Tests for usage extraction and reporting in response() hook."""
 
@@ -250,11 +258,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -301,11 +305,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -347,11 +347,7 @@ class TestResponseUsageReporting:
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -466,11 +462,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map(
@@ -541,11 +533,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map(
@@ -633,11 +621,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map(
@@ -697,11 +681,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -737,11 +717,7 @@ class TestResponseUsageReporting:
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -805,11 +781,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(status_code=200, headers=_header_map(response_headers))
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -841,11 +813,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -912,11 +880,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -1045,11 +1009,7 @@ class TestResponseUsageReporting:
         flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = False
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -1911,11 +1871,7 @@ class TestResponseUsageReporting:
             "tokens.output": 20,
         }
         body = b'{"id":"resp_1","usage":{"input_tokens":'
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=_header_map({"content-type": "application/json"}),
@@ -2503,11 +2459,7 @@ class TestResponseUsageReporting:
         flow.metadata["original_url"] = "https://api.github.com/repos"
         flow.metadata["firewall_name"] = "github"
         body = b'{"incomplete":'
-        flow.metadata["stream_buffer"] = bytearray(body)
-        flow.metadata["stream_buffer_state"] = {
-            "truncated": False,
-            "total_bytes": len(body),
-        }
+        _set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200, headers=_header_map({"content-type": "application/json"})
         )
