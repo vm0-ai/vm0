@@ -433,6 +433,23 @@ mod tests {
     }
 
     #[test]
+    fn stale_attempt_cannot_abort_current_prepare() {
+        let coordinator = ParkCoordinator::new();
+        let stale = begin_attempt(&coordinator);
+        assert!(coordinator.abort_prepare_park(&stale).is_ok());
+
+        let current = begin_attempt(&coordinator);
+        assert!(matches!(
+            coordinator.abort_prepare_park(&stale),
+            Err(PrepareParkError::StaleAttempt { .. })
+        ));
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == current.id
+        ));
+    }
+
+    #[test]
     fn dirty_during_prepare_blocks_completion_and_abort() {
         let coordinator = ParkCoordinator::new();
         let attempt = begin_attempt(&coordinator);
