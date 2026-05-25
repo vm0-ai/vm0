@@ -492,11 +492,12 @@ class TestRequestHandler:
         auth_fetch.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("request_port", "raw_sni", "expected_sni", "expected_original_url"),
+        ("request_host", "request_port", "raw_sni", "expected_sni", "expected_original_url"),
         [
-            (443, None, None, "https://203.0.113.10/repos"),
-            (443, "   ", "", "https://203.0.113.10/repos"),
-            (8443, None, None, "https://203.0.113.10:8443/repos"),
+            ("203.0.113.10", 443, None, None, "https://203.0.113.10/repos"),
+            ("203.0.113.10", 443, "   ", "", "https://203.0.113.10/repos"),
+            ("203.0.113.10", 8443, None, None, "https://203.0.113.10:8443/repos"),
+            ("2001:db8::1", 8443, None, None, "https://[2001:db8::1]:8443/repos"),
         ],
     )
     async def test_rejects_missing_https_sni_before_firewall_auth(
@@ -506,6 +507,7 @@ class TestRequestHandler:
         mitm_ctx,
         fake_firewall_headers,
         headers,
+        request_host,
         request_port,
         raw_sni,
         expected_sni,
@@ -515,7 +517,7 @@ class TestRequestHandler:
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
-            host="203.0.113.10",
+            host=request_host,
             port=request_port,
             path="/repos",
             request_headers=headers(("Host", "api.github.com")),
