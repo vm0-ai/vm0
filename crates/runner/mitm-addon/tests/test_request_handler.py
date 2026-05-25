@@ -244,8 +244,9 @@ class TestRequestHandler:
         assert flow.request.headers["Authorization"] == "Bearer x"
         assert flow.metadata["original_url"] == "https://api.github.com/repos"
 
-    async def test_http2_authority_without_host_allows_firewall_auth(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    @pytest.mark.parametrize("http_version", ["HTTP/2.0", "HTTP/3"])
+    async def test_pseudo_authority_without_host_allows_firewall_auth(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, http_version
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
         flow = real_flow(
@@ -256,7 +257,7 @@ class TestRequestHandler:
             path="/repos",
             request_headers=headers(),
         )
-        flow.request.http_version = "HTTP/2.0"
+        flow.request.http_version = http_version
         flow.request.authority = "api.github.com"
 
         with (
@@ -270,8 +271,9 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == "https://api.github.com/repos"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
-    async def test_http2_authority_takes_precedence_over_host_header(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    @pytest.mark.parametrize("http_version", ["HTTP/2.0", "HTTP/3"])
+    async def test_pseudo_authority_takes_precedence_over_host_header(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, http_version
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
         flow = real_flow(
@@ -282,7 +284,7 @@ class TestRequestHandler:
             path="/repos",
             request_headers=headers(("Host", "api.github.com")),
         )
-        flow.request.http_version = "HTTP/2.0"
+        flow.request.http_version = http_version
         flow.request.authority = "attacker.example.com"
 
         with (
