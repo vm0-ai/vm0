@@ -560,6 +560,104 @@ class TestResponseUsageReporting:
                 for entry in entries
             )
 
+    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
+    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    def test_json_fallback_brotli_and_zstd_report_usage(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fresh_usage_executor,
+        encoding_case,
+        provider_case,
+    ):
+        """Diagnostic fallback should handle complete br/zstd JSON bodies."""
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        if provider_case == "openai":
+            flow = real_flow(with_response=False, host="api.openai.com")
+            flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+            flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+            flow.metadata["cli_agent_type"] = "codex"
+            payload = json.dumps(
+                {
+                    "id": "resp_1",
+                    "model": "gpt-5.5",
+                    "usage": {
+                        "input_tokens": 50,
+                        "output_tokens": 200,
+                        "input_tokens_details": {"cached_tokens": 10},
+                    },
+                }
+            ).encode()
+        else:
+            flow = real_flow(with_response=False, host="api.anthropic.com")
+            flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+            payload = json.dumps(
+                {
+                    "id": "msg_1",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {"input_tokens": 50, "output_tokens": 200},
+                }
+            ).encode()
+
+        if encoding_case == "br":
+            body = body_utils.brotli.compress(payload)
+        else:
+            body = zstandard.ZstdCompressor().compress(payload)
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=_header_map(
+                {
+                    "content-type": "application/json",
+                    "content-encoding": encoding_case,
+                }
+            ),
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        extracted = flow.metadata["model_provider_usage"]
+        assert extracted["model"] == (
+            "gpt-5.5" if provider_case == "openai" else "claude-sonnet-4-6"
+        )
+        assert extracted["tokens.input"] == (40 if provider_case == "openai" else 50)
+        assert extracted["tokens.output"] == 200
+        if provider_case == "openai":
+            assert extracted["tokens.cache_read"] == 10
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        expected = {
+            "tokens.input": 40 if provider_case == "openai" else 50,
+            "tokens.output": 200,
+        }
+        if provider_case == "openai":
+            expected["tokens.cache_read"] = 10
+        assert by_category == expected
+        if proxy_log_path.exists():
+            entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+            assert not any(
+                entry.get("message") == "Model provider JSON usage extraction failed"
+                for entry in entries
+            )
+
     def test_json_fallback_valid_body_without_usage_stays_quiet(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
