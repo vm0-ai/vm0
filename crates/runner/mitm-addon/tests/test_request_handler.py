@@ -244,6 +244,32 @@ class TestRequestHandler:
         assert flow.request.headers["Authorization"] == "Bearer x"
         assert flow.metadata["original_url"] == "https://api.github.com/repos"
 
+    async def test_http2_authority_without_host_allows_firewall_auth(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(),
+        )
+        flow.request.http_version = "HTTP/2.0"
+        flow.request.authority = "api.github.com"
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is None
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["original_url"] == "https://api.github.com/repos"
+        assert flow.request.headers["Authorization"] == "Bearer x"
+
     async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
         self, registry_file, real_flow, mitm_ctx, headers
     ):
