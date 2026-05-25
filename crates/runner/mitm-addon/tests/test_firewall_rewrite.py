@@ -627,6 +627,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             lambda: log_path.read_text() if log_path.exists() else ""
         )
         assert "Firewall URL rewrite:" not in log_text
+        assert f"Firewall {allow.api_entry['base']}:" not in log_text
 
     async def test_forward_failure_does_not_log_resolved_url_secret(
         self, real_flow, mitm_ctx, tmp_path
