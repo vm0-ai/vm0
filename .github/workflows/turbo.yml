@@ -649,6 +649,9 @@ jobs:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     services:
@@ -675,7 +678,7 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           FAL_KEY: ${{ secrets.FAL_KEY }}
           BYTEPLUS_API_KEY: ${{ secrets.BYTEPLUS_API_KEY }}
-        run: pnpm vitest run --project=api --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=api --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v6
