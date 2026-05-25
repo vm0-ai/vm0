@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.72.3](https://github.com/vm0-ai/vm0/compare/api-v1.72.2...api-v1.72.3) (2026-05-25)
+
+
+### Refactoring
+
+* migrate connector auth callers to lifecycle helpers ([#14894](https://github.com/vm0-ai/vm0/issues/14894)) ([8e4b85e](https://github.com/vm0-ai/vm0/commit/8e4b85e071c5dceee8d5013885f2d452e91ec75f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.2
+    * @vm0/connectors bumped to 1.33.3
+    * @vm0/core bumped to 8.293.4
+    * @vm0/db bumped to 1.18.13
+
 ## [1.72.2](https://github.com/vm0-ai/vm0/compare/api-v1.72.1...api-v1.72.2) (2026-05-25)
 
 

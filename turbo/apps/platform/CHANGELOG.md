@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.384.3](https://github.com/vm0-ai/vm0/compare/app-v0.384.2...app-v0.384.3) (2026-05-25)
+
+
+### Bug Fixes
+
+* simplify html preview link icon ([#14890](https://github.com/vm0-ai/vm0/issues/14890)) ([9114613](https://github.com/vm0-ai/vm0/commit/9114613a926fe2c6db2edecabaab05ee3aca2de5))
+
+
+### Refactoring
+
+* migrate connector auth callers to lifecycle helpers ([#14894](https://github.com/vm0-ai/vm0/issues/14894)) ([8e4b85e](https://github.com/vm0-ai/vm0/commit/8e4b85e071c5dceee8d5013885f2d452e91ec75f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.2
+    * @vm0/connectors bumped to 1.33.3
+    * @vm0/core bumped to 8.293.4
+
 ## [0.384.2](https://github.com/vm0-ai/vm0/compare/app-v0.384.1...app-v0.384.2) (2026-05-25)
 
 

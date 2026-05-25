@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.387.6](https://github.com/vm0-ai/vm0/compare/web-v12.387.5...web-v12.387.6) (2026-05-25)
+
+
+### Refactoring
+
+* remove legacy connector auth compatibility exports ([#14895](https://github.com/vm0-ai/vm0/issues/14895)) ([86446c7](https://github.com/vm0-ai/vm0/commit/86446c776b1c2728f1d7a65a814d3925d54bfc9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.2
+    * @vm0/core bumped to 8.293.4
+    * @vm0/db bumped to 1.18.13
+  * devDependencies
+    * @vm0/connectors bumped to 1.33.3
+
 ## [12.387.5](https://github.com/vm0-ai/vm0/compare/web-v12.387.4...web-v12.387.5) (2026-05-25)
 
 

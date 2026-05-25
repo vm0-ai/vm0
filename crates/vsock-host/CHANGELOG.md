@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.14](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.13...vsock-host-v0.17.14) (2026-05-25)
+
+
+### Bug Fixes
+
+* move guest exec exit warnings to callers ([#14889](https://github.com/vm0-ai/vm0/issues/14889)) ([c58dc82](https://github.com/vm0-ai/vm0/commit/c58dc827e11a9a5d6dc70c8e2d07a588983da9d7))
+
 ## [0.17.13](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.12...vsock-host-v0.17.13) (2026-05-25)
 
 ## [0.17.12](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.11...vsock-host-v0.17.12) (2026-05-25)

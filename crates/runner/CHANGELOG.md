@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.104.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.22...runner-rs-v0.104.0) (2026-05-25)
+
+
+### Features
+
+* buffer usage-event webhook uploads ([#14855](https://github.com/vm0-ai/vm0/issues/14855)) ([4fa3981](https://github.com/vm0-ai/vm0/commit/4fa3981fd4e138f4ff321cb414181569c36d43cc))
+
+
+### Bug Fixes
+
+* move guest exec exit warnings to callers ([#14889](https://github.com/vm0-ai/vm0/issues/14889)) ([c58dc82](https://github.com/vm0-ai/vm0/commit/c58dc827e11a9a5d6dc70c8e2d07a588983da9d7))
+
 ## [0.103.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.21...runner-rs-v0.103.22) (2026-05-25)
 
 ## [0.103.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.20...runner-rs-v0.103.21) (2026-05-25)

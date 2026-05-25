@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.293.4](https://github.com/vm0-ai/vm0/compare/core-v8.293.3...core-v8.293.4) (2026-05-25)
+
+
+### Refactoring
+
+* remove legacy connector auth compatibility exports ([#14895](https://github.com/vm0-ai/vm0/issues/14895)) ([86446c7](https://github.com/vm0-ai/vm0/commit/86446c776b1c2728f1d7a65a814d3925d54bfc9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.2
+    * @vm0/connectors bumped to 1.33.3
+
 ## [8.293.3](https://github.com/vm0-ai/vm0/compare/core-v8.293.2...core-v8.293.3) (2026-05-25)
 
 
