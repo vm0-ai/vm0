@@ -385,12 +385,11 @@ function UseCasePromptComposer() {
 // Pro features below the hero credit card. Phrased as "what your agent
 // can do", not feature names. Single column, no em-dashes in the copy.
 const PRO_TRIAL_BENEFITS: readonly string[] = [
-  "Unlock 100+ ready-made automations",
   "All flagship models including Claude, GPT and Gemini",
+  "All multimodal models for image, video and voice",
   "Run 2 tasks at the same time",
   "Slack-native agent in threads and @mentions",
   "Telegram and iMessage agents",
-  "Persistent workspace context across chats",
   "200+ integrations with real tool execution",
   "Scheduled tasks that run on their own",
   "Artifacts including slide decks, HTML pages, video and audio",
@@ -443,7 +442,7 @@ function TrialStepContent() {
       {/* Hero: lead with the dollar value so users see they're getting
           real spending power, not a token allowance. The $20 is the visual
           anchor of the entire step. */}
-      <div className="zero-border rounded-2xl bg-primary/5 px-6 py-6 mb-6 relative overflow-hidden">
+      <div className="rounded-2xl bg-gray-50 px-6 py-6 mb-6 relative overflow-hidden">
         <img
           src={upsellCrownSrc}
           alt=""
