@@ -3,7 +3,7 @@
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from mitmproxy import http
 
@@ -659,6 +659,14 @@ class TestAuthBaseUrlRewriteEdgeCases:
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
+        failed_url = mock_forward.call_args[0][0]
+        failed_query = parse_qs(urlparse(failed_url).query, keep_blank_values=True)
+        failed_headers = mock_forward.call_args[0][2]
+        assert failed_query["api_key"] == ["resolved-key"]
+        assert failed_query["client"] == ["visible"]
+        assert ("Authorization", "Bearer agent") not in failed_headers
+        assert ("Authorization", "Bearer real-token") in failed_headers
+        assert ("X-Custom", "injected-value") in failed_headers
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.response.headers["Content-Type"] == "application/json"
