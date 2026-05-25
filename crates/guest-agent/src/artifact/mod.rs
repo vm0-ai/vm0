@@ -340,7 +340,7 @@ mod tests {
                     "storageType": "artifact",
                     "versionId": "v-existing",
                     "parentVersionId": "parent-v1",
-                    "files": [expected_file],
+                    "files": [expected_file.clone()],
                 }));
             then.status(200).json_body(serde_json::json!({
                 "success": true,
@@ -376,7 +376,13 @@ mod tests {
         std::fs::write(root.join("target.txt"), "changed").unwrap();
         let prepare = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
-                .path("/api/webhooks/agent/storages/prepare");
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-id",
+                    "storageName": "storage",
+                    "storageType": "artifact",
+                    "files": [expected_file],
+                }));
             then.status(200).json_body(serde_json::json!({
                 "versionId": "v-existing",
                 "existing": true
