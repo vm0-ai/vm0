@@ -7,12 +7,10 @@ import {
   type ConnectorGenerationType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
-import { zeroTokenAllowsFeatureSwitch } from "../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
@@ -337,39 +335,13 @@ function getConnectorGenerationType(
 function getBuiltInProviders(
   generationType: DoctorGenerationType,
 ): readonly BuiltInGenerationProvider[] {
-  if (
-    isOpenDesignArtifactGenerationType(generationType) &&
-    !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)
-  ) {
-    return [];
-  }
-
   return BUILT_IN_GENERATION_PROVIDERS[generationType] ?? [];
 }
 
 function getBuiltInCommand(
   generationType: DoctorGenerationType,
 ): BuiltInGenerationCommand | null {
-  if (
-    isOpenDesignArtifactGenerationType(generationType) &&
-    !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)
-  ) {
-    return null;
-  }
-
   return BUILT_IN_GENERATION_COMMANDS[generationType] ?? null;
-}
-
-function isOpenDesignArtifactGenerationType(
-  generationType: DoctorGenerationType,
-): boolean {
-  return (
-    generationType === "dashboard-design" ||
-    generationType === "docs-design" ||
-    generationType === "mobile-app-design" ||
-    generationType === "poster" ||
-    generationType === "report"
-  );
 }
 
 function getAvailableGenerationTypes(): DoctorGenerationType[] {

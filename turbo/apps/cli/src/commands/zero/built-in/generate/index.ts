@@ -18,12 +18,8 @@ function buildGenerateHelpText(): string {
   const examples = [
     '  Generate image:   zero built-in generate image --prompt "A watercolor fox"',
     '  Generate deck:    zero built-in generate presentation --prompt "A product roadmap"',
-    ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)
-      ? [
-          '  Generate report:  zero built-in generate report --prompt "A Q2 usage report"',
-          '  Generate docs:    zero built-in generate docs-design --prompt "A setup guide"',
-        ]
-      : []),
+    '  Generate report:  zero built-in generate report --prompt "A Q2 usage report"',
+    '  Generate docs:    zero built-in generate docs-design --prompt "A setup guide"',
     '  Generate video:   zero built-in generate video --prompt "A cinematic city shot"',
     ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites)
       ? [
@@ -36,22 +32,16 @@ function buildGenerateHelpText(): string {
   return `\nExamples:\n${examples.join("\n")}`;
 }
 
-const openDesignCommandOptions = zeroTokenAllowsFeatureSwitch(
-  FeatureSwitchKey.OpenDesignGenerate,
-)
-  ? {}
-  : { hidden: true };
-
 export const generateCommand = new Command()
   .name("generate")
   .description("Generate assets with built-in vm0 services")
   .addCommand(imageCommand)
   .addCommand(presentationCommand)
-  .addCommand(reportCommand, openDesignCommandOptions)
-  .addCommand(docsDesignCommand, openDesignCommandOptions)
-  .addCommand(posterCommand, openDesignCommandOptions)
-  .addCommand(dashboardDesignCommand, openDesignCommandOptions)
-  .addCommand(mobileAppDesignCommand, openDesignCommandOptions)
+  .addCommand(reportCommand)
+  .addCommand(docsDesignCommand)
+  .addCommand(posterCommand)
+  .addCommand(dashboardDesignCommand)
+  .addCommand(mobileAppDesignCommand)
   .addCommand(videoCommand)
   .addCommand(
     websiteCommand,

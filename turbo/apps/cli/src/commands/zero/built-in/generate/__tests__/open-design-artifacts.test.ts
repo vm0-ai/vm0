@@ -1,28 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import chalk from "chalk";
 import { zeroBuiltInCommand } from "../../index";
-
-function buildZeroToken(openDesignGenerate: boolean): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
-    "base64url",
-  );
-  const body = Buffer.from(
-    JSON.stringify({
-      userId: "user-1",
-      runId: "run-1",
-      orgId: "org-1",
-      scope: "zero",
-      capabilities: ["host:write"],
-      featureSwitches: {
-        [FeatureSwitchKey.OpenDesignGenerate]: openDesignGenerate,
-      },
-      iat: 1_700_000_000,
-      exp: 1_700_007_200,
-    }),
-  ).toString("base64url");
-  return `vm0_sandbox_${header}.${body}.test-signature`;
-}
 
 describe("zero built-in generate Open Design artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -35,7 +13,7 @@ describe("zero built-in generate Open Design artifact commands", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(true));
+    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
   });
 
   afterEach(() => {
@@ -128,24 +106,5 @@ describe("zero built-in generate Open Design artifact commands", () => {
       outputDir: "./opendesign/mockups/mobile-review",
       site: "mobile-review",
     });
-  });
-
-  it("rejects Open Design artifact generation when the feature is disabled", async () => {
-    vi.stubEnv("ZERO_TOKEN", buildZeroToken(false));
-
-    await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
-        "node",
-        "cli",
-        "generate",
-        "report",
-        "--prompt",
-        "Q2 report",
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("requires the openDesignGenerate feature switch"),
-    );
   });
 });

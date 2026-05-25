@@ -1,7 +1,5 @@
 import { readFileSync } from "node:fs";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command } from "commander";
-import { zeroTokenAllowsFeatureSwitch } from "../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../lib/command";
 import {
   type OpenDesignTarget,
@@ -69,19 +67,10 @@ Output:
   agent authors a static HTML artifact and hosts it with zero host.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
-  - OpenDesign path is gated by the openDesignGenerate feature switch`,
+  - Authenticates via ZERO_TOKEN`,
     )
     .action(
       withErrorHandler(async (options: OpenDesignArtifactOptions) => {
-        if (
-          !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.OpenDesignGenerate)
-        ) {
-          throw new Error(
-            `${config.usageCommand} requires the openDesignGenerate feature switch`,
-          );
-        }
-
         const prompt = readPrompt(options, config.usageCommand);
         const packet = createHtmlArtifactAuthoringPacket({
           kind: toOpenDesignTarget(config.target),
