@@ -54,12 +54,12 @@ function titleForKind(kind: HtmlArtifactKind): string {
   const titles: Record<HtmlArtifactKind, string> = {
     presentation: "HTML presentation",
     website: "hosted website",
-    dashboard: "dashboard",
-    "mobile-app": "mobile app prototype",
+    "dashboard-design": "dashboard design prototype",
+    "mobile-app-design": "mobile app design prototype",
     poster: "poster",
     "intro-video": "intro video storyboard",
     report: "report",
-    docs: "documentation site",
+    "docs-design": "documentation design prototype",
   };
 
   return titles[kind];

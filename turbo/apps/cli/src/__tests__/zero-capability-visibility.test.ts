@@ -742,4 +742,48 @@ describe("built-in generate feature switch visibility", () => {
 
     expect(visibleCommandNames(generateCommand)).toContain("website");
   });
+
+  it("should hide Open Design artifact generation when openDesignGenerate is disabled", async () => {
+    const token = buildZeroToken({
+      userId: "user-non-staff",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: ["host:write"],
+      featureSwitches: { [FeatureSwitchKey.OpenDesignGenerate]: false },
+    });
+
+    const generateCommand = await importGenerateCommand(token);
+
+    expect(visibleCommandNames(generateCommand)).not.toContain("report");
+    expect(visibleCommandNames(generateCommand)).not.toContain("docs-design");
+    expect(visibleCommandNames(generateCommand)).not.toContain("poster");
+    expect(visibleCommandNames(generateCommand)).not.toContain(
+      "dashboard-design",
+    );
+    expect(visibleCommandNames(generateCommand)).not.toContain(
+      "mobile-app-design",
+    );
+  });
+
+  it("should show Open Design artifact generation when openDesignGenerate is enabled", async () => {
+    const token = buildZeroToken({
+      userId: "user-enabled",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: ["host:write"],
+      featureSwitches: { [FeatureSwitchKey.OpenDesignGenerate]: true },
+    });
+
+    const generateCommand = await importGenerateCommand(token);
+
+    expect(visibleCommandNames(generateCommand)).toEqual(
+      expect.arrayContaining([
+        "report",
+        "docs-design",
+        "poster",
+        "dashboard-design",
+        "mobile-app-design",
+      ]),
+    );
+  });
 });
