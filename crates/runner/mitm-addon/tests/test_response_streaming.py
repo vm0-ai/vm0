@@ -142,7 +142,7 @@ class TestXJsonFinalize:
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_billable"] = True
@@ -161,7 +161,7 @@ class TestXJsonFinalize:
         mitm_addon.responseheaders(flow)
         assert "x_json_response_finish" in flow.metadata
 
-        _response_stream(flow)(b'{"data":[{"id":"1"}]}')
+        response_stream(flow)(b'{"data":[{"id":"1"}]}')
         response_streaming.finalize_x_json_state(flow)
 
         state = dict(flow.metadata["x_json_state"])
@@ -178,7 +178,7 @@ class TestXJsonFinalize:
         mitm_addon.responseheaders(flow)
         assert "x_json_response_finish" in flow.metadata
 
-        _response_stream(flow)(b'{"data":[1')
+        response_stream(flow)(b'{"data":[1')
         response_streaming.finalize_x_json_state(flow)
 
         state = dict(flow.metadata["x_json_state"])
@@ -195,7 +195,7 @@ class TestXJsonFinalize:
         mitm_addon.responseheaders(flow)
         assert "x_json_response_finish" in flow.metadata
 
-        _response_stream(flow)(b"[1,2,3]")
+        response_stream(flow)(b"[1,2,3]")
         response_streaming.finalize_x_json_state(flow)
 
         state = flow.metadata["x_json_state"]

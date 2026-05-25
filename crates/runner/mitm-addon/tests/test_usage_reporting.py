@@ -2243,11 +2243,11 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/recent"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"data":[{"id":"1"}')
+        response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "x_json_response_finish" in flow.metadata
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -2289,11 +2289,11 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_rule_match"] = "GET /2/tweets"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=_header_map({"content-type": "application/json"}),
+            headers=header_map({"content-type": "application/json"}),
         )
 
         mitm_addon.responseheaders(flow)
-        _response_stream(flow)(b'{"data":[{"id":"1"}')
+        response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "x_json_response_finish" in flow.metadata
         mitm_addon._request_start_times[flow.id] = time.time()
 
@@ -2304,7 +2304,7 @@ class TestResponseUsageReporting:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
 
-        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
