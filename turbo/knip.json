@@ -124,6 +124,15 @@
       "project": ["src/**/*.ts"],
       "ignore": ["src/firewalls/*.generated.ts"]
     },
+    "packages/db": {
+      "entry": [
+        "src/index.ts",
+        "src/**/__tests__/**/*.{test,spec}.ts",
+        "src/**/*.{test,spec}.ts",
+        "scripts/**/*.ts"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "drizzle.config.ts"]
+    },
     "packages/ui": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
@@ -152,7 +161,6 @@
     "dist/**",
     "build/**",
     "coverage/**",
-    "**/drizzle.config.ts",
     "**/custom-eslint/**",
     "apps/platform/src/mocks/mock-log-detail-data.ts",
     "apps/platform/src/test/mocks/clerk-react.ts",

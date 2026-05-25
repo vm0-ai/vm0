@@ -88,10 +88,12 @@ export default createRule({
         if (!hasChecked) {
           hasChecked = true;
 
-          // Resolve migrations directory relative to this rule file
+          // Resolve migrations directory relative to this rule file.
+          // Migration artifacts are owned by packages/db, but this rule stays
+          // in the web custom plugin until the shared lint plugin is split out.
           const migrationsDir = path.resolve(
             __dirname,
-            "../../src/db/migrations",
+            "../../../../packages/db/src/migrations",
           );
 
           const duplicates = findDuplicatePrefixes(migrationsDir);

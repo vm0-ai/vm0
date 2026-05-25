@@ -23,7 +23,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 function isMigrationTestFile(filename: string): boolean {
-  return filename.replace(/\\/g, "/").includes("/src/db/migrations/__tests__/");
+  return filename.replace(/\\/g, "/").includes("/src/__tests__/migrations/");
 }
 
 export default createRule({

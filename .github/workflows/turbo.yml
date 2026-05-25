@@ -179,7 +179,7 @@ jobs:
             echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/apps/web/src/db/(migrations|schema)/|^turbo/packages/db/src/schema/"; then
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema)/"; then
             echo "Migration or schema changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -437,7 +437,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter web db:migrate
+        run: pnpm --filter @vm0/db db:migrate
       - name: Test Web
         working-directory: turbo
         env:
@@ -488,7 +488,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter web db:migrate
+        run: pnpm --filter @vm0/db db:migrate
       - name: Bench API
         working-directory: turbo
         env:
@@ -536,12 +536,12 @@ jobs:
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
           # Check that migration SQL files and snapshots are only added, never modified or deleted
           CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
-            'turbo/apps/web/src/db/migrations/*.sql' \
-            'turbo/apps/web/src/db/migrations/meta/*_snapshot.json')
+            'turbo/packages/db/src/migrations/*.sql' \
+            'turbo/packages/db/src/migrations/meta/*_snapshot.json')
 
           # _journal.json is modified on every new migration, so only flag deletion
           DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
-            'turbo/apps/web/src/db/migrations/meta/_journal.json')
+            'turbo/packages/db/src/migrations/meta/_journal.json')
 
           FAILED=0
           if [ -n "$CHANGED" ]; then
@@ -561,10 +561,10 @@ jobs:
             exit 1
           fi
       - name: Test Migration Consistency
-        working-directory: turbo/apps/web
+        working-directory: turbo/packages/db
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm tsx scripts/test-migration-consistency-schema.ts
+        run: pnpm test:migration-consistency
 
   test-cli:
     needs: [detect-turbo-ts-checks]
@@ -673,7 +673,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter web db:migrate
+        run: pnpm --filter @vm0/db db:migrate
       - name: Test API
         working-directory: turbo
         env:
@@ -842,7 +842,7 @@ jobs:
             echo "$DATABASE_URL" > /tmp/neon-database-url
 
             cd turbo
-            DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
+            DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
             DATABASE_URL="$DATABASE_URL" pnpm -F web db:dev-seed
             echo "Neon branch ready"
           ) > /tmp/neon-log 2>&1 &

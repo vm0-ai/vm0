@@ -19,7 +19,7 @@
  * ❌ NEVER edit existing migration files!
  * ❌ NEVER manually create snapshot files!
  *
- * ✅ ALWAYS use `pnpm -F web db:generate` to auto-generate migrations
+ * ✅ ALWAYS use `pnpm -F @vm0/db db:generate` to auto-generate migrations
  * ✅ ALWAYS let Drizzle Kit manage the snapshot system
  * ✅ ALWAYS test with `pnpm test:migration-consistency` before merging
  *
@@ -35,7 +35,8 @@ import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(dirname, "../src/db/migrations");
+const PACKAGE_DIR = path.join(dirname, "..");
+const MIGRATIONS_DIR = path.join(PACKAGE_DIR, "src/migrations");
 const BACKUP_DIR = path.join(dirname, "../.migrations-backup");
 
 // Parse DATABASE_URL to get connection details
@@ -54,11 +55,15 @@ function createTestDbUrl(dbName: string): string {
   return `postgresql://${auth}@${DB_HOST}:${DB_PORT}/${dbName}`;
 }
 
-function execCommand(cmd: string, env?: Record<string, string>): string {
+function execCommand(
+  cmd: string,
+  options?: { env?: Record<string, string>; cwd?: string },
+): string {
   return execSync(cmd, {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, ...env },
+    cwd: options?.cwd,
+    env: { ...process.env, ...options?.env },
   });
 }
 
@@ -103,7 +108,8 @@ async function dropDatabase(dbName: string): Promise<void> {
 async function runMigrations(dbUrl: string): Promise<void> {
   console.log(`🔨 Running migrations...`);
   execCommand(`tsx ${path.join(dirname, "migrate.ts")}`, {
-    DATABASE_URL: dbUrl,
+    env: { DATABASE_URL: dbUrl },
+    cwd: PACKAGE_DIR,
   });
 }
 
@@ -115,6 +121,7 @@ async function runNormalizedComparison(
   try {
     execCommand(
       `tsx ${path.join(dirname, "compare-schemas-normalized.ts")} "${dbUrl1}" "${dbUrl2}"`,
+      { cwd: PACKAGE_DIR },
     );
     return true;
   } catch {
@@ -143,9 +150,7 @@ async function generateFreshMigrations(): Promise<void> {
   await fs.mkdir(MIGRATIONS_DIR, { recursive: true });
 
   // Generate new migrations (non-interactive)
-  execCommand("pnpm drizzle-kit generate", {
-    cwd: path.join(dirname, ".."),
-  });
+  execCommand("pnpm drizzle-kit generate", { cwd: PACKAGE_DIR });
 }
 
 async function validateSnapshotFiles(): Promise<void> {
@@ -231,14 +236,14 @@ async function validateSnapshotFiles(): Promise<void> {
       `\n   This means the snapshot system is corrupted and needs to be rebuilt.`,
     );
     console.error(`\n   🔧 How to fix:`);
-    console.error(`      1. Reset database: pnpm -F web db:reset`);
+    console.error(`      1. Reset database: pnpm -F @vm0/db db:reset`);
     console.error(`      2. Delete your manual migration file (if any)`);
     console.error(`      3. Remove migration entry from meta/_journal.json`);
-    console.error(`      4. Generate migration: pnpm -F web db:generate`);
-    console.error(`      5. Apply migration: pnpm -F web db:migrate`);
+    console.error(`      4. Generate migration: pnpm -F @vm0/db db:generate`);
+    console.error(`      5. Apply migration: pnpm -F @vm0/db db:migrate`);
     console.error(`\n   ⚠️  IMPORTANT: Never manually write migration files!`);
     console.error(
-      `      Always use 'pnpm -F web db:generate' to auto-generate migrations.`,
+      `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
     );
     console.error(`      Manual migrations break the snapshot chain.\n`);
     throw new Error("Snapshot chain broken");
@@ -571,7 +576,7 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
         console.error(`      ${diff}`);
       }
       console.error(`\n   🔧 How to fix:`);
-      console.error(`      1. Reset database: pnpm -F web db:reset`);
+      console.error(`      1. Reset database: pnpm -F @vm0/db db:reset`);
       console.error(
         `      2. Delete the latest migration file (${String(latestIdx).padStart(4, "0")}_*.sql)`,
       );
@@ -579,13 +584,13 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       console.error(
         `      4. Delete the latest snapshot (${String(latestIdx).padStart(4, "0")}_snapshot.json)`,
       );
-      console.error(`      5. Generate migration: pnpm -F web db:generate`);
-      console.error(`      6. Apply migration: pnpm -F web db:migrate`);
+      console.error(`      5. Generate migration: pnpm -F @vm0/db db:generate`);
+      console.error(`      6. Apply migration: pnpm -F @vm0/db db:migrate`);
       console.error(
         `\n   ⚠️  IMPORTANT: Never manually write migration files!`,
       );
       console.error(
-        `      Always use 'pnpm -F web db:generate' to auto-generate migrations.`,
+        `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
       );
       console.error(
         `      Manual migrations cause snapshot/database mismatches.\n`,
@@ -666,23 +671,23 @@ async function main(): Promise<void> {
       console.log(`      ${TEST_DB_2}`);
       console.log(`\n   For detailed analysis, run:`);
       console.log(
-        `     DB1_URL=${dbUrl1} DB2_URL=${dbUrl2} pnpm tsx scripts/compare-schemas-normalized.ts`,
+        `     pnpm -F @vm0/db exec tsx scripts/compare-schemas-normalized.ts "<${TEST_DB_1}-url>" "<${TEST_DB_2}-url>"`,
       );
       console.log(`\n   🔧 How to fix:`);
       console.log(`      1. Check if you manually edited any migration files`);
-      console.log(`      2. Reset database: pnpm -F web db:reset`);
+      console.log(`      2. Reset database: pnpm -F @vm0/db db:reset`);
       console.log(`      3. Delete the problematic migration files`);
       console.log(
         `      4. Remove corresponding entries from meta/_journal.json`,
       );
       console.log(`      5. Delete corresponding snapshots`);
-      console.log(`      6. Regenerate: pnpm -F web db:generate`);
-      console.log(`      7. Apply: pnpm -F web db:migrate`);
+      console.log(`      6. Regenerate: pnpm -F @vm0/db db:generate`);
+      console.log(`      7. Apply: pnpm -F @vm0/db db:migrate`);
       console.log(
         `\n   ⚠️  IMPORTANT: Never manually write or edit migration files!`,
       );
       console.log(
-        `      Always use 'pnpm -F web db:generate' to auto-generate migrations.`,
+        `      Always use 'pnpm -F @vm0/db db:generate' to auto-generate migrations.`,
       );
       console.log(
         `      Manual edits break the snapshot system and cause schema mismatches.\n`,

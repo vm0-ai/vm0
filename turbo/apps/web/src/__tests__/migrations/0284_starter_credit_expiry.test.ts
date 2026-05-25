@@ -4,8 +4,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
+import { testContext, uniqueId } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
 
 /**
  * Integration test for the migration 0284 backfill body.

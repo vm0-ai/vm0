@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { testContext } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
+import { testContext } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
 
 /**
  * Integration test for migration 0301 body.

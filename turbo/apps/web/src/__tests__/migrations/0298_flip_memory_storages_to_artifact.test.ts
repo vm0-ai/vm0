@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages } from "@vm0/db/schema/storage";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
+import { testContext, uniqueId } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
 
 /**
  * Integration test for migration 0296 body.

@@ -22,7 +22,6 @@
   "overrides": [
     {
       "files": [
-        "drizzle.config.ts",
         "eslint.config.js",
         "i18n.ts",
         "next.config.js",

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { testContext } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
+import { testContext } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
 
 /**
  * Integration test for migration 0308 body.
@@ -142,9 +142,7 @@ describe("migration 0308 unify artifact shape", () => {
     initServices();
     await createShadowTables();
     // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: reset shadow tables between cases
-    await globalThis.services.db.execute(
-      sql`TRUNCATE checkpoints_0308_shadow`,
-    );
+    await globalThis.services.db.execute(sql`TRUNCATE checkpoints_0308_shadow`);
     // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: reset shadow tables between cases
     await globalThis.services.db.execute(
       sql`TRUNCATE agent_sessions_0308_shadow`,
@@ -177,9 +175,7 @@ describe("migration 0308 unify artifact shape", () => {
     });
 
     it("leaves array-shape rows untouched via jsonb_typeof guard", async () => {
-      const canonical = [
-        { name: "foo", version: "v3", mountPath: "/mnt/foo" },
-      ];
+      const canonical = [{ name: "foo", version: "v3", mountPath: "/mnt/foo" }];
       const id = await seedCheckpointRow(canonical);
 
       await runCheckpointBackfill();
@@ -229,5 +225,4 @@ describe("migration 0308 unify artifact shape", () => {
       expect(await readSessionArtifacts(id)).toEqual([]);
     });
   });
-
 });

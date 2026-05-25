@@ -798,9 +798,6 @@ importers:
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
-      drizzle-kit:
-        specifier: ^0.31.9
-        version: 0.31.10
       e2b:
         specifier: ^2.10.3
         version: 2.18.0
@@ -978,16 +975,25 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.9)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
     devDependencies:
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      drizzle-kit:
+        specifier: ^0.31.9
+        version: 0.31.10
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.6.1)
@@ -997,6 +1003,12 @@ importers:
       oxlint-tsgolint:
         specifier: 0.23.0
         version: 0.23.0
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3

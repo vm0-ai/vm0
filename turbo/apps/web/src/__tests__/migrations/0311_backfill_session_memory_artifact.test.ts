@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../test-helpers";
 import {
   seedTestRun,
   insertTestConversation,
   seedTestCheckpointDirect,
   setTestAgentSessionArtifacts,
-} from "../../../__tests__/db-test-seeders/runs";
-import { findTestRunRecord } from "../../../__tests__/db-test-assertions/runs";
-import { getTestAgentSessionArtifacts } from "../../../__tests__/db-test-assertions/agents";
+} from "../db-test-seeders/runs";
+import { findTestRunRecord } from "../db-test-assertions/runs";
+import { getTestAgentSessionArtifacts } from "../db-test-assertions/agents";
 
 /**
  * Integration test for migration 0311 body.

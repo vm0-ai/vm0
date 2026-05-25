@@ -21,7 +21,7 @@ import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 
-const MIGRATIONS_DIR = path.join(__dirname, "../apps/web/src/db/migrations");
+const MIGRATIONS_DIR = path.join(__dirname, "../packages/db/src/migrations");
 const META_DIR = path.join(MIGRATIONS_DIR, "meta");
 
 interface MigrationInfo {
@@ -49,7 +49,7 @@ function exec(command: string, options?: { silent?: boolean }): string {
 function findMigrationCommit(
   sqlFile: string,
 ): { commit: string; date: string } | null {
-  const fullPath = `turbo/apps/web/src/db/migrations/${sqlFile}`;
+  const fullPath = `turbo/packages/db/src/migrations/${sqlFile}`;
 
   // Try current location first
   let result = exec(
@@ -57,11 +57,24 @@ function findMigrationCommit(
     { silent: true },
   );
 
-  // Try old location (apps/api) if not found
+  // Try old locations if not found.
   if (!result) {
-    const oldPath = fullPath.replace("/apps/web/", "/apps/api/");
+    const oldPath = fullPath.replace(
+      "/packages/db/src/migrations/",
+      "/apps/web/src/db/migrations/",
+    );
     result = exec(
       `git log --all --format="%H|%ci" --diff-filter=A -- "${oldPath}"`,
+      { silent: true },
+    );
+  }
+  if (!result) {
+    const olderPath = fullPath.replace(
+      "/packages/db/src/migrations/",
+      "/apps/api/src/db/migrations/",
+    );
+    result = exec(
+      `git log --all --format="%H|%ci" --diff-filter=A -- "${olderPath}"`,
       { silent: true },
     );
   }
@@ -135,7 +148,7 @@ function generateSnapshotAtCommit(migration: MigrationInfo): boolean {
 
     // Generate snapshot using drizzle-kit
     console.log("🔧 Generating snapshot with drizzle-kit...");
-    exec("cd turbo/apps/web && pnpm drizzle-kit generate");
+    exec("cd turbo/packages/db && pnpm drizzle-kit generate");
 
     // Find the generated snapshot (should be the latest one)
     const metaFiles = fs

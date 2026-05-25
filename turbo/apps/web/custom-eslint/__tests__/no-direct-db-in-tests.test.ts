@@ -54,7 +54,7 @@ ruleTester.run("no-direct-db-in-tests", rule, {
     {
       code: 'import { agentRuns } from "@vm0/db/schema/agent-run";',
       filename:
-        "/workspaces/vm01/turbo/apps/web/src/db/migrations/__tests__/0292_agent_runs_session_id_not_null_fk.test.ts",
+        "/workspaces/vm01/turbo/apps/web/src/__tests__/migrations/0292_agent_runs_session_id_not_null_fk.test.ts",
     },
   ],
   invalid: [

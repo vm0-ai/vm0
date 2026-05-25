@@ -21,20 +21,30 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:reset": "tsx scripts/reset-db.ts",
+    "test:migration-consistency": "tsx scripts/test-migration-consistency-schema.ts"
   },
   "dependencies": {
     "@vm0/api-contracts": "workspace:*",
     "@vm0/connectors": "workspace:*",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.0",
     "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
+    "drizzle-kit": "^0.31.9",
     "eslint": "^9.34.0",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.23.0",
+    "pg": "^8.20.0",
+    "tsx": "^4.21.0",
     "typescript": "5.9.3",
     "vitest": "^4.1.7"
   }

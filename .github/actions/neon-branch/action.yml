@@ -122,7 +122,7 @@ runs:
         if [ -n "$DATABASE_URL" ]; then
           echo "Running database migrations..."
           echo "Migration output:"
-          cd turbo && pnpm -F web db:migrate 2>&1
+          cd turbo && pnpm -F @vm0/db db:migrate 2>&1
           echo "Migration complete"
         else
           echo "No database URL provided, skipping migrations"

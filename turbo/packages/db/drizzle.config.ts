@@ -1,9 +1,9 @@
 import { defineConfig } from "drizzle-kit";
 
-export const DRIZZLE_MIGRATE_OUT = "./src/db/migrations";
+export const DRIZZLE_MIGRATE_OUT = "./src/migrations";
 
 export default defineConfig({
-  schema: "../../packages/db/src/schema/*",
+  schema: "./src/schema/*",
   out: DRIZZLE_MIGRATE_OUT,
   dialect: "postgresql",
   dbCredentials: {

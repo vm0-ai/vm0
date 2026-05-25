@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
+import { testContext, uniqueId } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
 
 /**
  * Integration test for migration 0341 body.

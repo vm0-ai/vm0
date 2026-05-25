@@ -160,7 +160,7 @@ jobs:
 
           echo "Running production migration smoke test on $BRANCH_NAME"
           cd turbo
-          DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
+          DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
           echo "Production migration smoke test completed"
 
       - name: Delete Production Migration Smoke Branch
@@ -193,7 +193,7 @@ jobs:
       - name: Run Production Migrations
         run: |
           echo "Running production migrations on production"
-          cd turbo && pnpm -F web db:migrate
+          cd turbo && pnpm -F @vm0/db db:migrate
         env:
           DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -1243,10 +1243,26 @@ jobs:
             exit 0
           fi
 
-          # Find new migration files
-          NEW_MIGRATIONS=$(git diff --name-only "$PREV_TAG".."$CURRENT_TAG" -- turbo/apps/web/src/db/migrations/ | grep '\.sql$' || true)
+          # Find new migration files. During the one-time ownership move from
+          # apps/web to packages/db, unchanged historical SQL files should not
+          # count as newly introduced migrations.
+          CANDIDATE_MIGRATIONS=$(git diff --name-only --diff-filter=AM "$PREV_TAG".."$CURRENT_TAG" -- turbo/packages/db/src/migrations/ | grep '\.sql$' || true)
+          NEW_MIGRATIONS_FILE=$(mktemp)
+          while IFS= read -r FILE; do
+            if [ -z "$FILE" ]; then
+              continue
+            fi
+            BASENAME=$(basename "$FILE")
+            OLD_FILE="turbo/apps/web/src/db/migrations/$BASENAME"
+            if git cat-file -e "$PREV_TAG:$OLD_FILE" 2>/dev/null &&
+              git cat-file -e "$CURRENT_TAG:$FILE" 2>/dev/null &&
+              git show "$PREV_TAG:$OLD_FILE" | cmp -s - <(git show "$CURRENT_TAG:$FILE"); then
+              continue
+            fi
+            echo "$FILE" >> "$NEW_MIGRATIONS_FILE"
+          done <<< "$CANDIDATE_MIGRATIONS"
 
-          if [ -z "$NEW_MIGRATIONS" ]; then
+          if [ ! -s "$NEW_MIGRATIONS_FILE" ]; then
             echo "indicator=safe" >> "$GITHUB_OUTPUT"
             echo "details=" >> "$GITHUB_OUTPUT"
             exit 0
@@ -1255,13 +1271,13 @@ jobs:
           # Check for destructive operations
           DESTRUCTIVE=false
           FILENAMES=""
-          for FILE in $NEW_MIGRATIONS; do
+          while IFS= read -r FILE; do
             BASENAME=$(basename "$FILE")
             FILENAMES="${FILENAMES:+$FILENAMES, }$BASENAME"
             if git show "$CURRENT_TAG:$FILE" 2>/dev/null | grep -qiE 'DROP\s+(COLUMN|TABLE|INDEX)|RENAME\s+(COLUMN|TABLE)|ALTER.*DROP'; then
               DESTRUCTIVE=true
             fi
-          done
+          done < "$NEW_MIGRATIONS_FILE"
 
           # Check for major version bump
           PREV_MAJOR=$(echo "$PREV_TAG" | sed 's/web-v//' | cut -d. -f1)
@@ -1384,7 +1400,7 @@ jobs:
           fi
 
           # Build full entry.
-          # - The migration-safety INDICATOR only describes web DB migrations
+          # - The migration-safety INDICATOR only describes DB migrations
           #   (see Detect migration safety step), so suppress it for release
           #   cycles with no web/api/app changes — otherwise a runner-only
           #   release would print a misleading "🟢 Safe to rollback".

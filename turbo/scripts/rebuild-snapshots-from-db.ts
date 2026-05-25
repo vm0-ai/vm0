@@ -33,7 +33,7 @@ import fs from "fs";
 import path from "path";
 import { Pool } from "pg";
 
-const MIGRATIONS_DIR = path.join(__dirname, "../apps/web/src/db/migrations");
+const MIGRATIONS_DIR = path.join(__dirname, "../packages/db/src/migrations");
 const META_DIR = path.join(MIGRATIONS_DIR, "meta");
 const TEMP_DB_NAME = `snapshot_rebuild_${Date.now()}`;
 
@@ -132,10 +132,10 @@ async function generateSnapshotFromDb(
 
     // Run drizzle-kit introspect to generate snapshot from database state
     console.log("🔍 Introspecting database...");
-    const webDir = path.join(__dirname, "../apps/web");
+    const dbDir = path.join(__dirname, "../packages/db");
     exec(
       `pnpm drizzle-kit introspect --dialect=postgresql --url="${tempDbUrl}" --out="${INTROSPECT_DIR}"`,
-      { silent: false, cwd: webDir },
+      { silent: false, cwd: dbDir },
     );
 
     // The introspect command generates meta/0000_snapshot.json

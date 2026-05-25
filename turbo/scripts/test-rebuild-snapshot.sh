@@ -21,5 +21,5 @@ pnpm tsx scripts/rebuild-snapshots-from-db.ts 16 17
 
 echo ""
 echo "✅ Test complete! Check the generated snapshots:"
-echo "   - turbo/apps/web/src/db/migrations/meta/0016_snapshot.json"
-echo "   - turbo/apps/web/src/db/migrations/meta/0017_snapshot.json"
+echo "   - turbo/packages/db/src/migrations/meta/0016_snapshot.json"
+echo "   - turbo/packages/db/src/migrations/meta/0017_snapshot.json"

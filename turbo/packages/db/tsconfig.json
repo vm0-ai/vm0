@@ -4,6 +4,6 @@
     "lib": ["ES2022"],
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "scripts/**/*", "drizzle.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

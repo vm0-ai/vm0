@@ -6,8 +6,8 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { initServices } from "../../../lib/init-services";
+import { testContext, uniqueId } from "../test-helpers";
+import { initServices } from "../../lib/init-services";
 
 const context = testContext();
 
