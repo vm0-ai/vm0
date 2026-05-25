@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.384.1](https://github.com/vm0-ai/vm0/compare/app-v0.384.0...app-v0.384.1) (2026-05-25)
+
+
+### Refactoring
+
+* **connectors:** replace stripe cli auth client polling with ably push ([#14879](https://github.com/vm0-ai/vm0/issues/14879)) ([5ed9106](https://github.com/vm0-ai/vm0/commit/5ed9106d155e55cd42ab288188d9f90d0b1a2e8d))
+
 ## [0.384.0](https://github.com/vm0-ai/vm0/compare/app-v0.383.1...app-v0.384.0) (2026-05-25)
 
 
