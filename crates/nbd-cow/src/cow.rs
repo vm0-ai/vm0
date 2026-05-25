@@ -211,9 +211,10 @@ impl CowLayer {
         }
 
         self.ensure_cow_fd()?;
-        let cow_fd = self.cow_fd.take().ok_or_else(|| {
-            NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure"))
-        })?;
+        let cow_fd = self
+            .cow_fd
+            .take()
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("cow_fd missing after ensure")))?;
         let result = self.flush_buffered(|offset, data| cow_fd.write_all_at(data, offset));
         self.cow_fd = Some(cow_fd);
         result
