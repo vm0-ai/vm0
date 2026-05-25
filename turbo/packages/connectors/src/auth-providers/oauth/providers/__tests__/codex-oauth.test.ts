@@ -1,22 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
-import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
+import { getModelProviderOAuthSecretMetadata } from "../../../model-provider-auth";
 import {
-  refreshChatgptToken,
   getChatgptSecretName,
   getChatgptRefreshSecretName,
   isChatgptRefreshError,
+  refreshChatgptToken,
   type ChatgptRefreshError,
-} from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth";
-import { codexOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth-provider";
+} from "../codex-oauth";
+import { codexOauthProvider } from "../codex-oauth-provider";
+import { server } from "./test-server";
 
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-
-const context = testContext();
 
 function getCodexRefreshAccess() {
   const access = codexOauthProvider.access;
@@ -27,13 +23,9 @@ function getCodexRefreshAccess() {
 }
 
 describe("connector/providers/codex-oauth", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("refreshChatgptToken", () => {
     it("refreshes access token and returns rotated refresh token", async () => {
-      const { handler } = http.post(TOKEN_URL, async ({ request }) => {
+      const handler = http.post(TOKEN_URL, async ({ request }) => {
         expect(request.headers.get("content-type")).toBe("application/json");
         const body = (await request.json()) as Record<string, unknown>;
         expect(body.client_id).toBe(CODEX_PUBLIC_CLIENT_ID);
@@ -54,7 +46,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("returns null refresh token when response omits it", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({ access_token: "new-at" });
       });
       server.use(handler);
@@ -65,7 +57,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("classifies refresh_token_expired into ChatgptRefreshError", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json(
           {
             error: {
@@ -87,7 +79,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("classifies refresh_token_reused into ChatgptRefreshError", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json(
           { error: { code: "refresh_token_reused", message: "reused" } },
           { status: 401 },
@@ -104,7 +96,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("classifies refresh_token_invalidated into ChatgptRefreshError", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json(
           {
             error: {
@@ -129,7 +121,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("classifies unknown 401 codes into refresh_token_other", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json(
           { error: { code: "weird_unrelated_error", message: "huh" } },
           { status: 401 },
@@ -147,7 +139,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("throws non-typed error on 5xx so caller can retry", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return new HttpResponse("Bad Gateway", { status: 502 });
       });
       server.use(handler);
@@ -162,7 +154,7 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("throws when refresh response is missing access_token", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({});
       });
       server.use(handler);

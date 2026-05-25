@@ -1,27 +1,19 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
-import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
-import { isOAuthConnectorType } from "@vm0/connectors/auth-providers";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
+import { getConnectorOAuthCredentials } from "../../../../connector-utils";
+import { isOAuthConnectorType } from "../../../connector-auth";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
   getMetaAdsSecretName,
-} from "@vm0/connectors/auth-providers/oauth/providers/meta-ads";
-import { metaAdsProvider } from "@vm0/connectors/auth-providers/oauth/providers/meta-ads-provider";
+} from "../meta-ads";
+import { metaAdsProvider } from "../meta-ads-provider";
+import { server } from "./test-server";
 
 const TOKEN_URL = "https://graph.facebook.com/v22.0/oauth/access_token";
 const USER_URL = "https://graph.facebook.com/v22.0/me";
 
-const context = testContext();
-
 describe("connector/providers/meta-ads", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("buildMetaAdsAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scopes", () => {
       const url = buildMetaAdsAuthorizationUrl(
@@ -43,21 +35,21 @@ describe("connector/providers/meta-ads", () => {
 
   describe("exchangeMetaAdsCode", () => {
     it("exchanges code for short-lived token then long-lived token", async () => {
-      const { handler: shortLivedHandler } = http.post(TOKEN_URL, () => {
+      const shortLivedHandler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
           access_token: "short-lived-token",
           token_type: "bearer",
           expires_in: 3600,
         });
       });
-      const { handler: longLivedHandler } = http.get(TOKEN_URL, () => {
+      const longLivedHandler = http.get(TOKEN_URL, () => {
         return HttpResponse.json({
           access_token: "long-lived-token",
           token_type: "bearer",
           expires_in: 5184000,
         });
       });
-      const { handler: userHandler } = http.get(USER_URL, () => {
+      const userHandler = http.get(USER_URL, () => {
         return HttpResponse.json({
           id: "12345",
           name: "Test User",
@@ -82,7 +74,7 @@ describe("connector/providers/meta-ads", () => {
     });
 
     it("throws when token endpoint returns an error", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json(
           {
             error: {
@@ -107,7 +99,7 @@ describe("connector/providers/meta-ads", () => {
     });
 
     it("throws when no access token in response", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({});
       });
       server.use(handler);
@@ -123,7 +115,7 @@ describe("connector/providers/meta-ads", () => {
     });
 
     it("throws when token endpoint returns HTTP error", async () => {
-      const { handler } = http.post(TOKEN_URL, () => {
+      const handler = http.post(TOKEN_URL, () => {
         return new HttpResponse("Internal Server Error", { status: 500 });
       });
       server.use(handler);

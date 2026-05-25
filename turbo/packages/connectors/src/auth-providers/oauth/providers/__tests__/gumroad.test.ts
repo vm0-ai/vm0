@@ -1,22 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpResponse } from "msw";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
-import { testContext } from "../../../../../__tests__/test-helpers";
+import { describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
-  refreshGumroadToken,
   getGumroadSecretName,
-} from "@vm0/connectors/auth-providers/oauth/providers/gumroad";
-
-const context = testContext();
+  refreshGumroadToken,
+} from "../gumroad";
+import { server } from "./test-server";
 
 describe("connector/providers/gumroad", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
   describe("buildGumroadAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scope", () => {
       const url = buildGumroadAuthorizationUrl(
@@ -38,27 +30,21 @@ describe("connector/providers/gumroad", () => {
 
   describe("exchangeGumroadCode", () => {
     it("exchanges code for access token and user info", async () => {
-      const { handler: tokenHandler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return HttpResponse.json({
-            access_token: "gumroad-test-token",
-            scope: "view_profile edit_products view_sales",
-          });
-        },
-      );
-      const { handler: userHandler } = http.get(
-        "https://api.gumroad.com/v2/user",
-        () => {
-          return HttpResponse.json({
-            user: {
-              id: "gumroad-user-123",
-              name: "Test Creator",
-              email: "creator@example.com",
-            },
-          });
-        },
-      );
+      const tokenHandler = http.post("https://gumroad.com/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "gumroad-test-token",
+          scope: "view_profile edit_products view_sales",
+        });
+      });
+      const userHandler = http.get("https://api.gumroad.com/v2/user", () => {
+        return HttpResponse.json({
+          user: {
+            id: "gumroad-user-123",
+            name: "Test Creator",
+            email: "creator@example.com",
+          },
+        });
+      });
       server.use(tokenHandler, userHandler);
 
       const result = await exchangeGumroadCode(
@@ -81,7 +67,7 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when Gumroad returns an error in response body", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return HttpResponse.json({
           error: "invalid_grant",
           error_description: "Authorization code expired",
@@ -100,7 +86,7 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when no access token in response", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return HttpResponse.json({});
       });
       server.use(handler);
@@ -116,7 +102,7 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when token endpoint returns HTTP error", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return new HttpResponse("Internal Server Error", { status: 500 });
       });
       server.use(handler);
@@ -134,7 +120,7 @@ describe("connector/providers/gumroad", () => {
 
   describe("refreshGumroadToken", () => {
     it("refreshes access token successfully", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return HttpResponse.json({
           access_token: "new-gumroad-token",
           refresh_token: "new-refresh-token",
@@ -153,7 +139,7 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when refresh returns an error", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return HttpResponse.json({
           error: "invalid_grant",
           error_description: "Refresh token revoked",
@@ -167,7 +153,7 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when no access token in refresh response", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return HttpResponse.json({});
       });
       server.use(handler);
@@ -178,7 +164,7 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when refresh endpoint returns HTTP error", async () => {
-      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+      const handler = http.post("https://gumroad.com/oauth/token", () => {
         return new HttpResponse("Bad Request", { status: 400 });
       });
       server.use(handler);
