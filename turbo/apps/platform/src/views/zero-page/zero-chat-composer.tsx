@@ -1301,11 +1301,6 @@ export function ZeroChatComposer({
         "mod+b": () => {
           toggleSidebar();
         },
-        "mod+alt+.": () => {
-          if (modelPicker) {
-            setModelPickerOpen(true);
-          }
-        },
       },
       e,
     );

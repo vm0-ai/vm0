@@ -181,6 +181,7 @@ import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pineconeFirewall } from "./pinecone.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
+import { peopleDataLabsFirewall } from "./people-data-labs.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { pipedriveFirewall } from "./pipedrive.generated";
 import { plainFirewall } from "./plain.generated";
@@ -404,6 +405,7 @@ const CONNECTOR_FIREWALLS = {
   pdfco: pdfcoFirewall,
   pinecone: pineconeFirewall,
   pdforge: pdforgeFirewall,
+  "people-data-labs": peopleDataLabsFirewall,
   perplexity: perplexityFirewall,
   pipedrive: pipedriveFirewall,
   plain: plainFirewall,

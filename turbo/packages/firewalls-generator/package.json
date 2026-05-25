@@ -142,6 +142,7 @@
     "generate:pdf4me": "tsx src/index.ts pdf4me",
     "generate:pdfco": "tsx src/index.ts pdfco",
     "generate:pdforge": "tsx src/index.ts pdforge",
+    "generate:people-data-labs": "tsx src/index.ts people-data-labs",
     "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:pika": "tsx src/index.ts pika",
     "generate:pinecone": "tsx src/index.ts pinecone",

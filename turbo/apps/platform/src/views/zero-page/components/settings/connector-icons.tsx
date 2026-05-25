@@ -154,6 +154,7 @@ const CONNECTOR_ICON_COLORFUL = {
   parallel: true,
   pdf4me: true,
   pdfco: true,
+  "people-data-labs": true,
   pinecone: true,
   plain: true,
   plausible: true,
