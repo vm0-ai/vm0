@@ -719,10 +719,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert flow.response is not None
         assert b"super-secret-token" not in flow.response.content
-        log_args = mock_log.call_args.args
-        log_kwargs = mock_log.call_args.kwargs
-        assert "super-secret-token" not in json.dumps(log_args)
-        assert "super-secret-token" not in json.dumps(log_kwargs)
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server uses standard auth injection."""
