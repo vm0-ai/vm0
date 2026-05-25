@@ -214,24 +214,23 @@ jobs:
           version: "v0.15.0"
 
       - name: Configure sccache
-        id: sccache
         shell: bash
         env:
           SCCACHE_GHA_ENABLED: "true"
         run: |
-          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          SCCACHE_CONF_PATH="${RUNNER_TEMP:-/tmp}/sccache.toml"
+          cat > "$SCCACHE_CONF_PATH" <<'EOF'
+          server_startup_timeout_ms = 60000
+          EOF
 
-          if ${SCCACHE_PATH:-sccache} --start-server; then
-            {
-              echo "SCCACHE_GHA_ENABLED=true"
-              echo "SCCACHE_IGNORE_SERVER_IO_ERROR=1"
-              echo "RUSTC_WRAPPER=sccache"
-            } >> "$GITHUB_ENV"
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::sccache server failed to start; building without sccache"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
+          SCCACHE_CONF="$SCCACHE_CONF_PATH" ${SCCACHE_PATH:-sccache} --start-server
+
+          {
+            echo "CARGO_INCREMENTAL=0"
+            echo "SCCACHE_CONF=$SCCACHE_CONF_PATH"
+            echo "SCCACHE_GHA_ENABLED=true"
+            echo "RUSTC_WRAPPER=sccache"
+          } >> "$GITHUB_ENV"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -271,7 +270,7 @@ jobs:
         run: .github/scripts/prepare-runner-image.sh
 
       - name: Show sccache stats
-        if: always() && steps.sccache.outputs.enabled == 'true'
+        if: always()
         shell: bash
         run: ${SCCACHE_PATH:-sccache} --show-stats
 
