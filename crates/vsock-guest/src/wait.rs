@@ -4,7 +4,10 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::process::{kill_and_reap_child, kill_process_tree};
+use crate::process::{
+    ProcessTreeKillTarget, kill_and_reap_child_with_target, kill_process_tree_target,
+    process_tree_kill_target, refresh_process_tree_kill_target,
+};
 use crate::threading::spawn_scoped_named;
 
 /// After the child process exits, continue draining stdout/stderr for this
@@ -90,29 +93,39 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
     timeout_ms: u32,
     cancel: &AtomicBool,
 ) -> WaitOutcome {
-    wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || cancel.load(Ordering::Acquire))
+    let kill_target = process_tree_kill_target(child.id());
+    wait_with_kill_timeout_or_cancelled_by(child, kill_target, timeout_ms, || {
+        cancel.load(Ordering::Acquire)
+    })
 }
 
 /// Like [`wait_with_kill_timeout_or_cancelled`], but observes either cancel
-/// flag. Exec operations have both connection-level cancellation and
-/// request-level cancellation.
-pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
+/// flag and uses a kill target snapshotted before entering the wait path.
+///
+/// Exec operations have both connection-level cancellation and request-level
+/// cancellation, and they snapshot process-tree targets before stdio setup can
+/// introduce cleanup races.
+pub(crate) fn wait_with_kill_timeout_or_cancelled_either_with_target(
     child: Child,
+    kill_target: ProcessTreeKillTarget,
     timeout_ms: u32,
     first_cancel: &AtomicBool,
     second_cancel: &AtomicBool,
 ) -> WaitOutcome {
-    wait_with_kill_timeout_or_cancelled_by(child, timeout_ms, || {
+    wait_with_kill_timeout_or_cancelled_by(child, kill_target, timeout_ms, || {
         first_cancel.load(Ordering::Acquire) || second_cancel.load(Ordering::Acquire)
     })
 }
 
 fn wait_with_kill_timeout_or_cancelled_by(
     mut child: Child,
+    mut kill_target: ProcessTreeKillTarget,
     timeout_ms: u32,
     is_cancelled: impl Fn() -> bool + Copy + Send + Sync,
 ) -> WaitOutcome {
     let child_id = child.id();
+    debug_assert_eq!(kill_target.child_id(), child_id);
+    refresh_process_tree_kill_target(&mut kill_target);
     let deadline = if timeout_ms > 0 {
         let now = Instant::now();
         Some(
@@ -126,14 +139,14 @@ fn wait_with_kill_timeout_or_cancelled_by(
     thread::scope(|scope| {
         let (done_tx, done_rx) = mpsc::channel::<()>();
         let watchdog = match spawn_scoped_named(scope, THREAD_WAIT_WATCHDOG, move || {
-            wait_for_done_timeout_or_cancelled(done_rx, deadline, is_cancelled, child_id)
+            wait_for_done_timeout_or_cancelled(done_rx, deadline, is_cancelled, kill_target)
         }) {
             Ok(watchdog) => watchdog,
             Err(e) => {
                 // If the watchdog cannot be created, timeout/cancel can no
                 // longer be enforced. Kill and reap the child instead of
                 // letting it outlive the failed wait helper.
-                kill_and_reap_child(child);
+                kill_and_reap_child_with_target(child, kill_target);
                 return WaitOutcome::WaitFailed(format!("failed to spawn wait watchdog: {e}"));
             }
         };
@@ -165,7 +178,7 @@ fn wait_for_done_timeout_or_cancelled(
     done_rx: mpsc::Receiver<()>,
     deadline: Option<Instant>,
     is_cancelled: impl Fn() -> bool,
-    child_id: u32,
+    kill_target: ProcessTreeKillTarget,
 ) -> Option<WatchdogKill> {
     let poll_interval = Duration::from_millis(WATCHDOG_CANCEL_POLL_INTERVAL_MS);
 
@@ -179,7 +192,7 @@ fn wait_for_done_timeout_or_cancelled(
             Some(deadline) => {
                 let remaining = deadline.saturating_duration_since(now);
                 if remaining.is_zero() {
-                    return kill_child_unless_done(&done_rx, child_id, KillReason::Timeout);
+                    return kill_child_unless_done(&done_rx, kill_target, KillReason::Timeout);
                 }
                 remaining.min(poll_interval)
             }
@@ -187,7 +200,7 @@ fn wait_for_done_timeout_or_cancelled(
         };
 
         if is_cancelled() {
-            return kill_child_unless_done(&done_rx, child_id, KillReason::Cancelled);
+            return kill_child_unless_done(&done_rx, kill_target, KillReason::Cancelled);
         }
 
         match done_rx.recv_timeout(wait_for) {
@@ -206,21 +219,23 @@ fn wait_done(done_rx: &mpsc::Receiver<()>) -> bool {
 
 fn kill_child_unless_done(
     done_rx: &mpsc::Receiver<()>,
-    child_id: u32,
+    kill_target: ProcessTreeKillTarget,
     reason: KillReason,
 ) -> Option<WatchdogKill> {
     if wait_done(done_rx) {
         None
     } else {
-        Some(kill_child(child_id, reason))
+        Some(kill_child(kill_target, reason))
     }
 }
 
-fn kill_child(child_id: u32, reason: KillReason) -> WatchdogKill {
-    // SAFETY: child_id is a valid PID from Command::spawn.
-    let killed = unsafe { kill_process_tree(child_id) }
-        // SAFETY: child_id is a process id from Command::spawn.
-        || unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+fn kill_child(kill_target: ProcessTreeKillTarget, reason: KillReason) -> WatchdogKill {
+    let child_id = kill_target.child_id();
+    // SAFETY: kill_target comes from a PID returned by Command::spawn.
+    let tree_killed = unsafe { kill_process_tree_target(kill_target) };
+    // SAFETY: child_id is a process id from Command::spawn.
+    let child_killed = unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+    let killed = tree_killed || child_killed;
     WatchdogKill { reason, killed }
 }
 
@@ -329,7 +344,7 @@ mod tests {
             done_rx,
             Some(Instant::now()),
             || cancel.load(Ordering::Acquire),
-            i32::MAX as u32,
+            process_tree_kill_target(i32::MAX as u32),
         );
 
         assert!(outcome.is_none());
@@ -345,7 +360,7 @@ mod tests {
             done_rx,
             None,
             || cancel.load(Ordering::Acquire),
-            i32::MAX as u32,
+            process_tree_kill_target(i32::MAX as u32),
         );
 
         assert!(outcome.is_none());

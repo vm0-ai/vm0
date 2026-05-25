@@ -31,6 +31,7 @@ import {
 } from "../services/zero-run-built-in-admission.service";
 import { verifyBuiltInGenerationProviderWebhookToken } from "../services/built-in-generation-provider-webhooks.service";
 import {
+  bytePlusBuiltInGenerationError,
   downloadFalVideo,
   downloadBytePlusVideo,
   parseFalVideoResult,
@@ -765,7 +766,7 @@ const postBytePlusBuiltInGenerationWebhook$ = command(
         failBuiltInGenerationJob$,
         {
           generationId: job.id,
-          error: failError("Generation failed"),
+          error: bytePlusBuiltInGenerationError(parsed),
         },
         signal,
       );

@@ -23,6 +23,7 @@ from .anthropic_messages import (
     create_anthropic_messages_json_usage_extractor,
     create_anthropic_messages_sse_usage_extractor,
     extract_anthropic_messages_usage_from_json,
+    extract_anthropic_messages_usage_with_error_from_json,
 )
 from .counters import (
     decrement_in_flight_flows,
@@ -34,6 +35,7 @@ from .openai_responses import (
     create_openai_responses_sse_usage_extractor,
     extract_openai_responses_usage_from_event_json,
     extract_openai_responses_usage_from_json,
+    extract_openai_responses_usage_with_error_from_json,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import report_connector_usage, x
@@ -46,8 +48,10 @@ __all__ = [
     "create_openai_responses_sse_usage_extractor",
     "decrement_in_flight_flows",
     "extract_anthropic_messages_usage_from_json",
+    "extract_anthropic_messages_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event_json",
     "extract_openai_responses_usage_from_json",
+    "extract_openai_responses_usage_with_error_from_json",
     "increment_in_flight_flows",
     "merge_openai_responses_usage_result",
     "report_connector_usage",

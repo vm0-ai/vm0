@@ -84,37 +84,82 @@ fn find_child_pgid(parent_pid: u32) -> Option<u32> {
     None
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ProcessTreeKillTarget {
+    child_id: u32,
+    child_pgid: Option<u32>,
+}
+
+impl ProcessTreeKillTarget {
+    pub(crate) fn child_id(self) -> u32 {
+        self.child_id
+    }
+}
+
+/// Snapshot process-tree kill targets while the direct child is still alive.
+///
+/// This preserves the process group created by `su - user` even if the direct
+/// child exits before a later cleanup path needs to signal lingering
+/// descendants that still hold stdio pipes.
+pub(crate) fn process_tree_kill_target(child_id: u32) -> ProcessTreeKillTarget {
+    ProcessTreeKillTarget {
+        child_id,
+        child_pgid: find_child_pgid(child_id),
+    }
+}
+
+/// Refresh a snapshotted process-tree target while the direct child may still
+/// have a child session visible in `/proc`.
+pub(crate) fn refresh_process_tree_kill_target(target: &mut ProcessTreeKillTarget) {
+    if target.child_pgid.is_none() {
+        target.child_pgid = find_child_pgid(target.child_id);
+    }
+}
+
 /// Kill a process group and, if `su -` created a child session, also kill
 /// that child's process group.
 ///
 /// # Safety
 ///
 /// `child_id` must be a valid PID from `Command::spawn()`.
-/// Returns `true` if the primary kill (the direct child's group) succeeded.
+/// Returns `true` if any targeted process group was signalled.
 pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
     // Find su's child PGID BEFORE killing — after kill, PPID changes to 1.
-    let child_pgid = find_child_pgid(child_id);
+    let target = process_tree_kill_target(child_id);
+    unsafe { kill_process_tree_target(target) }
+}
 
+/// Kill a previously snapshotted process tree target.
+///
+/// # Safety
+///
+/// `target.child_id` must come from a PID returned by `Command::spawn()`.
+pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> bool {
     // Kill the direct child's process group (the su wrapper).
-    let ret = unsafe { libc::kill(-(child_id as i32), libc::SIGKILL) };
+    let ret = unsafe { libc::kill(-(target.child_id as i32), libc::SIGKILL) };
+    let mut signalled = ret == 0;
     if ret != 0 {
         let err = std::io::Error::last_os_error();
         log(
             "WARN",
-            &format!("process-tree kill(-{child_id}, SIGKILL) failed: {err}"),
+            &format!(
+                "process-tree kill(-{}, SIGKILL) failed: {err}",
+                target.child_id
+            ),
         );
-        return false;
     }
 
     // Kill the session/process group created by su's child after setsid().
     // Skip if the child is in the same group (no setsid happened, e.g. debug builds).
     // Guard pgid != 0: kill(0, sig) sends to the calling process's own group.
-    if let Some(pgid) = child_pgid
+    if let Some(pgid) = target.child_pgid
         && pgid != 0
-        && pgid != child_id
+        && pgid != target.child_id
     {
         let ret = unsafe { libc::kill(-(pgid as i32), libc::SIGKILL) };
-        if ret != 0 {
+        if ret == 0 {
+            signalled = true;
+        } else {
             let err = std::io::Error::last_os_error();
             log(
                 "WARN",
@@ -123,18 +168,28 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
         }
     }
 
-    true
+    signalled
 }
 
 /// Kill the process tree for a spawned child and reap the direct child.
-pub(crate) fn kill_and_reap_child(mut child: Child) {
+pub(crate) fn kill_and_reap_child(child: Child) {
     let child_id = child.id();
+    let target = process_tree_kill_target(child_id);
+    kill_and_reap_child_with_target(child, target);
+}
 
+/// Kill a process tree using a previously snapshotted target and reap the
+/// direct child.
+pub(crate) fn kill_and_reap_child_with_target(mut child: Child, mut target: ProcessTreeKillTarget) {
     // Signal before waiting. The direct child may already be a zombie while
     // descendants still live in its process group; reaping first would release
     // the child PID and lose the stable PGID we need for group cleanup.
     // SAFETY: child_id comes from a live `Child` returned by Command::spawn.
-    let killed = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
+    refresh_process_tree_kill_target(&mut target);
+    let child_id = target.child_id;
+    let tree_killed = unsafe { kill_process_tree_target(target) };
+    let child_killed = child.kill().is_ok();
+    let killed = tree_killed || child_killed;
     if !killed {
         log(
             "WARN",
@@ -488,6 +543,94 @@ mod tests {
                 let cleanup = kill_pidfd_and_wait(&background_pidfd);
                 panic!(
                     "failed to wait for background pid {background_pid} exit: {e}; cleanup={cleanup:?}"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn snapshotted_process_tree_target_kills_setsid_child_after_parent_exit() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::process::CommandExt;
+
+        let (dir, _guard) = temp_dir("snapshot-target");
+        let fifo = dir.join("parent-fifo");
+        let child_pid_path = dir.join("setsid-child-pid");
+
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(
+                "mkfifo \"$FIFO\"; \
+                 setsid sh -c 'printf %s \"$$\" > \"$CHILD_PID\"; printf \"ready\\n\"; sleep 60' & \
+                 read _ < \"$FIFO\"",
+            )
+            .env("FIFO", &fifo)
+            .env("CHILD_PID", &child_pid_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        command.process_group(0);
+
+        let mut child = Some(command.spawn().unwrap());
+        let stdout = child.as_mut().unwrap().stdout.take().unwrap();
+        let mut ready = String::new();
+        BufReader::new(stdout).read_line(&mut ready).unwrap();
+        assert_eq!(ready, "ready\n");
+        let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read setsid child pid: {e}");
+            }
+        };
+        let child_pid: libc::pid_t = match child_pid_text.trim().parse() {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to parse setsid child pid {child_pid_text:?}: {e}");
+            }
+        };
+        let child_pidfd = match open_pidfd(child_pid) {
+            Ok(pidfd) => pidfd,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to open pidfd for setsid child pid {child_pid}: {e}");
+            }
+        };
+
+        let target = process_tree_kill_target(child.as_ref().unwrap().id());
+        {
+            let mut fifo_writer = match std::fs::OpenOptions::new().write(true).open(&fifo) {
+                Ok(writer) => writer,
+                Err(e) => {
+                    kill_spawned_child(&mut child);
+                    kill_pidfd_and_wait(&child_pidfd).unwrap_or_else(|cleanup| {
+                        panic!("fifo open failed: {e}; cleanup={cleanup}")
+                    });
+                    panic!("failed to open parent fifo: {e}");
+                }
+            };
+            writeln!(fifo_writer, "done").unwrap();
+        }
+        let status = child.take().unwrap().wait().unwrap();
+        assert!(status.success());
+
+        // SAFETY: `target` came from the spawned shell before it exited.
+        assert!(unsafe { kill_process_tree_target(target) });
+        match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&child_pidfd)
+                    .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+                panic!(
+                    "snapshotted target should terminate reparented setsid child pid {child_pid}"
+                );
+            }
+            Err(e) => {
+                let cleanup = kill_pidfd_and_wait(&child_pidfd);
+                panic!(
+                    "failed to wait for setsid child pid {child_pid} exit: {e}; cleanup={cleanup:?}"
                 );
             }
         }

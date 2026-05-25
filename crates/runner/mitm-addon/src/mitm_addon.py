@@ -472,17 +472,27 @@ def response(flow: http.HTTPFlow) -> None:
             "firewall_billable", False
         ):
             if response_streaming.uses_openai_responses_usage_protocol(flow):
-                json_usage = usage.extract_openai_responses_usage_from_json(
+                json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
                     bytes(stream_buf),
                     flow.response.headers if flow.response else None,
                 )
             else:
-                json_usage = usage.extract_anthropic_messages_usage_from_json(
-                    bytes(stream_buf),
-                    flow.response.headers if flow.response else None,
+                json_usage, json_error = (
+                    usage.extract_anthropic_messages_usage_with_error_from_json(
+                        bytes(stream_buf),
+                        flow.response.headers if flow.response else None,
+                    )
                 )
             if json_usage:
                 flow.metadata["model_provider_usage"] = json_usage
+            elif json_error is not None:
+                log_proxy_entry(
+                    proxy_log_path,
+                    "warn",
+                    "Model provider JSON usage extraction failed",
+                    type="usage_event",
+                    error=json_error,
+                )
     _report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).

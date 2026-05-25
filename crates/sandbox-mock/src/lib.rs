@@ -52,6 +52,13 @@ pub struct ExecMatcher {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecCall {
+    pub cmd: String,
+    pub sudo: bool,
+    pub stdin_bytes: Option<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartProcessCall {
     pub output: ProcessOutputMode,
     pub control: ProcessControlMode,
@@ -663,6 +670,7 @@ pub struct MockSandbox {
     id: String,
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
+    exec_calls: Mutex<Vec<ExecCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     read_file_calls: Mutex<Vec<ReadFileCall>>,
     copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
@@ -690,6 +698,7 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
+            exec_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             read_file_calls: Mutex::new(Vec::new()),
             copy_file_results: Mutex::new(VecDeque::new()),
@@ -709,6 +718,10 @@ impl MockSandbox {
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
         self.exec_results.lock_ignoring_poison().push_back(result);
+    }
+
+    pub fn exec_calls(&self) -> Vec<ExecCall> {
+        self.exec_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a small file read result. Results are consumed in FIFO order.
@@ -849,6 +862,11 @@ impl Sandbox for MockSandbox {
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
+        self.exec_calls.lock_ignoring_poison().push(ExecCall {
+            cmd: request.cmd.to_string(),
+            sudo: request.sudo,
+            stdin_bytes: request.stdin_bytes.map(Vec::from),
+        });
         // Check pattern matchers before the FIFO queue.
         let result = if let Some(overrides) = &self.overrides {
             let mut matchers = overrides.exec_matchers.lock_ignoring_poison();
@@ -1464,6 +1482,7 @@ mod tests {
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
+                stdin_bytes: None,
                 output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
             })
             .await;
@@ -1588,6 +1607,7 @@ mod tests {
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
 
@@ -1757,6 +1777,7 @@ mod tests {
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
+                stdin_bytes: None,
                 output_limits: ExecOutputLimits::separate(3, 4),
             })
             .await

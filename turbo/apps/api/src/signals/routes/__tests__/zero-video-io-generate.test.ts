@@ -1332,8 +1332,16 @@ describe("POST /api/zero/video-io/generate", () => {
     server.use(
       http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
         return HttpResponse.json(
-          { error: { message: "rate limit exceeded" } },
-          { status: 429 },
+          {
+            error: {
+              code: "InvalidParameter",
+              message:
+                "The parameter `content[1].image_url` specified in the request is not valid.",
+              param: "content[1].image_url",
+              type: "BadRequest",
+            },
+          },
+          { status: 400 },
         );
       }),
     );
@@ -1345,11 +1353,12 @@ describe("POST /api/zero/video-io/generate", () => {
       body: JSON.stringify({ prompt: "a city" }),
     });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "Video generation failed",
-        code: "INTERNAL_SERVER_ERROR",
+        message:
+          "BytePlus video generation failed: The parameter `content[1].image_url` specified in the request is not valid. (content[1].image_url)",
+        code: "BYTEPLUS_INVALID_PARAMETER",
       },
     });
     const jobRows = await store
@@ -1362,8 +1371,9 @@ describe("POST /api/zero/video-io/generate", () => {
       type: "video",
       status: "failed",
       error: {
-        message: "Video generation failed",
-        code: "INTERNAL_SERVER_ERROR",
+        message:
+          "BytePlus video generation failed: The parameter `content[1].image_url` specified in the request is not valid. (content[1].image_url)",
+        code: "BYTEPLUS_INVALID_PARAMETER",
       },
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
@@ -1375,5 +1385,80 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("records specific BytePlus webhook failure details on async failure", async () => {
+    const fixture = await track(
+      seedVideoFixture({ credits: 1000, withPricing: true }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "byteplus-video-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: "a city" }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "byteplus-video-task",
+      status: "failed",
+      error: {
+        code: "InputImageSensitiveContentDetected.PrivacyInformation",
+        message:
+          "The request failed because the input image may contain real person.",
+        type: "BadRequest",
+      },
+    });
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "video",
+      status: "failed",
+      error: {
+        message:
+          "BytePlus video generation failed: The request failed because the input image may contain real person.",
+        code: "BYTEPLUS_INPUT_IMAGE_SENSITIVE_CONTENT_DETECTED_PRIVACY_INFORMATION",
+      },
+    });
+
+    const jobRows = await store
+      .set(writeDb$)
+      .select()
+      .from(builtInGenerationJobs)
+      .where(eq(builtInGenerationJobs.id, generationId));
+    expect(jobRows[0]).toMatchObject({
+      type: "video",
+      status: "failed",
+      error: {
+        message:
+          "BytePlus video generation failed: The request failed because the input image may contain real person.",
+        code: "BYTEPLUS_INPUT_IMAGE_SENSITIVE_CONTENT_DETECTED_PRIVACY_INFORMATION",
+      },
+    });
   });
 });

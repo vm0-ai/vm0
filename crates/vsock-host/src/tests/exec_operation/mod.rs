@@ -12,6 +12,7 @@ async fn start_capture_operation(host: &crate::VsockHost, command: &str) -> Exec
         stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
         stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
         expected_exit_codes: &[],
+        stdin_bytes: None,
         stream_queue_capacity: None,
     })
     .await

@@ -964,6 +964,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };
         match sandbox.exec(&dmesg_req).await {
@@ -1363,6 +1364,7 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
@@ -1387,13 +1389,13 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
         .and_then(|mut f| f.read_exact(&mut entropy))
         .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
 
-    let hex = hex::encode(&entropy);
     let result = sandbox
         .exec(&ExecRequest {
-            cmd: &format!("guest-reseed {hex}"),
+            cmd: "guest-reseed",
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin_bytes: Some(&entropy),
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await?;
@@ -1447,6 +1449,7 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         })
         .await
@@ -1590,6 +1593,7 @@ async fn download_storages(
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &download_env,
             sudo: false,
+            stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         })
         .await?;
@@ -3050,8 +3054,14 @@ mod tests {
     #[tokio::test]
     async fn reseed_guest_entropy_succeeds() {
         let sandbox = MockSandbox::new("test");
-        // write_file returns Ok by default, exec returns exit 0 by default.
         reseed_guest_entropy(&sandbox).await.unwrap();
+
+        let calls = sandbox.exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].cmd, "guest-reseed");
+        assert!(calls[0].sudo);
+        let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
+        assert_eq!(stdin_bytes.len(), 256);
     }
 
     #[tokio::test]
@@ -3070,7 +3080,7 @@ mod tests {
         sandbox.push_exec_result(Ok(ExecResult::new(
             1,
             Vec::new(),
-            b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
+            b"RNDRESEEDCRNG failed: Operation not permitted".to_vec(),
         )));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
