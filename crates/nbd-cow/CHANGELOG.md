@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.25](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.24...nbd-cow-v0.4.25) (2026-05-25)
+
+
+### Performance Improvements
+
+* **nbd-cow:** skip read-before-write for full-block writes ([#14847](https://github.com/vm0-ai/vm0/issues/14847)) ([b370b57](https://github.com/vm0-ai/vm0/commit/b370b5751589f7afd9dd2c10c4259bf27328f679))
+
 ## [0.4.24](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.23...nbd-cow-v0.4.24) (2026-05-25)
 
 

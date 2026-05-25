@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.17...guest-agent-v0.32.18) (2026-05-25)
+
+
+### Bug Fixes
+
+* downgrade expected runner job failures ([#14845](https://github.com/vm0-ai/vm0/issues/14845)) ([01e7044](https://github.com/vm0-ai/vm0/commit/01e7044031f4d998bce986e724b3329aba72ecf2))
+
 ## [0.32.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.16...guest-agent-v0.32.17) (2026-05-25)
 
 

@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.72.0](https://github.com/vm0-ai/vm0/compare/api-v1.71.1...api-v1.72.0) (2026-05-25)
+
+
+### Features
+
+* add GitHub bot mention connects ([#14560](https://github.com/vm0-ai/vm0/issues/14560)) ([4b5af7c](https://github.com/vm0-ai/vm0/commit/4b5af7c6216c7926626217f1cfb614f6ee99e034))
+
+
+### Refactoring
+
+* split connector auth lifecycle config ([#14808](https://github.com/vm0-ai/vm0/issues/14808)) ([dd05010](https://github.com/vm0-ai/vm0/commit/dd050100fc134a4c44c1cf2afd0a539402abddf0))
+
+
+### Performance Improvements
+
+* **api:** reduce type-aware oxlint scope ([#14852](https://github.com/vm0-ai/vm0/issues/14852)) ([a5934a1](https://github.com/vm0-ai/vm0/commit/a5934a152bbbb274c920f243915d33b5b73c97cf))
+* persist chat message attachment metadata ([#14857](https://github.com/vm0-ai/vm0/issues/14857)) ([37cad3b](https://github.com/vm0-ai/vm0/commit/37cad3b92a310f80e986b0b310d14cb89d0f2685))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.0
+    * @vm0/connectors bumped to 1.33.1
+    * @vm0/core bumped to 8.293.2
+    * @vm0/db bumped to 1.18.11
+
 ## [1.71.1](https://github.com/vm0-ai/vm0/compare/api-v1.71.0...api-v1.71.1) (2026-05-25)
 
 

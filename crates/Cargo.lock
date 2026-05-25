@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.32.17"
+version = "0.32.18"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1329,7 +1329,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "clap",
@@ -2056,7 +2056,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.24"
+version = "0.4.25"
 dependencies = [
  "bitvec",
  "libc",
@@ -2547,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.103.20"
+version = "0.103.21"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2762,7 +2762,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.35.13"
+version = "0.35.14"
 dependencies = [
  "async-trait",
  "base64",
