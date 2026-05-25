@@ -466,6 +466,19 @@ mod tests {
     }
 
     #[test]
+    fn aborted_prepare_cannot_later_complete() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+        assert!(coordinator.abort_prepare_park(&attempt).is_ok());
+
+        assert!(matches!(
+            coordinator.complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced),
+            Err(PrepareParkError::StaleAttempt { .. })
+        ));
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[test]
     fn dirty_during_prepare_blocks_completion_and_abort() {
         let coordinator = ParkCoordinator::new();
         let attempt = begin_attempt(&coordinator);
