@@ -2977,7 +2977,7 @@ mod tests {
         let mut ctx = minimal_context();
         let mut flags = HashMap::new();
         flags.insert("computerUse".into(), true);
-        flags.insert("voiceChat".into(), false);
+        flags.insert("audioOutput".into(), false);
         ctx.feature_flags = Some(flags);
         let env = build_env_for_test(&ctx, "http://localhost");
         let raw = env
@@ -2985,7 +2985,7 @@ mod tests {
             .expect("VM0_FEATURE_FLAGS should be set");
         let parsed: HashMap<String, bool> = serde_json::from_str(raw).unwrap();
         assert_eq!(parsed.get("computerUse"), Some(&true));
-        assert_eq!(parsed.get("voiceChat"), Some(&false));
+        assert_eq!(parsed.get("audioOutput"), Some(&false));
     }
 
     #[test]
