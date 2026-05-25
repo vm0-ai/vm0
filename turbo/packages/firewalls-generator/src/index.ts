@@ -44,6 +44,7 @@ import { generate as generateClose } from "./close";
 import { generate as generateClerk } from "./clerk";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateCoda } from "./coda";
+import { generate as generateCoresignal } from "./coresignal";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
@@ -135,9 +136,11 @@ import { generate as generateOpenweather } from "./openweather";
 import { generate as generateOutlookCalendar } from "./outlook-calendar";
 import { generate as generateOutlookMail } from "./outlook-mail";
 import { generate as generatePandadoc } from "./pandadoc";
+import { generate as generateParallel } from "./parallel";
 import { generate as generatePdf4me } from "./pdf4me";
 import { generate as generatePdfco } from "./pdfco";
 import { generate as generatePdforge } from "./pdforge";
+import { generate as generatePeopleDataLabs } from "./people-data-labs";
 import { generate as generatePerplexity } from "./perplexity";
 import { generate as generatePika } from "./pika";
 import { generate as generatePinecone } from "./pinecone";
@@ -255,6 +258,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   close: generateClose,
   cloudflare: generateCloudflare,
   coda: generateCoda,
+  coresignal: generateCoresignal,
   cronlytic: generateCronlytic,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
@@ -340,9 +344,11 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "outlook-calendar": generateOutlookCalendar,
   "outlook-mail": generateOutlookMail,
   pandadoc: generatePandadoc,
+  parallel: generateParallel,
   pdf4me: generatePdf4me,
   pdfco: generatePdfco,
   pdforge: generatePdforge,
+  "people-data-labs": generatePeopleDataLabs,
   perplexity: generatePerplexity,
   pika: generatePika,
   pinecone: generatePinecone,

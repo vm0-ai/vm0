@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
@@ -34,8 +35,9 @@ function mockAPIs() {
   ]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        threads: [
+      return respond(
+        200,
+        splitChatThreadListResponse([
           {
             id: "thread-history-1",
             title: "History thread",
@@ -45,8 +47,8 @@ function mockAPIs() {
             isRead: true,
             running: false,
           },
-        ],
-      });
+        ]),
+      );
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {

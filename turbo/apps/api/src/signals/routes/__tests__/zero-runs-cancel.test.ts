@@ -730,6 +730,90 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       );
   });
 
+  it("does not trigger auto-recharge for stale free-tier configuration", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const provider = `test-provider-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    await writeDb.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      credits: 400,
+      tier: "free",
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: null,
+      autoRechargeEnabled: true,
+      autoRechargeThreshold: 500,
+      autoRechargeAmount: 10_000,
+      autoRechargePendingAt: null,
+    });
+    await writeDb.insert(usagePricing).values({
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1,
+    });
+    await writeDb.insert(usageEvent).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      runId,
+      kind: "model",
+      provider,
+      category: "tokens.input",
+      quantity: 50,
+      status: "pending",
+      idempotencyKey: randomUUID(),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await clearAllDetached();
+
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
+
+    const [orgRow] = await writeDb
+      .select({ pendingAt: orgMetadata.autoRechargePendingAt })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    expect(orgRow?.pendingAt).toBeNull();
+
+    await writeDb
+      .delete(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "model"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, "tokens.input"),
+        ),
+      );
+  });
+
   it("does not re-trigger auto-recharge when claim is already pending", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),

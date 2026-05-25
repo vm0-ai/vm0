@@ -102,15 +102,26 @@ const listChatThreadsInner$ = computed(async (get) => {
     }
   }
 
-  const threads = await get(
+  const page = await get(
     zeroChatThreadList({
       userId: auth.userId,
       orgId: auth.orgId,
       agentComposeId: query.agentId,
+      limit: query.limit,
+      cursor: query.cursor,
     }),
   );
 
-  return { status: 200 as const, body: { threads: [...threads] } };
+  return {
+    status: 200 as const,
+    body: {
+      pinned: [...page.pinned],
+      threads: [...page.threads],
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
+      totalCount: page.totalCount,
+    },
+  };
 });
 
 const listChatThreadArtifactsInner$ = computed(async (get) => {

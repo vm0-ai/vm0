@@ -18,17 +18,23 @@ import {
   Skeleton,
 } from "@vm0/ui";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  chatThreads$,
-  deleteChatThread$,
-} from "../../signals/chat-page/chat-message.ts";
+import { deleteChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
   type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import {
+  allChatThreadsExtraHasMore$,
+  allChatThreadsExtraThreads$,
+  allChatThreadsLatestCursor$,
+  allChatThreadsLoadMoreError$,
+  allChatThreadsLoadingMore$,
+  loadMoreAllChatThreads$,
+} from "../../signals/chat-page/all-chat-threads-pagination.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
+  chatThreadsFirstPage$,
   currentChatThreadId$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
@@ -43,18 +49,24 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 
 export function ZeroChatListPage() {
-  const recentSessionsLoadable = useLastLoadable(chatThreads$);
-  const recentSessions =
-    recentSessionsLoadable.state === "hasData"
-      ? recentSessionsLoadable.data
-      : [];
-  const loading = recentSessionsLoadable.state === "loading";
+  const firstPageLoadable = useLastLoadable(chatThreadsFirstPage$);
+  const firstPage =
+    firstPageLoadable.state === "hasData" ? firstPageLoadable.data : null;
+  const loading = firstPageLoadable.state === "loading";
   const error =
-    recentSessionsLoadable.state === "hasError"
-      ? recentSessionsLoadable.error instanceof Error
-        ? recentSessionsLoadable.error.message
+    firstPageLoadable.state === "hasError"
+      ? firstPageLoadable.error instanceof Error
+        ? firstPageLoadable.error.message
         : "Failed to load chats"
       : null;
+
+  const extraThreads = useGet(allChatThreadsExtraThreads$);
+  const extraLatestCursor = useGet(allChatThreadsLatestCursor$);
+  const extraHasMore = useGet(allChatThreadsExtraHasMore$);
+  const loadingMore = useGet(allChatThreadsLoadingMore$);
+  const loadMoreError = useGet(allChatThreadsLoadMoreError$);
+  const loadMore = useSet(loadMoreAllChatThreads$);
+  const pageSignal = useGet(pageSignal$);
 
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const { titleLabel } = useChatThreadsTitleLabels();
@@ -64,6 +76,20 @@ export function ZeroChatListPage() {
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const creating = useGet(optimisticChatThread$) !== null;
   const rootSignal = useGet(rootSignal$);
+
+  const pinned = firstPage?.pinned ?? [];
+  const firstPageThreads = firstPage?.threads ?? [];
+  const sessions: ChatThreadListItem[] = [
+    ...pinned,
+    ...firstPageThreads,
+    ...extraThreads,
+  ];
+
+  // Once any extra page is loaded, `extraHasMore` is the source of truth for
+  // whether more remain. Before that, fall back to the first page's flag.
+  const hasMore =
+    extraLatestCursor !== null ? extraHasMore : (firstPage?.hasMore ?? false);
+  const cursorForLoadMore = extraLatestCursor ?? firstPage?.nextCursor ?? null;
 
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
@@ -77,6 +103,13 @@ export function ZeroChatListPage() {
 
   const onRecentSelect = (chatThreadId: string) => {
     navigateToChat(chatThreadId);
+  };
+
+  const onLoadMore = () => {
+    if (!cursorForLoadMore || loadingMore) {
+      return;
+    }
+    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -108,9 +141,13 @@ export function ZeroChatListPage() {
         <ChatList
           loading={loading}
           error={error}
-          sessions={recentSessions}
+          sessions={sessions}
           selectedRecentId={selectedRecentId}
           onRecentSelect={onRecentSelect}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loadMoreError={loadMoreError}
+          onLoadMore={onLoadMore}
         />
       </div>
     </div>
@@ -123,12 +160,20 @@ function ChatList({
   sessions,
   selectedRecentId,
   onRecentSelect,
+  hasMore,
+  loadingMore,
+  loadMoreError,
+  onLoadMore,
 }: {
   loading: boolean;
   error: string | null;
   sessions: ChatThreadListItem[];
   selectedRecentId: string | null;
   onRecentSelect: (id: string) => void;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMoreError: string | null;
+  onLoadMore: () => void;
 }) {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -187,6 +232,23 @@ function ChatList({
           );
         })}
       </div>
+
+      {hasMore && (
+        <div className="mt-3 flex flex-col items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+            data-testid="chat-list-load-more"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+          {loadMoreError && (
+            <p className="text-xs text-destructive">{loadMoreError}</p>
+          )}
+        </div>
+      )}
 
       <Dialog
         open={pendingDeleteThreadId !== null}

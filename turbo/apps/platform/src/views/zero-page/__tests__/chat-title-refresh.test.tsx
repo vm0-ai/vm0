@@ -7,6 +7,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
+  splitChatThreadListResponse,
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -26,8 +27,9 @@ describe("chat title refresh", () => {
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
         threadListFetchCount++;
-        return respond(200, {
-          threads: [
+        return respond(
+          200,
+          splitChatThreadListResponse([
             {
               id: "thread-test-1",
               title:
@@ -41,8 +43,8 @@ describe("chat title refresh", () => {
               isRead: false,
               running: false,
             },
-          ],
-        });
+          ]),
+        );
       }),
     );
 

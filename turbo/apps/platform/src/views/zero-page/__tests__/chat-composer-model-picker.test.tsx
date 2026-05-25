@@ -1,25 +1,3 @@
-/**
- * Integration tests for the chat composer's mod+alt+. shortcut that opens
- * the model picker dropdown, plus the mobile-icon trigger rendering.
- *
- * Entry point: /chats/:id thread page
- * Mock (external): Web API via MSW — feature switch, org model providers,
- *   chat thread row. Internal signals, composer, model-provider-picker,
- *   Radix Select primitive are exercised for real.
- *
- * Behaviour covered:
- * - mod+alt+. focused in the composer textarea opens the model picker's
- *   Radix listbox (controlled open state wired through ModelProviderPicker).
- * - The shortcut help dialog ("?" popup) lists "Switch model" under the
- *   Composer section so users can discover the binding.
- * - When the caller has not opted into a model picker (no modelPicker prop),
- *   the shortcut is a no-op — it must not throw or surface a listbox.
- * - The composer passes `mobileIconTrigger` so the trigger renders the
- *   provider icon on mobile (`sm:hidden`) and the model label on desktop
- *   (`hidden sm:inline-flex`). Both nodes render in the DOM simultaneously
- *   because the switch is pure CSS — no viewport simulation is needed.
- */
-
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -38,7 +16,7 @@ import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortc
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
-const THREAD_ID = "thread-test-shortcut";
+const THREAD_ID = "thread-test-model-picker";
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -81,33 +59,10 @@ async function openThreadWithPicker(): Promise<HTMLTextAreaElement> {
   return textarea;
 }
 
-describe("chat composer — mod+alt+. opens the model picker", () => {
+describe("chat composer — model picker", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
     resetMockOrgModelPolicies();
-  });
-
-  // CHAT-SHORT-MP-001
-  it("opens the model picker listbox when the user presses mod+alt+. in the textarea", async () => {
-    const user = userEvent.setup();
-    enableModelPicker();
-
-    const textarea = await openThreadWithPicker();
-
-    // No listbox yet — the picker is closed until the user invokes the shortcut.
-    expect(screen.queryByRole("listbox")).toBeNull();
-
-    click(textarea);
-    await user.keyboard("{Control>}{Alt>}.{/Alt}{/Control}");
-
-    // Radix Select renders a role="listbox" when opened.
-    await waitFor(() => {
-      expect(screen.getByRole("listbox")).toBeInTheDocument();
-    });
-
-    // Default model option is present inside the open listbox, confirming the
-    // picker wired its provider data into the dropdown body.
-    expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
   });
 
   it("opens directly to model options in the model-first chat picker", async () => {
@@ -129,30 +84,37 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     ).toBeInTheDocument();
   });
 
-  // CHAT-SHORT-MP-002
-  it("opens the model-first picker even when no provider rows are configured", async () => {
-    resetMockOrgModelProviders();
-    setMockFeatureSwitches({});
-
+  it("does not open the model picker from mod+alt+.", async () => {
     const user = userEvent.setup();
-    mockChatLifecycle({ threadId: THREAD_ID });
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-
-    expect(
-      screen.getByRole("combobox", { name: /deepseek/i }),
-    ).toBeInTheDocument();
+    enableModelPicker();
+    const textarea = await openThreadWithPicker();
 
     click(textarea);
     await user.keyboard("{Control>}{Alt>}.{/Alt}{/Control}");
 
-    await waitFor(() => {
-      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("does not list model switching in the shortcut help dialog", async () => {
+    enableModelPicker();
+    await openThreadWithPicker();
+
+    context.store.set(setChatShortcutHelpOpen$, true);
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: /keyboard shortcuts/i });
     });
-    expect(textarea.value).toBe("");
+    const composerHeading = Array.from(dialog.querySelectorAll("h3")).find(
+      (el) => {
+        return el.textContent === "Composer";
+      },
+    );
+    expect(composerHeading).toBeDefined();
+    const composerSection = composerHeading?.parentElement;
+    expect(composerSection).toBeDefined();
+    expect(composerSection?.textContent).toContain("Send message");
+    expect(composerSection?.textContent).toContain("Blur composer");
+    expect(composerSection?.textContent).not.toContain("Switch model");
   });
 });
 
@@ -225,42 +187,5 @@ describe("chat composer — mobile icon trigger", () => {
     expect(mobileSpan).not.toBeNull();
     expect(mobileSpan?.querySelector("img")).toBeNull();
     expect(mobileSpan?.querySelector("svg")).not.toBeNull();
-  });
-});
-
-describe("chat composer — shortcut help lists the model picker binding", () => {
-  beforeEach(() => {
-    resetMockOrgModelProviders();
-  });
-
-  // CHAT-SHORT-MP-003
-  it("shows 'Switch model' under the Composer section of the help dialog", async () => {
-    enableModelPicker();
-    await openThreadWithPicker();
-
-    // Open the help dialog through the same signal that the shift+/ handler
-    // sets. Drives the dialog without depending on the document-level key
-    // listener (which this file's other tests exercise separately).
-    context.store.set(setChatShortcutHelpOpen$, true);
-
-    const dialog = await waitFor(() => {
-      return screen.getByRole("dialog", { name: /keyboard shortcuts/i });
-    });
-
-    // Locate the Composer section heading, then assert its sibling list
-    // contains the new Switch model entry alongside pre-existing composer
-    // bindings. This guards the discoverability fix so a future refactor
-    // can't drop the entry silently.
-    const composerHeading = Array.from(dialog.querySelectorAll("h3")).find(
-      (el) => {
-        return el.textContent === "Composer";
-      },
-    );
-    expect(composerHeading).toBeDefined();
-    const composerSection = composerHeading?.parentElement;
-    expect(composerSection).toBeDefined();
-    expect(composerSection?.textContent).toContain("Switch model");
-    expect(composerSection?.textContent).toContain("Send message");
-    expect(composerSection?.textContent).toContain("Blur composer");
   });
 });

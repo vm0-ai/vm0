@@ -66,6 +66,7 @@ import { cloudflare } from "./connectors/cloudflare";
 import { cloudinary } from "./connectors/cloudinary";
 import { coda } from "./connectors/coda";
 import { computer } from "./connectors/computer";
+import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
 import { customerIo } from "./connectors/customer-io";
 import { db9 } from "./connectors/db9";
@@ -154,9 +155,11 @@ import { openweather } from "./connectors/openweather";
 import { outlookCalendar } from "./connectors/outlook-calendar";
 import { outlookMail } from "./connectors/outlook-mail";
 import { pandadoc } from "./connectors/pandadoc";
+import { parallel } from "./connectors/parallel";
 import { pdf4me } from "./connectors/pdf4me";
 import { pdfco } from "./connectors/pdfco";
 import { pdforge } from "./connectors/pdforge";
+import { peopleDataLabs } from "./connectors/people-data-labs";
 import { perplexity } from "./connectors/perplexity";
 import { pika } from "./connectors/pika";
 import { pinecone } from "./connectors/pinecone";
@@ -626,6 +629,7 @@ const CONNECTOR_TYPES_DEF = {
   ...cloudinary,
   ...coda,
   ...computer,
+  ...coresignal,
   ...cronlytic,
   ...customerIo,
   ...db9,
@@ -714,9 +718,11 @@ const CONNECTOR_TYPES_DEF = {
   ...outlookCalendar,
   ...outlookMail,
   ...pandadoc,
+  ...parallel,
   ...pdf4me,
   ...pdfco,
   ...pdforge,
+  ...peopleDataLabs,
   ...perplexity,
   ...pika,
   ...pinecone,

@@ -290,19 +290,78 @@ async function handleOneTimePurchaseCompleted(
   });
 }
 
+async function handleCreditPurchaseCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<void> {
+  const metadata = session.metadata ?? {};
+  const orgId = metadata.orgId;
+  const creditsAmount = Number(metadata.creditsAmount);
+
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("credit_purchase missing metadata", {
+      sessionId: session.id,
+      hasOrgId: Boolean(orgId),
+      creditsAmount: metadata.creditsAmount ?? null,
+    });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "auto_recharge",
+      stripeInvoiceId: session.id,
+      amount: creditsAmount,
+      expiresAt: autoRechargeNeverExpiresAt(),
+    });
+
+    if (!inserted) {
+      L.debug("credit_purchase already processed", {
+        sessionId: session.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, creditsAmount);
+  });
+}
+
+async function handlePaidCheckoutPurpose(
+  db: Db,
+  session: CheckoutSessionInput,
+  purpose: "credit_purchase" | "one_time_purchase",
+): Promise<boolean> {
+  if (session.metadata?.purpose !== purpose) {
+    return false;
+  }
+
+  if (session.payment_status !== "paid") {
+    L.debug(`${purpose} checkout completed before payment settled`, {
+      sessionId: session.id,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return true;
+  }
+
+  if (purpose === "credit_purchase") {
+    await handleCreditPurchaseCompleted(db, session);
+  } else {
+    await handleOneTimePurchaseCompleted(db, session);
+  }
+
+  return true;
+}
+
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
 ): Promise<void> {
-  if (session.metadata?.purpose === "one_time_purchase") {
-    if (session.payment_status !== "paid") {
-      L.debug("one_time_purchase checkout completed before payment settled", {
-        sessionId: session.id,
-        paymentStatus: session.payment_status ?? null,
-      });
-      return;
-    }
-    await handleOneTimePurchaseCompleted(db, session);
+  if (await handlePaidCheckoutPurpose(db, session, "credit_purchase")) {
+    return;
+  }
+
+  if (await handlePaidCheckoutPurpose(db, session, "one_time_purchase")) {
     return;
   }
 

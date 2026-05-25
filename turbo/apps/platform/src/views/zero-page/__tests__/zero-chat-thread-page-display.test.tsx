@@ -11,6 +11,7 @@ import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -807,6 +808,110 @@ describe("zero chat thread page display - body link document preview", () => {
         "Here is some text that wraps across multiple lines for readability.",
       );
       expect(assistant?.querySelector("br")).toBeNull();
+    });
+  });
+
+  it("renders assistant inline and block math when chat markdown math is enabled", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Inline $x^2$.\n\n$$\nx^2\n$$",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: true },
+    });
+
+    await waitFor(() => {
+      const assistant = document.querySelector(
+        '[data-role="assistant"] .zero-chat-bubble-assistant',
+      );
+      expect(assistant?.querySelector(".katex")).toBeInTheDocument();
+      expect(assistant?.querySelector(".katex-display")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps assistant math delimiters as text when chat markdown math is disabled", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Inline $x^2$.\n\n$$\nx^2\n$$",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: false },
+    });
+
+    await waitFor(() => {
+      const assistant = document.querySelector(
+        '[data-role="assistant"] .zero-chat-bubble-assistant',
+      );
+      expect(assistant?.textContent).toContain("$x^2$");
+      expect(assistant?.querySelector(".katex")).toBeNull();
+    });
+  });
+
+  it("keeps assistant math delimiters inside code fences as code", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Here is code:\n```text\n$x^2$\n```\nDone.",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: true },
+    });
+
+    await waitFor(() => {
+      const assistant = document.querySelector(
+        '[data-role="assistant"] .zero-chat-bubble-assistant',
+      );
+      expect(assistant?.querySelector("code")?.textContent).toContain("$x^2$");
+      expect(assistant?.querySelector(".katex")).toBeNull();
+    });
+  });
+
+  it("does not render a single ordinary dollar amount as math", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "The total is $5 today.",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: true },
+    });
+
+    await waitFor(() => {
+      const assistant = document.querySelector(
+        '[data-role="assistant"] .zero-chat-bubble-assistant',
+      );
+      expect(assistant?.textContent).toContain("The total is $5 today.");
+      expect(assistant?.querySelector(".katex")).toBeNull();
     });
   });
 

@@ -8,6 +8,7 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createNewChatThreadOptimistically$ } from "../../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadsContract,
@@ -114,7 +115,7 @@ function mockSubagentAPIs() {
       });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       if (params.id !== "thread-sub-1") {

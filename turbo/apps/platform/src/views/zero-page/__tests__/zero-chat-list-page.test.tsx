@@ -5,6 +5,7 @@
  * after unified-list removal).
  */
 
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
@@ -45,7 +46,7 @@ function createMockThreads(overrides = {}) {
 function mockChatThreads(threads: ReturnType<typeof createMockThreads>) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
   );
 }
@@ -127,7 +128,13 @@ describe("zero chat list page - loading skeleton", () => {
     server.use(
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
     );
 

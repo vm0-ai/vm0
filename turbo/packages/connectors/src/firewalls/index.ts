@@ -81,6 +81,7 @@ import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
+import { coresignalFirewall } from "./coresignal.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -177,10 +178,12 @@ import { openweatherFirewall } from "./openweather.generated";
 import { outlookCalendarFirewall } from "./outlook-calendar.generated";
 import { outlookMailFirewall } from "./outlook-mail.generated";
 import { pandadocFirewall } from "./pandadoc.generated";
+import { parallelFirewall } from "./parallel.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pineconeFirewall } from "./pinecone.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
+import { peopleDataLabsFirewall } from "./people-data-labs.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { pipedriveFirewall } from "./pipedrive.generated";
 import { plainFirewall } from "./plain.generated";
@@ -309,6 +312,7 @@ const CONNECTOR_FIREWALLS = {
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
   coda: codaFirewall,
+  coresignal: coresignalFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
@@ -400,10 +404,12 @@ const CONNECTOR_FIREWALLS = {
   "outlook-calendar": outlookCalendarFirewall,
   "outlook-mail": outlookMailFirewall,
   pandadoc: pandadocFirewall,
+  parallel: parallelFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pinecone: pineconeFirewall,
   pdforge: pdforgeFirewall,
+  "people-data-labs": peopleDataLabsFirewall,
   perplexity: perplexityFirewall,
   pipedrive: pipedriveFirewall,
   plain: plainFirewall,

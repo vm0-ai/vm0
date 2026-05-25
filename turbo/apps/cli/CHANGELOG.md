@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.161.7](https://github.com/vm0-ai/vm0/compare/cli-v9.161.6...cli-v9.161.7) (2026-05-25)
+
+
+### Bug Fixes
+
+* add credit recharge guidance ([#14687](https://github.com/vm0-ai/vm0/issues/14687)) ([d02621e](https://github.com/vm0-ai/vm0/commit/d02621e0b1bc47605cd5c9611ec2979e1f57610a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.39.0
+    * @vm0/core bumped to 8.292.4
+
 ## [9.161.6](https://github.com/vm0-ai/vm0/compare/cli-v9.161.5...cli-v9.161.6) (2026-05-24)
 
 

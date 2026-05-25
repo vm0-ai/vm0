@@ -36,7 +36,13 @@ describe("latestRunStatus$", () => {
 
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
       mockApi(chatThreadMessagesContract.list, ({ respond }) => {
         return respond(200, { messages: [] });
@@ -78,7 +84,13 @@ describe("latestRunStatus$", () => {
 
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
       mockApi(chatThreadMessagesContract.list, ({ respond }) => {
         return respond(200, { messages: [] });
@@ -120,7 +132,13 @@ describe("latestRunStatus$", () => {
 
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
       mockApi(chatThreadMessagesContract.list, ({ respond }) => {
         return respond(200, { messages: [] });

@@ -38,7 +38,13 @@ describe("sidebar new-chat skeleton flash", () => {
   it("does not flash the chat-thread skeleton while creating an optimistic thread", async () => {
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, { threads: [] });
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
       }),
       mockApi(chatThreadsContract.create, ({ body, respond }) => {
         return respond(201, {

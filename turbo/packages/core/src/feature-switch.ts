@@ -268,6 +268,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatMarkdownMath]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable synchronous math rendering for inline and block formulas in chat Markdown.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
     description:
