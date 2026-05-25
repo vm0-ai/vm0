@@ -101,7 +101,11 @@ describe("org usage tab - credit balance display", () => {
       );
     });
 
-    await user.click(screen.getByRole("button", { name: "Compare plans" }));
+    const comparePlansButton = screen.getAllByRole("button").find((el) => {
+      return el.textContent === "Compare plans";
+    });
+    expect(comparePlansButton).toBeDefined();
+    await user.click(comparePlansButton!);
     await waitFor(() => {
       expect(
         screen.getByText("Upgrade or downgrade anytime."),
