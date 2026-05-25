@@ -4,6 +4,7 @@ import {
   IconChevronUp,
   IconDownload,
   IconEye,
+  IconExternalLink,
   IconFileMusic,
   IconLoader2,
   IconPlayerPlay,
@@ -208,14 +209,13 @@ function DocumentThumbnailPreview({
         }}
         aria-label={`Open html preview for ${filename}`}
         title={filename}
-        className="inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
+        className="group/html-preview inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-sky-500/15 bg-sky-500/10 text-sky-700 dark:text-sky-300">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentTypeForDocumentPreviewKind(kind)}
-            testId="attachment-preview-html-icon"
-          />
+        <span
+          data-testid="attachment-preview-html-icon"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-muted/40 text-muted-foreground transition-colors group-hover/html-preview:border-foreground/15 group-hover/html-preview:bg-muted/60 group-hover/html-preview:text-foreground"
+        >
+          <IconExternalLink size={13} stroke={1.8} />
         </span>
         <span className="min-w-0 truncate font-medium">{filename}</span>
       </a>
