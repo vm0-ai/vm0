@@ -370,6 +370,30 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert "Firewall URL rewrite:" in log_text
         assert f"Firewall {allow.api_entry['base']}:" in log_text
 
+    async def test_upstream_error_response_is_forwarded(self, real_flow, mitm_ctx, tmp_path):
+        """A non-2xx upstream response is still a successful local forward."""
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(real_flow, tmp_path)
+        mock_forward = AsyncMock(
+            return_value=(
+                500,
+                b'{"error":"upstream"}',
+                {"Content-Type": "application/json"},
+            )
+        )
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 500
+        assert flow.response.content == b'{"error":"upstream"}'
+        assert flow.metadata["auth_url_rewrite"] is True
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert "firewall_error" not in flow.metadata
+
     async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
