@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -19,19 +20,22 @@ const AGENT_ID = "agent-alpha";
 function mockThreadList(threads: { id: string; title: string }[]) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        threads: threads.map((t) => {
-          return {
-            id: t.id,
-            title: t.title,
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
-            running: false,
-          };
-        }),
-      });
+      return respond(
+        200,
+        splitChatThreadListResponse(
+          threads.map((t) => {
+            return {
+              id: t.id,
+              title: t.title,
+              agent: { id: AGENT_ID, avatarUrl: null },
+              createdAt: "2026-03-10T00:00:00Z",
+              updatedAt: "2026-03-10T00:00:00Z",
+              isRead: true,
+              running: false,
+            };
+          }),
+        ),
+      );
     }),
   );
 }

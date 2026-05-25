@@ -1,3 +1,4 @@
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 /**
  * Reproduces the keyboard-navigation regression on optimistic threads:
  * after creating a new chat via the sidebar's "+ New chat" button, the new
@@ -55,8 +56,9 @@ describe("sidebar new-chat keyboard navigation", () => {
       // Persisted list never updates during the test — this simulates the
       // window before the server's `threadListChanged` reload arrives.
       mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, {
-          threads: [
+        return respond(
+          200,
+          splitChatThreadListResponse([
             {
               id: PERSISTED_THREAD_ID,
               title: "Persisted thread",
@@ -66,8 +68,8 @@ describe("sidebar new-chat keyboard navigation", () => {
               isRead: true,
               running: false,
             },
-          ],
-        });
+          ]),
+        );
       }),
       mockApi(chatThreadsContract.create, async ({ body, respond }) => {
         await createDeferred.promise;

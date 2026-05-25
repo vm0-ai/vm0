@@ -11,6 +11,7 @@
  *    the DOM at all times so hover-swap works without layout shift
  */
 
+import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import {
@@ -43,7 +44,7 @@ interface ThreadFixture {
 function mockAPIs(threads: ThreadFixture[]) {
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads });
+      return respond(200, splitChatThreadListResponse(threads));
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {

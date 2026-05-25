@@ -66,7 +66,13 @@ function mockChatAPIs(options?: { waitForSend?: Promise<void> }) {
       return respond(200, { messages: [], hasHistoryBefore: false });
     }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, { threads: [] });
+      return respond(200, {
+        pinned: [],
+        threads: [],
+        hasMore: false,
+        nextCursor: null,
+        totalCount: 0,
+      });
     }),
     mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
       return respond(200, {

@@ -7,6 +7,7 @@ import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { zeroOrgCommand } from "./commands/zero/org";
 import { zeroAgentCommand } from "./commands/zero/agent";
 import { zeroConnectorCommand } from "./commands/zero/connector";
+import { zeroCreditCommand } from "./commands/zero/credit";
 import { zeroDoctorCommand } from "./commands/zero/doctor";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
 import { zeroRunCommand } from "./commands/zero/run";
@@ -55,6 +56,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
+  credit: null,
   model: null,
   "model-provider": null,
   logs: "agent-run:read",
@@ -81,6 +83,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroModelProviderCommand,
   zeroAgentCommand,
   zeroConnectorCommand,
+  zeroCreditCommand,
   zeroDoctorCommand,
   zeroPreferenceCommand,
   zeroRunCommand,
@@ -133,6 +136,8 @@ export function buildZeroHelpText(
 ): string {
   const examples = [
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
+    "  Check credits?         zero doctor credit",
+    "  Buy credits?           zero credit 20000",
     "  Send a Slack message?  zero slack message send --help",
     "  Upload GitHub?        zero github upload-file --help",
     "  Download GitHub?      zero github download-file --help",

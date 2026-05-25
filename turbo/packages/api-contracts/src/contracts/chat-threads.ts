@@ -265,14 +265,51 @@ export const chatThreadsContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       agentId: z.string().min(1).optional(),
+      /**
+       * Maximum number of non-pinned threads to return in this page. Pinned
+       * threads are always returned in full and do not count against `limit`.
+       * Defaults to 25 (sidebar default).
+       */
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+      /**
+       * Opaque cursor returned by a prior page in `nextCursor`. When set,
+       * `pinned` is empty (pinned threads are only included on the first
+       * page) and `threads` continues from the position after the cursor.
+       */
+      cursor: z.string().optional(),
     }),
     responses: {
-      200: z.object({ threads: z.array(chatThreadListItemSchema) }),
+      200: z.object({
+        /**
+         * All pinned threads, ordered by last activity desc. Always returned
+         * in full on the first page (no `cursor`) and empty on subsequent
+         * pages — pagination only applies to the non-pinned segment.
+         */
+        pinned: z.array(chatThreadListItemSchema),
+        /**
+         * Non-pinned threads for this page, ordered by last activity desc.
+         */
+        threads: z.array(chatThreadListItemSchema),
+        /**
+         * True when more non-pinned threads exist beyond this page.
+         */
+        hasMore: z.boolean(),
+        /**
+         * Opaque cursor for fetching the next page, or null when `hasMore`
+         * is false.
+         */
+        nextCursor: z.string().nullable(),
+        /**
+         * Total count of non-pinned threads matching the same scope as this
+         * query. Drives the sidebar "All Threads (N)" affordance.
+         */
+        totalCount: z.number().int(),
+      }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary:
-      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId.",
+      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. Pinned threads are returned in full on the first page; non-pinned threads are cursor-paginated.",
   },
 });
 
