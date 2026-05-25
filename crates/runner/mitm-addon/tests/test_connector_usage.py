@@ -885,7 +885,15 @@ class TestReportConnectorUsage:
         ops audits via the proxy error log instead."""
         flow = self._make_x_flow(real_flow, tmp_path, body=b"{")
         flow.metadata["stream_buffer_state"] = {"truncated": True}
+        proxy_log = tmp_path / "proxy.jsonl"
+
         assert self._call_and_get_billing(flow) == []
+
+        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        assert entry["level"] == "error"
+        assert "unparseable" in entry["message"].lower()
+        assert entry["body_truncated"] is True
+        assert "parse_error" not in entry
 
     def test_invalid_json_with_no_hints_skips_billing(self, tmp_path, real_flow):
         """Malformed body + no URL hints → skip emission (see above)."""
