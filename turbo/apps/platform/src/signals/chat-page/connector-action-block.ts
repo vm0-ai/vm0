@@ -73,14 +73,18 @@ function isConnectorType(value: string): value is ConnectorType {
   return value in CONNECTOR_TYPES;
 }
 
+const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
+
 export function parseConnectorAuthorizeUrl(
   value: string,
 ): ConnectorActionDescriptor | null {
-  const baseUrl = "https://app.vm0.ai";
-  if (!URL.canParse(value, baseUrl)) {
+  if (!URL.canParse(value, CONNECTOR_AUTHORIZE_BASE_URL)) {
     return null;
   }
-  const url = new URL(value, baseUrl);
+  const url = new URL(value, CONNECTOR_AUTHORIZE_BASE_URL);
+  if (url.origin !== CONNECTOR_AUTHORIZE_BASE_URL) {
+    return null;
+  }
 
   const match = url.pathname.match(/^\/connectors\/([^/]+)\/authorize$/);
   const connectorType = match?.[1]?.toLowerCase();
