@@ -16,6 +16,7 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 
 type ThreadFixture = {
   id: string;
@@ -33,11 +34,12 @@ function makeThread(
   title: string | null,
   createdAt: string,
   pinnedAt: string | null = null,
+  agentId = AGENT_ID,
 ): ThreadFixture {
   return {
     id,
     title,
-    agent: { id: AGENT_ID, avatarUrl: null },
+    agent: { id: agentId, avatarUrl: null },
     createdAt,
     updatedAt: createdAt,
     pinnedAt,
@@ -64,11 +66,11 @@ function setupMocks(initial: ThreadFixture[]) {
   let lastDeleted: string | null = null;
 
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse(sortThreadsLikeServer(threads)),
-      );
+    mockApi(chatThreadsContract.list, ({ query, respond }) => {
+      const scoped = sortThreadsLikeServer(threads).filter((thread) => {
+        return thread.pinnedAt !== null || thread.agent.id === query.agentId;
+      });
+      return respond(200, splitChatThreadListResponse(scoped));
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = threads.find((t) => {
@@ -192,6 +194,44 @@ describe("sidebar chat thread pin", () => {
     });
     expect(within(menu).getByText("Unpin chat")).toBeInTheDocument();
     expect(within(menu).queryByText("Pin chat")).not.toBeInTheDocument();
+  });
+
+  it("shows pinned threads from another agent in the scoped sidebar list", async () => {
+    setupMocks([
+      makeThread(
+        "thread-other-agent-pinned",
+        "Pinned other agent chat",
+        "2026-03-08T00:00:00Z",
+        "2026-03-09T12:00:00Z",
+        OTHER_AGENT_ID,
+      ),
+      makeThread(
+        "thread-current-agent",
+        "Current agent chat",
+        "2026-03-10T00:00:00Z",
+      ),
+      makeThread(
+        "thread-other-agent-unpinned",
+        "Other agent unpinned chat",
+        "2026-03-11T00:00:00Z",
+        null,
+        OTHER_AGENT_ID,
+      ),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-current-agent",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Pinned other agent chat")).toBeInTheDocument();
+    });
+    const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
+    expect(within(sidebar).getByText("Current agent chat")).toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText("Other agent unpinned chat"),
+    ).not.toBeInTheDocument();
   });
 
   it("click Pin: sends POST /pin, refetches, row floats to top", async () => {

@@ -862,16 +862,18 @@ export function zeroChatThreadList(args: {
     const lastMessage = lastVisibleMessageSubquery(db);
     const projection = chatThreadListProjection(lastMessage);
 
-    const baseFilters = [
+    const orgFilters = [
       eq(chatThreads.userId, args.userId),
       eq(zeroAgents.orgId, args.orgId),
     ];
+    const scopedFilters = [...orgFilters];
     if (args.agentComposeId) {
-      baseFilters.push(eq(chatThreads.agentComposeId, args.agentComposeId));
+      scopedFilters.push(eq(chatThreads.agentComposeId, args.agentComposeId));
     }
 
     // Pinned segment is only returned on the first page (no cursor).
-    // Pinned threads are always returned in full — cap doesn't apply.
+    // Pinned threads are always returned in full for the caller's org — cap
+    // and agent-scoped pagination don't apply.
     const pinnedRows = cursor
       ? []
       : await db
@@ -879,10 +881,10 @@ export function zeroChatThreadList(args: {
           .from(chatThreads)
           .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
           .leftJoinLateral(lastMessage, sql`true`)
-          .where(and(...baseFilters, isNotNull(chatThreads.pinnedAt)))
+          .where(and(...orgFilters, isNotNull(chatThreads.pinnedAt)))
           .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id));
 
-    const nonPinnedFilters = [...baseFilters, isNull(chatThreads.pinnedAt)];
+    const nonPinnedFilters = [...scopedFilters, isNull(chatThreads.pinnedAt)];
     if (cursor) {
       nonPinnedFilters.push(cursorAdvanceFilter(cursor));
     }
@@ -910,7 +912,7 @@ export function zeroChatThreadList(args: {
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .where(and(...baseFilters, isNull(chatThreads.pinnedAt)));
+      .where(and(...scopedFilters, isNull(chatThreads.pinnedAt)));
 
     return {
       pinned: pinnedRows.map(rowToChatThreadListItem),
