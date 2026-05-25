@@ -5,7 +5,7 @@
 
 mod common;
 
-use agent_diagnostics::FailureDetailSource;
+use agent_diagnostics::{FailureDetailSource, FailureReason};
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::path::{Path, PathBuf};
@@ -27,8 +27,7 @@ impl Drop for SystemLogOverrideGuard {
 }
 
 #[tokio::test]
-async fn codex_jsonl_error_event_is_written_to_system_log() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::error::Error>> {
     let mock = build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
     let system_log_path = tmp.path().join("system.log");
@@ -71,6 +70,33 @@ async fn codex_jsonl_error_event_is_written_to_system_log() -> Result<(), Box<dy
             "Codex JSONL failure event seq=1 type=error: Mock error event for fixture testing"
         ),
         "system log should include Codex JSONL failure reason: {system_log}"
+    );
+
+    unsafe {
+        std::env::set_var("MOCK_CODEX_FIXTURE", "invalid-api-key");
+    }
+
+    let cli_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        guest_agent::cli::execute_cli(
+            &masker,
+            common::spawn_dummy_heartbeat(),
+            HttpClient::for_current_env()?,
+        ),
+    )
+    .await
+    .expect("execute_cli should return promptly")?;
+
+    assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
+    let diagnostic = cli_result
+        .failure_diagnostic
+        .as_ref()
+        .expect("invalid API key JSONL error should produce a diagnostic");
+    assert_eq!(diagnostic.message, "Incorrect API key provided");
+    assert_eq!(diagnostic.source, FailureDetailSource::CodexJsonl);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::InvalidApiKey)
     );
 
     Ok(())
