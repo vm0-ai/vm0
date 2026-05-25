@@ -1,28 +1,29 @@
 """Model-provider billing entry point.
 
-Forwards token counts already normalized by an addon-side provider extractor
-(stored in ``flow.metadata["model_provider_usage"]``) to the platform
-``/api/webhooks/agent/usage-event`` endpoint.
+Buffers token counts already normalized by an addon-side provider extractor
+(stored in ``flow.metadata["model_provider_usage"]``) for aggregate upload to
+the platform ``/api/webhooks/agent/usage-event`` endpoint.
 """
 
 import uuid
+from typing import TypeGuard
 
 from mitmproxy import http
 
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
+from ..buffer import UsageEvent, buffer_usage_events
 from ..model_tokens import MODEL_USAGE_CATEGORIES
 from ..namespaces import USAGE_EVENT_NAMESPACE_MODEL
-from ..webhook import _enqueue_webhook
 
 MODEL_USAGE_KIND = "model"
 
 
 def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
-    """Enqueue extracted token usage for model-provider responses if available.
+    """Buffer extracted token usage for model-provider responses if available.
 
-    Returns whether a usage webhook was enqueued.
+    Returns whether usage was accepted into the reporting path.
     """
     firewall_name = flow.metadata.get("firewall_name", "")
     if not (firewall_name.startswith("model-provider:") and run_id):
@@ -53,18 +54,20 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         )
         return False
     url = f"{api_url}/api/webhooks/agent/usage-event"
-    _enqueue_webhook(
+    buffer_usage_events(
         url,
         sandbox_token,
-        {"runId": run_id, "events": events},
+        run_id,
+        events,
         proxy_log_path,
-        "usage_event",
     )
     return True
 
 
-def _build_usage_events(run_id: str, message_id: str, provider: str, usage: dict) -> list[dict]:
-    events = []
+def _build_usage_events(
+    run_id: str, message_id: str, provider: str, usage: dict
+) -> list[UsageEvent]:
+    events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
         quantity = usage.get(category)
         if not _is_positive_int(quantity):
@@ -94,7 +97,7 @@ def _encode_uuid_name(parts: tuple[str, ...]) -> str:
     return "\0".join(f"{len(part.encode('utf-8'))}:{part}" for part in parts)
 
 
-def _is_positive_int(value: object) -> bool:
+def _is_positive_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 

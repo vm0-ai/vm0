@@ -16,6 +16,7 @@ class TestAddonConfiguration:
 
         option_names = [call.kwargs["name"] for call in loader.add_option.call_args_list]
         assert "vm0_usage_state_id" in option_names
+        assert "vm0_usage_flush_interval_seconds" in option_names
         set_pending_path.assert_not_called()
 
     def test_configure_initializes_pending_path_with_usage_state_id(self):
@@ -54,3 +55,14 @@ class TestAddonConfiguration:
             mitm_addon.configure({"vm0_api_url"})
 
         set_pending_path.assert_not_called()
+
+    def test_configure_updates_usage_flush_interval(self):
+        options = MagicMock(vm0_usage_flush_interval_seconds=15.0)
+
+        with (
+            patch.object(mitm_addon.ctx, "options", options, create=True),
+            patch.object(usage, "configure_usage_buffer") as configure_usage_buffer,
+        ):
+            mitm_addon.configure({"vm0_usage_flush_interval_seconds"})
+
+        configure_usage_buffer.assert_called_once_with(flush_interval_seconds=15.0)

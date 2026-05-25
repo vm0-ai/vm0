@@ -78,9 +78,19 @@ def load(loader: Loader) -> None:
         default="",
         help="Runner-generated usage-pending state id",
     )
+    loader.add_option(
+        name="vm0_usage_flush_interval_seconds",
+        typespec=float,
+        default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
+        help="Usage-event buffer flush interval in seconds",
+    )
 
 
 def configure(updated: set[str]) -> None:
+    if "vm0_usage_flush_interval_seconds" in updated:
+        usage.configure_usage_buffer(
+            flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
+        )
     if "vm0_usage_state_id" in updated:
         # Custom --set options are deferred until after load() registers them,
         # so initialize this file here where ctx.options has the runner value.
@@ -612,9 +622,11 @@ def done():
     """Flush pending usage reports before mitmproxy exits.
 
     The runner waits for pending flow/report counters before stopping the
-    proxy. ``shutdown(wait=True)`` is the final mitmproxy-side drain for
-    already-submitted futures during graceful stop.
+    proxy. Buffered usage is converted into webhook reports before
+    ``shutdown(wait=True)`` drains already-submitted futures during graceful
+    stop.
     """
+    usage.flush_usage_events()
     usage.webhook.usage_executor.shutdown(wait=True)
 
 

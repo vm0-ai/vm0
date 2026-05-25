@@ -18,8 +18,12 @@ class TestDoneHook:
     def test_done_shuts_down_executor(self):
         """done() should call shutdown(wait=True) on the executor."""
         mock_executor = MagicMock()
-        with patch.object(usage.webhook, "usage_executor", mock_executor):
+        with (
+            patch.object(usage, "flush_usage_events") as flush_usage_events,
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+        ):
             mitm_addon.done()
+        flush_usage_events.assert_called_once_with()
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
 
