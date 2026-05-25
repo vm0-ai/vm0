@@ -147,6 +147,12 @@ def test_flush_splits_aggregate_events_at_webhook_limit(tmp_path):
     payloads = _payloads_from_enqueue_calls(enqueue.call_args_list)
     assert [len(payload["events"]) for payload in payloads] == [100, 1]
     assert {payload["runId"] for payload in payloads} == {"run-1"}
+    all_events = [event for payload in payloads for event in payload["events"]]
+    idempotency_keys = [event["idempotencyKey"] for event in all_events]
+    assert len(idempotency_keys) == 101
+    assert len(set(idempotency_keys)) == 101
+    for idempotency_key in idempotency_keys:
+        uuid.UUID(idempotency_key)
 
 
 def test_flushes_when_buffered_webhook_batch_count_reaches_bound(tmp_path):
@@ -257,6 +263,55 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
     enqueue.assert_called_once()
     assert timers[0].cancelled is True
     assert enqueue.call_args.args[2]["events"][0]["quantity"] == 10
+
+
+def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):
+    timers = []
+
+    def timer_factory(delay: float, callback):
+        timer = _FakeTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        for index in range(usage_buffer.MAX_BUFFERED_WEBHOOK_BATCHES - 1):
+            usage.buffer_usage_events(
+                "https://api.test/api/webhooks/agent/usage-event",
+                "token-a",
+                f"run-{index}",
+                [_event(source_key=f"source-{index}")],
+                str(tmp_path / "proxy.jsonl"),
+            )
+
+        assert len(timers) == 1
+        assert timers[0].started is True
+        assert timers[0].cancelled is False
+        enqueue.assert_not_called()
+
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-threshold",
+            [_event(source_key="source-threshold")],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        assert timers[0].cancelled is True
+        assert len(enqueue.call_args_list) == usage_buffer.MAX_BUFFERED_WEBHOOK_BATCHES
+
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-next",
+            [_event(source_key="source-next")],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        assert len(timers) == 2
+        assert timers[1].started is True
+        assert timers[1].cancelled is False
 
 
 def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
