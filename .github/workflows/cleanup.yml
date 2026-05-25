@@ -82,7 +82,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
       - uses: actions/checkout@v6
 
