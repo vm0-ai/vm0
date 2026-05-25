@@ -450,6 +450,22 @@ mod tests {
     }
 
     #[test]
+    fn completed_prepare_cannot_be_aborted() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+        complete_attempt(&coordinator, &attempt);
+
+        assert!(matches!(
+            coordinator.abort_prepare_park(&attempt),
+            Err(PrepareParkError::StaleAttempt { .. })
+        ));
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ReadyForPark { attempt_id } if attempt_id == attempt.id
+        ));
+    }
+
+    #[test]
     fn dirty_during_prepare_blocks_completion_and_abort() {
         let coordinator = ParkCoordinator::new();
         let attempt = begin_attempt(&coordinator);
