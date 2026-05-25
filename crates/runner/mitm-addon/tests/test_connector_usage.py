@@ -950,7 +950,10 @@ class TestReportConnectorUsage:
         assert "unparseable" in entry["message"].lower()
         assert entry["parse_error"] == "incomplete json"
 
-    @pytest.mark.parametrize("parse_error", ["", None, {"reason": "incomplete json"}])
+    @pytest.mark.parametrize(
+        "parse_error",
+        ["", None, b"incomplete json", {"reason": "incomplete json"}],
+    )
     def test_unparseable_x_json_state_omits_invalid_parse_error(
         self, tmp_path, real_flow, parse_error
     ):
