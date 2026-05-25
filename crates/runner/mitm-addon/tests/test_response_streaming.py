@@ -480,3 +480,25 @@ class TestReleaseResponseStreamState:
         assert "_vm0_response_stream_callback" not in flow.metadata
         assert "stream_buffer" not in flow.metadata
         assert "stream_buffer_state" not in flow.metadata
+
+    def test_release_after_response_is_removed_still_drops_metadata(self, real_flow):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200, headers=_header_map({"content-type": "application/json"})
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert callable(_response_stream(flow))
+        assert "model_json_usage_finish" in flow.metadata
+
+        flow.response = None
+
+        response_streaming.release_response_stream_state(flow)
+
+        assert flow.response is None
+        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
