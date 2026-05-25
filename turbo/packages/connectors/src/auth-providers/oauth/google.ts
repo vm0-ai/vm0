@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "./grant-config";
 import type { GoogleOAuthConnectorType } from "./google-connectors";
 import { throwOAuthError } from "./error";
 
@@ -38,12 +39,12 @@ export function buildGoogleAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     access_type: "offline",
     prompt: "consent",
@@ -63,8 +64,8 @@ export async function exchangeGoogleOAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<GoogleTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -124,8 +125,8 @@ export async function refreshGoogleToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GoogleRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const AIRTABLE_AUTHORIZATION_URL = "https://airtable.com/oauth2/v1/authorize";
@@ -60,7 +61,7 @@ export async function buildAirtableAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<{ url: string; codeVerifier: string }> {
-  const oauthConfig = getConnectorOAuthConfig("airtable");
+  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -68,7 +69,7 @@ export async function buildAirtableAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
@@ -91,14 +92,14 @@ export async function exchangeAirtableCode(
   redirectUri: string,
   codeVerifier?: string,
 ): Promise<AirtableTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("airtable");
+  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   if (!codeVerifier) {
     throw new Error("Airtable requires PKCE code_verifier for token exchange");
   }
 
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -156,10 +157,10 @@ export async function refreshAirtableToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AirtableRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("airtable");
+  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

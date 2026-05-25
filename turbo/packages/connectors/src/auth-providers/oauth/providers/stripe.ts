@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const STRIPE_AUTHORIZATION_URL = "https://connect.stripe.com/oauth/authorize";
@@ -34,12 +35,12 @@ export function buildStripeAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("stripe");
+  const authCodeGrant = getAuthCodeGrantConfig("stripe");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -55,8 +56,8 @@ export async function exchangeStripeCode(
   clientSecret: string,
   code: string,
 ): Promise<StripeTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("stripe");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("stripe");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -116,8 +117,8 @@ export async function refreshStripeToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<StripeRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("stripe");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("stripe");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

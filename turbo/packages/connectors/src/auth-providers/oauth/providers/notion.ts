@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const NOTION_AUTHORIZATION_URL = "https://api.notion.com/v1/oauth/authorize";
@@ -61,8 +62,8 @@ export async function exchangeNotionCode(
   code: string,
   redirectUri: string,
 ): Promise<NotionTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("notion");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("notion");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,
@@ -131,8 +132,8 @@ export async function refreshNotionToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<NotionRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("notion");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("notion");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,

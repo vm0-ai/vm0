@@ -703,10 +703,8 @@ export {
   type ConnectorConfig,
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
-  type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
-  type ConnectorOAuthConfig,
 } from "@vm0/connectors/connectors";
 export {
   getConnectorAuthMethods,
@@ -717,8 +715,6 @@ export {
   getConnectorProvidedSecretNames,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
-  getConnectorOAuthConfig,
-  getConnectorOAuthConfigIfSupported,
   isGoogleOAuthConnector,
   hasRequiredScopes,
   getScopeDiff,

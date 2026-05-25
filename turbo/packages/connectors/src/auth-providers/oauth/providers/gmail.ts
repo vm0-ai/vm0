@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { buildGoogleAuthorizationUrl } from "../google";
 import { throwOAuthError } from "../error";
 
@@ -42,8 +43,8 @@ export async function exchangeGmailCode(
   code: string,
   redirectUri: string,
 ): Promise<GmailTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("gmail");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("gmail");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

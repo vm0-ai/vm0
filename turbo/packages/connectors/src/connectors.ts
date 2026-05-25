@@ -261,9 +261,6 @@ export interface ConnectorManualGrantFieldConfig {
   storage?: "secret" | "variable";
 }
 
-/** @deprecated Use ConnectorManualGrantFieldConfig. */
-export type ConnectorSecretConfig = ConnectorManualGrantFieldConfig;
-
 /**
  * OAuth configuration for connectors that support OAuth flow.
  */
@@ -333,47 +330,6 @@ export type DynamicPublicConnectorOAuthClientConfig = Extract<
   }
 >;
 
-export type ConnectorOAuthFlow = "authorization-code" | "device-authorization";
-
-export interface ConnectorOAuthAuthCodeConfig {
-  readonly flow: "authorization-code";
-  readonly tokenUrl: string;
-  readonly client: ConnectorOAuthClientConfig;
-  readonly scopes: string[];
-}
-
-export interface ConnectorOAuthDeviceAuthConfig {
-  readonly flow: "device-authorization";
-  readonly deviceAuthUrl: string;
-  readonly tokenUrl: string;
-  readonly client: StaticPublicConnectorOAuthClientConfig;
-  readonly scopes: string[];
-}
-
-export type ConnectorOAuthConfig =
-  | ConnectorOAuthAuthCodeConfig
-  | ConnectorOAuthDeviceAuthConfig;
-
-/**
- * CLI auth configuration for connectors that can import credentials through a
- * provider CLI.
- */
-export type ConnectorCliAuthFlow = "browser-verification";
-
-export interface ConnectorCliAuthConfig {
-  /**
-   * Frontend flow used to guide the user through the provider CLI login.
-   * Provider-specific API calls are adapted separately; this only describes
-   * the reusable user interaction pattern.
-   */
-  flow: ConnectorCliAuthFlow;
-  modes?: readonly {
-    value: string;
-    label: string;
-    description?: string;
-  }[];
-}
-
 export type ConnectorGrantKind =
   | "manual"
   | "auth-code"
@@ -403,7 +359,7 @@ export interface ConnectorDeviceAuthGrantConfig {
 
 export interface ConnectorInteractivePairingGrantConfig {
   readonly kind: "interactive-pairing";
-  readonly flow: ConnectorCliAuthFlow;
+  readonly flow: "browser-verification";
   readonly modes?: readonly {
     value: string;
     label: string;

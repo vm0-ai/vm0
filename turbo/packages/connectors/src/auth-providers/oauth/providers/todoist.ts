@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const TODOIST_AUTHORIZATION_URL = "https://todoist.com/oauth/authorize";
@@ -25,10 +26,10 @@ export function buildTodoistAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("todoist");
+  const authCodeGrant = getAuthCodeGrantConfig("todoist");
   const params = new URLSearchParams({
     client_id: clientId,
-    scope: oauthConfig.scopes.join(","),
+    scope: authCodeGrant.scopes.join(","),
     state,
     redirect_uri: redirectUri,
   });
@@ -47,8 +48,8 @@ export async function exchangeTodoistCode(
   code: string,
   redirectUri: string,
 ): Promise<TodoistTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("todoist");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("todoist");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -85,7 +86,7 @@ export async function exchangeTodoistCode(
 
   return {
     accessToken: data.access_token,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     userInfo,
   };
 }

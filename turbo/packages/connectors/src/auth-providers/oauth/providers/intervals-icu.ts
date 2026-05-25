@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const INTERVALS_ICU_AUTHORIZATION_URL = "https://intervals.icu/oauth/authorize";
@@ -23,12 +24,12 @@ export function buildIntervalsIcuAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("intervals-icu");
+  const authCodeGrant = getAuthCodeGrantConfig("intervals-icu");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(","),
+    scope: authCodeGrant.scopes.join(","),
     state,
   });
 
@@ -45,8 +46,8 @@ export async function exchangeIntervalsIcuCode(
   clientSecret: string,
   code: string,
 ): Promise<IntervalsIcuTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("intervals-icu");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("intervals-icu");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -90,7 +91,7 @@ export async function exchangeIntervalsIcuCode(
 
   return {
     accessToken: data.access_token,
-    scopes: oauthConfig.scopes,
+    scopes: authCodeGrant.scopes,
     userInfo: {
       id: data.athlete.id,
       username: data.athlete.name ?? null,

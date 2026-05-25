@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const STRAVA_AUTHORIZATION_URL = "https://www.strava.com/oauth/authorize";
@@ -35,12 +36,12 @@ export function buildStravaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("strava");
+  const authCodeGrant = getAuthCodeGrantConfig("strava");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(","),
+    scope: authCodeGrant.scopes.join(","),
     state,
     approval_prompt: "force",
   });
@@ -57,8 +58,8 @@ export async function exchangeStravaCode(
   clientSecret: string,
   code: string,
 ): Promise<StravaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("strava");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("strava");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -133,8 +134,8 @@ export async function refreshStravaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<StravaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("strava");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("strava");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

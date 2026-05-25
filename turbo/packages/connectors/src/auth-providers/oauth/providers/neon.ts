@@ -1,5 +1,6 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+
+import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
 const NEON_AUTHORIZATION_URL = "https://oauth2.neon.tech/oauth2/auth";
@@ -35,13 +36,13 @@ export function buildNeonAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("neon");
+  const authCodeGrant = getAuthCodeGrantConfig("neon");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
     state,
     redirect_uri: redirectUri,
-    scope: oauthConfig.scopes.join(" "),
+    scope: authCodeGrant.scopes.join(" "),
   });
 
   return `${NEON_AUTHORIZATION_URL}?${params.toString()}`;
@@ -57,8 +58,8 @@ export async function exchangeNeonCode(
   code: string,
   redirectUri: string,
 ): Promise<NeonTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("neon");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("neon");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -116,8 +117,8 @@ export async function refreshNeonToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<NeonRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("neon");
-  const response = await fetch(oauthConfig.tokenUrl, {
+  const authCodeGrant = getAuthCodeGrantConfig("neon");
+  const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

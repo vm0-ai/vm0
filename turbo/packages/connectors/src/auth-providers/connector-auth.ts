@@ -5,7 +5,6 @@ import type {
   OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthDeviceAuthConfig,
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   isOAuthAuthCodeConnectorType,
   isStaticConfidentialConnectorOAuthCredentials,
@@ -40,6 +39,7 @@ import {
   type OAuthRefreshResult,
   type OAuthTokenResult,
 } from "./oauth/types";
+import { getDeviceAuthGrantConfig } from "./oauth/grant-config";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
 import { ahrefsProvider } from "./oauth/providers/ahrefs-provider";
 import { airtableProvider } from "./oauth/providers/airtable-provider";
@@ -309,12 +309,12 @@ export async function startConnectorOAuthDeviceAuth<
   readonly credentials: ConnectorOAuthCredentials;
 }): Promise<OAuthDeviceAuthStartResult> {
   assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
-  const oauthConfig = getConnectorOAuthDeviceAuthConfig(args.type);
+  const grant = getDeviceAuthGrantConfig(args.type);
   return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.startDeviceAuth({
     ...connectorCredentialArgs(args.credentials),
-    scopes: oauthConfig.scopes,
+    scopes: grant.scopes,
   } as ConnectorOAuthDeviceAuthStartArgs<T>);
 }
 
