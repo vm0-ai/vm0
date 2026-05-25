@@ -535,6 +535,19 @@ function remoteGitHubId(): string {
   return String(randomInt(1_000_000_000_000, 9_000_000_000_000));
 }
 
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
 async function seedGitHubModelRoute(args: {
   readonly fixture: GitHubWebhookFixture;
   readonly selectedModel?: string | null;
@@ -1179,13 +1192,27 @@ describe("POST /api/webhooks/github", () => {
       installationId: fixture.remoteInstallationId,
       comments: [],
     });
+    const fileUrl = "https://github.com/user-attachments/assets/abc123";
+    server.use(
+      http.get(fileUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer ghs_test_token",
+        );
+        return new HttpResponse("png-bytes", {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "9",
+          },
+        });
+      }),
+    );
 
     const response = await postGitHubWebhook({
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, {
         action: "opened",
-        issueBody:
-          "Please inspect this attachment:\n\n![screenshot.png](https://github.com/user-attachments/assets/abc123)",
+        issueBody: `Please inspect this attachment:\n\n![screenshot.png](${fileUrl})`,
       }),
     });
     await clearAllDetached();
@@ -1195,12 +1222,30 @@ describe("POST /api/webhooks/github", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]?.appendSystemPrompt).toContain("[GitHub file]");
     expect(runs[0]?.appendSystemPrompt).toContain(
-      "[URL] https://github.com/user-attachments/assets/abc123",
+      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
     );
     expect(runs[0]?.appendSystemPrompt).toContain("[FILENAME] screenshot.png");
+    expect(runs[0]?.appendSystemPrompt).not.toContain(fileUrl);
+    expect(runs[0]?.appendSystemPrompt).not.toContain(
+      `![screenshot.png](${fileUrl})`,
+    );
     expect(runs[0]?.appendSystemPrompt).not.toContain(
       "GitHub issue and pull request attachments are shown as [GitHub file] blocks.",
     );
+    const putInput = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return commandInput(command);
+      })
+      .find((input) => {
+        return (
+          typeof input.Key === "string" && input.Key.endsWith("/screenshot.png")
+        );
+      });
+    expect(putInput).toMatchObject({
+      Bucket: "test-user-artifacts",
+      ContentType: "image/png",
+    });
+    expect(putInput?.Body).toStrictEqual(Buffer.from("png-bytes"));
   });
 
   it("posts a formatted failure comment when the GitHub trigger run is rejected", async () => {
@@ -1626,6 +1671,71 @@ describe("POST /api/webhooks/github", () => {
       triggerReactionId: "2468",
       triggerCommentBody: `@${GITHUB_APP_SLUG}[bot] please handle this`,
     });
+  });
+
+  it("mirrors GitHub issue comment files to artifacts and uses file blocks in the prompt", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+    const fileUrl =
+      "https://github.com/user-attachments/assets/4a354666-2014-433a-82c3-dc6941d6f0ec";
+    server.use(
+      http.get(fileUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer ghs_test_token",
+        );
+        return new HttpResponse("image-bytes", {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "11",
+          },
+        });
+      }),
+    );
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        commentBody: `@${GITHUB_APP_SLUG}[bot] please inspect\n\n![Image](${fileUrl})`,
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toContain("please inspect");
+    expect(runs[0]?.prompt).toContain("[GitHub file]");
+    expect(runs[0]?.prompt).toContain(
+      `https://cdn.vm7.io/artifacts/${fixture.userId}/`,
+    );
+    expect(runs[0]?.prompt).toContain("[FILENAME] github-file.png");
+    expect(runs[0]?.prompt).not.toContain(fileUrl);
+    expect(runs[0]?.prompt).not.toContain(
+      "[FILENAME] 4a354666-2014-433a-82c3-dc6941d6f0ec",
+    );
+    const putInput = context.mocks.s3.send.mock.calls
+      .map(([command]) => {
+        return commandInput(command);
+      })
+      .find((input) => {
+        return (
+          typeof input.Key === "string" &&
+          input.Key.endsWith("/github-file.png")
+        );
+      });
+    expect(putInput).toMatchObject({
+      Bucket: "test-user-artifacts",
+      ContentType: "image/png",
+    });
+    expect(putInput?.Body).toStrictEqual(Buffer.from("image-bytes"));
   });
 
   it("continues the same GitHub issue session for bot mention comments", async () => {

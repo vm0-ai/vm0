@@ -4,6 +4,7 @@ import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { z } from "zod";
 
+import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -75,7 +76,26 @@ function isAllowedGithubFileUrl(url: URL): boolean {
     return true;
   }
 
-  return url.pathname.startsWith("/user-attachments/assets/");
+  return (
+    url.pathname.startsWith("/user-attachments/assets/") ||
+    url.pathname.startsWith("/user-attachments/files/")
+  );
+}
+
+function isAllowedArtifactUrl(url: URL): boolean {
+  const artifactsBaseUrl = new URL(env("PUBLIC_ARTIFACTS_BASE_URL"));
+  return (
+    url.origin === artifactsBaseUrl.origin &&
+    url.pathname.startsWith("/artifacts/")
+  );
+}
+
+function isAllowedDownloadUrl(url: URL): boolean {
+  return isAllowedGithubFileUrl(url) || isAllowedArtifactUrl(url);
+}
+
+function needsGithubAuthorization(url: URL): boolean {
+  return !isAllowedArtifactUrl(url);
 }
 
 function filenameFromUrl(url: URL): string {
@@ -101,39 +121,43 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(githubDownloadFileContract.download));
   const url = new URL(query.url);
-  if (!isAllowedGithubFileUrl(url)) {
+  if (!isAllowedDownloadUrl(url)) {
     return jsonResponse(
       400,
-      "Only GitHub attachment and raw file URLs are supported",
+      "Only GitHub attachment, raw file, and VM0 artifact URLs are supported",
       "BAD_REQUEST",
     );
   }
 
-  const db = get(db$);
-  const installation = await loadActiveGithubInstallationForOrg({
-    db,
-    orgId: auth.orgId,
-  });
-  signal.throwIfAborted();
-  if (!installation) {
-    return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
+  let token: string | null = null;
+  if (needsGithubAuthorization(url)) {
+    const db = get(db$);
+    const installation = await loadActiveGithubInstallationForOrg({
+      db,
+      orgId: auth.orgId,
+    });
+    signal.throwIfAborted();
+    if (!installation) {
+      return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
+    }
+
+    token = await getGithubIntegrationAccessToken({
+      installation,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (!token) {
+      return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
+    }
   }
 
-  const token = await getGithubIntegrationAccessToken({
-    installation,
-    signal,
-  });
-  signal.throwIfAborted();
-  if (!token) {
-    return jsonResponse(404, "No GitHub installation found", "NOT_FOUND");
+  const headers = new Headers({ Accept: "application/octet-stream" });
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
-
   const downloadResult = await settle(
     fetch(url, {
-      headers: {
-        Accept: "application/octet-stream",
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       signal,
     }),
   );
@@ -190,15 +214,18 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   }
   const contentType = responseContentType ?? inferMimetype(filename);
 
-  const headers = new Headers();
-  headers.set("Content-Type", contentType);
-  headers.set("X-File-Name", encodeURIComponent(filename));
-  headers.set("X-File-Mimetype", contentType);
+  const responseHeaders = new Headers();
+  responseHeaders.set("Content-Type", contentType);
+  responseHeaders.set("X-File-Name", encodeURIComponent(filename));
+  responseHeaders.set("X-File-Mimetype", contentType);
   if (contentLength) {
-    headers.set("Content-Length", contentLength);
+    responseHeaders.set("Content-Length", contentLength);
   }
 
-  return new Response(downloadResponse.body, { status: 200, headers });
+  return new Response(downloadResponse.body, {
+    status: 200,
+    headers: responseHeaders,
+  });
 });
 
 const githubReadAuth = {

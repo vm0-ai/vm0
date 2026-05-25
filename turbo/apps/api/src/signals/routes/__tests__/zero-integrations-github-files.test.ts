@@ -208,6 +208,86 @@ describe("GitHub zero file integration routes", () => {
     await expect(response.text()).resolves.toBe("png-bytes");
   });
 
+  it("streams a mirrored VM0 artifact without GitHub authorization", async () => {
+    const fixture = await seedFixture();
+    const fileUrl = `https://cdn.vm7.io/artifacts/${fixture.userId}/upload-1/github-file.png`;
+    server.use(
+      http.get(fileUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBeNull();
+        expect(request.headers.get("accept")).toBe("application/octet-stream");
+        return new HttpResponse("artifact-bytes", {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "14",
+          },
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      `/api/zero/integrations/github/download-file?url=${encodeURIComponent(fileUrl)}&filename=github-file.png`,
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["github:read"],
+          })}`,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("x-file-name")).toBe("github-file.png");
+    await expect(response.text()).resolves.toBe("artifact-bytes");
+  });
+
+  it("streams GitHub uploaded file links through the active installation", async () => {
+    const fixture = await seedFixture();
+    mockGitHubAppCredentials();
+    setupGitHubTokenMock(fixture.remoteInstallationId);
+    const fileUrl =
+      "https://github.com/user-attachments/files/123456/report.pdf";
+    server.use(
+      http.get(fileUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer ghs_test_token",
+        );
+        return new HttpResponse("pdf-bytes", {
+          status: 200,
+          headers: {
+            "content-type": "application/pdf",
+            "content-length": "9",
+          },
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      `/api/zero/integrations/github/download-file?url=${encodeURIComponent(fileUrl)}`,
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["github:read"],
+          })}`,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("x-file-name")).toBe("report.pdf");
+    await expect(response.text()).resolves.toBe("pdf-bytes");
+  });
+
   it("requires github read capability for attachment downloads", async () => {
     const fixture = await seedFixture();
     const app = createApp({ signal: context.signal });

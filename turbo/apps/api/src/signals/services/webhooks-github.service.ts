@@ -1,4 +1,5 @@
-import { randomBytes } from "node:crypto";
+import { Buffer } from "node:buffer";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
@@ -13,15 +14,19 @@ import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { command, type Setter } from "ccstate";
+import { command, type Getter, type Setter } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { logger } from "../../lib/log";
+import { inferMimetype } from "../../lib/mimetype";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
+import { putS3Object } from "../external/s3";
 import { nowDate } from "../external/time";
+import { settle } from "../utils";
 import {
   addGithubCommentReaction,
   fetchGithubIssueComments,
@@ -41,6 +46,7 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
   "An unexpected error occurred. Please try again later.";
+const MAX_GITHUB_CONTEXT_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 const gitHubUserSchema = z.object({
   id: z.number(),
@@ -135,7 +141,20 @@ type GitHubTriggerKind = "issue" | "pull_request";
 
 interface GitHubFileReference {
   readonly url: string;
-  readonly filename: string;
+  readonly filename?: string;
+}
+
+interface GitHubFileReferenceMatch extends GitHubFileReference {
+  readonly start: number;
+  readonly end: number;
+}
+
+interface GitHubFileMirrorContext {
+  readonly get: Getter;
+  readonly token: string | undefined;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+  readonly cache: Map<string, Promise<GitHubFileReference>>;
 }
 
 interface DispatchParams {
@@ -327,7 +346,24 @@ function formatGithubContextSender(args: {
   return `{${senderParts.join(", ")}}`;
 }
 
-const GITHUB_FILE_URL_SOURCE = String.raw`https:\/\/(?:github\.com\/user-attachments\/assets\/[A-Za-z0-9-]+|(?:raw|objects|private-user-images|user-images)\.githubusercontent\.com\/[^\s)<>'"]+)`;
+const GITHUB_FILE_URL_SOURCE = String.raw`https:\/\/(?:github\.com\/user-attachments\/(?:assets\/[A-Za-z0-9-]+|files\/[^\s)<>'"]+)|(?:raw|objects|private-user-images|user-images)\.githubusercontent\.com\/[^\s)<>'"]+)`;
+const GITHUB_ASSET_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
+  "application/json": "json",
+  "application/pdf": "pdf",
+  "application/zip": "zip",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/svg+xml": "svg",
+  "image/webp": "webp",
+  "text/csv": "csv",
+  "text/markdown": "md",
+  "text/plain": "txt",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+};
 
 function githubMarkdownFileLinkRegex(): RegExp {
   return new RegExp(
@@ -344,13 +380,16 @@ function normalizeGithubFileUrl(url: string): string {
   return url.replace(/[.,;:!?]+$/u, "");
 }
 
-function filenameFromGithubUrl(url: string): string {
+function filenameFromGithubUrl(url: string): string | undefined {
   if (!URL.canParse(url)) {
-    return "github-file";
+    return undefined;
   }
   const parsed = new URL(url);
   const segment = parsed.pathname.split("/").filter(Boolean).pop();
-  return segment ?? "github-file";
+  if (!segment || GITHUB_ASSET_ID_RE.test(segment)) {
+    return undefined;
+  }
+  return segment;
 }
 
 function isUsefulFilenameCandidate(candidate: string): boolean {
@@ -363,67 +402,249 @@ function isUsefulFilenameCandidate(candidate: string): boolean {
   );
 }
 
-function extractGithubFileReferences(
+function findGithubFileReferenceMatches(
   body: string,
-): readonly GitHubFileReference[] {
-  const references: GitHubFileReference[] = [];
-  const seen = new Set<string>();
-
-  function addReference(url: string, filenameCandidate: string | undefined) {
-    const normalizedUrl = normalizeGithubFileUrl(url);
-    if (seen.has(normalizedUrl)) {
-      return;
-    }
-    seen.add(normalizedUrl);
-    const filename =
-      filenameCandidate && isUsefulFilenameCandidate(filenameCandidate)
-        ? filenameCandidate.trim()
-        : filenameFromGithubUrl(normalizedUrl);
-    references.push({ url: normalizedUrl, filename });
-  }
-
+): readonly GitHubFileReferenceMatch[] {
+  const matches: GitHubFileReferenceMatch[] = [];
   for (const match of body.matchAll(githubMarkdownFileLinkRegex())) {
+    const matchedText = match[0];
     const filenameCandidate = match[1];
     const url = match[2];
-    if (url) {
-      addReference(url, filenameCandidate);
+    if (match.index !== undefined && matchedText && url) {
+      const normalizedUrl = normalizeGithubFileUrl(url);
+      const filename =
+        filenameCandidate && isUsefulFilenameCandidate(filenameCandidate)
+          ? filenameCandidate.trim()
+          : filenameFromGithubUrl(normalizedUrl);
+      matches.push({
+        start: match.index,
+        end: match.index + matchedText.length,
+        url: normalizedUrl,
+        ...(filename ? { filename } : {}),
+      });
     }
   }
 
   for (const match of body.matchAll(githubFileUrlRegex())) {
-    const url = match[0];
-    addReference(url, undefined);
+    const matchedText = match[0];
+    const matchIndex = match.index;
+    if (matchIndex === undefined || !matchedText) {
+      continue;
+    }
+    const overlapsMarkdown = matches.some((candidate) => {
+      return matchIndex >= candidate.start && matchIndex < candidate.end;
+    });
+    if (overlapsMarkdown) {
+      continue;
+    }
+
+    const normalizedUrl = normalizeGithubFileUrl(matchedText);
+    const filename = filenameFromGithubUrl(normalizedUrl);
+    matches.push({
+      start: matchIndex,
+      end: matchIndex + normalizedUrl.length,
+      url: normalizedUrl,
+      ...(filename ? { filename } : {}),
+    });
   }
 
-  return references;
+  return [...matches].sort((left, right) => {
+    return left.start - right.start;
+  });
 }
 
-function formatGithubFileReferences(body: string): string | null {
-  const references = extractGithubFileReferences(body);
-  if (references.length === 0) {
+function formatGithubFileReference(file: GitHubFileReference): string {
+  return [
+    "[GitHub file]",
+    `[URL] ${file.url}`,
+    file.filename ? `[FILENAME] ${file.filename}` : null,
+  ]
+    .filter((line): line is string => {
+      return line !== null;
+    })
+    .join("\n");
+}
+
+function parseContentLength(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const size = Number(value);
+  return Number.isSafeInteger(size) && size >= 0 ? size : undefined;
+}
+
+function filenameFromContentDisposition(value: string | null): string | null {
+  if (!value) {
     return null;
   }
 
-  return references
-    .map((file) => {
-      return [
-        "[GitHub file]",
-        `[URL] ${file.url}`,
-        `[FILENAME] ${file.filename}`,
-      ].join("\n");
-    })
-    .join("\n\n");
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/iu);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1].trim());
+  }
+
+  const quotedMatch = value.match(/filename="([^"]+)"/iu);
+  return quotedMatch?.[1] ?? null;
 }
 
-function formatGitHubIssueContextMessage(args: {
+function extensionFromContentType(contentType: string | null): string | null {
+  const normalized = contentType?.split(";")[0]?.trim().toLowerCase();
+  return normalized ? (EXTENSION_BY_CONTENT_TYPE[normalized] ?? null) : null;
+}
+
+function sanitizeGithubFilename(filename: string): string {
+  return filename
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/gu, "_")
+    .slice(0, 255);
+}
+
+function fallbackGithubFilename(contentType: string | null): string {
+  const extension = extensionFromContentType(contentType);
+  return extension ? `github-file.${extension}` : "github-file";
+}
+
+function mirroredGithubFilename(args: {
+  readonly file: GitHubFileReference;
+  readonly response: Response;
+}): string {
+  const contentType = args.response.headers.get("content-type");
+  const filename =
+    args.file.filename ??
+    filenameFromContentDisposition(
+      args.response.headers.get("content-disposition"),
+    ) ??
+    fallbackGithubFilename(contentType);
+  return (
+    sanitizeGithubFilename(filename) || fallbackGithubFilename(contentType)
+  );
+}
+
+async function downloadAndMirrorGithubFile(
+  file: GitHubFileReference,
+  context: GitHubFileMirrorContext,
+): Promise<GitHubFileReference> {
+  const headers = new Headers({ Accept: "application/octet-stream" });
+  if (context.token) {
+    headers.set("Authorization", `Bearer ${context.token}`);
+  }
+
+  const response = await fetch(file.url, {
+    headers,
+    signal: context.signal,
+  });
+  context.signal.throwIfAborted();
+  if (!response.ok) {
+    throw new Error(`GitHub file download failed: ${response.status}`);
+  }
+
+  const contentLengthBytes = parseContentLength(
+    response.headers.get("content-length"),
+  );
+  if (
+    contentLengthBytes !== undefined &&
+    contentLengthBytes > MAX_GITHUB_CONTEXT_FILE_SIZE_BYTES
+  ) {
+    throw new Error("GitHub file is too large to mirror");
+  }
+
+  const contentType = response.headers.get("content-type");
+  if (contentType?.includes("text/html")) {
+    throw new Error("GitHub returned an unexpected HTML file response");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  context.signal.throwIfAborted();
+  if (buffer.byteLength > MAX_GITHUB_CONTEXT_FILE_SIZE_BYTES) {
+    throw new Error("GitHub file is too large to mirror");
+  }
+
+  const filename = mirroredGithubFilename({ file, response });
+  const contentTypeForUpload = contentType ?? inferMimetype(filename);
+  const uploadId = randomUUID();
+  const key = buildArtifactKey(context.userId, uploadId, filename);
+  await context.get(
+    putS3Object(
+      env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+      key,
+      buffer,
+      contentTypeForUpload,
+    ),
+  );
+  context.signal.throwIfAborted();
+
+  return {
+    url: buildFileUrl(context.userId, uploadId, filename),
+    filename,
+  };
+}
+
+async function mirrorGithubFileReference(
+  file: GitHubFileReference,
+  context: GitHubFileMirrorContext,
+): Promise<GitHubFileReference> {
+  const cached = context.cache.get(file.url);
+  if (cached) {
+    return await cached;
+  }
+
+  const mirrored = (async (): Promise<GitHubFileReference> => {
+    const result = await settle(downloadAndMirrorGithubFile(file, context));
+    if (!result.ok) {
+      L.warn("Failed to mirror GitHub file attachment", {
+        url: file.url,
+        error: result.error,
+      });
+      return file;
+    }
+    return result.value;
+  })();
+  context.cache.set(file.url, mirrored);
+  return await mirrored;
+}
+
+async function replaceGithubFileReferencesForContext(
+  body: string,
+  context: GitHubFileMirrorContext,
+): Promise<string> {
+  const references = findGithubFileReferenceMatches(body);
+  if (references.length === 0) {
+    return body;
+  }
+
+  const mirroredReferences = await Promise.all(
+    references.map((reference) => {
+      return mirrorGithubFileReference(reference, context);
+    }),
+  );
+  context.signal.throwIfAborted();
+
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const [index, reference] of references.entries()) {
+    parts.push(body.slice(cursor, reference.start));
+    parts.push(
+      formatGithubFileReference(mirroredReferences[index] ?? reference),
+    );
+    cursor = reference.end;
+  }
+  parts.push(body.slice(cursor));
+
+  return parts.join("");
+}
+
+async function formatGitHubIssueContextMessage(args: {
   readonly issue: GitHubIssue;
   readonly relativeIndex: number;
   readonly subjectLabel: string;
-}): string {
-  const body = args.issue.body ?? "_No description provided._";
-  const files = args.issue.body
-    ? formatGithubFileReferences(args.issue.body)
-    : null;
+  readonly fileContext: GitHubFileMirrorContext;
+}): Promise<string> {
+  const body = args.issue.body
+    ? await replaceGithubFileReferencesForContext(
+        args.issue.body,
+        args.fileContext,
+      )
+    : "_No description provided._";
   return [
     "---",
     "",
@@ -439,7 +660,6 @@ function formatGitHubIssueContextMessage(args: {
     `Title: ${args.issue.title}`,
     "",
     body,
-    files ? `\n${files}` : null,
   ]
     .filter((part): part is string => {
       return part !== null;
@@ -447,11 +667,15 @@ function formatGitHubIssueContextMessage(args: {
     .join("\n");
 }
 
-function formatGitHubCommentContextMessage(args: {
+async function formatGitHubCommentContextMessage(args: {
   readonly comment: GithubIssueComment;
   readonly relativeIndex: number;
-}): string {
-  const files = formatGithubFileReferences(args.comment.body);
+  readonly fileContext: GitHubFileMirrorContext;
+}): Promise<string> {
+  const body = await replaceGithubFileReferencesForContext(
+    args.comment.body,
+    args.fileContext,
+  );
   return [
     "---",
     "",
@@ -460,8 +684,7 @@ function formatGitHubCommentContextMessage(args: {
     `- SENDER: ${formatGithubContextSender(args.comment.user)}`,
     "- SOURCE: comment",
     "",
-    args.comment.body,
-    files ? `\n${files}` : null,
+    body,
   ]
     .filter((part): part is string => {
       return part !== null;
@@ -469,7 +692,7 @@ function formatGitHubCommentContextMessage(args: {
     .join("\n");
 }
 
-function formatIssueContext(args: {
+async function formatIssueContext(args: {
   readonly issue: GitHubIssue;
   readonly subjectKind: GitHubTriggerKind;
   readonly repo: string;
@@ -477,7 +700,8 @@ function formatIssueContext(args: {
   readonly triggerDescription: string | undefined;
   readonly comments: readonly GithubIssueComment[];
   readonly currentCommentId: string | undefined;
-}): string {
+  readonly fileContext: GitHubFileMirrorContext;
+}): Promise<string> {
   const relevantComments = args.currentCommentId
     ? args.comments.filter((comment) => {
         return String(comment.id) !== args.currentCommentId;
@@ -486,17 +710,21 @@ function formatIssueContext(args: {
 
   const subjectLabel = githubSubjectLabel(args.subjectKind);
   const messages = [
-    formatGitHubIssueContextMessage({
+    await formatGitHubIssueContextMessage({
       issue: args.issue,
       subjectLabel,
       relativeIndex: -relevantComments.length - 1,
+      fileContext: args.fileContext,
     }),
-    ...relevantComments.map((comment, index) => {
-      return formatGitHubCommentContextMessage({
-        comment,
-        relativeIndex: index - relevantComments.length,
-      });
-    }),
+    ...(await Promise.all(
+      relevantComments.map((comment, index) => {
+        return formatGitHubCommentContextMessage({
+          comment,
+          relativeIndex: index - relevantComments.length,
+          fileContext: args.fileContext,
+        });
+      }),
+    )),
   ];
 
   const parts: string[] = [
@@ -827,6 +1055,7 @@ async function buildIssueContextForRun(args: {
   readonly token: string | undefined;
   readonly params: DispatchParams;
   readonly issueNumber: number;
+  readonly fileContext: GitHubFileMirrorContext;
   readonly signal: AbortSignal;
 }): Promise<string> {
   if (!args.token) {
@@ -841,7 +1070,7 @@ async function buildIssueContextForRun(args: {
   });
   args.signal.throwIfAborted();
 
-  return formatIssueContext({
+  return await formatIssueContext({
     issue: args.params.issue,
     subjectKind: args.params.subjectKind,
     repo: args.params.repo,
@@ -849,6 +1078,7 @@ async function buildIssueContextForRun(args: {
     triggerDescription: args.params.triggerDescription,
     comments,
     currentCommentId: args.params.commentId,
+    fileContext: args.fileContext,
   });
 }
 
@@ -1305,7 +1535,7 @@ export const handleGithubIssueCommentEvent$ = command(
 
 const dispatchGithubAgentRun$ = command(
   async (
-    { set },
+    { get, set },
     params: DispatchParams,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -1359,13 +1589,26 @@ const dispatchGithubAgentRun$ = command(
     }
 
     const existingSessionId = sessionResult.sessionId;
+    const fileContext: GitHubFileMirrorContext = {
+      get,
+      token,
+      userId: params.vm0UserId,
+      signal,
+      cache: new Map(),
+    };
+    const prompt = await replaceGithubFileReferencesForContext(
+      params.prompt,
+      fileContext,
+    );
+    signal.throwIfAborted();
     const issueContext = await buildIssueContextForRun({
       token,
       params,
       issueNumber,
+      fileContext,
       signal,
     });
-    const promptParts = buildPromptParts(params.prompt, {
+    const promptParts = buildPromptParts(prompt, {
       issueContext,
       repo: params.repo,
       issueNumber,
