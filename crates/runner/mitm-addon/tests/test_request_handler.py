@@ -270,6 +270,39 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == "https://api.github.com/repos"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
+    async def test_http2_authority_takes_precedence_over_host_header(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+        flow.request.http_version = "HTTP/2.0"
+        flow.request.authority = "attacker.example.com"
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers() as auth_fetch,
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "authority_mismatch"
+        assert body["sni"] == "api.github.com"
+        assert body["host_header"] == "attacker.example.com"
+        assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == "authority_mismatch"
+        assert flow.metadata["original_url"] == "https://api.github.com/repos"
+        auth_fetch.assert_not_called()
+        assert "Authorization" not in flow.request.headers
+
     async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
         self, registry_file, real_flow, mitm_ctx, headers
     ):
