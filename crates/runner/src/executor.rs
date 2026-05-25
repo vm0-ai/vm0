@@ -3766,7 +3766,7 @@ mod tests {
     async fn test_executor_config(dir: &std::path::Path) -> ExecutorConfig {
         let registry_path = dir.join("proxy-registry.json");
         let lock_path = dir.join("proxy-registry.json.lock");
-        tokio::fs::write(&registry_path, r#"{"vms":{},"updated_at":0}"#)
+        tokio::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#)
             .await
             .unwrap();
         let log_dir = dir.join("logs");
@@ -3857,6 +3857,18 @@ mod tests {
             ctx.run_id,
             ctx.sandbox_token.clone(),
         )
+    }
+
+    async fn assert_proxy_registry_empty(dir: &std::path::Path) {
+        let raw = tokio::fs::read_to_string(dir.join("proxy-registry.json"))
+            .await
+            .unwrap();
+        let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            registry["vms"].as_object().map(|vms| vms.len()),
+            Some(0),
+            "proxy registry should not retain a VM after executor cleanup: {registry}",
+        );
     }
 
     struct CancelAfterWaitSandbox {
@@ -4876,6 +4888,11 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on clock fix failure"
         );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned so finalization can close it"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     #[tokio::test]
