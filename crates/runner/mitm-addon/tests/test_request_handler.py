@@ -198,6 +198,8 @@ class TestRequestHandler:
         body = json.loads(flow.response.content)
         assert body["error"] == "authority_mismatch"
         assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == "authority_mismatch"
+        assert flow.metadata["original_url"] == "https://attacker.example.com/repos"
         auth_fetch.assert_not_called()
         assert "Authorization" not in flow.request.headers
 
@@ -322,6 +324,8 @@ class TestRequestHandler:
         body = json.loads(flow.response.content)
         assert body["error"] == "authority_port_mismatch"
         assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == "authority_port_mismatch"
+        assert flow.metadata["original_url"] == "https://api.github.com/repos"
         auth_fetch.assert_not_called()
 
     async def test_accepts_authority_host_case_differences(
@@ -385,6 +389,8 @@ class TestRequestHandler:
         body = json.loads(flow.response.content)
         assert body["error"] == expected_error
         assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == expected_error
+        assert flow.metadata["original_url"] == "https://api.github.com/repos"
         auth_fetch.assert_not_called()
 
     async def test_rejects_missing_https_sni_before_firewall_auth(
@@ -410,7 +416,10 @@ class TestRequestHandler:
         assert flow.response.status_code == 403
         body = json.loads(flow.response.content)
         assert body["error"] == "missing_sni"
+        assert body["sni"] is None
         assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_error"] == "missing_sni"
+        assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
         auth_fetch.assert_not_called()
 
     async def test_rejects_invalid_https_sni_before_firewall_auth(
