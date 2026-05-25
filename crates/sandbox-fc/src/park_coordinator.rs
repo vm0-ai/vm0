@@ -72,33 +72,13 @@ impl ParkCoordinator {
     ) -> Result<(), PrepareParkError> {
         let PrepareParkEvidence::AgentQuiesced = evidence;
 
-        let mut inner = self.inner();
-        match inner.state.clone() {
-            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == attempt.id => {
-                inner.state = CoordinatorState::ReadyForPark { attempt_id };
-                Ok(())
-            }
-            CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
-            state => Err(PrepareParkError::StaleAttempt {
-                attempt_id: attempt.id,
-                state,
-            }),
-        }
+        self.inner()
+            .resolve_prepare_park(attempt, PrepareParkResolution::Complete)
     }
 
     pub(crate) fn abort_prepare_park(&self, attempt: &ParkAttempt) -> Result<(), PrepareParkError> {
-        let mut inner = self.inner();
-        match inner.state.clone() {
-            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == attempt.id => {
-                inner.state = CoordinatorState::Open;
-                Ok(())
-            }
-            CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
-            state => Err(PrepareParkError::StaleAttempt {
-                attempt_id: attempt.id,
-                state,
-            }),
-        }
+        self.inner()
+            .resolve_prepare_park(attempt, PrepareParkResolution::Abort)
     }
 
     pub(crate) fn mark_parked(&self, attempt: &ParkAttempt) -> Result<(), PrepareParkError> {
@@ -194,6 +174,20 @@ pub(crate) enum PrepareParkError {
     },
 }
 
+enum PrepareParkResolution {
+    Complete,
+    Abort,
+}
+
+impl PrepareParkResolution {
+    fn next_state(self, attempt_id: ParkAttemptId) -> CoordinatorState {
+        match self {
+            Self::Complete => CoordinatorState::ReadyForPark { attempt_id },
+            Self::Abort => CoordinatorState::Open,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Inner {
     state: CoordinatorState,
@@ -201,6 +195,24 @@ struct Inner {
 }
 
 impl Inner {
+    fn resolve_prepare_park(
+        &mut self,
+        attempt: &ParkAttempt,
+        resolution: PrepareParkResolution,
+    ) -> Result<(), PrepareParkError> {
+        match self.state.clone() {
+            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == attempt.id => {
+                self.state = resolution.next_state(attempt_id);
+                Ok(())
+            }
+            CoordinatorState::Dirty { reason } => Err(PrepareParkError::Dirty { reason }),
+            state => Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state,
+            }),
+        }
+    }
+
     fn mark_dirty(&mut self, reason: DirtyReason) {
         if matches!(self.state, CoordinatorState::Dirty { .. }) {
             return;
