@@ -1,6 +1,7 @@
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://developers.rentcast.io/reference/getting-started-guide.md";
+const DOCS_URL =
+  "https://developers.rentcast.io/reference/getting-started-guide.md";
 const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof";
 
 function generateTypeScript(): string {
