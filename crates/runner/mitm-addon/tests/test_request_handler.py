@@ -322,8 +322,9 @@ class TestRequestHandler:
         assert flow.metadata["original_url"] == "https://api.github.com:8443/repos"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
+    @pytest.mark.parametrize("host_header", ["[2001:db8::1]", "[2001:db8::1]:8443"])
     async def test_accepts_matching_ipv6_host_authority(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, host_header
     ):
         reg_path = _write_github_firewall_registry(
             tmp_path,
@@ -336,7 +337,7 @@ class TestRequestHandler:
             port=8443,
             sni="2001:db8::1",
             path="/repos",
-            request_headers=headers(("Host", "[2001:db8::1]:8443")),
+            request_headers=headers(("Host", host_header)),
         )
 
         with (
