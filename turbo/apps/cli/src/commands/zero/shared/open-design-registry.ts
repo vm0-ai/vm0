@@ -49,7 +49,7 @@ export interface OpenDesignCandidateSlice {
 const OPEN_DESIGN_REPO = "vm0-ai/open-design";
 const OPEN_DESIGN_COMMIT = "d021b04720ace133f1d6133d1487326f5fc28f07";
 
-export const OPEN_DESIGN_REGISTRY_VERSION = `${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
+const OPEN_DESIGN_REGISTRY_VERSION = `${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
 
 function source(path: string): OpenDesignSourceRef {
   return {
