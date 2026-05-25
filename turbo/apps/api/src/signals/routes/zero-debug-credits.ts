@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { zeroDebugSetCreditsContract } from "@vm0/api-contracts/contracts/zero-debug-credits";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { notFound } from "../../lib/error";
@@ -24,17 +23,24 @@ const setCreditsAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
+  const { credits } = bodyResult.data;
   const db = set(writeDb$);
-  const [row] = await db
-    .update(orgMetadata)
-    .set({ credits: bodyResult.data.credits, updatedAt: nowDate() })
-    .where(eq(orgMetadata.orgId, auth.orgId))
+  // Upsert: fresh orgs may not have an org_metadata row yet (the starter
+  // grant only runs on onboarding / first CLI auth), so a plain UPDATE
+  // would silently miss and 404. Insert with the requested balance, and
+  // update credits + updatedAt on conflict — preserve any existing tier
+  // / Stripe / auto-recharge fields.
+  const rows = await db
+    .insert(orgMetadata)
+    .values({ orgId: auth.orgId, credits })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { credits, updatedAt: nowDate() },
+    })
     .returning({ credits: orgMetadata.credits });
   signal.throwIfAborted();
-
-  if (!row) {
-    return notFound("Org not found");
-  }
+  // Upsert with conflict-target always returns exactly one row.
+  const row = rows[0] ?? { credits };
 
   return { status: 200 as const, body: { credits: row.credits } };
 });

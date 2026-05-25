@@ -90,6 +90,51 @@ describe("POST /api/zero/debug/set-credits", () => {
     expect(row?.credits).toBe(5000);
   });
 
+  it("creates an org_metadata row when one does not exist yet", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    await track(Promise.resolve({ orgId, userId }));
+    mocks.clerk.session(userId, orgId);
+
+    const response = await accept(
+      client().create({ headers: authHeaders(), body: { credits: 0 } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ credits: 0 });
+
+    const [row] = await store
+      .set(writeDb$)
+      .select({ credits: orgMetadata.credits, tier: orgMetadata.tier })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId));
+    expect(row).toStrictEqual({ credits: 0, tier: "free" });
+  });
+
+  it("preserves tier when updating an existing org", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .insert(orgMetadata)
+      .values({ orgId, credits: 5000, tier: "pro" });
+    await track(Promise.resolve({ orgId, userId }));
+    mocks.clerk.session(userId, orgId);
+
+    const response = await accept(
+      client().create({ headers: authHeaders(), body: { credits: 0 } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ credits: 0 });
+
+    const [row] = await writeDb
+      .select({ credits: orgMetadata.credits, tier: orgMetadata.tier })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId));
+    expect(row).toStrictEqual({ credits: 0, tier: "pro" });
+  });
+
   it("returns 401 when unauthenticated", async () => {
     const response = await accept(
       client().create({ headers: {}, body: { credits: 0 } }),
