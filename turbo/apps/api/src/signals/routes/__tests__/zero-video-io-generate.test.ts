@@ -460,6 +460,7 @@ describe("POST /api/zero/video-io/generate", () => {
   );
 
   beforeEach(() => {
+    mockEnv("VM0_API_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({

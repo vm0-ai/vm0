@@ -49,6 +49,7 @@ yarn-error.log*
 
 # Dev server files (written by /dev-start, read by /dev-logs)
 .dev-task-id
+.dev-process-pid
 .dev-server.log
 .dev-tunnel-url
 

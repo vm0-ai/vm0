@@ -135,20 +135,20 @@ describe("attachment preview component", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("should render video preview for .mp4 files", () => {
+  it("should render video thumbnail for .mp4 files", () => {
     renderPreview({
       filename: "video.mp4",
       url: "https://example.com/video.mp4",
     });
     const preview = screen.getByTestId("attachment-preview-video");
+    const video = preview.querySelector("video");
+
     expect(preview).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Video preview for video.mp4"),
-    ).toHaveAttribute("src", "https://example.com/video.mp4");
-    expect(screen.getByLabelText("Download video.mp4")).toHaveAttribute(
-      "type",
-      "button",
-    );
+      screen.getByLabelText("Open video preview for video.mp4"),
+    ).toHaveAttribute("type", "button");
+    expect(video?.getAttribute("src")).toBe("https://example.com/video.mp4");
+    expect(video?.hasAttribute("controls")).toBeFalsy();
   });
 
   it("should render a thumbnail preview block for non-inline upload file types", () => {
@@ -259,10 +259,9 @@ describe("attachment preview component", () => {
       contentType: "video/mp4",
     });
     expect(screen.getByTestId("attachment-preview-video")).toBeInTheDocument();
-    expect(screen.getByLabelText("Video preview for clip")).toHaveAttribute(
-      "src",
-      "https://example.com/clip",
-    );
+    expect(
+      screen.getByLabelText("Open video preview for clip"),
+    ).toHaveAttribute("type", "button");
   });
 
   // Charset suffix

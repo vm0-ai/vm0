@@ -839,9 +839,9 @@ describe("zero chat thread page display - body link document preview", () => {
   });
 });
 
-// CHAT-D-065: Video attachments render as playable previews with download.
+// CHAT-D-065: Video attachments render as poster buttons and open playback preview.
 describe("zero chat thread page display - attachment video preview", () => {
-  it("renders an mp4 attachment with a preview cover and download button", async () => {
+  it("renders an mp4 attachment poster and opens an autoplaying preview", async () => {
     const videoUrl = "https://example.com/clip.mp4";
     mockChatLifecycle({
       chatMessages: [
@@ -855,23 +855,35 @@ describe("zero chat thread page display - attachment video preview", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    const preview = await waitFor(() => {
-      return screen.getByTestId("attachment-preview-video");
+    const previewButton = await waitFor(() => {
+      return screen.getByLabelText("Preview clip.mp4");
     });
-    const video = screen.getByLabelText("Video preview for clip.mp4");
-    const download = screen.getByLabelText("Download clip.mp4");
+    const posterVideo = previewButton.querySelector("video");
 
-    expect(preview).toBeInTheDocument();
     expect(
-      within(preview).getByTestId("attachment-preview-video-icon"),
+      within(previewButton).getByTestId("chat-video-preview-poster"),
     ).toBeInTheDocument();
-    expect(video).toHaveAttribute("src", videoUrl);
-    expect(video).toHaveAttribute("preload", "metadata");
-    expect(download).toHaveAttribute("type", "button");
-    expect(download).not.toHaveAttribute("href");
+    expect(posterVideo?.getAttribute("src")).toBe(videoUrl);
+    expect(posterVideo?.hasAttribute("controls")).toBeFalsy();
+    expect(
+      screen.queryByLabelText("Video preview for clip.mp4"),
+    ).not.toBeInTheDocument();
     expect(
       document.querySelector(`img[src="${videoUrl}"]`),
     ).not.toBeInTheDocument();
+
+    await userEvent.click(previewButton);
+
+    const lightbox = await waitFor(() => {
+      return screen.getByTestId("attachment-lightbox");
+    });
+    const video = within(lightbox).getByLabelText("Video preview for clip.mp4");
+
+    expect(video).toHaveAttribute("src", videoUrl);
+    expect(video).toHaveAttribute("controls");
+    expect((video as HTMLVideoElement).autoplay).toBeTruthy();
+    expect(within(lightbox).getByLabelText("Copy link")).toBeInTheDocument();
+    expect(within(lightbox).getByLabelText("Download")).toBeInTheDocument();
   });
 });
 
@@ -1186,6 +1198,9 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(screen.getByText("Artifacts")).toBeInTheDocument();
       expect(screen.getAllByText("mobile.zip").length).toBeGreaterThan(0);
     });
+    expect(screen.getByRole("dialog", { name: "Artifacts" })).toHaveClass(
+      "max-w-[100vw]",
+    );
   });
 
   it("renders markdown artifacts through the text loader instead of an iframe", async () => {
