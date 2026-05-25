@@ -15,6 +15,8 @@ interface ConsumeResponse {
   };
 }
 
+const DESKTOP_AUTH_TOKEN_PATH = "/desktop-auth/token";
+
 async function exchangeDesktopAuthCode(code: string): Promise<string> {
   const response = await fetch("/api/desktop-auth/consume", {
     method: "POST",
@@ -56,7 +58,7 @@ export function DesktopAuthConsumeClient({
       .then((result) => {
         if (result.status === "complete" && result.createdSessionId) {
           return setActive({ session: result.createdSessionId }).then(() => {
-            window.location.href = "/";
+            window.location.href = DESKTOP_AUTH_TOKEN_PATH;
           });
         }
         throw new Error(`Unexpected status: ${result.status}`);

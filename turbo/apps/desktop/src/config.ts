@@ -20,6 +20,7 @@ const DESKTOP_IDENTITIES: Record<DesktopIdentityKind, DesktopIdentity> =
 
 interface DesktopConfig {
   readonly platformUrl: URL;
+  readonly webUrl: URL;
   readonly environment: DesktopEnvironment;
   readonly identity: DesktopIdentity;
   readonly sessionPartition: string;
@@ -110,27 +111,16 @@ function identityForEnvironment(
   return DESKTOP_IDENTITIES.development;
 }
 
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
 function addDerivedOrigin(
   origins: Set<string>,
   platformUrl: URL,
   target: "api" | "www",
 ): void {
-  if (
-    platformUrl.hostname === "localhost" ||
-    platformUrl.hostname === "127.0.0.1"
-  ) {
-    return;
-  }
-
-  const url = new URL(platformUrl.toString());
-  url.hostname = url.hostname.replace(
-    /(^|-)(api|app|platform|www)\./,
-    `$1${target}.`,
-  );
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
-  origins.add(url.origin);
+  origins.add(deriveCompanionUrl(platformUrl, target).origin);
 }
 
 function allowedOriginsForPlatformUrl(platformUrl: URL): ReadonlySet<string> {
@@ -138,6 +128,24 @@ function allowedOriginsForPlatformUrl(platformUrl: URL): ReadonlySet<string> {
   addDerivedOrigin(origins, platformUrl, "www");
   addDerivedOrigin(origins, platformUrl, "api");
   return origins;
+}
+
+function deriveCompanionUrl(platformUrl: URL, target: "api" | "www"): URL {
+  const url = new URL(platformUrl.toString());
+  if (isLocalHost(url.hostname)) {
+    if (url.port === "3002") {
+      url.port = target === "www" ? "3000" : "3001";
+    }
+  } else {
+    url.hostname = url.hostname.replace(
+      /(^|-)(api|app|platform|www)\./,
+      `$1${target}.`,
+    );
+  }
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url;
 }
 
 export function resolveDesktopConfig(rawPlatformUrl?: string): DesktopConfig {
@@ -148,6 +156,7 @@ export function resolveDesktopConfig(rawPlatformUrl?: string): DesktopConfig {
 
   return {
     platformUrl,
+    webUrl: deriveCompanionUrl(platformUrl, "www"),
     environment,
     identity: identityForEnvironment(environment),
     sessionPartition: `persist:vm0-desktop-${environment}`,

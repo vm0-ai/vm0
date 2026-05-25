@@ -20,9 +20,14 @@ import {
 import { resolveDesktopConfig } from "./config";
 import {
   buildDesktopAuthConsumeUrl,
+  buildDesktopAuthSelectOrgUrl,
   buildDesktopAuthStartUrl,
+  buildDesktopAuthTokenUrl,
   createDesktopAuthStartGate,
+  isDesktopAuthCompletionNavigation,
+  isDesktopAuthSelectOrgNavigation,
   isDesktopAuthStartNavigation,
+  isElectronNavigationAborted,
   parseDesktopAuthCallbackArgv,
   parseDesktopAuthCallback,
 } from "./desktop-auth";
@@ -55,6 +60,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("");
 
     expect(config.platformUrl.toString()).toBe("https://app.vm0.ai/");
+    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
       displayName: "Zero",
@@ -73,6 +79,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("https://staging-app.vm6.ai/");
 
     expect(config.environment).toBe("staging");
+    expect(config.webUrl.toString()).toBe("https://staging-www.vm6.ai/");
     expect(config.identity).toMatchObject({
       displayName: "Zero Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
@@ -91,24 +98,26 @@ describe("resolveDesktopConfig", () => {
   });
 
   it("treats custom app hostnames as development", () => {
-    const config = resolveDesktopConfig("https://app.vm7.ai/");
+    const config = resolveDesktopConfig("https://app.vm7.ai:8443/");
 
     expect(config.environment).toBe("development");
+    expect(config.webUrl.toString()).toBe("https://www.vm7.ai:8443/");
     expect(config.identity).toMatchObject({
       displayName: "Zero Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-development");
-    expect(config.allowedAppOrigins.has("https://app.vm7.ai")).toBe(true);
-    expect(config.allowedAppOrigins.has("https://www.vm7.ai")).toBe(true);
-    expect(config.allowedAppOrigins.has("https://api.vm7.ai")).toBe(true);
+    expect(config.allowedAppOrigins.has("https://app.vm7.ai:8443")).toBe(true);
+    expect(config.allowedAppOrigins.has("https://www.vm7.ai:8443")).toBe(true);
+    expect(config.allowedAppOrigins.has("https://api.vm7.ai:8443")).toBe(true);
   });
 
   it("derives matching origins for PR preview hostnames", () => {
     const config = resolveDesktopConfig("https://pr-123-app.vm6.ai/");
 
     expect(config.environment).toBe("development");
+    expect(config.webUrl.toString()).toBe("https://pr-123-www.vm6.ai/");
     expect(config.identity).toMatchObject({
       displayName: "Zero Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
@@ -121,11 +130,14 @@ describe("resolveDesktopConfig", () => {
     ]);
   });
 
-  it("does not derive localhost companion origins", () => {
+  it("derives localhost companion origins from the app port", () => {
     const config = resolveDesktopConfig("http://localhost:3002");
 
     expect(config.environment).toBe("development");
-    expect([...config.allowedAppOrigins]).toStrictEqual([
+    expect(config.webUrl.toString()).toBe("http://localhost:3000/");
+    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
+      "http://localhost:3000",
+      "http://localhost:3001",
       "http://localhost:3002",
     ]);
   });
@@ -230,23 +242,23 @@ describe("computer use native helper", () => {
 
 describe("desktop auth", () => {
   const allowedOrigins = new Set(["https://app.vm0.ai", "https://www.vm0.ai"]);
-  const platformUrl = new URL("https://app.vm0.ai");
+  const webUrl = new URL("https://www.vm0.ai");
   const code = "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
 
   it("builds the production system-browser desktop auth start URL", () => {
-    expect(buildDesktopAuthStartUrl(platformUrl, "ai.vm0.zero.desktop")).toBe(
-      "https://app.vm0.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop",
+    expect(buildDesktopAuthStartUrl(webUrl, "ai.vm0.zero.desktop")).toBe(
+      "https://www.vm0.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop",
     );
   });
 
   it("builds the development system-browser desktop auth start URL", () => {
     expect(
       buildDesktopAuthStartUrl(
-        new URL("https://app.vm7.ai"),
+        new URL("https://www.vm7.ai:8443"),
         "ai.vm0.zero.desktop.dev",
       ),
     ).toBe(
-      "https://app.vm7.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop.dev",
+      "https://www.vm7.ai:8443/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop.dev",
     );
   });
 
@@ -279,6 +291,12 @@ describe("desktop auth", () => {
     expect(
       isDesktopAuthStartNavigation(
         "https://app.vm0.ai/desktop-auth/start",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAuthStartNavigation(
+        "https://www.vm0.ai/desktop-auth/start",
         allowedOrigins,
       ),
     ).toBe(true);
@@ -366,9 +384,76 @@ describe("desktop auth", () => {
   });
 
   it("builds the Electron web-session consume URL", () => {
-    expect(buildDesktopAuthConsumeUrl(platformUrl, code)).toBe(
-      `https://app.vm0.ai/desktop-auth/consume?code=${code}`,
+    expect(buildDesktopAuthConsumeUrl(webUrl, code)).toBe(
+      `https://www.vm0.ai/desktop-auth/consume?code=${code}`,
     );
+  });
+
+  it("builds the Electron web-session organization selection URL", () => {
+    expect(buildDesktopAuthSelectOrgUrl(webUrl)).toBe(
+      "https://www.vm0.ai/desktop-auth/select-org",
+    );
+    expect(buildDesktopAuthSelectOrgUrl(webUrl, true)).toBe(
+      "https://www.vm0.ai/desktop-auth/select-org?force=true",
+    );
+  });
+
+  it("builds the Electron web-session token refresh URL", () => {
+    expect(buildDesktopAuthTokenUrl(webUrl)).toBe(
+      "https://www.vm0.ai/desktop-auth/token",
+    );
+  });
+
+  it("detects desktop auth organization selection navigation", () => {
+    expect(
+      isDesktopAuthSelectOrgNavigation(
+        "https://app.vm0.ai/desktop-auth/select-org",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAuthSelectOrgNavigation(
+        "https://www.vm0.ai/desktop-auth/select-org?force=true",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAuthSelectOrgNavigation(
+        "https://accounts.google.com/signin",
+        allowedOrigins,
+      ),
+    ).toBe(false);
+  });
+
+  it("detects desktop auth completion navigation after locale redirects", () => {
+    expect(
+      isDesktopAuthCompletionNavigation("https://www.vm0.ai/", allowedOrigins),
+    ).toBe(true);
+    expect(
+      isDesktopAuthCompletionNavigation(
+        "https://www.vm0.ai/en",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAuthCompletionNavigation(
+        "https://www.vm0.ai/desktop-auth/token",
+        allowedOrigins,
+      ),
+    ).toBe(false);
+    expect(
+      isDesktopAuthCompletionNavigation(
+        "https://accounts.google.com/signin",
+        allowedOrigins,
+      ),
+    ).toBe(false);
+  });
+
+  it("recognizes Electron navigation aborts as non-fatal auth redirects", () => {
+    expect(isElectronNavigationAborted({ code: "ERR_ABORTED" })).toBe(true);
+    expect(isElectronNavigationAborted({ errno: -3 })).toBe(true);
+    expect(isElectronNavigationAborted({ code: "ERR_FAILED" })).toBe(false);
+    expect(isElectronNavigationAborted(null)).toBe(false);
   });
 });
 

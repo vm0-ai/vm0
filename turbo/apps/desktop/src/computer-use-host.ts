@@ -13,6 +13,7 @@ import type {
 } from "./computer-use-types";
 
 const ONLINE_POLL_MS = 2_000;
+const AUTH_ME_PATH = "/api/auth/me";
 
 export type ComputerUseHostFetch = (
   input: string,
@@ -221,11 +222,19 @@ export class ComputerUseHostRuntime {
       },
     );
     if (response.status === 401) {
-      this.setState({
-        status: "unauthenticated",
-        lastError:
-          "Desktop host could not authenticate with the API session. Sign in and retry.",
-      });
+      if (await this.hasAuthenticatedSession()) {
+        this.setState({
+          status: "needs_organization",
+          lastError:
+            "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.",
+        });
+      } else {
+        this.setState({
+          status: "unauthenticated",
+          lastError:
+            "Desktop host could not authenticate with the API session. Sign in and retry.",
+        });
+      }
       return null;
     }
     if (response.status === 403) {
@@ -248,6 +257,16 @@ export class ComputerUseHostRuntime {
       lastError: null,
     });
     return ONLINE_POLL_MS;
+  }
+
+  private async hasAuthenticatedSession(): Promise<boolean> {
+    const response = await this.sessionFetch(
+      `${this.apiBaseUrl}${AUTH_ME_PATH}`,
+      {
+        method: "GET",
+      },
+    );
+    return response.ok;
   }
 
   private async heartbeat(): Promise<boolean> {

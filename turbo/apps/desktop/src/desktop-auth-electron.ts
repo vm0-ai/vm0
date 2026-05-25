@@ -5,10 +5,17 @@ import { isDesktopRendererUrl } from "./desktop-renderer-url";
 
 interface DesktopAuthIpcOptions {
   readonly rendererUrl: string;
+  readonly allowedAppOrigins: ReadonlySet<string>;
 }
 
 interface DesktopAuthNativeApi {
   readonly openSignIn: () => void;
+  readonly openOrgSelection: () => Promise<void>;
+  readonly completeSignIn: (token: string) => Promise<void> | void;
+}
+
+interface DesktopAuthCompleteSignInPayload {
+  readonly token: string;
 }
 
 export function notifyDesktopAuthChanged(): void {
@@ -31,8 +38,48 @@ export function installDesktopAuthIpc(
     }
   };
 
+  const assertDesktopAuthPage = (event: IpcMainInvokeEvent): void => {
+    const rawUrl = event.senderFrame?.url ?? "";
+    try {
+      const url = new URL(rawUrl);
+      if (options.allowedAppOrigins.has(url.origin)) {
+        return;
+      }
+    } catch {
+      // Fall through to the error below.
+    }
+    throw new Error("Desktop auth completion is unavailable on this page");
+  };
+
+  const parseCompleteSignInPayload = (
+    value: unknown,
+  ): DesktopAuthCompleteSignInPayload => {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("token" in value) ||
+      typeof value.token !== "string" ||
+      value.token.length === 0
+    ) {
+      throw new Error("Desktop auth completion requires a token");
+    }
+    return { token: value.token };
+  };
+
   ipcMain.handle(DESKTOP_AUTH_CHANNELS.openSignIn, (event) => {
     assertDesktopRenderer(event);
     api.openSignIn();
   });
+  ipcMain.handle(DESKTOP_AUTH_CHANNELS.openOrgSelection, async (event) => {
+    assertDesktopRenderer(event);
+    await api.openOrgSelection();
+  });
+  ipcMain.handle(
+    DESKTOP_AUTH_CHANNELS.completeSignIn,
+    async (event, payload: unknown) => {
+      assertDesktopAuthPage(event);
+      const parsed = parseCompleteSignInPayload(payload);
+      await api.completeSignIn(parsed.token);
+    },
+  );
 }

@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import {
   IconAlertCircle,
+  IconBuilding,
   IconCheck,
   IconClock,
   IconExternalLink,
@@ -23,6 +24,7 @@ import {
   hasDesktopComputerUseBridge,
   maybeAutoStartComputerUse$,
   openAccessibilitySettings$,
+  openDesktopOrgSelection$,
   openDesktopSignIn$,
   openScreenRecordingSettings$,
   refreshComputerUse$,
@@ -38,6 +40,7 @@ const STATUS_LABELS = {
   connecting: "Connecting",
   online: "Online",
   unauthenticated: "Signed out",
+  needs_organization: "Select workspace",
   disabled: "Disabled",
   error: "Error",
 } as const satisfies Record<HostStatus, string>;
@@ -225,12 +228,16 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   const [startLoadable, start] = useLoadableSet(startComputerUse$);
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
+  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
+    openDesktopOrgSelection$,
+  );
   const missingPermissions =
     !state.permissions.accessibility || !state.permissions.screenRecording;
   const startDisabled =
     missingPermissions ||
     state.host.status === "connecting" ||
     state.host.status === "online" ||
+    state.host.status === "needs_organization" ||
     startLoadable.state === "loading";
 
   return (
@@ -292,6 +299,18 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
             Sign in
           </IconButton>
         )}
+        {state.host.status === "needs_organization" &&
+          hasDesktopAuthBridge() && (
+            <IconButton
+              icon={<IconBuilding size={15} />}
+              onClick={() => {
+                void selectOrg();
+              }}
+              disabled={orgSelectionLoadable.state === "loading"}
+            >
+              Select workspace
+            </IconButton>
+          )}
       </div>
     </Panel>
   );
