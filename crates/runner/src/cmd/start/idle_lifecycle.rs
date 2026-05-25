@@ -335,6 +335,7 @@ mod tests {
 
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        assert_eq!(budget.allocated(), (2, 4096, 1));
         let candidate =
             ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
                 sandbox,
