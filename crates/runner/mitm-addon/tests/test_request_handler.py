@@ -287,8 +287,15 @@ class TestRequestHandler:
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
+    @pytest.mark.parametrize("host_header", ["api.github.com", "api.github.com:8443"])
     async def test_accepts_matching_non_default_host_authority_port(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        headers,
+        host_header,
     ):
         reg_path = _write_github_firewall_registry(
             tmp_path,
@@ -301,7 +308,7 @@ class TestRequestHandler:
             port=8443,
             sni="api.github.com",
             path="/repos",
-            request_headers=headers(("Host", "api.github.com:8443")),
+            request_headers=headers(("Host", host_header)),
         )
 
         with (
