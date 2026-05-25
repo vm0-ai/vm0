@@ -390,6 +390,13 @@ class TestRequestHandler:
                 "https://xn--bcher-kva.example",
                 "https://xn--bcher-kva.example/repos",
             ),
+            (
+                "https://xn--bcher-kva.example",
+                "xn--bcher-kva.example",
+                "bücher.example",
+                "https://xn--bcher-kva.example",
+                "https://xn--bcher-kva.example/repos",
+            ),
         ],
     )
     async def test_accepts_authority_host_normalization_equivalence(
