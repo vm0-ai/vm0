@@ -448,10 +448,11 @@ class TestRequestHandler:
         auth_fetch.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("request_port", "expected_original_url"),
+        ("request_port", "raw_sni", "expected_sni", "expected_original_url"),
         [
-            (443, "https://203.0.113.10/repos"),
-            (8443, "https://203.0.113.10:8443/repos"),
+            (443, None, None, "https://203.0.113.10/repos"),
+            (443, "   ", "", "https://203.0.113.10/repos"),
+            (8443, None, None, "https://203.0.113.10:8443/repos"),
         ],
     )
     async def test_rejects_missing_https_sni_before_firewall_auth(
@@ -462,6 +463,8 @@ class TestRequestHandler:
         fake_firewall_headers,
         headers,
         request_port,
+        raw_sni,
+        expected_sni,
         expected_original_url,
     ):
         reg_path = _write_github_firewall_registry(tmp_path)
@@ -473,7 +476,7 @@ class TestRequestHandler:
             path="/repos",
             request_headers=headers(("Host", "api.github.com")),
         )
-        flow.client_conn.sni = None
+        flow.client_conn.sni = raw_sni
 
         with (
             mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -485,7 +488,7 @@ class TestRequestHandler:
         assert flow.response.status_code == 403
         body = json.loads(flow.response.content)
         assert body["error"] == "missing_sni"
-        assert body["sni"] is None
+        assert body["sni"] == expected_sni
         assert flow.metadata["firewall_action"] == "DENY"
         assert flow.metadata["firewall_error"] == "missing_sni"
         assert flow.metadata["original_url"] == expected_original_url
