@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.382.0](https://github.com/vm0-ai/vm0/compare/app-v0.381.0...app-v0.382.0) (2026-05-25)
+
+
+### Features
+
+* add chat markdown math rendering ([#14734](https://github.com/vm0-ai/vm0/issues/14734)) ([9448050](https://github.com/vm0-ai/vm0/commit/94480502a37f4611dd4ba254ef128df1600cfeef))
+* add clearbit api token connector ([#14706](https://github.com/vm0-ai/vm0/issues/14706)) ([353df45](https://github.com/vm0-ai/vm0/commit/353df455f783eaa0175c82656571c1f9c7f9ba2a))
+* add coresignal api token connector ([#14705](https://github.com/vm0-ai/vm0/issues/14705)) ([87ea2e7](https://github.com/vm0-ai/vm0/commit/87ea2e73df87b1e52104f83bddb6fb19c02f95a3))
+* **connectors:** add people data labs connector ([#14704](https://github.com/vm0-ai/vm0/issues/14704)) ([3c51992](https://github.com/vm0-ai/vm0/commit/3c51992320108c39c4d87052417aede56d8dcadb))
+* **desktop:** move computer use to local renderer ([#14759](https://github.com/vm0-ai/vm0/issues/14759)) ([245b44a](https://github.com/vm0-ai/vm0/commit/245b44a24a620df8df2be0911411aa8c29958e78))
+
+
+### Bug Fixes
+
+* keep user artifact links as chat text ([#14614](https://github.com/vm0-ai/vm0/issues/14614)) ([f6b0ad7](https://github.com/vm0-ai/vm0/commit/f6b0ad78cbf04d1e977f32a2cd3ea550510ff819))
+* make settings compare plans button work ([#14746](https://github.com/vm0-ai/vm0/issues/14746)) ([c816014](https://github.com/vm0-ai/vm0/commit/c816014f42ea7f329c2216d82b765cdff91dbe4c))
+* remove model picker shortcut ([#14731](https://github.com/vm0-ai/vm0/issues/14731)) ([05531d1](https://github.com/vm0-ai/vm0/commit/05531d14257c1f3fb6b93ab0080ce45554616f32))
+* show pinned chat threads across agents ([#14735](https://github.com/vm0-ai/vm0/issues/14735)) ([9764de2](https://github.com/vm0-ai/vm0/commit/9764de2797e676e31419c0d8012edc3b9a6407ce))
+
+
+### Refactoring
+
+* **platform:** remove desktop auth routes ([#14771](https://github.com/vm0-ai/vm0/issues/14771)) ([3303cb4](https://github.com/vm0-ai/vm0/commit/3303cb42e542a6807e382be1dff3d281983125ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.1
+    * @vm0/connectors bumped to 1.32.0
+    * @vm0/core bumped to 8.293.0
+
 ## [0.381.0](https://github.com/vm0-ai/vm0/compare/app-v0.380.1...app-v0.381.0) (2026-05-25)
 
 

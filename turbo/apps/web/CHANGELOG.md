@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.387.1](https://github.com/vm0-ai/vm0/compare/web-v12.387.0...web-v12.387.1) (2026-05-25)
+
+
+### Refactoring
+
+* **platform:** remove desktop auth routes ([#14771](https://github.com/vm0-ai/vm0/issues/14771)) ([3303cb4](https://github.com/vm0-ai/vm0/commit/3303cb42e542a6807e382be1dff3d281983125ef))
+* remove web behavior count leftover ([#14776](https://github.com/vm0-ai/vm0/issues/14776)) ([23ac374](https://github.com/vm0-ai/vm0/commit/23ac3747751020c3e7889903a04ecf336346b65d))
+* remove web oauth provider key bridge ([#14765](https://github.com/vm0-ai/vm0/issues/14765)) ([9209c1e](https://github.com/vm0-ai/vm0/commit/9209c1edcdbaca2a462b986249dfa131a5645072))
+* remove web voice-io audio-duration helper ([#14764](https://github.com/vm0-ai/vm0/issues/14764)) ([40f0cc9](https://github.com/vm0-ai/vm0/commit/40f0cc9fb969c1679c0b77d6105479b02014ed9b))
+* retire web telegram helper leftovers ([#14760](https://github.com/vm0-ai/vm0/issues/14760)) ([593d484](https://github.com/vm0-ai/vm0/commit/593d484038ad9dacb54c36c28a265baa78b73b3c))
+* **web:** remove auth test helper leftovers ([#14757](https://github.com/vm0-ai/vm0/issues/14757)) ([538e3ad](https://github.com/vm0-ai/vm0/commit/538e3ada94f1f6ddbbde1ec4ca4ce60e7e2fee9f))
+* **web:** remove credit service leftovers ([#14785](https://github.com/vm0-ai/vm0/issues/14785)) ([938b1ac](https://github.com/vm0-ai/vm0/commit/938b1ac29bc65f0737b2a520f6461c607f747f7d))
+* **web:** remove lightweight model leftover ([#14770](https://github.com/vm0-ai/vm0/issues/14770)) ([7908f25](https://github.com/vm0-ai/vm0/commit/7908f25425537a14d96d9ac92969d7d71768a086))
+* **web:** remove web-only slack leftovers ([#14750](https://github.com/vm0-ai/vm0/issues/14750)) ([3779565](https://github.com/vm0-ai/vm0/commit/37795653e231a5ac5b6039abb0290c1ea061f1e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.1
+    * @vm0/connectors bumped to 1.32.0
+    * @vm0/core bumped to 8.293.0
+    * @vm0/db bumped to 1.18.9
+
 ## [12.387.0](https://github.com/vm0-ai/vm0/compare/web-v12.386.1...web-v12.387.0) (2026-05-25)
 
 

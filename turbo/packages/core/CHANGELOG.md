@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.293.0](https://github.com/vm0-ai/vm0/compare/core-v8.292.4...core-v8.293.0) (2026-05-25)
+
+
+### Features
+
+* add chat markdown math rendering ([#14734](https://github.com/vm0-ai/vm0/issues/14734)) ([9448050](https://github.com/vm0-ai/vm0/commit/94480502a37f4611dd4ba254ef128df1600cfeef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.39.1
+    * @vm0/connectors bumped to 1.32.0
+
 ## [8.292.4](https://github.com/vm0-ai/vm0/compare/core-v8.292.3...core-v8.292.4) (2026-05-25)
 
 

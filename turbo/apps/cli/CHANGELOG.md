@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.161.8](https://github.com/vm0-ai/vm0/compare/cli-v9.161.7...cli-v9.161.8) (2026-05-25)
+
+
+### Bug Fixes
+
+* validate video frame aspect ratios ([#14615](https://github.com/vm0-ai/vm0/issues/14615)) ([0571e70](https://github.com/vm0-ai/vm0/commit/0571e70979439cdfff2cdd1851592d2d33a29871))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.39.1
+    * @vm0/connectors bumped to 1.32.0
+    * @vm0/core bumped to 8.293.0
+
 ## [9.161.7](https://github.com/vm0-ai/vm0/compare/cli-v9.161.6...cli-v9.161.7) (2026-05-25)
 
 

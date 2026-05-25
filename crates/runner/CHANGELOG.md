@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.103.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.16...runner-rs-v0.103.17) (2026-05-25)
+
+
+### Bug Fixes
+
+* **mitm-addon:** use streamed byte count for response size ([#14752](https://github.com/vm0-ai/vm0/issues/14752)) ([5e02546](https://github.com/vm0-ai/vm0/commit/5e025467b59de2e6ef4f2ff7b07e31f3cdea4e13))
+
+
+### Refactoring
+
+* **mitm-addon:** structure firewall allow results ([#14772](https://github.com/vm0-ai/vm0/issues/14772)) ([4edcabc](https://github.com/vm0-ai/vm0/commit/4edcabc3d6d124ef627143ea8a767cf444a4f825))
+
 ## [0.103.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.15...runner-rs-v0.103.16) (2026-05-24)
 
 ## [0.103.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.14...runner-rs-v0.103.15) (2026-05-24)
