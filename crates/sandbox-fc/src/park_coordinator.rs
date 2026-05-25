@@ -422,10 +422,15 @@ mod tests {
         assert!(coordinator.abort_prepare_park(&stale).is_ok());
 
         let current = begin_attempt(&coordinator);
-        assert!(matches!(
+        assert_eq!(
             coordinator.complete_prepare_park(&stale, PrepareParkEvidence::AgentQuiesced),
-            Err(PrepareParkError::StaleAttempt { .. })
-        ));
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: stale.id,
+                state: CoordinatorState::ClosingForPark {
+                    attempt_id: current.id
+                },
+            })
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::ClosingForPark { attempt_id } if attempt_id == current.id
@@ -439,10 +444,15 @@ mod tests {
         assert!(coordinator.abort_prepare_park(&stale).is_ok());
 
         let current = begin_attempt(&coordinator);
-        assert!(matches!(
+        assert_eq!(
             coordinator.abort_prepare_park(&stale),
-            Err(PrepareParkError::StaleAttempt { .. })
-        ));
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: stale.id,
+                state: CoordinatorState::ClosingForPark {
+                    attempt_id: current.id
+                },
+            })
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::ClosingForPark { attempt_id } if attempt_id == current.id
@@ -455,10 +465,15 @@ mod tests {
         let attempt = begin_attempt(&coordinator);
         complete_attempt(&coordinator, &attempt);
 
-        assert!(matches!(
+        assert_eq!(
             coordinator.abort_prepare_park(&attempt),
-            Err(PrepareParkError::StaleAttempt { .. })
-        ));
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state: CoordinatorState::ReadyForPark {
+                    attempt_id: attempt.id
+                },
+            })
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::ReadyForPark { attempt_id } if attempt_id == attempt.id
@@ -471,10 +486,13 @@ mod tests {
         let attempt = begin_attempt(&coordinator);
         assert!(coordinator.abort_prepare_park(&attempt).is_ok());
 
-        assert!(matches!(
+        assert_eq!(
             coordinator.complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced),
-            Err(PrepareParkError::StaleAttempt { .. })
-        ));
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state: CoordinatorState::Open,
+            })
+        );
         assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
 
