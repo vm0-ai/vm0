@@ -186,6 +186,17 @@ class TestUsagePendingCounter:
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "explicit-usage-state-id"
 
+    def test_read_usage_flush_request_id_returns_none_without_pending_path(self):
+        usage.set_pending_path("")
+
+        assert usage.read_usage_flush_request_id() is None
+
+    def test_read_usage_flush_request_id_returns_none_when_marker_missing(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+
+        assert usage.read_usage_flush_request_id() is None
+
     def test_read_usage_flush_request_id_accepts_matching_marker(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
