@@ -94,6 +94,19 @@ function nativeScreenshotFields(
   };
 }
 
+function nativeAppStateWithScreenshot(
+  app: string,
+  snapshotId: string,
+  sourceName = "Example",
+) {
+  return {
+    app,
+    snapshotId,
+    ...nativeScreenshotFields({ screenshotSourceName: sourceName }),
+    elements: [],
+  };
+}
+
 describe("resolveDesktopConfig", () => {
   it("defaults to production", () => {
     const config = resolveDesktopConfig("");
@@ -530,10 +543,15 @@ describe("computer use desktop runtime", () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     const result = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.open", payload: { app: "Safari" } },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        nativeBackend: createNativeBackend({ openApp }),
+        nativeBackend: createNativeBackend({
+          openApp,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
       },
     );
 
@@ -541,9 +559,13 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         app: "Safari",
-        dispatchMode: "background_app_open",
-        dispatchTarget: "target_app",
-        inputRisk: "background_app_launch",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          dispatchMode: "background_app_open",
+          dispatchTarget: "target_app",
+          inputRisk: "background_app_launch",
+        },
       },
     });
     expect(openApp).toHaveBeenCalledWith("Safari");
@@ -988,10 +1010,15 @@ describe("computer use desktop runtime", () => {
         kind: "element.click",
         payload: { app: "Slack", elementId: "w0.c0.v2" },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        nativeBackend: createNativeBackend({ clickElement }),
+        nativeBackend: createNativeBackend({
+          clickElement,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId, "Slack");
+          },
+        }),
       },
     );
 
@@ -1002,6 +1029,82 @@ describe("computer use desktop runtime", () => {
       button: "left",
       clickCount: 1,
     });
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Slack",
+          elementId: "w0.c0.v2",
+          dispatchMode: "accessibility_action",
+        },
+      },
+    });
+  });
+
+  it("returns fresh app state and screenshot after element clicks", async () => {
+    const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: { app: "Things", elementId: "sidebar.inbox" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          clickElement,
+          getAppState: async (app, snapshotId) => {
+            return {
+              app,
+              snapshotId,
+              ...nativeScreenshotFields({ screenshotSourceName: "Inbox" }),
+              windowTitle: "Inbox",
+              elements: [
+                {
+                  id: "w0",
+                  role: "AXWindow",
+                  name: "Inbox",
+                  children: [
+                    {
+                      id: "w0.todo0",
+                      role: "AXStaticText",
+                      value: "Can you see this?",
+                    },
+                  ],
+                },
+              ],
+            };
+          },
+        }),
+      },
+    );
+
+    expect(clickElement).toHaveBeenCalledWith({
+      app: "Things",
+      elementId: "sidebar.inbox",
+      button: "left",
+      clickCount: 1,
+    });
+    expect(result.status).toBe("succeeded");
+    if (result.status !== "succeeded") {
+      throw new Error("expected click to succeed");
+    }
+    expect(result.result).toMatchObject({
+      app: "Things",
+      windowTitle: "Inbox",
+      screenshot: "data:image/png;base64,abc123",
+      screenshotSourceName: "Inbox",
+      action: {
+        app: "Things",
+        elementId: "sidebar.inbox",
+        dispatchMode: "accessibility_action",
+        text: "Clicked sidebar.inbox",
+      },
+    });
+    expect(result.result.text).toContain("Can you see this?");
+    expect(result.result.visibleText).toContain("Can you see this?");
   });
 
   it("maps model-facing element indexes back to internal element ids", async () => {
@@ -1076,7 +1179,7 @@ describe("computer use desktop runtime", () => {
         kind: "element.click",
         payload: { app: "Safari", snapshotId, elementIndex: 1 },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
         snapshotStore,
@@ -1096,11 +1199,20 @@ describe("computer use desktop runtime", () => {
     }
     expect(click.result).toMatchObject({
       app: "Safari",
-      snapshotId,
-      elementIndex: 1,
-      dispatchMode: "accessibility_action",
+      screenshot: "data:image/png;base64,abc123",
+      action: {
+        app: "Safari",
+        snapshotId,
+        elementIndex: 1,
+        dispatchMode: "accessibility_action",
+      },
     });
-    expect(click.result).not.toHaveProperty("elementId");
+    const action = click.result.action;
+    expect(action).toBeTruthy();
+    if (!action || typeof action !== "object" || Array.isArray(action)) {
+      throw new Error("expected click action metadata");
+    }
+    expect(action).not.toHaveProperty("elementId");
   });
 
   it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {
@@ -1166,7 +1278,7 @@ describe("computer use desktop runtime", () => {
           clickCount: 2,
         },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
         snapshotStore,
@@ -1178,16 +1290,20 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         app: "Safari",
-        snapshotId: "snap_1",
-        x: 400,
-        y: 300,
-        screenX: 900,
-        screenY: 800,
-        button: "right",
-        clickCount: 2,
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_pointer",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          x: 400,
+          y: 300,
+          screenX: 900,
+          screenY: 800,
+          button: "right",
+          clickCount: 2,
+          dispatchMode: "background_mouse_event",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_pointer",
+        },
       },
     });
     expect(clickPoint).toHaveBeenCalledWith({
@@ -1223,7 +1339,7 @@ describe("computer use desktop runtime", () => {
           y: 300,
         },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
         snapshotStore,
@@ -1293,19 +1409,23 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         app: "Safari",
-        snapshotId: "snap_fresh",
-        x: 200,
-        y: 150,
-        screenX: 440,
-        screenY: 380,
-        button: "left",
-        clickCount: 1,
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_pointer",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          snapshotId: "snap_fresh",
+          x: 200,
+          y: 150,
+          screenX: 440,
+          screenY: 380,
+          button: "left",
+          clickCount: 1,
+          dispatchMode: "background_mouse_event",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_pointer",
+        },
       },
     });
-    expect(stateCaptureCount).toBe(1);
+    expect(stateCaptureCount).toBe(2);
     expect(clickPoint).toHaveBeenCalledWith({
       app: "Safari",
       x: 440,
@@ -1411,13 +1531,19 @@ describe("computer use desktop runtime", () => {
             pressKey: async (request) => {
               pressRequests.push(request);
             },
+            getAppState: async (app, snapshotId) => {
+              return nativeAppStateWithScreenshot(app, snapshotId);
+            },
           }),
         },
       );
 
       expect(result).toMatchObject({
         status: "succeeded",
-        result: { key: testCase.normalizedKey },
+        result: {
+          screenshot: "data:image/png;base64,abc123",
+          action: { key: testCase.normalizedKey },
+        },
       });
       expect(pressRequests).toStrictEqual([
         {
@@ -1443,17 +1569,26 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        nativeBackend: createNativeBackend({ openApp, pressKey }),
+        nativeBackend: createNativeBackend({
+          openApp,
+          pressKey,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
       },
     );
 
     expect(result).toMatchObject({
       status: "succeeded",
       result: {
-        key: "Command+K",
-        dispatchMode: "background_keyboard_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_shortcut",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          key: "Command+K",
+          dispatchMode: "background_keyboard_event",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_shortcut",
+        },
       },
     });
     expect(pressKey).toHaveBeenCalledWith({

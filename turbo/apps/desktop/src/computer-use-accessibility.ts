@@ -1468,6 +1468,53 @@ async function getAppState(
   };
 }
 
+async function withPostActionAppState(args: {
+  readonly app: string;
+  readonly actionResult: ComputerUseCommandSuccess;
+  readonly nativeBackend: ComputerUseNativeBackend;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+}): Promise<ComputerUseCommandExecutionResult> {
+  const appStateResult = await getAppState(
+    args.app,
+    args.nativeBackend,
+    args.snapshotStore,
+  );
+  if (appStateResult.status === "failed") {
+    return appStateResult;
+  }
+  return {
+    status: "succeeded",
+    result: {
+      ...appStateResult.result,
+      action: args.actionResult.result,
+    },
+  };
+}
+
+async function executeWriteActionWithPostActionState(args: {
+  readonly app: string;
+  readonly permissions: ComputerUsePermissionState;
+  readonly nativeBackend: ComputerUseNativeBackend;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+  readonly execute: () => Promise<ComputerUseCommandExecutionResult>;
+}): Promise<ComputerUseCommandExecutionResult> {
+  const screenRecordingError = requireScreenRecording(args.permissions);
+  if (screenRecordingError) {
+    return screenRecordingError;
+  }
+
+  const actionResult = await args.execute();
+  if (actionResult.status === "failed") {
+    return actionResult;
+  }
+  return await withPostActionAppState({
+    app: args.app,
+    actionResult,
+    nativeBackend: args.nativeBackend,
+    snapshotStore: args.snapshotStore,
+  });
+}
+
 async function openApp(
   app: string,
   nativeBackend: ComputerUseNativeBackend,
@@ -1851,7 +1898,15 @@ export async function executeComputerUseCommand(
       return await getAppState(app, nativeBackend, snapshotStore);
     }
     if (command.kind === "app.open") {
-      return await openApp(app, nativeBackend);
+      return await executeWriteActionWithPostActionState({
+        app,
+        permissions,
+        nativeBackend,
+        snapshotStore,
+        execute: async () => {
+          return await openApp(app, nativeBackend);
+        },
+      });
     }
     if (command.kind === "element.click") {
       const x = payloadNumber(command.payload, "x");
@@ -1880,17 +1935,25 @@ export async function executeComputerUseCommand(
           return snapshotResult;
         }
       }
-      return await clickElement({
+      return await executeWriteActionWithPostActionState({
         app,
-        elementId,
-        elementIndex,
-        snapshotId,
-        x,
-        y,
-        button: payloadMouseButton(command.payload),
-        clickCount: payloadClickCount(command.payload),
+        permissions,
         nativeBackend,
         snapshotStore,
+        execute: async () => {
+          return await clickElement({
+            app,
+            elementId,
+            elementIndex,
+            snapshotId,
+            x,
+            y,
+            button: payloadMouseButton(command.payload),
+            clickCount: payloadClickCount(command.payload),
+            nativeBackend,
+            snapshotStore,
+          });
+        },
       });
     }
     if (command.kind === "element.scroll") {
@@ -1912,13 +1975,21 @@ export async function executeComputerUseCommand(
       if ("status" in target) {
         return target;
       }
-      return await scrollElement(
+      return await executeWriteActionWithPostActionState({
         app,
-        target,
-        direction,
-        payloadNumber(command.payload, "pages") ?? 1,
+        permissions,
         nativeBackend,
-      );
+        snapshotStore,
+        execute: async () => {
+          return await scrollElement(
+            app,
+            target,
+            direction,
+            payloadNumber(command.payload, "pages") ?? 1,
+            nativeBackend,
+          );
+        },
+      });
     }
     if (command.kind === "element.set_value") {
       const elementId = payloadString(command.payload, "elementId");
@@ -1939,7 +2010,15 @@ export async function executeComputerUseCommand(
       if ("status" in target) {
         return target;
       }
-      return await setElementValue(app, target, value, nativeBackend);
+      return await executeWriteActionWithPostActionState({
+        app,
+        permissions,
+        nativeBackend,
+        snapshotStore,
+        execute: async () => {
+          return await setElementValue(app, target, value, nativeBackend);
+        },
+      });
     }
     if (command.kind === "element.perform_action") {
       const elementId = payloadString(command.payload, "elementId");
@@ -1960,18 +2039,42 @@ export async function executeComputerUseCommand(
       if ("status" in target) {
         return target;
       }
-      return await performElementAction(app, target, action, nativeBackend);
+      return await executeWriteActionWithPostActionState({
+        app,
+        permissions,
+        nativeBackend,
+        snapshotStore,
+        execute: async () => {
+          return await performElementAction(app, target, action, nativeBackend);
+        },
+      });
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");
       return text
-        ? await typeText(app, text, nativeBackend)
+        ? await executeWriteActionWithPostActionState({
+            app,
+            permissions,
+            nativeBackend,
+            snapshotStore,
+            execute: async () => {
+              return await typeText(app, text, nativeBackend);
+            },
+          })
         : missingField("text");
     }
     if (command.kind === "keyboard.press_key") {
       const key = payloadString(command.payload, "key");
       return key
-        ? await pressKey(app, key, nativeBackend)
+        ? await executeWriteActionWithPostActionState({
+            app,
+            permissions,
+            nativeBackend,
+            snapshotStore,
+            execute: async () => {
+              return await pressKey(app, key, nativeBackend);
+            },
+          })
         : missingField("key");
     }
   } catch (error) {
