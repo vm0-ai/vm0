@@ -19,9 +19,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  isGoogleOAuthConnector,
-} from "@vm0/connectors/connector-utils";
+import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
