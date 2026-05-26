@@ -7,6 +7,7 @@
     "build": "vite build",
     "dev": "bash scripts/dev.sh",
     "start": "tsx src/server.ts",
+    "db:dev-seed": "dotenv -e .env.local -- tsx src/scripts/dev-seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint src --type-aware -c ../../.oxlintrc.typeaware.json --ignore-pattern '**/__tests__/**' && eslint . --max-warnings 0",

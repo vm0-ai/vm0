@@ -843,7 +843,7 @@ jobs:
 
             cd turbo
             DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
-            DATABASE_URL="$DATABASE_URL" pnpm -F web db:dev-seed
+            DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
             echo "Neon branch ready"
           ) > /tmp/neon-log 2>&1 &
           NEON_PID=$!

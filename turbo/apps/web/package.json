@@ -13,7 +13,7 @@
     "check-types": "next typegen && tsc --noEmit",
     "db:migrate": "pnpm -F @vm0/db db:migrate",
     "db:generate": "pnpm -F @vm0/db db:generate",
-    "db:dev-seed": "dotenv -e .env.local -- tsx scripts/dev-seed.ts",
+    "db:dev-seed": "dotenv -e .env.local -- pnpm -F api db:dev-seed",
     "db:studio": "pnpm -F @vm0/db db:studio",
     "db:reset": "pnpm -F @vm0/db db:reset"
   },
@@ -38,7 +38,6 @@
     "next": "^16.2.6",
     "next-intl": "^4.11.0",
     "pg": "^8.16.3",
-    "postgres": "^3.4.9",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
@@ -69,7 +68,6 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.23.0",
     "postcss": "^8.5.6",
-    "tsx": "^4.21.0",
     "typescript": "5.9.3",
     "vitest": "^4.1.7"
   }

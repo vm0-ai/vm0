@@ -10,7 +10,6 @@
         "proxy.cors.ts",
         "i18n.ts",
         "navigation.ts",
-        "scripts/**/*.{ts,tsx}",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "**/*.{test,spec}.{ts,tsx}",
         "src/__tests__/api-test-helpers/index.ts",
@@ -21,8 +20,7 @@
         "!**/__tests__/**!",
         "!**/*.{test,spec}.{ts,tsx}!",
         "!src/lib/test-endpoints/**!",
-        "!src/mocks/**!",
-        "scripts/**/*.ts"
+        "!src/mocks/**!"
       ],
       "ignoreDependencies": [
         "@vm0/ui",

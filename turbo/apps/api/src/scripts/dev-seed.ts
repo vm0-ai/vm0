@@ -1,16 +1,22 @@
 #!/usr/bin/env tsx
 
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
 import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@vm0/core/github-url";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
-import { schema } from "@vm0/db";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
+
+import { closeDbPool, db } from "../lib/db";
+import { optionalEnv } from "../lib/env";
+import { nowDate } from "../lib/time";
+import { settle } from "../signals/utils";
+
+function writeLine(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
 
 /**
  * Dev seed: populate usage_pricing, vm0_api_keys, and skills tables.
@@ -62,7 +68,7 @@ function buildSeedSkillValues(
   });
 }
 
-const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
+const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Model usage in the unified usage_event ledger.
   ...usageGroup("model", "claude-sonnet-4-6", [
     ["tokens.input", usd(3), 1_000_000],
@@ -236,7 +242,7 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
 
   // BytePlus ModelArk video generation with a 200% provider-price multiplier.
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
-    ["output_video_tokens.480p_720p.no_video", usd(7.0 * 2), 1_000_000],
+    ["output_video_tokens.480p_720p.no_video", usd(7 * 2), 1_000_000],
     ["output_video_tokens.480p_720p.with_video", usd(4.3 * 2), 1_000_000],
     ["output_video_tokens.1080p.no_video", usd(7.7 * 2), 1_000_000],
     ["output_video_tokens.1080p.with_video", usd(4.7 * 2), 1_000_000],
@@ -254,7 +260,7 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
   // $0.015/minute cost with 20% gross margin = $0.01875/minute,
   // rounded to 19 credits/minute.
   ...usageGroup("audio", "gpt-4o-mini-tts", [
-    ["output_audio_seconds", usd(0.01875), 60],
+    ["output_audio_seconds", usd(0.018_75), 60],
   ]),
 ];
 
@@ -278,13 +284,15 @@ function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
     const envVars = vendor === "openai" ? [envVar, "OPENAI_API_KEY"] : [envVar];
     const apiKey = envVars
       .map((name) => {
-        return process.env[name];
+        return optionalEnv(name);
       })
       .find((value): value is string => {
         return typeof value === "string" && value.length > 0;
       });
     if (!apiKey) {
-      console.log(`  ⚠ ${envVars.join(" or ")} not set, skipping ${vendor}`);
+      writeLine(
+        `Skipping ${vendor}: ${envVars.join(" or ")} is not configured`,
+      );
       continue;
     }
     for (const model of models) {
@@ -295,70 +303,71 @@ function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
 }
 
 async function devSeed() {
-  if (!process.env.DATABASE_URL) {
+  if (!optionalEnv("DATABASE_URL")) {
     throw new Error("DATABASE_URL environment variable is not set");
   }
 
-  const client = postgres(process.env.DATABASE_URL, { max: 1 });
-  const db = drizzle(client, { schema });
+  const database = db();
 
-  try {
-    // --- usage_pricing (batch upsert) ---
-    console.log("Seeding usage_pricing...");
-    for (const p of USAGE_PRICING) {
-      await db
-        .insert(usagePricing)
-        .values(p)
-        .onConflictDoUpdate({
-          target: [
-            usagePricing.kind,
-            usagePricing.provider,
-            usagePricing.category,
-          ],
-          set: {
-            unitPrice: sql`excluded.unit_price`,
-            unitSize: sql`excluded.unit_size`,
-            updatedAt: new Date(),
-          },
-        });
-      console.log(
-        `  ${p.kind}/${p.provider}/${p.category}: ${p.unitPrice} credits per ${p.unitSize}`,
-      );
-    }
-    console.log(`✅ Seeded ${USAGE_PRICING.length} usage pricing entries`);
-
-    // --- vm0_api_keys (transactional replace) ---
-    console.log("Seeding vm0_api_keys...");
-    const apiKeys = buildVm0ApiKeys();
-    await db.transaction(async (tx) => {
-      await tx.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, "dev-seed"));
-      if (apiKeys.length > 0) {
-        await tx.insert(vm0ApiKeys).values(apiKeys);
-      }
-    });
-    for (const k of apiKeys) {
-      console.log(`  ${k.vendor}/${k.model}`);
-    }
-    console.log(`✅ Seeded ${apiKeys.length} vm0 API key entries`);
-
-    // --- skills (seed skills + common connectors, batch insert) ---
-    console.log("Seeding skills...");
-    const eligibleConnectorTypes = getEligibleConnectorTypes();
-    const skillValues = buildSeedSkillValues([
-      ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
-    ]);
-    const inserted = await db
-      .insert(skills)
-      .values(skillValues)
-      .onConflictDoNothing()
-      .returning({ id: skills.id });
-    const seededCount = inserted.length;
-    console.log(
-      `✅ Seeded skills: ${seededCount} new, ${skillValues.length - seededCount} already existed`,
+  // --- usage_pricing (batch upsert) ---
+  writeLine("Seeding usage_pricing");
+  for (const p of USAGE_PRICING) {
+    await database
+      .insert(usagePricing)
+      .values(p)
+      .onConflictDoUpdate({
+        target: [
+          usagePricing.kind,
+          usagePricing.provider,
+          usagePricing.category,
+        ],
+        set: {
+          unitPrice: sql`excluded.unit_price`,
+          unitSize: sql`excluded.unit_size`,
+          updatedAt: nowDate(),
+        },
+      });
+    writeLine(
+      `Seeded usage pricing entry: ${p.kind}/${p.provider}/${p.category}`,
     );
-  } finally {
-    await client.end();
   }
+  writeLine(`Seeded ${USAGE_PRICING.length} usage pricing entries`);
+
+  // --- vm0_api_keys (transactional replace) ---
+  writeLine("Seeding vm0_api_keys");
+  const apiKeys = buildVm0ApiKeys();
+  await database.transaction(async (tx) => {
+    await tx.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, "dev-seed"));
+    if (apiKeys.length > 0) {
+      await tx.insert(vm0ApiKeys).values(apiKeys);
+    }
+  });
+  for (const k of apiKeys) {
+    writeLine(`Seeded vm0 API key entry: ${k.vendor}/${k.model}`);
+  }
+  writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
+
+  // --- skills (seed skills + common connectors, batch insert) ---
+  writeLine("Seeding skills");
+  const eligibleConnectorTypes = getEligibleConnectorTypes();
+  const skillValues = buildSeedSkillValues([
+    ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
+  ]);
+  const inserted = await database
+    .insert(skills)
+    .values(skillValues)
+    .onConflictDoNothing()
+    .returning({ id: skills.id });
+  const seededCount = inserted.length;
+  writeLine(
+    `Seeded ${seededCount} new skills and kept ${
+      skillValues.length - seededCount
+    } existing skills`,
+  );
 }
 
-await devSeed();
+const result = await settle(devSeed());
+await closeDbPool();
+if (!result.ok) {
+  throw result.error;
+}
