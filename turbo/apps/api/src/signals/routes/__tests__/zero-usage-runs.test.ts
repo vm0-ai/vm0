@@ -244,6 +244,23 @@ describe("GET /api/zero/usage/runs", () => {
     });
   });
 
+  it("rejects invalid runId format", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { runId: "not-a-uuid" },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("returns empty result for runId without processed usage", async () => {
     mockClerkUserLookup();
     const fixture = await track(
