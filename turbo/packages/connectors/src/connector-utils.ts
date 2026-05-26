@@ -36,7 +36,7 @@ function parseConnectorAuthMethodId(
   return null;
 }
 
-export function getConnectorAuthMethodPriority(
+function getConnectorAuthMethodPriority(
   authMethod: ConnectorAuthMethodId,
 ): number {
   switch (authMethod) {
