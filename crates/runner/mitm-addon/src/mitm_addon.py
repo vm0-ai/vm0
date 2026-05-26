@@ -123,7 +123,10 @@ def _flush_usage_for_runner_request() -> None:
         try:
             usage.flush_usage_events(trigger="runner")
         except Exception as exc:
-            ctx.log.warn(f"Failed to flush usage events after runner request: {exc}")
+            ctx.log.warn(
+                "Failed to flush usage events after runner request "
+                f"({type(exc).__name__})"
+            )
         finally:
             usage.write_pending_snapshot(flush_request_id=flush_request_id)
     finally:

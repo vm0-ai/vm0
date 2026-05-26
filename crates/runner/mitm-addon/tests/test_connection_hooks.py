@@ -220,6 +220,24 @@ class TestRunnerUsageFlushSignal:
             usage.counters.decrement_pending_reports()
             usage.set_pending_path("")
 
+    def test_runner_flush_failure_warns_without_error_text(self):
+        log = MagicMock()
+
+        with (
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=RuntimeError("secret-token"),
+            ),
+        ):
+            mitm_addon._flush_usage_for_runner_request()
+
+        log.warn.assert_called_once()
+        message = log.warn.call_args.args[0]
+        assert "RuntimeError" in message
+        assert "secret-token" not in message
+
 
 class TestTlsClienthello:
     def test_unregistered_vm_ignored(self, registry_file, make_tls_data, mitm_ctx):
