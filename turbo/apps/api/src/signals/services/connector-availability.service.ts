@@ -12,8 +12,6 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
-type ConnectorFeatureStates = ReturnType<typeof getAllFeatureStates>;
-
 const USER_CONNECTOR_AUTH_METHOD_OPTIONS = {
   apiAuthMethodPolicy: "include",
 } as const satisfies AvailableConnectorAuthMethodsOptions;
@@ -26,15 +24,10 @@ const USER_CONNECTOR_AUTH_METHOD_OPTIONS = {
  * existing runtime connector use remains a separate product policy.
  */
 interface UserConnectorAvailability {
-  readonly featureStates: ConnectorFeatureStates;
   readonly isAuthMethodAvailable: (
     type: ConnectorType,
     authMethod: ConnectorAuthMethodId,
   ) => boolean;
-  readonly getAvailableAuthMethods: (
-    type: ConnectorType,
-    options?: AvailableConnectorAuthMethodsOptions,
-  ) => readonly ConnectorAuthMethodId[];
   readonly isConnectorTypeAvailable: (
     type: ConnectorType,
     options?: AvailableConnectorAuthMethodsOptions,
@@ -48,15 +41,8 @@ function createUserConnectorAvailability(args: {
 }): UserConnectorAvailability {
   const featureStates = getAllFeatureStates(args);
   return {
-    featureStates,
     isAuthMethodAvailable(type, authMethod) {
       return isConnectorAuthMethodAvailable(type, authMethod, featureStates);
-    },
-    getAvailableAuthMethods(
-      type,
-      options = USER_CONNECTOR_AUTH_METHOD_OPTIONS,
-    ) {
-      return getAvailableConnectorAuthMethods(type, featureStates, options);
     },
     isConnectorTypeAvailable(
       type,
