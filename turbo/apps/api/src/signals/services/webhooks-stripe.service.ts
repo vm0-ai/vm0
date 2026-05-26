@@ -14,7 +14,7 @@ import { getCampaign } from "./one-time-products";
 
 const L = logger("WebhookStripe");
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
-const PRO_CREDIT_EXPIRY_DAYS = 7;
+const TRIALING_CREDIT_EXPIRY_DAYS = 7;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -92,10 +92,13 @@ function monthlyCreditsForTier(tier: OrgTier): number {
   }
 }
 
-function creditExpiresAtForTier(tier: OrgTier, periodEndDate: Date): Date {
-  if (tier === "pro") {
+function subscriptionCreditExpiresAt(
+  subscriptionStatus: string,
+  periodEndDate: Date,
+): Date {
+  if (subscriptionStatus === "trialing") {
     const expiresAt = nowDate();
-    expiresAt.setDate(expiresAt.getDate() + PRO_CREDIT_EXPIRY_DAYS);
+    expiresAt.setDate(expiresAt.getDate() + TRIALING_CREDIT_EXPIRY_DAYS);
     return expiresAt;
   }
 
@@ -538,7 +541,10 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     );
   }
   const periodEndDate = new Date(periodEndUnix * 1000);
-  const expiresAt = creditExpiresAtForTier(tier, periodEndDate);
+  const expiresAt = subscriptionCreditExpiresAt(
+    subscriptionRecord.status,
+    periodEndDate,
+  );
 
   await db.transaction(async (tx) => {
     await expireCredits(tx, org.orgId);

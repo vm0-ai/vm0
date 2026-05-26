@@ -2286,6 +2286,7 @@ describe("POST /api/webhooks/stripe", () => {
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
         id: subId,
+        status: "active",
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
       });
       const creditsBefore = (await selectStripeBilling(fixture)).credits;
@@ -2671,7 +2672,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("invoice.paid credit expiry", () => {
-    it("creates Pro expires record with seven-day expiresAt", async () => {
+    it("creates Pro expires record after the subscription period grace", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2682,6 +2683,45 @@ describe("POST /api/webhooks/stripe", () => {
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
         id: subId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        amount: 20_000,
+        remaining: 20_000,
+        stripeInvoiceId: invId,
+      });
+      const expectedExpiresAt = new Date(periodEnd * 1000);
+      expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 1);
+      expect(records[0]?.expiresAt).toStrictEqual(expectedExpiresAt);
+    });
+
+    it("creates trialing Pro expires record with seven-day expiresAt", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "trialing",
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
       });
 
@@ -2692,7 +2732,7 @@ describe("POST /api/webhooks/stripe", () => {
           id: invId,
           customer: fixture.stripeCustomerId,
           metadata: null,
-          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
           parent: { subscription_details: { subscription: subId } },
         },
       });
