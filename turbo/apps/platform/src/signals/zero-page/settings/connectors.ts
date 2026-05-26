@@ -3,7 +3,6 @@ import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
-  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodId,
@@ -15,6 +14,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethod,
   connectorAuthMethodHasOAuthGrant,
+  getConfiguredConnectorAuthMethods,
   getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
   hasRequiredScopes,
@@ -132,40 +132,6 @@ export interface ConnectorTypeWithStatus {
 }
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
-
-function parseConnectorAuthMethodId(
-  authMethod: string,
-): ConnectorAuthMethodId | null {
-  switch (authMethod) {
-    case "oauth":
-    case "api-token":
-    case "api":
-    case "cli-auth": {
-      return authMethod;
-    }
-  }
-  return null;
-}
-
-function getLegacyAuthMethodPriority(authMethod: string): number {
-  const index = CONNECTOR_LEGACY_AUTH_METHOD_ORDER.findIndex((method) => {
-    return method === authMethod;
-  });
-  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
-}
-
-export function getConfiguredConnectorAuthMethods(
-  type: ConnectorType,
-): ConnectorAuthMethodId[] {
-  return Object.keys(CONNECTOR_TYPES[type].authMethods)
-    .flatMap((authMethod) => {
-      const parsed = parseConnectorAuthMethodId(authMethod);
-      return parsed ? [parsed] : [];
-    })
-    .sort((a, b) => {
-      return getLegacyAuthMethodPriority(a) - getLegacyAuthMethodPriority(b);
-    });
-}
 
 function getAvailableConnectorConnectAuthMethods(
   type: ConnectorType,

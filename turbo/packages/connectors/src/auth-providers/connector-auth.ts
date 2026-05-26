@@ -74,6 +74,7 @@ import { redditProvider } from "./oauth/providers/reddit-provider";
 import { intervalsIcuProvider } from "./oauth/providers/intervals-icu-provider";
 import { sentryProvider } from "./oauth/providers/sentry-provider";
 import { slackProvider } from "./oauth/providers/slack-provider";
+import { slockProvider } from "./oauth/providers/slock-provider";
 import { stravaProvider } from "./oauth/providers/strava-provider";
 import { stripeProvider } from "./oauth/providers/stripe-provider";
 import { todoistProvider } from "./oauth/providers/todoist-provider";
@@ -224,6 +225,7 @@ const AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS: AuthCodeConnectorOAuthProviderMap = {
 const DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS: DeviceAuthConnectorOAuthProviderMap =
   {
     base44: base44Provider,
+    slock: slockProvider,
     "test-oauth-device": testOauthDeviceProvider,
   };
 

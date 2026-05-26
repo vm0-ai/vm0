@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.75.0](https://github.com/vm0-ai/vm0/compare/api-v1.74.1...api-v1.75.0) (2026-05-26)
+
+
+### Features
+
+* add Slock OAuth device connector ([#14922](https://github.com/vm0-ai/vm0/issues/14922)) ([0245428](https://github.com/vm0-ai/vm0/commit/02454282990b75242da2a0e05d39f3801f8e09ea))
+
+
+### Bug Fixes
+
+* keep model provider secrets out of sandbox env ([#14984](https://github.com/vm0-ai/vm0/issues/14984)) ([e2fa7e2](https://github.com/vm0-ai/vm0/commit/e2fa7e2e1ba270e2bf4b9b7175bcf28d3f9bc2b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.1
+    * @vm0/connectors bumped to 1.35.0
+    * @vm0/core bumped to 8.296.0
+    * @vm0/db bumped to 1.18.18
+
 ## [1.74.1](https://github.com/vm0-ai/vm0/compare/api-v1.74.0...api-v1.74.1) (2026-05-26)
 
 

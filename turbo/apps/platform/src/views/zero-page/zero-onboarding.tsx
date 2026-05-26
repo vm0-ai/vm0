@@ -16,7 +16,10 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { getConnectorTags } from "@vm0/connectors/connector-utils";
+import {
+  getConfiguredConnectorAuthMethods,
+  getConnectorTags,
+} from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,
@@ -51,7 +54,6 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   setPermissionDialogType$,
-  getConfiguredConnectorAuthMethods,
   getConnectorConnectLaunchMode,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";

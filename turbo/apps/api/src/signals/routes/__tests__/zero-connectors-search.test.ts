@@ -280,6 +280,49 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth"]);
   });
 
+  it("hides Slock when the feature is disabled", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const response = await accept(
+      client.search({
+        query: { keyword: "slock" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const connector = response.body.connectors.find((c) => {
+      return c.id === "slock";
+    });
+    expect(connector).toBeUndefined();
+  });
+
+  it("shows Slock as an OAuth connector when the feature is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFeatureSwitches.push({ orgId, userId });
+    await enableFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.SlockConnector]: true,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const response = await accept(
+      client.search({
+        query: { keyword: "slock" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const connector = response.body.connectors.find((c) => {
+      return c.id === "slock";
+    });
+    expect(connector).toBeDefined();
+    expect(connector?.authMethods).toStrictEqual(["oauth"]);
+  });
+
   it("hides local-browser when the feature is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 

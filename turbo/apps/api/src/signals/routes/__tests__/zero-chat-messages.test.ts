@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   agentComposes,
@@ -48,6 +52,18 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
 
 interface ChatMessageFixture {
   readonly userId: string;
@@ -1182,13 +1198,17 @@ describe("POST /api/zero/chat/messages", () => {
       readonly billableFirewalls: readonly string[];
       readonly modelUsageProvider: string | undefined;
     };
+    const anthropicPlaceholder = modelProviderSecretPlaceholder(
+      "anthropic-api-key",
+      "ANTHROPIC_API_KEY",
+    );
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_API_KEY: expect.any(String),
+      ANTHROPIC_API_KEY: anthropicPlaceholder,
       ANTHROPIC_MODEL: "claude-sonnet-4-6",
     });
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
-    });
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    expect(decrypted?.ANTHROPIC_API_KEY).toStrictEqual(expect.any(String));
+    expect(decrypted?.ANTHROPIC_API_KEY).not.toBe(anthropicPlaceholder);
     expect(executionContext.billableFirewalls).toContain(
       "model-provider:anthropic-api-key",
     );
@@ -1234,7 +1254,10 @@ describe("POST /api/zero/chat/messages", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_AUTH_TOKEN: "selected-deepseek-key",
+      ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
+        "deepseek-api-key",
+        "DEEPSEEK_API_KEY",
+      ),
       ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
       ANTHROPIC_MODEL: "deepseek-v4-pro",
     });
@@ -1346,7 +1369,7 @@ describe("POST /api/zero/chat/messages", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      "org-deepseek-key",
+      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
     );
     expect(executionContext.environment.ANTHROPIC_MODEL).toBe(
       "deepseek-v4-pro",
@@ -1464,6 +1487,9 @@ describe("POST /api/zero/chat/messages", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
     };
+    expect(executionContext.environment.ANTHROPIC_API_KEY).toBe(
+      modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
+    );
     expect(executionContext.environment.ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
@@ -1514,7 +1540,10 @@ describe("POST /api/zero/chat/messages", () => {
     };
     expect(executionContext.cliAgentType).toBe("codex");
     expect(executionContext.environment).toMatchObject({
-      OPENAI_API_KEY: "vm0-key-gpt-5.5",
+      OPENAI_API_KEY: modelProviderSecretPlaceholder(
+        "openai-api-key",
+        "OPENAI_API_KEY",
+      ),
       OPENAI_MODEL: "gpt-5.5",
     });
     expect(executionContext.environment.ANTHROPIC_API_KEY).toBeUndefined();

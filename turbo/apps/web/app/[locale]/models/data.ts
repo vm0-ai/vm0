@@ -7,7 +7,7 @@
 //     (VM0_MODEL_TO_PROVIDER, MODEL_PROVIDER_TYPES)
 //   - turbo/apps/platform/.../settings/provider-ui-config.ts
 //     (VM0_MODEL_CREDIT_MULTIPLIER)
-//   - turbo/apps/web/scripts/dev-seed.ts (MODEL_PRICING. USD per 1M tokens)
+//   - turbo/apps/api/src/scripts/dev-seed.ts (MODEL_PRICING. USD per 1M tokens)
 //
 // Generation models (image, video, audio): per-unit pricing mirrors the same
 // dev-seed.ts table (USD per image / megapixel / video-second / audio-second).

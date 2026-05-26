@@ -1,4 +1,7 @@
-import { createComputerUseNativeBackend } from "./computer-use-native";
+import {
+  createComputerUseNativeBackend,
+  type ComputerUseNativeBackend,
+} from "./computer-use-native";
 import type { ComputerUsePermissionState } from "./computer-use-types";
 
 const DEFAULT_COMPUTER_USE_PERMISSION_STATE: ComputerUsePermissionState =
@@ -7,19 +10,31 @@ const DEFAULT_COMPUTER_USE_PERMISSION_STATE: ComputerUsePermissionState =
     screenRecording: false,
   });
 
-const nativeBackend = createComputerUseNativeBackend();
+let nativeBackend: ComputerUseNativeBackend | null = null;
 let currentPermissionState = DEFAULT_COMPUTER_USE_PERMISSION_STATE;
+
+export function setComputerUsePermissionNativeBackend(
+  backend: ComputerUseNativeBackend,
+): void {
+  nativeBackend = backend;
+}
+
+function getNativeBackend(): ComputerUseNativeBackend {
+  nativeBackend ??= createComputerUseNativeBackend();
+  return nativeBackend;
+}
 
 export function getComputerUsePermissionState(): ComputerUsePermissionState {
   return currentPermissionState;
 }
 
 export async function refreshComputerUsePermissionState(): Promise<ComputerUsePermissionState> {
-  currentPermissionState = await nativeBackend.getPermissions();
+  currentPermissionState = await getNativeBackend().getPermissions();
   return currentPermissionState;
 }
 
 export async function requestComputerUseAccessibilityPermission(): Promise<ComputerUsePermissionState> {
-  currentPermissionState = await nativeBackend.requestAccessibilityPermission();
+  currentPermissionState =
+    await getNativeBackend().requestAccessibilityPermission();
   return currentPermissionState;
 }

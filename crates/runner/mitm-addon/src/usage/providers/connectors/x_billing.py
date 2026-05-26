@@ -59,7 +59,7 @@ from .x_tlds import IANA_TLDS
 
 # Permission → default bucket.  The default matches the majority of
 # paths in the scope; outliers go in `_PATH_OVERRIDES`.  Prices are
-# defined in turbo/apps/web/scripts/dev-seed.ts.
+# defined in turbo/apps/api/src/scripts/dev-seed.ts.
 _PERMISSION_TO_BUCKET: dict[str, str] = {
     # — Writes with an unambiguous single bucket —
     "tweet.moderate.write": "content.manage",

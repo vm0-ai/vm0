@@ -45,6 +45,7 @@ function createNativeBackend(
   overrides: Partial<ComputerUseNativeBackend> = {},
 ): ComputerUseNativeBackend {
   const defaults: ComputerUseNativeBackend = {
+    dispose: () => {},
     getPermissions: async () => {
       return { accessibility: true, screenRecording: true };
     },
@@ -1212,7 +1213,7 @@ describe("computer use desktop runtime", () => {
     expect(result.result.visibleText).toContain("Can you see this?");
   });
 
-  it("maps model-facing element indexes back to internal element ids", async () => {
+  it("passes model-facing element indexes to the native runtime session", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
     clickElement.mockResolvedValue(
@@ -1302,7 +1303,8 @@ describe("computer use desktop runtime", () => {
     expect(click.status).toBe("succeeded");
     expect(clickElement).toHaveBeenCalledWith({
       app: "Safari",
-      elementId: "w0.e0",
+      snapshotId,
+      elementIndex: 1,
       button: "left",
       clickCount: 1,
     });

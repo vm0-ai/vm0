@@ -49,6 +49,41 @@ async function seedOAuthConnector(
   });
 }
 
+async function seedSlockOAuthConnectorState(
+  fixture: OrgMembershipFixture,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "slock",
+    authMethod: "oauth",
+  });
+  await writeDb.insert(secrets).values([
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "SLOCK_ACCESS_TOKEN",
+      encryptedValue: "encrypted_slock_access_token",
+      type: "connector",
+    },
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "SLOCK_REFRESH_TOKEN",
+      encryptedValue: "encrypted_slock_refresh_token",
+      type: "connector",
+    },
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "SLOCK_SERVER_ID",
+      encryptedValue: "encrypted_slock_server_id",
+      type: "connector",
+    },
+  ]);
+}
+
 async function seedAtlassianApiTokenState(
   fixture: OrgMembershipFixture,
 ): Promise<void> {
@@ -92,7 +127,7 @@ async function remainingConnectorCount(
   return rows.length;
 }
 
-async function remainingApiTokenState(
+async function remainingSecretAndVariableState(
   fixture: OrgMembershipFixture,
 ): Promise<{ readonly secrets: number; readonly variables: number }> {
   const writeDb = store.set(writeDb$);
@@ -188,6 +223,30 @@ describe("DELETE /api/zero/connectors/:type", () => {
     await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
   });
 
+  it("deletes OAuth connector secrets", async () => {
+    const fixture = await track(seedFixture());
+    await seedSlockOAuthConnectorState(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const response = await accept(
+      client.delete({
+        params: { type: "slock" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    expect(response.body).toBeUndefined();
+    await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
+    await expect(
+      remainingSecretAndVariableState(fixture),
+    ).resolves.toStrictEqual({
+      secrets: 0,
+      variables: 0,
+    });
+  });
+
   it("deletes API-token connector secrets and variables", async () => {
     const fixture = await track(seedFixture());
     await seedAtlassianApiTokenState(fixture);
@@ -203,7 +262,9 @@ describe("DELETE /api/zero/connectors/:type", () => {
     );
 
     expect(response.body).toBeUndefined();
-    await expect(remainingApiTokenState(fixture)).resolves.toStrictEqual({
+    await expect(
+      remainingSecretAndVariableState(fixture),
+    ).resolves.toStrictEqual({
       secrets: 0,
       variables: 0,
     });

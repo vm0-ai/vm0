@@ -817,6 +817,16 @@ function isSingleSecretModelProviderConfig(
   );
 }
 
+function modelProviderEnvironmentSecretValue(
+  type: ModelProviderType,
+  secretName: string,
+  secretValue: string,
+): string {
+  return getModelProviderFirewall(type)
+    ? `\${{ secrets.${secretName} }}`
+    : secretValue;
+}
+
 function modelProviderEnvironment(
   id: string | null,
   type: ModelProviderType,
@@ -825,10 +835,15 @@ function modelProviderEnvironment(
   selectedModel: string | null,
 ): ResolvedModelProviderEnvironment {
   const model = selectedModel ?? config.defaultModel ?? "";
+  const environmentSecret = modelProviderEnvironmentSecretValue(
+    type,
+    config.secretName,
+    secretValue,
+  );
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(config.environmentMapping)) {
     environment[key] = value
-      .replaceAll("$secret", secretValue)
+      .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", model);
   }
 
@@ -843,30 +858,42 @@ function modelProviderEnvironment(
 
 function providerEnvironmentFromSecretRefs(
   type: ModelProviderType,
-  secretName: string | undefined,
-  secretValue: string | undefined,
+  secretName: string,
+  secretValue: string,
   selectedModel: string | null,
 ): Record<string, string> {
   const mapping = getEnvironmentMapping(type);
   if (!mapping) {
-    return secretName && secretValue ? { [secretName]: secretValue } : {};
+    return {
+      [secretName]: modelProviderEnvironmentSecretValue(
+        type,
+        secretName,
+        secretValue,
+      ),
+    };
   }
 
   const model = selectedModel ?? MODEL_PROVIDER_TYPES[type].defaultModel ?? "";
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(mapping)) {
     if (value === "$secret") {
-      if (secretValue) {
-        environment[key] = secretValue;
-      }
+      environment[key] = modelProviderEnvironmentSecretValue(
+        type,
+        secretName,
+        secretValue,
+      );
     } else if (value === "$model") {
       if (model) {
         environment[key] = model;
       }
     } else if (value.startsWith("$secrets.")) {
       const referencedSecret = value.slice("$secrets.".length);
-      if (referencedSecret === secretName && secretValue) {
-        environment[key] = secretValue;
+      if (referencedSecret === secretName) {
+        environment[key] = modelProviderEnvironmentSecretValue(
+          type,
+          referencedSecret,
+          secretValue,
+        );
       }
     } else {
       environment[key] = value;
@@ -882,16 +909,28 @@ function providerEnvironmentFromSecretMap(
 ): Record<string, string> {
   const mapping = getEnvironmentMapping(type);
   if (!mapping) {
-    return providerSecrets;
+    return Object.fromEntries(
+      Object.entries(providerSecrets).map(([secretName, secretValue]) => {
+        return [
+          secretName,
+          modelProviderEnvironmentSecretValue(type, secretName, secretValue),
+        ];
+      }),
+    );
   }
 
-  const fallbackSecret = Object.values(providerSecrets)[0];
+  const fallbackSecret = Object.entries(providerSecrets)[0];
   const model = selectedModel ?? getDefaultModel(type) ?? "";
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(mapping)) {
     if (value === "$secret") {
       if (fallbackSecret) {
-        environment[key] = fallbackSecret;
+        const [secretName, secretValue] = fallbackSecret;
+        environment[key] = modelProviderEnvironmentSecretValue(
+          type,
+          secretName,
+          secretValue,
+        );
       }
     } else if (value === "$model") {
       if (model) {
@@ -901,7 +940,11 @@ function providerEnvironmentFromSecretMap(
       const secretName = value.slice("$secrets.".length);
       const secretValue = providerSecrets[secretName];
       if (secretValue) {
-        environment[key] = secretValue;
+        environment[key] = modelProviderEnvironmentSecretValue(
+          type,
+          secretName,
+          secretValue,
+        );
       }
     } else {
       environment[key] = value;

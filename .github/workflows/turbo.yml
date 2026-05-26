@@ -841,9 +841,14 @@ jobs:
             fi
             echo "$DATABASE_URL" > /tmp/neon-database-url
 
+            API_SEED_WEB_URL="${VM0_WEB_URL:-${{ needs.prepare.outputs.web-preview-url }}}"
+            if [ -z "$API_SEED_WEB_URL" ]; then
+              API_SEED_WEB_URL="https://www.vm0.ai"
+            fi
+
             cd turbo
             DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
-            DATABASE_URL="$DATABASE_URL" pnpm -F web db:dev-seed
+            ENV=preview VM0_WEB_URL="$API_SEED_WEB_URL" DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
             echo "Neon branch ready"
           ) > /tmp/neon-log 2>&1 &
           NEON_PID=$!

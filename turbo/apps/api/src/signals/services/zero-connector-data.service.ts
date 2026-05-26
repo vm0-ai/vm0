@@ -725,6 +725,82 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
+function allowedOAuthConnectorSecretNames(
+  type: OAuthConnectorType,
+): Set<string> {
+  return new Set(getConnectorSecretNames(type, "oauth"));
+}
+
+function isOAuthPrimaryTokenSecret(args: {
+  readonly name: string;
+  readonly accessSecretName: string;
+  readonly refreshSecretName: string | undefined;
+}): boolean {
+  return (
+    args.name === args.accessSecretName || args.name === args.refreshSecretName
+  );
+}
+
+function validateExtraOAuthConnectorSecrets(args: {
+  readonly type: OAuthConnectorType;
+  readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
+  readonly accessSecretName: string;
+  readonly refreshSecretName: string | undefined;
+}): readonly (readonly [string, string])[] {
+  const extraSecrets = Object.entries(args.extraConnectorSecrets ?? {});
+  if (extraSecrets.length === 0) {
+    return [];
+  }
+
+  const allowedSecretNames = allowedOAuthConnectorSecretNames(args.type);
+  for (const [name] of extraSecrets) {
+    if (
+      isOAuthPrimaryTokenSecret({
+        name,
+        accessSecretName: args.accessSecretName,
+        refreshSecretName: args.refreshSecretName,
+      })
+    ) {
+      throw new Error(
+        `${args.type} OAuth provider returned primary token ${name} in extra connector secrets`,
+      );
+    }
+    if (!allowedSecretNames.has(name)) {
+      throw new Error(
+        `${args.type} OAuth provider returned unsupported connector secret ${name}`,
+      );
+    }
+  }
+
+  return extraSecrets;
+}
+
+async function upsertExtraOAuthConnectorSecrets(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: OAuthConnectorType;
+  readonly extraSecrets: readonly (readonly [string, string])[];
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.extraSecrets.length === 0) {
+    return;
+  }
+
+  for (const [name, value] of args.extraSecrets) {
+    await upsertConnectorSecret(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      name,
+      value,
+      description: `OAuth connector secret for ${args.type}: ${name}`,
+      featureSwitchContext: args.featureSwitchContext,
+    });
+    args.signal.throwIfAborted();
+  }
+}
+
 export const upsertOAuthConnector$ = command(
   async (
     { get, set },
@@ -738,6 +814,7 @@ export const upsertOAuthConnector$ = command(
       readonly refreshToken?: string | null;
       readonly refreshSecretName?: string;
       readonly expiresIn?: number;
+      readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -749,6 +826,14 @@ export const upsertOAuthConnector$ = command(
     const tokenExpiresAt = connectorTokenExpiresAt({
       isRefreshable: secretMetadata.isRefreshable,
       expiresIn: args.expiresIn,
+    });
+    const extraSecrets = validateExtraOAuthConnectorSecrets({
+      type: args.type,
+      extraConnectorSecrets: args.extraConnectorSecrets,
+      accessSecretName: secretMetadata.accessSecretName,
+      refreshSecretName: secretMetadata.isRefreshable
+        ? secretMetadata.refreshSecretName
+        : undefined,
     });
     const apiTokenFields = getApiTokenFieldsByType(args.type);
 
@@ -787,6 +872,17 @@ export const upsertOAuthConnector$ = command(
       });
       signal.throwIfAborted();
     }
+
+    await upsertExtraOAuthConnectorSecrets({
+      db: writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      type: args.type,
+      extraSecrets,
+      featureSwitchContext,
+      signal,
+    });
+    signal.throwIfAborted();
 
     const [connectorRow] = await writeDb
       .insert(connectors)

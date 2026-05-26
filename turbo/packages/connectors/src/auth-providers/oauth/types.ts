@@ -11,6 +11,7 @@ export interface OAuthTokenResult {
   expiresIn?: number; // seconds until access token expires
   scopes: string[];
   userInfo: { id: string; username: string | null; email: string | null };
+  extraConnectorSecrets?: Readonly<Record<string, string>>;
 }
 
 /**

@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
@@ -49,6 +53,18 @@ import { encryptSecretForTests } from "./helpers/encrypt-secret";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
 
 interface AgentConfig {
   readonly framework?: "claude-code" | "codex";
@@ -838,7 +854,10 @@ describe("POST /api/agent/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_API_KEY: "test-secret-value",
+      ANTHROPIC_API_KEY: modelProviderSecretPlaceholder(
+        "anthropic-api-key",
+        "ANTHROPIC_API_KEY",
+      ),
       ANTHROPIC_MODEL: "claude-sonnet-4-6",
     });
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({

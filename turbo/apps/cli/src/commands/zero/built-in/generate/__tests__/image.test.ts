@@ -80,6 +80,7 @@ describe("zero built-in generate image command", () => {
       "cli",
       "generate",
       "image",
+      "--skip-style",
       "--prompt",
       "A watercolor fox",
       "--quality",
@@ -142,6 +143,7 @@ describe("zero built-in generate image command", () => {
       "cli",
       "generate",
       "image",
+      "--skip-style",
       "--model",
       "flux-pro-1.1",
       "--prompt",
@@ -196,6 +198,7 @@ describe("zero built-in generate image command", () => {
       "cli",
       "generate",
       "image",
+      "--skip-style",
       "--model",
       "flux-pro-1.1",
       "--prompt",
@@ -237,6 +240,7 @@ describe("zero built-in generate image command", () => {
       "cli",
       "generate",
       "image",
+      "--skip-style",
       "--prompt",
       "JSON please",
       "--json",
@@ -260,35 +264,39 @@ describe("zero built-in generate image command", () => {
     });
   });
 
-  it("should print styled image resource selection instructions with --styled", async () => {
+  it("should print styled image resource selection instructions with --style", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
       "image",
-      "--styled",
+      "--style",
+      "vm0:image-style:notion-illustration",
       "--prompt",
       "Notion illustration of a product manager mapping a launch plan",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero built-in generate image --styled");
+    expect(stdout).toContain(
+      "# Zero built-in generate image --style vm0:image-style:notion-illustration",
+    );
     expect(stdout).toContain("federated generation resource-selection packet");
-    expect(stdout).toContain("## Stage 1: Resource Selection");
-    expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).toContain("## Selected Image Style");
     expect(stdout).toContain("vm0:image-style:notion-illustration");
+    expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("notion-illustration");
     expect(stdout).toContain("## Stage 3: Generate Image");
   });
 
-  it("should print styled image JSON resource selection metadata", async () => {
+  it("should lock the selected style in the JSON packet candidate slice", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
       "image",
-      "--styled",
+      "--style",
+      "vm0:image-style:notion-illustration",
       "--prompt",
       "Notion illustration of a product manager mapping a launch plan",
       "--json",
@@ -302,19 +310,17 @@ describe("zero built-in generate image command", () => {
       prompt: "Notion illustration of a product manager mapping a launch plan",
       outputDir: "./opendesign/images",
     });
-    expect(parsed.selection).toEqual(
+    const selection = parsed.selection as {
+      candidates: { imageStyles: { id: string }[] };
+    };
+    expect(selection.candidates.imageStyles).toHaveLength(1);
+    expect(selection.candidates.imageStyles[0]).toEqual(
       expect.objectContaining({
-        candidates: expect.objectContaining({
-          imageStyles: expect.arrayContaining([
-            expect.objectContaining({
-              id: "vm0:image-style:notion-illustration",
-              source: expect.objectContaining({
-                repo: "vm0-ai/vm0-skills",
-                commit: "main",
-                path: "illustration-template/notion-illustration",
-              }),
-            }),
-          ]),
+        id: "vm0:image-style:notion-illustration",
+        source: expect.objectContaining({
+          repo: "vm0-ai/vm0-skills",
+          commit: "main",
+          path: "illustration-template/notion-illustration",
         }),
       }),
     );
@@ -323,13 +329,14 @@ describe("zero built-in generate image command", () => {
     );
   });
 
-  it("should include vm0 illustration style for in-app spot prompts", async () => {
+  it("should lock vm0 illustration when selected via --style", async () => {
     await zeroBuiltInCommand.parseAsync([
       "node",
       "cli",
       "generate",
       "image",
-      "--styled",
+      "--style",
+      "vm0:image-style:vm0-illustration",
       "--prompt",
       "vm0 style in-app illustration for an empty billing state",
       "--json",
@@ -337,22 +344,78 @@ describe("zero built-in generate image command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed.selection).toEqual(
+    const selection = parsed.selection as {
+      candidates: { imageStyles: { id: string }[] };
+    };
+    expect(selection.candidates.imageStyles).toHaveLength(1);
+    expect(selection.candidates.imageStyles[0]).toEqual(
       expect.objectContaining({
-        candidates: expect.objectContaining({
-          imageStyles: expect.arrayContaining([
-            expect.objectContaining({
-              id: "vm0:image-style:vm0-illustration",
-              source: expect.objectContaining({
-                repo: "vm0-ai/vm0-skills",
-                commit: "main",
-                path: "illustration-template/vm0-illustration",
-              }),
-            }),
-          ]),
+        id: "vm0:image-style:vm0-illustration",
+        source: expect.objectContaining({
+          repo: "vm0-ai/vm0-skills",
+          commit: "main",
+          path: "illustration-template/vm0-illustration",
         }),
       }),
     );
+  });
+
+  it("should fail with style listing when neither --style nor --skip-style is provided", async () => {
+    await expect(async () => {
+      await zeroBuiltInCommand.parseAsync([
+        "node",
+        "cli",
+        "generate",
+        "image",
+        "--prompt",
+        "Anything",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("--style <id> or --skip-style is required");
+    expect(stderr).toContain("vm0:image-style:notion-illustration");
+    expect(stderr).toContain("vm0:image-style:vm0-illustration");
+  });
+
+  it("should fail with style listing when --style id is unknown", async () => {
+    await expect(async () => {
+      await zeroBuiltInCommand.parseAsync([
+        "node",
+        "cli",
+        "generate",
+        "image",
+        "--style",
+        "vm0:image-style:does-not-exist",
+        "--prompt",
+        "Anything",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain(
+      "Unknown image style: vm0:image-style:does-not-exist",
+    );
+    expect(stderr).toContain("vm0:image-style:notion-illustration");
+  });
+
+  it("should reject combining --style with --skip-style", async () => {
+    await expect(async () => {
+      await zeroBuiltInCommand.parseAsync([
+        "node",
+        "cli",
+        "generate",
+        "image",
+        "--style",
+        "vm0:image-style:notion-illustration",
+        "--skip-style",
+        "--prompt",
+        "Anything",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("--style and --skip-style cannot be combined");
   });
 
   it("should wait for an accepted async generation result", async () => {
@@ -400,6 +463,7 @@ describe("zero built-in generate image command", () => {
       "cli",
       "generate",
       "image",
+      "--skip-style",
       "--prompt",
       "Async please",
     ]);
@@ -434,12 +498,19 @@ describe("zero built-in generate image command", () => {
     expect(helpOutput).toContain("--safety-tolerance");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--image-prompt-strength");
-    expect(helpOutput).toContain("--styled");
+    expect(helpOutput).toContain("--style <id>");
+    expect(helpOutput).toContain("--skip-style");
+    expect(helpOutput).not.toContain("--styled ");
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");
     expect(helpOutput).toContain("not support transparent");
     expect(helpOutput).toContain("backgrounds");
     expect(helpOutput).toContain("Image-to-image");
+    expect(helpOutput).toContain("Image Styles:");
+    expect(helpOutput).toContain("vm0:image-style:notion-illustration");
+    expect(helpOutput).toContain("Notion-editorial-style hand-drawn");
+    expect(helpOutput).toContain("vm0:image-style:vm0-illustration");
+    expect(helpOutput).toContain("Generate vm0-style vm0 in-app");
   });
 
   it("should surface API errors", async () => {
@@ -463,6 +534,7 @@ describe("zero built-in generate image command", () => {
         "cli",
         "generate",
         "image",
+        "--skip-style",
         "--prompt",
         "hello",
       ]);

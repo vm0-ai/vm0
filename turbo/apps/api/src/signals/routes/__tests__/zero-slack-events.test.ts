@@ -1,5 +1,9 @@
 import { createHmac, randomBytes } from "node:crypto";
 
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -37,6 +41,18 @@ const EVENTS_PATH = "/api/zero/slack/events";
 const TEST_VM0_ANTHROPIC_KEY = "vm0-key-claude-sonnet-4-6";
 const TEST_VM0_DEEPSEEK_KEY = "vm0-key-deepseek-v4-pro";
 const TEST_VM0_OPENAI_KEY = "vm0-key-gpt-5.5";
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
 
 afterEach(async () => {
   const db = store.set(writeDb$);
@@ -1236,7 +1252,10 @@ describe("POST /api/zero/slack/events", () => {
     };
     expect(executionContext.cliAgentType).toBe("codex");
     expect(executionContext.environment).toMatchObject({
-      OPENAI_API_KEY: "vm0-key-gpt-5.5",
+      OPENAI_API_KEY: modelProviderSecretPlaceholder(
+        "openai-api-key",
+        "OPENAI_API_KEY",
+      ),
       OPENAI_MODEL: "gpt-5.5",
     });
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({

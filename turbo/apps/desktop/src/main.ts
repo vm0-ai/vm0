@@ -32,7 +32,9 @@ import {
   getComputerUsePermissionState,
   refreshComputerUsePermissionState,
   requestComputerUseAccessibilityPermission,
+  setComputerUsePermissionNativeBackend,
 } from "./computer-use-permissions";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import {
@@ -90,6 +92,8 @@ let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let desktopAuthToken: string | null = null;
 let desktopAuthTokenRefresh: Promise<string | null> | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
+const computerUseNativeBackend = createComputerUseNativeBackend();
+setComputerUsePermissionNativeBackend(computerUseNativeBackend);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -227,6 +231,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       getPermissions: refreshComputerUsePermissionState,
       executeCommand: (command, permissions) => {
         return executeComputerUseCommand(command, permissions, {
+          nativeBackend: computerUseNativeBackend,
           snapshotStore: computerUseSnapshotStore,
         });
       },
@@ -752,11 +757,13 @@ if (!hasSingleInstanceLock) {
   app.on("before-quit", (event) => {
     appIsQuitting = true;
     if (!computerUseRuntime || computerUseQuitStopStarted) {
+      computerUseNativeBackend.dispose();
       return;
     }
     computerUseQuitStopStarted = true;
     event.preventDefault();
     void stopComputerUseRuntimeForQuit().finally(() => {
+      computerUseNativeBackend.dispose();
       app.quit();
     });
   });

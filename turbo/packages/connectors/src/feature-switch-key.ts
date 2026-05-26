@@ -19,6 +19,7 @@ export enum FeatureSwitchKey {
   RedditConnector = "redditConnector",
   SupabaseConnector = "supabaseConnector",
   WebflowConnector = "webflowConnector",
+  SlockConnector = "slockConnector",
   CloseConnector = "closeConnector",
   OutlookMailConnector = "outlookMailConnector",
   OutlookCalendarConnector = "outlookCalendarConnector",

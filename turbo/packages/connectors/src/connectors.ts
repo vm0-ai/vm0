@@ -6,6 +6,7 @@ import { notion } from "./connectors/notion";
 import { x } from "./connectors/x";
 import { googleDrive } from "./connectors/google-drive";
 import { slack } from "./connectors/slack";
+import { slock } from "./connectors/slock";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleDocs } from "./connectors/google-docs";
@@ -370,7 +371,6 @@ export interface ConnectorInteractivePairingGrantConfig {
 
 export interface ConnectorManagedGrantConfig {
   readonly kind: "managed";
-  readonly fields?: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
 export type ConnectorGrantConfig =
@@ -454,17 +454,6 @@ export interface ConnectorAuthMethodConfig {
  * derived from the auth method lifecycle config, not from the id itself.
  */
 export type ConnectorAuthMethodId = "oauth" | "api-token" | "api" | "cli-auth";
-
-/**
- * Temporary ordering for auth method ids still handled by legacy key-based
- * API/UI paths. This is intentionally not exhaustive over ConnectorAuthMethodId.
- */
-export const CONNECTOR_LEGACY_AUTH_METHOD_ORDER = [
-  "oauth",
-  "api-token",
-  "api",
-  "cli-auth",
-] as const satisfies readonly ConnectorAuthMethodId[];
 
 type AssertNever<T extends never> = T;
 
@@ -620,6 +609,7 @@ const CONNECTOR_TYPES_DEF = {
   ...x,
   ...googleDrive,
   ...slack,
+  ...slock,
   ...googleSheets,
   ...googleCalendar,
   ...googleDocs,

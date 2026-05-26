@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.389.6](https://github.com/vm0-ai/vm0/compare/web-v12.389.5...web-v12.389.6) (2026-05-26)
+
+
+### Bug Fixes
+
+* **web:** dedupe docs article title rendering ([#14967](https://github.com/vm0-ai/vm0/issues/14967)) ([0c3d981](https://github.com/vm0-ai/vm0/commit/0c3d981147f50a9c062f1f8b0d736ad5a4167c2c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.1
+    * @vm0/core bumped to 8.296.0
+    * @vm0/db bumped to 1.18.18
+  * devDependencies
+    * @vm0/connectors bumped to 1.35.0
+
 ## [12.389.5](https://github.com/vm0-ai/vm0/compare/web-v12.389.4...web-v12.389.5) (2026-05-26)
 
 
