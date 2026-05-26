@@ -867,6 +867,59 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.modelUsageProvider).toBeUndefined();
   });
 
+  it("injects a Codex gateway provider with the OPENAI_API_KEY placeholder", async () => {
+    const fx = await fixture();
+    await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fx.orgId,
+        type: "openrouter-codex",
+        isDefault: true,
+        secretName: "OPENROUTER_API_KEY",
+      },
+      context.signal,
+    );
+    await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: { framework: "codex", environment: {} },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use codex provider",
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly cliAgentType: string;
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.cliAgentType).toBe("codex");
+    expect(executionContext.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderSecretPlaceholder(
+        "openrouter-codex",
+        "OPENROUTER_API_KEY",
+      ),
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      OPENAI_MODEL: "openai/gpt-5.5",
+    });
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      OPENROUTER_API_KEY: "test-secret-value",
+    });
+  });
+
   it("persists requested artifacts plus memory on the new session", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });

@@ -27,6 +27,7 @@ import {
   SUPPORTED_RUN_MODELS,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
+  MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_TYPES,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
@@ -35,6 +36,28 @@ import {
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
+  it("exposes canonical model provider env placeholders", () => {
+    expect(Object.keys(MODEL_PROVIDER_ENV_PLACEHOLDERS).sort()).toEqual([
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "CHATGPT_ACCESS_TOKEN",
+      "CHATGPT_ACCOUNT_ID",
+      "CHATGPT_REFRESH_TOKEN",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "OPENAI_API_KEY",
+    ]);
+    expect(MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY).toMatch(
+      /^sk-ant-api03-/,
+    );
+    expect(MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN).toMatch(
+      /^sk-ant-oat01-/,
+    );
+    expect(MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY).toMatch(/^sk-proj-/);
+    expect(
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN.split("."),
+    ).toHaveLength(1);
+  });
+
   it("exposes the curated flat model list only", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-opus-4-7",
@@ -410,6 +433,74 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
   );
 });
 
+describe("model provider firewall placeholders", () => {
+  it.each([
+    [
+      "anthropic-api-key",
+      "ANTHROPIC_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY,
+    ],
+    [
+      "claude-code-oauth-token",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN,
+    ],
+    [
+      "openrouter-api-key",
+      "OPENROUTER_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "moonshot-api-key",
+      "MOONSHOT_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "minimax-api-key",
+      "MINIMAX_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "deepseek-api-key",
+      "DEEPSEEK_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "zai-api-key",
+      "ZAI_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "vercel-ai-gateway",
+      "VERCEL_AI_GATEWAY_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "openrouter-codex",
+      "OPENROUTER_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+    ],
+    [
+      "vercel-ai-gateway-codex",
+      "VERCEL_AI_GATEWAY_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+    ],
+    [
+      "openai-api-key",
+      "OPENAI_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+    ],
+  ] as const)(
+    "%s uses the canonical placeholder for %s",
+    (type, secretName, placeholder) => {
+      const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
+      expect(config.placeholders).toMatchObject({
+        [secretName]: placeholder,
+      });
+    },
+  );
+});
+
 describe("codex-oauth-token codex provider", () => {
   it("declares codex framework", () => {
     expect(getFrameworkForType("codex-oauth-token")).toBe("codex");
@@ -589,9 +680,10 @@ describe("codex-oauth-token codex provider", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.placeholders).toEqual({
       CHATGPT_ACCESS_TOKEN:
-        "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
-      CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
-      CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
+        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
+      CHATGPT_ACCOUNT_ID: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID,
+      CHATGPT_REFRESH_TOKEN:
+        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_REFRESH_TOKEN,
     });
   });
 
