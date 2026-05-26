@@ -878,7 +878,7 @@ def match_compiled_firewall_request(
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
       FirewallBlock — permission denied, unknown endpoint blocked, or matched
-        malformed firewall config failed closed
+        malformed firewall/network policy config failed closed
       None — no base URL match (not a firewall request)
 
     ``unknownPolicy="ask"`` is treated as block at the proxy layer.
@@ -1030,7 +1030,8 @@ def match_firewall_request(
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
-      FirewallBlock — base URL matched but permission denied or unknown blocked
+      FirewallBlock — base URL matched but permission denied, unknown blocked,
+        or malformed network policy failed closed
       None — no base URL match (not a firewall request)
     """
     if not vm_firewalls:
