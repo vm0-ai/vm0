@@ -503,6 +503,27 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_marker_write_cleans_tmp_when_publish_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let result_path = local_queue::result_path(group_dir, job_id);
+        std::fs::create_dir_all(&result_path).unwrap();
+
+        let marker = write_abandoned_result_marker(&result_path, job_id, "local submit abandoned");
+
+        assert!(marker.is_none());
+        assert!(result_path.is_dir());
+        let result_dir = local_queue::results_dir(group_dir);
+        let tmp_files: Vec<_> = std::fs::read_dir(result_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
+            .collect();
+        assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
+    }
+
+    #[test]
     fn abandoned_cleanup_keeps_replaced_result_with_same_content() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
