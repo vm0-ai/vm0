@@ -2871,6 +2871,7 @@ mod tests {
     use std::os::fd::AsRawFd;
     use std::sync::atomic::AtomicU32;
     use std::sync::{Arc, Mutex};
+    use tokio::io::AsyncReadExt;
     use tracing::field::{Field, Visit};
     use tracing::{Event, Level, Subscriber};
     use tracing_subscriber::layer::{Context, Layer};
@@ -3033,6 +3034,24 @@ mod tests {
         value
             .parse()
             .unwrap_or_else(|err| panic!("invalid u128 field {field}={value:?}: {err}"))
+    }
+
+    async fn read_exec_operation_frame(stream: &mut tokio::net::UnixStream) -> RawMessage {
+        let mut header = [0u8; vsock_proto::HEADER_SIZE];
+        stream.read_exact(&mut header).await.unwrap();
+        let body_len = u32::from_be_bytes(header) as usize;
+        assert!(
+            (vsock_proto::MIN_BODY_SIZE..=vsock_proto::MAX_MESSAGE_SIZE).contains(&body_len),
+            "invalid message body length: {body_len}",
+        );
+
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).await.unwrap();
+        RawMessage {
+            msg_type: body[0],
+            seq: u32::from_be_bytes(body[1..vsock_proto::MIN_BODY_SIZE].try_into().unwrap()),
+            payload: body[vsock_proto::MIN_BODY_SIZE..].to_vec(),
+        }
     }
 
     #[test]
@@ -3482,6 +3501,65 @@ mod tests {
             result_rx.try_recv().unwrap().unwrap().termination,
             ExecTermination::Cancelled
         );
+    }
+
+    #[tokio::test]
+    async fn one_shot_cancel_handle_marks_terminal_result_as_host_requested_cancel() {
+        let (result_tx, result_rx) = oneshot::channel();
+        let (shared, mut read_stream, diagnostic) = shared_with_logged_operation(
+            ExecOperationLifecycle::OneShot,
+            "one-shot-cancel-marker-terminal-log",
+            result_tx,
+            false,
+        );
+        let handle = ExecOperationHandle {
+            shared: Arc::clone(&shared),
+            seq: Some(7),
+            diagnostic,
+            result_rx: Some(result_rx),
+            stream_rx: None,
+        };
+
+        let cancel_task = tokio::spawn(async move {
+            handle
+                .cancel_and_wait_for_terminal_status(Duration::from_secs(5))
+                .await
+        });
+        let cancel = read_exec_operation_frame(&mut read_stream).await;
+        assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+        assert_eq!(cancel.seq, 7);
+        vsock_proto::decode_exec_cancel(&cancel.payload).unwrap();
+
+        let payload = vsock_proto::encode_exec_result(
+            ExecTermination::Cancelled,
+            10,
+            ExecCapturedOutput::Discarded,
+            ExecCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        let msg = RawMessage {
+            msg_type: MSG_EXEC_RESULT,
+            seq: 7,
+            payload,
+        };
+
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            dispatch_result(&shared, &msg).unwrap();
+        });
+
+        let events = captured.events();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::INFO);
+        assert_terminal_log_field(&events[0], "termination", "Cancelled");
+        assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
+
+        let wait_result = cancel_task.await.unwrap().unwrap();
+        assert_eq!(wait_result.cancel_seq, Some(7));
+        assert_eq!(wait_result.result.termination, ExecTermination::Cancelled);
     }
 
     #[test]
