@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.76.1](https://github.com/vm0-ai/vm0/compare/api-v1.76.0...api-v1.76.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* align connector feature gate follow-ups ([#15024](https://github.com/vm0-ai/vm0/issues/15024)) ([d41002b](https://github.com/vm0-ai/vm0/commit/d41002b319849570badd15ed728e41e5235f85c6))
+* gate connector entry points by feature switches ([#15005](https://github.com/vm0-ai/vm0/issues/15005)) ([5b0cd83](https://github.com/vm0-ai/vm0/commit/5b0cd834a401571f9040fb277ef80e13239ad1ad))
+* validate model provider env placeholders in runner ([#15002](https://github.com/vm0-ai/vm0/issues/15002)) ([44177d8](https://github.com/vm0-ai/vm0/commit/44177d8d154bfa727ee9500a9dc1d221ff21da29))
+
+
+### Refactoring
+
+* clarify manual grant field names ([#15025](https://github.com/vm0-ai/vm0/issues/15025)) ([d8e37b8](https://github.com/vm0-ai/vm0/commit/d8e37b8d58933861598cf73ab855e9744398d773))
+* remove oauth token endpoint auth metadata ([#15017](https://github.com/vm0-ai/vm0/issues/15017)) ([165f954](https://github.com/vm0-ai/vm0/commit/165f954dce70a920c5b9c2f1b59ec06a067c59df))
+* simplify connector auth method lookup ([#15020](https://github.com/vm0-ai/vm0/issues/15020)) ([429e4ee](https://github.com/vm0-ai/vm0/commit/429e4ee28f3be8fc4cf7306479dd636047639455))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.3
+    * @vm0/connectors bumped to 1.36.1
+    * @vm0/core bumped to 8.297.1
+    * @vm0/db bumped to 1.18.20
+
 ## [1.76.0](https://github.com/vm0-ai/vm0/compare/api-v1.75.0...api-v1.76.0) (2026-05-26)
 
 

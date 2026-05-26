@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.167.1](https://github.com/vm0-ai/vm0/compare/cli-v9.167.0...cli-v9.167.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* gate connector entry points by feature switches ([#15005](https://github.com/vm0-ai/vm0/issues/15005)) ([5b0cd83](https://github.com/vm0-ai/vm0/commit/5b0cd834a401571f9040fb277ef80e13239ad1ad))
+* validate model provider env placeholders in runner ([#15002](https://github.com/vm0-ai/vm0/issues/15002)) ([44177d8](https://github.com/vm0-ai/vm0/commit/44177d8d154bfa727ee9500a9dc1d221ff21da29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.41.3
+    * @vm0/connectors bumped to 1.36.1
+    * @vm0/core bumped to 8.297.1
+
 ## [9.167.0](https://github.com/vm0-ai/vm0/compare/cli-v9.166.0...cli-v9.167.0) (2026-05-26)
 
 

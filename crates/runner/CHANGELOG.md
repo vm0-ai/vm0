@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.6...runner-rs-v0.104.7) (2026-05-26)
+
+
+### Bug Fixes
+
+* validate model provider env placeholders in runner ([#15002](https://github.com/vm0-ai/vm0/issues/15002)) ([44177d8](https://github.com/vm0-ai/vm0/commit/44177d8d154bfa727ee9500a9dc1d221ff21da29))
+
 ## [0.104.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.5...runner-rs-v0.104.6) (2026-05-26)
 
 

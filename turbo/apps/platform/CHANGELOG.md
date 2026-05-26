@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.386.1](https://github.com/vm0-ai/vm0/compare/app-v0.386.0...app-v0.386.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* align connector feature gate follow-ups ([#15024](https://github.com/vm0-ai/vm0/issues/15024)) ([d41002b](https://github.com/vm0-ai/vm0/commit/d41002b319849570badd15ed728e41e5235f85c6))
+* gate connector entry points by feature switches ([#15005](https://github.com/vm0-ai/vm0/issues/15005)) ([5b0cd83](https://github.com/vm0-ai/vm0/commit/5b0cd834a401571f9040fb277ef80e13239ad1ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.3
+    * @vm0/connectors bumped to 1.36.1
+    * @vm0/core bumped to 8.297.1
+
 ## [0.386.0](https://github.com/vm0-ai/vm0/compare/app-v0.385.0...app-v0.386.0) (2026-05-26)
 
 
