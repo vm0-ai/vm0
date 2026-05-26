@@ -453,12 +453,7 @@ export interface ConnectorAuthMethodConfig {
  * These values describe user-selectable connection choices. Behavior must be
  * derived from the auth method lifecycle config, not from the id itself.
  */
-export type ConnectorAuthMethodId =
-  | "oauth"
-  | "api-token"
-  | "api"
-  | "cli-auth"
-  | "app-credentials";
+export type ConnectorAuthMethodId = "oauth" | "api-token" | "api" | "cli-auth";
 
 /**
  * Temporary ordering for auth method ids still handled by legacy key-based
@@ -886,7 +881,6 @@ type ConnectorAuthMethodGrantKindById = {
   readonly "api-token": "manual";
   readonly api: "managed";
   readonly "cli-auth": "interactive-pairing";
-  readonly "app-credentials": "manual";
 };
 
 type ConnectorAuthMethodAccessKindById = {
@@ -894,7 +888,6 @@ type ConnectorAuthMethodAccessKindById = {
   readonly "api-token": "static";
   readonly api: "managed" | "none";
   readonly "cli-auth": "none";
-  readonly "app-credentials": "static";
 };
 
 type ConnectorAuthMethodRevokeKindById = {
@@ -902,7 +895,6 @@ type ConnectorAuthMethodRevokeKindById = {
   readonly "api-token": "none";
   readonly api: "none";
   readonly "cli-auth": "none";
-  readonly "app-credentials": "none";
 };
 
 export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<

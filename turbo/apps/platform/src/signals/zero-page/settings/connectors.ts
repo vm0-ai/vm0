@@ -140,8 +140,7 @@ function parseConnectorAuthMethodId(
     case "oauth":
     case "api-token":
     case "api":
-    case "cli-auth":
-    case "app-credentials": {
+    case "cli-auth": {
       return authMethod;
     }
   }

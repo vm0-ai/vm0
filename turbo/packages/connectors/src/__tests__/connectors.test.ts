@@ -136,13 +136,13 @@ function restoreEnv(values: Record<string, string | undefined>): void {
   }
 }
 
-const localAuthMethodConfig = {
-  label: "App Credentials",
-  helpText: "Enter app credentials.",
+const manualAuthMethodConfig = {
+  label: "API Token",
+  helpText: "Enter an API token.",
   grant: {
     kind: "manual",
     fields: {
-      APP_CREDENTIALS_TOKEN: {
+      API_TOKEN: {
         label: "Token",
         required: true,
       },
@@ -151,21 +151,21 @@ const localAuthMethodConfig = {
   access: {
     kind: "static",
     outputs: {
-      APP_CREDENTIALS_TOKEN: "$secrets.APP_CREDENTIALS_TOKEN",
+      API_TOKEN: "$secrets.API_TOKEN",
     },
   },
   revoke: { kind: "none" },
 } as const satisfies ConnectorAuthMethodConfig;
 
-const connectorLocalAuthMethodFixture = {
-  "connector-local-auth-method-fixture": {
-    label: "Connector Local Auth Method Fixture",
+const connectorAuthMethodFixture = {
+  "connector-auth-method-fixture": {
+    label: "Connector Auth Method Fixture",
     category: "data-automation-infrastructure",
     helpText: "Fixture used for connector auth method type coverage.",
     authMethods: {
-      "app-credentials": localAuthMethodConfig,
+      "api-token": manualAuthMethodConfig,
     },
-    defaultAuthMethod: "app-credentials",
+    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
@@ -220,14 +220,13 @@ describe("hasRequiredScopes", () => {
 });
 
 describe("connector auth method config", () => {
-  it("keeps connector-local auth method ids explicit and typed", () => {
+  it("keeps connector auth method ids explicit and typed", () => {
     type FixtureConfig =
-      (typeof connectorLocalAuthMethodFixture)["connector-local-auth-method-fixture"];
+      (typeof connectorAuthMethodFixture)["connector-auth-method-fixture"];
 
     expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
-      "oauth" | "api-token" | "api" | "cli-auth" | "app-credentials"
+      "oauth" | "api-token" | "api" | "cli-auth"
     >();
-    expectTypeOf<"app-credentials">().toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
       keyof ConnectorConfig["authMethods"]
@@ -237,14 +236,12 @@ describe("connector auth method config", () => {
     >();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<FixtureConfig>
-    >().toEqualTypeOf<"app-credentials">();
+    >().toEqualTypeOf<"api-token">();
     expectTypeOf<
       FixtureConfig["defaultAuthMethod"]
-    >().toEqualTypeOf<"app-credentials">();
+    >().toEqualTypeOf<"api-token">();
     expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<
-        typeof connectorLocalAuthMethodFixture
-      >
+      ConnectorInvalidDefaultAuthMethodType<typeof connectorAuthMethodFixture>
     >().toEqualTypeOf<never>();
 
     const missingDefaultMethodFixture = {
@@ -253,9 +250,9 @@ describe("connector auth method config", () => {
         category: "data-automation-infrastructure",
         helpText: "Fixture used for connector auth method type coverage.",
         authMethods: {
-          "api-token": localAuthMethodConfig,
+          "api-token": manualAuthMethodConfig,
         },
-        defaultAuthMethod: "app-credentials",
+        defaultAuthMethod: "oauth",
       },
     } as const satisfies Record<string, ConnectorConfig>;
     expectTypeOf<
