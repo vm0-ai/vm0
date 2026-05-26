@@ -988,6 +988,14 @@ describe("org billing tab - downgrade flow", () => {
     expect(
       screen.getByText("Are you sure you want to cancel your Pro plan?"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Your Pro access remains active until the current billing period ends/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/agents cannot run until you upgrade again/),
+    ).toBeInTheDocument();
   });
 
   it("should open downgrade dialog with plan selection for team user", async () => {

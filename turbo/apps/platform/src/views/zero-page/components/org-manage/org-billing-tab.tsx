@@ -380,6 +380,14 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           </DialogDescription>
         </DialogHeader>
 
+        {!isTeam && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+            Your Pro access remains active until the current billing period
+            ends. After that, this workspace moves to No plan and agents cannot
+            run until you upgrade again.
+          </p>
+        )}
+
         {isTeam && (
           <div className="flex flex-col gap-2 mt-2">
             <button
