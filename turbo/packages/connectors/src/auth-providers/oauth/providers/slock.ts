@@ -1,0 +1,373 @@
+import { z } from "zod";
+
+import { throwOAuthError } from "../error";
+import { getDeviceAuthGrantConfig } from "../grant-config";
+import type {
+  OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthStartResult,
+  OAuthRefreshResult,
+  OAuthTokenResult,
+} from "../types";
+
+const SLOCK_API_BASE_URL = "https://api.slock.ai";
+const SLOCK_CLIENT_NAME = "vm0";
+export const SLOCK_ACCESS_SECRET_NAME = "SLOCK_ACCESS_TOKEN";
+export const SLOCK_REFRESH_SECRET_NAME = "SLOCK_REFRESH_TOKEN";
+export const SLOCK_SERVER_ID_SECRET_NAME = "SLOCK_SERVER_ID";
+
+const deviceAuthResponseSchema = z.object({
+  deviceCode: z.string(),
+  userCode: z.string(),
+  verificationUri: z.string(),
+  verificationUriComplete: z.string().optional(),
+  expiresIn: z.number(),
+  interval: z.number().optional(),
+});
+
+const tokenResponseSchema = z.object({
+  accessToken: z.string().optional(),
+  refreshToken: z.string().nullable().optional(),
+  expiresIn: z.number().optional(),
+  userId: z.string().optional(),
+});
+
+const tokenErrorResponseSchema = z
+  .object({
+    code: z.string().optional(),
+    error: z.string().optional(),
+    message: z.string().optional(),
+    errorDescription: z.string().optional(),
+    error_description: z.string().optional(),
+  })
+  .passthrough();
+
+const userInfoResponseSchema = z
+  .object({
+    id: z.string().optional(),
+    userId: z.string().optional(),
+    email: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    displayName: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const serverSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    slug: z.string().optional(),
+    isDefault: z.boolean().optional(),
+    isCurrent: z.boolean().optional(),
+    default: z.boolean().optional(),
+    current: z.boolean().optional(),
+  })
+  .passthrough();
+
+type SlockServer = z.infer<typeof serverSchema>;
+type SlockServerCollection = {
+  readonly servers: readonly SlockServer[];
+  readonly preferredServerId: string | undefined;
+};
+const serverArraySchema = z.array(serverSchema);
+const serversObjectResponseSchema = z
+  .object({
+    servers: serverArraySchema,
+    currentServerId: z.string().optional(),
+    defaultServerId: z.string().optional(),
+    selectedServerId: z.string().optional(),
+  })
+  .passthrough();
+const nestedServersObjectResponseSchema = z
+  .object({ data: serversObjectResponseSchema })
+  .passthrough();
+
+function slockDeviceAuthGrant() {
+  return getDeviceAuthGrantConfig("slock");
+}
+
+async function safeJson(response: Response): Promise<unknown> {
+  return await response.json().catch(() => {
+    return null;
+  });
+}
+
+function absoluteVerificationUri(uri: string): string {
+  if (uri.startsWith("http://") || uri.startsWith("https://")) {
+    return uri;
+  }
+  const prefix = uri.startsWith("/") ? "" : "/";
+  return `${SLOCK_API_BASE_URL}${prefix}${uri}`;
+}
+
+function devicePollErrorResult(args: {
+  readonly error: string;
+  readonly errorDescription: string | undefined;
+}): OAuthDeviceAuthPollResult {
+  if (args.error === "authorization_pending") {
+    return { status: "pending" };
+  }
+  if (args.error === "slow_down") {
+    return { status: "slow_down" };
+  }
+  if (args.error === "access_denied") {
+    return {
+      status: "denied",
+      error: args.error,
+      errorDescription: args.errorDescription,
+    };
+  }
+  if (args.error === "expired_token") {
+    return {
+      status: "expired",
+      error: args.error,
+      errorDescription: args.errorDescription,
+    };
+  }
+  return {
+    status: "error",
+    error: args.error,
+    errorDescription: args.errorDescription,
+  };
+}
+
+function pollErrorFromPayload(payload: unknown): {
+  readonly error: string;
+  readonly errorDescription: string | undefined;
+} | null {
+  const parsed = tokenErrorResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+  const error = parsed.data.code ?? parsed.data.error;
+  if (!error) {
+    return null;
+  }
+  return {
+    error,
+    errorDescription:
+      parsed.data.errorDescription ??
+      parsed.data.error_description ??
+      parsed.data.message,
+  };
+}
+
+function requireAccessToken(
+  data: z.infer<typeof tokenResponseSchema>,
+  operation: string,
+): string {
+  if (!data.accessToken) {
+    throw new Error(`No access token in Slock ${operation} response`);
+  }
+  return data.accessToken;
+}
+
+function requireRefreshToken(
+  data: z.infer<typeof tokenResponseSchema>,
+  operation: string,
+): string {
+  if (!data.refreshToken) {
+    throw new Error(`No refresh token in Slock ${operation} response`);
+  }
+  return data.refreshToken;
+}
+
+function serversFromResponse(data: unknown): SlockServerCollection {
+  const arrayParse = serverArraySchema.safeParse(data);
+  if (arrayParse.success) {
+    return { servers: arrayParse.data, preferredServerId: undefined };
+  }
+  const objectParse = serversObjectResponseSchema.safeParse(data);
+  if (objectParse.success) {
+    return {
+      servers: objectParse.data.servers,
+      preferredServerId:
+        objectParse.data.currentServerId ??
+        objectParse.data.defaultServerId ??
+        objectParse.data.selectedServerId,
+    };
+  }
+  const nested = nestedServersObjectResponseSchema.parse(data).data;
+  return {
+    servers: nested.servers,
+    preferredServerId:
+      nested.currentServerId ??
+      nested.defaultServerId ??
+      nested.selectedServerId,
+  };
+}
+
+function selectSlockServer(
+  collection: SlockServerCollection,
+): SlockServer | null {
+  if (collection.preferredServerId) {
+    const preferredServer = collection.servers.find((server) => {
+      return server.id === collection.preferredServerId;
+    });
+    if (preferredServer) {
+      return preferredServer;
+    }
+  }
+
+  return (
+    collection.servers.find((server) => {
+      return (
+        server.isDefault === true ||
+        server.isCurrent === true ||
+        server.default === true ||
+        server.current === true
+      );
+    }) ??
+    collection.servers[0] ??
+    null
+  );
+}
+
+async function fetchSlockUserInfo(
+  accessToken: string,
+  fallbackUserId: string | undefined,
+): Promise<OAuthTokenResult["userInfo"]> {
+  const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("Slock", "userinfo", response);
+  }
+
+  const data = userInfoResponseSchema.parse(await response.json());
+  const id = data.id ?? data.userId ?? fallbackUserId;
+  if (!id) {
+    throw new Error("No user id in Slock userinfo response");
+  }
+
+  return {
+    id,
+    username: data.displayName ?? data.name ?? data.email ?? null,
+    email: data.email ?? null,
+  };
+}
+
+async function fetchSlockServerId(
+  accessToken: string,
+): Promise<
+  { readonly ok: true; readonly serverId: string } | OAuthDeviceAuthPollResult
+> {
+  const response = await fetch(`${SLOCK_API_BASE_URL}/api/servers`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("Slock", "server list", response);
+  }
+
+  const server = selectSlockServer(serversFromResponse(await response.json()));
+  if (!server) {
+    return {
+      status: "error",
+      error: "no_servers",
+      errorDescription: "No Slock servers found for this account",
+    };
+  }
+  return { ok: true, serverId: server.id };
+}
+
+export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult> {
+  const response = await fetch(slockDeviceAuthGrant().deviceAuthUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ clientName: SLOCK_CLIENT_NAME }),
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("Slock", "device authorization start", response);
+  }
+
+  const data = deviceAuthResponseSchema.parse(await response.json());
+  return {
+    deviceCode: data.deviceCode,
+    userCode: data.userCode,
+    verificationUri: absoluteVerificationUri(data.verificationUri),
+    verificationUriComplete: data.verificationUriComplete
+      ? absoluteVerificationUri(data.verificationUriComplete)
+      : undefined,
+    expiresIn: data.expiresIn,
+    interval: data.interval,
+  };
+}
+
+export async function pollSlockDeviceAuth(args: {
+  readonly deviceCode: string;
+}): Promise<OAuthDeviceAuthPollResult> {
+  const response = await fetch(slockDeviceAuthGrant().tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ deviceCode: args.deviceCode }),
+  });
+
+  if (!response.ok) {
+    const diagnosticResponse = response.clone();
+    const pollError = pollErrorFromPayload(await safeJson(response));
+    if (!pollError) {
+      return await throwOAuthError(
+        "Slock",
+        "device authorization poll",
+        diagnosticResponse,
+      );
+    }
+    return devicePollErrorResult(pollError);
+  }
+
+  const data = tokenResponseSchema.parse(await response.json());
+  const accessToken = requireAccessToken(data, "device authorization poll");
+  const refreshToken = requireRefreshToken(data, "device authorization poll");
+  const serverIdResult = await fetchSlockServerId(accessToken);
+  if (!("ok" in serverIdResult)) {
+    return serverIdResult;
+  }
+  const userInfo = await fetchSlockUserInfo(accessToken, data.userId);
+
+  return {
+    status: "complete",
+    token: {
+      accessToken,
+      refreshToken,
+      expiresIn: data.expiresIn,
+      scopes: [],
+      userInfo,
+      connectorSecrets: {
+        [SLOCK_SERVER_ID_SECRET_NAME]: serverIdResult.serverId,
+      },
+    },
+  };
+}
+
+export async function refreshSlockToken(args: {
+  readonly refreshToken: string;
+}): Promise<OAuthRefreshResult> {
+  const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ refreshToken: args.refreshToken }),
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("Slock", "refresh", response);
+  }
+
+  const data = tokenResponseSchema.parse(await response.json());
+  return {
+    accessToken: requireAccessToken(data, "refresh"),
+    refreshToken: data.refreshToken ?? null,
+    expiresIn: data.expiresIn,
+  };
+}

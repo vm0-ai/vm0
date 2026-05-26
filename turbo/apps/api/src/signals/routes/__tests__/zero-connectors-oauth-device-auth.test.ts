@@ -33,6 +33,10 @@ const TEST_OAUTH_TOKEN_URL =
 const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
+const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
+const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
+const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
+const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 function sessionTokenHash(sessionToken: string): string {
@@ -51,6 +55,21 @@ async function enableTestOauthDevice(userId: string, orgId: string) {
     .onConflictDoUpdate({
       target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
       set: { switches: { [FeatureSwitchKey.TestOauthConnector]: true } },
+    });
+}
+
+async function enableSlock(userId: string, orgId: string) {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.SlockConnector]: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: { switches: { [FeatureSwitchKey.SlockConnector]: true } },
     });
 }
 
@@ -207,6 +226,54 @@ function mockBase44OAuthProvider(): void {
         sub: "base44-user-id",
         name: "Base44 User",
         email: "base44@example.com",
+      });
+    }),
+  );
+}
+
+function mockSlockOAuthProvider(): void {
+  server.use(
+    http.post(SLOCK_DEVICE_CODE_URL, async ({ request }) => {
+      await expect(request.json()).resolves.toStrictEqual({
+        clientName: "vm0",
+      });
+      return HttpResponse.json({
+        deviceCode: "slock-device-code",
+        userCode: "SLOCK-1",
+        verificationUri: "https://api.slock.ai/device",
+        expiresIn: 600,
+        interval: 0,
+      });
+    }),
+    http.post(SLOCK_TOKEN_URL, async ({ request }) => {
+      await expect(request.json()).resolves.toStrictEqual({
+        deviceCode: "slock-device-code",
+      });
+      return HttpResponse.json({
+        accessToken: "slock-access-token",
+        refreshToken: "slock-refresh-token",
+        userId: "slock-user-id",
+      });
+    }),
+    http.get(SLOCK_SERVERS_URL, ({ request }) => {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer slock-access-token",
+      );
+      return HttpResponse.json([
+        {
+          id: "slock-server-id",
+          name: "Primary",
+        },
+      ]);
+    }),
+    http.get(SLOCK_USERINFO_URL, ({ request }) => {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer slock-access-token",
+      );
+      return HttpResponse.json({
+        id: "slock-user-id",
+        name: "Slock User",
+        email: "slock@example.com",
       });
     }),
   );
@@ -705,6 +772,88 @@ describe("OAuth device authorization connector routes", () => {
         externalUsername: "Base44 User",
         externalEmail: "base44@example.com",
         oauthScopes: JSON.stringify(["apps:read", "apps:write", "offline"]),
+      },
+    ]);
+  });
+
+  it("completes a Slock session and stores OAuth tokens plus server id", async () => {
+    mockSlockOAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    await enableSlock(userId, orgId);
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const start = await accept(
+      client.create({
+        params: { type: "slock" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(start.body).toMatchObject({
+      type: "slock",
+      status: "pending",
+      userCode: "SLOCK-1",
+      verificationUri: "https://api.slock.ai/device",
+      expiresIn: 600,
+      interval: 0,
+    });
+    expect(JSON.stringify(start.body)).not.toContain("slock-device-code");
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "slock",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain("slock-access-token");
+    expect(JSON.stringify(response.body)).not.toContain("slock-refresh-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_ACCESS_TOKEN"),
+    ).resolves.toBe("slock-access-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_REFRESH_TOKEN"),
+    ).resolves.toBe("slock-refresh-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_SERVER_ID"),
+    ).resolves.toBe("slock-server-id");
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "slock"),
+        ),
+      );
+    expect(stored).toStrictEqual([
+      {
+        authMethod: "oauth",
+        externalId: "slock-user-id",
+        externalUsername: "Slock User",
+        externalEmail: "slock@example.com",
+        oauthScopes: JSON.stringify([]),
       },
     ]);
   });

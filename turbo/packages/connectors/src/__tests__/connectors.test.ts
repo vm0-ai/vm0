@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
+import { z } from "zod";
 import {
   afterAll,
   afterEach,
@@ -56,6 +57,7 @@ import {
 } from "../auth-providers/connector-auth";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../auth-providers/oauth/google-connectors";
 import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
+import { getConnectorFirewall } from "../firewalls";
 
 const server = setupServer();
 
@@ -908,6 +910,216 @@ describe("isOAuthConnectorType", () => {
       expiresIn: 3600,
     });
   });
+
+  it("starts, polls, and refreshes the Slock OAuth device provider", async () => {
+    server.use(
+      http.post(
+        "https://api.slock.ai/api/auth/device/authorize",
+        async ({ request }) => {
+          await expect(request.json()).resolves.toStrictEqual({
+            clientName: "vm0",
+          });
+          return HttpResponse.json({
+            deviceCode: "slock-device-code",
+            userCode: "SLOCK-1",
+            verificationUri: "/device",
+            expiresIn: 600,
+            interval: 5,
+          });
+        },
+      ),
+      http.post(
+        "https://api.slock.ai/api/auth/device/token",
+        async ({ request }) => {
+          const body = await request.json();
+          expect(body).toHaveProperty("deviceCode");
+          const deviceCode = z
+            .object({ deviceCode: z.string() })
+            .parse(body).deviceCode;
+          if (deviceCode === "pending") {
+            return HttpResponse.json(
+              {
+                code: "authorization_pending",
+                message: "Still waiting for user approval",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "denied") {
+            return HttpResponse.json(
+              {
+                code: "access_denied",
+                message: "User denied Slock access",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "expired") {
+            return HttpResponse.json(
+              {
+                code: "expired_token",
+                message: "Slock device authorization expired",
+              },
+              { status: 400 },
+            );
+          }
+          if (deviceCode === "no-servers") {
+            return HttpResponse.json({
+              accessToken: "slock-access-no-servers",
+              refreshToken: "slock-refresh-no-servers",
+              userId: "slock-user-id",
+            });
+          }
+          return HttpResponse.json({
+            accessToken: "slock-access-token",
+            refreshToken: "slock-refresh-token",
+            userId: "slock-user-id",
+          });
+        },
+      ),
+      http.get("https://api.slock.ai/api/servers", ({ request }) => {
+        const authorization = request.headers.get("authorization");
+        if (authorization === "Bearer slock-access-no-servers") {
+          return HttpResponse.json([]);
+        }
+        expect(authorization).toBe("Bearer slock-access-token");
+        return HttpResponse.json({
+          currentServerId: "slock-server-primary",
+          servers: [
+            {
+              id: "slock-server-secondary",
+              name: "Secondary",
+            },
+            {
+              id: "slock-server-primary",
+              name: "Primary",
+            },
+          ],
+        });
+      }),
+      http.get("https://api.slock.ai/api/auth/me", ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer slock-access-token",
+        );
+        return HttpResponse.json({
+          id: "slock-user-id",
+          name: "Slock User",
+          email: "slock@example.com",
+        });
+      }),
+      http.post(
+        "https://api.slock.ai/api/auth/refresh",
+        async ({ request }) => {
+          await expect(request.json()).resolves.toStrictEqual({
+            refreshToken: "slock-refresh-token",
+          });
+          return HttpResponse.json({
+            accessToken: "slock-access-refreshed",
+            refreshToken: "slock-refresh-rotated",
+          });
+        },
+      ),
+    );
+
+    const credentials = getConnectorOAuthCredentials("slock", () => {
+      return undefined;
+    });
+    expect(credentials?.configured).toBe(true);
+
+    if (!credentials?.configured) {
+      throw new Error("Expected slock OAuth credentials");
+    }
+
+    await expect(
+      startConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+      }),
+    ).resolves.toStrictEqual({
+      deviceCode: "slock-device-code",
+      userCode: "SLOCK-1",
+      verificationUri: "https://api.slock.ai/device",
+      verificationUriComplete: undefined,
+      expiresIn: 600,
+      interval: 5,
+    });
+
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "pending",
+      }),
+    ).resolves.toStrictEqual({ status: "pending" });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "denied",
+      }),
+    ).resolves.toStrictEqual({
+      status: "denied",
+      error: "access_denied",
+      errorDescription: "User denied Slock access",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "expired",
+      }),
+    ).resolves.toStrictEqual({
+      status: "expired",
+      error: "expired_token",
+      errorDescription: "Slock device authorization expired",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "no-servers",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "no_servers",
+      errorDescription: "No Slock servers found for this account",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "slock-device-code",
+      }),
+    ).resolves.toStrictEqual({
+      status: "complete",
+      token: {
+        accessToken: "slock-access-token",
+        refreshToken: "slock-refresh-token",
+        expiresIn: undefined,
+        scopes: [],
+        userInfo: {
+          id: "slock-user-id",
+          username: "Slock User",
+          email: "slock@example.com",
+        },
+        connectorSecrets: {
+          SLOCK_SERVER_ID: "slock-server-primary",
+        },
+      },
+    });
+
+    await expect(
+      refreshConnectorOAuthToken({
+        type: "slock",
+        credentials,
+        refreshToken: "slock-refresh-token",
+      }),
+    ).resolves.toStrictEqual({
+      accessToken: "slock-access-refreshed",
+      refreshToken: "slock-refresh-rotated",
+      expiresIn: undefined,
+    });
+  });
 });
 
 describe("getAvailableConnectorAuthMethods", () => {
@@ -935,6 +1147,15 @@ describe("getAvailableConnectorAuthMethods", () => {
     expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([
       "oauth",
     ]);
+  });
+
+  it("exposes Slock OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethods("slock", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethods("slock", {
+        [FeatureSwitchKey.SlockConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Lark API-token auth only when its switch is enabled", () => {
@@ -1055,10 +1276,44 @@ describe("getConnectorEnvironmentMapping", () => {
     });
   });
 
+  it("returns correct mapping for Slock", () => {
+    expect(getConnectorEnvironmentMapping("slock")).toEqual({
+      SLOCK_ACCESS_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
+      SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",
+    });
+  });
+
+  it("declares Slock firewall auth headers and control permissions", () => {
+    const firewall = getConnectorFirewall("slock");
+    expect(firewall.apis).toHaveLength(1);
+    expect(firewall.apis[0]?.base).toBe("https://api.slock.ai");
+    expect(firewall.apis[0]?.auth?.headers).toMatchObject({
+      Authorization: "Bearer ${{ secrets.SLOCK_ACCESS_TOKEN }}",
+      "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}",
+    });
+
+    const permissions = new Map(
+      firewall.apis[0]?.permissions?.map((permission) => {
+        return [permission.name, permission.rules];
+      }),
+    );
+    expect(permissions.get("agents:write")).toEqual(
+      expect.arrayContaining([
+        "POST /api/agents/{agentId}/start",
+        "POST /api/agents/{agentId}/stop",
+        "POST /api/agents/{agentId}/assign-machine",
+      ]),
+    );
+    expect(permissions.get("machines:read")).toContain(
+      "GET /api/servers/{serverId}/machines",
+    );
+    expect(permissions.get("messages:write")).toContain("POST /api/messages");
+  });
+
   it("OAuth connectors have consistent secrets and environmentMapping naming", () => {
     // All naming derives from a single prefix XXX:
     //   oauth secrets:      XXX_ACCESS_TOKEN (required), XXX_REFRESH_TOKEN (optional)
-    //   environmentMapping: all values -> $secrets.XXX_ACCESS_TOKEN
+    //   environmentMapping: values -> declared OAuth connector secrets
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
       if (!getConnectorOAuthGrantConfigIfSupported(type)) continue;
@@ -1074,30 +1329,75 @@ describe("getConnectorEnvironmentMapping", () => {
         `${type}: oauth secrets must include an _ACCESS_TOKEN key`,
       ).toBeDefined();
 
-      // oauth secrets: exactly [XXX_ACCESS_TOKEN] or [XXX_ACCESS_TOKEN, XXX_REFRESH_TOKEN]
-      expect(oauthSecrets, `${type}: unexpected oauth secrets`).toSatisfy(
-        (s: string[]) => {
-          return s.length === 1
-            ? s[0] === `${prefix}_ACCESS_TOKEN`
-            : s.length === 2 &&
-                s.includes(`${prefix}_ACCESS_TOKEN`) &&
-                s.includes(`${prefix}_REFRESH_TOKEN`);
-        },
-      );
-
-      // environmentMapping: must contain XXX_TOKEN, all values -> $secrets.XXX_ACCESS_TOKEN
-      const mapping = getConnectorEnvironmentMapping(type);
-      const expectedRef = `$secrets.${prefix}_ACCESS_TOKEN`;
+      const accessSecretName = `${prefix}_ACCESS_TOKEN`;
+      const refreshSecretName = `${prefix}_REFRESH_TOKEN`;
       expect(
-        mapping[`${prefix}_TOKEN`],
-        `${type}: environmentMapping must include ${prefix}_TOKEN`,
-      ).toBe(expectedRef);
-      for (const [key, value] of Object.entries(mapping)) {
+        oauthSecrets,
+        `${type}: oauth secrets must include ${accessSecretName}`,
+      ).toContain(accessSecretName);
+
+      const oauthMethod = getConnectorAuthMethod(type, "oauth");
+      if (oauthMethod?.access.kind === "refresh-token") {
         expect(
-          value,
-          `${type}: environmentMapping["${key}"] must be ${expectedRef}`,
-        ).toBe(expectedRef);
+          oauthSecrets,
+          `${type}: refresh-token access must include ${refreshSecretName}`,
+        ).toContain(refreshSecretName);
       }
+
+      const mapping = getConnectorEnvironmentMapping(type);
+      const mappedSecretNames = Object.values(mapping).map((valueRef) => {
+        expect(
+          valueRef.startsWith("$secrets."),
+          `${type}: OAuth environmentMapping value ${valueRef} must reference a secret`,
+        ).toBe(true);
+        return valueRef.slice("$secrets.".length);
+      });
+
+      expect(
+        mappedSecretNames,
+        `${type}: environmentMapping must expose ${accessSecretName}`,
+      ).toContain(accessSecretName);
+
+      for (const secretName of mappedSecretNames) {
+        expect(
+          oauthSecrets,
+          `${type}: mapped secret ${secretName} must be declared by OAuth auth method`,
+        ).toContain(secretName);
+      }
+
+      for (const secretName of oauthSecrets) {
+        if (
+          secretName === accessSecretName ||
+          secretName === refreshSecretName
+        ) {
+          continue;
+        }
+        expect(
+          mappedSecretNames,
+          `${type}: extra OAuth secret ${secretName} must be exposed by environmentMapping`,
+        ).toContain(secretName);
+      }
+
+      const expectedAccessRef = `$secrets.${accessSecretName}`;
+      expect(
+        Object.values(mapping),
+        `${type}: environmentMapping must include ${expectedAccessRef}`,
+      ).toContain(expectedAccessRef);
+
+      if (mapping[`${prefix}_TOKEN`] !== undefined) {
+        expect(
+          mapping[`${prefix}_TOKEN`],
+          `${type}: ${prefix}_TOKEN must reference ${accessSecretName}`,
+        ).toBe(expectedAccessRef);
+      }
+
+      expect(oauthSecrets, `${type}: unexpected primary OAuth secrets`).toEqual(
+        expect.arrayContaining(
+          oauthMethod?.access.kind === "refresh-token"
+            ? [accessSecretName, refreshSecretName]
+            : [accessSecretName],
+        ),
+      );
 
       // api-token (if exists): exactly one secret XXX_TOKEN
       const apiTokenFields = getConnectorManualGrantFields(type, "api-token");
@@ -1497,6 +1797,20 @@ describe("connector OAuth lifecycle grant helpers", () => {
       },
       scopes: ["apps:read", "apps:write", "offline"],
     });
+    expect(getConnectorDeviceAuthGrantConfigIfSupported("slock")).toMatchObject(
+      {
+        kind: "device-auth",
+        deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
+        tokenUrl: "https://api.slock.ai/api/auth/device/token",
+        client: {
+          clientRegistration: "static",
+          clientType: "public",
+          tokenEndpointAuthMethod: "none",
+          clientId: "vm0",
+        },
+        scopes: [],
+      },
+    );
   });
 
   it("returns undefined for connectors without OAuth grants", () => {
@@ -1579,6 +1893,24 @@ describe("connector OAuth device authorization config", () => {
       },
       scopes: ["apps:read", "apps:write", "offline"],
     });
+  });
+
+  it("declares the Slock connector as a device authorization flow", () => {
+    expect(isOAuthDeviceAuthConnectorType("slock")).toBe(true);
+    expect(getConnectorDeviceAuthGrantConfigIfSupported("slock")).toMatchObject(
+      {
+        kind: "device-auth",
+        deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
+        tokenUrl: "https://api.slock.ai/api/auth/device/token",
+        client: {
+          clientRegistration: "static",
+          clientType: "public",
+          tokenEndpointAuthMethod: "none",
+          clientId: "vm0",
+        },
+        scopes: [],
+      },
+    );
   });
 });
 

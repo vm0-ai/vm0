@@ -6,6 +6,7 @@ import { notion } from "./connectors/notion";
 import { x } from "./connectors/x";
 import { googleDrive } from "./connectors/google-drive";
 import { slack } from "./connectors/slack";
+import { slock } from "./connectors/slock";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleDocs } from "./connectors/google-docs";
@@ -625,6 +626,7 @@ const CONNECTOR_TYPES_DEF = {
   ...x,
   ...googleDrive,
   ...slack,
+  ...slock,
   ...googleSheets,
   ...googleCalendar,
   ...googleDocs,
