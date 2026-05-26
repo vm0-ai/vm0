@@ -351,6 +351,26 @@ describe("POST /api/agent/runs", () => {
     expect(response.body.error.message).toContain("prompt");
   });
 
+  it("rejects vm0 provider pinning on direct runs", async () => {
+    await fixture();
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: randomUUID(),
+          prompt: "test",
+          modelProviderType: "vm0",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain(
+      "vm0 model provider is only supported by zero runs",
+    );
+  });
+
   it("creates a pending run, session, and runner job", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });

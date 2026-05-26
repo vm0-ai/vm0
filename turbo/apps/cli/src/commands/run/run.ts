@@ -1,8 +1,8 @@
 import { Command, Option } from "commander";
 import {
-  modelProviderTypeSchema,
-  type ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+  directRunModelProviderTypeSchema,
+  type DirectRunModelProviderType,
+} from "@vm0/api-contracts/contracts/runs";
 import {
   getComposeById,
   getComposeByName,
@@ -34,11 +34,11 @@ declare const __CLI_VERSION__: string;
 
 function parseModelProviderType(
   value: string | undefined,
-): ModelProviderType | undefined {
+): DirectRunModelProviderType | undefined {
   if (value === undefined) {
     return undefined;
   }
-  const parsed = modelProviderTypeSchema.safeParse(value);
+  const parsed = directRunModelProviderTypeSchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(`Invalid model provider type: ${value}`);
   }

@@ -4,11 +4,11 @@ import {
   runEventsContract,
   runsCancelContract,
   runsQueueContract,
+  type DirectRunModelProviderType,
   type RunsListResponse,
   type CancelRunResponse,
   type QueueResponse,
 } from "@vm0/api-contracts/contracts/runs";
-import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { CreateRunResponse, GetEventsResponse } from "../core/types";
@@ -57,8 +57,9 @@ export async function createRun(body: {
   settings?: string;
   // Per-permission policies
   permissionPolicies?: FirewallPolicies;
-  // Internal: pin provider type for direct CLI runs used by E2E
-  modelProviderType?: ModelProviderType;
+  // Internal: pin provider type for direct CLI runs used by E2E.
+  // vm0 is excluded; zero runs own vm0 credit enforcement.
+  modelProviderType?: DirectRunModelProviderType;
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

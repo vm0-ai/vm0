@@ -2,11 +2,22 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
-import { modelProviderTypeSchema } from "./model-providers";
+import {
+  modelProviderTypeSchema,
+  type ModelProviderType,
+} from "./model-providers";
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
 const c = initContract();
+export type DirectRunModelProviderType = Exclude<ModelProviderType, "vm0">;
+
+const directRunModelProviderTypeSchema = modelProviderTypeSchema.refine(
+  (type) => {
+    return type !== "vm0";
+  },
+  { message: "vm0 model provider is only supported by zero runs" },
+);
 
 // Stored in Postgres `integer` columns. Keep request validation aligned with
 // the DB range so malformed sandbox payloads fail as 400s instead of DB errors.
@@ -114,7 +125,9 @@ const unifiedRunRequestSchema = z
     permissionPolicies: firewallPoliciesSchema.optional(),
 
     // Internal: pin provider type for direct CLI runs used by E2E.
-    modelProviderType: modelProviderTypeSchema.optional(),
+    // vm0 is intentionally excluded here because only zero runs enforce
+    // vm0-managed-provider credits.
+    modelProviderType: directRunModelProviderTypeSchema.optional(),
   })
   .strict();
 
@@ -739,6 +752,7 @@ export type RunsQueueContract = typeof runsQueueContract;
 // Export schemas for reuse
 export {
   runStatusSchema,
+  directRunModelProviderTypeSchema,
   unifiedRunRequestSchema,
   createRunResponseSchema,
   getRunResponseSchema,

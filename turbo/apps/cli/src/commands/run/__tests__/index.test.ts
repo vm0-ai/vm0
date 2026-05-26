@@ -186,6 +186,24 @@ describe("run command", () => {
       });
     });
 
+    it("should reject vm0 hidden model provider type", async () => {
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--model-provider-type",
+          "vm0",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid model provider type: vm0"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should accept and resolve agent names", async () => {
       let capturedBody: unknown;
       server.use(
