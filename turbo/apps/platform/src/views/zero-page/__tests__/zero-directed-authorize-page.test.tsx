@@ -93,16 +93,24 @@ describe("directed authorize page", () => {
   });
 
   it("does not render an actionable card for feature-disabled connectors", async () => {
+    const disabledConnectorType = "bentoml" satisfies ConnectorType;
+    const disabledConnectorLabel = CONNECTOR_TYPES[disabledConnectorType].label;
+
     detachedSetupPage({
       context,
-      path: `/connectors/slock/authorize?agentId=${AGENT_ID}`,
+      path: `/connectors/${disabledConnectorType}/authorize?agentId=${AGENT_ID}`,
     });
 
-    await context.store.get(allConnectorTypes$);
+    const connectors = await context.store.get(allConnectorTypes$);
+    expect(
+      connectors.some((connector) => {
+        return connector.type === disabledConnectorType;
+      }),
+    ).toBeFalsy();
 
     await waitFor(() => {
       expect(
-        screen.queryByText("Zero needs Slock to proceed"),
+        screen.queryByText(`Zero needs ${disabledConnectorLabel} to proceed`),
       ).not.toBeInTheDocument();
     });
   });

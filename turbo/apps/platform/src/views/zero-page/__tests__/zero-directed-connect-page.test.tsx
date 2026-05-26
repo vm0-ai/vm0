@@ -117,13 +117,24 @@ describe("directed connect page", () => {
   });
 
   it("does not render an actionable card for feature-disabled connectors", async () => {
-    detachedSetupPage({ context, path: "/connectors/slock/connect" });
+    const disabledConnectorType = "bentoml" satisfies ConnectorType;
+    const disabledConnectorLabel = CONNECTOR_TYPES[disabledConnectorType].label;
 
-    await context.store.get(allConnectorTypes$);
+    detachedSetupPage({
+      context,
+      path: `/connectors/${disabledConnectorType}/connect`,
+    });
+
+    const connectors = await context.store.get(allConnectorTypes$);
+    expect(
+      connectors.some((connector) => {
+        return connector.type === disabledConnectorType;
+      }),
+    ).toBeFalsy();
 
     await waitFor(() => {
       expect(
-        screen.queryByText("Zero needs Slock to proceed"),
+        screen.queryByText(`Zero needs ${disabledConnectorLabel} to proceed`),
       ).not.toBeInTheDocument();
     });
   });

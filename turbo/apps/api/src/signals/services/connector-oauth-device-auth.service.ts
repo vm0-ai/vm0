@@ -12,7 +12,6 @@ import type {
 import {
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthCredentials,
-  isConnectorAuthMethodAvailable,
   isOAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -36,7 +35,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { userConnectorAvailability } from "./connector-availability.service";
 import {
   upsertOAuthConnector$,
   zeroConnectorByType,
@@ -681,12 +680,12 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return resolvedType;
     }
 
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
+    const availability = await get(
+      userConnectorAvailability(args.orgId, args.userId),
     );
     signal.throwIfAborted();
 
-    if (!isConnectorAuthMethodAvailable(resolvedType, "oauth", overrides)) {
+    if (!availability.isAuthMethodAvailable(resolvedType, "oauth")) {
       return connectorOauthDeviceAuthDisabled;
     }
 
@@ -786,12 +785,12 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return resolvedType;
     }
 
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
+    const availability = await get(
+      userConnectorAvailability(args.orgId, args.userId),
     );
     signal.throwIfAborted();
 
-    if (!isConnectorAuthMethodAvailable(resolvedType, "oauth", overrides)) {
+    if (!availability.isAuthMethodAvailable(resolvedType, "oauth")) {
       return connectorOauthDeviceAuthDisabled;
     }
 

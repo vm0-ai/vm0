@@ -119,4 +119,20 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroConnectorSessionsContract);
+    const response = await accept(
+      client.create({
+        params: { type: "github" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
 });
