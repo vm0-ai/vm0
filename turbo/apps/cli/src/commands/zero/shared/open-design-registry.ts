@@ -1418,7 +1418,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
   return OPEN_DESIGN_REGISTRY.filter((entry) => {
-    return entry.kind === "image-style" && entry.status !== "hidden";
+    return entry.kind === "image-style";
   });
 }
 
