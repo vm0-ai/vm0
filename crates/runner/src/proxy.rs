@@ -2193,6 +2193,32 @@ while true; do read -r _ <&3 || true; done
     }
 
     #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_requests_flush_when_request_id_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(
+            &path,
+            usage_state_with_request(0, 0, 0, Some("old-request")),
+        )
+        .unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_throttles_repeat_flush_requests() {
         let dir = tempfile::tempdir().unwrap();
         let request = usage_request();

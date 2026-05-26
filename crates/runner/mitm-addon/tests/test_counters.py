@@ -223,6 +223,23 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() is None
 
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            [],
+            {},
+            {"usageStateId": "runner-state"},
+            {"usageStateId": "runner-state", "flushRequestId": ""},
+            {"usageStateId": "runner-state", "flushRequestId": 123},
+        ],
+    )
+    def test_read_usage_flush_request_id_rejects_invalid_marker_shape(self, tmp_path, marker):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        (tmp_path / "usage-flush-request").write_text(json.dumps(marker))
+
+        assert usage.read_usage_flush_request_id() is None
+
     def test_decrement_does_not_go_negative(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         usage.decrement_in_flight_flows()
