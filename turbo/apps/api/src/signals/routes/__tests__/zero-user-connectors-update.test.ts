@@ -161,14 +161,14 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
       apiClient().update({
         params: { id: agentId },
         headers: authHeaders(),
-        body: { enabledTypes: ["slock"] },
+        body: { enabledTypes: ["bentoml"] },
       }),
       [400],
     );
 
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
     expect(response.body.error.message).toContain(
-      "Connector types are not available: slock",
+      "Connector types are not available: bentoml",
     );
     await expect(
       getEnabledTypes(fixture.orgId, fixture.userId, agentId),

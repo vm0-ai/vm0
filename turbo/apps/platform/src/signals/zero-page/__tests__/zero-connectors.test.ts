@@ -136,21 +136,21 @@ describe("connectors", () => {
     server.use(
       mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
         authorizationRequests += 1;
-        return respond(200, { enabledTypes: ["slock"] });
+        return respond(200, { enabledTypes: ["bentoml"] });
       }),
     );
 
     await setupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.SlockConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.BentomlConnector]: false },
       withoutRender: true,
     });
 
     const block = createConnectorActionBlock("connector-action-1", {
-      connectorType: "slock",
+      connectorType: "bentoml",
       agentId: DEFAULT_AGENT_ID,
-      originalUrl: `https://app.vm0.ai/connectors/slock/authorize?agentId=${DEFAULT_AGENT_ID}`,
+      originalUrl: `https://app.vm0.ai/connectors/bentoml/authorize?agentId=${DEFAULT_AGENT_ID}`,
     });
 
     await expect(context.store.get(block.available$)).resolves.toBeFalsy();

@@ -455,7 +455,7 @@ describe("POST /api/zero/onboarding/setup", () => {
         headers: authHeaders(),
         body: {
           displayName: "Zero",
-          selectedConnectors: ["slock"],
+          selectedConnectors: ["bentoml"],
         },
       }),
       [403],
@@ -463,7 +463,7 @@ describe("POST /api/zero/onboarding/setup", () => {
 
     expect(response.body.error.code).toBe("FORBIDDEN");
     expect(response.body.error.message).toContain(
-      "Connector types are not available: slock",
+      "Connector types are not available: bentoml",
     );
     await expect(countAgents(fixture.orgId)).resolves.toBe(0);
   });

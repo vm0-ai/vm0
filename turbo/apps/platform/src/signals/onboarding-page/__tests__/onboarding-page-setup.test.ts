@@ -118,7 +118,7 @@ describe("setupOnboardingPage$ — ?connector= consumption", () => {
 
     detachedSetupPage({
       context,
-      path: "/onboarding?connector=slock,gmail",
+      path: "/onboarding?connector=bentoml,gmail",
       withoutRender: true,
     });
 
@@ -126,7 +126,7 @@ describe("setupOnboardingPage$ — ?connector= consumption", () => {
 
     const selected = context.store.get(zeroSelectedConnectors$);
     expect(selected).toContain("gmail");
-    expect(selected).not.toContain("slock");
+    expect(selected).not.toContain("bentoml");
   });
 
   it("leaves selections untouched when ?connector= is absent", async () => {
