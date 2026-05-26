@@ -1,4 +1,24 @@
-"""In-memory aggregation for usage-event webhook uploads."""
+"""Process-local buffering for aggregate usage-event webhook uploads.
+
+This module owns the usage-event buffer singleton used by the mitmproxy addon.
+The singleton is created on import with default settings, but its flush timer is
+scheduled lazily only after source events are accepted into the buffer.
+
+Source event idempotency keys are deduped process-wide before destination
+bucketing. The seen-key set survives flushes and is bounded by
+``MAX_SOURCE_IDEMPOTENCY_KEYS`` so duplicate response/error observations do not
+become separate aggregate rows.
+
+Accepted events are separated by webhook destination (``url``,
+``sandbox_token``, and ``proxy_log_path``), then aggregated by ``run_id``,
+``kind``, ``provider``, and ``category``. Matching aggregate buckets sum
+``quantity`` before delivery.
+
+Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
+calls. The trigger label is emitted in ``usage_event_buffer_flush`` proxy-log
+records, so callers should use the conventional labels captured by
+``UsageFlushTrigger``.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +29,7 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Protocol, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 from logging_utils import log_proxy_entry
 
@@ -33,6 +53,9 @@ class UsageEvent(TypedDict):
     provider: str
     category: str
     quantity: int
+
+
+UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
 
 
 class _TimerHandle(Protocol):
@@ -149,7 +172,7 @@ class UsageEventBuffer:
         )
         return accepted_count
 
-    def flush_usage_events(self, *, trigger: str) -> int:
+    def flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
         """Flush all buffered usage events now."""
         with self._lock:
             enqueuing_count, flush_sequence, batches, summaries = self._snapshot_batches_locked()
@@ -178,7 +201,7 @@ class UsageEventBuffer:
         self,
         batches: list[_FlushBatch],
         enqueuing_count: int,
-        trigger: str,
+        trigger: UsageFlushTrigger,
         flush_sequence: int,
         summaries: list[_FlushSummary],
     ) -> None:
@@ -435,7 +458,7 @@ def _build_flush_summaries(
 
 def _log_flush_summaries(
     phase: str,
-    trigger: str,
+    trigger: UsageFlushTrigger,
     flush_sequence: int,
     summaries: Iterable[_FlushSummary],
     *,
@@ -480,6 +503,10 @@ _usage_event_buffer = UsageEventBuffer()
 
 
 def configure_usage_buffer(*, flush_interval_seconds: float) -> None:
+    """Update singleton buffer settings for future timer scheduling.
+
+    Existing scheduled timers are not rescheduled.
+    """
     _usage_event_buffer.configure(flush_interval_seconds=flush_interval_seconds)
 
 
@@ -490,6 +517,12 @@ def buffer_usage_events(
     events: Iterable[UsageEvent],
     proxy_log_path: str,
 ) -> int:
+    """Buffer source events on the singleton and return the accepted count.
+
+    Source idempotency-key duplicates are dropped before aggregation, so the
+    accepted count can be smaller than the number of input events. A threshold
+    flush may be enqueued before this returns.
+    """
     return _usage_event_buffer.buffer_usage_events(
         url,
         sandbox_token,
@@ -499,7 +532,8 @@ def buffer_usage_events(
     )
 
 
-def flush_usage_events(*, trigger: str) -> int:
+def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
+    """Flush the singleton and return the webhook batch count."""
     return _usage_event_buffer.flush_usage_events(trigger=trigger)
 
 
@@ -508,6 +542,7 @@ def reset_usage_buffer_for_tests(
     timer_enabled: bool = False,
     timer_factory: _TimerFactory | None = None,
 ) -> None:
+    """Replace singleton buffer state for test isolation."""
     global _usage_event_buffer
     _usage_event_buffer.close()
     _usage_event_buffer = UsageEventBuffer(
