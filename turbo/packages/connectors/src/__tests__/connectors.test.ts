@@ -1100,7 +1100,7 @@ describe("isOAuthConnectorType", () => {
           username: "Slock User",
           email: "slock@example.com",
         },
-        connectorSecrets: {
+        extraConnectorSecrets: {
           SLOCK_SERVER_ID: "slock-server-primary",
         },
       },

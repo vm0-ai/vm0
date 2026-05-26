@@ -341,7 +341,7 @@ export async function pollSlockDeviceAuth(args: {
       expiresIn: data.expiresIn,
       scopes: [],
       userInfo,
-      connectorSecrets: {
+      extraConnectorSecrets: {
         [SLOCK_SERVER_ID_SECRET_NAME]: serverIdResult.serverId,
       },
     },

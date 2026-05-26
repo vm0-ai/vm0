@@ -745,13 +745,13 @@ async function upsertExtraOAuthConnectorSecrets(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: OAuthConnectorType;
-  readonly connectorSecrets: Readonly<Record<string, string>> | undefined;
+  readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const extraSecrets = Object.entries(args.connectorSecrets ?? {});
+  const extraSecrets = Object.entries(args.extraConnectorSecrets ?? {});
   if (extraSecrets.length === 0) {
     return;
   }
@@ -798,7 +798,7 @@ export const upsertOAuthConnector$ = command(
       readonly refreshToken?: string | null;
       readonly refreshSecretName?: string;
       readonly expiresIn?: number;
-      readonly connectorSecrets?: Readonly<Record<string, string>>;
+      readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -854,7 +854,7 @@ export const upsertOAuthConnector$ = command(
       orgId: args.orgId,
       userId: args.userId,
       type: args.type,
-      connectorSecrets: args.connectorSecrets,
+      extraConnectorSecrets: args.extraConnectorSecrets,
       accessSecretName: secretMetadata.accessSecretName,
       refreshSecretName: secretMetadata.isRefreshable
         ? secretMetadata.refreshSecretName
