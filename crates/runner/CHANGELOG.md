@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.5...runner-rs-v0.104.6) (2026-05-26)
+
+
+### Refactoring
+
+* **runner:** model local submit queue entry ([#14988](https://github.com/vm0-ai/vm0/issues/14988)) ([37b90e6](https://github.com/vm0-ai/vm0/commit/37b90e60b63352cb3a13ca7dedc5ec2a841c928a))
+
 ## [0.104.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.4...runner-rs-v0.104.5) (2026-05-26)
 
 

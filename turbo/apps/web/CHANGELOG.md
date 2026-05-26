@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.389.7](https://github.com/vm0-ai/vm0/compare/web-v12.389.6...web-v12.389.7) (2026-05-26)
+
+
+### Bug Fixes
+
+* **web:** align docs home title and sidebar with sub-pages ([#14995](https://github.com/vm0-ai/vm0/issues/14995)) ([df13734](https://github.com/vm0-ai/vm0/commit/df1373466efc5225d1329434f052bbda4740ccff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.2
+    * @vm0/core bumped to 8.297.0
+    * @vm0/db bumped to 1.18.19
+  * devDependencies
+    * @vm0/connectors bumped to 1.36.0
+
 ## [12.389.6](https://github.com/vm0-ai/vm0/compare/web-v12.389.5...web-v12.389.6) (2026-05-26)
 
 

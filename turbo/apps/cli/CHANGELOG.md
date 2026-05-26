@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.167.0](https://github.com/vm0-ai/vm0/compare/cli-v9.166.0...cli-v9.167.0) (2026-05-26)
+
+
+### Features
+
+* register open design skills ([#14974](https://github.com/vm0-ai/vm0/issues/14974)) ([14e2e58](https://github.com/vm0-ai/vm0/commit/14e2e58c21f8433761e70f67be6a675148b8d24a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.41.2
+    * @vm0/connectors bumped to 1.36.0
+    * @vm0/core bumped to 8.297.0
+
 ## [9.166.0](https://github.com/vm0-ai/vm0/compare/cli-v9.165.3...cli-v9.166.0) (2026-05-26)
 
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.76.0](https://github.com/vm0-ai/vm0/compare/api-v1.75.0...api-v1.76.0) (2026-05-26)
+
+
+### Features
+
+* expose slock connector without feature switch ([#15007](https://github.com/vm0-ai/vm0/issues/15007)) ([dba7317](https://github.com/vm0-ai/vm0/commit/dba73170e9f925bb5b44c152a4c8afc7f3cc4537))
+
+
+### Bug Fixes
+
+* scope pinned chat threads to the requested agent ([#15000](https://github.com/vm0-ai/vm0/issues/15000)) ([5d89665](https://github.com/vm0-ai/vm0/commit/5d89665639383505679e348d3472302831553fbf))
+
+
+### Refactoring
+
+* derive manual credential connector state ([#15008](https://github.com/vm0-ai/vm0/issues/15008)) ([abe9dc6](https://github.com/vm0-ai/vm0/commit/abe9dc6f77496a050ab0b0a311b329c03aca7dc8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.2
+    * @vm0/connectors bumped to 1.36.0
+    * @vm0/core bumped to 8.297.0
+    * @vm0/db bumped to 1.18.19
+
 ## [1.75.0](https://github.com/vm0-ai/vm0/compare/api-v1.74.1...api-v1.75.0) (2026-05-26)
 
 

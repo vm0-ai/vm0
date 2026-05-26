@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.32.20"
+version = "0.32.21"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -2547,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.104.5"
+version = "0.104.6"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2762,7 +2762,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.35.16"
+version = "0.35.17"
 dependencies = [
  "async-trait",
  "base64",
@@ -3668,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.14"
+version = "0.17.15"
 dependencies = [
  "nix",
  "tokio",
@@ -3684,7 +3684,7 @@ version = "0.18.7"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.61"
+version = "0.9.62"
 dependencies = [
  "guest-write-file",
  "libc",

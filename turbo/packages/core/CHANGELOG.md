@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.297.0](https://github.com/vm0-ai/vm0/compare/core-v8.296.0...core-v8.297.0) (2026-05-26)
+
+
+### Features
+
+* expose slock connector without feature switch ([#15007](https://github.com/vm0-ai/vm0/issues/15007)) ([dba7317](https://github.com/vm0-ai/vm0/commit/dba73170e9f925bb5b44c152a4c8afc7f3cc4537))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.2
+    * @vm0/connectors bumped to 1.36.0
+
 ## [8.296.0](https://github.com/vm0-ai/vm0/compare/core-v8.295.1...core-v8.296.0) (2026-05-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.15](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.14...vsock-host-v0.17.15) (2026-05-26)
+
+
+### Bug Fixes
+
+* demote expected exec cancel terminal logs ([#14990](https://github.com/vm0-ai/vm0/issues/14990)) ([26428c4](https://github.com/vm0-ai/vm0/commit/26428c4ae737dd11412237118d83bca9841e0b74))
+
 ## [0.17.14](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.13...vsock-host-v0.17.14) (2026-05-25)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.386.0](https://github.com/vm0-ai/vm0/compare/app-v0.385.0...app-v0.386.0) (2026-05-26)
+
+
+### Features
+
+* **chat:** replace mod+shift+up/down cross-page nav with mod+shift+o for new chat ([#15011](https://github.com/vm0-ai/vm0/issues/15011)) ([8389af9](https://github.com/vm0-ai/vm0/commit/8389af90553fd4faaf3f9abe80b50956fcf41b09))
+
+
+### Refactoring
+
+* remove legacy connector auth method order ([#14985](https://github.com/vm0-ai/vm0/issues/14985)) ([61a4934](https://github.com/vm0-ai/vm0/commit/61a49346cbd850b9956376985d9cccf00c2286c3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.2
+    * @vm0/connectors bumped to 1.36.0
+    * @vm0/core bumped to 8.297.0
+
 ## [0.385.0](https://github.com/vm0-ai/vm0/compare/app-v0.384.10...app-v0.385.0) (2026-05-26)
 
 
