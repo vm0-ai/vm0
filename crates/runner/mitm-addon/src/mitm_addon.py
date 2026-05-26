@@ -231,7 +231,7 @@ async def request(flow: http.HTTPFlow) -> None:
     if not vm_context:
         # Not a registered VM, pass through without proxying
         return
-    vm_info, compiled_firewalls = vm_context
+    vm_info, compiled_firewalls, compiled_network_policies = vm_context
 
     run_id = vm_info.get("runId", "")
 
@@ -283,20 +283,23 @@ async def request(flow: http.HTTPFlow) -> None:
         # --- Step 2: Firewall match with permission check ---
         # Match base URL, then check permission rules before injecting auth headers.
         if compiled_firewalls:
-            network_policies = vm_info.get("networkPolicies") or {}
             result = matching.match_compiled_firewall_request(
                 original_url,
                 flow.request.method,
                 compiled_firewalls,
-                network_policies,
+                compiled_network_policies,
             )
             if isinstance(result, matching.FirewallBlock):
                 proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+                block_message = (
+                    "malformed network policy"
+                    if result.reason == "malformed_network_policy"
+                    else "no matching permission"
+                )
                 log_proxy_entry(
                     proxy_log_path,
                     "warn",
-                    "Firewall "
-                    f"{result.name}: no matching permission for {result.method} {result.path}",
+                    f"Firewall {result.name}: {block_message} for {result.method} {result.path}",
                     type="firewall_block",
                     name=result.name,
                     reason=result.reason,
