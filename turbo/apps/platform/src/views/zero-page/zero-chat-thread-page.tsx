@@ -153,6 +153,7 @@ import {
   setActiveOrgManageTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
@@ -2618,6 +2619,9 @@ function InsufficientCreditsCard() {
     billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const roleResolved = isAdminLoadable.state === "hasData";
+  const canManageBilling = roleResolved ? isAdminLoadable.data : false;
   const hasAvailableCredits = credits !== null && credits > 0;
   const isFree = tier === "free" || tier === null;
   const shouldStartProCheckout = tier === "free";
@@ -2641,9 +2645,15 @@ function InsufficientCreditsCard() {
   const headline = isFree
     ? "You've used your free credits"
     : "You're out of credits";
-  const helper = isFree
-    ? "Upgrade to Pro to keep chatting with Zero."
-    : "Add credits to keep chatting with Zero.";
+  const helper = !roleResolved
+    ? "Checking billing permissions..."
+    : !canManageBilling
+      ? isFree
+        ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
+        : "Ask a workspace admin to add credits so you can keep chatting with Zero."
+      : isFree
+        ? "Upgrade to Pro to keep chatting with Zero."
+        : "Add credits to keep chatting with Zero.";
 
   const openBilling = () => {
     setTab("billing");
@@ -2684,7 +2694,7 @@ function InsufficientCreditsCard() {
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
       <p className="text-sm font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-      {isFree ? (
+      {!canManageBilling ? null : isFree ? (
         <button
           type="button"
           onClick={handleUpgradeClick}

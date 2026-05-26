@@ -10,6 +10,7 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
@@ -126,6 +127,38 @@ describe("zero chat thread page - insufficient credits card", () => {
     });
   });
 
+  it("asks non-admins to have an admin upgrade free-tier workspaces", async () => {
+    const createCheckout = vi.fn();
+    setMockOrg({ role: "member" });
+    setMockBillingStatus({
+      tier: "free",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+    });
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ respond }) => {
+        createCheckout();
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?tier=pro",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    expect(
+      await screen.findByText(
+        "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upgrade to Pro" }),
+    ).not.toBeInTheDocument();
+    expect(createCheckout).not.toHaveBeenCalled();
+  });
+
   it("starts fixed credit checkout for paid-tier workspaces", async () => {
     let capturedCreditCheckoutBody: unknown;
     setMockBillingStatus({
@@ -159,6 +192,41 @@ describe("zero chat thread page - insufficient credits card", () => {
         ),
       });
     });
+  });
+
+  it("asks non-admins to have an admin add credits to paid workspaces", async () => {
+    const createCreditCheckout = vi.fn();
+    setMockOrg({ role: "member" });
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 0,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ respond }) => {
+        createCreditCheckout();
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=200000",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    expect(
+      await screen.findByText(
+        "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "$100" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Custom" }),
+    ).not.toBeInTheDocument();
+    expect(createCreditCheckout).not.toHaveBeenCalled();
   });
 
   it("starts custom amount credit checkout for paid-tier workspaces", async () => {
@@ -220,7 +288,7 @@ describe("zero chat thread page - insufficient credits card", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "100K" }),
+      screen.queryByRole("button", { name: "$100" }),
     ).not.toBeInTheDocument();
   });
 });
