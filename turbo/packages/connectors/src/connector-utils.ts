@@ -102,14 +102,7 @@ function getManualGrantFields(
   return method.grant.fields;
 }
 
-export function getConnectorManualGrantFields(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): Record<string, ConnectorManualGrantFieldConfig> | undefined {
-  return getManualGrantFields(getConnectorAuthMethod(type, authMethod));
-}
-
-export interface ManualCredentialFieldNames {
+export interface RequiredManualCredentialFieldNames {
   readonly secrets: readonly string[];
   readonly variables: readonly string[];
 }
@@ -117,7 +110,7 @@ export interface ManualCredentialFieldNames {
 export interface ManualCredentialAuthMethod {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
-  readonly fields: ManualCredentialFieldNames;
+  readonly requiredFields: RequiredManualCredentialFieldNames;
 }
 
 export interface ConnectedManualCredentialMethod {
@@ -125,9 +118,9 @@ export interface ConnectedManualCredentialMethod {
   readonly authMethod: ConnectorAuthMethodId;
 }
 
-function manualCredentialFieldNames(
+function requiredManualCredentialFieldNames(
   fields: Record<string, ConnectorManualGrantFieldConfig>,
-): ManualCredentialFieldNames {
+): RequiredManualCredentialFieldNames {
   const secretNames: string[] = [];
   const variableNames: string[] = [];
   for (const [name, cfg] of Object.entries(fields)) {
@@ -142,20 +135,20 @@ function manualCredentialFieldNames(
 }
 
 function hasRequiredManualCredentialFields(
-  fields: ManualCredentialFieldNames,
+  fields: RequiredManualCredentialFieldNames,
 ): boolean {
   return fields.secrets.length > 0 || fields.variables.length > 0;
 }
 
-export function getConnectorManualCredentialFields(
+function getConnectorRequiredManualCredentialFields(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
-): ManualCredentialFieldNames | null {
+): RequiredManualCredentialFieldNames | null {
   const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
-  return fields ? manualCredentialFieldNames(fields) : null;
+  return fields ? requiredManualCredentialFieldNames(fields) : null;
 }
 
-export function getConnectorManualCredentialFieldStorageType(
+function getConnectorManualCredentialFieldStorageType(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
   name: string,
@@ -178,7 +171,9 @@ export function getConnectorManualCredentialAuthMethods(
         manualMethods.push({
           type,
           authMethod,
-          fields: manualCredentialFieldNames(method.grant.fields),
+          requiredFields: requiredManualCredentialFieldNames(
+            method.grant.fields,
+          ),
         });
         break;
       case "managed":
@@ -201,11 +196,11 @@ export function deriveConnectedManualCredentialMethod(
   const varNames = userVariableNames ?? new Set<string>();
 
   for (const method of getConnectorManualCredentialAuthMethods(type)) {
-    if (!hasRequiredManualCredentialFields(method.fields)) continue;
-    const secretsOk = method.fields.secrets.every((name) => {
+    if (!hasRequiredManualCredentialFields(method.requiredFields)) continue;
+    const secretsOk = method.requiredFields.secrets.every((name) => {
       return userSecretNames.has(name);
     });
-    const variablesOk = method.fields.variables.every((name) => {
+    const variablesOk = method.requiredFields.variables.every((name) => {
       return varNames.has(name);
     });
     if (secretsOk && variablesOk) {
@@ -899,10 +894,10 @@ export function getConnectorTypeForSecretName(
 
 export function getApiTokenFieldsByType(
   type: ConnectorType,
-): ManualCredentialFieldNames | null {
+): RequiredManualCredentialFieldNames | null {
   // Compatibility wrapper for legacy API-token callers. New state inference
   // should use manual credential helpers so the method id is preserved.
-  return getConnectorManualCredentialFields(type, "api-token");
+  return getConnectorRequiredManualCredentialFields(type, "api-token");
 }
 
 export function getApiTokenFieldStorageType(
