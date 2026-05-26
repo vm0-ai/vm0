@@ -11,6 +11,8 @@
 
 load '../../helpers/setup'
 
+export BATS_TEST_TIMEOUT=180
+
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
@@ -65,6 +67,7 @@ teardown_file() {
         return 1
     }
 
+    wait_for_zero_run_completed "$RUN_ID"
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- "[model-provider:anthropic-api-key]"
     refute_output --partial '[model-provider:anthropic-api-key $]'
 
@@ -89,6 +92,7 @@ teardown_file() {
         return 1
     }
 
+    wait_for_zero_run_completed "$RUN_ID"
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- '[model-provider:anthropic-api-key $]'
 
     usage_run=$(wait_for_zero_usage_run "$RUN_ID")
