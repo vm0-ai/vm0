@@ -960,6 +960,30 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_cleanup_keeps_completed_result_when_claimed() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
+
+        queue.abandon("timed out");
+
+        assert!(!queue.job.exists());
+        assert!(queue.result.exists());
+        assert!(queue.cancel.exists());
+        assert!(queue.claim.exists());
+    }
+
+    #[test]
     fn abandoned_cleanup_keeps_marker_when_job_cannot_be_removed() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
