@@ -326,7 +326,7 @@ function defaultAgentContent(name: string) {
       [name]: {
         framework: "claude-code",
         environment: {
-          ANTHROPIC_API_KEY: "fake-e2e-anthropic-key",
+          ANTHROPIC_API_KEY: "",
         },
       },
     },

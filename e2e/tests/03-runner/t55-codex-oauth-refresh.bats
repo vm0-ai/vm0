@@ -44,16 +44,14 @@ setup_file() {
     # triggers a refresh on any in-sandbox request.
     seed_codex_oauth "$INITIAL_AT" "$INITIAL_RT" "$INITIAL_ACC" "id-tok" -60
 
-    # OPENAI_API_KEY placeholder satisfies validateFrameworkApiKey for codex
-    # framework — see t54-codex-oauth-sandbox.bats for the full rationale.
+    # Do not declare OPENAI_API_KEY here: direct runs without a framework API
+    # key resolve the seeded codex-oauth-token provider.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "ChatGPT OAuth refresh rotation test"
     framework: codex
-    environment:
-      OPENAI_API_KEY: "ignored-when-using-codex-oauth-token-provider"
     working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
@@ -80,6 +78,7 @@ teardown_file() {
     # regression in the firewall webhook pipeline and should be triaged
     # before disabling this test.
     run $VM0_CLI run "$AGENT_NAME" \
+        --model-provider-type "codex-oauth-token" \
         -- "Reply with exactly RESULT=ok"
 
     # Two acceptable outcomes:
@@ -126,7 +125,9 @@ teardown_file() {
 
     seed_codex_oauth_via_authjson "$raw_json" -60
 
-    run $VM0_CLI run "$AGENT_NAME" -- "Reply with exactly RESULT=ok"
+    run $VM0_CLI run "$AGENT_NAME" \
+        --model-provider-type "codex-oauth-token" \
+        -- "Reply with exactly RESULT=ok"
 
     if [ "$status" -eq 0 ]; then
         assert_output --partial "RESULT=ok"

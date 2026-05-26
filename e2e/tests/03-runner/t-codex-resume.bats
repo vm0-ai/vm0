@@ -32,7 +32,7 @@ agents:
     description: "Codex resume test agent"
     framework: codex
     environment:
-      OPENAI_API_KEY: "\${{ secrets.OPENAI_API_KEY }}"
+      OPENAI_API_KEY: ""
     volumes:
       - codex-files:/home/user/.codex
     working_dir: /home/user/workspace
@@ -54,7 +54,6 @@ teardown_file() {
 @test "t-codex-resume-1: continue resumes codex thread from session" {
     # Initial turn: creates a codex thread and writes the session file.
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=mock-not-validated-by-mock-codex" \
         "first turn"
     assert_success
     assert_output --partial "▷ Codex Started"
@@ -77,7 +76,6 @@ teardown_file() {
     # codex thread_id from the prior session, mock-codex appends to the
     # existing session file, and a new turn renders.
     run $VM0_CLI run continue "$session_id" \
-        --secrets "OPENAI_API_KEY=mock-not-validated-by-mock-codex" \
         "second turn"
     assert_success
     assert_output --partial "▷ Codex Started"

@@ -39,7 +39,7 @@ agents:
     description: "Codex event-mapping fixture-driver agent"
     framework: codex
     environment:
-      OPENAI_API_KEY: "\${{ secrets.OPENAI_API_KEY }}"
+      OPENAI_API_KEY: ""
       MOCK_CODEX_FIXTURE: "\${{ vars.MOCK_CODEX_FIXTURE }}"
     volumes:
       - codex-files:/home/user/.codex
@@ -61,7 +61,6 @@ teardown_file() {
 
 @test "t-codex-event-mapping-1: rich fixture renders all item types" {
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=mock-not-validated-by-mock-codex" \
         --vars "MOCK_CODEX_FIXTURE=event-mapping-rich" \
         "drive the rich fixture"
 
@@ -91,7 +90,6 @@ teardown_file() {
 
 @test "t-codex-event-mapping-2: turn-failed fixture renders Codex Failed" {
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=mock-not-validated-by-mock-codex" \
         --vars "MOCK_CODEX_FIXTURE=turn-failed" \
         "drive the turn-failed fixture"
 
@@ -105,7 +103,6 @@ teardown_file() {
 
 @test "t-codex-event-mapping-3: error-event fixture renders Codex Failed" {
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=mock-not-validated-by-mock-codex" \
         --vars "MOCK_CODEX_FIXTURE=error-event" \
         "drive the error-event fixture"
 

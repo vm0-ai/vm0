@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
+import { modelProviderTypeSchema } from "./model-providers";
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
@@ -111,6 +112,9 @@ const unifiedRunRequestSchema = z
 
     // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
     permissionPolicies: firewallPoliciesSchema.optional(),
+
+    // Internal: pin provider type for direct CLI runs used by E2E.
+    modelProviderType: modelProviderTypeSchema.optional(),
   })
   .strict();
 

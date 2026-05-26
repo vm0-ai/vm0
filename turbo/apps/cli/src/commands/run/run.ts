@@ -1,5 +1,9 @@
 import { Command, Option } from "commander";
 import {
+  modelProviderTypeSchema,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   getComposeById,
   getComposeByName,
   getComposeVersion,
@@ -27,6 +31,19 @@ import {
 import { withErrorHandler } from "../../lib/command";
 
 declare const __CLI_VERSION__: string;
+
+function parseModelProviderType(
+  value: string | undefined,
+): ModelProviderType | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = modelProviderTypeSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(`Invalid model provider type: ${value}`);
+  }
+  return parsed.data;
+}
 
 export const mainRunCommand = new Command()
   .name("run")
@@ -101,6 +118,7 @@ export const mainRunCommand = new Command()
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--debug-no-mock-codex").hideHelp())
+  .addOption(new Option("--model-provider-type <type>").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
     withErrorHandler(
@@ -128,6 +146,7 @@ export const mainRunCommand = new Command()
           captureNetworkBodies?: boolean;
           debugNoMockClaude?: boolean;
           debugNoMockCodex?: boolean;
+          modelProviderType?: string;
           autoUpdate?: boolean;
         },
       ) => {
@@ -223,6 +242,7 @@ export const mainRunCommand = new Command()
           captureNetworkBodies: options.captureNetworkBodies || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
           debugNoMockCodex: options.debugNoMockCodex || undefined,
+          modelProviderType: parseModelProviderType(options.modelProviderType),
         });
 
         // 7. Check for immediate failure (e.g., missing secrets)

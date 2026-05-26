@@ -651,7 +651,7 @@ describe("POST /api/test/slack-state", () => {
         "e2e-slack-agent": {
           framework: "claude-code",
           environment: {
-            ANTHROPIC_API_KEY: "fake-e2e-anthropic-key",
+            ANTHROPIC_API_KEY: "",
           },
         },
       },

@@ -37,7 +37,7 @@ agents:
     description: "Codex smoke test agent"
     framework: codex
     environment:
-      OPENAI_API_KEY: "\${{ secrets.OPENAI_API_KEY }}"
+      OPENAI_API_KEY: ""
     volumes:
       - codex-files:/home/user/.codex
     working_dir: /home/user/workspace
@@ -58,7 +58,6 @@ teardown_file() {
 
 @test "t-codex-smoke-1: basic codex run renders codex markers" {
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=mock-not-validated-by-mock-codex" \
         "echo from codex"
 
     assert_success

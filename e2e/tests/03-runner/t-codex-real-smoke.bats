@@ -3,9 +3,9 @@
 # Real Codex smoke test — verifies actual codex CLI execution (not mock).
 #
 # Mirrors t27-real-claude-smoke.bats but for the codex framework. Requires
-# `OPENAI_API_KEY` in the host environment and uses --debug-no-mock-codex
-# to suppress USE_MOCK_CODEX forwarding so the real codex binary runs
-# inside the sandbox.
+# `OPENAI_API_KEY` in the host environment. The test configures it as an
+# org model provider, so the sandbox receives only the model-provider
+# placeholder and mitmproxy performs the egress-time replacement.
 #
 # OPENAI_API_KEY is mandatory — CI injects it via secrets.OPENAI_API_KEY and
 # local runs must export it. There is no skip path: if the key is missing,
@@ -28,6 +28,8 @@ VOLEOF
     $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
+    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:
@@ -35,7 +37,6 @@ agents:
     description: "Real codex smoke test"
     framework: codex
     environment:
-      OPENAI_API_KEY: "\${{ secrets.OPENAI_API_KEY }}"
       OPENAI_MODEL: "gpt-5.4-mini"
     volumes:
       - codex-files:/home/user/.codex
@@ -55,9 +56,15 @@ teardown_file() {
     fi
 }
 
+ensure_openai_model_provider() {
+    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
+}
+
 @test "t-codex-real-smoke-0: print sandbox codex version" {
+    ensure_openai_model_provider
+
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=$OPENAI_API_KEY" \
+        --model-provider-type "openai-api-key" \
         --debug-no-mock-codex \
         "Run 'codex --version' with the shell tool and include the exact output"
 
@@ -67,8 +74,10 @@ teardown_file() {
 }
 
 @test "t-codex-real-smoke-1: basic run with real codex" {
+    ensure_openai_model_provider
+
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "OPENAI_API_KEY=$OPENAI_API_KEY" \
+        --model-provider-type "openai-api-key" \
         --debug-no-mock-codex \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
 

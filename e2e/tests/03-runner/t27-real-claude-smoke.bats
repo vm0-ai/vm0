@@ -2,6 +2,8 @@
 
 # Real Claude smoke tests — verify actual LLM execution (not mock).
 # Requires ANTHROPIC_API_KEY set in CI via secrets.CI_ANTHROPIC_API_KEY.
+# The key is configured as an org model provider; the sandbox receives only
+# the model-provider placeholder and mitmproxy performs the replacement.
 #
 # Test 0 (version): print sandbox Claude Code version for debugging
 # Test 1 (basic): baseline LLM execution — math prompt, verify correct answer
@@ -37,16 +39,15 @@ VOLEOF
     $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
+    $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY" >/dev/null
+
     # Compose agents separately (only one agent per compose is supported)
-    # ANTHROPIC_API_KEY is passed via --secrets at run time (not via model-provider)
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "Real Claude smoke test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -62,8 +63,6 @@ agents:
   ${AGENT_NAME}-flags:
     description: "Real Claude flags test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -79,8 +78,6 @@ agents:
   ${AGENT_NAME}-settings:
     description: "Real Claude settings test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -96,8 +93,6 @@ agents:
   ${AGENT_NAME}-slash:
     description: "Real Claude slash-command no-history test"
     framework: claude-code
-    environment:
-      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -119,15 +114,21 @@ teardown_file() {
     fi
 }
 
+ensure_anthropic_model_provider() {
+    $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY" >/dev/null
+}
+
 # Test 0: Print sandbox Claude Code version for debugging
 @test "t27-0: print sandbox claude version" {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set"
     fi
 
+    ensure_anthropic_model_provider
+
     # Run claude --version inside the sandbox to confirm which binary is installed
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+        --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
         "Run 'claude --version' with the Bash tool and include the exact output"
 
@@ -143,8 +144,10 @@ teardown_file() {
         skip "ANTHROPIC_API_KEY not set"
     fi
 
+    ensure_anthropic_model_provider
+
     run $VM0_CLI run "$AGENT_NAME" \
-        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+        --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
 
@@ -163,10 +166,12 @@ teardown_file() {
         skip "ANTHROPIC_API_KEY not set"
     fi
 
+    ensure_anthropic_model_provider
+
     # "--" separates variadic --disallowed-tools from the prompt
     # (Commander.js <tools...> would otherwise swallow subsequent args)
     run $VM0_CLI run "${AGENT_NAME}-flags" \
-        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+        --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
         --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
         --disallowed-tools CronCreate CronList CronDelete \
@@ -189,12 +194,14 @@ teardown_file() {
         skip "ANTHROPIC_API_KEY not set"
     fi
 
+    ensure_anthropic_model_provider
+
     # PreToolUse hook: write sentinel file before each Bash tool invocation.
     # Claude will read this file to prove the hook fired inside the sandbox.
     local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
 
     run $VM0_CLI run "${AGENT_NAME}-settings" \
-        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+        --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
         --settings "$settings" \
         -- "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response."
@@ -212,8 +219,10 @@ teardown_file() {
         skip "ANTHROPIC_API_KEY not set"
     fi
 
+    ensure_anthropic_model_provider
+
     run $VM0_CLI run "${AGENT_NAME}-slash" \
-        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+        --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
         "/help"
 

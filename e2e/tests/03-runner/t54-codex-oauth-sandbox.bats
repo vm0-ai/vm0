@@ -72,20 +72,15 @@ setup_file() {
         "$CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN"
 
     # Compose codex-framework agent that mounts the audit artifact.
-    # OPENAI_API_KEY env declaration satisfies validateFrameworkApiKey for the
-    # codex framework. The placeholder value is never used at runtime — the
-    # codex-oauth-token firewall injects real auth headers at egress —
-    # but the validator requires the env key to be present (or the provider
-    # to be a single-secret provider whose secretName matches; codex-oauth-
-    # token is multi-auth so getSecretNameForType returns undefined).
+    # Do not declare OPENAI_API_KEY here: direct runs without a framework API
+    # key resolve the seeded codex-oauth-token provider, which injects only
+    # ChatGPT placeholders into the sandbox and performs real auth at egress.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "ChatGPT OAuth sandbox audit agent"
     framework: codex
-    environment:
-      OPENAI_API_KEY: "ignored-when-using-codex-oauth-token-provider"
     artifacts:
       - ${AUDIT_ARTIFACT_NAME}:/artifacts
     working_dir: /home/user/workspace
@@ -106,6 +101,7 @@ teardown_file() {
 # (per plan phase Q1 decision: A2 — synthetic + MSW for CI).
 @test "t54-1: codex agent run completes with codex-oauth provider" {
     run $VM0_CLI run "$AGENT_NAME" \
+        --model-provider-type "codex-oauth-token" \
         -- "Reply with exactly RESULT=579"
 
     assert_success
@@ -185,7 +181,9 @@ teardown_file() {
 
     seed_codex_oauth_via_authjson "$raw_json"
 
-    run $VM0_CLI run "$AGENT_NAME" -- "Reply with exactly RESULT=579"
+    run $VM0_CLI run "$AGENT_NAME" \
+        --model-provider-type "codex-oauth-token" \
+        -- "Reply with exactly RESULT=579"
 
     assert_success
     assert_output --partial "RESULT=579"
@@ -244,6 +242,7 @@ teardown_file() {
     fi
 
     run $VM0_CLI run "$AGENT_NAME" \
+        --model-provider-type "codex-oauth-token" \
         --debug-no-mock-codex \
         -- "Run this exact Bash command and include its output:
 curl -sS -m 10 -o /tmp/curl-out.txt -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}' https://auth.openai.com/oauth/token; echo
