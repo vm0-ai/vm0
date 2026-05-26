@@ -471,12 +471,18 @@ pub async fn write_usage_flush_request(
     ));
     let content = serde_json::to_vec(&marker)
         .map_err(|e| RunnerError::Internal(format!("serialize usage flush request: {e}")))?;
-    tokio::fs::write(&tmp, content)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write usage flush request tmp: {e}")))?;
-    tokio::fs::rename(&tmp, &path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("rename usage flush request: {e}")))?;
+    if let Err(e) = tokio::fs::write(&tmp, content).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(RunnerError::Internal(format!(
+            "write usage flush request tmp: {e}"
+        )));
+    }
+    if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(RunnerError::Internal(format!(
+            "rename usage flush request: {e}"
+        )));
+    }
     Ok(request)
 }
 
@@ -1996,6 +2002,23 @@ while true; do read -r _ <&3 || true; done
         assert_eq!(marker["usageStateId"], "state-test");
         assert_eq!(marker["flushRequestId"], request.flush_request_id);
         assert_eq!(marker["requestedAtMs"], request.requested_at_ms);
+    }
+
+    #[tokio::test]
+    async fn write_usage_flush_request_removes_tmp_when_rename_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        std::fs::create_dir(dir.path().join("usage-flush-request")).unwrap();
+
+        let result = write_usage_flush_request(dir.path(), &target).await;
+
+        assert!(result.is_err());
+        let leaked_tmp = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .any(|name| name.to_string_lossy().ends_with(".tmp"));
+        assert!(!leaked_tmp, "usage flush request tmp file leaked");
     }
 
     fn usage_state_without_request(flows: u32, buffered: u32, reports: u32) -> String {
