@@ -57,6 +57,21 @@ function stubUserConnectors(enabledTypes: string[]) {
   );
 }
 
+function stubAvailableConnectors(types: string[]) {
+  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
+    return HttpResponse.json({
+      connectors: types.map((type) => {
+        return {
+          id: type,
+          label: type,
+          description: type,
+          authMethods: ["api-token"],
+        };
+      }),
+    });
+  });
+}
+
 describe("zero doctor generate command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -206,6 +221,34 @@ describe("zero doctor generate command", () => {
         }),
       ]),
     });
+  });
+
+  it("does not mark runtime-configured but unavailable connectors as connectable", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], ["bentoml"]),
+      stubAvailableConnectors([]),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "text", "--json"]);
+
+    const json = JSON.parse(output()) as {
+      otherCandidates: Array<{
+        type: string;
+        status: string;
+        reason: string;
+        actionUrl?: string;
+      }>;
+    };
+    const bentoml = json.otherCandidates.find((candidate) => {
+      return candidate.type === "bentoml";
+    });
+    expect(bentoml).toMatchObject({
+      type: "bentoml",
+      status: "not-available",
+      reason: "not available for this account",
+    });
+    expect(bentoml?.actionUrl).toBeUndefined();
   });
 
   it("suggests the built-in video command when no video connector is ready", async () => {

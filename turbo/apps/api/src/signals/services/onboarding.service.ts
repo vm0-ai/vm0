@@ -19,6 +19,10 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle, tapError } from "../utils";
 import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
+import {
+  unavailableUserConnectorTypes,
+  userConnectorAvailability,
+} from "./connector-availability.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
 const L = logger("onboarding.service");
@@ -47,9 +51,42 @@ interface OnboardingSetupArgs {
   readonly timezone?: string;
 }
 
-interface OnboardingSetupResponse {
-  readonly status: 200;
-  readonly body: { readonly agentId: string };
+type OnboardingSetupResponse =
+  | {
+      readonly status: 200;
+      readonly body: { readonly agentId: string };
+    }
+  | {
+      readonly status: 403;
+      readonly body: {
+        readonly error: {
+          readonly message: string;
+          readonly code: "FORBIDDEN";
+        };
+      };
+    };
+
+type OnboardingSetupForbiddenResponse = Extract<
+  OnboardingSetupResponse,
+  { readonly status: 403 }
+>;
+
+function unavailableSelectedConnectorsError(
+  unavailableTypes: readonly ConnectorType[],
+): OnboardingSetupForbiddenResponse | null {
+  if (unavailableTypes.length === 0) {
+    return null;
+  }
+
+  return {
+    status: 403,
+    body: {
+      error: {
+        message: `Connector types are not available: ${unavailableTypes.join(", ")}`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
 }
 
 function nameToSlug(name: string): string {
@@ -447,6 +484,21 @@ export const setupOnboarding$ = command(
     args: OnboardingSetupArgs,
     signal: AbortSignal,
   ): Promise<OnboardingSetupResponse> => {
+    const selectedConnectors = Array.from(new Set(args.selectedConnectors));
+    const unavailableTypes =
+      selectedConnectors.length === 0
+        ? []
+        : unavailableUserConnectorTypes(
+            await get(userConnectorAvailability(args.orgId, args.userId)),
+            selectedConnectors,
+          );
+    signal.throwIfAborted();
+    const availabilityError =
+      unavailableSelectedConnectorsError(unavailableTypes);
+    if (availabilityError) {
+      return availabilityError;
+    }
+
     const writeDb = set(writeDb$);
     const existingAgentId = await existingDefaultAgentId(writeDb, args.orgId);
     signal.throwIfAborted();
@@ -458,7 +510,7 @@ export const setupOnboarding$ = command(
         orgId: args.orgId,
         userId: args.userId,
         agentId: existingAgentId,
-        selectedConnectors: args.selectedConnectors,
+        selectedConnectors,
       });
       signal.throwIfAborted();
       return { status: 200 as const, body: { agentId: existingAgentId } };
@@ -557,7 +609,7 @@ export const setupOnboarding$ = command(
       orgId: args.orgId,
       userId: args.userId,
       agentId: composeResult.composeId,
-      selectedConnectors: args.selectedConnectors,
+      selectedConnectors,
     });
     signal.throwIfAborted();
 

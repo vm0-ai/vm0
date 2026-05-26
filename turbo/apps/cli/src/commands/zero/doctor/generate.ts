@@ -10,7 +10,10 @@ import {
 import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
-import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
+import {
+  listZeroConnectors,
+  searchZeroConnectors,
+} from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
@@ -409,6 +412,23 @@ function getGenerationConnectors(
     });
 }
 
+function isConnectorType(type: string): type is ConnectorType {
+  return type in CONNECTOR_TYPES;
+}
+
+async function getFeatureAvailableConnectorTypes(): Promise<
+  Set<ConnectorType>
+> {
+  const catalog = await searchZeroConnectors();
+  return new Set(
+    catalog.connectors
+      .map((connector) => {
+        return connector.id;
+      })
+      .filter(isConnectorType),
+  );
+}
+
 function formatAccount(connector: ConnectedConnector): string | undefined {
   if (connector.externalUsername) return `@${connector.externalUsername}`;
   if (connector.externalEmail) return connector.externalEmail;
@@ -459,6 +479,7 @@ function toCandidate(params: {
   config: ConnectorConfig;
   connector: ConnectedConnector | undefined;
   configuredTypes: Set<ConnectorType>;
+  availableTypes: Set<ConnectorType>;
   authorizedTypes: Set<string> | null;
   agentId: string | undefined;
   platformOrigin: string;
@@ -468,6 +489,7 @@ function toCandidate(params: {
     config,
     connector,
     configuredTypes,
+    availableTypes,
     authorizedTypes,
     agentId,
     platformOrigin,
@@ -476,7 +498,10 @@ function toCandidate(params: {
   let status: CandidateStatus;
   let reason: string;
 
-  if (connector?.needsReconnect) {
+  if (!availableTypes.has(type)) {
+    status = "not-available";
+    reason = "not available for this account";
+  } else if (connector?.needsReconnect) {
     status = "needs-reconnect";
     reason = "connected, reconnect required";
   } else if (!connector) {
@@ -651,11 +676,13 @@ export const generateCommand = new Command()
       const connectorGenerationType =
         getConnectorGenerationType(generationType);
       const agentId = process.env.ZERO_AGENT_ID;
-      const [connectorList, enabledTypes, platformOrigin] = await Promise.all([
-        listZeroConnectors(),
-        agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
-        getPlatformOrigin(),
-      ]);
+      const [connectorList, availableTypes, enabledTypes, platformOrigin] =
+        await Promise.all([
+          listZeroConnectors(),
+          getFeatureAvailableConnectorTypes(),
+          agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+          getPlatformOrigin(),
+        ]);
       const connectedMap = new Map(
         connectorList.connectors.map((connector) => {
           return [connector.type, connector];
@@ -671,6 +698,7 @@ export const generateCommand = new Command()
                 config,
                 connector: connectedMap.get(connectorType),
                 configuredTypes,
+                availableTypes,
                 authorizedTypes,
                 agentId,
                 platformOrigin,

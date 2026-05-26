@@ -24,6 +24,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { allConnectorTypes$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -89,6 +90,21 @@ describe("directed authorize page", () => {
       screen.getByText(CONNECTOR_TYPES.gmail.helpText),
     ).toBeInTheDocument();
     expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+  });
+
+  it("does not render an actionable card for feature-disabled connectors", async () => {
+    detachedSetupPage({
+      context,
+      path: `/connectors/slock/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await context.store.get(allConnectorTypes$);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Zero needs Slock to proceed"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("shows authorized state after clicking authorize", async () => {

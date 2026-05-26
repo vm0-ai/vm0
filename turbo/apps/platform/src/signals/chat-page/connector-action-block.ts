@@ -22,6 +22,7 @@ export interface ConnectorActionDescriptor {
 }
 
 export interface ConnectorActionSignals {
+  available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
   authorized$: Computed<Promise<boolean>>;
   complete$: Computed<Promise<boolean>>;
@@ -114,6 +115,13 @@ export function createConnectorActionBlock(
     set(authorizedOverride$, true);
   });
 
+  const available$ = computed(async (get): Promise<boolean> => {
+    const allConnectors = await get(allConnectorTypes$);
+    return allConnectors.some((connector) => {
+      return connector.type === descriptor.connectorType;
+    });
+  });
+
   const connected$ = computed(async (get): Promise<boolean> => {
     if (
       get(connectedOverride$) ||
@@ -150,6 +158,12 @@ export function createConnectorActionBlock(
   });
 
   const activate$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const available = await get(available$);
+    signal.throwIfAborted();
+    if (!available) {
+      return;
+    }
+
     const connected = await get(connected$);
     signal.throwIfAborted();
     if (connected) {
@@ -174,6 +188,7 @@ export function createConnectorActionBlock(
     type: "connector-action",
     id,
     ...descriptor,
+    available$,
     connected$,
     authorized$,
     complete$,

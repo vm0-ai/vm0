@@ -2542,10 +2542,15 @@ function BodyContentBlocks({
 
 function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const pageSignal = useGet(pageSignal$);
+  const available = useLastResolved(block.available$) ?? false;
   const complete = useLastResolved(block.complete$) ?? false;
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
   const activating = activateLoadable.state === "loading";
   const config = CONNECTOR_TYPES[block.connectorType];
+
+  if (!available) {
+    return null;
+  }
 
   return (
     <div

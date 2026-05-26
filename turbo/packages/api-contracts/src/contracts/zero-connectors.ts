@@ -104,6 +104,7 @@ export const zeroConnectorAuthorizeContract = c.router({
       307: c.noBody(),
       400: z.object({ error: z.string() }),
       401: c.noBody(),
+      403: z.object({ error: z.string() }),
       500: z.object({ error: z.string() }),
     },
     summary: "Start connector OAuth authorization (zero proxy)",

@@ -29,8 +29,12 @@ const connectedGithub = {
   updatedAt: "2025-01-01T00:00:00Z",
 };
 
-function stubConnector(body: Record<string, unknown>, status = 200) {
-  return http.get("http://localhost:3000/api/zero/connectors/:type", () => {
+function stubConnector(
+  body: Record<string, unknown>,
+  status = 200,
+  type = "github",
+) {
+  return http.get(`http://localhost:3000/api/zero/connectors/${type}`, () => {
     return HttpResponse.json(body, { status });
   });
 }
@@ -57,6 +61,21 @@ function stubUserConnectors(id: string, enabledTypes: string[]) {
       return HttpResponse.json({ enabledTypes });
     },
   );
+}
+
+function stubAvailableConnectors(types: string[]) {
+  return http.get("http://localhost:3000/api/zero/connectors/search", () => {
+    return HttpResponse.json({
+      connectors: types.map((type) => {
+        return {
+          id: type,
+          label: type,
+          description: type,
+          authMethods: ["oauth"],
+        };
+      }),
+    });
+  });
 }
 
 describe("zero connector status command", () => {
@@ -112,6 +131,25 @@ describe("zero connector status command", () => {
       expect(logCalls).not.toContain("Authorized:");
       expect(logCalls).not.toContain("Diagnose it with");
       expect(logCalls).not.toContain("zero doctor check-connector");
+    });
+
+    it("does not print connect guidance for unavailable connectors", async () => {
+      server.use(
+        stubAvailableConnectors([]),
+        stubConnector(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          404,
+        ),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "github"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "The github connector is not available for this account.",
+      );
+      expect(logCalls).not.toContain("[Connect github]");
+      expect(logCalls).not.toContain("/connectors/github/connect");
     });
 
     it("shows reconnect guidance when connector needs reconnect", async () => {

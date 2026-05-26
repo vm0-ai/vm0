@@ -446,6 +446,28 @@ describe("POST /api/zero/onboarding/setup", () => {
     ]);
   });
 
+  it("rejects disabled selected connectors before creating the default agent", async () => {
+    const fixture = await track(createFixture());
+    mockAdminSession(fixture);
+
+    const response = await accept(
+      apiClient().setup({
+        headers: authHeaders(),
+        body: {
+          displayName: "Zero",
+          selectedConnectors: ["slock"],
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toContain(
+      "Connector types are not available: slock",
+    );
+    await expect(countAgents(fixture.orgId)).resolves.toBe(0);
+  });
+
   it("authorizes connectors on a repeated setup call to an existing default agent", async () => {
     const fixture = await track(createFixture());
     mockAdminSession(fixture);

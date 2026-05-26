@@ -7,17 +7,24 @@ import { mockApi } from "../msw-contract.ts";
 import { upsertMockConnector } from "./api-connectors.ts";
 
 let mockLocalAgentHosts: LocalAgentHost[] = [];
+let mockLocalAgentHostsRequestCount = 0;
 
 export function setMockLocalAgentHosts(hosts: LocalAgentHost[]): void {
   mockLocalAgentHosts = hosts;
 }
 
+export function getMockLocalAgentHostsRequestCount(): number {
+  return mockLocalAgentHostsRequestCount;
+}
+
 export function resetMockLocalAgentHosts(): void {
   mockLocalAgentHosts = [];
+  mockLocalAgentHostsRequestCount = 0;
 }
 
 export const apiLocalAgentHandlers = [
   mockApi(zeroLocalAgentHostsContract.list, ({ respond }) => {
+    mockLocalAgentHostsRequestCount += 1;
     return respond(200, { hosts: mockLocalAgentHosts });
   }),
   mockApi(zeroLocalAgentConnectorContract.create, ({ respond }) => {

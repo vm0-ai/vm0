@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPE_KEYS,
+  CONNECTOR_TYPES,
   type ConnectorType,
   connectorTypeSchema,
 } from "@vm0/connectors/connectors";
@@ -9,7 +10,7 @@ import {
   getScopeDiff,
   hasRequiredScopes,
 } from "@vm0/connectors/connector-utils";
-import { getZeroConnector } from "../../../lib/api";
+import { getZeroConnector, searchZeroConnectors } from "../../../lib/api";
 import { formatDateTime } from "../../../lib/domain/schedule-utils";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
@@ -21,6 +22,21 @@ type Connector = NonNullable<Awaited<ReturnType<typeof getZeroConnector>>>;
 type AgentContext = NonNullable<
   Awaited<ReturnType<typeof resolveAgentContext>>
 >;
+
+function isConnectorType(type: string): type is ConnectorType {
+  return type in CONNECTOR_TYPES;
+}
+
+async function availableConnectorTypes(): Promise<Set<ConnectorType>> {
+  const catalog = await searchZeroConnectors();
+  return new Set(
+    catalog.connectors
+      .map((connector) => {
+        return connector.id;
+      })
+      .filter(isConnectorType),
+  );
+}
 
 function printConnectorDetails(
   type: ConnectorType,
@@ -163,15 +179,22 @@ export const statusCommand = new Command()
         });
       }
 
-      const [connector, agentCtx] = await Promise.all([
+      const [connector, availableTypes, agentCtx] = await Promise.all([
         getZeroConnector(parseResult.data),
+        availableConnectorTypes(),
         resolveAgentContext(options.agent),
       ]);
+      const available = availableTypes.has(parseResult.data);
 
       console.log(`Connector: ${chalk.cyan(type)}`);
       console.log();
 
       printConnectorDetails(parseResult.data, connector);
+      if (!available) {
+        console.log();
+        console.log(`The ${type} connector is not available for this account.`);
+        return;
+      }
 
       if (agentCtx) {
         await printAgentAction(parseResult.data, connector, agentCtx);

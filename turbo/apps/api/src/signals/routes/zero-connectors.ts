@@ -16,8 +16,6 @@ import {
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { and, eq } from "drizzle-orm";
@@ -43,7 +41,7 @@ import {
   zeroConnectorScopeDiff,
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { userConnectorAvailability } from "../services/connector-availability.service";
 import { connectLocalBrowserConnector$ } from "../services/zero-local-browser.service";
 import { connectLocalAgentConnector$ } from "../services/zero-local-agent.service";
 import { createComputerConnector$ } from "../services/zero-computer-connector.service";
@@ -98,16 +96,26 @@ const localBrowserDisabled = Object.freeze({
   }),
 });
 
-function isLocalBrowserEnabled(params: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.LocalBrowserUse, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides: params.overrides,
-  });
+const localAgentDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Local agent connector is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+function connectorUnavailable(type: string) {
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `${type} connector is not available`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
 }
 
 function generateConnectorSessionCode(
@@ -131,6 +139,55 @@ function jsonResponse(body: unknown, status: number): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function appendConnectorOAuthCookie(
+  response: Response,
+  name: string,
+  value: string | undefined,
+): void {
+  if (!value) {
+    return;
+  }
+  response.headers.append(
+    "Set-Cookie",
+    buildConnectorOAuthCookieHeader(
+      name,
+      value,
+      CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+    ),
+  );
+}
+
+function connectorOAuthStartRedirectResponse(args: {
+  readonly url: string;
+  readonly state: string;
+  readonly codeVerifier?: string;
+  readonly oauthContext?: string;
+  readonly session?: string;
+}): Response {
+  const response = connectorOAuthRedirectResponse(args.url);
+  appendConnectorOAuthCookie(
+    response,
+    CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+    args.state,
+  );
+  appendConnectorOAuthCookie(
+    response,
+    CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
+    args.codeVerifier,
+  );
+  appendConnectorOAuthCookie(
+    response,
+    CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+    args.oauthContext,
+  );
+  appendConnectorOAuthCookie(
+    response,
+    CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
+    args.session,
+  );
+  return response;
 }
 
 function connectorDoesNotUseOAuthResponse(type: string) {
@@ -303,6 +360,14 @@ const searchConnectorsInner$ = computed(async (get) => {
 const connectLocalAgentConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (!availability.isAuthMethodAvailable("local-agent", "api")) {
+      return localAgentDisabled;
+    }
+
     const result = await set(
       connectLocalAgentConnector$,
       { orgId: auth.orgId, userId: auth.userId },
@@ -321,17 +386,11 @@ const connectLocalAgentConnectorInner$ = command(
 const connectLocalBrowserConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (
-      !isLocalBrowserEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
+    if (!availability.isAuthMethodAvailable("local-browser", "api")) {
       return localBrowserDisabled;
     }
 
@@ -421,6 +480,14 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (!availability.isAuthMethodAvailable(startType.type, "oauth")) {
+      return jsonResponse({ error: `${type} connector is not available` }, 403);
+    }
+
     const prepared = prepareResolvedConnectorOAuthStart({
       type: startType.type,
       origin,
@@ -444,46 +511,13 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     );
     signal.throwIfAborted();
 
-    const response = connectorOAuthRedirectResponse(authResult.url);
-    response.headers.append(
-      "Set-Cookie",
-      buildConnectorOAuthCookieHeader(
-        CONNECTOR_OAUTH_STATE_COOKIE_NAME,
-        prepared.state,
-        CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-      ),
-    );
-    if (authResult.codeVerifier) {
-      response.headers.append(
-        "Set-Cookie",
-        buildConnectorOAuthCookieHeader(
-          CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
-          authResult.codeVerifier,
-          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-        ),
-      );
-    }
-    if (authResult.oauthContext) {
-      response.headers.append(
-        "Set-Cookie",
-        buildConnectorOAuthCookieHeader(
-          CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
-          authResult.oauthContext,
-          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-        ),
-      );
-    }
-    if (query.session) {
-      response.headers.append(
-        "Set-Cookie",
-        buildConnectorOAuthCookieHeader(
-          CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
-          query.session,
-          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-        ),
-      );
-    }
-    return response;
+    return connectorOAuthStartRedirectResponse({
+      url: authResult.url,
+      state: prepared.state,
+      codeVerifier: authResult.codeVerifier,
+      oauthContext: authResult.oauthContext,
+      session: query.session,
+    });
   });
 }
 
@@ -517,6 +551,14 @@ const startConnectorOauthInner$ = command(
       return badRequestMessage(
         "Explicit org context required — ensure active org in session",
       );
+    }
+
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (!availability.isAuthMethodAvailable(startType.type, "oauth")) {
+      return connectorUnavailable(type);
     }
 
     const origin = getConnectorOAuthOrigin(request);

@@ -34,6 +34,7 @@ import {
 } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { allConnectorTypes$ } from "../../../signals/zero-page/settings/connectors.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -113,6 +114,18 @@ describe("directed connect page", () => {
       screen.getByText(CONNECTOR_TYPES.gmail.helpText),
     ).toBeInTheDocument();
     expect(screen.getByText("Connect")).toBeInTheDocument();
+  });
+
+  it("does not render an actionable card for feature-disabled connectors", async () => {
+    detachedSetupPage({ context, path: "/connectors/slock/connect" });
+
+    await context.store.get(allConnectorTypes$);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Zero needs Slock to proceed"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("shows connected state when connector is already connected", async () => {

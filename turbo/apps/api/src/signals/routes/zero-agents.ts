@@ -9,7 +9,10 @@ import {
   type ZeroAgentVisibility,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import {
+  connectorTypeSchema,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -43,6 +46,10 @@ import {
   zeroAgentList,
   visibleJoinedZeroAgentCondition,
 } from "../services/zero-agent-data.service";
+import {
+  unavailableUserConnectorTypes,
+  userConnectorAvailability,
+} from "../services/connector-availability.service";
 import type { RouteEntry } from "../route";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -920,19 +927,34 @@ const updateAgentUserConnectorsInner$ = command(
     }
 
     const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
-    const invalidTypes = uniqueTypes.filter((t) => {
-      return !connectorTypeSchema.safeParse(t).success;
-    });
+    const parsedTypes: ConnectorType[] = [];
+    const invalidTypes: string[] = [];
+    for (const type of uniqueTypes) {
+      const parsed = connectorTypeSchema.safeParse(type);
+      if (parsed.success) {
+        parsedTypes.push(parsed.data);
+      } else {
+        invalidTypes.push(type);
+      }
+    }
     if (invalidTypes.length > 0) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: `Invalid connector types: ${invalidTypes.join(", ")}`,
-            code: "VALIDATION_ERROR",
-          },
-        },
-      };
+      return validationError(
+        `Invalid connector types: ${invalidTypes.join(", ")}`,
+      );
+    }
+
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const unavailableTypes = unavailableUserConnectorTypes(
+      availability,
+      parsedTypes,
+    );
+    if (unavailableTypes.length > 0) {
+      return validationError(
+        `Connector types are not available: ${unavailableTypes.join(", ")}`,
+      );
     }
 
     await writeDb.transaction(async (tx) => {
@@ -946,9 +968,9 @@ const updateAgentUserConnectorsInner$ = command(
           ),
         );
 
-      if (uniqueTypes.length > 0) {
+      if (parsedTypes.length > 0) {
         await tx.insert(userConnectors).values(
-          uniqueTypes.map((connectorType) => {
+          parsedTypes.map((connectorType) => {
             return {
               orgId: auth.orgId,
               userId: auth.userId,
@@ -974,7 +996,7 @@ const updateAgentUserConnectorsInner$ = command(
 
     return {
       status: 200 as const,
-      body: { enabledTypes: uniqueTypes },
+      body: { enabledTypes: parsedTypes },
     };
   },
 );

@@ -11,15 +11,7 @@ import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import { Button, Input } from "@vm0/ui";
-import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import {
-  getConfiguredConnectorAuthMethods,
-  getConnectorTags,
-} from "@vm0/connectors/connector-utils";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,
@@ -154,18 +146,10 @@ function SelectConnectorsContent() {
   const toggleConnector = useSet(toggleZeroConnector$);
   const search = useGet(connectorSearch$);
   const setSearch = useSet(setConnectorSearch$);
+  const connectorEntries = useLastResolved(allConnectorTypes$) ?? [];
 
-  const connectorEntries = CONNECTOR_TYPE_KEYS.map((type) => {
-    return [type, CONNECTOR_TYPES[type]] as const;
-  });
-
-  const filtered = connectorEntries.filter(([type, config]) => {
-    return matchesConnectorSearch(search, {
-      label: config.label,
-      type,
-      helpText: config.helpText,
-      tags: getConnectorTags(type),
-    });
+  const filtered = connectorEntries.filter((connector) => {
+    return matchesConnectorSearch(search, connector);
   });
 
   const selectedSet = new Set(selectedConnectors);
@@ -198,16 +182,16 @@ function SelectConnectorsContent() {
         />
       </div>
       <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {filtered.map(([type, config]) => {
+        {filtered.map((connector) => {
           return (
             <OnboardingConnectorCard
-              key={type}
-              type={type}
-              label={config.label}
-              isSelected={selectedSet.has(type)}
+              key={connector.type}
+              type={connector.type}
+              label={connector.label}
+              isSelected={selectedSet.has(connector.type)}
               isPolling={false}
               onClick={() => {
-                return toggleConnector(type);
+                return toggleConnector(connector.type);
               }}
             />
           );
@@ -253,10 +237,8 @@ function ConnectStepContent() {
       }),
   );
 
-  const selectedEntries = CONNECTOR_TYPE_KEYS.map((type) => {
-    return [type, CONNECTOR_TYPES[type]] as const;
-  }).filter(([type]) => {
-    return effectiveConnectors.includes(type);
+  const selectedEntries = allConnectors.filter((connector) => {
+    return effectiveConnectors.includes(connector.type);
   });
 
   const handleConnect = (type: ConnectorType) => {
@@ -264,11 +246,12 @@ function ConnectStepContent() {
     if (connector?.connected) {
       return;
     }
+    if (!connector) {
+      return;
+    }
     const launchMode = getConnectorConnectLaunchMode({
       type,
-      availableAuthMethods:
-        connector?.availableAuthMethods ??
-        getConfiguredConnectorAuthMethods(type),
+      availableAuthMethods: connector.availableAuthMethods,
       preferModalForGoogleOAuth: true,
     });
     if (launchMode === "modal") {
@@ -298,7 +281,8 @@ function ConnectStepContent() {
       </p>
       {selectedEntries.length > 0 && (
         <div className="w-full flex flex-col gap-3">
-          {selectedEntries.map(([type, config]) => {
+          {selectedEntries.map((connector) => {
+            const type = connector.type;
             const isConnected = connectedSet.has(type);
             const isPolling =
               pollingAuthCodeType === type || pollingDeviceAuthType === type;
@@ -312,11 +296,11 @@ function ConnectStepContent() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-foreground">
-                    {config.label}
+                    {connector.label}
                   </span>
-                  {"helpText" in config && config.helpText && (
+                  {connector.helpText && (
                     <span className="block text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                      {(config.helpText as string)
+                      {connector.helpText
                         .replace(/^Connect your \w+ account to /, "")
                         .replace(/^Connect /, "")}
                     </span>
@@ -519,11 +503,10 @@ function getStepIllustration(stepKey: string): StepIllustration {
 function OrbitIllustration() {
   const selectedConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
+  const connectorEntries = useLastResolved(allConnectorTypes$) ?? [];
 
-  const entries = CONNECTOR_TYPE_KEYS.map((type) => {
-    return [type, CONNECTOR_TYPES[type]] as const;
-  }).filter(([type]) => {
-    return selectedConnectors.includes(type);
+  const entries = connectorEntries.filter((connector) => {
+    return selectedConnectors.includes(connector.type);
   });
 
   const innerRadius = 110;
@@ -566,7 +549,8 @@ function OrbitIllustration() {
       </div>
 
       {/* Inner orbit connectors */}
-      {inner.map(([type], i) => {
+      {inner.map((connector, i) => {
+        const type = connector.type;
         const angle =
           (i / Math.max(inner.length, 1)) * Math.PI * 2 - Math.PI / 2;
         const x = Math.cos(angle) * innerRadius;
@@ -586,7 +570,8 @@ function OrbitIllustration() {
       })}
 
       {/* Outer orbit connectors */}
-      {outer.map(([type], i) => {
+      {outer.map((connector, i) => {
+        const type = connector.type;
         const angle =
           (i / Math.max(outer.length, 1)) * Math.PI * 2 - Math.PI / 2 + 0.3;
         const x = Math.cos(angle) * outerRadius;

@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConnectorOAuthClientConfig } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -88,6 +90,19 @@ const dynamicPublicClient = {
   clientType: "public",
   tokenEndpointAuthMethod: "none",
 } as const satisfies ConnectorOAuthClientConfig;
+
+async function enableConnectorFeature(
+  userId: string,
+  orgId: string,
+  featureKey: FeatureSwitchKey,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId,
+    userId,
+    switches: { [featureKey]: true },
+  });
+}
 
 function useDynamicTestOAuthAuthorize(): () => void {
   const grant = getConnectorAuthMethod("test-oauth", "oauth")?.grant;
@@ -182,9 +197,28 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       if (orgId) {
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
+        await db
+          .delete(userFeatureSwitches)
+          .where(eq(userFeatureSwitches.orgId, orgId));
       }
     }
   });
+
+  async function requestAuthorizeWithFeature(
+    type: string,
+    featureKey: FeatureSwitchKey,
+  ): Promise<Response> {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    await enableConnectorFeature(userId, orgId, featureKey);
+    mocks.clerk.session(userId, orgId);
+    const app = createApp({ signal: context.signal });
+    return await app.request(authorizeUrl(type), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+  }
 
   it("returns 400 for an unknown connector type", async () => {
     const response = await requestAuthorize("invalid");
@@ -260,6 +294,17 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
         return cookie.startsWith("connector_oauth_state=");
       }),
     ).toBeTruthy();
+  });
+
+  it("rejects auth-code OAuth authorization when the connector feature is disabled", async () => {
+    const response = await requestAuthorize("test-oauth", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "test-oauth connector is not available",
+    });
   });
 
   it("returns 400 when authorizing a device authorization connector", async () => {
@@ -345,9 +390,20 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
 
   it("allows dynamic public OAuth authorize without env credentials", async () => {
     restoreDynamicTestOAuthAuthorize = useDynamicTestOAuthAuthorize();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    await enableConnectorFeature(
+      userId,
+      orgId,
+      FeatureSwitchKey.TestOauthConnector,
+    );
+    mocks.clerk.session(userId, orgId);
 
-    const response = await requestAuthorize("test-oauth", {
-      authenticated: true,
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("test-oauth"), {
+      method: "GET",
+      headers: sessionHeaders(),
     });
 
     expect(response.status).toBe(307);
@@ -409,9 +465,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("includes DocuSign PKCE parameters", async () => {
-    const response = await requestAuthorize("docusign", {
-      authenticated: true,
-    });
+    const response = await requestAuthorizeWithFeature(
+      "docusign",
+      FeatureSwitchKey.DocuSignConnector,
+    );
 
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
@@ -426,7 +483,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("requests permanent Reddit authorization", async () => {
-    const response = await requestAuthorize("reddit", { authenticated: true });
+    const response = await requestAuthorizeWithFeature(
+      "reddit",
+      FeatureSwitchKey.RedditConnector,
+    );
 
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
@@ -462,9 +522,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("requests offline Dropbox authorization", async () => {
-    const response = await requestAuthorize("dropbox", {
-      authenticated: true,
-    });
+    const response = await requestAuthorizeWithFeature(
+      "dropbox",
+      FeatureSwitchKey.DropboxConnector,
+    );
 
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
@@ -703,8 +764,25 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       if (orgId) {
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
+        await db
+          .delete(userFeatureSwitches)
+          .where(eq(userFeatureSwitches.orgId, orgId));
       }
     }
+  });
+
+  it("rejects auth-code OAuth start when the connector feature is disabled", async () => {
+    const response = await requestOauthStart("test-oauth", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "test-oauth connector is not available",
+        code: "FORBIDDEN",
+      },
+    });
   });
 
   it("creates a server-side OAuth handoff and returns the provider authorization URL", async () => {

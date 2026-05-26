@@ -1,8 +1,5 @@
 import { command } from "ccstate";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -15,6 +12,7 @@ import {
   zeroNeedsOnboarding$,
   zeroSelectedConnectors$,
 } from "../zero-page/zero-onboarding.ts";
+import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 export const setupOnboardingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -56,8 +54,15 @@ export const setupOnboardingPage$ = command(
     const params = get(searchParams$);
     const connectorParam = params.get("connector");
     if (connectorParam !== null) {
+      const availableConnectors = await get(allConnectorTypes$);
+      signal.throwIfAborted();
+      const availableTypes = new Set(
+        availableConnectors.map((connector) => {
+          return connector.type;
+        }),
+      );
       const isConnectorType = (id: string): id is ConnectorType => {
-        return id in CONNECTOR_TYPES;
+        return availableTypes.has(id as ConnectorType);
       };
       const alreadySelected = new Set<ConnectorType>(
         get(zeroSelectedConnectors$),

@@ -146,6 +146,35 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
     ).resolves.toStrictEqual(expect.arrayContaining(["github", "slack"]));
   });
 
+  it("rejects connector permissions for disabled connector types", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().update({
+        params: { id: agentId },
+        headers: authHeaders(),
+        body: { enabledTypes: ["slock"] },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(response.body.error.message).toContain(
+      "Connector types are not available: slock",
+    );
+    await expect(
+      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
+    ).resolves.toStrictEqual([]);
+  });
+
   it("accepts a CLI token when updating connector permissions", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),

@@ -96,6 +96,18 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
+  http.get("https://app.vm0.ai/api/zero/connectors/search", () => {
+    return HttpResponse.json(
+      { connectors: defaultAvailableConnectors() },
+      { status: 200 },
+    );
+  }),
+  http.get("https://www.vm0.ai/api/zero/connectors/search", () => {
+    return HttpResponse.json(
+      { connectors: defaultAvailableConnectors() },
+      { status: 200 },
+    );
+  }),
 
   // GET /api/zero/org - getZeroOrg
   http.get("http://localhost:3000/api/zero/org", () => {

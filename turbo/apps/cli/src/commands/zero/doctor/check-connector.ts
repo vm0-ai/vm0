@@ -20,7 +20,10 @@ import type {
 } from "@vm0/connectors/firewall-types";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getApiUrl } from "../../../lib/api/config";
-import { getZeroConnector } from "../../../lib/api/domains/zero-connectors";
+import {
+  getZeroConnector,
+  searchZeroConnectors,
+} from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { getZeroRunContext } from "../../../lib/api/domains/zero-runs";
 import { withErrorHandler } from "../../../lib/command";
@@ -38,6 +41,7 @@ interface DiagContext {
   envName: string;
   connectorType: string;
   label: string;
+  connectorAvailable: boolean;
   platformOrigin: string;
   agentId: string | undefined;
 }
@@ -47,6 +51,20 @@ interface UrlLookupResult {
   envName: string;
   matchedBase: string;
   relativePath: string;
+}
+
+function isConnectorType(type: string): type is ConnectorType {
+  return type in CONNECTOR_TYPES;
+}
+
+async function connectorTypeIsAvailable(type: string): Promise<boolean> {
+  if (!isConnectorType(type)) {
+    return false;
+  }
+  const catalog = await searchZeroConnectors();
+  return catalog.connectors.some((connector) => {
+    return connector.id === type;
+  });
 }
 
 /**
@@ -152,7 +170,11 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
     `### 2a: Connector status (user must configure via OAuth login or API key)`,
   );
   console.log("");
-  if (!isConnected) {
+  if (!ctx.connectorAvailable) {
+    console.log(
+      `The ${ctx.label} connector is not available for this account.`,
+    );
+  } else if (!isConnected) {
     console.log(`The ${ctx.label} connector is not connected.`);
     if (ctx.agentId && hasPermission) {
       const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`;
@@ -180,7 +202,11 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
     `### 2b: Agent authorization (user must authorize agent to use this connector)`,
   );
   console.log("");
-  if (!ctx.agentId) {
+  if (!ctx.connectorAvailable) {
+    console.log(
+      `Skipped — the ${ctx.label} connector is not available for this account.`,
+    );
+  } else if (!ctx.agentId) {
     console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
   } else if (isExpired) {
     // The /authorize page treats an expired connector as "already connected"
@@ -513,13 +539,17 @@ How connectors work:
       console.log("");
 
       const { label } = CONNECTOR_TYPES[connectorType as ConnectorType];
-      const apiUrl = await getApiUrl();
+      const [apiUrl, connectorAvailable] = await Promise.all([
+        getApiUrl(),
+        connectorTypeIsAvailable(connectorType),
+      ]);
       const platformUrl = toPlatformUrl(apiUrl);
 
       const ctx: DiagContext = {
         envName,
         connectorType,
         label,
+        connectorAvailable,
         platformOrigin: platformUrl.origin,
         agentId: process.env.ZERO_AGENT_ID || undefined,
       };

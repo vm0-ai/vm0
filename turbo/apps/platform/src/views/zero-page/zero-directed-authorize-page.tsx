@@ -1,6 +1,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
+  connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -69,47 +70,107 @@ function AuthorizeAction({
 // Main card
 // ---------------------------------------------------------------------------
 
-function DirectedAuthorizeCard() {
+function useDirectedAuthorizeParams(): {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string;
+} | null {
   const type = useGet(directedAuthorizeType$);
   const agentId = useGet(directedAuthorizeAgentId$);
+  if (!type || !agentId) {
+    return null;
+  }
+  const parsed = connectorTypeSchema.safeParse(type);
+  if (!parsed.success) {
+    return null;
+  }
+  return { connectorType: parsed.data, agentId };
+}
+
+function useDirectedAuthorizeCatalogState(connectorType: ConnectorType | null) {
+  const justConnected = useGet(justConnectedTypes$);
+  const allLoadable = useLastLoadable(allConnectorTypes$);
+  const catalogLoaded = allLoadable.state === "hasData";
+  const allData = catalogLoaded ? allLoadable.data : [];
+  const item = connectorType
+    ? allData.find((connector) => {
+        return connector.type === connectorType;
+      })
+    : undefined;
+  const isConnected =
+    connectorType !== null &&
+    (justConnected.has(connectorType) || item?.connected === true);
+  return {
+    item,
+    isConnected,
+    catalogLoading:
+      connectorType !== null &&
+      !justConnected.has(connectorType) &&
+      allLoadable.state === "loading",
+    unavailable:
+      connectorType !== null && catalogLoaded && !item && !isConnected,
+  };
+}
+
+function useDirectedAuthorizePermissionState(
+  connectorType: ConnectorType | null,
+) {
+  const justAuthorized = useGet(justAuthorizedTypes$);
+  const enabledLoadable = useLastLoadable(agentEnabledTypes$);
+  const enabledTypes =
+    enabledLoadable.state === "hasData" ? enabledLoadable.data : [];
+  return {
+    isAuthorized:
+      connectorType !== null &&
+      (justAuthorized.has(connectorType) ||
+        enabledTypes.includes(connectorType)),
+    permissionLoading: enabledLoadable.state === "loading",
+  };
+}
+
+function canAuthorizeConnector(
+  connectorType: ConnectorType,
+  item: { readonly availableAuthMethods: readonly string[] } | undefined,
+  isConnected: boolean,
+): boolean {
+  return (
+    isConnected ||
+    (isOAuthAuthCodeConnectorType(connectorType) &&
+      (item?.availableAuthMethods.includes("oauth") ?? false))
+  );
+}
+
+function DirectedAuthorizeCard() {
+  const params = useDirectedAuthorizeParams();
   const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
-  const justConnected = useGet(justConnectedTypes$);
-  const justAuthorized = useGet(justAuthorizedTypes$);
-  const allLoadable = useLastLoadable(allConnectorTypes$);
-  const enabledLoadable = useLastLoadable(agentEnabledTypes$);
+  const connectorTypeForState = params?.connectorType ?? null;
+  const { item, isConnected, catalogLoading, unavailable } =
+    useDirectedAuthorizeCatalogState(connectorTypeForState);
+  const { isAuthorized, permissionLoading } =
+    useDirectedAuthorizePermissionState(connectorTypeForState);
 
-  if (!type || !(type in CONNECTOR_TYPES) || !agentId) {
+  if (!params) {
     return null;
   }
 
-  const connectorType = type as ConnectorType;
+  const { connectorType, agentId } = params;
   const config = CONNECTOR_TYPES[connectorType];
   const agentName =
     agentNameLoadable.state === "hasData" && agentNameLoadable.data
       ? agentNameLoadable.data
       : "Zero";
   const isConnecting = pollingType === connectorType;
-  const isLoading =
-    (!justConnected.has(connectorType) && allLoadable.state === "loading") ||
-    enabledLoadable.state === "loading";
+  if (unavailable) {
+    return null;
+  }
 
-  const isConnected =
-    justConnected.has(connectorType) ||
-    (allLoadable.state === "hasData" &&
-      allLoadable.data.some((c) => {
-        return c.type === connectorType && c.connected;
-      }));
-
-  const isAuthorized =
-    justAuthorized.has(connectorType) ||
-    (enabledLoadable.state === "hasData" &&
-      enabledLoadable.data.includes(connectorType));
-  const canAuthorize =
-    isConnected || isOAuthAuthCodeConnectorType(connectorType);
+  const isLoading = catalogLoading || permissionLoading;
+  const canAuthorize = canAuthorizeConnector(connectorType, item, isConnected);
+  const showGoogleOAuthNotice =
+    !isAuthorized && !isConnected && isGoogleOAuthConnector(connectorType);
 
   const handleAuthorize = () => {
     if (!canAuthorize) {
@@ -152,11 +213,7 @@ function DirectedAuthorizeCard() {
                 <p className="w-60 text-sm text-muted-foreground">
                   {config.helpText}
                 </p>
-                {!isAuthorized &&
-                  !isConnected &&
-                  isGoogleOAuthConnector(connectorType) && (
-                    <GoogleOAuthNotice />
-                  )}
+                {showGoogleOAuthNotice && <GoogleOAuthNotice />}
               </>
             )}
           </div>

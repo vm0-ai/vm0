@@ -393,7 +393,11 @@ export function matchesConnectorSearch(
 export const allConnectorTypes$ = computed(async (get) => {
   const connectorListPromise = get(connectors$);
   const features = get(featureSwitch$);
-  const localAgentHostListPromise = get(localAgentHosts$);
+  const localAgentHostListPromise = features?.[
+    FeatureSwitchKey.LocalAgentConnector
+  ]
+    ? get(localAgentHosts$)
+    : Promise.resolve({ hosts: [] } satisfies LocalAgentHostListResponse);
   const localBrowserHostListPromise = features?.[
     FeatureSwitchKey.LocalBrowserUse
   ]

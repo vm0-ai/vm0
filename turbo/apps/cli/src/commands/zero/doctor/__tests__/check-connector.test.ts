@@ -54,6 +54,21 @@ const connectedResponse = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
+function stubAvailableConnectors(types: string[]) {
+  return http.get("https://app.vm0.ai/api/zero/connectors/search", () => {
+    return HttpResponse.json({
+      connectors: types.map((type) => {
+        return {
+          id: type,
+          label: type,
+          description: type,
+          authMethods: ["oauth"],
+        };
+      }),
+    });
+  });
+}
+
 /** Minimal run context response */
 const runContextResponse = {
   prompt: "test",
@@ -178,6 +193,48 @@ describe("zero doctor check-connector command", () => {
   });
 
   describe("step 2: connector status", () => {
+    it("should report unavailable connectors without connect or authorize guidance", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors([]),
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "The GitHub connector is not available for this account.",
+      );
+      expect(output).toContain(
+        "Skipped — the GitHub connector is not available for this account.",
+      );
+      expect(output).not.toContain("[Connect GitHub]");
+      expect(output).not.toContain("[Authorize GitHub]");
+    });
+
     it("should report connector not connected with a single authorize URL that covers both connect and authorize", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");

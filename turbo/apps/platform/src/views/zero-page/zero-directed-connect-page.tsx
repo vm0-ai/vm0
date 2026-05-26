@@ -8,7 +8,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConfiguredConnectorAuthMethods,
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
@@ -405,8 +404,17 @@ function DirectedConnectDialogs({
   );
 }
 
-function DirectedConnectCard() {
+function useDirectedConnectConnectorType(): ConnectorType | null {
   const type = useGet(directedConnectType$);
+  if (!type) {
+    return null;
+  }
+  const parsed = connectorTypeSchema.safeParse(type);
+  return parsed.success ? parsed.data : null;
+}
+
+function DirectedConnectCard() {
+  const connectorType = useDirectedConnectConnectorType();
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
@@ -421,16 +429,10 @@ function DirectedConnectCard() {
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelectedConnectorType = useSet(setSelectedConnectorType$);
 
-  if (!type) {
-    return null;
-  }
-  const parsedConnectorType = connectorTypeSchema.safeParse(type);
-
-  if (!parsedConnectorType.success) {
+  if (!connectorType) {
     return null;
   }
 
-  const connectorType = parsedConnectorType.data;
   const config = CONNECTOR_TYPES[connectorType];
   const agentName =
     agentNameLoadable.state === "hasData" && agentNameLoadable.data
@@ -441,15 +443,19 @@ function DirectedConnectCard() {
     pollingDeviceAuthType === connectorType;
   const isLoading =
     !justConnected.has(connectorType) && allLoadable.state === "loading";
-  const allData = allLoadable.state === "hasData" ? allLoadable.data : [];
+  const catalogLoaded = allLoadable.state === "hasData";
+  const allData = catalogLoaded ? allLoadable.data : [];
   const item = allData.find((c) => {
     return c.type === connectorType;
   });
+  const unavailable =
+    catalogLoaded && !item && !justConnected.has(connectorType);
+  if (unavailable) {
+    return null;
+  }
   const isConnected =
     justConnected.has(connectorType) || (item?.connected ?? false);
-  const authMethods =
-    item?.availableAuthMethods ??
-    getConfiguredConnectorAuthMethods(connectorType);
+  const authMethods = item?.availableAuthMethods ?? [];
   const manualCredentialMethod = getManualCredentialMethod(
     connectorType,
     authMethods,

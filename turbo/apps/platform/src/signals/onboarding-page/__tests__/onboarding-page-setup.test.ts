@@ -113,6 +113,22 @@ describe("setupOnboardingPage$ — ?connector= consumption", () => {
     expect(gmailCount).toBe(1);
   });
 
+  it("ignores feature-disabled connectors from ?connector=", async () => {
+    mockAdminOnboarding();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slock,gmail",
+      withoutRender: true,
+    });
+
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const selected = context.store.get(zeroSelectedConnectors$);
+    expect(selected).toContain("gmail");
+    expect(selected).not.toContain("slock");
+  });
+
   it("leaves selections untouched when ?connector= is absent", async () => {
     mockAdminOnboarding();
 

@@ -20,7 +20,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConfiguredConnectorAuthMethods,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
@@ -694,10 +693,12 @@ export function ZeroConnectorsPage() {
     const ct = allConnectors.find((c) => {
       return c.type === type;
     });
+    if (!ct) {
+      return;
+    }
     const launchMode = getConnectorConnectLaunchMode({
       type,
-      availableAuthMethods:
-        ct?.availableAuthMethods ?? getConfiguredConnectorAuthMethods(type),
+      availableAuthMethods: ct.availableAuthMethods,
       preferModalForGoogleOAuth: true,
     });
     if (launchMode === "modal") {
