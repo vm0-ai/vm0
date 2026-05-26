@@ -1875,39 +1875,43 @@ exit 0
     async fn request_usage_flush_signals_child() {
         let dir = tempfile::tempdir().unwrap();
         let signal_file = dir.path().join("usage-flush-requested");
-        let script = dir.path().join("trap-usage-flush.sh");
-        std::fs::write(
-            &script,
-            format!(
-                r#"#!/usr/bin/env bash
-set -euo pipefail
-fifo="$0.fifo"
-mkfifo "$fifo"
-exec 3<>"$fifo"
-trap 'touch "{}"; echo signaled' USR1
-echo ready
-while true; do read -r _ <&3 || true; done
-"#,
-                signal_file.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let (mut proxy, _crash_rx) = MitmProxy::noop();
-        let mut child = tokio::process::Command::new(&script)
+        let mut command = tokio::process::Command::new("python3");
+        command
+            .arg("-c")
+            .arg(
+                r#"
+import os
+import signal
+
+import sys
+
+signal_file = sys.argv[1]
+usage_signal = signal.SIGUSR1
+signal.pthread_sigmask(signal.SIG_BLOCK, {usage_signal})
+os.write(1, b"ready\n")
+while True:
+    received_signal = signal.sigwait({usage_signal})
+    if received_signal == usage_signal:
+        fd = os.open(signal_file, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o644)
+        os.close(fd)
+        os.write(1, b"signaled\n")
+"#,
+            )
+            .arg(&signal_file)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
+            .kill_on_drop(true);
+        let mut child = command.spawn().unwrap();
         let stdout = child.stdout.take().unwrap();
         let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
         proxy.child = Some(child);
 
         let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
             .await
-            .expect("child did not install SIGUSR1 trap")
+            .expect("child did not become ready for SIGUSR1")
             .unwrap();
         assert_eq!(ready.as_deref(), Some("ready"));
 
