@@ -66,6 +66,13 @@ encode_test_email() {
     printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g'
 }
 
+enable_test_oauth_feature_switch() {
+    zero_curl "/api/zero/feature-switches" \
+        -X POST \
+        -d '{"switches":{"testOauthConnector":true}}' \
+        >/dev/null
+}
+
 # Enable the test-oauth connector for a specific compose (user_connectors row).
 # Required for zero-run to pass it in allowedConnectorTypes.
 enable_test_oauth_for_compose() {
@@ -153,6 +160,8 @@ header_location() {
 
 connect_test_oauth_via_authorization_code() {
     local scenario="${1:-}"
+    enable_test_oauth_feature_switch || return 1
+
     local start_body
     start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{}')
     local authorization_url
