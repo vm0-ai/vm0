@@ -8,6 +8,7 @@ const CONNECTOR_ICON_ALIASES = {
   "slack-webhook": "slack",
   "railway-project": "railway",
   "test-oauth-device": "test-oauth",
+  "test-local-auth-method": "test-oauth",
 } as const satisfies Partial<Record<ConnectorType, ConnectorType>>;
 
 export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =

@@ -1,12 +1,14 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
+  connectorTypeSchema,
+  type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
-  getConnectorManualGrantFields,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
@@ -27,7 +29,7 @@ import {
   pollingOAuthDeviceAuthConnectorType$,
   selectedConnectorType$,
   setSelectedConnectorType$,
-  submitApiToken$,
+  submitManualCredentials$,
   tokenFormSubmitting$,
   setTokenFormValue$,
   clearTokenForm$,
@@ -53,6 +55,60 @@ import { IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
+type ManualCredentialMethod = {
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly method: ConnectorAuthMethodConfig;
+  readonly grant: ConnectorManualGrantConfig;
+};
+
+function getManualCredentialMethod(
+  connectorType: ConnectorType,
+  authMethods: readonly ConnectorAuthMethodId[],
+): ManualCredentialMethod | null {
+  for (const authMethod of authMethods) {
+    const method = getConnectorAuthMethod(connectorType, authMethod);
+    switch (method?.grant.kind) {
+      case "manual": {
+        return {
+          authMethod,
+          method,
+          grant: method.grant,
+        };
+      }
+      case "auth-code":
+      case "device-auth":
+      case "interactive-pairing":
+      case "managed":
+      case undefined: {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
+function hasProviderDrivenConnectMethod(
+  connectorType: ConnectorType,
+  authMethods: readonly ConnectorAuthMethodId[],
+): boolean {
+  return authMethods.some((authMethod) => {
+    const method = getConnectorAuthMethod(connectorType, authMethod);
+    switch (method?.grant.kind) {
+      case "auth-code":
+      case "device-auth":
+      case "interactive-pairing":
+      case "managed": {
+        return true;
+      }
+      case "manual":
+      case undefined: {
+        return false;
+      }
+    }
+    return false;
+  });
+}
+
 function runDirectedConnect(params: {
   authMethods: readonly ConnectorAuthMethodId[];
   connectorType: ConnectorType;
@@ -64,30 +120,27 @@ function runDirectedConnect(params: {
   ) => Promise<boolean>;
   onConnected: () => Promise<void>;
   openConnectModal: () => void;
-  openTokenDialog: () => void;
+  openManualCredentialDialog: () => void;
 }): void {
   const launchMode = getConnectorConnectLaunchMode({
     type: params.connectorType,
     availableAuthMethods: params.authMethods,
   });
-  const hasProviderDrivenConnectMethod = params.authMethods.some(
-    (authMethod) => {
-      const grant = getConnectorAuthMethod(
-        params.connectorType,
-        authMethod,
-      )?.grant;
-      return grant?.kind !== undefined && grant.kind !== "manual";
-    },
-  );
-  if (launchMode === "modal" && hasProviderDrivenConnectMethod) {
+  if (
+    launchMode === "modal" &&
+    hasProviderDrivenConnectMethod(params.connectorType, params.authMethods)
+  ) {
     params.openConnectModal();
     return;
   }
 
-  const hasApiToken = params.authMethods.includes("api-token");
+  const manualCredentialMethod = getManualCredentialMethod(
+    params.connectorType,
+    params.authMethods,
+  );
 
-  if (launchMode === "modal" && hasApiToken) {
-    params.openTokenDialog();
+  if (launchMode === "modal" && manualCredentialMethod) {
+    params.openManualCredentialDialog();
     return;
   }
   if (launchMode === "modal") {
@@ -124,15 +177,16 @@ function renderMarkdown(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
-function ApiTokenForm({
+function ManualCredentialForm({
   type,
+  manualCredentialMethod,
   onSuccess,
 }: {
   type: ConnectorType;
+  manualCredentialMethod: ManualCredentialMethod;
   onSuccess: () => void;
 }) {
-  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
-  const submit = useSet(submitApiToken$);
+  const submit = useSet(submitManualCredentials$);
   const setFormValue = useSet(setTokenFormValue$);
   const clearForm = useSet(clearTokenForm$);
   const pageSignal = useGet(pageSignal$);
@@ -140,13 +194,8 @@ function ApiTokenForm({
   const submittingType = useGet(tokenFormSubmitting$);
   const setSubmitting = useSet(setTokenFormSubmitting$);
   const submitting = submittingType === type;
-  const apiTokenFields = getConnectorManualGrantFields(type, "api-token");
 
-  if (!apiTokenConfig || !apiTokenFields) {
-    return null;
-  }
-
-  const secretEntries = Object.entries(apiTokenFields);
+  const secretEntries = Object.entries(manualCredentialMethod.grant.fields);
   const allFilled = secretEntries.every(([name, cfg]) => {
     return !cfg.required || secretValues[name];
   });
@@ -158,7 +207,15 @@ function ApiTokenForm({
     setSubmitting(type);
     await bestEffort(
       (async () => {
-        await submit(type, secretValues, {}, pageSignal);
+        await submit(
+          {
+            type,
+            authMethod: manualCredentialMethod.authMethod,
+            inputSecrets: secretValues,
+            options: {},
+          },
+          pageSignal,
+        );
         clearForm(type);
         onSuccess();
       })(),
@@ -168,11 +225,11 @@ function ApiTokenForm({
 
   return (
     <div className="flex w-full flex-col gap-3 text-left">
-      {apiTokenConfig.helpText && (
+      {manualCredentialMethod.method.helpText && (
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
-            __html: renderMarkdown(apiTokenConfig.helpText),
+            __html: renderMarkdown(manualCredentialMethod.method.helpText),
           }}
         />
       )}
@@ -206,18 +263,23 @@ function ApiTokenForm({
   );
 }
 
-function ApiTokenDialog({
+function ManualCredentialDialog({
   type,
+  manualCredentialMethod,
   open,
   onOpenChange,
   onConnected,
 }: {
   type: ConnectorType;
+  manualCredentialMethod: ManualCredentialMethod | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnected?: () => void;
 }) {
   const config = CONNECTOR_TYPES[type];
+  if (!manualCredentialMethod) {
+    return null;
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md" aria-describedby={undefined}>
@@ -227,8 +289,9 @@ function ApiTokenDialog({
             <DialogTitle>{config.label}</DialogTitle>
           </div>
         </DialogHeader>
-        <ApiTokenForm
+        <ManualCredentialForm
           type={type}
+          manualCredentialMethod={manualCredentialMethod}
           onSuccess={() => {
             onOpenChange(false);
             onConnected?.();
@@ -297,6 +360,51 @@ function DirectedConnectModal({
   return <ConnectModal onClose={onClose} onSuccess={onSuccess} />;
 }
 
+function DirectedConnectDialogs({
+  connectorType,
+  manualCredentialMethod,
+  tokenDialogOpen,
+  setTokenDialogOpen,
+  agentId,
+  runPostConnectActions,
+  selectedConnectorType,
+  setSelectedConnectorType,
+}: {
+  readonly connectorType: ConnectorType;
+  readonly manualCredentialMethod: ManualCredentialMethod | null;
+  readonly tokenDialogOpen: boolean;
+  readonly setTokenDialogOpen: (open: boolean) => void;
+  readonly agentId: string | null | undefined;
+  readonly runPostConnectActions: () => Promise<void>;
+  readonly selectedConnectorType: ConnectorType | null;
+  readonly setSelectedConnectorType: (type: ConnectorType | null) => void;
+}) {
+  return (
+    <>
+      <ManualCredentialDialog
+        type={connectorType}
+        manualCredentialMethod={manualCredentialMethod}
+        open={tokenDialogOpen}
+        onOpenChange={setTokenDialogOpen}
+        onConnected={
+          agentId
+            ? () => {
+                detach(runPostConnectActions(), Reason.DomCallback);
+              }
+            : undefined
+        }
+      />
+      <DirectedConnectModal
+        open={selectedConnectorType === connectorType}
+        onClose={() => {
+          setSelectedConnectorType(null);
+        }}
+        onSuccess={runPostConnectActions}
+      />
+    </>
+  );
+}
+
 function DirectedConnectCard() {
   const type = useGet(directedConnectType$);
   const agentId = useGet(directedConnectAgentId$);
@@ -313,11 +421,16 @@ function DirectedConnectCard() {
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelectedConnectorType = useSet(setSelectedConnectorType$);
 
-  if (!type || !(type in CONNECTOR_TYPES)) {
+  if (!type) {
+    return null;
+  }
+  const parsedConnectorType = connectorTypeSchema.safeParse(type);
+
+  if (!parsedConnectorType.success) {
     return null;
   }
 
-  const connectorType = type as ConnectorType;
+  const connectorType = parsedConnectorType.data;
   const config = CONNECTOR_TYPES[connectorType];
   const agentName =
     agentNameLoadable.state === "hasData" && agentNameLoadable.data
@@ -337,6 +450,10 @@ function DirectedConnectCard() {
   const authMethods =
     item?.availableAuthMethods ??
     getConfiguredConnectorAuthMethods(connectorType);
+  const manualCredentialMethod = getManualCredentialMethod(
+    connectorType,
+    authMethods,
+  );
   const canConnect = authMethods.length > 0;
 
   const runPostConnectActions = async () => {
@@ -355,7 +472,7 @@ function DirectedConnectCard() {
       signal,
       connect,
       onConnected: runPostConnectActions,
-      openTokenDialog: () => {
+      openManualCredentialDialog: () => {
         return setTokenDialogOpen(true);
       },
       openConnectModal: () => {
@@ -408,24 +525,15 @@ function DirectedConnectCard() {
           </div>
         </div>
       </div>
-      <ApiTokenDialog
-        type={connectorType}
-        open={tokenDialogOpen}
-        onOpenChange={setTokenDialogOpen}
-        onConnected={
-          agentId
-            ? () => {
-                detach(runPostConnectActions(), Reason.DomCallback);
-              }
-            : undefined
-        }
-      />
-      <DirectedConnectModal
-        open={selectedConnectorType === connectorType}
-        onClose={() => {
-          setSelectedConnectorType(null);
-        }}
-        onSuccess={runPostConnectActions}
+      <DirectedConnectDialogs
+        connectorType={connectorType}
+        manualCredentialMethod={manualCredentialMethod}
+        tokenDialogOpen={tokenDialogOpen}
+        setTokenDialogOpen={setTokenDialogOpen}
+        agentId={agentId}
+        runPostConnectActions={runPostConnectActions}
+        selectedConnectorType={selectedConnectorType}
+        setSelectedConnectorType={setSelectedConnectorType}
       />
     </>
   );

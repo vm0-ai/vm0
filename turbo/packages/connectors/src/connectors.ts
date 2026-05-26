@@ -227,6 +227,7 @@ import { supermemory } from "./connectors/supermemory";
 import { tavily } from "./connectors/tavily";
 import { testOauth } from "./connectors/test-oauth";
 import { testOauthDevice } from "./connectors/test-oauth-device";
+import { testLocalAuthMethod } from "./connectors/test-local-auth-method";
 import { testrail } from "./connectors/testrail";
 import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
@@ -459,6 +460,26 @@ export type ConnectorAuthMethodId =
   | "api"
   | "cli-auth"
   | "app-credentials";
+
+const CONNECTOR_AUTH_METHOD_ID_MAP: Readonly<
+  Record<ConnectorAuthMethodId, true>
+> = {
+  oauth: true,
+  "api-token": true,
+  api: true,
+  "cli-auth": true,
+  "app-credentials": true,
+};
+
+function isConnectorAuthMethodId(
+  authMethod: string,
+): authMethod is ConnectorAuthMethodId {
+  return authMethod in CONNECTOR_AUTH_METHOD_ID_MAP;
+}
+
+export const CONNECTOR_AUTH_METHOD_IDS = Object.keys(
+  CONNECTOR_AUTH_METHOD_ID_MAP,
+).filter(isConnectorAuthMethodId);
 
 /**
  * Temporary ordering for auth method ids still handled by legacy key-based
@@ -846,6 +867,7 @@ const CONNECTOR_TYPES_DEF = {
   ...tavily,
   ...testOauth,
   ...testOauthDevice,
+  ...testLocalAuthMethod,
   ...testrail,
   ...ticketmaster,
   ...tldv,

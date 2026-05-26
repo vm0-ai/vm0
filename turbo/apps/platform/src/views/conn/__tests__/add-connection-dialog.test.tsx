@@ -17,7 +17,10 @@ import {
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import {
+  zeroSecretsContract,
+  zeroVariablesContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -542,6 +545,68 @@ describe("connect modal - interactions", () => {
       expect(submittedSecret).toBeDefined();
       expect(submittedSecret?.name).toBe("AXIOM_TOKEN");
       expect(submittedSecret?.value).toBe("test-token-value");
+    });
+  });
+
+  it("renders connector-local manual auth methods and stores fields by selected method metadata", async () => {
+    const user = userEvent.setup();
+    let submittedSecret: { name: string; value: string } | undefined;
+    let submittedVariable: { name: string; value: string } | undefined;
+
+    server.use(
+      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
+        submittedSecret = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
+        submittedVariable = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          value: body.value,
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+    );
+
+    await openConnectModal("test-local-auth-method", {
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("app-id")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Test-only connector-local manual credentials."),
+    ).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("app-id"), "local-app-id");
+    await user.type(
+      screen.getByPlaceholderText("app-secret"),
+      "local-app-secret",
+    );
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(submittedVariable).toStrictEqual({
+        name: "TEST_LOCAL_APP_ID",
+        value: "local-app-id",
+      });
+      expect(submittedSecret).toStrictEqual({
+        name: "TEST_LOCAL_APP_SECRET",
+        value: "local-app-secret",
+      });
     });
   });
 

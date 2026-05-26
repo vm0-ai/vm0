@@ -13,7 +13,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
   setPermissionDialogType$,
-  submitApiToken$,
+  submitManualCredentials$,
 } from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
@@ -27,10 +27,13 @@ test("disconnect moves a just-connected connector back to an available card (reg
   // this session via the api-token flow, then dismiss the post-connect
   // permission dialog so it doesn't swallow clicks in this test.
   await context.store.set(
-    submitApiToken$,
-    "ahrefs",
-    { AHREFS_API_KEY: "test" },
-    {},
+    submitManualCredentials$,
+    {
+      type: "ahrefs",
+      authMethod: "api-token",
+      inputSecrets: { AHREFS_API_KEY: "test" },
+      options: {},
+    },
     context.signal,
   );
   context.store.set(setPermissionDialogType$, null);

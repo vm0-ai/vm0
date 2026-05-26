@@ -19,7 +19,10 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import {
+  zeroSecretsContract,
+  zeroVariablesContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   setMockConnectors,
@@ -265,6 +268,77 @@ describe("directed connect page", () => {
       expect(
         screen.getByRole("heading", { name: config.label }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("opens manual credential dialog for connector-local manual auth methods", async () => {
+    const user = userEvent.setup();
+    let submittedSecret: { name: string; value: string } | undefined;
+    let submittedVariable: { name: string; value: string } | undefined;
+
+    server.use(
+      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
+        submittedSecret = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
+        submittedVariable = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          value: body.value,
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/test-local-auth-method/connect",
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Zero needs Test Local Auth Method (internal) to proceed",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Connect"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("app-id")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByPlaceholderText("app-id"), "local-app-id");
+    await user.type(
+      screen.getByPlaceholderText("app-secret"),
+      "local-app-secret",
+    );
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(submittedVariable).toStrictEqual({
+        name: "TEST_LOCAL_APP_ID",
+        value: "local-app-id",
+      });
+      expect(submittedSecret).toStrictEqual({
+        name: "TEST_LOCAL_APP_SECRET",
+        value: "local-app-secret",
+      });
     });
   });
 

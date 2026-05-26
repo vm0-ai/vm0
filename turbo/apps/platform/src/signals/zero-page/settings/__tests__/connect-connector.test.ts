@@ -11,7 +11,7 @@ import {
   permissionDialogType$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
-  submitApiToken$,
+  submitManualCredentials$,
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type {
@@ -774,7 +774,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
   });
 });
 
-describe("submitApiToken$", () => {
+describe("submitManualCredentials$", () => {
   it("strips whitespace from connector API token values before upload", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
@@ -808,13 +808,16 @@ describe("submitApiToken$", () => {
     );
 
     await context.store.set(
-      submitApiToken$,
-      "strapi",
+      submitManualCredentials$,
       {
-        STRAPI_TOKEN: " strapi\n token ",
-        STRAPI_BASE_URL: " https://strapi.example.com\n",
+        type: "strapi",
+        authMethod: "api-token",
+        inputSecrets: {
+          STRAPI_TOKEN: " strapi\n token ",
+          STRAPI_BASE_URL: " https://strapi.example.com\n",
+        },
+        options: {},
       },
-      {},
       context.signal,
     );
 
@@ -828,13 +831,16 @@ describe("submitApiToken$", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
-      submitApiToken$,
-      "github",
-      { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_test123" },
-      { showPermissionDialog: true },
+      submitManualCredentials$,
+      {
+        type: "axiom",
+        authMethod: "api-token",
+        inputSecrets: { AXIOM_TOKEN: "xaat_test123" },
+        options: { showPermissionDialog: true },
+      },
       context.signal,
     );
 
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBe("axiom");
   });
 });

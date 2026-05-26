@@ -15,17 +15,16 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import {
-  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
-  type ConnectorGrantKind,
+  type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
 import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
   getConnectorAuthMethod,
-  getConnectorManualGrantFields,
   isGoogleOAuthConnector,
   isOAuthAuthCodeConnectorType,
   isOAuthDeviceAuthConnectorType,
@@ -41,7 +40,7 @@ import {
   openConnectorOAuthDeviceAuthVerificationPage$,
   clearConnectorOAuthDeviceAuth$,
   runConnectorConnectSuccess$,
-  submitApiToken$,
+  submitManualCredentials$,
   setTokenFormValue$,
   clearTokenForm$,
   connectLocalAgentConnector$,
@@ -148,8 +147,9 @@ type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
 };
 
-type SubmitApiTokenFn = (
+type SubmitManualCredentialsFn = (
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   inputSecrets: Record<string, string>,
   options: PostConnectOptions,
   signal: AbortSignal,
@@ -171,12 +171,19 @@ type ConnectModalContentProps = {
 };
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
+  authMethod: ConnectorAuthMethodId;
+  method: ConnectorAuthMethodConfig;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
-  submitApiToken: SubmitApiTokenFn;
+  submitManualCredentials: SubmitManualCredentialsFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
 };
+
+type ConnectMethodSharedContentProps = Omit<
+  ConnectMethodContentProps,
+  "authMethod" | "method"
+>;
 
 type ApiConnectContentComponent = (
   props: ConnectModalContentProps,
@@ -184,13 +191,11 @@ type ApiConnectContentComponent = (
 
 type ConnectMethodContentComponent = (
   props: ConnectMethodContentProps,
-) => ReactElement;
-
-type LegacyConnectAuthMethodId =
-  (typeof CONNECTOR_LEGACY_AUTH_METHOD_ORDER)[number];
+) => ReactElement | null;
 
 type ConnectMethodContentEntry = {
-  authMethod: LegacyConnectAuthMethodId;
+  authMethod: ConnectorAuthMethodId;
+  method: ConnectorAuthMethodConfig;
   Content: ConnectMethodContentComponent;
 };
 
@@ -219,11 +224,14 @@ function connectorOAuthDeviceAuthFlowIsActive(
 }
 
 // ---------------------------------------------------------------------------
-// API Token form (shown inside connect modal)
+// Manual credentials form (shown inside connect modal)
 // ---------------------------------------------------------------------------
 
-function ApiTokenForm({
+function ManualCredentialForm({
   type,
+  authMethod,
+  method,
+  grant,
   item,
   onSuccess,
   showPermissionDialogOnConnect,
@@ -231,24 +239,21 @@ function ApiTokenForm({
   submitting,
 }: {
   type: ConnectorType;
+  authMethod: ConnectorAuthMethodId;
+  method: ConnectorAuthMethodConfig;
+  grant: ConnectorManualGrantConfig;
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
-  submit: SubmitApiTokenFn;
+  submit: SubmitManualCredentialsFn;
   submitting: boolean;
 }) {
-  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
   const setFormValue = useSet(setTokenFormValue$);
   const clearForm = useSet(clearTokenForm$);
   const pageSignal = useGet(pageSignal$);
   const secretValues = useGet(tokenFormValuesFor$(type));
-  const apiTokenFields = getConnectorManualGrantFields(type, "api-token");
 
-  if (!apiTokenConfig || !apiTokenFields) {
-    return null;
-  }
-
-  const secretEntries = Object.entries(apiTokenFields);
+  const secretEntries = Object.entries(grant.fields);
   const allFilled = secretEntries.every(([name, cfg]) => {
     return !cfg.required || hasTokenInputValue(secretValues[name]);
   });
@@ -259,6 +264,7 @@ function ApiTokenForm({
     }
     await submit(
       type,
+      authMethod,
       secretValues,
       {
         showPermissionDialog: showPermissionDialogOnConnect,
@@ -276,9 +282,7 @@ function ApiTokenForm({
           This will replace your current OAuth connection.
         </p>
       )}
-      {apiTokenConfig.helpText && (
-        <ConnectorHelpText text={apiTokenConfig.helpText} />
-      )}
+      {method.helpText && <ConnectorHelpText text={method.helpText} />}
       {secretEntries.map(([name, secretConfig]) => {
         return (
           <div key={name} className="flex flex-col gap-1.5">
@@ -860,14 +864,22 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
 }
 
-function ApiTokenConnectMethodContent(props: ConnectMethodContentProps) {
+function ManualCredentialConnectMethodContent(
+  props: ConnectMethodContentProps,
+) {
+  if (props.method.grant.kind !== "manual") {
+    return null;
+  }
   return (
-    <ApiTokenForm
+    <ManualCredentialForm
       type={props.item.type}
+      authMethod={props.authMethod}
+      method={props.method}
+      grant={props.method.grant}
       item={props.item}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
-      submit={props.submitApiToken}
+      submit={props.submitManualCredentials}
       submitting={props.credentialSubmitting}
     />
   );
@@ -891,25 +903,33 @@ function getApiConnectContentComponent(
 
 function getConnectMethodContentComponent(
   item: ConnectorTypeWithStatus,
-  authMethod: LegacyConnectAuthMethodId,
+  method: ConnectorAuthMethodConfig,
 ): ConnectMethodContentComponent | null {
-  switch (authMethod) {
-    case "oauth": {
+  switch (method.grant.kind) {
+    case "auth-code": {
       if (isOAuthAuthCodeConnectorType(item.type)) {
         return OAuthAuthCodeConnectMethodContent;
       }
+      return null;
+    }
+    case "device-auth": {
       if (isOAuthDeviceAuthConnectorType(item.type)) {
         return OAuthDeviceAuthConnectMethodContent;
       }
       return null;
     }
-    case "api-token": {
-      return ApiTokenConnectMethodContent;
+    case "manual": {
+      return ManualCredentialConnectMethodContent;
     }
-    case "cli-auth": {
-      return getCliAuthConnectMethodContentComponent(item.type);
+    case "interactive-pairing": {
+      switch (method.grant.flow) {
+        case "browser-verification": {
+          return getCliAuthConnectMethodContentComponent(item.type);
+        }
+      }
+      return null;
     }
-    case "api": {
+    case "managed": {
       return getApiConnectContentComponent(item.type);
     }
   }
@@ -918,21 +938,22 @@ function getConnectMethodContentComponent(
 function getConnectMethodContentEntries(
   item: ConnectorTypeWithStatus,
 ): ConnectMethodContentEntry[] {
-  return CONNECTOR_LEGACY_AUTH_METHOD_ORDER.filter((authMethod) => {
-    return item.availableAuthMethods.includes(authMethod);
-  }).flatMap((authMethod) => {
-    const Content = getConnectMethodContentComponent(item, authMethod);
-    return Content ? [{ authMethod, Content }] : [];
+  return item.availableAuthMethods.flatMap((authMethod) => {
+    const method = getConnectorAuthMethod(item.type, authMethod);
+    if (!method) {
+      return [];
+    }
+    const Content = getConnectMethodContentComponent(item, method);
+    return Content ? [{ authMethod, method, Content }] : [];
   });
 }
 
-function hasAuthMethodGrantKind(
+function hasAuthCodeGrant(
   type: ConnectorType,
   authMethods: readonly ConnectorAuthMethodId[],
-  kind: ConnectorGrantKind,
 ): boolean {
   return authMethods.some((authMethod) => {
-    return getConnectorAuthMethod(type, authMethod)?.grant.kind === kind;
+    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
   });
 }
 
@@ -950,27 +971,18 @@ function AuthMethodDivider() {
 }
 
 function ConnectMethodHeading({
-  item,
-  authMethod,
+  method,
   show,
 }: {
-  item: ConnectorTypeWithStatus;
-  authMethod: LegacyConnectAuthMethodId;
+  method: ConnectorAuthMethodConfig;
   show: boolean;
 }) {
   if (!show) {
     return null;
   }
 
-  const methodConfig = getConnectorAuthMethod(item.type, authMethod);
-  if (!methodConfig) {
-    return null;
-  }
-
   return (
-    <h3 className="text-sm font-medium text-foreground">
-      {methodConfig.label}
-    </h3>
+    <h3 className="text-sm font-medium text-foreground">{method.label}</h3>
   );
 }
 
@@ -981,7 +993,7 @@ function ConnectMethodsContent({
 }: {
   entries: readonly ConnectMethodContentEntry[];
   availableAuthMethodCount: number;
-  props: ConnectMethodContentProps;
+  props: ConnectMethodSharedContentProps;
 }) {
   if (availableAuthMethodCount === 0) {
     return (
@@ -998,16 +1010,12 @@ function ConnectMethodsContent({
   const showMethodHeadings = entries.length > 1;
   return (
     <>
-      {entries.map(({ authMethod, Content }, index) => {
+      {entries.map(({ authMethod, method, Content }, index) => {
         return (
           <div key={authMethod} className="flex flex-col gap-3">
             {index > 0 && <AuthMethodDivider />}
-            <ConnectMethodHeading
-              item={props.item}
-              authMethod={authMethod}
-              show={showMethodHeadings}
-            />
-            <Content {...props} />
+            <ConnectMethodHeading method={method} show={showMethodHeadings} />
+            <Content {...props} authMethod={authMethod} method={method} />
           </div>
         );
       })}
@@ -1021,25 +1029,24 @@ function StandardConnectMethodsContent({
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
-  submitApiToken,
+  submitManualCredentials,
   credentialSubmitting,
   signal,
   entries,
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
-  submitApiToken: SubmitApiTokenFn;
+  submitManualCredentials: SubmitManualCredentialsFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
   const isGoogleOAuth =
-    hasAuthMethodGrantKind(
+    hasAuthCodeGrant(
       item.type,
       entries.map((entry) => {
         return entry.authMethod;
       }),
-      "auth-code",
     ) && isGoogleOAuthConnector(item.type);
 
   return (
@@ -1055,7 +1062,7 @@ function StandardConnectMethodsContent({
           showPermissionDialogOnConnect,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
-          submitApiToken,
+          submitManualCredentials,
           credentialSubmitting,
           signal,
         }}
@@ -1075,12 +1082,25 @@ function ConnectModalContent({
   const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
     connectConnectorOAuthDeviceAuthAndSettle$,
   );
-  const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
+  const [manualCredentialLoadable, submitManualCredentialsCommand] =
+    useLoadableSet(submitManualCredentials$);
+  const submitManualCredentials: SubmitManualCredentialsFn = async (
+    type,
+    authMethod,
+    inputSecrets,
+    options,
+    signal,
+  ) => {
+    await submitManualCredentialsCommand(
+      { type, authMethod, inputSecrets, options },
+      signal,
+    );
+  };
   const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const settling = settleLoadable.state === "loading";
-  const credentialSubmitting = apiTokenLoadable.state === "loading";
+  const credentialSubmitting = manualCredentialLoadable.state === "loading";
   const isPolling = pollingType === item.type;
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
@@ -1088,7 +1108,7 @@ function ConnectModalContent({
   };
 
   const progressContent =
-    hasAuthMethodGrantKind(item.type, item.availableAuthMethods, "auth-code") &&
+    hasAuthCodeGrant(item.type, item.availableAuthMethods) &&
     isOAuthAuthCodeConnectorType(item.type)
       ? getOAuthAuthCodeProgressContent({
           isPolling,
@@ -1106,7 +1126,7 @@ function ConnectModalContent({
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettle}
-      submitApiToken={submitApiToken}
+      submitManualCredentials={submitManualCredentials}
       credentialSubmitting={credentialSubmitting}
       signal={pageSignal}
       entries={entries}

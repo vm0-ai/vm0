@@ -3,6 +3,7 @@ import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
+  CONNECTOR_AUTH_METHOD_IDS,
   CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -13,8 +14,6 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  getApiTokenFieldStorageType,
-  getAvailableConnectorAuthMethods,
   getConnectorAuthMethod,
   getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
@@ -134,11 +133,50 @@ export interface ConnectorTypeWithStatus {
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
+function getLegacyAuthMethodPriority(authMethod: string): number {
+  const index = CONNECTOR_LEGACY_AUTH_METHOD_ORDER.findIndex((method) => {
+    return method === authMethod;
+  });
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
 export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
-  return CONNECTOR_LEGACY_AUTH_METHOD_ORDER.filter((authMethod) => {
+  return CONNECTOR_AUTH_METHOD_IDS.filter((authMethod) => {
     return authMethod in CONNECTOR_TYPES[type].authMethods;
+  }).sort((a, b) => {
+    return getLegacyAuthMethodPriority(a) - getLegacyAuthMethodPriority(b);
+  });
+}
+
+function isConnectorAuthMethodAvailableForConnectUi(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+  featureStates: Record<string, boolean> | null | undefined,
+): boolean {
+  const method = getConnectorAuthMethod(type, authMethod);
+  return (
+    !!method && (!method.featureFlag || !!featureStates?.[method.featureFlag])
+  );
+}
+
+function getAvailableConnectorConnectAuthMethods(
+  type: ConnectorType,
+  featureStates: Record<string, boolean> | null | undefined,
+  options: {
+    readonly includeApiForTypes: readonly ConnectorType[];
+  },
+): ConnectorAuthMethodId[] {
+  return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
+    if (authMethod === "api" && !options.includeApiForTypes.includes(type)) {
+      return false;
+    }
+    return isConnectorAuthMethodAvailableForConnectUi(
+      type,
+      authMethod,
+      featureStates,
+    );
   });
 }
 
@@ -283,13 +321,11 @@ function buildConnectorTypeStatus(params: {
   const config = CONNECTOR_TYPES[params.type];
   const isLocalAgent = isLocalAgentConnector(params.type);
   const isLocalBrowser = isLocalBrowserConnector(params.type);
-  const availableAuthMethods = getAvailableConnectorAuthMethods(
+  const availableAuthMethods = getAvailableConnectorConnectAuthMethods(
     params.type,
     params.features,
     {
-      apiAuthMethodPolicy: {
-        includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
-      },
+      includeApiForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
     },
   );
   const hasApiToken = availableAuthMethods.includes("api-token");
@@ -394,10 +430,8 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   const items = CONNECTOR_TYPE_KEYS.filter((type) => {
     return (
-      getAvailableConnectorAuthMethods(type, features, {
-        apiAuthMethodPolicy: {
-          includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
-        },
+      getAvailableConnectorConnectAuthMethods(type, features, {
+        includeApiForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
       }).length > 0
     );
   }).map((type) => {
@@ -697,16 +731,41 @@ const finishConnectorConnection$ = command(
   },
 );
 
+function getManualCredentialFieldStorageType(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+  name: string,
+): "secret" | "variable" {
+  const method = getConnectorAuthMethod(type, authMethod);
+  switch (method?.grant.kind) {
+    case "manual": {
+      return method.grant.fields[name]?.storage ?? "secret";
+    }
+    case "auth-code":
+    case "device-auth":
+    case "interactive-pairing":
+    case "managed":
+    case undefined: {
+      throw new Error(`${type} ${authMethod} does not use manual credentials`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Submit API token command
+// Submit manual connector credentials command
 // ---------------------------------------------------------------------------
 
-export const submitApiToken$ = command(
+type SubmitManualCredentialsParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly inputSecrets: Record<string, string>;
+  readonly options: PostConnectOptions;
+};
+
+export const submitManualCredentials$ = command(
   async (
     { get, set },
-    type: ConnectorType,
-    inputSecrets: Record<string, string>,
-    options: PostConnectOptions,
+    { type, authMethod, inputSecrets, options }: SubmitManualCredentialsParams,
     signal: AbortSignal,
   ) => {
     const flow = createConnectorConnectFlowState(type);
@@ -722,7 +781,8 @@ export const submitApiToken$ = command(
             continue;
           }
           const isVariable =
-            getApiTokenFieldStorageType(type, name) === "variable";
+            getManualCredentialFieldStorageType(type, authMethod, name) ===
+            "variable";
           if (isVariable) {
             await accept(
               variablesClient.set({

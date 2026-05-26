@@ -15,7 +15,7 @@ import { mockConnectors } from "../../../../views/zero-page/__tests__/zero-conne
 import {
   disconnectConnector$,
   justConnectedTypes$,
-  submitApiToken$,
+  submitManualCredentials$,
 } from "../connectors.ts";
 
 const context = testContext();
@@ -27,10 +27,13 @@ describe("deleteConnector$ + justConnectedTypes$", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
-      submitApiToken$,
-      "ahrefs",
-      { AHREFS_API_KEY: "test" },
-      {},
+      submitManualCredentials$,
+      {
+        type: "ahrefs",
+        authMethod: "api-token",
+        inputSecrets: { AHREFS_API_KEY: "test" },
+        options: {},
+      },
       context.signal,
     );
 
