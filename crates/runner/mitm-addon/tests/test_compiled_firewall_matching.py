@@ -313,6 +313,52 @@ class TestCompiledFirewallMatching:
         assert compiled.name == "specific"
         assert compiled.permission == "items-read"
 
+    def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "specific",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer specific"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": "denied",
+            "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        }
+        url = "https://api.example.com/items/123"
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, matching.FirewallAllow)
+        assert compiled.name == "specific"
+        assert compiled.permission == "items-read"
+
     def test_preserves_raw_rule_order_for_any_before_exact_method(self):
         api_entry = {
             "base": "https://api.github.com",
