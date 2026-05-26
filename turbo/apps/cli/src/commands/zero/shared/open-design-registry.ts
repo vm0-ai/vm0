@@ -102,7 +102,7 @@ export interface OpenDesignCandidateSlice {
 const OPEN_DESIGN_REPO = "vm0-ai/open-design";
 const OPEN_DESIGN_COMMIT = "d021b04720ace133f1d6133d1487326f5fc28f07";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
-const NOTION_ILLUSTRATION_COMMIT = "9c4b5dc9e75fdee1f2de0d47145e5c9b072d7e2c";
+const NOTION_ILLUSTRATION_COMMIT = "b35373eb12112b1e7a0caa372a5cafe02e214dd1";
 
 const OPEN_DESIGN_REGISTRY_VERSION = `federated:${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
 
@@ -405,7 +405,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: sourceRef(
       VM0_SKILLS_REPO,
       NOTION_ILLUSTRATION_COMMIT,
-      "illustration-template/notion-illustration",
+      "notion-illustration",
     ),
     targets: ["image", "website", "poster", "presentation", "report"],
     tags: ["image", "illustration", "notion", "spot", "hand-drawn", "product"],
