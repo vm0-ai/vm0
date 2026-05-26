@@ -10,16 +10,15 @@ import {
   deriveConnectedManualCredentialMethod,
   deriveConnectedManualCredentialMethods,
   getAvailableConnectorAuthMethods,
-  getConnectorManualCredentialAuthMethods,
+  getConnectorManualCredentialFields,
   getConnectorOAuthCredentials,
   getConnectorProvidedSecretNames,
   getConnectorSecretNames,
   getRuntimeAvailableConnectorTypes,
   getScopeDiff,
   isConnectorAuthMethodAvailable,
-  type ConnectedManualCredentialMethod,
   type ManualCredentialAuthMethod,
-  type RequiredManualCredentialFieldNames,
+  type ManualCredentialFieldNames,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
@@ -126,7 +125,7 @@ function storedConnectorTypeIsVisible(
 }
 
 function manualCredentialConnectorResponse(
-  method: ConnectedManualCredentialMethod,
+  method: ManualCredentialAuthMethod,
 ): ConnectorResponse {
   return {
     id: null,
@@ -185,41 +184,12 @@ async function loadUserManualCredentialNameSets(
   };
 }
 
-function mergeRequiredManualCredentialFields(
-  methods: readonly ManualCredentialAuthMethod[],
-): RequiredManualCredentialFieldNames | null {
-  const secretsSet = new Set<string>();
-  const variablesSet = new Set<string>();
-  for (const method of methods) {
-    for (const name of method.requiredFields.secrets) {
-      secretsSet.add(name);
-    }
-    for (const name of method.requiredFields.variables) {
-      variablesSet.add(name);
-    }
-  }
-  const secretsList = [...secretsSet];
-  const variablesList = [...variablesSet];
-  if (secretsList.length === 0 && variablesList.length === 0) {
-    return null;
-  }
-  return { secrets: secretsList, variables: variablesList };
-}
-
-function requiredManualCredentialFieldsByType(
-  type: ConnectorType,
-): RequiredManualCredentialFieldNames | null {
-  return mergeRequiredManualCredentialFields(
-    getConnectorManualCredentialAuthMethods(type),
-  );
-}
-
 function manualCredentialConnectorMethods(args: {
   readonly orgId: string;
   readonly userId: string;
-}): Computed<Promise<readonly ConnectedManualCredentialMethod[]>> {
+}): Computed<Promise<readonly ManualCredentialAuthMethod[]>> {
   return computed(
-    async (get): Promise<readonly ConnectedManualCredentialMethod[]> => {
+    async (get): Promise<readonly ManualCredentialAuthMethod[]> => {
       const db = get(db$);
       const { secretNames, variableNames } =
         await loadUserManualCredentialNameSets(db, args);
@@ -358,19 +328,17 @@ function manualCredentialMethodByType(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: ConnectorType;
-}): Computed<Promise<ConnectedManualCredentialMethod | null>> {
-  return computed(
-    async (get): Promise<ConnectedManualCredentialMethod | null> => {
-      const db = get(db$);
-      const { secretNames, variableNames } =
-        await loadUserManualCredentialNameSets(db, args);
-      return deriveConnectedManualCredentialMethod(
-        args.type,
-        secretNames,
-        variableNames,
-      );
-    },
-  );
+}): Computed<Promise<ManualCredentialAuthMethod | null>> {
+  return computed(async (get): Promise<ManualCredentialAuthMethod | null> => {
+    const db = get(db$);
+    const { secretNames, variableNames } =
+      await loadUserManualCredentialNameSets(db, args);
+    return deriveConnectedManualCredentialMethod(
+      args.type,
+      secretNames,
+      variableNames,
+    );
+  });
 }
 
 export function zeroConnectorByType(args: {
@@ -475,14 +443,14 @@ async function hasManualCredentialConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly requiredFields: RequiredManualCredentialFieldNames | null;
+  readonly fields: ManualCredentialFieldNames | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  if (!args.requiredFields) {
+  if (!args.fields) {
     return false;
   }
 
-  if (args.requiredFields.secrets.length > 0) {
+  if (args.fields.secrets.length > 0) {
     const [secret] = await args.db
       .select({ id: secrets.id })
       .from(secrets)
@@ -491,7 +459,7 @@ async function hasManualCredentialConnectorLocalState(args: {
           eq(secrets.orgId, args.orgId),
           eq(secrets.userId, args.userId),
           eq(secrets.type, "user"),
-          inArray(secrets.name, [...args.requiredFields.secrets]),
+          inArray(secrets.name, [...args.fields.secrets]),
         ),
       )
       .limit(1);
@@ -501,7 +469,7 @@ async function hasManualCredentialConnectorLocalState(args: {
     }
   }
 
-  if (args.requiredFields.variables.length > 0) {
+  if (args.fields.variables.length > 0) {
     const [variable] = await args.db
       .select({ id: variables.id })
       .from(variables)
@@ -509,7 +477,7 @@ async function hasManualCredentialConnectorLocalState(args: {
         and(
           eq(variables.orgId, args.orgId),
           eq(variables.userId, args.userId),
-          inArray(variables.name, [...args.requiredFields.variables]),
+          inArray(variables.name, [...args.fields.variables]),
         ),
       )
       .limit(1);
@@ -526,15 +494,15 @@ async function deleteManualCredentialConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly requiredFields: RequiredManualCredentialFieldNames | null;
+  readonly fields: ManualCredentialFieldNames | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  if (!args.requiredFields) {
+  if (!args.fields) {
     return false;
   }
 
   let deleted = false;
-  for (const name of args.requiredFields.secrets) {
+  for (const name of args.fields.secrets) {
     const result = await args.db
       .delete(secrets)
       .where(
@@ -550,7 +518,7 @@ async function deleteManualCredentialConnectorLocalState(args: {
     deleted = deleted || result.length > 0;
   }
 
-  for (const name of args.requiredFields.variables) {
+  for (const name of args.fields.variables) {
     const result = await args.db
       .delete(variables)
       .where(
@@ -603,14 +571,14 @@ export const deleteZeroConnectorLocalState$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const requiredFields = requiredManualCredentialFieldsByType(args.type);
+    const fields = getConnectorManualCredentialFields(args.type);
     const hasManualCredentialState = existing
       ? false
       : await hasManualCredentialConnectorLocalState({
           db: writeDb,
           orgId: args.orgId,
           userId: args.userId,
-          requiredFields,
+          fields,
           signal,
         });
     if (!existing && !hasManualCredentialState) {
@@ -667,7 +635,7 @@ export const deleteZeroConnectorLocalState$ = command(
         db: writeDb,
         orgId: args.orgId,
         userId: args.userId,
-        requiredFields,
+        fields,
         signal,
       })) || deleted;
 
@@ -838,7 +806,7 @@ export const upsertOAuthConnector$ = command(
         ? secretMetadata.refreshSecretName
         : undefined,
     });
-    const requiredManualCredentialFields = requiredManualCredentialFieldsByType(
+    const manualCredentialFields = getConnectorManualCredentialFields(
       args.type,
     );
 
@@ -927,7 +895,7 @@ export const upsertOAuthConnector$ = command(
       db: writeDb,
       orgId: args.orgId,
       userId: args.userId,
-      requiredFields: requiredManualCredentialFields,
+      fields: manualCredentialFields,
       signal,
     });
     signal.throwIfAborted();

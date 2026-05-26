@@ -37,7 +37,7 @@ import {
   getConnectorOAuthCredentials,
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthScopes,
-  getConnectorManualCredentialAuthMethods,
+  getConnectorManualCredentialFields,
   getApiTokenFieldStorageType,
   getApiTokenFieldsByType,
   getEligibleConnectorTypes,
@@ -350,7 +350,7 @@ describe("connector auth method config", () => {
     );
   });
 
-  it("groups required manual credential fields by storage", () => {
+  it("groups required api-token credential fields by storage", () => {
     expect(getApiTokenFieldsByType("atlassian")).toStrictEqual({
       secrets: ["ATLASSIAN_TOKEN"],
       variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
@@ -358,21 +358,17 @@ describe("connector auth method config", () => {
     expect(getApiTokenFieldsByType("github")).toBeNull();
   });
 
-  it("lists only manual credential auth methods", () => {
-    expect(getConnectorManualCredentialAuthMethods("atlassian")).toStrictEqual([
-      {
-        type: "atlassian",
-        authMethod: "api-token",
-        requiredFields: {
-          secrets: ["ATLASSIAN_TOKEN"],
-          variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
-        },
-      },
-    ]);
-    expect(getConnectorManualCredentialAuthMethods("github")).toStrictEqual([]);
-    expect(getConnectorManualCredentialAuthMethods("computer")).toStrictEqual(
-      [],
-    );
+  it("groups all manual credential fields by storage", () => {
+    expect(getConnectorManualCredentialFields("atlassian")).toStrictEqual({
+      secrets: ["ATLASSIAN_TOKEN"],
+      variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
+    });
+    expect(getConnectorManualCredentialFields("gitlab")).toStrictEqual({
+      secrets: ["GITLAB_TOKEN"],
+      variables: ["GITLAB_HOST"],
+    });
+    expect(getConnectorManualCredentialFields("github")).toBeNull();
+    expect(getConnectorManualCredentialFields("computer")).toBeNull();
   });
 
   it("derives connected manual credential methods from required fields", () => {
@@ -381,13 +377,17 @@ describe("connector auth method config", () => {
         new Set(["ATLASSIAN_TOKEN"]),
         new Set(["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"]),
       ),
-    ).toContainEqual({ type: "atlassian", authMethod: "api-token" });
+    ).toContainEqual(
+      expect.objectContaining({ type: "atlassian", authMethod: "api-token" }),
+    );
     expect(
       deriveConnectedManualCredentialMethods(
         new Set(["ATLASSIAN_TOKEN"]),
         new Set(["ATLASSIAN_EMAIL"]),
       ),
-    ).not.toContainEqual({ type: "atlassian", authMethod: "api-token" });
+    ).not.toContainEqual(
+      expect.objectContaining({ type: "atlassian", authMethod: "api-token" }),
+    );
     const connected = deriveConnectedManualCredentialMethods(
       new Set(["GITHUB_ACCESS_TOKEN", "COMPUTER_CONNECTOR_BRIDGE_TOKEN"]),
       new Set(),
