@@ -144,6 +144,8 @@ export default async function RootLayout({
   // Drives the <html lang> attribute so non-English pages are indexed correctly.
   const htmlLang = await getLocale();
   const clerkFapiHost = getClerkFrontendApiHost();
+  const shouldLoadMarketingScripts = env().VERCEL_ENV === "production";
+
   return (
     <ClerkProvider
       publishableKey={getClerkPublishableKey()}
@@ -156,39 +158,43 @@ export default async function RootLayout({
       <SafeGoogleOneTap redirectUrl={getAppUrl()} />
       <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
         <head>
-          {/*
-            Google Consent Mode v2 default-denied. Must run synchronously in
-            <head> before gtag.js loads so Google itself respects consent and
-            withholds cookies + tracking pings until the user opts in. Inline
-            via dangerouslySetInnerHTML so it ships in SSR HTML with zero
-            network round-trip — any async strategy (incl. beforeInteractive
-            with src) loses the race against tag-manager bootstrap.
-          */}
-          <script
-            id="google-consent-default"
-            dangerouslySetInnerHTML={{
-              __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});`,
-            }}
-          />
-          {/*
-            Termly resource-blocker. beforeInteractive ensures Next.js places
-            this in the SSR <head> ahead of client-injected tracking scripts
-            so Termly's MutationObserver is live before gtag.js mounts.
-            Previously loaded with afterInteractive, which raced gtag and let
-            the Google Ads pixel + _gcl_au cookie fire before consent.
-          */}
-          <Script
-            src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433"
-            strategy="beforeInteractive"
-          />
-          <Script
-            id="google-ads-tag"
-            src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`}
-            strategy="afterInteractive"
-          />
-          <Script id="google-ads-init" strategy="afterInteractive">
-            {`gtag('js', new Date());gtag('config', '${GOOGLE_ADS_ID}');`}
-          </Script>
+          {shouldLoadMarketingScripts && (
+            <>
+              {/*
+                Google Consent Mode v2 default-denied. Must run synchronously in
+                <head> before gtag.js loads so Google itself respects consent and
+                withholds cookies + tracking pings until the user opts in. Inline
+                via dangerouslySetInnerHTML so it ships in SSR HTML with zero
+                network round-trip — any async strategy (incl. beforeInteractive
+                with src) loses the race against tag-manager bootstrap.
+              */}
+              <script
+                id="google-consent-default"
+                dangerouslySetInnerHTML={{
+                  __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});`,
+                }}
+              />
+              {/*
+                Termly resource-blocker. beforeInteractive ensures Next.js places
+                this in the SSR <head> ahead of client-injected tracking scripts
+                so Termly's MutationObserver is live before gtag.js mounts.
+                Previously loaded with afterInteractive, which raced gtag and let
+                the Google Ads pixel + _gcl_au cookie fire before consent.
+              */}
+              <Script
+                src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433"
+                strategy="beforeInteractive"
+              />
+              <Script
+                id="google-ads-tag"
+                src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`}
+                strategy="afterInteractive"
+              />
+              <Script id="google-ads-init" strategy="afterInteractive">
+                {`gtag('js', new Date());gtag('config', '${GOOGLE_ADS_ID}');`}
+              </Script>
+            </>
+          )}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link
             rel="preconnect"
@@ -308,37 +314,41 @@ export default async function RootLayout({
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
             strategy="lazyOnload"
           />
-          <Script id="linkedin-insight-init" strategy="afterInteractive">
-            {`
-              _linkedin_partner_id = "${LINKEDIN_PARTNER_ID}";
-              window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
-              window._linkedin_data_partner_ids.push(_linkedin_partner_id);
-            `}
-          </Script>
-          <Script id="linkedin-insight-loader" strategy="afterInteractive">
-            {`
-              (function(l) {
-                if (!l){window.lintrk = function(a,b){window.lintrk.q.push([a,b])};
-                window.lintrk.q=[]}
-                var s = document.getElementsByTagName("script")[0];
-                var b = document.createElement("script");
-                b.type = "text/javascript";b.async = true;
-                b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
-                s.parentNode.insertBefore(b, s);})(window.lintrk);
-            `}
-          </Script>
-          {/*
-            LinkedIn's no-JS tracking pixel must render as raw HTML inside
-            <noscript> — next/image and the @next/next/no-img-element rule
-            both rely on client-side JS, which by definition cannot run here.
-            dangerouslySetInnerHTML keeps the pixel in pure HTML and stays
-            consistent with the JSON-LD blocks above.
-          */}
-          <noscript
-            dangerouslySetInnerHTML={{
-              __html: `<img height="1" width="1" style="display:none;" alt="" src="https://px.ads.linkedin.com/collect/?pid=${LINKEDIN_PARTNER_ID}&fmt=gif" />`,
-            }}
-          />
+          {shouldLoadMarketingScripts && (
+            <>
+              <Script id="linkedin-insight-init" strategy="afterInteractive">
+                {`
+                  _linkedin_partner_id = "${LINKEDIN_PARTNER_ID}";
+                  window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
+                  window._linkedin_data_partner_ids.push(_linkedin_partner_id);
+                `}
+              </Script>
+              <Script id="linkedin-insight-loader" strategy="afterInteractive">
+                {`
+                  (function(l) {
+                    if (!l){window.lintrk = function(a,b){window.lintrk.q.push([a,b])};
+                    window.lintrk.q=[]}
+                    var s = document.getElementsByTagName("script")[0];
+                    var b = document.createElement("script");
+                    b.type = "text/javascript";b.async = true;
+                    b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
+                    s.parentNode.insertBefore(b, s);})(window.lintrk);
+                `}
+              </Script>
+              {/*
+                LinkedIn's no-JS tracking pixel must render as raw HTML inside
+                <noscript> — next/image and the @next/next/no-img-element rule
+                both rely on client-side JS, which by definition cannot run here.
+                dangerouslySetInnerHTML keeps the pixel in pure HTML and stays
+                consistent with the JSON-LD blocks above.
+              */}
+              <noscript
+                dangerouslySetInnerHTML={{
+                  __html: `<img height="1" width="1" style="display:none;" alt="" src="https://px.ads.linkedin.com/collect/?pid=${LINKEDIN_PARTNER_ID}&fmt=gif" />`,
+                }}
+              />
+            </>
+          )}
         </body>
       </html>
     </ClerkProvider>
