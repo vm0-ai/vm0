@@ -402,7 +402,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     name: "Notion Illustration",
     description:
       "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
-    source: sourceRef(VM0_SKILLS_REPO, VM0_SKILLS_REF, "notion-illustration"),
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/notion-illustration",
+    ),
     targets: ["image", "website", "poster", "presentation", "report"],
     tags: ["image", "illustration", "notion", "spot", "hand-drawn", "product"],
     triggers: [

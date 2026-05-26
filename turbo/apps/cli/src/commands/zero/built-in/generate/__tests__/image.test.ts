@@ -311,7 +311,7 @@ describe("zero built-in generate image command", () => {
               source: expect.objectContaining({
                 repo: "vm0-ai/vm0-skills",
                 commit: "main",
-                path: "notion-illustration",
+                path: "illustration-template/notion-illustration",
               }),
             }),
           ]),
