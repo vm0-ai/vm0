@@ -7,7 +7,10 @@ import {
   type RustStringConstantBinding,
   rustStringConstantBindings,
 } from "../constants";
-import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "../../contracts/model-providers";
+import {
+  MODEL_PROVIDER_ENV_PLACEHOLDERS,
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
+} from "../../contracts/model-providers";
 
 const codexOauthPlaceholders =
   MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"].placeholders!;
@@ -27,6 +30,41 @@ const expectedBindings = [
     rustModulePath: ["codex_oauth_token", "placeholders"],
     rustConstName: "CHATGPT_REFRESH_TOKEN",
     value: codexOauthPlaceholders.CHATGPT_REFRESH_TOKEN,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "ANTHROPIC_API_KEY",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "ANTHROPIC_AUTH_TOKEN",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "CLAUDE_CODE_OAUTH_TOKEN",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "OPENAI_API_KEY",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "CHATGPT_ACCESS_TOKEN",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "CHATGPT_ACCOUNT_ID",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID,
+  },
+  {
+    rustModulePath: ["model_provider_env", "placeholders"],
+    rustConstName: "CHATGPT_REFRESH_TOKEN",
+    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_REFRESH_TOKEN,
   },
 ] as const;
 
@@ -74,9 +112,14 @@ describe("Rust string constant bindings", () => {
 
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod codex_oauth_token {");
+    expect(firstRender).toContain("pub mod model_provider_env {");
     expect(firstRender).toContain("pub mod placeholders {");
     expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,
+    );
+    expect(firstRender).toContain("pub const OPENAI_API_KEY: &str =");
+    expect(firstRender).toContain(
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
     );
     expect(firstRender).toContain(
       `pub const CHATGPT_REFRESH_TOKEN: &str = "${codexOauthPlaceholders.CHATGPT_REFRESH_TOKEN}";`,

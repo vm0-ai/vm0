@@ -34,6 +34,8 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use api_contracts::generated::model_providers::model_provider_env::placeholders as model_provider_placeholders;
+
 use crate::ids::RunId;
 
 /// Maximum wall-clock time for a single job (2 hours).
@@ -261,25 +263,35 @@ pub async fn execute_job(
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let outcome = match execute_new_sandbox(
-        factory,
-        &context,
-        dispatch,
-        config,
-        params,
-        &mut telemetry,
-        cancel,
-    )
-    .await
-    {
-        Ok(outcome) => outcome,
-        Err(e) => ExecuteOutcome {
-            failure: Some(ExecutionFailure::from_error(e.to_string())),
+    let outcome = if let Err(error) = validate_model_provider_env_placeholders(&context) {
+        ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(error)),
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
             guest_session_id: None,
-        },
+        }
+    } else {
+        match execute_new_sandbox(
+            factory,
+            &context,
+            dispatch,
+            config,
+            params,
+            &mut telemetry,
+            cancel,
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(e) => ExecuteOutcome {
+                failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox: None,
+                source_ip: String::new(),
+                network_log_session: None,
+                guest_session_id: None,
+            },
+        }
     };
 
     (outcome, telemetry)
@@ -312,16 +324,26 @@ pub async fn execute_job_reuse(
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
-    let outcome = execute_reused_sandbox(
-        sandbox,
-        &source_ip,
-        &context,
-        config,
-        &prev_storage,
-        &mut telemetry,
-        cancel,
-    )
-    .await;
+    let outcome = if let Err(error) = validate_model_provider_env_placeholders(&context) {
+        ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(error)),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: None,
+            guest_session_id: None,
+        }
+    } else {
+        execute_reused_sandbox(
+            sandbox,
+            &source_ip,
+            &context,
+            config,
+            &prev_storage,
+            &mut telemetry,
+            cancel,
+        )
+        .await
+    };
 
     (outcome, telemetry)
 }
@@ -381,6 +403,78 @@ fn elapsed_since_api_start_ms(api_start_ms: u64, now_ms: u64) -> Option<Duration
     }
 
     Some(Duration::from_millis(now_ms.saturating_sub(api_start_ms)))
+}
+
+struct ModelProviderPlaceholderEnvKey {
+    name: &'static str,
+    placeholder: &'static str,
+}
+
+const CLAUDE_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[ModelProviderPlaceholderEnvKey] = &[
+    ModelProviderPlaceholderEnvKey {
+        name: "ANTHROPIC_API_KEY",
+        placeholder: model_provider_placeholders::ANTHROPIC_API_KEY,
+    },
+    ModelProviderPlaceholderEnvKey {
+        name: "ANTHROPIC_AUTH_TOKEN",
+        placeholder: model_provider_placeholders::ANTHROPIC_AUTH_TOKEN,
+    },
+    ModelProviderPlaceholderEnvKey {
+        name: "CLAUDE_CODE_OAUTH_TOKEN",
+        placeholder: model_provider_placeholders::CLAUDE_CODE_OAUTH_TOKEN,
+    },
+];
+
+const CODEX_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[ModelProviderPlaceholderEnvKey] = &[
+    ModelProviderPlaceholderEnvKey {
+        name: "OPENAI_API_KEY",
+        placeholder: model_provider_placeholders::OPENAI_API_KEY,
+    },
+    ModelProviderPlaceholderEnvKey {
+        name: "CHATGPT_ACCESS_TOKEN",
+        placeholder: model_provider_placeholders::CHATGPT_ACCESS_TOKEN,
+    },
+    ModelProviderPlaceholderEnvKey {
+        name: "CHATGPT_ACCOUNT_ID",
+        placeholder: model_provider_placeholders::CHATGPT_ACCOUNT_ID,
+    },
+    ModelProviderPlaceholderEnvKey {
+        name: "CHATGPT_REFRESH_TOKEN",
+        placeholder: model_provider_placeholders::CHATGPT_REFRESH_TOKEN,
+    },
+];
+
+const MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[&[ModelProviderPlaceholderEnvKey]] = &[
+    CLAUDE_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS,
+    CODEX_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS,
+];
+
+fn validate_model_provider_env_placeholders(context: &ExecutionContext) -> Result<(), String> {
+    let Some(environment) = &context.environment else {
+        return Ok(());
+    };
+
+    let invalid_keys: Vec<&str> = MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS
+        .iter()
+        .flat_map(|protected_keys| protected_keys.iter())
+        .filter_map(|protected_key| {
+            let value = environment.get(protected_key.name)?;
+            if value.is_empty() || value == protected_key.placeholder {
+                None
+            } else {
+                Some(protected_key.name)
+            }
+        })
+        .collect();
+
+    if invalid_keys.is_empty() {
+        return Ok(());
+    }
+
+    Err(format!(
+        "model provider environment contains non-placeholder values for: {}",
+        invalid_keys.join(", ")
+    ))
 }
 
 /// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
@@ -2272,6 +2366,128 @@ mod tests {
             billable_firewalls: vec![],
             model_usage_provider: None,
         }
+    }
+
+    fn context_with_env(environment: HashMap<String, String>) -> ExecutionContext {
+        let mut ctx = minimal_context();
+        ctx.environment = Some(environment);
+        ctx
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_accepts_env_without_protected_keys() {
+        let ctx = context_with_env(HashMap::from([("PROJECT_ID".into(), "vm0".into())]));
+
+        assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_accepts_anthropic_api_key_placeholder() {
+        let ctx = context_with_env(HashMap::from([(
+            "ANTHROPIC_API_KEY".into(),
+            model_provider_placeholders::ANTHROPIC_API_KEY.into(),
+        )]));
+
+        assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_rejects_real_anthropic_api_key() {
+        let secret = "sk-ant-api03-real-secret-value";
+        let ctx = context_with_env(HashMap::from([("ANTHROPIC_API_KEY".into(), secret.into())]));
+
+        let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+        assert!(error.contains("ANTHROPIC_API_KEY"));
+        assert!(!error.contains(secret));
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_accepts_empty_anthropic_api_key_with_auth_token() {
+        let ctx = context_with_env(HashMap::from([
+            ("ANTHROPIC_API_KEY".into(), String::new()),
+            (
+                "ANTHROPIC_AUTH_TOKEN".into(),
+                model_provider_placeholders::ANTHROPIC_AUTH_TOKEN.into(),
+            ),
+        ]));
+
+        assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_rejects_real_anthropic_auth_token() {
+        let secret = "sk-real-openrouter-token";
+        let ctx = context_with_env(HashMap::from([(
+            "ANTHROPIC_AUTH_TOKEN".into(),
+            secret.into(),
+        )]));
+
+        let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+        assert!(error.contains("ANTHROPIC_AUTH_TOKEN"));
+        assert!(!error.contains(secret));
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_accepts_claude_oauth_placeholder() {
+        let ctx = context_with_env(HashMap::from([(
+            "CLAUDE_CODE_OAUTH_TOKEN".into(),
+            model_provider_placeholders::CLAUDE_CODE_OAUTH_TOKEN.into(),
+        )]));
+
+        assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_accepts_openai_api_key_placeholder() {
+        let ctx = context_with_env(HashMap::from([(
+            "OPENAI_API_KEY".into(),
+            model_provider_placeholders::OPENAI_API_KEY.into(),
+        )]));
+
+        assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_rejects_real_openai_api_key() {
+        let secret = "sk-proj-real-openai-secret";
+        let ctx = context_with_env(HashMap::from([("OPENAI_API_KEY".into(), secret.into())]));
+
+        let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+        assert!(error.contains("OPENAI_API_KEY"));
+        assert!(!error.contains(secret));
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_accepts_codex_oauth_placeholders() {
+        let ctx = context_with_env(HashMap::from([
+            (
+                "CHATGPT_ACCESS_TOKEN".into(),
+                model_provider_placeholders::CHATGPT_ACCESS_TOKEN.into(),
+            ),
+            (
+                "CHATGPT_ACCOUNT_ID".into(),
+                model_provider_placeholders::CHATGPT_ACCOUNT_ID.into(),
+            ),
+        ]));
+
+        assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_rejects_real_chatgpt_access_token() {
+        let secret = "ey-real-chatgpt-access-token";
+        let ctx = context_with_env(HashMap::from([(
+            "CHATGPT_ACCESS_TOKEN".into(),
+            secret.into(),
+        )]));
+
+        let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+        assert!(error.contains("CHATGPT_ACCESS_TOKEN"));
+        assert!(!error.contains(secret));
     }
 
     #[test]
@@ -4947,6 +5163,41 @@ mod tests {
         assert!(outcome.sandbox.is_none());
     }
 
+    #[tokio::test]
+    async fn execute_job_model_provider_env_validation_failure_returns_run_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let secret = "sk-proj-real-openai-secret";
+        let mut ctx = minimal_context();
+        ctx.environment = Some(HashMap::from([("OPENAI_API_KEY".into(), secret.into())]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(error.contains("OPENAI_API_KEY"));
+        assert!(!error.contains(secret));
+        assert!(outcome.sandbox.is_none());
+        assert!(
+            overrides.create_configs().is_empty(),
+            "fresh sandbox must not be created after env validation failure"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Keep-alive VM reuse integration tests
     // -----------------------------------------------------------------------
@@ -4983,6 +5234,35 @@ mod tests {
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_model_provider_env_validation_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let source_ip = sandbox.source_ip().to_string();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+        let secret = "sk-proj-real-openai-secret";
+        let mut ctx = minimal_context();
+        ctx.environment = Some(HashMap::from([("OPENAI_API_KEY".into(), secret.into())]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 1);
+        let error = reuse_outcome.error().unwrap();
+        assert!(error.contains("OPENAI_API_KEY"));
+        assert!(!error.contains(secret));
+        assert!(reuse_outcome.sandbox.is_some());
+        assert!(reuse_outcome.network_log_session.is_none());
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "reused sandbox must not start a process after env validation failure"
+        );
     }
 
     #[tokio::test]

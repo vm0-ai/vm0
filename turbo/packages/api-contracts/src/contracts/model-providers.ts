@@ -936,6 +936,33 @@ type FirewallSupportedProvider = Exclude<
   HiddenProviderType | "vm0"
 >;
 
+export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
+  // Placeholder: sk-ant-api03-{93 word/hyphen chars}AA (108 chars total)
+  // Source: Semgrep regex \Bsk-ant-api03-[\w\-]{93}AA\B
+  //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
+  ANTHROPIC_API_KEY:
+    "sk-ant-api03-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
+  // Placeholder: sk-ant-oat01-{93 word/hyphen chars}AA (108 chars total)
+  // Source: same structure as API key; prefix from claude setup-token output
+  //   https://github.com/anthropics/claude-code/issues/18340
+  //   Example: sk-ant-oat01-xxxxx...xxxxx (1-year OAuth token)
+  CLAUDE_CODE_OAUTH_TOKEN:
+    "sk-ant-oat01-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
+  // Generic bearer-token marker for Claude-compatible gateways that map
+  // provider-specific secrets into ANTHROPIC_AUTH_TOKEN.
+  ANTHROPIC_AUTH_TOKEN: "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
+  // Placeholder: sk-proj-{chars}T3BlbkFJ{chars} (typical project key shape)
+  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
+  OPENAI_API_KEY:
+    "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
+  // Opaque fake marker, not a JWT. Codex ChatGPT mode reads auth.json, while
+  // firewall auth substitutes this marker at egress.
+  CHATGPT_ACCESS_TOKEN:
+    "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
+  CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+  CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
+} as const;
+
 /**
  * Get provider types available for user selection.
  * Excludes providers that are hidden from the UI (e.g., those without token replacement support).
@@ -1037,94 +1064,69 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   FirewallSupportedProvider,
   ExpandedFirewallConfig
 > = {
-  // Placeholder: sk-ant-api03-{93 word/hyphen chars}AA (108 chars total)
-  // Source: Semgrep regex \Bsk-ant-api03-[\w\-]{93}AA\B
-  //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
   "anthropic-api-key": mpFirewall(
     "anthropic-api-key",
     { name: "x-api-key" },
-    "sk-ant-api03-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY,
   ),
-  // Placeholder: sk-ant-oat01-{93 word/hyphen chars}AA (108 chars total)
-  // Source: same structure as API key; prefix from claude setup-token output
-  //   https://github.com/anthropics/claude-code/issues/18340
-  //   Example: sk-ant-oat01-xxxxx...xxxxx (1-year OAuth token)
   "claude-code-oauth-token": mpFirewall(
     "claude-code-oauth-token",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-ant-oat01-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN,
   ),
-  // Placeholder: sk-or-v1-{64 hex chars} (73 chars total)
-  // Source: real key observed in GitHub issue
-  //   https://github.com/continuedev/continue/issues/6191
-  //   Example: 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
   "openrouter-api-key": mpFirewall(
     "openrouter-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "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",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  // Placeholder: sk-{32 chars} (35 chars total)
-  // Source: no authoritative format documentation found; using generic sk- prefix
   "moonshot-api-key": mpFirewall(
     "moonshot-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  // Placeholder: eyJ... (JWT-style, variable length)
-  // Source: no authoritative format documentation found; MiniMax docs do not disclose key format
-  //   https://platform.minimax.io/docs/api-reference/api-overview
   "minimax-api-key": mpFirewall(
     "minimax-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "eyCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  // Placeholder: sk-{32 hex chars} (35 chars total)
-  // Source: Semgrep regex \bsk-[a-f0-9]{32}\b
-  //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
   "deepseek-api-key": mpFirewall(
     "deepseek-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-c0ffee5afe10ca1c0ffee5afe10ca1c0",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  // Placeholder: sk-{32 chars} (35 chars total)
-  // Source: no authoritative format documentation found; using generic sk- prefix
   "zai-api-key": mpFirewall(
     "zai-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  // Placeholder: sk-{32 chars} (35 chars total)
-  // Source: no authoritative format documentation found; Vercel gateway proxies upstream providers
   "vercel-ai-gateway": mpFirewall(
     "vercel-ai-gateway",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  // Codex-framework twin of openrouter-api-key. Same key shape as the
-  // claude-code entry; the difference is the firewall base URL — codex
-  // SDK hits OpenAI-compatible paths (/chat/completions, /responses)
-  // under https://openrouter.ai/api/v1, derived from the OPENAI_BASE_URL
-  // mapping by getFirewallBaseUrl.
+  // Codex-framework twin of openrouter-api-key. It reuses the same stored
+  // OpenRouter secret, but the sandbox env key is OPENAI_API_KEY because codex
+  // SDK hits OpenAI-compatible paths (/chat/completions, /responses) under
+  // https://openrouter.ai/api/v1, derived from the OPENAI_BASE_URL mapping by
+  // getFirewallBaseUrl.
   "openrouter-codex": mpFirewall(
     "openrouter-codex",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "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",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
-  // Codex-framework twin of vercel-ai-gateway. Same placeholder format
-  // (Vercel gateway proxies upstream); base URL scoped to /v1 prefix by
-  // getFirewallBaseUrl so codex can use either /chat/completions or
-  // /responses paths the gateway exposes.
+  // Codex-framework twin of vercel-ai-gateway. It reuses the same stored Vercel
+  // secret, but the sandbox env key is OPENAI_API_KEY. Base URL is scoped to
+  // the /v1 prefix by getFirewallBaseUrl so codex can use either
+  // /chat/completions or /responses paths the gateway exposes.
   "vercel-ai-gateway-codex": mpFirewall(
     "vercel-ai-gateway-codex",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
-  // Placeholder: sk-proj-{156 chars}T3BlbkFJ{156 chars} (typical project key shape)
-  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
   "openai-api-key": mpFirewall(
     "openai-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
   // ChatGPT OAuth provider — multi-header injection + auth.openai.com deny.
   // Sandbox holds placeholder strings; firewall replaces them with real
@@ -1176,14 +1178,15 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     },
     placeholders: {
       CHATGPT_ACCESS_TOKEN:
-        "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
-      CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
+      CHATGPT_ACCOUNT_ID: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID,
       // refresh_token written by guest-agent into ~/.codex/auth.json (#12077).
       // Kept in this map so the firewall can substitute it on egress if codex
       // ever tries to use it directly — defense-in-depth alongside
       // CODEX_REFRESH_TOKEN_URL_OVERRIDE which redirects refresh attempts to
       // localhost. The sandbox never gets the real refresh_token (#7365).
-      CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
+      CHATGPT_REFRESH_TOKEN:
+        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_REFRESH_TOKEN,
     },
   },
 };
