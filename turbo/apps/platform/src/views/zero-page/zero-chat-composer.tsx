@@ -51,7 +51,10 @@ import {
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
-import { toggleSidebarOff$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  navigateToNewChat$,
+  toggleSidebarOff$,
+} from "../../signals/zero-page/zero-nav.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -1284,6 +1287,7 @@ export function ZeroChatComposer({
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
   const toggleSidebar = useSet(toggleSidebarOff$);
+  const newChat = useSet(navigateToNewChat$);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
@@ -1300,6 +1304,9 @@ export function ZeroChatComposer({
         },
         "mod+b": () => {
           toggleSidebar();
+        },
+        "mod+shift+o": () => {
+          detach(newChat(pageSignal), Reason.DomCallback);
         },
       },
       e,

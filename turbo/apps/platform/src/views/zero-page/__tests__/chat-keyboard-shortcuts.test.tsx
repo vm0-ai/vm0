@@ -6,7 +6,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   chatThreadsContract,
   chatThreadMessagesContract,
@@ -132,7 +131,7 @@ describe("chat page keyboard shortcuts", () => {
     });
   });
 
-  it("mod+shift+up on the first thread escapes to the agent chat page", async () => {
+  it("mod+shift+up is a no-op on the first thread", async () => {
     mockThreadList([
       { id: "thread-1", title: "First" },
       { id: "thread-2", title: "Second" },
@@ -148,85 +147,15 @@ describe("chat page keyboard shortcuts", () => {
       ).toBeInTheDocument();
     });
 
+    // At the first thread, mod+shift+up should no-op (no cross-page escape).
+    // Fire it, then fire mod+shift+down which is expected to navigate to
+    // thread-2. If the first shortcut had incorrectly navigated, the second
+    // navigation would end up somewhere other than thread-2.
     fireMainShortcut("ArrowUp", { shiftKey: true });
+    fireMainShortcut("ArrowDown", { shiftKey: true });
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
-    });
-  });
-
-  it("mod+shift+up on the first thread uses the list item's agent.id", async () => {
-    // The escape navigation must use agent.id, not agentId.
-    const AGENT_ID_FROM_OBJECT = "a2222222-0000-4000-a000-000000000002";
-    // Include the thread's agent in the team so the chat page setup does not
-    // treat it as missing and redirect to the default agent.
-    setMockTeam([
-      {
-        id: AGENT_ID,
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: AGENT_ID_FROM_OBJECT,
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-    server.use(
-      mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(
-          200,
-          splitChatThreadListResponse([
-            {
-              id: "thread-agent-obj",
-              title: "With agent object",
-              agent: { id: AGENT_ID_FROM_OBJECT, avatarUrl: null },
-              createdAt: "2026-03-10T00:00:00Z",
-              updatedAt: "2026-03-10T00:00:00Z",
-              isRead: true,
-              running: false,
-            },
-          ]),
-        );
-      }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          id: "thread-agent-obj",
-          title: "With agent object",
-          agentId: AGENT_ID,
-          latestSessionId: null,
-          activeRunIds: [],
-          draftContent: null,
-          draftAttachments: null,
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-        });
-      }),
-      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-        return respond(200, { messages: [] });
-      }),
-    );
-
-    detachedSetupPage({ context, path: "/chats/thread-agent-obj" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Send a message to start the conversation/i),
-      ).toBeInTheDocument();
-    });
-
-    fireMainShortcut("ArrowUp", { shiftKey: true });
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID_FROM_OBJECT}/chat`);
+      expect(pathname()).toBe("/chats/thread-2");
     });
   });
 
@@ -255,6 +184,30 @@ describe("chat page keyboard shortcuts", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-1");
+    });
+  });
+
+  it("mod+shift+o navigates to the new chat composer for the current agent", async () => {
+    mockThreadList([{ id: "thread-1", title: "First" }]);
+    mockEmptyMessages("thread-1");
+
+    detachedSetupPage({ context, path: "/chats/thread-1" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/i),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "o",
+      code: "KeyO",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
   });
 

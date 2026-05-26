@@ -23,7 +23,6 @@ import {
   resetChatPageModelSelection$,
 } from "./zero-chat-page.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
-import { setupAgentChatPageKeyboard$ } from "./agent-chat-keyboard.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
 export const setupAgentChatPage$ = command(
@@ -31,7 +30,6 @@ export const setupAgentChatPage$ = command(
     set(updatePage$, createElement(AgentChatPage), "sidebar");
     set(updateDocumentTitle$, "Chat");
     set(reloadTagline$);
-    set(setupAgentChatPageKeyboard$, signal);
 
     // Reset the talk draft on entrance
     set(get(talkDraft$).clear$);
