@@ -260,6 +260,69 @@ describe("zero built-in generate image command", () => {
     });
   });
 
+  it("should print styled image resource selection instructions with --styled", async () => {
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "image",
+      "--styled",
+      "--prompt",
+      "Notion illustration of a product manager mapping a launch plan",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("# Zero built-in generate image --styled");
+    expect(stdout).toContain("federated generation resource-selection packet");
+    expect(stdout).toContain("## Stage 1: Resource Selection");
+    expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).toContain("vm0:image-style:notion-illustration");
+    expect(stdout).toContain("vm0-ai/vm0-skills");
+    expect(stdout).toContain("notion-illustration");
+    expect(stdout).toContain("## Stage 3: Generate Image");
+  });
+
+  it("should print styled image JSON resource selection metadata", async () => {
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "image",
+      "--styled",
+      "--prompt",
+      "Notion illustration of a product manager mapping a launch plan",
+      "--json",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      type: "open-design-resource-selection",
+      kind: "image",
+      prompt: "Notion illustration of a product manager mapping a launch plan",
+      outputDir: "./opendesign/images",
+    });
+    expect(parsed.selection).toEqual(
+      expect.objectContaining({
+        candidates: expect.objectContaining({
+          imageStyles: expect.arrayContaining([
+            expect.objectContaining({
+              id: "vm0:image-style:notion-illustration",
+              source: expect.objectContaining({
+                repo: "vm0-ai/vm0-skills",
+                commit: "b35373eb12112b1e7a0caa372a5cafe02e214dd1",
+                path: "notion-illustration",
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(parsed.instructions).toEqual(
+      expect.stringContaining("## Stage 2: Resolve Selected Resources"),
+    );
+  });
+
   it("should wait for an accepted async generation result", async () => {
     let statusRequested = false;
     server.use(
@@ -339,6 +402,7 @@ describe("zero built-in generate image command", () => {
     expect(helpOutput).toContain("--safety-tolerance");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--image-prompt-strength");
+    expect(helpOutput).toContain("--styled");
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");
     expect(helpOutput).toContain("not support transparent");

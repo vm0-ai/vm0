@@ -1,4 +1,5 @@
 export type OpenDesignTarget =
+  | "image"
   | "presentation"
   | "website"
   | "dashboard-design"
@@ -100,8 +101,8 @@ export interface OpenDesignCandidateSlice {
 
 const OPEN_DESIGN_REPO = "vm0-ai/open-design";
 const OPEN_DESIGN_COMMIT = "d021b04720ace133f1d6133d1487326f5fc28f07";
-const VM0_REPO = "vm0-ai/vm0";
-const NOTION_ILLUSTRATION_COMMIT = "12d5aa42de4323c034cfb6e8005c69304dd510e5";
+const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
+const NOTION_ILLUSTRATION_COMMIT = "b35373eb12112b1e7a0caa372a5cafe02e214dd1";
 
 const OPEN_DESIGN_REGISTRY_VERSION = `federated:${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
 
@@ -402,11 +403,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
     source: sourceRef(
-      VM0_REPO,
+      VM0_SKILLS_REPO,
       NOTION_ILLUSTRATION_COMMIT,
-      ".claude/skills/notion-illustration",
+      "notion-illustration",
     ),
-    targets: ["website", "poster", "presentation", "report"],
+    targets: ["image", "website", "poster", "presentation", "report"],
     tags: ["image", "illustration", "notion", "spot", "hand-drawn", "product"],
     triggers: [
       "illustration",
@@ -561,7 +562,7 @@ export function selectOpenDesignCandidates(options: {
         commit: OPEN_DESIGN_COMMIT,
       },
       {
-        repo: VM0_REPO,
+        repo: VM0_SKILLS_REPO,
         commit: NOTION_ILLUSTRATION_COMMIT,
       },
     ],

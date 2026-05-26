@@ -3,6 +3,7 @@ import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { createStyledImageAuthoringPacket } from "./image-style-authoring";
 
 interface ImageOptions {
   prompt?: string;
@@ -20,6 +21,7 @@ interface ImageOptions {
   maskImageUrl?: string;
   inputFidelity?: string;
   imagePromptStrength?: string;
+  styled?: boolean;
   json?: boolean;
 }
 
@@ -149,6 +151,10 @@ export function createImageGenerateCommand(
       "--image-prompt-strength <0-1>",
       "Reference strength override for Flux Redux",
     )
+    .option(
+      "--styled",
+      "Print a resource-selection packet for styled image generation",
+    )
     .option("--json", "Print metadata as JSON")
     .addHelpText(
       "after",
@@ -157,7 +163,8 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ image file URL and metadata
+  Prints the generated /f/ image file URL and metadata. With --styled, prints
+  an Open Design resource-selection packet for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -192,11 +199,40 @@ Options:
   - Image-to-image: pass --image-url to use the model's fal edit/redux endpoint.
     Flux Redux accepts --image-prompt-strength to override the provider
     default; GPT edit models accept --input-fidelity and supported models
-    accept --mask-image-url.`,
+    accept --mask-image-url.
+  - Styled mode: pass --styled to select an image style resource first. In this
+    mode the agent resolves the selected style source and generates the image.`,
     )
     .action(
       withErrorHandler(async (options: ImageOptions, command: Command) => {
         const prompt = readPrompt(options, config.usageCommand);
+        if (options.styled) {
+          const packet = createStyledImageAuthoringPacket({
+            prompt,
+            details: [
+              `Model preference if direct image generation is used: ${options.model}`,
+              `Requested size: ${options.size}`,
+              `Requested quality: ${options.quality}`,
+              `Requested background: ${options.background}`,
+              `Requested format: ${options.format}`,
+              `Source image URLs: ${
+                options.imageUrl.length > 0
+                  ? options.imageUrl.join(", ")
+                  : "none"
+              }`,
+              `Mask image URL: ${options.maskImageUrl ?? "none"}`,
+            ],
+          });
+
+          if (options.json) {
+            console.log(JSON.stringify(packet));
+            return;
+          }
+
+          console.log(packet.instructions);
+          return;
+        }
+
         const compression = parseCompression(options.compression);
         const inputFidelity = parseInputFidelity(options.inputFidelity);
         const imagePromptStrength = parseImagePromptStrength(
