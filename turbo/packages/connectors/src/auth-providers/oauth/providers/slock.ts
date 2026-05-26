@@ -33,6 +33,10 @@ const tokenResponseSchema = z.object({
   userId: z.string().optional(),
 });
 
+const jwtPayloadSchema = z.object({
+  exp: z.number(),
+});
+
 const tokenErrorResponseSchema = z
   .object({
     code: z.string().optional(),
@@ -172,6 +176,24 @@ function requireAccessToken(
     throw new Error(`No access token in Slock ${operation} response`);
   }
   return data.accessToken;
+}
+
+function accessTokenExpiresIn(accessToken: string): number | undefined {
+  try {
+    const payload = accessToken.split(".")[1];
+    if (!payload) {
+      return undefined;
+    }
+    const parsed = jwtPayloadSchema.safeParse(
+      JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown,
+    );
+    if (!parsed.success) {
+      return undefined;
+    }
+    return Math.floor(parsed.data.exp - Date.now() / 1000);
+  } catch {
+    return undefined;
+  }
 }
 
 function serversFromResponse(data: unknown): SlockServerCollection {
@@ -374,7 +396,7 @@ export async function pollSlockDeviceAuth(args: {
     token: {
       accessToken,
       refreshToken,
-      expiresIn: data.data.expiresIn,
+      expiresIn: accessTokenExpiresIn(accessToken),
       scopes: [],
       userInfo,
       extraConnectorSecrets: {
@@ -400,9 +422,10 @@ export async function refreshSlockToken(args: {
   }
 
   const data = tokenResponseSchema.parse(await response.json());
+  const accessToken = requireAccessToken(data, "refresh");
   return {
-    accessToken: requireAccessToken(data, "refresh"),
+    accessToken,
     refreshToken: data.refreshToken ?? null,
-    expiresIn: data.expiresIn,
+    expiresIn: accessTokenExpiresIn(accessToken),
   };
 }

@@ -60,6 +60,7 @@ import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
 import { getConnectorFirewall } from "../firewalls";
 
 const server = setupServer();
+const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -72,6 +73,23 @@ afterEach(() => {
 afterAll(() => {
   server.close();
 });
+
+function jwtAccessToken(subject: string): string {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const encode = (value: unknown) => {
+    return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+  };
+  return [
+    encode({ alg: "none", typ: "JWT" }),
+    encode({
+      sub: subject,
+      type: "access",
+      iat: issuedAt,
+      exp: issuedAt + SLOCK_ACCESS_TOKEN_TTL_SECONDS,
+    }),
+    "signature",
+  ].join(".");
+}
 
 const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   ahrefs: "https://app.ahrefs.com/api/auth",
@@ -912,6 +930,9 @@ describe("isOAuthConnectorType", () => {
   });
 
   it("starts, polls, and refreshes the Slock OAuth device provider", async () => {
+    const slockAccessToken = jwtAccessToken("slock-user-id");
+    const slockRefreshedAccessToken = jwtAccessToken("slock-user-id");
+    const slockMalformedAccessToken = "slock-access-malformed";
     server.use(
       http.post(
         "https://api.slock.ai/api/auth/device/authorize",
@@ -987,8 +1008,15 @@ describe("isOAuthConnectorType", () => {
               userId: "slock-user-id",
             });
           }
+          if (deviceCode === "malformed-token") {
+            return HttpResponse.json({
+              accessToken: slockMalformedAccessToken,
+              refreshToken: "slock-refresh-malformed",
+              userId: "slock-user-id",
+            });
+          }
           return HttpResponse.json({
-            accessToken: "slock-access-token",
+            accessToken: slockAccessToken,
             refreshToken: "slock-refresh-token",
             userId: "slock-user-id",
           });
@@ -1006,7 +1034,10 @@ describe("isOAuthConnectorType", () => {
           );
         }
         if (authorization !== "Bearer slock-access-userinfo-error") {
-          expect(authorization).toBe("Bearer slock-access-token");
+          expect([
+            `Bearer ${slockAccessToken}`,
+            `Bearer ${slockMalformedAccessToken}`,
+          ]).toContain(authorization);
         }
         return HttpResponse.json({
           currentServerId: "slock-server-primary",
@@ -1030,7 +1061,10 @@ describe("isOAuthConnectorType", () => {
             { status: 500 },
           );
         }
-        expect(authorization).toBe("Bearer slock-access-token");
+        expect([
+          `Bearer ${slockAccessToken}`,
+          `Bearer ${slockMalformedAccessToken}`,
+        ]).toContain(authorization);
         return HttpResponse.json({
           id: "slock-user-id",
           name: "Slock User",
@@ -1040,11 +1074,19 @@ describe("isOAuthConnectorType", () => {
       http.post(
         "https://api.slock.ai/api/auth/refresh",
         async ({ request }) => {
-          await expect(request.json()).resolves.toStrictEqual({
-            refreshToken: "slock-refresh-token",
-          });
+          const body = await request.json();
+          const refreshToken = z
+            .object({ refreshToken: z.string() })
+            .parse(body).refreshToken;
+          if (refreshToken === "slock-refresh-malformed") {
+            return HttpResponse.json({
+              accessToken: slockMalformedAccessToken,
+              refreshToken: "slock-refresh-malformed-rotated",
+            });
+          }
+          expect(refreshToken).toBe("slock-refresh-token");
           return HttpResponse.json({
-            accessToken: "slock-access-refreshed",
+            accessToken: slockRefreshedAccessToken,
             refreshToken: "slock-refresh-rotated",
           });
         },
@@ -1148,18 +1190,17 @@ describe("isOAuthConnectorType", () => {
       errorDescription:
         "Unable to load Slock account metadata after authorization.",
     });
-    await expect(
-      pollConnectorOAuthDeviceAuth({
-        type: "slock",
-        credentials,
-        deviceCode: "slock-device-code",
-      }),
-    ).resolves.toStrictEqual({
+    const completeResult = await pollConnectorOAuthDeviceAuth({
+      type: "slock",
+      credentials,
+      deviceCode: "slock-device-code",
+    });
+    expect(completeResult).toMatchObject({
       status: "complete",
       token: {
-        accessToken: "slock-access-token",
+        accessToken: slockAccessToken,
         refreshToken: "slock-refresh-token",
-        expiresIn: undefined,
+        expiresIn: expect.any(Number),
         scopes: [],
         userInfo: {
           id: "slock-user-id",
@@ -1171,16 +1212,59 @@ describe("isOAuthConnectorType", () => {
         },
       },
     });
+    if (completeResult.status !== "complete") {
+      throw new Error("Expected Slock device auth to complete");
+    }
+    const completeExpiresIn = completeResult.token.expiresIn;
+    if (completeExpiresIn === undefined) {
+      throw new Error("Expected Slock device auth to derive token expiry");
+    }
+    expect(completeExpiresIn).toBeGreaterThan(850);
+    expect(completeExpiresIn).toBeLessThanOrEqual(
+      SLOCK_ACCESS_TOKEN_TTL_SECONDS,
+    );
+
+    const malformedCompleteResult = await pollConnectorOAuthDeviceAuth({
+      type: "slock",
+      credentials,
+      deviceCode: "malformed-token",
+    });
+    expect(malformedCompleteResult).toMatchObject({
+      status: "complete",
+      token: {
+        accessToken: slockMalformedAccessToken,
+        refreshToken: "slock-refresh-malformed",
+        expiresIn: undefined,
+      },
+    });
+
+    const refreshResult = await refreshConnectorOAuthToken({
+      type: "slock",
+      credentials,
+      refreshToken: "slock-refresh-token",
+    });
+    expect(refreshResult).toStrictEqual({
+      accessToken: slockRefreshedAccessToken,
+      refreshToken: "slock-refresh-rotated",
+      expiresIn: expect.any(Number),
+    });
+    if (refreshResult.expiresIn === undefined) {
+      throw new Error("Expected Slock refresh to derive token expiry");
+    }
+    expect(refreshResult.expiresIn).toBeGreaterThan(850);
+    expect(refreshResult.expiresIn).toBeLessThanOrEqual(
+      SLOCK_ACCESS_TOKEN_TTL_SECONDS,
+    );
 
     await expect(
       refreshConnectorOAuthToken({
         type: "slock",
         credentials,
-        refreshToken: "slock-refresh-token",
+        refreshToken: "slock-refresh-malformed",
       }),
     ).resolves.toStrictEqual({
-      accessToken: "slock-access-refreshed",
-      refreshToken: "slock-refresh-rotated",
+      accessToken: slockMalformedAccessToken,
+      refreshToken: "slock-refresh-malformed-rotated",
       expiresIn: undefined,
     });
   });
