@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.164.0](https://github.com/vm0-ai/vm0/compare/cli-v9.163.3...cli-v9.164.0) (2026-05-26)
+
+
+### Features
+
+* add styled image resource selection ([#14917](https://github.com/vm0-ai/vm0/issues/14917)) ([8e0da80](https://github.com/vm0-ai/vm0/commit/8e0da80aca2ea24f01935358d53be2d8ed2c3a26))
+
 ## [9.163.3](https://github.com/vm0-ai/vm0/compare/cli-v9.163.2...cli-v9.163.3) (2026-05-26)
 
 

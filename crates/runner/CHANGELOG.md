@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.1...runner-rs-v0.104.2) (2026-05-26)
+
+
+### Bug Fixes
+
+* improve usage buffer flush shutdown ([#14918](https://github.com/vm0-ai/vm0/issues/14918)) ([5bed24f](https://github.com/vm0-ai/vm0/commit/5bed24f62322eeb37282b97478d2e16cf0062f91))
+
 ## [0.104.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.0...runner-rs-v0.104.1) (2026-05-26)
 
 

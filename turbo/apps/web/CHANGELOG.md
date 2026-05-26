@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.389.0](https://github.com/vm0-ai/vm0/compare/web-v12.388.2...web-v12.389.0) (2026-05-26)
+
+
+### Features
+
+* **web:** propagate draft mode through docs index and sidebar ([#14928](https://github.com/vm0-ai/vm0/issues/14928)) ([ace21e0](https://github.com/vm0-ai/vm0/commit/ace21e00c2c3417f94221058cb70be4d6cae6b9d))
+
 ## [12.388.2](https://github.com/vm0-ai/vm0/compare/web-v12.388.1...web-v12.388.2) (2026-05-26)
 
 

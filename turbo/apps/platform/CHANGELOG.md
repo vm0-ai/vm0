@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.384.6](https://github.com/vm0-ai/vm0/compare/app-v0.384.5...app-v0.384.6) (2026-05-26)
+
+
+### Performance Improvements
+
+* **test:** expand role-walk lint rule and route callers through queryallbyrolefast ([#14916](https://github.com/vm0-ai/vm0/issues/14916)) ([274bff5](https://github.com/vm0-ai/vm0/commit/274bff54baef63535ce93b468d854c7d97b9e03d))
+
 ## [0.384.5](https://github.com/vm0-ai/vm0/compare/app-v0.384.4...app-v0.384.5) (2026-05-26)
 
 
