@@ -65,13 +65,19 @@ function elementTextMatches(
 }
 
 function getButtonByText(matcher: string | RegExp): HTMLElement {
-  const button = screen.getAllByRole("button").find((element) => {
-    return elementTextMatches(element, matcher);
-  });
-  if (!button) {
-    throw new Error(`Button not found: ${String(matcher)}`);
+  // `screen.getAllByRole("button")` triggers @testing-library's ARIA-role
+  // resolution across the whole document — that single call took ~360ms in
+  // happy-dom on this page even with only 5 buttons present, which alone
+  // pushed the stripe CLI close test over the default 5s timeout under CI
+  // load. Native `querySelectorAll("button")` returns the same set without
+  // the ARIA tree walk.
+  const buttons = document.body.querySelectorAll<HTMLButtonElement>("button");
+  for (const button of buttons) {
+    if (elementTextMatches(button, matcher)) {
+      return button;
+    }
   }
-  return button;
+  throw new Error(`Button not found: ${String(matcher)}`);
 }
 
 function mockConnectorOauthStart() {
@@ -870,10 +876,6 @@ describe("connect modal - state management", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    // Verify the signal-layer cleanup directly. Re-opening the dialog and
-    // asserting on the rendered UI used to do the same job but doubled the
-    // wall time and made the test flake under CI load (#14871, then #14891
-    // re-skipped after the previous refactor still hit ~3s outliers).
     const cleared = context.store.get(connectorCliAuthState$);
     expect(cleared.status).toBe("idle");
     expect(cleared.connectorType).toBeNull();
