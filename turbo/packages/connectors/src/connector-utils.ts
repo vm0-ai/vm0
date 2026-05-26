@@ -29,38 +29,20 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
   "cli-auth": 3,
 } as const satisfies Record<ConnectorAuthMethodId, number>;
 
-function parseConnectorAuthMethodId(
-  authMethod: string,
-): ConnectorAuthMethodId | null {
-  if (isConnectorAuthMethodId(authMethod)) {
-    return authMethod;
-  }
-  return null;
-}
-
 function isConnectorAuthMethodId(
   authMethod: string,
 ): authMethod is ConnectorAuthMethodId {
   return Object.hasOwn(CONNECTOR_AUTH_METHOD_PRIORITY, authMethod);
 }
 
-function getConnectorAuthMethodPriority(
-  authMethod: ConnectorAuthMethodId,
-): number {
-  return CONNECTOR_AUTH_METHOD_PRIORITY[authMethod];
-}
-
 export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
   return Object.keys(CONNECTOR_TYPES[type].authMethods)
-    .flatMap((authMethod) => {
-      const parsed = parseConnectorAuthMethodId(authMethod);
-      return parsed ? [parsed] : [];
-    })
+    .filter(isConnectorAuthMethodId)
     .sort((a, b) => {
       return (
-        getConnectorAuthMethodPriority(a) - getConnectorAuthMethodPriority(b)
+        CONNECTOR_AUTH_METHOD_PRIORITY[a] - CONNECTOR_AUTH_METHOD_PRIORITY[b]
       );
     });
 }
