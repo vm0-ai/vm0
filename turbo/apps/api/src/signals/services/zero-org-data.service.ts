@@ -378,7 +378,7 @@ export const zeroOrgDetail$ = command(
       id: args.orgId,
       slug: identity.slug,
       name: identity.name,
-      tier: meta[0]?.tier ?? "free",
+      tier: meta[0]?.tier ?? "pro-suspend",
       role: args.orgRole ?? (membership[0]?.role as OrgRole) ?? "member",
       createdBy: identity.createdBy ?? undefined,
     };

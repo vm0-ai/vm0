@@ -4,6 +4,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
   FirewallPolicyValue,
@@ -243,12 +244,19 @@ async function seedRunnableZeroAgent(
   return await store.set(seedRunnableZeroAgent$, args, context.signal);
 }
 
-async function setOrgCredits(orgId: string, credits: number): Promise<void> {
+async function setOrgCredits(
+  orgId: string,
+  credits: number,
+  tier: OrgTier = "free",
+): Promise<void> {
   const db = store.set(writeDb$);
-  await db.insert(orgMetadata).values({ orgId, credits }).onConflictDoUpdate({
-    target: orgMetadata.orgId,
-    set: { credits },
-  });
+  await db
+    .insert(orgMetadata)
+    .values({ orgId, credits, tier })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { credits, tier },
+    });
 }
 
 async function setMemberCredits(args: {
@@ -670,6 +678,34 @@ describe("POST /api/zero/runs", () => {
     );
 
     expect(response.body.status).toBe("pending");
+  });
+
+  it("rejects pro-suspend runs even when using non-VM0 providers", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await setOrgCredits(fx.orgId, 20_000, "pro-suspend");
+    await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
+    const prompt = "suspended anthropic run";
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt,
+          agentId: agent.agentId,
+          modelProvider: "anthropic",
+        },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.prompt, prompt));
+    expect(rows).toHaveLength(0);
   });
 
   it("uses VM0 managed provider keys and marks model billing context", async () => {

@@ -14,6 +14,7 @@ import { getCampaign } from "./one-time-products";
 
 const L = logger("WebhookStripe");
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
+const PRO_CREDIT_EXPIRY_DAYS = 7;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -79,6 +80,9 @@ function monthlyCreditsForTier(tier: OrgTier): number {
     case "free": {
       return 0;
     }
+    case "pro-suspend": {
+      return 0;
+    }
     case "pro": {
       return 20_000;
     }
@@ -86,6 +90,18 @@ function monthlyCreditsForTier(tier: OrgTier): number {
       return 120_000;
     }
   }
+}
+
+function creditExpiresAtForTier(tier: OrgTier, periodEndDate: Date): Date {
+  if (tier === "pro") {
+    const expiresAt = nowDate();
+    expiresAt.setDate(expiresAt.getDate() + PRO_CREDIT_EXPIRY_DAYS);
+    return expiresAt;
+  }
+
+  const expiresAt = new Date(periodEndDate);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  return expiresAt;
 }
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -522,8 +538,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     );
   }
   const periodEndDate = new Date(periodEndUnix * 1000);
-  const expiresAt = new Date(periodEndDate);
-  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const expiresAt = creditExpiresAtForTier(tier, periodEndDate);
 
   await db.transaction(async (tx) => {
     await expireCredits(tx, org.orgId);
@@ -586,7 +601,7 @@ async function handleSubscriptionDeleted(
   await db
     .update(orgMetadata)
     .set({
-      tier: "free",
+      tier: "pro-suspend",
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
       cancelAtPeriodEnd: false,

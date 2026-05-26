@@ -132,6 +132,12 @@ async function resolveBillableFirewallCacheExpiry(params: {
   if (!availability) {
     return insufficientCredits();
   }
+  if (availability.tier === "pro-suspend") {
+    return insufficientCredits();
+  }
+  if (availability.spendableCredits <= 0) {
+    return insufficientCredits();
+  }
 
   const leaseSeconds =
     availability.spendableCredits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD

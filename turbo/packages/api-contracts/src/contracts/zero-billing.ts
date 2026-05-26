@@ -316,7 +316,7 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 // ---------------------------------------------------------------------------
 
 const downgradeRequestSchema = z.object({
-  targetTier: z.enum(["free", "pro"]),
+  targetTier: z.enum(["pro-suspend", "pro"]),
 });
 
 const downgradeResponseSchema = z.object({

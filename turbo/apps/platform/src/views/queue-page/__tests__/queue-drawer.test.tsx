@@ -27,7 +27,7 @@ function mockHomeAPIs() {
 
 function queueResponse(overrides?: {
   concurrency?: {
-    tier: "free" | "pro" | "team";
+    tier: "free" | "pro-suspend" | "pro" | "team";
     limit: number;
     active: number;
     available: number;

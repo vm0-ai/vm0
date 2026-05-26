@@ -16,16 +16,21 @@ import { accept } from "../../lib/accept.ts";
 // Types
 // ---------------------------------------------------------------------------
 
-export type BillingTier = "free" | "pro" | "team";
+export type BillingTier = "free" | "pro-suspend" | "pro" | "team";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
 
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
-  if (tier === "free" || tier === "pro" || tier === "team") {
+  if (
+    tier === "free" ||
+    tier === "pro-suspend" ||
+    tier === "pro" ||
+    tier === "team"
+  ) {
     return tier;
   }
-  return "free";
+  return "pro-suspend";
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +209,11 @@ export const closeDowngradeDialog$ = command(({ set }) => {
 });
 
 export const confirmDowngrade$ = command(
-  async ({ get, set }, targetTier: "free" | "pro", signal: AbortSignal) => {
+  async (
+    { get, set },
+    targetTier: "pro-suspend" | "pro",
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
     await accept(

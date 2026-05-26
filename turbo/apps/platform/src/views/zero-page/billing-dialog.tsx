@@ -50,10 +50,7 @@ const PLANS = [
     name: "Free",
     price: "$0",
     period: "/month",
-    features: [
-      "10,000 starter credits (expire in 1 month)",
-      "Community support",
-    ],
+    features: ["Existing free credits only", "Community support"],
   },
   {
     tier: "pro" as const,
@@ -73,9 +70,17 @@ const PLANS = [
 
 const TIER_ORDER = {
   free: 0,
+  "pro-suspend": 0,
   pro: 1,
   team: 2,
 } as const satisfies Record<BillingTier, number>;
+
+function formatTierLabel(tier: BillingTier): string {
+  if (tier === "pro-suspend") {
+    return "No plan";
+  }
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
 
 function PlanCard({
   plan,
@@ -173,7 +178,7 @@ export function AutoRechargeSection({
   const [saveLoadable, doSave] = useLoadableSet(saveAutoRecharge$);
   const saving = saveLoadable.state === "loading";
 
-  if (currentTier === "free") {
+  if (currentTier === "free" || currentTier === "pro-suspend") {
     return null;
   }
 
@@ -457,7 +462,9 @@ export function BillingDialog() {
           <DialogTitle>Choose your plan</DialogTitle>
           <DialogDescription>
             {status
-              ? `You are on the ${currentTier.charAt(0).toUpperCase() + currentTier.slice(1)} plan with ${status.credits.toLocaleString()} credits.`
+              ? currentTier === "pro-suspend"
+                ? `You do not have an active plan and have ${status.credits.toLocaleString()} credits.`
+                : `You are on the ${formatTierLabel(currentTier)} plan with ${status.credits.toLocaleString()} credits.`
               : "Select a plan to get started."}
           </DialogDescription>
         </DialogHeader>

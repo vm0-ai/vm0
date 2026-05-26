@@ -71,7 +71,7 @@ interface BillingStatusResponse {
 }
 
 const DEFAULT_BILLING_ORG = Object.freeze<BillingOrgRow>({
-  tier: "free",
+  tier: "pro-suspend",
   credits: 0,
   subscriptionStatus: null,
   currentPeriodEnd: null,

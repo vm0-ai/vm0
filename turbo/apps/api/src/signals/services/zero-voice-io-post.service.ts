@@ -43,12 +43,14 @@ const EBML_HEADER = [0x1a, 0x45, 0xdf, 0xa3] as const;
 
 const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
   free: 10,
+  "pro-suspend": 0,
   pro: 300,
   team: 500,
 };
 
 const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
   free: 10 * 60,
+  "pro-suspend": 0,
   pro: 200 * 60,
   team: 500 * 60,
 };
@@ -644,7 +646,7 @@ export const sttDailyPolicy$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const orgTier = orgTierSchema.parse(orgRow?.tier ?? "free");
+    const orgTier = orgTierSchema.parse(orgRow?.tier ?? "pro-suspend");
     const behaviorRows = await db
       .select({
         key: userBehaviorCount.behaviorKey,

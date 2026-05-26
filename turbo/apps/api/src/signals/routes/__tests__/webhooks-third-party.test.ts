@@ -2671,7 +2671,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("invoice.paid credit expiry", () => {
-    it("creates expires record with correct expiresAt", async () => {
+    it("creates Pro expires record with seven-day expiresAt", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2685,6 +2685,7 @@ describe("POST /api/webhooks/stripe", () => {
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
       });
 
+      const lowerBound = nowDate().getTime() + 7 * 86_400 * 1000;
       const response = await postStripeWebhookEvent({
         type: "invoice.paid",
         dataObject: {
@@ -2699,14 +2700,16 @@ describe("POST /api/webhooks/stripe", () => {
       expect(response.status).toBe(200);
       const records = await selectStripeCreditExpiresRecords(fixture);
       expect(records).toHaveLength(1);
-      const expectedExpiresAt = new Date(periodEnd * 1000);
-      expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 1);
       expect(records[0]).toMatchObject({
         amount: 20_000,
         remaining: 20_000,
         stripeInvoiceId: invId,
       });
-      expect(records[0]?.expiresAt.getTime()).toBe(expectedExpiresAt.getTime());
+      const upperBound = nowDate().getTime() + 7 * 86_400 * 1000;
+      expect(records[0]?.expiresAt.getTime()).toBeGreaterThanOrEqual(
+        lowerBound,
+      );
+      expect(records[0]?.expiresAt.getTime()).toBeLessThanOrEqual(upperBound);
     });
 
     it("expires old credits before granting new ones", async () => {
@@ -2970,7 +2973,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("customer.subscription.deleted", () => {
-    it("downgrades to free and clears subscription", async () => {
+    it("downgrades to pro-suspend and clears subscription", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2990,7 +2993,7 @@ describe("POST /api/webhooks/stripe", () => {
 
       expect(response.status).toBe(200);
       const billing = await selectStripeBilling(fixture);
-      expect(billing.tier).toBe("free");
+      expect(billing.tier).toBe("pro-suspend");
       expect(billing.subscriptionStatus).toBe("canceled");
       expect(billing.stripeSubscriptionId).toBeNull();
       expect(billing.cancelAtPeriodEnd).toBeFalsy();

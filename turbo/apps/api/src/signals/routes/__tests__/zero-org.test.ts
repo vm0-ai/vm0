@@ -4,6 +4,7 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
 } from "@vm0/api-contracts/contracts/zero-org";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -39,7 +40,7 @@ interface SeedOrgArgs {
   readonly role: "admin" | "member";
   readonly slug?: string;
   readonly name?: string;
-  readonly tier?: "free" | "pro" | "team";
+  readonly tier?: OrgTier;
 }
 
 interface ClerkOrgFixture {
@@ -93,10 +94,7 @@ async function seedOrgCacheOnly(
   return { orgId, userId: "" };
 }
 
-async function setOrgTier(
-  orgId: string,
-  tier: "free" | "pro" | "team",
-): Promise<void> {
+async function setOrgTier(orgId: string, tier: OrgTier): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
     .insert(orgMetadata)

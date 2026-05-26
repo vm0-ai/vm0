@@ -18,38 +18,21 @@ export function setMockBillingInvoices(invoices: BillingInvoice[]): void {
   mockBillingInvoices = invoices;
 }
 
-// Fixed ISO string so snapshot tests stay stable. Reflects the new free-tier
-// default: a freshly-granted org has all 10k starter credits expiring in
-// ~1 month. Tests that need a different state should call setMockBillingStatus.
-const MOCK_STARTER_GRANT_EXPIRY = "2099-01-01T00:00:00.000Z";
-
 function defaultBillingStatus(): BillingStatusResponse {
   return {
-    tier: "free",
-    credits: 10_000,
+    tier: "pro-suspend",
+    credits: 0,
     subscriptionStatus: null,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
     hasSubscription: false,
     autoRecharge: { enabled: false, threshold: null, amount: null },
     creditExpiry: {
-      expiringNextCycle: 10_000,
-      nextExpiryDate: MOCK_STARTER_GRANT_EXPIRY,
+      expiringNextCycle: 0,
+      nextExpiryDate: null,
     },
-    creditBreakdown: [
-      { category: "free", label: "Free plan", credits: 10_000 },
-    ],
-    creditGrants: [
-      {
-        id: "starter-grant",
-        source: "starter_grant",
-        label: "Free plan",
-        amount: 10_000,
-        remaining: 10_000,
-        createdAt: "2098-12-01T00:00:00.000Z",
-        expiresAt: MOCK_STARTER_GRANT_EXPIRY,
-      },
-    ],
+    creditBreakdown: [],
+    creditGrants: [],
   };
 }
 

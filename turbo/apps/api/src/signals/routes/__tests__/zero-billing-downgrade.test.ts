@@ -44,7 +44,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "free" },
+        body: { targetTier: "pro-suspend" },
         headers: {},
       }),
       [503],
@@ -62,7 +62,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "free" },
+        body: { targetTier: "pro-suspend" },
         headers: {},
       }),
       [401],
@@ -80,7 +80,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "free" },
+        body: { targetTier: "pro-suspend" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -118,7 +118,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "free" },
+        body: { targetTier: "pro-suspend" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [409],
@@ -215,8 +215,8 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
   });
 
-  it("downgrades pro to free via cancel at period end", async () => {
-    const subId = `sub-pro-free-${randomUUID().slice(0, 8)}`;
+  it("downgrades pro to pro-suspend via cancel at period end", async () => {
+    const subId = `sub-pro-suspend-${randomUUID().slice(0, 8)}`;
     const periodEnd = new Date(now() + 30 * 86_400 * 1000);
     const fixture = await track(
       store.set(
@@ -237,7 +237,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "free" },
+        body: { targetTier: "pro-suspend" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -261,8 +261,8 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(row?.cancelAtPeriodEnd).toBeTruthy();
   });
 
-  it("downgrades team to free via cancel at period end", async () => {
-    const subId = `sub-team-free-${randomUUID().slice(0, 8)}`;
+  it("downgrades team to pro-suspend via cancel at period end", async () => {
+    const subId = `sub-team-suspend-${randomUUID().slice(0, 8)}`;
     const periodEnd = new Date(now() + 30 * 86_400 * 1000);
     const fixture = await track(
       store.set(
@@ -283,7 +283,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "free" },
+        body: { targetTier: "pro-suspend" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],

@@ -193,7 +193,8 @@ function CreditBalanceChart({
     return s.credits > 0;
   });
   const total = billing.credits;
-  const showFreeEmptyPrompt = billing.tier === "free" && total <= 0;
+  const showFreeEmptyPrompt =
+    (billing.tier === "free" || billing.tier === "pro-suspend") && total <= 0;
   const openBillingPlans = useSet(openBillingPlans$);
   const handleComparePlans = onComparePlans ?? openBillingPlans;
 
@@ -390,7 +391,7 @@ function OverviewSection({ onComparePlans }: { onComparePlans?: () => void }) {
       </section>
 
       {/* Members — only for paid plans */}
-      {currentTier !== "free" && (
+      {(currentTier === "pro" || currentTier === "team") && (
         <section className="flex flex-col gap-3">
           <h3 className="text-sm font-medium text-foreground">Members</h3>
 

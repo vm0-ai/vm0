@@ -8,6 +8,7 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -109,11 +110,23 @@ interface ScheduleBatchArgs {
 }
 
 export const seedUsageInsightFixture$ = command(
-  (_, _input: void, _signal: AbortSignal): Promise<UsageInsightFixture> => {
-    return Promise.resolve({
+  async (
+    { set },
+    _input: void,
+    signal: AbortSignal,
+  ): Promise<UsageInsightFixture> => {
+    const db = set(writeDb$);
+    const fixture = {
       orgId: `org_${randomUUID()}`,
       userId: `user_${randomUUID()}`,
+    };
+    await db.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      tier: "free",
+      credits: 10_000,
     });
+    signal.throwIfAborted();
+    return fixture;
   },
 );
 
@@ -140,6 +153,9 @@ export const deleteUsageInsightFixture$ = command(
           eq(userFeatureSwitches.userId, userId),
         ),
       );
+    signal.throwIfAborted();
+
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
     signal.throwIfAborted();
 
     const runRows = await db

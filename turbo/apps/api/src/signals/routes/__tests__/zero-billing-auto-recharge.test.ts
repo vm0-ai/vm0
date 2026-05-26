@@ -245,7 +245,7 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
     expect(row?.autoRechargePendingAt).toBeNull();
   });
 
-  it("returns 400 when enabling on free tier", async () => {
+  it("returns 400 when enabling on a suspended org", async () => {
     const fixture = await track(
       store.set(seedAutoRechargeOrg$, {}, context.signal),
     );
@@ -263,7 +263,7 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Auto-recharge is only available for paid plans (Pro/Max)",
+        message: "Auto-recharge is only available for paid plans (Pro/Team)",
         code: "BAD_REQUEST",
       },
     });

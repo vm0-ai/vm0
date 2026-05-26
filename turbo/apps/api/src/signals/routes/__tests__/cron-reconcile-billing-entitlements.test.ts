@@ -190,7 +190,7 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
 
     expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
     await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
-      tier: "free",
+      tier: "pro-suspend",
       subscriptionStatus: "past_due",
       stripeSubscriptionId: fixture.subscriptionId,
     });
@@ -281,7 +281,7 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
 
     expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
     await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
-      tier: "free",
+      tier: "pro-suspend",
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
     });
@@ -309,7 +309,7 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
 
     expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
     await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
-      tier: "free",
+      tier: "pro-suspend",
       subscriptionStatus: "unpaid",
       stripeSubscriptionId: fixture.subscriptionId,
     });
@@ -337,7 +337,7 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
 
     expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
     await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
-      tier: "free",
+      tier: "pro-suspend",
       subscriptionStatus: "past_due",
     });
   });

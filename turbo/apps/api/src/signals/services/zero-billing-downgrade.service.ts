@@ -13,6 +13,7 @@ const L = logger("BillingDowngrade");
 
 const TIER_RANK = Object.freeze<Record<OrgTier, number>>({
   free: 0,
+  "pro-suspend": 0,
   pro: 1,
   team: 2,
 });
@@ -24,18 +25,18 @@ type DowngradeResult =
       readonly ok: false;
       readonly reason: "invalid_target_tier";
       readonly currentTier: OrgTier;
-      readonly targetTier: "free" | "pro";
+      readonly targetTier: "pro-suspend" | "pro";
     };
 
 interface DowngradeArgs {
   readonly orgId: string;
-  readonly targetTier: "free" | "pro";
+  readonly targetTier: "pro-suspend" | "pro";
 }
 
 /**
  * Downgrade an org's Stripe subscription. Verbatim port of apps/web's
  * `downgradeSubscription`. Two branches:
- * - `* → free`: schedules cancel-at-period-end and flips local
+ * - `* → pro-suspend`: schedules cancel-at-period-end and flips local
  *   `cancelAtPeriodEnd` flag. effectiveDate = currentPeriodEnd ISO string.
  * - `team → pro`: immediate tier swap via `stripe.subscriptions.update`
  *   with `proration_behavior: "always_invoice"`. effectiveDate = null.
@@ -75,7 +76,7 @@ export const downgradeSubscription$ = command(
 
     const stripe = getStripeClient();
 
-    if (args.targetTier === "free") {
+    if (args.targetTier === "pro-suspend") {
       await stripe.subscriptions.update(org.stripeSubscriptionId, {
         cancel_at_period_end: true,
       });

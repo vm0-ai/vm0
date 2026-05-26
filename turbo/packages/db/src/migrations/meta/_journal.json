@@ -2808,6 +2808,13 @@
       "when": 1779852942767,
       "tag": "0400_gigantic_phalanx",
       "breakpoints": true
+    },
+    {
+      "idx": 401,
+      "version": "7",
+      "when": 1779853011686,
+      "tag": "0401_dear_black_tarantula",
+      "breakpoints": true
     }
   ]
 }

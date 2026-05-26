@@ -56,6 +56,29 @@ describe("org billing tab - plan display", () => {
     });
   });
 
+  it("should show no active plan for pro-suspend tier", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      cancelAtPeriodEnd: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    expect(screen.getByText("No active subscription")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").find((el) => {
+        return /^Upgrade$/i.test(el.textContent?.trim() ?? "");
+      }),
+    ).toBeDefined();
+  });
+
   it("should show Upgrade button for free tier", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
@@ -187,6 +210,24 @@ describe("org billing tab - auto-recharge section", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Auto-recharge")).not.toBeInTheDocument();
+  });
+
+  it("should not show auto-recharge section for pro-suspend plan", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Auto-recharge")).not.toBeInTheDocument();
@@ -946,9 +987,9 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    // Pro user should see "Downgrade to Free?" confirmation
+    // Pro users cancel into the suspended state at period end.
     expect(
-      screen.getByText("Are you sure you want to downgrade to Free?"),
+      screen.getByText("Are you sure you want to cancel your Pro plan?"),
     ).toBeInTheDocument();
   });
 
@@ -1014,14 +1055,14 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    const downgradeToFreeBtn = queryAllByRoleFast("button").find((el) => {
-      return /Downgrade to Free/i.test(el.textContent ?? "");
+    const cancelSubscriptionBtn = queryAllByRoleFast("button").find((el) => {
+      return /Cancel subscription/i.test(el.textContent ?? "");
     });
-    expect(downgradeToFreeBtn).toBeDefined();
-    click(downgradeToFreeBtn!);
+    expect(cancelSubscriptionBtn).toBeDefined();
+    click(cancelSubscriptionBtn!);
 
     await waitFor(() => {
-      expect(capturedBody).toStrictEqual({ targetTier: "free" });
+      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
     });
   });
 

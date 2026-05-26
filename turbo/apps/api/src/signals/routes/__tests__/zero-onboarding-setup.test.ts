@@ -335,7 +335,7 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(readOrgMetadata(fixture.orgId)).resolves.toMatchObject({
       defaultAgentId: agentId,
       onboardingPaymentPending: true,
-      credits: 10_000,
+      credits: 0,
     });
     const agents = await accept(
       agentsClient().list({ headers: authHeaders() }),
@@ -369,9 +369,7 @@ describe("POST /api/zero/onboarding/setup", () => {
       secretId: null,
       authMethod: null,
     });
-    await expect(readStarterGrants(fixture.orgId)).resolves.toStrictEqual([
-      { source: "starter_grant", amount: 10_000, remaining: 10_000 },
-    ]);
+    await expect(readStarterGrants(fixture.orgId)).resolves.toStrictEqual([]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
 
     const status = await accept(

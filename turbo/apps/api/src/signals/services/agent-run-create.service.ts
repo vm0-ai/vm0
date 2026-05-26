@@ -337,6 +337,7 @@ interface ConnectorRuntimeContext {
 }
 
 interface CreditCheckRow extends Record<string, unknown> {
+  readonly tier: string | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
 }
@@ -1992,7 +1993,7 @@ async function checkVm0Credits(
 ): Promise<CreateRunErrorResult | null> {
   const { rows } = await db.execute<CreditCheckRow>(sql`
     WITH org AS (
-      SELECT credits FROM org_metadata
+      SELECT tier, credits FROM org_metadata
       WHERE org_id = ${args.orgId}
       LIMIT 1
     ),
@@ -2004,18 +2005,38 @@ async function checkVm0Credits(
         AND remaining > 0
     )
     SELECT
+      (SELECT tier FROM org) AS tier,
       (SELECT credits FROM org) AS credits,
       (SELECT total FROM expired) AS unsettled_expired
   `);
 
   const row = rows[0];
   if (!row || row.credits === null) {
-    return notFound("Org metadata not found");
+    return insufficientCredits();
+  }
+  if (row.tier === "pro-suspend") {
+    return insufficientCredits();
   }
 
   const credits = Number(row.credits);
   const unsettledExpired = Number(row.unsettled_expired ?? 0);
   return credits - unsettledExpired > 0 ? null : insufficientCredits();
+}
+
+async function checkOrgRunTier(
+  db: Db,
+  args: { readonly orgId: string },
+): Promise<CreateRunErrorResult | null> {
+  const [row] = await db
+    .select({ tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, args.orgId))
+    .limit(1);
+
+  if (!row) {
+    return insufficientCredits();
+  }
+  return row.tier === "pro-suspend" ? insufficientCredits() : null;
 }
 
 async function lookupComposeByVersion(
@@ -3568,6 +3589,12 @@ export const createAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<CreateRunRouteResult> => {
     const db = set(writeDb$);
+    const tierGate = await checkOrgRunTier(db, { orgId: args.orgId });
+    signal.throwIfAborted();
+    if (tierGate) {
+      return tierGate;
+    }
+
     const context = await prepareRunContext(get, db, args, signal);
     if (isRouteError(context)) {
       return context;

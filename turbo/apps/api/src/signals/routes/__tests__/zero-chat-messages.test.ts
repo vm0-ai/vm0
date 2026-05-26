@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getModelProviderFirewall,
@@ -155,6 +156,11 @@ async function seedFixture(): Promise<ChatMessageFixture> {
     owner: userId,
     name,
     visibility: "public",
+  });
+  await writeDb.insert(orgMetadata).values({
+    orgId,
+    tier: "free",
+    credits: 10_000,
   });
 
   mocks.clerk.session(userId, orgId);
@@ -383,6 +389,7 @@ async function removeComposeFrameworkApiKey(
 async function seedVm0Credits(
   fixture: ChatMessageFixture,
   credits: number,
+  tier: OrgTier = "free",
 ): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
@@ -390,11 +397,11 @@ async function seedVm0Credits(
     .values({
       orgId: fixture.orgId,
       credits,
-      tier: "free",
+      tier,
     })
     .onConflictDoUpdate({
       target: orgMetadata.orgId,
-      set: { credits, tier: "free", updatedAt: nowDate() },
+      set: { credits, tier, updatedAt: nowDate() },
     });
 }
 
@@ -1598,6 +1605,61 @@ describe("POST /api/zero/chat/messages", () => {
       {
         role: "user",
         content: "blocked by credits",
+        runId: null,
+        error: "insufficient_credits",
+      },
+      {
+        role: "assistant",
+        content: expect.stringContaining("Upgrade to Pro"),
+        runId: null,
+        error: "insufficient_credits",
+      },
+    ]);
+  });
+
+  it("stores upgrade guidance for pro-suspend workspaces with credits", async () => {
+    const fixture = await track(seedFixture());
+    await seedVm0Credits(fixture, 20_000, "pro-suspend");
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "blocked by suspended plan",
+          modelSelection: {
+            modelProviderId: providerId,
+            selectedModel: "claude-sonnet-4-6",
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body.runId).toBeNull();
+    const [run] = await store
+      .set(writeDb$)
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId))
+      .limit(1);
+    expect(run).toBeUndefined();
+    const messages = await store
+      .set(writeDb$)
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        error: chatMessages.error,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, response.body.threadId))
+      .orderBy(chatMessages.createdAt);
+    expect(messages).toStrictEqual([
+      {
+        role: "user",
+        content: "blocked by suspended plan",
         runId: null,
         error: "insufficient_credits",
       },
