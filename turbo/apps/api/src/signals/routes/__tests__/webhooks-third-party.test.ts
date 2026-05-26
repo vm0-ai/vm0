@@ -217,6 +217,7 @@ interface StripeBillingRow {
   readonly cancelAtPeriodEnd: boolean;
   readonly lastProcessedInvoiceId: string | null;
   readonly autoRechargePendingAt: Date | null;
+  readonly onboardingPaymentPending: boolean;
 }
 
 interface StripeCreditExpiresRow {
@@ -673,6 +674,7 @@ async function selectStripeBilling(
       cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
       autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
+      onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
     })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, fixture.orgId));
@@ -2095,6 +2097,7 @@ describe("POST /api/webhooks/stripe", () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
+      await updateStripeOrg(fixture, { onboardingPaymentPending: true });
       mockStripeWebhookEnv();
       const subId = stripeId("sub");
       const periodEnd = 1_800_000_000;
@@ -2130,6 +2133,7 @@ describe("POST /api/webhooks/stripe", () => {
         new Date(periodEnd * 1000),
       );
       expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.onboardingPaymentPending).toBeFalsy();
     });
 
     it("is idempotent when subscription is already stored", async () => {

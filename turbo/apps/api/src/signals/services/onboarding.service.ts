@@ -49,6 +49,7 @@ interface OnboardingSetupArgs {
   readonly avatarUrl?: string;
   readonly selectedConnectors: readonly ConnectorType[];
   readonly timezone?: string;
+  readonly onboardingPaymentPending?: boolean;
 }
 
 type OnboardingSetupResponse =
@@ -296,16 +297,30 @@ async function ensureStarterCreditGrant(
 
 async function upsertDefaultAgentWithStarterGrant(
   db: Db,
-  args: { readonly orgId: string; readonly agentId: string },
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly onboardingPaymentPending?: boolean;
+  },
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, args.orgId);
     await tx
       .insert(orgMetadata)
-      .values({ orgId: args.orgId, defaultAgentId: args.agentId })
+      .values({
+        orgId: args.orgId,
+        defaultAgentId: args.agentId,
+        onboardingPaymentPending: args.onboardingPaymentPending ?? false,
+      })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
-        set: { defaultAgentId: args.agentId, updatedAt: nowDate() },
+        set: {
+          defaultAgentId: args.agentId,
+          ...(args.onboardingPaymentPending === undefined
+            ? {}
+            : { onboardingPaymentPending: args.onboardingPaymentPending }),
+          updatedAt: nowDate(),
+        },
       });
   });
 }
@@ -403,6 +418,21 @@ function defaultAgentId(orgId: string): Computed<Promise<string | null>> {
   });
 }
 
+function onboardingPaymentPending(orgId: string): Computed<Promise<boolean>> {
+  return computed(async (get): Promise<boolean> => {
+    const db = get(db$);
+    const [row] = await db
+      .select({
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
+
+    return row?.onboardingPaymentPending ?? false;
+  });
+}
+
 function defaultAgentInfo(
   orgId: string,
   composeId: string,
@@ -461,14 +491,16 @@ export function onboardingStatus(
 
     const isAdmin = "orgRole" in auth && auth.orgRole === "admin";
     const agentId = await get(defaultAgentId(auth.orgId));
+    const paymentPending = await get(onboardingPaymentPending(auth.orgId));
     const defaultAgent = agentId
       ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
-    // Onboarding is purely admin workspace setup: an admin enters it only when
-    // the org has no default agent yet. Non-admins never go through onboarding.
+    // Existing free workspaces never have onboardingPaymentPending set, so
+    // they do not re-enter onboarding. New onboarding remains active until the
+    // Pro trial checkout succeeds.
     return {
-      needsOnboarding: isAdmin && !defaultAgent,
+      needsOnboarding: isAdmin && (!defaultAgent || paymentPending),
       isAdmin,
       hasOrg: true,
       hasDefaultAgent: defaultAgent !== null,
@@ -513,6 +545,16 @@ export const setupOnboarding$ = command(
         selectedConnectors,
       });
       signal.throwIfAborted();
+      if (args.onboardingPaymentPending !== undefined) {
+        await writeDb
+          .update(orgMetadata)
+          .set({
+            onboardingPaymentPending: args.onboardingPaymentPending,
+            updatedAt: nowDate(),
+          })
+          .where(eq(orgMetadata.orgId, args.orgId));
+        signal.throwIfAborted();
+      }
       return { status: 200 as const, body: { agentId: existingAgentId } };
     }
 
@@ -589,6 +631,7 @@ export const setupOnboarding$ = command(
     await upsertDefaultAgentWithStarterGrant(writeDb, {
       orgId: args.orgId,
       agentId: composeResult.composeId,
+      onboardingPaymentPending: args.onboardingPaymentPending,
     });
     signal.throwIfAborted();
 

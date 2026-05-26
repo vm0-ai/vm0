@@ -8,6 +8,7 @@ import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
   readonly priceId: string;
+  readonly trialDays?: 7;
   readonly successUrl: string;
   readonly cancelUrl: string;
 }
@@ -94,7 +95,12 @@ export const createCheckoutSession$ = command(
       allow_promotion_codes: true,
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
-      subscription_data: { metadata: { orgId: args.orgId } },
+      subscription_data: {
+        metadata: { orgId: args.orgId },
+        ...(args.trialDays === undefined
+          ? {}
+          : { trial_period_days: args.trialDays }),
+      },
     });
     signal.throwIfAborted();
 

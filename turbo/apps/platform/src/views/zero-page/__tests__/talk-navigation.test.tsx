@@ -29,6 +29,7 @@ import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -296,6 +297,15 @@ describe("talk navigation", () => {
         return respond(200, { agentId: MOCK_AGENT_ID });
       }),
     );
+    let checkoutBody: Record<string, unknown> | null = null;
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
+      }),
+    );
 
     // Mock chat APIs for the agent chat page
     mockChatAPIs();
@@ -312,24 +322,24 @@ describe("talk navigation", () => {
     await fill(input, "Test Workspace");
     click(screen.getByText("Next"));
 
-    // Step 2: Choose your tools — pick a connector, then continue in web.
-    // Step 2 is the terminal step of the regular admin flow.
+    // Step 2: choose tools, then move to the Pro trial step.
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
     click(screen.getByTestId("connector-card-github"));
 
-    // Click "Get Started" which triggers:
-    // 1. completeZeroOnboarding$ (re-runs setup to authorize the connector)
-    // 2. navigate to /agents/:id/chat
     await waitFor(() => {
-      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+      expect(screen.getByText("Next")).toBeInTheDocument();
+    });
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
     });
     click(screen.getByText(/Get Started/));
 
-    // The final URL should be /agents/:id/chat (no auto-intro message)
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 });

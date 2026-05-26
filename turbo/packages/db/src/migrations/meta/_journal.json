@@ -2801,6 +2801,13 @@
       "when": 1779848875612,
       "tag": "0399_icy_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 400,
+      "version": "7",
+      "when": 1779852942767,
+      "tag": "0400_gigantic_phalanx",
+      "breakpoints": true
     }
   ]
 }

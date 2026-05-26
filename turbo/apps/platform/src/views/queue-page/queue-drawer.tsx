@@ -199,7 +199,7 @@ function QueueDrawerContent() {
               onClick={(e) => {
                 const newTab = e.metaKey || e.ctrlKey;
                 detach(
-                  checkout(upgrade.targetTier, newTab, pageSignal),
+                  checkout(upgrade.targetTier, newTab, undefined, pageSignal),
                   Reason.DomCallback,
                 );
               }}

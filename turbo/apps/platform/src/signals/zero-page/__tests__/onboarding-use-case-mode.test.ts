@@ -140,7 +140,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     expect(visible).toStrictEqual(["3"]);
   });
 
-  it("admin visible steps are the regular step 1 + step 2 outside use-case mode", async () => {
+  it("admin visible steps are the regular flow outside use-case mode", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
@@ -152,8 +152,9 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     await context.store.set(setupOnboardingPage$, context.signal);
 
     const visible = await context.store.get(onboardingVisibleSteps$);
-    // No use-case link → regular admin flow: name workspace, then pick tools.
-    expect(visible).toStrictEqual(["1", "2"]);
+    // No use-case link → regular admin flow: name workspace, pick tools,
+    // then start the Pro trial checkout.
+    expect(visible).toStrictEqual(["1", "2", "4"]);
   });
 
   it("button label switches to 'Try It' on step 3 in use-case mode", async () => {

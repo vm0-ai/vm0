@@ -19,7 +19,7 @@ import {
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
 
-import { reloadBillingStatus$ } from "./billing.ts";
+import { reloadBillingStatus$, startCheckout$ } from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
@@ -182,8 +182,8 @@ export const onboardingStepNext$ = command(
     switch (step) {
       case "1": {
         // Eagerly provision the workspace + default agent so onboarding is
-        // effectively done — refreshing or leaving the (skippable) step 2
-        // won't drop the user back into onboarding.
+        // durable before Stripe redirects away. The pending-payment marker
+        // keeps onboarding active until checkout succeeds.
         if (!get(onboardingEagerInitialized$)) {
           await set(completeZeroOnboarding$, signal);
           signal.throwIfAborted();
@@ -202,8 +202,21 @@ export const onboardingStepNext$ = command(
       }
       case "3":
       case "4": {
-        // Step 3 (use-case "Try It") and step 4 (Pro trial) both finish
-        // onboarding by continuing into the web chat.
+        // Step 3 (use-case "Try It") finishes by continuing into web chat.
+        // Step 4 starts the Stripe Pro trial; onboarding completes only after
+        // the subscription checkout webhook clears the pending-payment marker.
+        if (step === "4") {
+          const selectedConnectors = get(zeroSelectedConnectors$);
+          if (
+            get(onboardingEagerInitialized$) &&
+            selectedConnectors.length > 0
+          ) {
+            await set(authorizeStep2Connectors$, signal);
+            signal.throwIfAborted();
+          }
+          await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
+          break;
+        }
         await set(onboardingContinueWeb$, signal);
         break;
       }

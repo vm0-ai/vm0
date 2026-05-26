@@ -7,14 +7,12 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { pathname } from "../../../signals/location.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -39,36 +37,8 @@ function mockAdminOnboarding() {
   );
 }
 
-function switchToAdminComplete() {
-  // Register the newly provisioned agent in the team so the chat page setup
-  // finds it instead of redirecting to the (same) default agent.
-  setMockTeam([
-    {
-      id: MOCK_AGENT_ID,
-      displayName: null,
-      description: null,
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_1",
-      updatedAt: "2024-01-01T00:00:00Z",
-    },
-  ]);
-  server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-      return respond(200, {
-        needsOnboarding: false,
-        isAdmin: true,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: MOCK_AGENT_ID,
-        defaultAgentMetadata: null,
-      });
-    }),
-  );
-}
-
-// Step 1 (name workspace) → step 2 (choose tools, pick a connector). Step 2's
-// "Get Started" is the terminal step of the regular admin flow.
+// Step 1 (name workspace) → step 2 (choose tools, pick a connector) → step 4
+// (Pro trial). "Get Started" on step 4 starts Stripe checkout.
 async function walkAdminToContinue() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
@@ -84,23 +54,35 @@ async function walkAdminToContinue() {
   click(screen.getByTestId("connector-card-github"));
 
   await waitFor(() => {
-    expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+    expect(screen.getByText("Next")).toBeInTheDocument();
+  });
+  click(screen.getByText("Next"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
   });
 }
 
-describe("onboarding continue in web → agent chat page", () => {
-  it("should navigate to /agents/:id/chat after admin completes onboarding", async () => {
+describe("onboarding Pro trial checkout", () => {
+  it("starts Pro trial checkout after admin completes onboarding setup", async () => {
     mockAdminOnboarding();
+    let checkoutBody: Record<string, unknown> | null = null;
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
+      }),
+    );
 
     detachedSetupPage({ context, path: "/onboarding" });
     await walkAdminToContinue();
 
-    switchToAdminComplete();
-
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 });
@@ -133,23 +115,30 @@ describe("prompt param forwarding", () => {
     expect(screen.getByText("Try It")).toBeInTheDocument();
   });
 
-  it("should not include prompt param when absent", async () => {
+  it("does not include prompt param in regular checkout URLs when absent", async () => {
     mockAdminOnboarding();
+    let checkoutBody: Record<string, unknown> | null = null;
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
+      }),
+    );
 
     detachedSetupPage({ context, path: "/onboarding" });
     await walkAdminToContinue();
 
-    switchToAdminComplete();
-
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+      expect(checkoutBody).not.toBeNull();
     });
 
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    expect(textarea).toHaveValue("");
+    const successUrl = new URL(String(checkoutBody!.successUrl));
+    const cancelUrl = new URL(String(checkoutBody!.cancelUrl));
+    expect(successUrl.searchParams.get("prompt")).toBeNull();
+    expect(cancelUrl.searchParams.get("prompt")).toBeNull();
   });
 });

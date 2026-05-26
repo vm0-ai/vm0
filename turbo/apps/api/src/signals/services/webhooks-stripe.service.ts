@@ -433,6 +433,7 @@ async function handleCheckoutCompleted(
       stripeSubscriptionId: subscriptionId,
       subscriptionStatus: subscription.status,
       cancelAtPeriodEnd: false,
+      onboardingPaymentPending: false,
       ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
       updatedAt: nowDate(),
     })

@@ -1,11 +1,14 @@
 import { command } from "ccstate";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { eq } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import {
   activePriceId,
   createCheckoutSession$,
@@ -36,7 +39,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const { tier, successUrl, cancelUrl } = bodyResult.data;
+  const { tier, successUrl, cancelUrl, trialDays } = bodyResult.data;
 
   const appOrigin = new URL(env("APP_URL")).origin;
   if (
@@ -53,9 +56,29 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage(`Price not configured for ${tier} tier`);
   }
 
+  if (trialDays !== undefined) {
+    if (tier !== "pro") {
+      return badRequestMessage("Trial checkout is only available for Pro tier");
+    }
+    const db = get(db$);
+    const [metadata] = await db
+      .select({
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, auth.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (metadata?.onboardingPaymentPending !== true) {
+      return badRequestMessage(
+        "Pro trial checkout is only available during onboarding",
+      );
+    }
+  }
+
   const url = await set(
     createCheckoutSession$,
-    { orgId: auth.orgId, priceId, successUrl, cancelUrl },
+    { orgId: auth.orgId, priceId, trialDays, successUrl, cancelUrl },
     signal,
   );
   signal.throwIfAborted();

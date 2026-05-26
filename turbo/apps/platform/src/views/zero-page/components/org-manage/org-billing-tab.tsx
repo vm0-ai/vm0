@@ -264,7 +264,10 @@ function PricingPage({
       return;
     }
     const newTab = e.metaKey || e.ctrlKey;
-    detach(checkout(planTier, newTab, pageSignal), Reason.DomCallback);
+    detach(
+      checkout(planTier, newTab, undefined, pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (
