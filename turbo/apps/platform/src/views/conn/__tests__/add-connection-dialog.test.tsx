@@ -126,7 +126,7 @@ describe("connect modal - content by auth method", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Authorize")).toBeInTheDocument();
     });
   });
 
@@ -160,9 +160,7 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    expect(
-      screen.queryByText("Sign in with Test OAuth Device (internal)"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Authorize")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Connection methods unavailable"),
     ).not.toBeInTheDocument();
@@ -318,7 +316,7 @@ describe("connect modal - content by auth method", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/No online hosts yet/)).toBeInTheDocument();
     expect(within(dialog).queryByText("Save")).not.toBeInTheDocument();
-    expect(within(dialog).queryByText(/Sign in with/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Authorize")).not.toBeInTheDocument();
   });
 
   it("shows Local Browser connector-specific API content", async () => {
@@ -332,7 +330,7 @@ describe("connect modal - content by auth method", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Browser hosts")).toBeInTheDocument();
     expect(within(dialog).queryByText("Save")).not.toBeInTheDocument();
-    expect(within(dialog).queryByText(/Sign in with/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Authorize")).not.toBeInTheDocument();
   });
 
   it("keeps API-only content visible while OAuth is settling elsewhere", async () => {
@@ -361,10 +359,10 @@ describe("connect modal - content by auth method", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Authorize")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Authorize"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
@@ -388,7 +386,7 @@ describe("connect modal - content by auth method", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with Deel")).toBeInTheDocument();
+      expect(screen.getByText("Authorize")).toBeInTheDocument();
     });
 
     expect(
@@ -467,10 +465,10 @@ describe("connect modal - loading states", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Authorize")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Authorize"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
@@ -490,10 +488,10 @@ describe("connect modal - interactions", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Authorize")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Authorize"));
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(

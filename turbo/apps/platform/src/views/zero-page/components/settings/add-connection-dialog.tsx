@@ -664,13 +664,11 @@ function getOAuthAuthCodeProgressContent({
 
 function OAuthAuthCodeConnectButton({
   item,
-  label,
   onSuccess,
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   signal,
 }: ConnectModalContentProps & {
-  label: string;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
@@ -692,7 +690,7 @@ function OAuthAuthCodeConnectButton({
       }}
       className="w-full"
     >
-      Sign in with {label}
+      Authorize
     </Button>
   );
 }
@@ -701,7 +699,6 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthAuthCodeConnectButton
       item={props.item}
-      label={CONNECTOR_TYPES[props.item.type].label}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
