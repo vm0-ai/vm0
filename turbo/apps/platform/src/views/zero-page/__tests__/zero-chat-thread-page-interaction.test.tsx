@@ -298,9 +298,9 @@ describe("zero chat thread page - insufficient credits card", () => {
   });
 });
 
-// CHAT-I-049 / CHAT-I-050: Image preview button opens ImageLightbox
+// CHAT-I-049 / CHAT-I-050: Image preview link opens ImageLightbox
 describe("zero chat thread page - image attachment opens lightbox", () => {
-  it("clicking image preview button opens ImageLightbox (CHAT-I-049, CHAT-I-050)", async () => {
+  it("clicking image preview link opens ImageLightbox (CHAT-I-049, CHAT-I-050)", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -318,8 +318,9 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       expect(screen.getByAltText("photo.png")).toBeInTheDocument();
     });
 
-    const imageButton = screen.getByAltText("photo.png").closest("button")!;
-    click(imageButton);
+    const imageLink = screen.getByLabelText("Preview photo.png");
+    expect(imageLink).toHaveAttribute("href", "https://example.com/photo.png");
+    click(imageLink);
 
     await waitFor(() => {
       const lightboxImg = screen.getAllByRole("img").find((img) => {
@@ -361,10 +362,11 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const imageButton = await waitFor(() => {
-      return screen.getByAltText("photo.png").closest("button")!;
+    const imageLink = await waitFor(() => {
+      return screen.getByLabelText("Preview photo.png");
     });
-    click(imageButton);
+    expect(imageLink).toHaveAttribute("href", imageUrl);
+    click(imageLink);
 
     const downloadButton = await waitFor(() => {
       return screen.getByLabelText("Download");
