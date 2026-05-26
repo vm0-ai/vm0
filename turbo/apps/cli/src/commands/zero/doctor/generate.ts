@@ -40,6 +40,10 @@ interface BuiltInGenerationCommand {
   models: string;
 }
 
+interface GenerationContext {
+  readonly lines: readonly string[];
+}
+
 const BUILT_IN_GENERATION_PROVIDERS: Partial<
   Record<DoctorGenerationType, readonly BuiltInGenerationProvider[]>
 > = {
@@ -249,6 +253,18 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
   },
 };
 
+const GENERATION_CONTEXT: Partial<
+  Record<DoctorGenerationType, GenerationContext>
+> = {
+  website: {
+    lines: [
+      "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
+      "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
+      "Existing web app changes should usually follow the project's own build, test, and deploy workflow.",
+    ],
+  },
+};
+
 const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
   "image",
   "video",
@@ -342,6 +358,12 @@ function getBuiltInCommand(
   generationType: DoctorGenerationType,
 ): BuiltInGenerationCommand | null {
   return BUILT_IN_GENERATION_COMMANDS[generationType] ?? null;
+}
+
+function getGenerationContext(
+  generationType: DoctorGenerationType,
+): GenerationContext | null {
+  return GENERATION_CONTEXT[generationType] ?? null;
 }
 
 function getAvailableGenerationTypes(): DoctorGenerationType[] {
@@ -552,6 +574,17 @@ function renderBuiltInProvider(generationType: DoctorGenerationType): void {
   }
 }
 
+function renderGenerationContext(generationType: DoctorGenerationType): void {
+  const context = getGenerationContext(generationType);
+  if (!context) return;
+
+  console.log("");
+  console.log("Context:");
+  for (const line of context.lines) {
+    console.log(`  - ${line}`);
+  }
+}
+
 function renderText(params: {
   generationType: DoctorGenerationType;
   agentId: string | undefined;
@@ -589,6 +622,7 @@ function renderText(params: {
   }
 
   renderBuiltInProvider(generationType);
+  renderGenerationContext(generationType);
 
   if (showAll && other.length > 0) {
     console.log("");
@@ -662,6 +696,8 @@ export const generateCommand = new Command()
               agentId: agentId ?? null,
               choices: ready,
               otherCandidates: other,
+              builtInCommand: getBuiltInCommand(generationType),
+              generationContext: getGenerationContext(generationType),
               builtInProvider: builtInProviders[0] ?? null,
               builtInProviders,
             },

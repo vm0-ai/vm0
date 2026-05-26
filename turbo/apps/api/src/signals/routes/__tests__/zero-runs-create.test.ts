@@ -421,6 +421,11 @@ describe("POST /api/zero/runs", () => {
     expect(run?.appendSystemPrompt).toContain("# Agent Tools");
     for (const toolHint of [
       "zero web download-file -h",
+      "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
+      "Local dev servers are useful for agent-side verification",
+      "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]`",
+      "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
+      "zero host --help",
       "zero connector status <type>",
       "zero doctor check-connector --help",
       "zero doctor generate -h",

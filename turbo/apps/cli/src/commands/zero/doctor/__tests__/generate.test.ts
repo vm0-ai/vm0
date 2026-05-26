@@ -277,9 +277,42 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
     expect(text).toContain("Use: zero built-in generate website -h");
+    expect(text).toContain("Context:");
+    expect(text).toContain(
+      "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
+    );
+    expect(text).toContain(
+      "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
+    );
+    expect(text).toContain(
+      "Existing web app changes should usually follow the project's own build, test, and deploy workflow.",
+    );
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
+  });
+
+  it("includes website context in machine-readable JSON", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], []),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "website", "--json"]);
+
+    const json = JSON.parse(output()) as {
+      builtInCommand: { command: string } | null;
+      generationContext: { lines: string[] } | null;
+    };
+    expect(json.builtInCommand).toMatchObject({
+      command: "zero built-in generate website -h",
+    });
+    expect(json.generationContext?.lines).toEqual(
+      expect.arrayContaining([
+        "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
+        "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
+      ]),
+    );
   });
 
   it.each([

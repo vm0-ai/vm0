@@ -153,6 +153,10 @@ function buildIntegrationToolsPrompt(
 ): readonly string[] {
   const localFileContext = [
     "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
+    "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime; users cannot rely on them as a way to view the result directly.",
+    "Local dev servers are useful for agent-side verification, but they are not by themselves a user-facing deliverable.",
+    "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open.",
+    "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime, `zero host` may not be sufficient; use the project's own deployment workflow or hosting platform to make the change visible to users.",
     "A local file needs separate delivery only when it is the requested artifact or the only available user-accessible copy. If the artifact is already available through a hosted URL, email, cloud document, or another user-accessible destination, duplicate file upload is usually unnecessary unless the user asks for the file itself.",
   ];
   const localFileContextLines = localFileContext.map((line) => {
@@ -207,6 +211,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     ...buildIntegrationToolsPrompt(triggerSource),
+    "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; run `zero host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose env vars like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `zero doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins.",
