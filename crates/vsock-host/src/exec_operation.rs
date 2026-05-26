@@ -3288,7 +3288,41 @@ mod tests {
         host_cancel_requested: bool,
     ) -> (Vec<CapturedEvent>, ExecOperationResult) {
         let (result_tx, mut result_rx) = oneshot::channel();
-        let (_read_stream, write_stream) = tokio::net::UnixStream::pair().unwrap();
+        let (shared, _read_stream, _diagnostic) =
+            shared_with_logged_operation(lifecycle, label, result_tx, host_cancel_requested);
+        let payload = vsock_proto::encode_exec_result(
+            termination,
+            10,
+            ExecCapturedOutput::Discarded,
+            ExecCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        let msg = RawMessage {
+            msg_type: MSG_EXEC_RESULT,
+            seq: 7,
+            payload,
+        };
+
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            dispatch_result(&shared, &msg).unwrap();
+        });
+
+        let events = captured.events();
+        let result = result_rx.try_recv().unwrap().unwrap();
+        (events, result)
+    }
+
+    fn shared_with_logged_operation(
+        lifecycle: ExecOperationLifecycle,
+        label: &str,
+        result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
+        host_cancel_requested: bool,
+    ) -> (Arc<Shared>, tokio::net::UnixStream, ExecOperationDiagnostic) {
+        let (read_stream, write_stream) = tokio::net::UnixStream::pair().unwrap();
         let fd = write_stream.as_raw_fd();
         let (_read_half, write_half) = write_stream.into_split();
         let shared = Arc::new(Shared {
@@ -3315,7 +3349,7 @@ mod tests {
                 ExecOperation {
                     normal_operation: None,
                     lifecycle,
-                    diagnostic,
+                    diagnostic: diagnostic.clone(),
                     result_tx,
                     stream_tx: None,
                     stdout_capture: ExecCaptureState::Discard,
@@ -3329,30 +3363,7 @@ mod tests {
                 },
             );
         }
-        let payload = vsock_proto::encode_exec_result(
-            termination,
-            10,
-            ExecCapturedOutput::Discarded,
-            ExecCapturedOutput::Discarded,
-            "",
-        )
-        .unwrap();
-        let msg = RawMessage {
-            msg_type: MSG_EXEC_RESULT,
-            seq: 7,
-            payload,
-        };
-
-        let captured = CapturedEvents::default();
-        let subscriber = tracing_subscriber::registry().with(captured.clone());
-        tracing::subscriber::with_default(subscriber, || {
-            tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
-        });
-
-        let events = captured.events();
-        let result = result_rx.try_recv().unwrap().unwrap();
-        (events, result)
+        (shared, read_stream, diagnostic)
     }
 
     #[tokio::test]
@@ -3421,6 +3432,56 @@ mod tests {
         assert_terminal_log_field(&events[0], "termination", "Cancelled");
         assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
         assert_eq!(result.termination, ExecTermination::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn supervised_cancel_frame_marks_terminal_result_as_host_requested_cancel() {
+        let (result_tx, mut result_rx) = oneshot::channel();
+        let lifecycle = ExecOperationLifecycle::SupervisedStarted {
+            pid: 42,
+            control_nonce: None,
+        };
+        let (shared, _read_stream, diagnostic) = shared_with_logged_operation(
+            lifecycle,
+            "supervised-cancel-marker-terminal-log",
+            result_tx,
+            false,
+        );
+
+        send_supervised_exec_cancel_frame(&shared, 7, &diagnostic)
+            .await
+            .unwrap();
+
+        let payload = vsock_proto::encode_exec_result(
+            ExecTermination::Cancelled,
+            10,
+            ExecCapturedOutput::Discarded,
+            ExecCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        let msg = RawMessage {
+            msg_type: MSG_EXEC_RESULT,
+            seq: 7,
+            payload,
+        };
+
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            dispatch_result(&shared, &msg).unwrap();
+        });
+
+        let events = captured.events();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::INFO);
+        assert_terminal_log_field(&events[0], "termination", "Cancelled");
+        assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
+        assert_eq!(
+            result_rx.try_recv().unwrap().unwrap().termination,
+            ExecTermination::Cancelled
+        );
     }
 
     #[test]
