@@ -1414,6 +1414,58 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:folk-muse",
+    kind: "image-style",
+    name: "Folk Muse",
+    description:
+      "Flat folk-art gouache portrait style — a single contemplative chest-up figure framed by an asymmetric botanical surround, with painted irises, smooth flat hair, a hand against the cheek, and a patterned robe.",
+    desc: 'Flat folk-art gouache portrait illustration in the contemporary editorial style of Carson Ellis, Maja Tomljanovic, and Bodil Jane. A single chest-up figure with an elongated mannerist oval face, tiny almond half-lidded eyes, smooth flat hair, one hand pressed against the face, a patterned robe filling the lower frame, and an asymmetric botanical surround filling the background edge-to-edge. Hand-painted matte gouache texture, flat color blocks, no harsh outlines, no photorealism. Calm, slightly melancholic, contemplative mood. Trigger when the user says /folk-muse, asks for a "folk-art portrait", "gouache portrait", "Carson Ellis style portrait", or any new piece in this contemplative folk-portrait style.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/folk-muse",
+    ),
+    targets: ["image", "poster", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "portrait",
+      "folk-art",
+      "gouache",
+      "hand-painted",
+      "editorial",
+      "botanical",
+    ],
+    triggers: [
+      "folk muse",
+      "folk-art portrait",
+      "gouache portrait",
+      "carson ellis style",
+      "maja tomljanovic style",
+      "bodil jane style",
+      "contemplative portrait",
+      "botanical portrait illustration",
+    ],
+    bestFor: [
+      "editorial covers and feature artwork",
+      "blog hero portraits",
+      "poster art with a single figure",
+      "calm, contemplative brand imagery",
+    ],
+    avoidFor: [
+      "product spot illustrations or empty states",
+      "multi-figure scenes",
+      "children's book artwork",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 20,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
