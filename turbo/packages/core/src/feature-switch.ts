@@ -114,11 +114,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
-  [FeatureSwitchKey.SlockConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Slock connector for user-auth control API access.",
-    enabled: false,
-  },
   [FeatureSwitchKey.OutlookMailConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Outlook Mail connector",

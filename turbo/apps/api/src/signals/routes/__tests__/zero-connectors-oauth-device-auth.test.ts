@@ -77,21 +77,6 @@ async function enableTestOauthDevice(userId: string, orgId: string) {
     });
 }
 
-async function enableSlock(userId: string, orgId: string) {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.SlockConnector]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches: { [FeatureSwitchKey.SlockConnector]: true } },
-    });
-}
-
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
@@ -883,7 +868,6 @@ describe("OAuth device authorization connector routes", () => {
     const orgId = `org_${randomUUID()}`;
     users.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
-    await enableSlock(userId, orgId);
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
     );
@@ -979,7 +963,6 @@ describe("OAuth device authorization connector routes", () => {
     const orgId = `org_${randomUUID()}`;
     users.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
-    await enableSlock(userId, orgId);
     const session = await createSession({
       userId,
       orgId,

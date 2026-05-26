@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
 
@@ -11,7 +10,6 @@ export const slock = {
       "Connect your Slock account to let agents access Slock agents, machines, channels, and messages.",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.SlockConnector,
         label: "OAuth Device Authorization",
         helpText: "Sign in with Slock using a device code.",
         grant: {

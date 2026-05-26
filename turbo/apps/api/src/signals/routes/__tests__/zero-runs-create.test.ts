@@ -1391,13 +1391,6 @@ describe("POST /api/zero/runs", () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: {
-        [FeatureSwitchKey.SlockConnector]: true,
-      },
-    });
     await db.insert(userConnectors).values({
       orgId: fx.orgId,
       userId: fx.userId,

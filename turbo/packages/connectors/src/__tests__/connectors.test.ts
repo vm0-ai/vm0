@@ -1308,13 +1308,10 @@ describe("getAvailableConnectorAuthMethods", () => {
     ]);
   });
 
-  it("exposes Slock OAuth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("slock", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethods("slock", {
-        [FeatureSwitchKey.SlockConnector]: true,
-      }),
-    ).toStrictEqual(["oauth"]);
+  it("exposes Slock OAuth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethods("slock", {})).toStrictEqual([
+      "oauth",
+    ]);
   });
 
   it("exposes Lark API-token auth only when its switch is enabled", () => {
