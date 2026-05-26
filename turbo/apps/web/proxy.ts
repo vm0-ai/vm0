@@ -35,6 +35,8 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/use-cases/:slug/opengraph-image",
   "/rankings",
   "/:locale/rankings",
+  "/gallery",
+  "/:locale/gallery",
   "/terms-of-use",
   "/privacy-policy",
   "/support",
