@@ -908,7 +908,7 @@ describe("isOAuthConnectorType", () => {
   });
 });
 
-describe("getAvailableConnectorAuthMethods", () => {
+describe("getConfiguredConnectorAuthMethods", () => {
   it("returns configured auth methods without feature filtering", () => {
     expect(getConfiguredConnectorAuthMethods("stripe")).toStrictEqual([
       "oauth",
@@ -919,7 +919,9 @@ describe("getAvailableConnectorAuthMethods", () => {
       "api",
     ]);
   });
+});
 
+describe("getAvailableConnectorAuthMethods", () => {
   it("exposes Stripe CLI auth only when its switch is enabled", () => {
     expect(getAvailableConnectorAuthMethods("stripe", {})).toStrictEqual([
       "api-token",
