@@ -11,6 +11,8 @@ import type {
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
 const DEFAULT_DEVICE_AUTH_EXPIRES_IN_SECONDS = 600;
+const POST_TOKEN_LOOKUP_FAILED_DESCRIPTION =
+  "Unable to load Slock account metadata after authorization.";
 export const SLOCK_ACCESS_SECRET_NAME = "SLOCK_ACCESS_TOKEN";
 export const SLOCK_REFRESH_SECRET_NAME = "SLOCK_REFRESH_TOKEN";
 export const SLOCK_SERVER_ID_SECRET_NAME = "SLOCK_SERVER_ID";
@@ -130,6 +132,17 @@ function devicePollErrorResult(args: {
   };
 }
 
+function deviceCompletionErrorResult(args: {
+  readonly error: string;
+  readonly errorDescription: string | undefined;
+}): OAuthDeviceAuthPollResult {
+  return {
+    status: "error",
+    error: args.error,
+    errorDescription: args.errorDescription,
+  };
+}
+
 function pollErrorFromPayload(payload: unknown): {
   readonly error: string;
   readonly errorDescription: string | undefined;
@@ -159,16 +172,6 @@ function requireAccessToken(
     throw new Error(`No access token in Slock ${operation} response`);
   }
   return data.accessToken;
-}
-
-function requireRefreshToken(
-  data: z.infer<typeof tokenResponseSchema>,
-  operation: string,
-): string {
-  if (!data.refreshToken) {
-    throw new Error(`No refresh token in Slock ${operation} response`);
-  }
-  return data.refreshToken;
 }
 
 function serversFromResponse(data: unknown): SlockServerCollection {
@@ -325,21 +328,53 @@ export async function pollSlockDeviceAuth(args: {
     return devicePollErrorResult(pollError);
   }
 
-  const data = tokenResponseSchema.parse(await response.json());
-  const accessToken = requireAccessToken(data, "device authorization poll");
-  const refreshToken = requireRefreshToken(data, "device authorization poll");
-  const serverIdResult = await fetchSlockServerId(accessToken);
+  const data = tokenResponseSchema.safeParse(await safeJson(response));
+  if (!data.success) {
+    return deviceCompletionErrorResult({
+      error: "token_response_invalid",
+      errorDescription: data.error.message,
+    });
+  }
+  const accessToken = data.data.accessToken;
+  const refreshToken = data.data.refreshToken;
+  if (!accessToken || !refreshToken) {
+    return deviceCompletionErrorResult({
+      error: "token_response_invalid",
+      errorDescription:
+        "Server's token response was missing accessToken / refreshToken.",
+    });
+  }
+
+  let serverIdResult:
+    | { readonly ok: true; readonly serverId: string }
+    | OAuthDeviceAuthPollResult;
+  try {
+    serverIdResult = await fetchSlockServerId(accessToken);
+  } catch {
+    return deviceCompletionErrorResult({
+      error: "post_token_lookup_failed",
+      errorDescription: POST_TOKEN_LOOKUP_FAILED_DESCRIPTION,
+    });
+  }
   if (!("ok" in serverIdResult)) {
     return serverIdResult;
   }
-  const userInfo = await fetchSlockUserInfo(accessToken, data.userId);
+  let userInfo: OAuthTokenResult["userInfo"];
+  try {
+    userInfo = await fetchSlockUserInfo(accessToken, data.data.userId);
+  } catch {
+    return deviceCompletionErrorResult({
+      error: "post_token_lookup_failed",
+      errorDescription: POST_TOKEN_LOOKUP_FAILED_DESCRIPTION,
+    });
+  }
 
   return {
     status: "complete",
     token: {
       accessToken,
       refreshToken,
-      expiresIn: data.expiresIn,
+      expiresIn: data.data.expiresIn,
       scopes: [],
       userInfo,
       extraConnectorSecrets: {

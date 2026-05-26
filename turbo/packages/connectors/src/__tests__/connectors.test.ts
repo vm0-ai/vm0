@@ -967,6 +967,26 @@ describe("isOAuthConnectorType", () => {
               userId: "slock-user-id",
             });
           }
+          if (deviceCode === "missing-refresh") {
+            return HttpResponse.json({
+              accessToken: "slock-access-missing-refresh",
+              userId: "slock-user-id",
+            });
+          }
+          if (deviceCode === "server-error") {
+            return HttpResponse.json({
+              accessToken: "slock-access-server-error",
+              refreshToken: "slock-refresh-server-error",
+              userId: "slock-user-id",
+            });
+          }
+          if (deviceCode === "userinfo-error") {
+            return HttpResponse.json({
+              accessToken: "slock-access-userinfo-error",
+              refreshToken: "slock-refresh-userinfo-error",
+              userId: "slock-user-id",
+            });
+          }
           return HttpResponse.json({
             accessToken: "slock-access-token",
             refreshToken: "slock-refresh-token",
@@ -979,7 +999,15 @@ describe("isOAuthConnectorType", () => {
         if (authorization === "Bearer slock-access-no-servers") {
           return HttpResponse.json([]);
         }
-        expect(authorization).toBe("Bearer slock-access-token");
+        if (authorization === "Bearer slock-access-server-error") {
+          return HttpResponse.json(
+            { code: "server_lookup_failed" },
+            { status: 500 },
+          );
+        }
+        if (authorization !== "Bearer slock-access-userinfo-error") {
+          expect(authorization).toBe("Bearer slock-access-token");
+        }
         return HttpResponse.json({
           currentServerId: "slock-server-primary",
           servers: [
@@ -995,9 +1023,14 @@ describe("isOAuthConnectorType", () => {
         });
       }),
       http.get("https://api.slock.ai/api/auth/me", ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer slock-access-token",
-        );
+        const authorization = request.headers.get("authorization");
+        if (authorization === "Bearer slock-access-userinfo-error") {
+          return HttpResponse.json(
+            { code: "userinfo_lookup_failed" },
+            { status: 500 },
+          );
+        }
+        expect(authorization).toBe("Bearer slock-access-token");
         return HttpResponse.json({
           id: "slock-user-id",
           name: "Slock User",
@@ -1080,6 +1113,40 @@ describe("isOAuthConnectorType", () => {
       status: "error",
       error: "no_servers",
       errorDescription: "No Slock servers found for this account",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "missing-refresh",
+      }),
+    ).resolves.toMatchObject({
+      status: "error",
+      error: "token_response_invalid",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "server-error",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "post_token_lookup_failed",
+      errorDescription:
+        "Unable to load Slock account metadata after authorization.",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuth({
+        type: "slock",
+        credentials,
+        deviceCode: "userinfo-error",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "post_token_lookup_failed",
+      errorDescription:
+        "Unable to load Slock account metadata after authorization.",
     });
     await expect(
       pollConnectorOAuthDeviceAuth({
