@@ -22,33 +22,32 @@ import {
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
 
+const CONNECTOR_AUTH_METHOD_PRIORITY = {
+  oauth: 0,
+  "api-token": 1,
+  api: 2,
+  "cli-auth": 3,
+} as const satisfies Record<ConnectorAuthMethodId, number>;
+
 function parseConnectorAuthMethodId(
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  switch (authMethod) {
-    case "oauth":
-    case "api-token":
-    case "api":
-    case "cli-auth": {
-      return authMethod;
-    }
+  if (isConnectorAuthMethodId(authMethod)) {
+    return authMethod;
   }
   return null;
+}
+
+function isConnectorAuthMethodId(
+  authMethod: string,
+): authMethod is ConnectorAuthMethodId {
+  return Object.hasOwn(CONNECTOR_AUTH_METHOD_PRIORITY, authMethod);
 }
 
 function getConnectorAuthMethodPriority(
   authMethod: ConnectorAuthMethodId,
 ): number {
-  switch (authMethod) {
-    case "oauth":
-      return 0;
-    case "api-token":
-      return 1;
-    case "api":
-      return 2;
-    case "cli-auth":
-      return 3;
-  }
+  return CONNECTOR_AUTH_METHOD_PRIORITY[authMethod];
 }
 
 export function getConfiguredConnectorAuthMethods(
