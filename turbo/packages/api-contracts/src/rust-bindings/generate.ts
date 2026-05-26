@@ -698,13 +698,14 @@ function renderStringConstant(
 ): string[] {
   const literal = rustStringLiteral(constant.value);
   const singleLine = `${indent}pub const ${constant.rustConstName}: &str = ${literal};`;
-  if (singleLine.length <= 100) {
+  const splitValueLine = `${indent}    ${literal};`;
+  if (singleLine.length <= 100 || splitValueLine.length > 100) {
     return [singleLine];
   }
 
   return [
     `${indent}pub const ${constant.rustConstName}: &str =`,
-    `${indent}    ${literal};`,
+    splitValueLine,
   ];
 }
 
