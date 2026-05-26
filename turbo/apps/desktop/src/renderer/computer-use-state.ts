@@ -60,10 +60,15 @@ export const desktopAuthData$ = computed((get): Promise<DesktopAuthState> => {
   return desktopAuthApi().getState();
 });
 
-export const refreshComputerUse$ = command(({ set }) => {
+const reloadComputerUse$ = command(({ set }) => {
   set(reloadComputerUseState$, (count) => {
     return count + 1;
   });
+});
+
+export const refreshComputerUse$ = command(async ({ set }) => {
+  await desktopComputerUseApi().refreshPermissions();
+  set(reloadComputerUse$);
 });
 
 const refreshDesktopAuth$ = command(({ set }) => {
@@ -75,12 +80,12 @@ const refreshDesktopAuth$ = command(({ set }) => {
 export const setupComputerUseBridge$ = command(
   ({ set }, signal: AbortSignal) => {
     const unsubscribeComputerUse = desktopComputerUseApi().subscribe(() => {
-      set(refreshComputerUse$);
+      set(reloadComputerUse$);
     });
     const unsubscribeAuth = window.vm0DesktopAuth?.subscribe(() => {
       set(autoStartAttempted$, false);
       set(refreshDesktopAuth$);
-      set(refreshComputerUse$);
+      set(reloadComputerUse$);
     });
 
     signal.addEventListener(
@@ -98,7 +103,7 @@ export const setupComputerUseBridge$ = command(
 
 export const startComputerUse$ = command(async ({ set }) => {
   await desktopComputerUseApi().start();
-  set(refreshComputerUse$);
+  set(reloadComputerUse$);
 });
 
 export const maybeAutoStartComputerUse$ = command(
@@ -108,13 +113,18 @@ export const maybeAutoStartComputerUse$ = command(
     }
     set(autoStartAttempted$, true);
     await desktopComputerUseApi().start();
-    set(refreshComputerUse$);
+    set(reloadComputerUse$);
   },
 );
 
 export const requestAccessibilityPermission$ = command(async ({ set }) => {
   await desktopComputerUseApi().requestAccessibilityPermission();
-  set(refreshComputerUse$);
+  set(reloadComputerUse$);
+});
+
+export const requestScreenRecordingPermission$ = command(async ({ set }) => {
+  await desktopComputerUseApi().requestScreenRecordingPermission();
+  set(reloadComputerUse$);
 });
 
 export const openAccessibilitySettings$ = command(async () => {
@@ -133,5 +143,5 @@ export const openDesktopOrgSelection$ = command(async ({ set }) => {
   await desktopAuthApi().openOrgSelection();
   set(autoStartAttempted$, false);
   set(refreshDesktopAuth$);
-  set(refreshComputerUse$);
+  set(reloadComputerUse$);
 });

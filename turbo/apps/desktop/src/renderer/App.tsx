@@ -33,6 +33,7 @@ import {
   openScreenRecordingSettings$,
   refreshComputerUse$,
   requestAccessibilityPermission$,
+  requestScreenRecordingPermission$,
   setupComputerUseBridge$,
   startComputerUse$,
 } from "./computer-use-state";
@@ -322,6 +323,8 @@ function PermissionsPanel({
   const [requestLoadable, requestPermission] = useLoadableSet(
     requestAccessibilityPermission$,
   );
+  const [screenRecordingRequestLoadable, requestScreenRecording] =
+    useLoadableSet(requestScreenRecordingPermission$);
   const [, openAccessibility] = useLoadableSet(openAccessibilitySettings$);
   const [, openScreenRecording] = useLoadableSet(openScreenRecordingSettings$);
   const accessibilityGranted = state.permissions.accessibility;
@@ -380,14 +383,25 @@ function PermissionsPanel({
                 Ready
               </span>
             ) : (
-              <IconButton
-                icon={<IconExternalLink size={15} />}
-                onClick={() => {
-                  void openScreenRecording();
-                }}
-              >
-                Settings
-              </IconButton>
+              <>
+                <IconButton
+                  icon={<IconShieldCheck size={15} />}
+                  onClick={() => {
+                    void requestScreenRecording();
+                  }}
+                  disabled={screenRecordingRequestLoadable.state === "loading"}
+                >
+                  Request
+                </IconButton>
+                <IconButton
+                  icon={<IconExternalLink size={15} />}
+                  onClick={() => {
+                    void openScreenRecording();
+                  }}
+                >
+                  Settings
+                </IconButton>
+              </>
             )}
           </div>
         </div>

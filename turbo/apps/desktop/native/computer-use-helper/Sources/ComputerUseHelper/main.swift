@@ -1052,6 +1052,13 @@ func backgroundTargetUnavailableMessage(appName: String) -> String {
     return "Unable to resolve a background window target for \(appName)"
 }
 
+func windowTargetUnavailableFailure(appName: String) -> HelperFailure {
+    return HelperFailure(
+        code: "window_unavailable",
+        message: backgroundTargetUnavailableMessage(appName: appName)
+    )
+}
+
 func roundScreenCoordinate(_ value: CGFloat) -> Double {
     return (Double(value) * 100).rounded() / 100
 }
@@ -1111,10 +1118,7 @@ func snapshotWindowTarget(
     }
 
     guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
-        throw HelperFailure(
-            code: "accessibility_unavailable",
-            message: backgroundTargetUnavailableMessage(appName: appName)
-        )
+        throw windowTargetUnavailableFailure(appName: appName)
     }
     return target
 }
@@ -1126,28 +1130,10 @@ func performWithRequiredBackgroundTarget<T>(
 ) throws -> T {
     let app = try resolveRunningApp(named: appName)
     guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
-        throw HelperFailure(
-            code: "accessibility_unavailable",
-            message: backgroundTargetUnavailableMessage(appName: appName)
-        )
+        throw windowTargetUnavailableFailure(appName: appName)
     }
 
     return try action(target)
-}
-
-func applicationURL(named appName: String) -> URL? {
-    if appName.hasPrefix("/") || appName.hasPrefix("~") {
-        let expanded = (appName as NSString).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: expanded) {
-            return URL(fileURLWithPath: expanded)
-        }
-    }
-    if appName.contains("."),
-       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: appName)
-    {
-        return url
-    }
-    return nil
 }
 
 func waitForRunningApp(named appName: String, timeout: TimeInterval = 5) -> NSRunningApplication? {
@@ -1159,6 +1145,111 @@ func waitForRunningApp(named appName: String, timeout: TimeInterval = 5) -> NSRu
         usleep(100_000)
     } while Date() < deadline
     return findRunningApp(named: appName)
+}
+
+func applicationSearchRoots() -> [URL] {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    return [
+        URL(fileURLWithPath: "/Applications", isDirectory: true),
+        URL(fileURLWithPath: "/System/Applications", isDirectory: true),
+        URL(fileURLWithPath: "/System/Library/CoreServices/Applications", isDirectory: true),
+        home.appendingPathComponent("Applications", isDirectory: true),
+    ]
+}
+
+func discoveredApplicationURLs() -> [URL] {
+    var urls: [URL] = []
+    var seen = Set<String>()
+    for root in applicationSearchRoots() where FileManager.default.fileExists(atPath: root.path) {
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            continue
+        }
+
+        for case let url as URL in enumerator {
+            guard url.pathExtension.localizedCaseInsensitiveCompare("app") == .orderedSame else {
+                continue
+            }
+            let path = url.standardizedFileURL.path
+            if seen.insert(path).inserted {
+                urls.append(url)
+            }
+            enumerator.skipDescendants()
+        }
+    }
+    return urls
+}
+
+func applicationNames(for url: URL) -> [String] {
+    let bundle = Bundle(url: url)
+    let values = [
+        bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+        bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String,
+        url.deletingPathExtension().lastPathComponent,
+    ]
+    var names: [String] = []
+    for value in values {
+        guard let name = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty,
+              !names.contains(name)
+        else {
+            continue
+        }
+        names.append(name)
+    }
+    return names
+}
+
+func applicationURL(named appName: String) -> URL? {
+    let trimmed = appName.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+        return nil
+    }
+    if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") {
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: expanded) {
+            return URL(fileURLWithPath: expanded)
+        }
+    }
+    if trimmed.contains("."),
+       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: trimmed)
+    {
+        return url
+    }
+
+    let candidates = discoveredApplicationURLs()
+    if let exactBundleID = candidates.first(where: { url in
+        Bundle(url: url)?.bundleIdentifier?.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+    }) {
+        return exactBundleID
+    }
+    if let exactName = candidates.first(where: { url in
+        applicationNames(for: url).contains { name in
+            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+        }
+    }) {
+        return exactName
+    }
+    return candidates.first { url in
+        applicationNames(for: url).contains { name in
+            name.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+}
+
+func applicationURL(for app: NSRunningApplication, fallbackName: String) -> URL? {
+    if let bundleURL = app.bundleURL {
+        return bundleURL
+    }
+    if let bundleIdentifier = app.bundleIdentifier,
+       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+    {
+        return url
+    }
+    return applicationURL(named: fallbackName)
 }
 
 func openWithCommandInBackground(named appName: String) throws {
@@ -1189,14 +1280,9 @@ func openWithCommandInBackground(named appName: String) throws {
     }
 }
 
-func openApplicationWithoutActivation(named appName: String) throws -> NSRunningApplication? {
-    guard let url = applicationURL(named: appName) else {
-        try openWithCommandInBackground(named: appName)
-        return nil
-    }
-
+func openApplication(at url: URL, named appName: String, activates: Bool) throws -> NSRunningApplication? {
     let configuration = NSWorkspace.OpenConfiguration()
-    configuration.activates = false
+    configuration.activates = activates
     let semaphore = DispatchSemaphore(value: 0)
     let launchResult = LaunchResultBox()
     NSWorkspace.shared.openApplication(at: url, configuration: configuration) { app, error in
@@ -1212,6 +1298,15 @@ func openApplicationWithoutActivation(named appName: String) throws -> NSRunning
         )
     }
     return launchResult.app
+}
+
+func openApplicationWithoutActivation(named appName: String) throws -> NSRunningApplication? {
+    guard let url = applicationURL(named: appName) else {
+        try openWithCommandInBackground(named: appName)
+        return nil
+    }
+
+    return try openApplication(at: url, named: appName, activates: false)
 }
 
 @discardableResult
@@ -1720,6 +1815,11 @@ func handlePermissionsRequestAccessibility() -> [String: Any] {
     return computerUsePermissionState()
 }
 
+func handlePermissionsRequestScreenRecording() -> [String: Any] {
+    _ = CGRequestScreenCaptureAccess()
+    return computerUsePermissionState()
+}
+
 func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let snapshotId = optionalString(request, "snapshotId") ?? UUID().uuidString.lowercased()
@@ -1788,10 +1888,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
         response["windowTitle"] = windowTitle
     }
     guard let target = resolveWindowTarget(app: runningApp, root: root) else {
-        throw HelperFailure(
-            code: "accessibility_unavailable",
-            message: backgroundTargetUnavailableMessage(appName: appName)
-        )
+        throw windowTargetUnavailableFailure(appName: appName)
     }
     let screenshot = try BackgroundWindowScreenshot.capture(windowNumber: target.windowNumber)
     let sourceName = target.title ??
@@ -1819,16 +1916,44 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
         dispatchTarget: "target_app",
         inputRisk: "background_app_launch"
     ) {
-        if let runningApp = findRunningApp(named: appName) {
-            return (targetPID: runningApp.processIdentifier, result: [:])
+        let runningApp = findRunningApp(named: appName)
+        if let runningApp, resolveWindowTarget(app: runningApp) != nil {
+            return (targetPID: runningApp.processIdentifier, result: ["windowReady": true])
         }
 
-        let launchedApp = try openApplicationWithoutActivation(named: appName) ??
-            waitForRunningApp(named: appName)
-        guard let launchedApp else {
+        let appURL = runningApp.flatMap { app in
+            applicationURL(for: app, fallbackName: appName)
+        } ?? applicationURL(named: appName)
+
+        var targetApp: NSRunningApplication?
+        if let appURL {
+            targetApp = try openApplication(at: appURL, named: appName, activates: false) ??
+                runningApp ??
+                waitForRunningApp(named: appName)
+        } else {
+            try openWithCommandInBackground(named: appName)
+            targetApp = runningApp ?? waitForRunningApp(named: appName)
+        }
+
+        guard let launchedApp = targetApp else {
             throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
         }
-        return (targetPID: launchedApp.processIdentifier, result: [:])
+
+        if waitForWindowTarget(app: launchedApp, timeout: 2) == nil {
+            if let appURL {
+                targetApp = try openApplication(at: appURL, named: appName, activates: true) ?? launchedApp
+            } else {
+                _ = launchedApp.activate(options: [.activateIgnoringOtherApps])
+            }
+        }
+
+        guard let appWithWindow = targetApp,
+              waitForWindowTarget(app: appWithWindow, timeout: 3) != nil
+        else {
+            throw windowTargetUnavailableFailure(appName: appName)
+        }
+
+        return (targetPID: appWithWindow.processIdentifier, result: ["windowReady": true])
     }
 }
 
@@ -2208,6 +2333,8 @@ func handle(_ request: [String: Any], session: ComputerUseRuntimeSession?) throw
         return handlePermissionsState()
     case "permissions.request_accessibility":
         return handlePermissionsRequestAccessibility()
+    case "permissions.request_screen_recording":
+        return handlePermissionsRequestScreenRecording()
     case "apps.list":
         return handleAppsList()
     case "app.state":

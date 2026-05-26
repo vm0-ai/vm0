@@ -38,3 +38,9 @@ export async function requestComputerUseAccessibilityPermission(): Promise<Compu
     await getNativeBackend().requestAccessibilityPermission();
   return currentPermissionState;
 }
+
+export async function requestComputerUseScreenRecordingPermission(): Promise<ComputerUsePermissionState> {
+  currentPermissionState =
+    await getNativeBackend().requestScreenRecordingPermission();
+  return currentPermissionState;
+}

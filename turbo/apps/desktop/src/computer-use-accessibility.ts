@@ -144,6 +144,7 @@ export interface ComputerUseCommandFailure {
     readonly code:
       | "permission_denied"
       | "accessibility_unavailable"
+      | "window_unavailable"
       | "screen_recording_unavailable"
       | "app_not_found"
       | "app_open_failed"

@@ -32,12 +32,20 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
   getState(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.getState);
   },
+  refreshPermissions(): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.refreshPermissions);
+  },
   start(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.start);
   },
   requestAccessibilityPermission(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(
       COMPUTER_USE_CHANNELS.requestAccessibilityPermission,
+    );
+  },
+  requestScreenRecordingPermission(): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.requestScreenRecordingPermission,
     );
   },
   openAccessibilitySettings(): Promise<void> {
