@@ -261,32 +261,8 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth"]);
   });
 
-  it("hides Base44 when its feature switch is disabled", async () => {
+  it("shows Base44 as an OAuth connector", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "base44" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const connector = response.body.connectors.find((c) => {
-      return c.id === "base44";
-    });
-    expect(connector).toBeUndefined();
-  });
-
-  it("shows Base44 as an OAuth connector when its feature switch is enabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFeatureSwitches.push({ orgId, userId });
-    await enableFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.Base44Connector]: true,
-    });
-    mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
