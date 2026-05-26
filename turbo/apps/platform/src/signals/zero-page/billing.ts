@@ -2,12 +2,12 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroDebugSetCreditsContract } from "@vm0/api-contracts/contracts/zero-debug-credits";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -17,6 +17,9 @@ import { accept } from "../../lib/accept.ts";
 // ---------------------------------------------------------------------------
 
 export type BillingTier = "free" | "pro" | "team";
+export type CreditCheckoutSelection =
+  | { readonly credits: number; readonly customAmount?: false }
+  | { readonly credits: number; readonly customAmount: true };
 
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   if (tier === "free" || tier === "pro" || tier === "team") {
@@ -77,24 +80,6 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
-/**
- * Dev-only: set the current org's credit balance to the given value via the
- * /api/zero/debug/set-credits endpoint. The endpoint 404s in production, so
- * the Debug UI block is also gated on VITE_VERCEL_ENV !== "production".
- */
-export const setOrgCreditsDebug$ = command(
-  async ({ get, set }, credits: number, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroDebugSetCreditsContract);
-    await accept(
-      client.create({ body: { credits }, fetchOptions: { signal } }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadBillingStatus$);
-  },
-);
-
 export const setBillingDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalDialogOpen$, open);
 });
@@ -138,6 +123,52 @@ export const startCheckout$ = command(
     } else {
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
+    }
+  },
+);
+
+export const startCreditCheckout$ = command(
+  async (
+    { get },
+    selection: CreditCheckoutSelection,
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("credits", "purchased");
+    successUrl.searchParams.set(
+      "credit_checkout_session_id",
+      "{CHECKOUT_SESSION_ID}",
+    );
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "credit_checkout_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+      );
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("credits", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCreditCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          credits: selection.credits,
+          ...(selection.customAmount === true ? { customAmount: true } : {}),
+          successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
     }
   },
 );

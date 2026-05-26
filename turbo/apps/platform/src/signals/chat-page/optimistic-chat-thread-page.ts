@@ -92,7 +92,7 @@ interface SendNewThreadMessageRequest {
 
 interface SendNewThreadMessageResult {
   threadId: string;
-  runId: string;
+  runId: string | null;
 }
 
 interface SendNewThreadMessagePending extends PendingChatThread {
@@ -543,9 +543,6 @@ const sendNewThreadMessage$ = command(
         [201],
       );
       signal.throwIfAborted();
-      if (result.body.runId === null) {
-        throw new Error("New chat thread send did not create a run");
-      }
       L.debug("sendNewThreadMessage$ POST chat/messages 201", {
         threadId: result.body.threadId,
         runId: result.body.runId,

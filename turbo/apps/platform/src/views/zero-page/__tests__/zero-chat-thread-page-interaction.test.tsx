@@ -3,7 +3,13 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
@@ -62,6 +68,160 @@ describe("zero chat thread page - sending state affects composer button display"
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
+  });
+});
+
+describe("zero chat thread page - insufficient credits card", () => {
+  const seedInsufficientCreditsMessages = () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "blocked by credits",
+          error: "insufficient_credits",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Insufficient credits.",
+          error: "insufficient_credits",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+  };
+
+  it("starts Pro checkout directly for free-tier workspaces", async () => {
+    let capturedCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "free",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+    });
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        capturedCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?tier=pro",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const upgradeButton = await screen.findByRole("button", {
+      name: "Upgrade to Pro",
+    });
+    click(upgradeButton);
+
+    await waitFor(() => {
+      expect(capturedCheckoutBody).toMatchObject({
+        tier: "pro",
+        successUrl: expect.stringContaining(
+          "billing_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
+    });
+  });
+
+  it("starts fixed credit checkout for paid-tier workspaces", async () => {
+    let capturedCreditCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 0,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedCreditCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=200000",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const creditButton = await screen.findByRole("button", {
+      name: "$200",
+    });
+    click(creditButton);
+
+    await waitFor(() => {
+      expect(capturedCreditCheckoutBody).toMatchObject({
+        credits: 200_000,
+        successUrl: expect.stringContaining(
+          "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
+    });
+  });
+
+  it("starts custom amount credit checkout for paid-tier workspaces", async () => {
+    let capturedCreditCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 0,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedCreditCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=custom",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const customButton = await screen.findByRole("button", {
+      name: "Custom",
+    });
+    click(customButton);
+    expect(
+      await screen.findByLabelText("Custom dollar amount"),
+    ).toBeInTheDocument();
+    const buyButton = await screen.findByRole("button", { name: "Buy" });
+    click(buyButton);
+
+    await waitFor(() => {
+      expect(capturedCreditCheckoutBody).toMatchObject({
+        credits: 100_000,
+        customAmount: true,
+        successUrl: expect.stringContaining(
+          "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
+    });
+  });
+
+  it("shows a success state when credits are available again", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    expect(await screen.findByText("Credits available")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your credits have been added. You can continue chatting with Zero.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "100K" }),
+    ).not.toBeInTheDocument();
   });
 });
 

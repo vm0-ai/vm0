@@ -10,6 +10,7 @@ import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 
 const L = logger("CronBillingEntitlements");
+const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 
 const ENTITLEMENT_PERIOD_REFRESH_STATUSES = ["active", "trialing"] as const;
 const PAYMENT_FAILED_SUBSCRIPTION_STATUSES = ["past_due", "unpaid"] as const;
@@ -70,9 +71,9 @@ function subscriptionIsPaymentFailed(subscription: SubscriptionInput): boolean {
 function tierFromPriceId(priceId: string): OrgTier {
   const priceMap = env("ZERO_PRICE");
   if (priceMap) {
-    for (const [tier, ids] of Object.entries(priceMap)) {
-      if (ids.includes(priceId)) {
-        return tier as OrgTier;
+    for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
+      if (priceMap[tier]?.includes(priceId)) {
+        return tier;
       }
     }
   }

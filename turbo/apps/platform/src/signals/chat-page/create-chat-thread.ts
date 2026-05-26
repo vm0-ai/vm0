@@ -1430,6 +1430,7 @@ interface SendMessageDeps {
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
 }
 
 function createSendMessage(deps: SendMessageDeps) {
@@ -1440,6 +1441,7 @@ function createSendMessage(deps: SendMessageDeps) {
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$,
+    fetchNextPage$,
   } = deps;
   return command(
     async (
@@ -1551,6 +1553,12 @@ function createSendMessage(deps: SendMessageDeps) {
         threadId,
         runId: sendResult.body.runId,
       });
+
+      if (sendResult.body.runId === null) {
+        await set(fetchNextPage$, signal);
+        signal.throwIfAborted();
+        set(scrollToBottom$);
+      }
 
       set(reloadChatThreads$);
       L.debug("sendMessage$ done", {
@@ -1946,6 +1954,7 @@ export function createChatThreadSignals(
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$: scrollSignals.scrollToBottom$,
+    fetchNextPage$,
     dataSource,
   });
 

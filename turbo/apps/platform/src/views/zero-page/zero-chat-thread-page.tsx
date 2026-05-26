@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   ReactNode,
 } from "react";
 import {
@@ -151,7 +153,12 @@ import {
   setActiveOrgManageTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import {
+  billingStatusAsync$,
+  type CreditCheckoutSelection,
+  startCheckout$,
+  startCreditCheckout$,
+} from "../../signals/zero-page/billing.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -2583,16 +2590,53 @@ function isImageFilename(filename: string): boolean {
   );
 }
 
+const CREDITS_PER_DOLLAR = 1000;
+const CREDIT_TOP_UP_OPTIONS = [100_000, 200_000, 300_000] as const;
+
+function formatCreditsUsd(credits: number): string {
+  const dollars = credits / CREDITS_PER_DOLLAR;
+  return dollars.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Number.isInteger(dollars) ? 0 : 2,
+  });
+}
+
 function InsufficientCreditsCard() {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
+  const [creditCheckoutLoadable, creditCheckout] =
+    useLoadableSet(startCreditCheckout$);
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customUsd, setCustomUsd] = useState("100");
 
   const tier =
     billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
+  const credits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const hasAvailableCredits = credits !== null && credits > 0;
   const isFree = tier === "free" || tier === null;
+  const shouldStartProCheckout = tier === "free";
+  const redirecting =
+    checkoutLoadable.state === "loading" ||
+    creditCheckoutLoadable.state === "loading";
+
+  if (hasAvailableCredits) {
+    return (
+      <div className="max-w-md">
+        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+          Credits available
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Your credits have been added. You can continue chatting with Zero.
+        </p>
+      </div>
+    );
+  }
 
   const headline = isFree
     ? "You've used your free credits"
@@ -2600,25 +2644,115 @@ function InsufficientCreditsCard() {
   const helper = isFree
     ? "Upgrade to Pro to keep chatting with Zero."
     : "Add credits to keep chatting with Zero.";
-  const cta = isFree ? "Upgrade to Pro" : "Add credits";
 
-  const handleClick = () => {
+  const openBilling = () => {
     setTab("billing");
-    setSubPage(true);
+    setSubPage(false);
     detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+  };
+
+  const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (shouldStartProCheckout) {
+      const newTab = event.metaKey || event.ctrlKey;
+      detach(checkout("pro", newTab, pageSignal), Reason.DomCallback);
+      return;
+    }
+    openBilling();
+  };
+
+  const handleCreditClick = (
+    selection: CreditCheckoutSelection,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    const newTab = event.metaKey || event.ctrlKey;
+    detach(creditCheckout(selection, newTab, pageSignal), Reason.DomCallback);
+  };
+
+  const handleCustomCreditClick = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    const usd = Number(customUsd);
+    const credits = usd * CREDITS_PER_DOLLAR;
+    if (!Number.isInteger(credits) || credits < 1000 || credits > 10_000_000) {
+      toast.error("Enter between $1 and $10,000");
+      return;
+    }
+    handleCreditClick({ credits, customAmount: true }, event);
   };
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
       <p className="text-sm font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-      <button
-        type="button"
-        onClick={handleClick}
-        className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        {cta}
-      </button>
+      {isFree ? (
+        <button
+          type="button"
+          onClick={handleUpgradeClick}
+          disabled={redirecting}
+          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+        >
+          {redirecting ? "Redirecting..." : "Upgrade to Pro"}
+        </button>
+      ) : (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            {CREDIT_TOP_UP_OPTIONS.map((credits) => {
+              return (
+                <button
+                  key={credits}
+                  type="button"
+                  onClick={(event) => {
+                    handleCreditClick({ credits }, event);
+                  }}
+                  disabled={redirecting}
+                  className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {formatCreditsUsd(credits)}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setCustomOpen((open) => {
+                  return !open;
+                });
+              }}
+              disabled={redirecting}
+              className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-60"
+            >
+              Custom
+            </button>
+          </div>
+          {customOpen && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={customUsd}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value !== "" && !/^\d+$/.test(value)) {
+                    return;
+                  }
+                  setCustomUsd(value);
+                }}
+                aria-label="Custom dollar amount"
+                className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none transition-colors focus:border-ring"
+              />
+              <button
+                type="button"
+                onClick={handleCustomCreditClick}
+                disabled={redirecting}
+                className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              >
+                {redirecting ? "Redirecting..." : "Buy"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

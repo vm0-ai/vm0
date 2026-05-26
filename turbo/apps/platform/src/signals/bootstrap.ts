@@ -64,6 +64,7 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { googleAdsBillingConversionPayload } from "./bootstrap/billing-conversion.ts";
+import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -295,19 +296,36 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const handleBillingRedirect$ = command(() => {
+function showSuccessToastAfterMount(message: string): void {
+  const showToast = () => {
+    window.setTimeout(() => {
+      toast.success(message);
+    }, 0);
+  };
+
+  if (document.readyState === "complete") {
+    showToast();
+    return;
+  }
+
+  window.addEventListener("load", showToast, { once: true });
+}
+
+const handleBillingRedirect$ = command(({ set }) => {
   const url = new URL(window.location.href);
   const billing = url.searchParams.get("billing");
   const transactionId = url.searchParams.get("billing_session_id");
-  if (!billing) {
+  const credits = url.searchParams.get("credits");
+  if (!billing && !credits) {
     return;
   }
 
   url.searchParams.delete("billing");
   url.searchParams.delete("billing_session_id");
+  url.searchParams.delete("credits");
+  url.searchParams.delete("credit_checkout_session_id");
   window.history.replaceState(null, "", url.toString());
 
-  // Defer toast until Toaster component is mounted
   if (billing === "pro" || billing === "team") {
     // Fire Google Ads conversion event: subscription completed via Stripe
     // checkout. The `billing` param is set only on Stripe success redirect
@@ -323,13 +341,17 @@ const handleBillingRedirect$ = command(() => {
     }
 
     const label = billing === "pro" ? "Pro" : "Team";
-    window.addEventListener(
-      "load",
-      () => {
-        toast.success(`Upgraded to ${label}! Your credits have been added.`);
-      },
-      { once: true },
+    showSuccessToastAfterMount(
+      `Upgraded to ${label}! Your credits have been added.`,
     );
+    set(reloadBillingStatus$);
+  }
+
+  if (credits === "purchased") {
+    showSuccessToastAfterMount(
+      "Credits added. You can continue chatting with Zero.",
+    );
+    set(reloadBillingStatus$);
   }
 });
 

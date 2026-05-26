@@ -1856,6 +1856,8 @@ async function appendInsufficientCreditsMessages(params: {
     db: params.prepared.db,
     orgId: params.orgId,
   });
+  const userCreatedAt = nowDate();
+  const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
   const result = await params.prepared.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
@@ -1882,18 +1884,22 @@ async function appendInsufficientCreditsMessages(params: {
         content: params.body.prompt,
         runId: null,
         error: INSUFFICIENT_CREDITS_MARKER,
+        sequenceNumber: 0,
+        createdAt: userCreatedAt,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
 
-    const createdAt = userMessage?.createdAt ?? nowDate();
+    const createdAt = userMessage?.createdAt ?? userCreatedAt;
     await tx.insert(chatMessages).values({
       chatThreadId: params.prepared.thread.threadId,
       role: "assistant",
       content: assistantContent,
       error: INSUFFICIENT_CREDITS_MARKER,
+      sequenceNumber: 1,
+      createdAt: assistantCreatedAt,
       runId: null,
     });
     return { createdAt };
