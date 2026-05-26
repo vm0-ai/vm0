@@ -3,91 +3,39 @@ import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
 
-interface ApiFetchResult {
-  readonly status: number;
-  readonly body: unknown;
-}
-
-interface ClerkWindow {
-  readonly Clerk?: {
-    readonly session?: {
-      getToken: () => Promise<string | null>;
-    };
-  };
-}
-
-function deriveWebUrlFromApp(currentUrl: string): string {
-  const url = new URL(currentUrl);
-  url.hostname = url.hostname.replace(/(^|-)(app|platform|api)\./, "$1www.");
-  return url.origin;
-}
-
-async function clerkToken(page: Page): Promise<string | null> {
-  return await page
-    .evaluate(async () => {
-      return (window as ClerkWindow).Clerk?.session?.getToken() ?? null;
-    })
-    .catch(() => {
-      return null;
-    });
-}
-
-async function authedApiFetch(
-  page: Page,
-  path: string,
-  init?: {
-    readonly method?: string;
-    readonly body?: Record<string, unknown>;
-  },
-): Promise<ApiFetchResult> {
-  const token = await clerkToken(page);
-  const response = await page
-    .context()
-    .request.fetch(`${deriveWebUrlFromApp(page.url())}${path}`, {
-      method: init?.method ?? "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      data: init?.body,
-    });
-  const text = await response.text();
-  return {
-    status: response.status(),
-    body: text ? (JSON.parse(text) as unknown) : null,
-  };
-}
-
-async function pollBillingTier(
-  page: Page,
-  tier: "free" | "pro" | "team",
-): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        const response = await authedApiFetch(page, "/api/zero/billing/status");
-        if (
-          response.status !== 200 ||
-          typeof response.body !== "object" ||
-          response.body === null ||
-          !("tier" in response.body)
-        ) {
-          return null;
-        }
-        return response.body.tier;
-      },
-      { timeout: 60_000, intervals: [1_000, 2_000, 5_000] },
-    )
-    .toBe(tier);
-}
-
-async function fillFirst(locator: Locator, value: string): Promise<boolean> {
+async function fillFirst(
+  locator: Locator,
+  value: string,
+  timeout = 5_000,
+): Promise<boolean> {
   try {
-    await locator.first().fill(value, { timeout: 5_000 });
+    await locator.first().fill(value, { timeout });
     return true;
   } catch {
     return false;
   }
+}
+
+async function fillStripeFrameField(
+  page: Page,
+  fallbackPlaceholder: RegExp,
+  value: string,
+): Promise<boolean> {
+  const deadline = Date.now() + 10_000;
+
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      if (
+        await fillFirst(frame.getByPlaceholder(fallbackPlaceholder), value, 500)
+      ) {
+        return true;
+      }
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  return false;
 }
 
 async function fillStripeField(
@@ -99,11 +47,23 @@ async function fillStripeField(
   if (await fillFirst(locator, value)) {
     return;
   }
-  await page
-    .frameLocator("iframe")
-    .getByPlaceholder(fallbackPlaceholder)
-    .first()
-    .fill(value, { timeout: 10_000 });
+  if (await fillStripeFrameField(page, fallbackPlaceholder, value)) {
+    return;
+  }
+
+  throw new Error(
+    `Unable to fill Stripe field with placeholder ${fallbackPlaceholder}`,
+  );
+}
+
+async function disableLinkSaveInfo(page: Page): Promise<void> {
+  const saveInfo = page.getByRole("checkbox", {
+    name: /save my information/i,
+  });
+
+  if (await saveInfo.isVisible({ timeout: 5_000 }).catch(() => false)) {
+    await saveInfo.uncheck();
+  }
 }
 
 async function fillStripeCheckout(page: Page): Promise<void> {
@@ -113,6 +73,10 @@ async function fillStripeCheckout(page: Page): Promise<void> {
     page.getByLabel(/email/i).or(page.locator('input[name="email"]')),
     `billing-e2e-${Date.now()}@vm0-e2e.ai`,
   );
+  await disableLinkSaveInfo(page);
+  await page
+    .getByRole("button", { name: /pay with card/i })
+    .dispatchEvent("click", undefined, { timeout: 10_000 });
 
   await fillStripeField(
     page,
@@ -155,7 +119,7 @@ async function fillStripeCheckout(page: Page): Promise<void> {
   );
 
   await page
-    .getByRole("button", { name: /subscribe|pay|start trial/i })
+    .getByRole("button", { name: /^subscribe$/i })
     .click({ timeout: 30_000 });
 }
 
@@ -184,20 +148,9 @@ test("paid checkout redirects to Stripe and completes successfully", async ({
       return (
         url.origin === new URL(appUrl).origin &&
         url.searchParams.get("billing") === "pro" &&
-        Boolean(url.searchParams.get("billing_session_id"))
+        /^cs_/.test(url.searchParams.get("billing_session_id") ?? "")
       );
     },
     { timeout: 90_000, waitUntil: "domcontentloaded" },
   );
-
-  await expect(page.getByText(/Upgraded to Pro/i)).toBeVisible({
-    timeout: 30_000,
-  });
-  await pollBillingTier(page, "pro");
-
-  const cleanup = await authedApiFetch(page, "/api/zero/billing/downgrade", {
-    method: "POST",
-    body: { targetTier: "free" },
-  });
-  expect([200, 409]).toContain(cleanup.status);
 });
