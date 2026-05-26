@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
   FirewallPolicyValue,
@@ -65,6 +69,18 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
 
 interface ZeroAgentSeed {
   readonly fixture: UsageInsightFixture;
@@ -708,20 +724,18 @@ describe("POST /api/zero/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_API_KEY: modelProviderSecretPlaceholder(
+        "anthropic-api-key",
+        "ANTHROPIC_API_KEY",
+      ),
       ANTHROPIC_MODEL: "claude-opus-4-6",
     });
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     // Local dev databases may already have dev-seeded exact keys.
     if (!hasExistingExactKey) {
-      expect(executionContext.environment.ANTHROPIC_API_KEY).toBe(
-        "sk-vm0-managed",
-      );
+      expect(decrypted?.ANTHROPIC_API_KEY).toBe("sk-vm0-managed");
     }
-    expect(executionContext.environment.ANTHROPIC_API_KEY).not.toBe(
-      "sk-vm0-fallback",
-    );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
-    });
+    expect(decrypted?.ANTHROPIC_API_KEY).not.toBe("sk-vm0-fallback");
     expect(executionContext.billableFirewalls).toContain(
       "model-provider:anthropic-api-key",
     );
@@ -783,18 +797,19 @@ describe("POST /api/zero/runs", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
+        "minimax-api-key",
+        "MINIMAX_API_KEY",
+      ),
       ANTHROPIC_MODEL: "MiniMax-M2.7",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
     });
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     // Local dev databases may already have dev-seeded vendor keys.
     if (existingVendorKeys.length === 0) {
-      expect(executionContext.environment.ANTHROPIC_AUTH_TOKEN).toBe(
-        "sk-vm0-fallback",
-      );
+      expect(decrypted?.MINIMAX_API_KEY).toBe("sk-vm0-fallback");
     }
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      MINIMAX_API_KEY: executionContext.environment.ANTHROPIC_AUTH_TOKEN,
-    });
+    expect(decrypted?.MINIMAX_API_KEY).toBeDefined();
   });
 
   it("injects multi-auth Codex OAuth model provider secrets and refresh metadata", async () => {
@@ -877,8 +892,14 @@ describe("POST /api/zero/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
-      CHATGPT_ACCESS_TOKEN: "chatgpt-access",
-      CHATGPT_ACCOUNT_ID: "workspace-id",
+      CHATGPT_ACCESS_TOKEN: modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+      CHATGPT_ACCOUNT_ID: modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCOUNT_ID",
+      ),
       OPENAI_MODEL: "gpt-5.4",
     });
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
@@ -972,7 +993,10 @@ describe("POST /api/zero/runs", () => {
       readonly billableFirewalls: readonly string[];
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_API_KEY: "test-secret-value",
+      ANTHROPIC_API_KEY: modelProviderSecretPlaceholder(
+        "anthropic-api-key",
+        "ANTHROPIC_API_KEY",
+      ),
       ANTHROPIC_MODEL: "claude-sonnet-4-6",
     });
     expect(
