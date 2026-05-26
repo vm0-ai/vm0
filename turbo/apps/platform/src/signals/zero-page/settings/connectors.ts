@@ -14,6 +14,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethod,
+  connectorAuthMethodHasOAuthGrant,
   getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
   hasRequiredScopes,
@@ -147,31 +148,6 @@ function parseConnectorAuthMethodId(
   return null;
 }
 
-export function connectorAuthMethodHasOAuthGrant(
-  type: ConnectorType,
-  authMethod: string,
-): boolean {
-  const parsed = parseConnectorAuthMethodId(authMethod);
-  if (!parsed) {
-    return false;
-  }
-  const method = getConnectorAuthMethod(type, parsed);
-  if (!method) {
-    return false;
-  }
-  switch (method.grant.kind) {
-    case "auth-code":
-    case "device-auth": {
-      return true;
-    }
-    case "manual":
-    case "interactive-pairing":
-    case "managed": {
-      return false;
-    }
-  }
-}
-
 function getLegacyAuthMethodPriority(authMethod: string): number {
   const index = CONNECTOR_LEGACY_AUTH_METHOD_ORDER.findIndex((method) => {
     return method === authMethod;
@@ -201,14 +177,22 @@ function getAvailableConnectorConnectAuthMethods(
 ): ConnectorAuthMethodId[] {
   return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
     const method = getConnectorAuthMethod(type, authMethod);
-    if (!method) {
-      return false;
-    }
-    if (
-      method.grant.kind === "managed" &&
-      !options.includeManagedForTypes.includes(type)
-    ) {
-      return false;
+    switch (method?.grant.kind) {
+      case "managed": {
+        if (!options.includeManagedForTypes.includes(type)) {
+          return false;
+        }
+        break;
+      }
+      case "auth-code":
+      case "device-auth":
+      case "interactive-pairing":
+      case "manual": {
+        break;
+      }
+      case undefined: {
+        return false;
+      }
     }
     return !method.featureFlag || !!featureStates?.[method.featureFlag];
   });

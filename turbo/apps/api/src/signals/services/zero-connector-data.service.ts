@@ -6,6 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
+  connectorAuthMethodHasOAuthGrant,
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
   getAvailableConnectorAuthMethods,
@@ -623,7 +624,7 @@ export const deleteZeroConnectorLocalState$ = command(
     signal.throwIfAborted();
 
     if (existing) {
-      if (existing.authMethod === "oauth") {
+      if (connectorAuthMethodHasOAuthGrant(args.type, existing.authMethod)) {
         await revokeExistingConnectorToken({
           db: writeDb,
           orgId: args.orgId,

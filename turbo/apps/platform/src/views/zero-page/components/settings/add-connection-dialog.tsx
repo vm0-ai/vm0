@@ -24,6 +24,7 @@ import {
 import type { ReactElement } from "react";
 import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
+  connectorAuthMethodHasOAuthGrant,
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
   isOAuthAuthCodeConnectorType,
@@ -48,7 +49,6 @@ import {
   deleteLocalBrowserHost$,
   detectLocalBrowserExtension$,
   pairLocalBrowserExtension$,
-  connectorAuthMethodHasOAuthGrant,
   tokenFormValuesFor$,
   selectedConnectorType$,
   clearConnectorCliAuth$,
@@ -223,10 +223,9 @@ function connectorOAuthDeviceAuthFlowIsActive(
 function connectedConnectorHasOAuthGrant(
   item: ConnectorTypeWithStatus,
 ): boolean {
-  if (!item.connector) {
-    return false;
-  }
-  return connectorAuthMethodHasOAuthGrant(item.type, item.connector.authMethod);
+  return item.connector
+    ? connectorAuthMethodHasOAuthGrant(item.type, item.connector.authMethod)
+    : false;
 }
 
 // ---------------------------------------------------------------------------
