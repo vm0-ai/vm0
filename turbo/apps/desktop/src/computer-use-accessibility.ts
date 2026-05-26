@@ -91,12 +91,21 @@ export interface AccessibilityAppStateSnapshot {
   readonly pid?: number;
   readonly appPath?: string;
   readonly windowTitle?: string;
+  readonly windowId?: number;
+  readonly windowFrame?: ComputerUseCoordinateBounds;
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
   readonly focusedElementIndex?: number;
   readonly nodeCount?: number;
   readonly truncated?: boolean;
   readonly truncationReasons?: readonly string[];
+  readonly screenshot?: string;
+  readonly screenshotMimeType?: string;
+  readonly screenshotSource?: "window" | "screen";
+  readonly screenshotSourceName?: string;
+  readonly screenshotWidth?: number;
+  readonly screenshotHeight?: number;
+  readonly screenshotSourceBounds?: ComputerUseCoordinateBounds;
 }
 
 interface AccessibilitySnapshotOutputLimits {
@@ -114,24 +123,15 @@ export const ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS =
 
 const GENERIC_WRAPPER_ROLES = new Set(["AXGroup", "AXUnknown"]);
 
-export interface ComputerUseScreenshotCaptureRequest {
-  readonly app: string;
-  readonly windowNames: readonly string[];
-  readonly windowBounds: readonly ComputerUseWindowCaptureCandidate[];
-}
-
-export interface ComputerUseScreenshotCaptureResult {
+interface ComputerUseAppStateScreenshot {
   readonly dataUrl: string;
+  readonly mimeType: string;
   readonly source: "window" | "screen";
   readonly sourceName: string;
   readonly width: number;
   readonly height: number;
   readonly sourceBounds?: ComputerUseCoordinateBounds;
 }
-
-type ComputerUseScreenshotCapture = (
-  request: ComputerUseScreenshotCaptureRequest,
-) => Promise<ComputerUseScreenshotCaptureResult>;
 
 export interface ComputerUseCommandSuccess {
   readonly status: "succeeded";
@@ -163,11 +163,6 @@ export interface ComputerUseCoordinateBounds {
   readonly height: number;
 }
 
-export interface ComputerUseWindowCaptureCandidate {
-  readonly name: string;
-  readonly bounds?: ComputerUseCoordinateBounds;
-}
-
 interface ComputerUseSnapshotMetadata {
   readonly app: string;
   readonly snapshotId: string;
@@ -195,7 +190,6 @@ interface ComputerUseElementTarget {
 export type ComputerUseMouseButton = "left" | "right" | "middle";
 
 interface ComputerUseCommandExecutionDependencies {
-  readonly captureScreenshot: ComputerUseScreenshotCapture;
   readonly snapshotStore?: ComputerUseSnapshotStore;
   readonly platform?: NodeJS.Platform;
   readonly nativeBackend?: ComputerUseNativeBackend;
@@ -1312,33 +1306,6 @@ export function renderAccessibilityTree(
   return lines.join("\n");
 }
 
-function snapshotWindowNames(
-  snapshot: AccessibilityAppStateSnapshot,
-): string[] {
-  return snapshotWindowCaptureCandidates(snapshot).map((window) => {
-    return window.name;
-  });
-}
-
-function snapshotWindowCaptureCandidates(
-  snapshot: AccessibilityAppStateSnapshot,
-): ComputerUseWindowCaptureCandidate[] {
-  return snapshot.elements
-    .map((element): ComputerUseWindowCaptureCandidate | null => {
-      const name = element.name?.trim();
-      if (!name) {
-        return null;
-      }
-      return {
-        name,
-        ...(element.bounds ? { bounds: element.bounds } : {}),
-      };
-    })
-    .filter((window): window is ComputerUseWindowCaptureCandidate => {
-      return window !== null;
-    });
-}
-
 function publicElementSnapshot(
   element: AccessibilityElementSnapshot,
 ): Record<string, unknown> {
@@ -1373,7 +1340,7 @@ function publicAppStateSnapshot(
 
 function buildComputerUseAppStateResult(
   snapshot: AccessibilityAppStateSnapshot,
-  screenshot: ComputerUseScreenshotCaptureResult,
+  screenshot: ComputerUseAppStateScreenshot,
 ): Record<string, unknown> {
   const visibleElements = collectAccessibilityVisibleElements(
     snapshot,
@@ -1386,7 +1353,7 @@ function buildComputerUseAppStateResult(
     visibleText: renderAccessibilityVisibleText(visibleElements),
     visibleElements,
     screenshot: screenshot.dataUrl,
-    screenshotMimeType: "image/png",
+    screenshotMimeType: screenshot.mimeType,
     screenshotSource: screenshot.source,
     screenshotSourceName: screenshot.sourceName,
     screenshotWidth: screenshot.width,
@@ -1394,6 +1361,60 @@ function buildComputerUseAppStateResult(
     ...(screenshot.sourceBounds
       ? { screenshotSourceBounds: screenshot.sourceBounds }
       : {}),
+  };
+}
+
+function appStateScreenshotFailure(message: string): ComputerUseCommandFailure {
+  return {
+    status: "failed",
+    error: {
+      code: "screen_recording_unavailable",
+      message,
+    },
+  };
+}
+
+function nativeAppStateScreenshot(
+  snapshot: AccessibilityAppStateSnapshot,
+): ComputerUseAppStateScreenshot | ComputerUseCommandFailure {
+  if (!snapshot.screenshot || snapshot.screenshot.trim().length === 0) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state did not return a target-window screenshot",
+    );
+  }
+  if (snapshot.screenshotSource !== "window") {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state must return a target-window screenshot",
+    );
+  }
+  if (!snapshot.screenshotSourceName) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state did not return a screenshot source name",
+    );
+  }
+  if (
+    snapshot.screenshotWidth === undefined ||
+    snapshot.screenshotHeight === undefined ||
+    snapshot.screenshotWidth <= 0 ||
+    snapshot.screenshotHeight <= 0
+  ) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state returned invalid screenshot dimensions",
+    );
+  }
+  if (!snapshot.screenshotSourceBounds) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state did not return target-window screenshot bounds",
+    );
+  }
+  return {
+    dataUrl: snapshot.screenshot,
+    mimeType: snapshot.screenshotMimeType ?? "image/png",
+    source: snapshot.screenshotSource,
+    sourceName: snapshot.screenshotSourceName,
+    width: snapshot.screenshotWidth,
+    height: snapshot.screenshotHeight,
+    sourceBounds: snapshot.screenshotSourceBounds,
   };
 }
 
@@ -1407,7 +1428,6 @@ async function listApps(
 async function getAppState(
   app: string,
   nativeBackend: ComputerUseNativeBackend,
-  captureScreenshot: ComputerUseScreenshotCapture,
   snapshotStore: ComputerUseSnapshotStore,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
@@ -1415,22 +1435,9 @@ async function getAppState(
     await nativeBackend.getAppState(app, id),
   );
   const indexed = indexAccessibilitySnapshot(snapshot);
-  const windowBounds = snapshotWindowCaptureCandidates(indexed.snapshot);
-  let screenshot: ComputerUseScreenshotCaptureResult;
-  try {
-    screenshot = await captureScreenshot({
-      app,
-      windowNames: snapshotWindowNames(indexed.snapshot),
-      windowBounds,
-    });
-  } catch (error) {
-    return {
-      status: "failed",
-      error: {
-        code: "screen_recording_unavailable",
-        message: error instanceof Error ? error.message : String(error),
-      },
-    };
+  const screenshot = nativeAppStateScreenshot(indexed.snapshot);
+  if ("status" in screenshot) {
+    return screenshot;
   }
   snapshotStore.set({
     app: indexed.snapshot.app,
@@ -1828,12 +1835,7 @@ export async function executeComputerUseCommand(
       if (screenRecordingError) {
         return screenRecordingError;
       }
-      return await getAppState(
-        app,
-        nativeBackend,
-        dependencies.captureScreenshot,
-        snapshotStore,
-      );
+      return await getAppState(app, nativeBackend, snapshotStore);
     }
     if (command.kind === "app.open") {
       return await openApp(app, nativeBackend);
@@ -1859,7 +1861,6 @@ export async function executeComputerUseCommand(
         const snapshotResult = await getAppState(
           app,
           nativeBackend,
-          dependencies.captureScreenshot,
           snapshotStore,
         );
         if (snapshotResult.status === "failed") {

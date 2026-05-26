@@ -55,7 +55,14 @@ let visibleCollectionChildSources = [
 struct WindowTarget {
     let pid: pid_t
     let windowNumber: Int
+    let title: String?
     let frame: CGRect
+}
+
+struct WindowScreenshot {
+    let dataUrl: String
+    let width: Int
+    let height: Int
 }
 
 struct AXWindowInfo {
@@ -93,6 +100,59 @@ enum BackgroundWindowLocalEvent {
         guard let setWindowLocation else { return false }
         setWindowLocation(event, point)
         return true
+    }
+}
+
+enum BackgroundWindowScreenshot {
+    private typealias CreateImageFn = @convention(c) (
+        CGRect,
+        UInt32,
+        CGWindowID,
+        UInt32
+    ) -> Unmanaged<CGImage>?
+
+    private static let createImage: CreateImageFn? = {
+        _ = dlopen(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+            RTLD_LAZY
+        )
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: CreateImageFn.self)
+    }()
+
+    static func capture(windowNumber: Int) throws -> WindowScreenshot {
+        guard let createImage else {
+            throw HelperFailure(
+                code: "screen_recording_unavailable",
+                message: "Native window screenshot capture is unavailable"
+            )
+        }
+        let imageOptions: CGWindowImageOption = [.bestResolution, .boundsIgnoreFraming]
+        guard let image = createImage(
+            .null,
+            CGWindowListOption.optionIncludingWindow.rawValue,
+            CGWindowID(windowNumber),
+            imageOptions.rawValue
+        )?.takeRetainedValue() else {
+            throw HelperFailure(
+                code: "screen_recording_unavailable",
+                message: "Unable to capture target window screenshot"
+            )
+        }
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else {
+            throw HelperFailure(
+                code: "screen_recording_unavailable",
+                message: "Unable to encode target window screenshot"
+            )
+        }
+        return WindowScreenshot(
+            dataUrl: "data:image/png;base64,\(data.base64EncodedString())",
+            width: image.width,
+            height: image.height
+        )
     }
 }
 
@@ -405,16 +465,20 @@ func elementFrame(_ element: AXUIElement) -> CGRect? {
     return CGRect(origin: position, size: size)
 }
 
-func bounds(_ element: AXUIElement) -> [String: Double]? {
-    guard let frame = elementFrame(element) else {
-        return nil
-    }
+func boundsRecord(_ frame: CGRect) -> [String: Double] {
     return [
         "x": Double(frame.minX),
         "y": Double(frame.minY),
         "width": Double(frame.width),
         "height": Double(frame.height),
     ]
+}
+
+func bounds(_ element: AXUIElement) -> [String: Double]? {
+    guard let frame = elementFrame(element) else {
+        return nil
+    }
+    return boundsRecord(frame)
 }
 
 func actionNames(_ element: AXUIElement) -> [String] {
@@ -615,7 +679,7 @@ func resolveWindowTarget(
     guard let best else {
         return nil
     }
-    return WindowTarget(pid: pid, windowNumber: best.windowNumber, frame: best.frame)
+    return WindowTarget(pid: pid, windowNumber: best.windowNumber, title: best.title, frame: best.frame)
 }
 
 func waitForWindowTarget(app: NSRunningApplication, timeout: TimeInterval = 3) -> WindowTarget? {
@@ -1059,14 +1123,10 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     let snapshotId = try requiredString(request, "snapshotId")
 
     guard let runningApp = findRunningApp(named: appName) else {
-        return [
-            "app": appName,
-            "snapshotId": snapshotId,
-            "elements": [],
-            "nodeCount": 0,
-            "truncated": false,
-            "truncationReasons": [],
-        ]
+        throw HelperFailure(
+            code: "app_not_found",
+            message: "App is not running: \(appName)"
+        )
     }
 
     let root = AXUIElementCreateApplication(runningApp.processIdentifier)
@@ -1119,6 +1179,27 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     if let windowTitle = elements.first?["name"] as? String {
         response["windowTitle"] = windowTitle
     }
+    guard let target = resolveWindowTarget(app: runningApp, root: root) else {
+        throw HelperFailure(
+            code: "accessibility_unavailable",
+            message: backgroundTargetUnavailableMessage(appName: appName)
+        )
+    }
+    let screenshot = try BackgroundWindowScreenshot.capture(windowNumber: target.windowNumber)
+    let sourceName = target.title ??
+        (elements.first?["name"] as? String) ??
+        runningApp.localizedName ??
+        appName
+    let sourceBounds = boundsRecord(target.frame)
+    response["windowId"] = target.windowNumber
+    response["windowFrame"] = sourceBounds
+    response["screenshot"] = screenshot.dataUrl
+    response["screenshotMimeType"] = "image/png"
+    response["screenshotSource"] = "window"
+    response["screenshotSourceName"] = sourceName
+    response["screenshotWidth"] = screenshot.width
+    response["screenshotHeight"] = screenshot.height
+    response["screenshotSourceBounds"] = sourceBounds
     return response
 }
 

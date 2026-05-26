@@ -11,8 +11,9 @@ When the user is signed in and the feature switch is enabled, the main process
 registers a Desktop Computer Use host through the Zero API command queue. It
 uses the Electron session for auth, polls queued commands, executes them with a
 native macOS `computer-use-helper`, and completes commands back to the API.
-Electron still owns screenshot capture through `desktopCapturer`; the helper
-owns macOS Accessibility and targeted CGEvent input dispatch.
+Electron only owns the app shell and command bridge; the helper owns macOS
+Accessibility, target-window screenshot capture, and targeted CGEvent input
+dispatch.
 
 ## Development
 

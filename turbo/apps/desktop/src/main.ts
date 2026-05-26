@@ -21,7 +21,6 @@ import {
   ComputerUseHostRuntime,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
-import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   IDLE_COMPUTER_USE_HOST_STATE,
@@ -227,7 +226,6 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       getPermissions: getComputerUsePermissionState,
       executeCommand: (command, permissions) => {
         return executeComputerUseCommand(command, permissions, {
-          captureScreenshot: captureComputerUseScreenshot,
           snapshotStore: computerUseSnapshotStore,
         });
       },
