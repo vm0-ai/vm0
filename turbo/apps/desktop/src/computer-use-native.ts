@@ -6,6 +6,7 @@ import type {
   ComputerUseCommandFailure,
   ComputerUseMouseButton,
 } from "./computer-use-accessibility";
+import type { ComputerUsePermissionState } from "./computer-use-types";
 
 type ComputerUseNativeErrorCode = ComputerUseCommandFailure["error"]["code"];
 
@@ -23,6 +24,8 @@ export interface ComputerUseNativePressKeyRequest {
 }
 
 export interface ComputerUseNativeBackend {
+  readonly getPermissions: () => Promise<ComputerUsePermissionState>;
+  readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
   readonly listApps: () => Promise<readonly string[]>;
   readonly getAppState: (
     app: string,
@@ -194,6 +197,24 @@ function resultOptionalString(
     : undefined;
 }
 
+function resultPermissions(
+  result: Record<string, unknown>,
+): ComputerUsePermissionState {
+  if (
+    typeof result.accessibility === "boolean" &&
+    typeof result.screenRecording === "boolean"
+  ) {
+    return {
+      accessibility: result.accessibility,
+      screenRecording: result.screenRecording,
+    };
+  }
+  throw new ComputerUseNativeHelperError(
+    "accessibility_unavailable",
+    "Native Computer Use helper returned invalid permissions",
+  );
+}
+
 function helperPathCandidates(
   options: ResolveComputerUseHelperPathOptions,
 ): readonly [string, string, string] {
@@ -293,6 +314,14 @@ export function createComputerUseNativeBackend(
   };
 
   return {
+    getPermissions: async () => {
+      const result = await run({ kind: "permissions.state" });
+      return resultPermissions(result);
+    },
+    requestAccessibilityPermission: async () => {
+      const result = await run({ kind: "permissions.request_accessibility" });
+      return resultPermissions(result);
+    },
     listApps: async () => {
       const result = await run({ kind: "apps.list" });
       return resultStringArray(result, "apps");

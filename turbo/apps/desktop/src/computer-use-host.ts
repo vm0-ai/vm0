@@ -19,13 +19,15 @@ export type ComputerUseHostFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+type MaybePromise<T> = T | Promise<T>;
+
 interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
   readonly displayName: string;
   readonly appVersion: string;
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
-  readonly getPermissions: () => ComputerUsePermissionState;
+  readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
   readonly executeCommand: (
     command: ComputerUseCommand,
     permissions: ComputerUsePermissionState,
@@ -87,7 +89,7 @@ export class ComputerUseHostRuntime {
   private readonly appVersion: string;
   private readonly sessionFetch: ComputerUseHostFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
-  private readonly getPermissions: () => ComputerUsePermissionState;
+  private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
   private readonly onChange: () => void;
   private readonly scheduleTimeout: typeof setTimeout;
@@ -156,11 +158,11 @@ export class ComputerUseHostRuntime {
     return this.state;
   }
 
-  private runtimeBody(): Record<string, unknown> {
+  private async runtimeBody(): Promise<Record<string, unknown>> {
     return buildComputerUseRuntimeBody({
       displayName: this.displayName,
       appVersion: this.appVersion,
-      permissions: this.getPermissions(),
+      permissions: await this.getPermissions(),
     });
   }
 
@@ -265,7 +267,7 @@ export class ComputerUseHostRuntime {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(this.runtimeBody()),
+        body: JSON.stringify(await this.runtimeBody()),
       },
     );
     if (response.status === 401) {
@@ -328,7 +330,7 @@ export class ComputerUseHostRuntime {
   private async heartbeat(): Promise<boolean> {
     const response = await this.hostFetch("/api/zero/computer-use/heartbeat", {
       method: "POST",
-      body: JSON.stringify(this.runtimeBody()),
+      body: JSON.stringify(await this.runtimeBody()),
     });
     if (response.status === 401) {
       this.hostToken = null;
@@ -417,7 +419,7 @@ export class ComputerUseHostRuntime {
     try {
       completed = await this.executeCommand(
         body.command,
-        this.getPermissions(),
+        await this.getPermissions(),
       );
     } catch (error) {
       const completedAtMs = Date.now();

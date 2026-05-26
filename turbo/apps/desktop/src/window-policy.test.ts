@@ -38,6 +38,12 @@ function createNativeBackend(
   overrides: Partial<ComputerUseNativeBackend> = {},
 ): ComputerUseNativeBackend {
   const defaults: ComputerUseNativeBackend = {
+    getPermissions: async () => {
+      return { accessibility: true, screenRecording: true };
+    },
+    requestAccessibilityPermission: async () => {
+      return { accessibility: true, screenRecording: true };
+    },
     listApps: async () => [],
     getAppState: async (app, snapshotId) => {
       return { app, snapshotId, elements: [] };

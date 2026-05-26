@@ -30,6 +30,7 @@ import {
 import type { DesktopAuthState } from "./desktop-bridge";
 import {
   getComputerUsePermissionState,
+  refreshComputerUsePermissionState,
   requestComputerUseAccessibilityPermission,
 } from "./computer-use-permissions";
 import { resolveDesktopConfig } from "./config";
@@ -223,7 +224,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       hostFetch: (input, init) => {
         return fetch(input, init);
       },
-      getPermissions: getComputerUsePermissionState,
+      getPermissions: refreshComputerUsePermissionState,
       executeCommand: (command, permissions) => {
         return executeComputerUseCommand(command, permissions, {
           snapshotStore: computerUseSnapshotStore,
@@ -236,8 +237,8 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   return getComputerUseBridgeState();
 }
 
-function requestComputerUsePermission(): DesktopComputerUseState {
-  requestComputerUseAccessibilityPermission();
+async function requestComputerUsePermission(): Promise<DesktopComputerUseState> {
+  await requestComputerUseAccessibilityPermission();
   notifyDesktopComputerUseChanged();
   return getComputerUseBridgeState();
 }
@@ -251,6 +252,16 @@ function installComputerUse(): void {
     },
     { rendererUrl: localRendererUrl },
   );
+}
+
+function refreshComputerUsePermissionsForState(): void {
+  void refreshComputerUsePermissionState()
+    .catch((error) => {
+      console.warn("Unable to refresh native Computer Use permissions", error);
+    })
+    .finally(() => {
+      notifyDesktopComputerUseChanged();
+    });
 }
 
 async function stopComputerUseRuntimeForQuit(): Promise<void> {
@@ -619,7 +630,9 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   computerUseRuntime = null;
   notifyDesktopAuthChanged();
   notifyDesktopComputerUseChanged();
-  if (hasRequiredComputerUsePermissions(getComputerUsePermissionState())) {
+  const permissions = await refreshComputerUsePermissionState();
+  notifyDesktopComputerUseChanged();
+  if (hasRequiredComputerUsePermissions(permissions)) {
     await startComputerUseRuntime();
   }
 }
@@ -754,6 +767,7 @@ if (!hasSingleInstanceLock) {
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
     installComputerUse();
+    refreshComputerUsePermissionsForState();
     installDesktopAuth();
     queueDesktopAuthCallbackArgv(process.argv);
 

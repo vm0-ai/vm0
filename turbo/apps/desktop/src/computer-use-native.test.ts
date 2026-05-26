@@ -24,6 +24,46 @@ process.stdin.on("end", () => {
 }
 
 describe("computer use native backend", () => {
+  it("reads permissions from the native helper", async () => {
+    const helper = await createHelper({
+      status: "succeeded",
+      result: { accessibility: true, screenRecording: false },
+    });
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+      });
+
+      await expect(backend.getPermissions()).resolves.toEqual({
+        accessibility: true,
+        screenRecording: false,
+      });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("requests accessibility permission through the native helper", async () => {
+    const helper = await createHelper({
+      status: "succeeded",
+      result: { accessibility: true, screenRecording: true },
+    });
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+      });
+
+      await expect(backend.requestAccessibilityPermission()).resolves.toEqual({
+        accessibility: true,
+        screenRecording: true,
+      });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["app_not_found", "Unable to open Things: Unable to find application"],
     ["app_open_failed", "Unable to open Things"],

@@ -1152,6 +1152,25 @@ func handleAppsList() -> [String: Any] {
     return ["apps": Array(names).sorted()]
 }
 
+func computerUsePermissionState() -> [String: Any] {
+    return [
+        "accessibility": AXIsProcessTrusted(),
+        "screenRecording": CGPreflightScreenCaptureAccess(),
+    ]
+}
+
+func handlePermissionsState() -> [String: Any] {
+    return computerUsePermissionState()
+}
+
+func handlePermissionsRequestAccessibility() -> [String: Any] {
+    let options = [
+        "AXTrustedCheckOptionPrompt": true,
+    ] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(options)
+    return computerUsePermissionState()
+}
+
 func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let snapshotId = try requiredString(request, "snapshotId")
@@ -1450,6 +1469,10 @@ func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
 func handle(_ request: [String: Any]) throws -> [String: Any] {
     let kind = try requiredString(request, "kind")
     switch kind {
+    case "permissions.state":
+        return handlePermissionsState()
+    case "permissions.request_accessibility":
+        return handlePermissionsRequestAccessibility()
     case "apps.list":
         return handleAppsList()
     case "app.state":
