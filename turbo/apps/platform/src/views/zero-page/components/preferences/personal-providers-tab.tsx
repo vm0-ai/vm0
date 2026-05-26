@@ -79,18 +79,15 @@ function OAuthCredentialsSection() {
         title="Personal"
         description="Used only in your runs, with your own credentials."
       />
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="flex flex-col gap-3">
         {isLoading ? (
           <>
-            <OAuthRowSkeleton />
-            <OAuthRowSkeleton />
+            <OAuthCardSkeleton />
+            <OAuthCardSkeleton />
           </>
         ) : (
           <>
-            <OAuthCredentialRow
+            <OAuthCredentialCard
               type="claude-code-oauth-token"
               title="Claude Code OAuth"
               description="Connect with Claude Code login for Claude-backed model routes."
@@ -121,7 +118,7 @@ function OAuthCredentialsSection() {
               onAction={connectClaudeCode}
               testId="oauth-card-claude-code-oauth-token"
             />
-            <OAuthCredentialRow
+            <OAuthCredentialCard
               type="codex-oauth-token"
               title="ChatGPT (Codex)"
               description="Connect with Codex device login for Codex-backed model routes."
@@ -183,7 +180,7 @@ interface OAuthMenuItem {
   onSelect: () => void;
 }
 
-function OAuthCredentialRow({
+function OAuthCredentialCard({
   type,
   title,
   description,
@@ -209,7 +206,8 @@ function OAuthCredentialRow({
         tabIndex={0}
         aria-label={`Connect ${title}`}
         data-testid={testId}
-        className="group flex cursor-pointer items-center gap-3 px-5 py-4 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
+        className="group flex cursor-pointer items-center gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 transition-colors hover:bg-[hsl(var(--gray-50))]"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         onClick={() => {
           if (!disabled) {
             onAction();
@@ -251,7 +249,8 @@ function OAuthCredentialRow({
 
   return (
     <div
-      className="flex items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
+      className="flex items-center gap-3 overflow-hidden rounded-xl bg-card px-5 py-4"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       data-testid={testId}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
@@ -329,11 +328,12 @@ function OAuthFooterStatus({ status }: { status: OAuthStatus }) {
   );
 }
 
-function OAuthRowSkeleton() {
+function OAuthCardSkeleton() {
   return (
     <div
       data-testid="oauth-card-skeleton"
-      className="flex animate-pulse items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
+      className="flex animate-pulse items-center gap-3 overflow-hidden rounded-xl bg-card px-5 py-4"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
       <div className="min-w-0 flex-1">

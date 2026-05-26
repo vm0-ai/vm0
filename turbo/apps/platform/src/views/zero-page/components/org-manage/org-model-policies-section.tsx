@@ -265,7 +265,8 @@ function DefaultModelRow({
   return (
     <div
       data-testid="default-model-row"
-      className="flex flex-col gap-3 bg-[hsl(var(--gray-50))] px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">Default model</p>
@@ -1159,20 +1160,17 @@ export function OrgModelPoliciesSection() {
           />
         }
       />
+      <DefaultModelRow
+        policies={visiblePolicies}
+        workspaceDefaultModel={data.workspaceDefaultModel}
+        disabled={saving}
+        onChange={handleDefaultModelChange}
+      />
       <div
         className="overflow-hidden rounded-xl bg-card"
         style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       >
-        <DefaultModelRow
-          policies={visiblePolicies}
-          workspaceDefaultModel={data.workspaceDefaultModel}
-          disabled={saving}
-          onChange={handleDefaultModelChange}
-        />
-        <div
-          className="divide-y divide-border/50"
-          style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-        >
+        <div className="divide-y divide-border/50">
           {visiblePolicies.map((policy) => {
             return (
               <PolicyRow
