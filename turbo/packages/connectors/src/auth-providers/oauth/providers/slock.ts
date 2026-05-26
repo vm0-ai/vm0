@@ -10,7 +10,6 @@ import type {
 } from "../types";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
-const SLOCK_CLIENT_NAME = "vm0";
 export const SLOCK_ACCESS_SECRET_NAME = "SLOCK_ACCESS_TOKEN";
 export const SLOCK_REFRESH_SECRET_NAME = "SLOCK_REFRESH_TOKEN";
 export const SLOCK_SERVER_ID_SECRET_NAME = "SLOCK_SERVER_ID";
@@ -281,7 +280,7 @@ export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ clientName: SLOCK_CLIENT_NAME }),
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {

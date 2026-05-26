@@ -234,9 +234,7 @@ function mockBase44OAuthProvider(): void {
 function mockSlockOAuthProvider(): void {
   server.use(
     http.post(SLOCK_DEVICE_CODE_URL, async ({ request }) => {
-      await expect(request.json()).resolves.toStrictEqual({
-        clientName: "vm0",
-      });
+      await expect(request.json()).resolves.toStrictEqual({});
       return HttpResponse.json({
         deviceCode: "slock-device-code",
         userCode: "SLOCK-1",

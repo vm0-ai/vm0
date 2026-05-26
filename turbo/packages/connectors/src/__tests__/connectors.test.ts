@@ -916,9 +916,7 @@ describe("isOAuthConnectorType", () => {
       http.post(
         "https://api.slock.ai/api/auth/device/authorize",
         async ({ request }) => {
-          await expect(request.json()).resolves.toStrictEqual({
-            clientName: "vm0",
-          });
+          await expect(request.json()).resolves.toStrictEqual({});
           return HttpResponse.json({
             deviceCode: "slock-device-code",
             userCode: "SLOCK-1",
