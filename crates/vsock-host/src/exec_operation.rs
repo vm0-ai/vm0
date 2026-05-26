@@ -3685,6 +3685,29 @@ mod tests {
     }
 
     #[test]
+    fn exec_terminal_log_severity_warns_for_host_cancel_with_failure_terminations() {
+        for termination in [
+            ExecTermination::TimedOut,
+            ExecTermination::StartFailed,
+            ExecTermination::WaitFailed,
+        ] {
+            let context = ExecTerminalLogContext {
+                host_cancel_requested: true,
+                ..clean_terminal_log_context(
+                    ExecTerminalLogLifecycle::Supervised,
+                    false,
+                    termination,
+                )
+            };
+
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Warn)
+            );
+        }
+    }
+
+    #[test]
     fn exec_terminal_log_severity_warns_for_non_exit_terminations() {
         for lifecycle in [
             ExecTerminalLogLifecycle::OneShot,
