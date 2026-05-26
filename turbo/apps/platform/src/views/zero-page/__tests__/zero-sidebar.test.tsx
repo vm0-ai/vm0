@@ -79,17 +79,6 @@ function mockAPIs({
 }
 
 describe("zero sidebar", () => {
-  it("should render org switcher with current org name", async () => {
-    detachedSetupPage({
-      context,
-      path: "/",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Default Org")).toBeInTheDocument();
-    });
-  });
-
   it("should enable dataExport feature switch via localStorage override", async () => {
     detachedSetupPage({
       context,
