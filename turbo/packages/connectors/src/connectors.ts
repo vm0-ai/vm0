@@ -365,7 +365,7 @@ export interface ConnectorInteractivePairingGrantConfig {
     label: string;
     description?: string;
   }[];
-  readonly importsAuthMethod?: ConnectorAuthMethodType;
+  readonly importsAuthMethod?: ConnectorAuthMethodId;
 }
 
 export interface ConnectorManagedGrantConfig {
@@ -448,7 +448,7 @@ export interface ConnectorAuthMethodConfig {
 }
 
 /**
- * Connector auth method variants exposed as configured connection flows.
+ * Well-known connector auth method ids exposed as configured connection flows.
  *
  * These values describe the choices users can select when connecting a
  * service. They are not necessarily the same as the persisted connected
@@ -463,27 +463,33 @@ export interface ConnectorAuthMethodConfig {
  * - `cli-auth` — user imports credentials through a provider CLI. The imported
  *   result may still be stored as another credential shape such as `api-token`.
  */
-export type ConnectorAuthMethodType =
+export type ConnectorWellKnownAuthMethodId =
   | "oauth"
   | "api-token"
   | "api"
   | "cli-auth";
 
-export const CONNECTOR_AUTH_METHOD_TYPES = [
+export type ConnectorLocalAuthMethodId = "app-credentials";
+
+export type ConnectorAuthMethodId =
+  | ConnectorWellKnownAuthMethodId
+  | ConnectorLocalAuthMethodId;
+
+export const CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS = [
   "oauth",
   "api-token",
   "api",
   "cli-auth",
-] as const satisfies readonly ConnectorAuthMethodType[];
+] as const satisfies readonly ConnectorWellKnownAuthMethodId[];
 
-type MissingConnectorAuthMethodType = Exclude<
-  ConnectorAuthMethodType,
-  (typeof CONNECTOR_AUTH_METHOD_TYPES)[number]
+type MissingConnectorWellKnownAuthMethodId = Exclude<
+  ConnectorWellKnownAuthMethodId,
+  (typeof CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS)[number]
 >;
 
 type AssertNever<T extends never> = T;
-export type ConnectorAuthMethodTypesCoverUnion =
-  AssertNever<MissingConnectorAuthMethodType>;
+export type ConnectorWellKnownAuthMethodIdsCoverUnion =
+  AssertNever<MissingConnectorWellKnownAuthMethodId>;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -594,14 +600,14 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
   ];
 
 type ConnectorAuthMethods = Partial<
-  Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
+  Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
 >;
 
 type ConnectorConfigBase = {
   readonly label: string;
   readonly helpText: string;
   readonly category: ConnectorDisplayCategory;
-  readonly defaultAuthMethod?: ConnectorAuthMethodType;
+  readonly defaultAuthMethod?: ConnectorAuthMethodId;
   /**
    * Output categories this connector skill can generate. This is product
    * metadata for discovery and routing, not a permission/capability grant.
@@ -891,7 +897,7 @@ export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   string
 >;
 type ConnectorAuthMethodKeys<Type extends ConnectorType> =
-  ConnectorAuthMethodIds<Type> & ConnectorAuthMethodType;
+  ConnectorAuthMethodIds<Type> & ConnectorWellKnownAuthMethodId;
 
 type ConnectorAuthMethodGrantKindById = {
   readonly oauth: "auth-code" | "device-auth";
@@ -1007,17 +1013,21 @@ export type ConnectorBrowserVerificationCliAuthConnectorType = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-type InvalidDefaultAuthMethodConnectorType = {
-  [Type in ConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type] extends {
+export type ConnectorInvalidDefaultAuthMethodType<
+  Configs extends Record<string, ConnectorConfig>,
+> = {
+  [Type in keyof Configs & string]: Configs[Type] extends {
     readonly defaultAuthMethod: infer DefaultMethod;
   }
-    ? DefaultMethod extends ConnectorAuthMethodIds<Type>
+    ? DefaultMethod extends Extract<keyof Configs[Type]["authMethods"], string>
       ? never
       : Type
     : never;
-}[ConnectorType];
-export type ConnectorDefaultAuthMethodsMatchConfig =
-  AssertNever<InvalidDefaultAuthMethodConnectorType>;
+}[keyof Configs & string];
+
+export type ConnectorDefaultAuthMethodsMatchConfig = AssertNever<
+  ConnectorInvalidDefaultAuthMethodType<typeof CONNECTOR_TYPES_DEF>
+>;
 
 export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
 export const CONNECTOR_TYPE_KEYS = Object.freeze(

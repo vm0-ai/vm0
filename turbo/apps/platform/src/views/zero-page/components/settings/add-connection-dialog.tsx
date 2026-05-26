@@ -15,9 +15,9 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import {
-  CONNECTOR_AUTH_METHOD_TYPES,
+  CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS,
   CONNECTOR_TYPES,
-  type ConnectorAuthMethodType,
+  type ConnectorWellKnownAuthMethodId,
   type ConnectorGrantKind,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -187,7 +187,7 @@ type ConnectMethodContentComponent = (
 ) => ReactElement;
 
 type ConnectMethodContentEntry = {
-  authMethod: ConnectorAuthMethodType;
+  authMethod: ConnectorWellKnownAuthMethodId;
   Content: ConnectMethodContentComponent;
 };
 
@@ -888,7 +888,7 @@ function getApiConnectContentComponent(
 
 function getConnectMethodContentComponent(
   item: ConnectorTypeWithStatus,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorWellKnownAuthMethodId,
 ): ConnectMethodContentComponent | null {
   switch (authMethod) {
     case "oauth": {
@@ -915,7 +915,7 @@ function getConnectMethodContentComponent(
 function getConnectMethodContentEntries(
   item: ConnectorTypeWithStatus,
 ): ConnectMethodContentEntry[] {
-  return CONNECTOR_AUTH_METHOD_TYPES.filter((authMethod) => {
+  return CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS.filter((authMethod) => {
     return item.availableAuthMethods.includes(authMethod);
   }).flatMap((authMethod) => {
     const Content = getConnectMethodContentComponent(item, authMethod);
@@ -925,7 +925,7 @@ function getConnectMethodContentEntries(
 
 function hasAuthMethodGrantKind(
   type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodType[],
+  authMethods: readonly ConnectorWellKnownAuthMethodId[],
   kind: ConnectorGrantKind,
 ): boolean {
   return authMethods.some((authMethod) => {
@@ -952,7 +952,7 @@ function ConnectMethodHeading({
   show,
 }: {
   item: ConnectorTypeWithStatus;
-  authMethod: ConnectorAuthMethodType;
+  authMethod: ConnectorWellKnownAuthMethodId;
   show: boolean;
 }) {
   if (!show) {

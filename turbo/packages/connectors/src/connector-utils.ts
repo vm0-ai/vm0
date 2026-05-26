@@ -1,10 +1,11 @@
 import {
-  CONNECTOR_AUTH_METHOD_TYPES,
+  CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodType,
+  type ConnectorAuthMethodId,
+  type ConnectorWellKnownAuthMethodId,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
@@ -41,7 +42,7 @@ export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors
  */
 export function getConnectorAuthMethods(
   type: ConnectorType,
-): Partial<Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>> {
+): Partial<Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>> {
   return CONNECTOR_TYPES[type].authMethods;
 }
 
@@ -50,7 +51,7 @@ export function getConnectorAuthMethods(
  */
 export function getConnectorAuthMethod(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorWellKnownAuthMethodId,
 ): ConnectorAuthMethodConfig | undefined {
   return getConnectorAuthMethods(type)[authMethod];
 }
@@ -81,7 +82,7 @@ function getManualGrantFields(
 
 export function getConnectorManualGrantFields(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorWellKnownAuthMethodId,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
   return getManualGrantFields(getConnectorAuthMethod(type, authMethod));
 }
@@ -196,7 +197,7 @@ export interface AvailableConnectorAuthMethodsOptions {
 
 export function isConnectorAuthMethodAvailable(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorWellKnownAuthMethodId,
   featureStates: ConnectorFeatureStates,
 ): boolean {
   const method = getConnectorAuthMethod(type, authMethod);
@@ -229,11 +230,11 @@ export function getAvailableConnectorAuthMethods(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
-): ConnectorAuthMethodType[] {
+): ConnectorWellKnownAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorAuthMethodType[] = [];
+  const availableAuthMethods: ConnectorWellKnownAuthMethodId[] = [];
 
-  for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
+  for (const authMethod of CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS) {
     if (!getConnectorAuthMethod(type, authMethod)) {
       continue;
     }
@@ -429,9 +430,14 @@ export function getRuntimeAvailableConnectorTypes(
  */
 export function getConnectorSecretNames(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorWellKnownAuthMethodId,
 ): string[] {
-  const method = getConnectorAuthMethod(type, authMethod);
+  return connectorMethodSecretNames(getConnectorAuthMethod(type, authMethod));
+}
+
+function connectorMethodSecretNames(
+  method: ConnectorAuthMethodConfig | undefined,
+): string[] {
   if (!method) {
     return [];
   }
@@ -503,8 +509,8 @@ export function getConnectorDerivedNames(
   for (const type of allTypes) {
     const config = CONNECTOR_TYPES[type];
 
-    const found = CONNECTOR_AUTH_METHOD_TYPES.some((authMethod) => {
-      return getConnectorSecretNames(type, authMethod).includes(secretName);
+    const found = Object.values(config.authMethods).some((method) => {
+      return connectorMethodSecretNames(method).includes(secretName);
     });
     if (!found) {
       continue;
@@ -636,8 +642,8 @@ export function getConnectorManagedSecretNames(
         managed.add(name);
       }
     }
-    for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-      for (const name of getConnectorSecretNames(type, authMethod)) {
+    for (const method of Object.values(config.authMethods)) {
+      for (const name of connectorMethodSecretNames(method)) {
         managed.add(name);
       }
     }
@@ -666,8 +672,8 @@ export function getConnectorTypeForSecretName(
         return type;
       }
     }
-    for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-      if (getConnectorSecretNames(type, authMethod).includes(name)) {
+    for (const method of Object.values(config.authMethods)) {
+      if (connectorMethodSecretNames(method).includes(name)) {
         return type;
       }
     }
