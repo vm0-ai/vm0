@@ -310,7 +310,7 @@ describe("zero built-in generate image command", () => {
               id: "vm0:image-style:notion-illustration",
               source: expect.objectContaining({
                 repo: "vm0-ai/vm0-skills",
-                commit: "b35373eb12112b1e7a0caa372a5cafe02e214dd1",
+                commit: "main",
                 path: "notion-illustration",
               }),
             }),
