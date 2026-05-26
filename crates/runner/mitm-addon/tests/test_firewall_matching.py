@@ -1034,6 +1034,25 @@ class TestThreeLevelMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_network_policy"
 
+    def test_top_level_malformed_network_policy_fails_closed_after_base_match(self):
+        unrelated = matching.match_firewall_request(
+            "https://api.example.com/foo",
+            "GET",
+            self._firewalls(),
+            network_policies="denied",
+        )
+        matched = matching.match_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies="denied",
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_network_policy"
+
     def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch(self):
         policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
 
