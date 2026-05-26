@@ -6,8 +6,8 @@ scheduled lazily only after source events are accepted into the buffer.
 
 Source event idempotency keys are deduped process-wide before destination
 bucketing. The seen-key set survives flushes and is bounded by
-``MAX_SOURCE_IDEMPOTENCY_KEYS`` so duplicate response/error observations do not
-become separate aggregate rows.
+``MAX_SOURCE_IDEMPOTENCY_KEYS``, evicting oldest keys first, so duplicate
+response/error observations do not become separate aggregate rows.
 
 Accepted events are separated by webhook destination (``url``,
 ``sandbox_token``, and ``proxy_log_path``), then aggregated by ``run_id``,
@@ -533,7 +533,7 @@ def buffer_usage_events(
 
 
 def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
-    """Flush the singleton and return the webhook batch count."""
+    """Flush the singleton, log the trigger, and return the webhook batch count."""
     return _usage_event_buffer.flush_usage_events(trigger=trigger)
 
 
@@ -542,7 +542,7 @@ def reset_usage_buffer_for_tests(
     timer_enabled: bool = False,
     timer_factory: _TimerFactory | None = None,
 ) -> None:
-    """Replace singleton buffer state for test isolation."""
+    """Cancel pending timer work and replace singleton state for test isolation."""
     global _usage_event_buffer
     _usage_event_buffer.close()
     _usage_event_buffer = UsageEventBuffer(
