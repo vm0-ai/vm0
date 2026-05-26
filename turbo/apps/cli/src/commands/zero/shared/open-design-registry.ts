@@ -1414,6 +1414,53 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:inkstomp",
+    kind: "image-style",
+    name: "Inkstomp",
+    description:
+      "Loud indie-packaging poster style — full-bleed saturated flat color, a two-line hand-lettered headline, and one weird-cute black brush-ink character.",
+    desc: 'Inkstomp — a loud, hand-screened indie-packaging poster style. Full-bleed saturated flat color filling the entire canvas, a two-line hand-lettered headline (thin arched caps over chunky drop-shadowed display), and one weird-cute character drawn in thick uniform black brush ink. Trigger when the user says /inkstomp, asks for an "inkstomp poster", a "Ray Fenwick / Hattie Stewart packaging poster", an "indie brush-ink flavor card", or briefs in a "palette + headline + character" shape.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/inkstomp",
+    ),
+    targets: ["image", "poster", "website", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "poster",
+      "packaging",
+      "hand-lettered",
+      "brush-ink",
+      "indie",
+      "weird-cute",
+    ],
+    triggers: [
+      "inkstomp",
+      "inkstomp poster",
+      "packaging poster",
+      "brush ink poster",
+      "indie flavor card",
+      "ray fenwick poster",
+      "hattie stewart poster",
+      "hand lettered poster",
+    ],
+    bestFor: [
+      "flavor / packaging posters",
+      "loud single-color campaign cards",
+      "weird-cute character posters",
+      "alliterative two-line headline posters",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 20,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
