@@ -179,7 +179,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
-      expect(screen.getByText("Default Org")).toBeInTheDocument();
+      expect(screen.getByText("Test User")).toBeInTheDocument();
     });
 
     const accountTrigger = screen.getByText("Test User");
@@ -199,7 +199,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Default Org")).toBeInTheDocument();
+      expect(screen.getByText("Test User")).toBeInTheDocument();
     });
 
     click(screen.getByText("Test User"));
@@ -219,7 +219,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Default Org")).toBeInTheDocument();
+      expect(screen.getByText("Test User")).toBeInTheDocument();
     });
 
     click(screen.getByText("Test User"));
@@ -301,7 +301,7 @@ describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
-      expect(screen.getByText("Default Org")).toBeInTheDocument();
+      expect(screen.getByText("Test User")).toBeInTheDocument();
     });
 
     const accountTrigger = screen.getByText("Test User");
