@@ -130,6 +130,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "**.media.strapiapp.com",
       },
+      {
+        protocol: "https",
+        hostname: "cdn.vm0.io",
+      },
     ],
   },
   compiler: {

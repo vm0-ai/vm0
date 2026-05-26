@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   GALLERY_CATEGORIES,
+  GALLERY_CATEGORY_LABELS,
   GALLERY_ITEMS,
   buildGalleryPromptHref,
   type GalleryCategory,
-} from "../../app/[locale]/gallery/data";
+} from "../../app/[locale]/web-design/data";
 
 describe("generation gallery data", () => {
   it("uses unique slugs and covers all visible categories", () => {
@@ -25,20 +26,31 @@ describe("generation gallery data", () => {
     expect([...itemCategories].sort()).toEqual([...visibleCategories].sort());
   });
 
-  it("builds onboarding remix URLs with encoded prompts and resource hints", () => {
-    const item = GALLERY_ITEMS[0];
-    if (!item) {
-      throw new Error("Expected at least one gallery item");
+  it("only shows the hosted website design gallery for now", () => {
+    expect(GALLERY_CATEGORIES).toEqual(["all", "website"]);
+    expect(GALLERY_CATEGORY_LABELS.website).toBe("Website Design");
+    expect(GALLERY_ITEMS.length).toBe(10);
+    expect(
+      GALLERY_ITEMS.every((item) => {
+        return item.category === "website" && item.artifactUrl;
+      }),
+    ).toBe(true);
+  });
+
+  it("builds web showcase URLs for hosted website items", () => {
+    const item = GALLERY_ITEMS.find((candidate) => {
+      return candidate.artifactUrl;
+    });
+    if (!item?.artifactUrl) {
+      throw new Error("Expected at least one hosted gallery website");
     }
 
-    const href = buildGalleryPromptHref(item, "https://app.vm0.ai");
-    const url = new URL(href);
+    const href = buildGalleryPromptHref(item, "en");
+    const url = new URL(href, "https://www.vm0.ai");
 
-    expect(url.origin).toBe("https://app.vm0.ai");
-    expect(url.pathname).toBe("/onboarding");
+    expect(href.startsWith("/en/showcase?")).toBe(true);
+    expect(url.pathname).toBe("/en/showcase");
     expect(url.searchParams.get("prompt")).toContain(item.prompt);
-    expect(url.searchParams.get("prompt")).toContain(
-      "vm0:image-style:notion-illustration",
-    );
+    expect(url.searchParams.get("website")).toBe(item.artifactUrl);
   });
 });

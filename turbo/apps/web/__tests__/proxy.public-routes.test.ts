@@ -73,16 +73,24 @@ describe("proxy middleware: public routes", () => {
     clerkState.protectedPaths = [];
   });
 
-  it("keeps locale-prefixed gallery public", async () => {
-    const request = new NextRequest("https://www.vm0.ai/en/gallery");
+  it("keeps locale-prefixed web design gallery public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/web-design");
 
     await middleware(request, createMockEvent());
 
     expect(clerkState.protectedPaths).toEqual([]);
   });
 
-  it("keeps locale-less gallery public", async () => {
-    const request = new NextRequest("https://www.vm0.ai/gallery");
+  it("keeps locale-less web design gallery public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/web-design");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-prefixed showcase public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/showcase");
 
     await middleware(request, createMockEvent());
 
