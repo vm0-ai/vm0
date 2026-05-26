@@ -239,8 +239,10 @@ const ROLE_SELECTORS: Record<TextContentRole, string> = {
   menuitemradio: '[role="menuitemradio"]',
   tab: '[role="tab"]',
   cell: 'td, [role="cell"]',
-  // Plain <th> inside <thead> has implicit role="columnheader".
-  columnheader: 'th, [role="columnheader"]',
+  // Plain <th> inside <thead> has implicit role="columnheader"; a <th
+  // scope="row"> is a rowheader, so exclude it here to match
+  // @testing-library/dom's role disambiguation.
+  columnheader: 'th:not([scope="row"]), [role="columnheader"]',
   rowheader: 'th[scope="row"], [role="rowheader"]',
   gridcell: '[role="gridcell"]',
 };
