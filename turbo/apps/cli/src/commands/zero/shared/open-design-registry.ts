@@ -1414,6 +1414,50 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:papernook",
+    kind: "image-style",
+    name: "Papernook",
+    description:
+      "Hand-drawn editorial illustration set in a cozy cluttered personal-studio scene with warm cream paper, scratchy ink, painterly gouache fills, dot-eye character face, and dense edge-to-edge thematic props.",
+    desc: 'Hand-drawn editorial illustration in the spirit of a cluttered personal-studio scene. Loose scratchy black ink outlines that wobble, textured gouache fills with visible brush marks, warm cream paper background, simplified dot-eye character face, and a DENSE edge-to-edge composition where a centered character is orbited by thematic props that visually act out the scene metaphor. Default palette: dusty cornflower blue, soft coral pink, fresh sage green, charcoal, warm cream — no mustard, no burnt-orange. Trigger when user says /papernook, asks for a "papernook illustration", a "cozy cluttered editorial scene", a "warm-cream desk scene", or a new piece in this hand-drawn studio-clutter editorial style.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/papernook",
+    ),
+    targets: ["image", "website", "poster", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "editorial",
+      "hand-drawn",
+      "warm-cream",
+      "studio-clutter",
+      "papernook",
+    ],
+    triggers: [
+      "papernook",
+      "cozy cluttered illustration",
+      "warm cream desk scene",
+      "studio clutter illustration",
+      "editorial scene illustration",
+      "hand drawn editorial",
+    ],
+    bestFor: [
+      "blog cover art",
+      "magazine-style editorial illustration",
+      "persona / role illustrations",
+      "scene-as-metaphor concept art",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 20,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
