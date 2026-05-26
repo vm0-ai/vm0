@@ -770,6 +770,27 @@ mod tests {
     }
 
     #[test]
+    fn completed_cleanup_removes_result_when_job_already_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
+
+        queue.cleanup_completed();
+
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
     fn abandoned_cleanup_preserves_active_claim_state() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
@@ -823,6 +844,25 @@ mod tests {
             !queue.claim.exists(),
             "abandoned cleanup should not create a temporary claim"
         );
+    }
+
+    #[test]
+    fn abandoned_cleanup_removes_marker_when_job_already_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let marker =
+            write_abandoned_result_marker(&queue.result, job_id, "local submit abandoned").unwrap();
+
+        queue.cleanup_abandoned(Some(&marker));
+
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[test]
