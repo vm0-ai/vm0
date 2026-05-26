@@ -405,46 +405,50 @@ fn elapsed_since_api_start_ms(api_start_ms: u64, now_ms: u64) -> Option<Duration
     Some(Duration::from_millis(now_ms.saturating_sub(api_start_ms)))
 }
 
-struct ModelProviderPlaceholderEnvKey {
+struct ProtectedModelProviderEnvKey {
     name: &'static str,
-    placeholder: &'static str,
+    placeholder: Option<&'static str>,
 }
 
-const CLAUDE_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[ModelProviderPlaceholderEnvKey] = &[
-    ModelProviderPlaceholderEnvKey {
+const CLAUDE_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[ProtectedModelProviderEnvKey] = &[
+    ProtectedModelProviderEnvKey {
         name: "ANTHROPIC_API_KEY",
-        placeholder: model_provider_placeholders::ANTHROPIC_API_KEY,
+        placeholder: Some(model_provider_placeholders::ANTHROPIC_API_KEY),
     },
-    ModelProviderPlaceholderEnvKey {
+    ProtectedModelProviderEnvKey {
         name: "ANTHROPIC_AUTH_TOKEN",
-        placeholder: model_provider_placeholders::ANTHROPIC_AUTH_TOKEN,
+        placeholder: Some(model_provider_placeholders::ANTHROPIC_AUTH_TOKEN),
     },
-    ModelProviderPlaceholderEnvKey {
+    ProtectedModelProviderEnvKey {
         name: "CLAUDE_CODE_OAUTH_TOKEN",
-        placeholder: model_provider_placeholders::CLAUDE_CODE_OAUTH_TOKEN,
+        placeholder: Some(model_provider_placeholders::CLAUDE_CODE_OAUTH_TOKEN),
     },
 ];
 
-const CODEX_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[ModelProviderPlaceholderEnvKey] = &[
-    ModelProviderPlaceholderEnvKey {
+const CODEX_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[ProtectedModelProviderEnvKey] = &[
+    ProtectedModelProviderEnvKey {
         name: "OPENAI_API_KEY",
-        placeholder: model_provider_placeholders::OPENAI_API_KEY,
+        placeholder: Some(model_provider_placeholders::OPENAI_API_KEY),
     },
-    ModelProviderPlaceholderEnvKey {
+    ProtectedModelProviderEnvKey {
         name: "CHATGPT_ACCESS_TOKEN",
-        placeholder: model_provider_placeholders::CHATGPT_ACCESS_TOKEN,
+        placeholder: Some(model_provider_placeholders::CHATGPT_ACCESS_TOKEN),
     },
-    ModelProviderPlaceholderEnvKey {
+    ProtectedModelProviderEnvKey {
         name: "CHATGPT_ACCOUNT_ID",
-        placeholder: model_provider_placeholders::CHATGPT_ACCOUNT_ID,
+        placeholder: Some(model_provider_placeholders::CHATGPT_ACCOUNT_ID),
     },
-    ModelProviderPlaceholderEnvKey {
+    ProtectedModelProviderEnvKey {
         name: "CHATGPT_REFRESH_TOKEN",
-        placeholder: model_provider_placeholders::CHATGPT_REFRESH_TOKEN,
+        placeholder: Some(model_provider_placeholders::CHATGPT_REFRESH_TOKEN),
+    },
+    ProtectedModelProviderEnvKey {
+        name: "CHATGPT_ID_TOKEN",
+        placeholder: None,
     },
 ];
 
-const MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[&[ModelProviderPlaceholderEnvKey]] = &[
+const MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS: &[&[ProtectedModelProviderEnvKey]] = &[
     CLAUDE_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS,
     CODEX_MODEL_PROVIDER_PLACEHOLDER_ENV_KEYS,
 ];
@@ -459,7 +463,11 @@ fn validate_model_provider_env_placeholders(context: &ExecutionContext) -> Resul
         .flat_map(|protected_keys| protected_keys.iter())
         .filter_map(|protected_key| {
             let value = environment.get(protected_key.name)?;
-            if value.is_empty() || value == protected_key.placeholder {
+            if value.is_empty()
+                || protected_key
+                    .placeholder
+                    .is_some_and(|placeholder| value == placeholder)
+            {
                 None
             } else {
                 Some(protected_key.name)
@@ -2505,6 +2513,17 @@ mod tests {
         let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
 
         assert!(error.contains("CHATGPT_REFRESH_TOKEN"));
+        assert!(!error.contains(secret));
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_rejects_chatgpt_id_token() {
+        let secret = "hdr.real-chatgpt-id-token.sig";
+        let ctx = context_with_env(HashMap::from([("CHATGPT_ID_TOKEN".into(), secret.into())]));
+
+        let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+        assert!(error.contains("CHATGPT_ID_TOKEN"));
         assert!(!error.contains(secret));
     }
 
