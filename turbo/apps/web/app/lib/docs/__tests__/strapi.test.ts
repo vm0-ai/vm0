@@ -218,6 +218,62 @@ describe("docs/strapi", () => {
     expect(capturedStatus).toBe("draft");
   });
 
+  it("orders known sections by intended reading order, not alphabetically", async () => {
+    server.use(
+      http.get(`${STRAPI_URL}/api/docs-pages`, () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: 100,
+              title: "Skills",
+              slug: "skills",
+              path: "skills",
+              section: "Core concepts",
+              order: 10,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              publishedAt: "2026-01-01T00:00:00.000Z",
+              body: "Skills body.",
+            },
+            {
+              id: 101,
+              title: "Quickstart",
+              slug: "quickstart",
+              path: "quickstart",
+              section: "Get started",
+              order: 10,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              publishedAt: "2026-01-01T00:00:00.000Z",
+              body: "Quickstart body.",
+            },
+            {
+              id: 102,
+              title: "What is Zero?",
+              slug: "what-is-zero",
+              path: "what-is-zero",
+              section: "Overview",
+              order: 10,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              publishedAt: "2026-01-01T00:00:00.000Z",
+              body: "Overview body.",
+            },
+          ],
+          meta: {},
+        });
+      }),
+    );
+
+    const pages = await getDocsPagesFromStrapi("en");
+
+    expect(
+      pages.map((page) => {
+        return page.section.title;
+      }),
+    ).toEqual(["Overview", "Get started", "Core concepts"]);
+  });
+
   it("requests draft content for the page list when draft option is set", async () => {
     let capturedStatus: string | null = null;
 

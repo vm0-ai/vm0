@@ -115,6 +115,23 @@ function resolvePathAndSlug(page: StrapiDocsPage): {
   return { path, slug };
 }
 
+// Sections are stored as free-text strings on docs-page, so the data layer
+// has no natural ordering for them. This map encodes the intended reading
+// order; sections not listed sort to the end alphabetically.
+const SECTION_ORDER: Record<string, number> = {
+  Overview: 10,
+  "Get started": 20,
+  "Getting Started": 20,
+  "Core concepts": 30,
+  "Core Concepts": 30,
+  "What Zero delivers": 40,
+  Channels: 50,
+  Connectors: 60,
+  "Who it's for": 70,
+};
+
+const UNKNOWN_SECTION_ORDER = 1000;
+
 function resolveSection(
   section: string | StrapiDocsSection | undefined,
 ): DocsSection {
@@ -123,14 +140,20 @@ function resolveSection(
     if (!title) {
       return { title: "Docs", slug: "docs", order: 0 };
     }
-    return { title, slug: slugify(title), order: 0 };
+    return {
+      title,
+      slug: slugify(title),
+      order: SECTION_ORDER[title] ?? UNKNOWN_SECTION_ORDER,
+    };
   }
   const sectionTitle = section?.title || section?.name || "Docs";
   const sectionSlug = section?.slug || slugify(sectionTitle);
+  const explicitOrder = section?.order;
   return {
     title: sectionTitle,
     slug: sectionSlug,
-    order: section?.order ?? 0,
+    order:
+      explicitOrder ?? SECTION_ORDER[sectionTitle] ?? UNKNOWN_SECTION_ORDER,
   };
 }
 
