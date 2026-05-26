@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.388.1](https://github.com/vm0-ai/vm0/compare/web-v12.388.0...web-v12.388.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* prevent stale computer-use hosts from reactivating ([#14915](https://github.com/vm0-ai/vm0/issues/14915)) ([5732e94](https://github.com/vm0-ai/vm0/commit/5732e9456429c15ac4506c58944ee7ba3926bef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.3
+    * @vm0/core bumped to 8.293.5
+    * @vm0/db bumped to 1.18.14
+
 ## [12.388.0](https://github.com/vm0-ai/vm0/compare/web-v12.387.6...web-v12.388.0) (2026-05-26)
 
 
