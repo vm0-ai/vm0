@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.163.1](https://github.com/vm0-ai/vm0/compare/cli-v9.163.0...cli-v9.163.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* add static website hosting context ([#14907](https://github.com/vm0-ai/vm0/issues/14907)) ([af1204d](https://github.com/vm0-ai/vm0/commit/af1204d019a80b6711283f176ab9114909f2dc68))
+
 ## [9.163.0](https://github.com/vm0-ai/vm0/compare/cli-v9.162.2...cli-v9.163.0) (2026-05-26)
 
 
