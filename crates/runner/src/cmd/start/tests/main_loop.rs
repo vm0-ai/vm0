@@ -55,9 +55,20 @@ async fn install_usage_flush_child(config: &mut RunConfig) {
         r#"#!/usr/bin/env bash
 set -euo pipefail
 fifo="$0.fifo"
+base_dir="$(dirname "$0")"
+request="$base_dir/mitm-addon/usage-flush-request"
+pending="$base_dir/mitm-addon/usage-pending"
+write_pending_snapshot() {
+  [[ -f "$request" ]] || return 0
+  flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$request")"
+  state_id="$(sed -n 's/.*"usageStateId":"\([^"]*\)".*/\1/p' "$request")"
+  [[ -n "$flush_id" && -n "$state_id" ]] || return 0
+  now_ms="$(date +%s%3N)"
+  printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flows":0,"buffered":0,"reports":0,"flushRequestId":"%s"}' "$$" "$state_id" "$now_ms" "$flush_id" > "$pending"
+}
 mkfifo "$fifo"
 exec 3<>"$fifo"
-trap ':' USR1
+trap write_pending_snapshot USR1
 trap 'exit 0' TERM
 echo ready
 while true; do read -r _ <&3 || true; done
