@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
@@ -181,9 +182,27 @@ class UsageEventBuffer:
         flush_sequence: int,
         summaries: list[_FlushSummary],
     ) -> None:
+        started_at = time.monotonic()
         try:
-            _log_flush_summaries(trigger, flush_sequence, summaries)
+            _log_flush_summaries("started", trigger, flush_sequence, summaries)
             _enqueue_batches(batches)
+            _log_flush_summaries(
+                "completed",
+                trigger,
+                flush_sequence,
+                summaries,
+                duration_ms=_elapsed_ms(started_at),
+            )
+        except Exception as exc:
+            _log_flush_summaries(
+                "failed",
+                trigger,
+                flush_sequence,
+                summaries,
+                duration_ms=_elapsed_ms(started_at),
+                error_type=type(exc).__name__,
+            )
+            raise
         finally:
             if enqueuing_count:
                 with self._lock:
@@ -415,26 +434,42 @@ def _build_flush_summaries(
 
 
 def _log_flush_summaries(
+    phase: str,
     trigger: str,
     flush_sequence: int,
     summaries: Iterable[_FlushSummary],
+    *,
+    duration_ms: int | None = None,
+    error_type: str | None = None,
 ) -> None:
     for summary in summaries:
         if not summary.proxy_log_path:
             continue
+        extra: dict[str, object] = {
+            "type": "usage_event_buffer_flush",
+            "phase": phase,
+            "trigger": trigger,
+            "flush_sequence": flush_sequence,
+            "source_event_count": summary.source_event_count,
+            "aggregate_event_count": summary.aggregate_event_count,
+            "webhook_batch_count": summary.webhook_batch_count,
+            "run_count": len(summary.run_ids),
+            "destination_count": len(summary.destinations),
+        }
+        if duration_ms is not None:
+            extra["duration_ms"] = duration_ms
+        if error_type is not None:
+            extra["error_type"] = error_type
         log_proxy_entry(
             summary.proxy_log_path,
-            "info",
-            "Usage event buffer flushed",
-            type="usage_event_buffer_flush",
-            trigger=trigger,
-            flush_sequence=flush_sequence,
-            source_event_count=summary.source_event_count,
-            aggregate_event_count=summary.aggregate_event_count,
-            webhook_batch_count=summary.webhook_batch_count,
-            run_count=len(summary.run_ids),
-            destination_count=len(summary.destinations),
+            "error" if phase == "failed" else "info",
+            f"Usage event buffer flush {phase}",
+            **extra,
         )
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return max(0, int((time.monotonic() - started_at) * 1000))
 
 
 def _encode_uuid_name(parts: tuple[str, ...]) -> str:
