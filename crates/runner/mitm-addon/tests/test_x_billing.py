@@ -350,7 +350,7 @@ class TestOverrideClassification:
 
 class TestSeedConsistency:
     """Every bucket the classifier can emit must have a pricing row in
-    ``turbo/apps/web/scripts/dev-seed.ts``.  Without that, the billing
+    ``turbo/apps/api/src/scripts/dev-seed.ts``.  Without that, the billing
     processor would stamp ``billing_error = 'missing_pricing'`` and
     charge $0 for legitimate requests.
     """
@@ -360,7 +360,8 @@ class TestSeedConsistency:
             pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
             / "turbo"
             / "apps"
-            / "web"
+            / "api"
+            / "src"
             / "scripts"
             / "dev-seed.ts"
         )
