@@ -1298,19 +1298,22 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         match proxy::write_usage_flush_request(&addon_dir, &usage_flush_target).await {
             Ok(usage_flush_request) => {
                 info!("requesting proxy usage flush");
-                mitm.request_usage_flush();
-                info!("waiting for proxy usage reports to flush");
-                let flushed = proxy::wait_usage_flush_requesting(
-                    &addon_dir,
-                    proxy::USAGE_FLUSH_TIMEOUT,
-                    &usage_flush_request,
-                    || mitm.request_usage_flush(),
-                )
-                .await;
-                if flushed {
-                    info!("all usage reports flushed");
+                if mitm.request_usage_flush() {
+                    info!("waiting for proxy usage reports to flush");
+                    let flushed = proxy::wait_usage_flush_requesting(
+                        &addon_dir,
+                        proxy::USAGE_FLUSH_TIMEOUT,
+                        &usage_flush_request,
+                        || mitm.request_usage_flush(),
+                    )
+                    .await;
+                    if flushed {
+                        info!("all usage reports flushed");
+                    } else {
+                        warn!("usage flush did not complete, some reports may be lost");
+                    }
                 } else {
-                    warn!("usage flush timed out, some reports may be lost");
+                    warn!("failed to request proxy usage flush, skipping usage wait");
                 }
             }
             Err(e) => {

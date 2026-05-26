@@ -319,13 +319,15 @@ impl MitmProxy {
     }
 
     /// Ask the running addon to flush buffered usage before shutdown.
-    pub fn request_usage_flush(&self) {
+    pub fn request_usage_flush(&self) -> bool {
         let Some(child) = self.child.as_ref() else {
-            return;
+            return false;
         };
-        if !send_usage_flush_signal(child) {
+        let signaled = send_usage_flush_signal(child);
+        if !signaled {
             warn!("failed to request mitmdump usage flush");
         }
+        signaled
     }
 
     /// Prepare for restart: kill any lingering child, permanently silence
@@ -507,7 +509,7 @@ async fn wait_usage_flush(
     timeout: Duration,
     request: &UsageFlushRequest,
 ) -> bool {
-    wait_usage_flush_requesting(addon_dir, timeout, request, || {}).await
+    wait_usage_flush_requesting(addon_dir, timeout, request, || true).await
 }
 
 /// Wait for proxy usage drain while actively asking the addon for fresh snapshots.
@@ -515,7 +517,7 @@ pub async fn wait_usage_flush_requesting(
     addon_dir: &Path,
     timeout: Duration,
     request: &UsageFlushRequest,
-    mut request_flush: impl FnMut(),
+    mut request_flush: impl FnMut() -> bool,
 ) -> bool {
     let path = addon_dir.join("usage-pending");
     let started_at = tokio::time::Instant::now();
@@ -548,7 +550,13 @@ pub async fn wait_usage_flush_requesting(
         };
         let now = tokio::time::Instant::now();
         if now >= next_flush_request_at {
-            request_flush();
+            if !request_flush() {
+                warn!(
+                    reason = %not_ready,
+                    "usage flush request failed, proceeding with proxy stop"
+                );
+                return false;
+            }
             next_flush_request_at = now + USAGE_FLUSH_REQUEST_INTERVAL;
         }
         if now >= deadline {
@@ -1858,7 +1866,7 @@ while true; do read -r _ <&3 || true; done
             .unwrap();
         assert_eq!(ready.as_deref(), Some("ready"));
 
-        proxy.request_usage_flush();
+        assert!(proxy.request_usage_flush());
 
         let status =
             tokio::time::timeout(Duration::from_secs(2), proxy.child.as_mut().unwrap().wait())
@@ -1868,6 +1876,13 @@ while true; do read -r _ <&3 || true; done
         assert!(status.success(), "child exited with {status}");
         assert!(signal_file.exists(), "child did not observe SIGUSR1");
         proxy.child = None;
+    }
+
+    #[test]
+    fn request_usage_flush_returns_false_without_child() {
+        let (proxy, _crash_rx) = MitmProxy::noop();
+
+        assert!(!proxy.request_usage_flush());
     }
 
     fn usage_target() -> UsageFlushTarget {
@@ -2048,6 +2063,7 @@ while true; do read -r _ <&3 || true; done
         let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
             requests.fetch_add(1, Ordering::SeqCst);
             std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
         })
         .await;
 
@@ -2069,6 +2085,7 @@ while true; do read -r _ <&3 || true; done
         let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
             requests.fetch_add(1, Ordering::SeqCst);
             std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
         })
         .await;
 
@@ -2089,6 +2106,7 @@ while true; do read -r _ <&3 || true; done
         let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
             requests.fetch_add(1, Ordering::SeqCst);
             std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
         })
         .await;
 
@@ -2110,12 +2128,32 @@ while true; do read -r _ <&3 || true; done
             &request,
             || {
                 requests.fetch_add(1, Ordering::SeqCst);
+                true
             },
         )
         .await;
 
         assert!(!flushed);
         assert_eq!(request_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_returns_false_when_repeat_request_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        std::fs::write(dir.path().join("usage-pending"), usage_state(0, 2, 0)).unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let requests = std::sync::Arc::clone(&request_count);
+        let flushed =
+            wait_usage_flush_requesting(dir.path(), Duration::from_secs(5), &request, || {
+                requests.fetch_add(1, Ordering::SeqCst);
+                false
+            })
+            .await;
+
+        assert!(!flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test(start_paused = true)]
