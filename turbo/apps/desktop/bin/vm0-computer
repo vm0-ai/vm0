@@ -1,3 +1,0 @@
-#!/bin/sh
-DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec node "$DIR/vm0-computer.mjs" "$@"

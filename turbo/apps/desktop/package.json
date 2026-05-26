@@ -6,10 +6,11 @@
   "description": "Zero desktop shell",
   "main": "dist/main.js",
   "bin": {
-    "vm0-computer": "bin/vm0-computer"
+    "vm0-computer": "dist/vm0-computer.js"
   },
   "scripts": {
-    "build": "pnpm build:native && pnpm build:electron && pnpm build:renderer",
+    "build": "pnpm build:native && pnpm build:electron && pnpm build:cli && pnpm build:renderer",
+    "build:cli": "tsup src/vm0-computer.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --external electron && chmod +x dist/vm0-computer.js",
     "build:electron": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
     "build:native": "node scripts/build-native-helper.js",
     "build:renderer": "vite build --config vite.renderer.config.ts",
@@ -21,7 +22,7 @@
     "package": "pnpm build && electron-forge package --platform darwin",
     "start": "electron-forge start",
     "test": "vitest run",
-    "vm0-computer": "node bin/vm0-computer.mjs"
+    "vm0-computer": "pnpm build:cli && node dist/vm0-computer.js"
   },
   "dependencies": {
     "@tabler/icons-react": "^3.36.1",

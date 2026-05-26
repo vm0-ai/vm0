@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 
 const execFileAsync = promisify(execFile);
@@ -12,6 +12,7 @@ const desktopRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+const cliPath = path.join(desktopRoot, "dist", "vm0-computer.js");
 
 async function createHelper(
   response: unknown,
@@ -122,6 +123,10 @@ process.stdin.on("data", (chunk) => {
 }
 
 describe("computer use native backend", () => {
+  beforeAll(async () => {
+    await execFileAsync("pnpm", ["build:cli"], { cwd: desktopRoot });
+  }, 30_000);
+
   it("reads permissions from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",
@@ -392,7 +397,7 @@ describe("computer use native backend", () => {
       const { stdout } = await execFileAsync(
         process.execPath,
         [
-          path.join(desktopRoot, "bin", "vm0-computer.mjs"),
+          cliPath,
           "run",
           JSON.stringify(commandInput),
           "--helper-path",
@@ -428,7 +433,6 @@ describe("computer use native backend", () => {
 
   it("maps Zero CLI command names through vm0-computer", async () => {
     const helper = await createSessionHelper();
-    const cliPath = path.join(desktopRoot, "bin", "vm0-computer.mjs");
     const commandArgs = [
       ["list-apps"],
       ["get-app-state", "--app", "Safari"],
@@ -536,8 +540,6 @@ describe("computer use native backend", () => {
   });
 
   it("does not expose native command kinds as vm0-computer commands", async () => {
-    const cliPath = path.join(desktopRoot, "bin", "vm0-computer.mjs");
-
     await expect(
       execFileAsync(
         process.execPath,

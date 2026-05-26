@@ -1,13 +1,33 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const appRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+type JsonObject = Record<string, unknown>;
+
+interface RuntimeCommand {
+  readonly kind: string;
+  readonly payload?: JsonObject;
+}
+
+interface RuntimeResponse {
+  readonly id?: unknown;
+  readonly status?: unknown;
+  readonly result?: unknown;
+  readonly error?: unknown;
+}
+
+interface ParsedArgs {
+  readonly positional: readonly string[];
+  readonly values: ReadonlyMap<string, string>;
+}
+
+interface PendingResponse {
+  readonly resolve: (response: RuntimeResponse) => void;
+  readonly reject: (error: Error) => void;
+}
+
+const appRoot = path.resolve(__dirname, "..");
 const defaultHelperPath = path.join(
   appRoot,
   "native",
@@ -26,9 +46,9 @@ const helperCandidates = [
     "release",
     "computer-use-helper",
   ),
-].filter(Boolean);
+].filter((candidate): candidate is string => Boolean(candidate));
 
-const zeroCommands = new Map([
+const zeroCommands = new Map<string, string>([
   ["list-apps", "apps.list"],
   ["get-app-state", "app.state"],
   ["open-app", "app.open"],
@@ -40,7 +60,7 @@ const zeroCommands = new Map([
   ["press-key", "keyboard.press_key"],
 ]);
 
-function usage() {
+function usage(): string {
   return `Usage:
   vm0-computer serve [--helper-path PATH]
   vm0-computer run JSON [--helper-path PATH]
@@ -55,16 +75,45 @@ function usage() {
   vm0-computer press-key --app APP --key KEY`;
 }
 
-function fail(message, code = 1) {
+function fail(message: string, code = 1): never {
   console.error(message);
   process.exit(code);
 }
 
-function parseArgs(argv) {
-  const values = new Map();
-  const positional = [];
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRuntimeCommand(value: unknown): value is RuntimeCommand {
+  return (
+    isJsonObject(value) &&
+    typeof value.kind === "string" &&
+    (value.payload === undefined || isJsonObject(value.payload))
+  );
+}
+
+function parseRuntimeCommands(raw: string): readonly RuntimeCommand[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    if (parsed.every(isRuntimeCommand)) {
+      return parsed;
+    }
+    fail("vm0-computer run requires every array item to be a runtime command");
+  }
+  if (isRuntimeCommand(parsed)) {
+    return [parsed];
+  }
+  fail("vm0-computer run requires a runtime command or command array");
+}
+
+function parseArgs(argv: readonly string[]): ParsedArgs {
+  const values = new Map<string, string>();
+  const positional: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (!arg) {
+      continue;
+    }
     if (!arg.startsWith("--")) {
       positional.push(arg);
       continue;
@@ -89,7 +138,7 @@ function parseArgs(argv) {
   return { positional, values };
 }
 
-function helperPathFrom(values) {
+function helperPathFrom(values: ReadonlyMap<string, string>): string {
   const explicit = values.get("helper-path");
   if (explicit) {
     return explicit;
@@ -100,12 +149,18 @@ function helperPathFrom(values) {
   return helperPath ?? defaultHelperPath;
 }
 
-function stringValue(values, key) {
+function stringValue(
+  values: ReadonlyMap<string, string>,
+  key: string,
+): string | undefined {
   const value = values.get(key);
   return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function numberValue(values, key) {
+function numberValue(
+  values: ReadonlyMap<string, string>,
+  key: string,
+): number | undefined {
   const value = stringValue(values, key);
   if (!value) {
     return undefined;
@@ -117,8 +172,11 @@ function numberValue(values, key) {
   return parsed;
 }
 
-function commandFromArgs(kind, values) {
-  const payload = {};
+function commandFromArgs(
+  kind: string,
+  values: ReadonlyMap<string, string>,
+): RuntimeCommand {
+  const payload: JsonObject = {};
   const app = stringValue(values, "app");
   const snapshotId = stringValue(values, "snapshot-id");
   const elementId =
@@ -137,14 +195,15 @@ function commandFromArgs(kind, values) {
   if (pages !== undefined) payload.pages = pages;
   if (clickCount !== undefined) payload.clickCount = clickCount;
 
-  for (const [option, field] of [
+  const optionMappings: readonly (readonly [string, string])[] = [
     ["button", "button"],
     ["direction", "direction"],
     ["value", "value"],
     ["text", "text"],
     ["key", "key"],
     ["action", "action"],
-  ]) {
+  ];
+  for (const [option, field] of optionMappings) {
     const value = stringValue(values, option);
     if (value) payload[field] = value;
   }
@@ -152,19 +211,23 @@ function commandFromArgs(kind, values) {
 }
 
 class RuntimeClient {
-  constructor(helperPath) {
+  private readonly child: ChildProcessWithoutNullStreams;
+  private buffer = "";
+  private counter = 0;
+  private readonly pending = new Map<string, PendingResponse>();
+  private stderr = "";
+
+  constructor(helperPath: string) {
     this.child = spawn(helperPath, ["serve"], {
       stdio: ["pipe", "pipe", "pipe"],
     });
-    this.buffer = "";
-    this.counter = 0;
-    this.pending = new Map();
-    this.stderr = "";
 
     this.child.stdout.setEncoding("utf8");
-    this.child.stdout.on("data", (chunk) => this.handleStdout(chunk));
+    this.child.stdout.on("data", (chunk: string) => {
+      this.handleStdout(chunk);
+    });
     this.child.stderr.setEncoding("utf8");
-    this.child.stderr.on("data", (chunk) => {
+    this.child.stderr.on("data", (chunk: string) => {
       this.stderr += chunk;
     });
     this.child.on("close", (code) => {
@@ -180,13 +243,13 @@ class RuntimeClient {
     });
   }
 
-  send(command) {
+  send(command: RuntimeCommand): Promise<RuntimeResponse> {
     const id = `cli_${(this.counter += 1).toString()}`;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this.child.stdin.write(
         `${JSON.stringify({ id, ...command })}\n`,
-        (error) => {
+        (error: Error | null | undefined) => {
           if (error) {
             this.pending.delete(id);
             reject(error);
@@ -196,11 +259,11 @@ class RuntimeClient {
     });
   }
 
-  close() {
+  close(): void {
     this.child.stdin.end();
   }
 
-  handleStdout(chunk) {
+  private handleStdout(chunk: string): void {
     this.buffer += chunk;
     while (this.buffer.includes("\n")) {
       const index = this.buffer.indexOf("\n");
@@ -212,8 +275,11 @@ class RuntimeClient {
     }
   }
 
-  handleLine(line) {
-    const response = JSON.parse(line);
+  private handleLine(line: string): void {
+    const response: unknown = JSON.parse(line);
+    if (!isJsonObject(response) || typeof response.id !== "string") {
+      return;
+    }
     const pending = this.pending.get(response.id);
     if (!pending) {
       return;
@@ -223,18 +289,22 @@ class RuntimeClient {
   }
 }
 
-async function runServe(helperPath) {
+async function runServe(helperPath: string): Promise<void> {
   const child = spawn(helperPath, ["serve"], { stdio: "inherit" });
-  const code = await new Promise((resolve) => {
+  const code = await new Promise<number | null>((resolve) => {
     child.on("close", resolve);
   });
   process.exit(typeof code === "number" ? code : 1);
 }
 
-async function runCommands(helperPath, commands, outputArray) {
+async function runCommands(
+  helperPath: string,
+  commands: readonly RuntimeCommand[],
+  outputArray: boolean,
+): Promise<void> {
   const client = new RuntimeClient(helperPath);
   try {
-    const responses = [];
+    const responses: RuntimeResponse[] = [];
     for (const command of commands) {
       responses.push(await client.send(command));
     }
@@ -246,30 +316,36 @@ async function runCommands(helperPath, commands, outputArray) {
   }
 }
 
-const { positional, values } = parseArgs(process.argv.slice(2));
-const command = positional[0];
-if (!command || command === "--help" || command === "help") {
-  console.log(usage());
-  process.exit(command ? 0 : 1);
-}
-
-const helperPath = helperPathFrom(values);
-if (command === "serve") {
-  await runServe(helperPath);
-} else if (command === "run") {
-  const raw = positional[1];
-  if (!raw) {
-    fail("vm0-computer run requires a JSON command or command array");
+async function main(): Promise<void> {
+  const { positional, values } = parseArgs(process.argv.slice(2));
+  const command = positional[0];
+  if (!command || command === "--help" || command === "help") {
+    console.log(usage());
+    process.exit(command ? 0 : 1);
   }
-  const parsed = JSON.parse(raw);
-  const commands = Array.isArray(parsed) ? parsed : [parsed];
-  await runCommands(helperPath, commands, Array.isArray(parsed));
-} else if (zeroCommands.has(command)) {
-  await runCommands(
-    helperPath,
-    [commandFromArgs(zeroCommands.get(command), values)],
-    false,
-  );
-} else {
+
+  const helperPath = helperPathFrom(values);
+  if (command === "serve") {
+    await runServe(helperPath);
+    return;
+  }
+  if (command === "run") {
+    const raw = positional[1];
+    if (!raw) {
+      fail("vm0-computer run requires a JSON command or command array");
+    }
+    const commands = parseRuntimeCommands(raw);
+    await runCommands(helperPath, commands, commands.length > 1);
+    return;
+  }
+  const mappedKind = zeroCommands.get(command);
+  if (mappedKind) {
+    await runCommands(helperPath, [commandFromArgs(mappedKind, values)], false);
+    return;
+  }
   fail(`Unknown vm0-computer command: ${command}\n\n${usage()}`);
 }
+
+main().catch((error: unknown) => {
+  fail(error instanceof Error ? error.message : String(error));
+});
