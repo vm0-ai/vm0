@@ -67,7 +67,12 @@ describe("computer use native backend", () => {
   it("reads coordinate click screen points from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",
-      result: { screenX: 900, screenY: 800 },
+      result: {
+        dispatchMode: "background_mouse_event",
+        frontmostRestored: true,
+        screenX: 900,
+        screenY: 800,
+      },
     });
 
     try {
@@ -90,7 +95,39 @@ describe("computer use native backend", () => {
           button: "right",
           clickCount: 2,
         }),
-      ).resolves.toEqual({ screenX: 900, screenY: 800 });
+      ).resolves.toEqual({
+        dispatchMode: "background_mouse_event",
+        frontmostRestored: true,
+        screenX: 900,
+        screenY: 800,
+      });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads app-open dispatch metadata from the native helper", async () => {
+    const helper = await createHelper({
+      status: "succeeded",
+      result: {
+        dispatchMode: "background_app_open",
+        dispatchTarget: "target_app",
+        inputRisk: "background_app_launch",
+        frontmostRestored: false,
+      },
+    });
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+      });
+
+      await expect(backend.openApp("Things")).resolves.toEqual({
+        dispatchMode: "background_app_open",
+        dispatchTarget: "target_app",
+        inputRisk: "background_app_launch",
+        frontmostRestored: false,
+      });
     } finally {
       await rm(helper.dir, { recursive: true, force: true });
     }
@@ -99,7 +136,11 @@ describe("computer use native backend", () => {
   it("reads normalized key names from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",
-      result: { normalizedKey: "Command+K" },
+      result: {
+        dispatchMode: "background_keyboard_event",
+        frontmostRestored: false,
+        normalizedKey: "Command+K",
+      },
     });
 
     try {
@@ -109,7 +150,11 @@ describe("computer use native backend", () => {
 
       await expect(
         backend.pressKey({ app: "Safari", key: "cmd+k" }),
-      ).resolves.toEqual({ normalizedKey: "Command+K" });
+      ).resolves.toEqual({
+        dispatchMode: "background_keyboard_event",
+        frontmostRestored: false,
+        normalizedKey: "Command+K",
+      });
     } finally {
       await rm(helper.dir, { recursive: true, force: true });
     }

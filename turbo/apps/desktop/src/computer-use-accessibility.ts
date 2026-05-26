@@ -1257,14 +1257,12 @@ async function openApp(
   app: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.openApp(app);
+  const nativeResult = await nativeBackend.openApp(app);
   return {
     status: "succeeded",
     result: {
       app,
-      dispatchMode: "background_app_open",
-      dispatchTarget: "target_app",
-      inputRisk: "background_app_launch",
+      ...nativeResult,
       text: `Opened ${app}`,
     },
   };
@@ -1377,7 +1375,7 @@ async function clickElement(args: {
     if ("status" in target) {
       return target;
     }
-    await args.nativeBackend.clickElement({
+    const nativeResult = await args.nativeBackend.clickElement({
       app: args.app,
       elementId: target.elementId,
       button: args.button,
@@ -1390,9 +1388,7 @@ async function clickElement(args: {
         ...elementTargetResult(target),
         button: args.button,
         clickCount: args.clickCount,
-        dispatchMode: "accessibility_action",
-        dispatchTarget: "element",
-        inputRisk: "targeted_app_action",
+        ...nativeResult,
         text: `Clicked ${elementTargetText(target)}`,
       },
     };
@@ -1418,6 +1414,7 @@ async function clickElement(args: {
       button: args.button,
       clickCount: args.clickCount,
     });
+    const { screenX, screenY, ...nativeResult } = clickPoint;
     return {
       status: "succeeded",
       result: {
@@ -1425,13 +1422,11 @@ async function clickElement(args: {
         snapshotId: snapshot.snapshotId,
         x: args.x,
         y: args.y,
-        screenX: clickPoint.screenX,
-        screenY: clickPoint.screenY,
+        screenX,
+        screenY,
         button: args.button,
         clickCount: args.clickCount,
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_pointer",
+        ...nativeResult,
         text: `Clicked ${args.x},${args.y}`,
       },
     };
@@ -1447,7 +1442,7 @@ async function setElementValue(
   value: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.setElementValue({
+  const nativeResult = await nativeBackend.setElementValue({
     app,
     elementId: target.elementId,
     value,
@@ -1457,9 +1452,7 @@ async function setElementValue(
     result: {
       app,
       ...elementTargetResult(target),
-      dispatchMode: "accessibility_value",
-      dispatchTarget: "element",
-      inputRisk: "targeted_app_text",
+      ...nativeResult,
       text: `Set ${elementTargetText(target)}`,
     },
   };
@@ -1471,7 +1464,7 @@ async function performElementAction(
   action: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.performElementAction({
+  const nativeResult = await nativeBackend.performElementAction({
     app,
     elementId: target.elementId,
     action,
@@ -1482,9 +1475,7 @@ async function performElementAction(
       app,
       ...elementTargetResult(target),
       action,
-      dispatchMode: "accessibility_action",
-      dispatchTarget: "element",
-      inputRisk: "targeted_app_action",
+      ...nativeResult,
       text: `Performed ${action}`,
     },
   };
@@ -1500,10 +1491,7 @@ async function typeText(
     status: "succeeded",
     result: {
       app,
-      dispatchMode: "accessibility_value",
-      dispatchTarget: "focused_editable_element",
-      inputRisk: "targeted_app_text",
-      role: result.role,
+      ...result,
       text: "Typed text",
     },
   };
@@ -1515,15 +1503,14 @@ async function pressKey(
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
   const result = await nativeBackend.pressKey({ app, key });
+  const { normalizedKey, ...nativeResult } = result;
   return {
     status: "succeeded",
     result: {
       app,
-      key: result.normalizedKey,
-      dispatchMode: "background_keyboard_event",
-      dispatchTarget: "app_process",
-      inputRisk: "background_app_shortcut",
-      text: `Pressed ${result.normalizedKey}`,
+      key: normalizedKey,
+      ...nativeResult,
+      text: `Pressed ${normalizedKey}`,
     },
   };
 }
@@ -1535,7 +1522,7 @@ async function scrollElement(
   pages: number,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  await nativeBackend.scrollElement({
+  const nativeResult = await nativeBackend.scrollElement({
     app,
     elementId: target.elementId,
     direction,
@@ -1548,9 +1535,7 @@ async function scrollElement(
       ...elementTargetResult(target),
       direction,
       pages,
-      dispatchMode: "accessibility_action",
-      dispatchTarget: "element",
-      inputRisk: "targeted_app_action",
+      ...nativeResult,
       text: `Scrolled ${elementTargetText(target)}`,
     },
   };

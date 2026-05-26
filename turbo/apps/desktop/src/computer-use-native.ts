@@ -26,14 +26,22 @@ export interface ComputerUseNativeClickPointRequest {
   readonly clickCount: number;
 }
 
-export interface ComputerUseNativeClickPointResult {
-  readonly screenX: number;
-  readonly screenY: number;
-}
+export type ComputerUseNativeActionResult = Record<string, unknown>;
 
-export interface ComputerUseNativePressKeyResult {
+export type ComputerUseNativeClickPointResult =
+  ComputerUseNativeActionResult & {
+    readonly screenX: number;
+    readonly screenY: number;
+  };
+
+export type ComputerUseNativePressKeyResult = ComputerUseNativeActionResult & {
   readonly normalizedKey: string;
-}
+};
+
+export type ComputerUseNativeTypeTextResult = ComputerUseNativeActionResult & {
+  readonly role?: string;
+  readonly description?: string;
+};
 
 export interface ComputerUseNativeBackend {
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
@@ -43,13 +51,13 @@ export interface ComputerUseNativeBackend {
     app: string,
     snapshotId: string,
   ) => Promise<AccessibilityAppStateSnapshot>;
-  readonly openApp: (app: string) => Promise<void>;
+  readonly openApp: (app: string) => Promise<ComputerUseNativeActionResult>;
   readonly clickElement: (args: {
     readonly app: string;
     readonly elementId: string;
     readonly button: ComputerUseMouseButton;
     readonly clickCount: number;
-  }) => Promise<void>;
+  }) => Promise<ComputerUseNativeActionResult>;
   readonly clickPoint: (
     args: ComputerUseNativeClickPointRequest,
   ) => Promise<ComputerUseNativeClickPointResult>;
@@ -57,16 +65,16 @@ export interface ComputerUseNativeBackend {
     readonly app: string;
     readonly elementId: string;
     readonly value: string;
-  }) => Promise<void>;
+  }) => Promise<ComputerUseNativeActionResult>;
   readonly performElementAction: (args: {
     readonly app: string;
     readonly elementId: string;
     readonly action: string;
-  }) => Promise<void>;
+  }) => Promise<ComputerUseNativeActionResult>;
   readonly typeText: (args: {
     readonly app: string;
     readonly text: string;
-  }) => Promise<{ readonly role?: string; readonly description?: string }>;
+  }) => Promise<ComputerUseNativeTypeTextResult>;
   readonly pressKey: (args: {
     readonly app: string;
     readonly key: string;
@@ -76,7 +84,7 @@ export interface ComputerUseNativeBackend {
     readonly elementId: string;
     readonly direction: string;
     readonly pages: number;
-  }) => Promise<void>;
+  }) => Promise<ComputerUseNativeActionResult>;
 }
 
 type ComputerUseNativeRequest = Record<string, unknown> & {
@@ -370,39 +378,44 @@ export function createComputerUseNativeBackend(
       return result as unknown as AccessibilityAppStateSnapshot;
     },
     openApp: async (app) => {
-      await run({ kind: "app.open", app });
+      return await run({ kind: "app.open", app });
     },
     clickElement: async (args) => {
-      await run({ kind: "element.click", ...args });
+      return await run({ kind: "element.click", ...args });
     },
     clickPoint: async (args) => {
       const result = await run({ kind: "element.click_point", ...args });
       return {
+        ...result,
         screenX: resultRequiredNumber(result, "screenX"),
         screenY: resultRequiredNumber(result, "screenY"),
       };
     },
     setElementValue: async (args) => {
-      await run({ kind: "element.set_value", ...args });
+      return await run({ kind: "element.set_value", ...args });
     },
     performElementAction: async (args) => {
-      await run({ kind: "element.perform_action", ...args });
+      return await run({ kind: "element.perform_action", ...args });
     },
     typeText: async (args) => {
       const result = await run({ kind: "keyboard.type_text", ...args });
+      const role = resultOptionalString(result, "role");
+      const description = resultOptionalString(result, "description");
       return {
-        role: resultOptionalString(result, "role"),
-        description: resultOptionalString(result, "description"),
+        ...result,
+        ...(role ? { role } : {}),
+        ...(description ? { description } : {}),
       };
     },
     pressKey: async (args) => {
       const result = await run({ kind: "keyboard.press_key", ...args });
       return {
+        ...result,
         normalizedKey: resultRequiredString(result, "normalizedKey"),
       };
     },
     scrollElement: async (args) => {
-      await run({ kind: "element.scroll", ...args });
+      return await run({ kind: "element.scroll", ...args });
     },
   };
 }

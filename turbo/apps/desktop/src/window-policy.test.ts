@@ -33,6 +33,14 @@ import {
 } from "./desktop-auth";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
+function nativeDispatchResult(
+  dispatchMode: string,
+  dispatchTarget: string,
+  inputRisk: string,
+): Record<string, unknown> {
+  return { dispatchMode, dispatchTarget, inputRisk };
+}
+
 function createNativeBackend(
   overrides: Partial<ComputerUseNativeBackend> = {},
 ): ComputerUseNativeBackend {
@@ -47,20 +55,69 @@ function createNativeBackend(
     getAppState: async (app, snapshotId) => {
       return { app, snapshotId, elements: [] };
     },
-    openApp: async () => {},
-    clickElement: async () => {},
-    clickPoint: async (args) => {
-      return { screenX: args.x, screenY: args.y };
+    openApp: async () => {
+      return nativeDispatchResult(
+        "background_app_open",
+        "target_app",
+        "background_app_launch",
+      );
     },
-    setElementValue: async () => {},
-    performElementAction: async () => {},
+    clickElement: async () => {
+      return nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      );
+    },
+    clickPoint: async (args) => {
+      return {
+        ...nativeDispatchResult(
+          "background_mouse_event",
+          "app_process",
+          "background_app_pointer",
+        ),
+        screenX: args.x,
+        screenY: args.y,
+      };
+    },
+    setElementValue: async () => {
+      return nativeDispatchResult(
+        "accessibility_value",
+        "element",
+        "targeted_app_text",
+      );
+    },
+    performElementAction: async () => {
+      return nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      );
+    },
     typeText: async () => {
-      return {};
+      return nativeDispatchResult(
+        "accessibility_value",
+        "focused_editable_element",
+        "targeted_app_text",
+      );
     },
     pressKey: async (args) => {
-      return { normalizedKey: args.key };
+      return {
+        ...nativeDispatchResult(
+          "background_keyboard_event",
+          "app_process",
+          "background_app_shortcut",
+        ),
+        normalizedKey: args.key,
+      };
     },
-    scrollElement: async () => {},
+    scrollElement: async () => {
+      return nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      );
+    },
   };
   return { ...defaults, ...overrides };
 }
@@ -550,6 +607,22 @@ describe("computer use desktop runtime", () => {
 
   it("reports app open as a background launch without target preparation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
+    openApp.mockResolvedValue({
+      ...nativeDispatchResult(
+        "background_app_open",
+        "target_app",
+        "background_app_launch",
+      ),
+      frontmostRestored: true,
+      frontmostBefore: {
+        localizedName: "Notes",
+        pid: 200,
+      },
+      frontmostAfter: {
+        localizedName: "Notes",
+        pid: 200,
+      },
+    });
     const result = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.open", payload: { app: "Safari" } },
       { accessibility: true, screenRecording: true },
@@ -574,6 +647,15 @@ describe("computer use desktop runtime", () => {
           dispatchMode: "background_app_open",
           dispatchTarget: "target_app",
           inputRisk: "background_app_launch",
+          frontmostRestored: true,
+          frontmostBefore: {
+            localizedName: "Notes",
+            pid: 200,
+          },
+          frontmostAfter: {
+            localizedName: "Notes",
+            pid: 200,
+          },
         },
       },
     });
@@ -1013,6 +1095,13 @@ describe("computer use desktop runtime", () => {
 
   it("resolves action element ids from non-uiElement child sources", async () => {
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    clickElement.mockResolvedValue(
+      nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      ),
+    );
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1053,6 +1142,13 @@ describe("computer use desktop runtime", () => {
 
   it("returns fresh app state and screenshot after element clicks", async () => {
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    clickElement.mockResolvedValue(
+      nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      ),
+    );
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1119,6 +1215,13 @@ describe("computer use desktop runtime", () => {
   it("maps model-facing element indexes back to internal element ids", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    clickElement.mockResolvedValue(
+      nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      ),
+    );
     const nativeBackend = createNativeBackend({
       clickElement,
       getAppState: async (app, snapshotId) => {
@@ -1227,7 +1330,15 @@ describe("computer use desktop runtime", () => {
   it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
-    clickPoint.mockResolvedValue({ screenX: 900, screenY: 800 });
+    clickPoint.mockResolvedValue({
+      ...nativeDispatchResult(
+        "background_mouse_event",
+        "app_process",
+        "background_app_pointer",
+      ),
+      screenX: 900,
+      screenY: 800,
+    });
     const nativeBackend = createNativeBackend({
       clickPoint,
       getAppState: async (app) => {
@@ -1395,7 +1506,15 @@ describe("computer use desktop runtime", () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     let stateCaptureCount = 0;
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
-    clickPoint.mockResolvedValue({ screenX: 440, screenY: 380 });
+    clickPoint.mockResolvedValue({
+      ...nativeDispatchResult(
+        "background_mouse_event",
+        "app_process",
+        "background_app_pointer",
+      ),
+      screenX: 440,
+      screenY: 380,
+    });
 
     const result = await executeComputerUseCommand(
       {
@@ -1591,7 +1710,14 @@ describe("computer use desktop runtime", () => {
   it("posts press-key combinations to the target process without app activation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
-    pressKey.mockResolvedValue({ normalizedKey: "Command+K" });
+    pressKey.mockResolvedValue({
+      ...nativeDispatchResult(
+        "background_keyboard_event",
+        "app_process",
+        "background_app_shortcut",
+      ),
+      normalizedKey: "Command+K",
+    });
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",

@@ -1081,14 +1081,107 @@ func openApplicationWithoutActivation(named appName: String) throws -> NSRunning
     return launchResult.app
 }
 
-func restorePreviousFrontmostIfNeeded(previousApp: NSRunningApplication?, targetPID: pid_t) {
-    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID,
-          let previousApp,
-          previousApp.processIdentifier != targetPID
+@discardableResult
+func restorePreviousFrontmostIfNeeded(previousApp: NSRunningApplication?, targetPID: pid_t) -> Bool {
+    guard let previousApp, previousApp.processIdentifier != targetPID else {
+        return false
+    }
+    var restored = false
+    var cleanChecks = 0
+    var attempts = 0
+    while cleanChecks < 2, attempts < 5 {
+        attempts += 1
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID {
+            _ = previousApp.activate(options: [.activateIgnoringOtherApps])
+            restored = true
+            cleanChecks = 0
+        } else {
+            cleanChecks += 1
+        }
+        if cleanChecks < 2, attempts < 5 {
+            usleep(50_000)
+        }
+    }
+    return restored
+}
+
+func runningAppRecord(_ app: NSRunningApplication?) -> [String: Any]? {
+    guard let app else {
+        return nil
+    }
+    var record: [String: Any] = [
+        "pid": app.processIdentifier,
+    ]
+    if let localizedName = app.localizedName, !localizedName.isEmpty {
+        record["localizedName"] = localizedName
+    }
+    if let bundleIdentifier = app.bundleIdentifier, !bundleIdentifier.isEmpty {
+        record["bundleIdentifier"] = bundleIdentifier
+    }
+    return record
+}
+
+@discardableResult
+func restorePreviousFrontmostIfChanged(previousApp: NSRunningApplication?) -> Bool {
+    guard let previousApp,
+          NSWorkspace.shared.frontmostApplication?.processIdentifier != previousApp.processIdentifier
     else {
-        return
+        return false
     }
     _ = previousApp.activate(options: [.activateIgnoringOtherApps])
+    return true
+}
+
+func nativeActionResult(
+    dispatchMode: String,
+    dispatchTarget: String,
+    inputRisk: String,
+    extra: [String: Any] = [:]
+) -> [String: Any] {
+    var result = extra
+    result["dispatchMode"] = dispatchMode
+    result["dispatchTarget"] = dispatchTarget
+    result["inputRisk"] = inputRisk
+    return result
+}
+
+func withFrontmostPreservation(
+    dispatchMode: String,
+    dispatchTarget: String,
+    inputRisk: String,
+    _ action: () throws -> (targetPID: pid_t?, result: [String: Any])
+) throws -> [String: Any] {
+    let before = NSWorkspace.shared.frontmostApplication
+    let actionResult: (targetPID: pid_t?, result: [String: Any])
+    do {
+        actionResult = try action()
+    } catch {
+        restorePreviousFrontmostIfChanged(previousApp: before)
+        throw error
+    }
+    let afterAction = NSWorkspace.shared.frontmostApplication
+    let restored = actionResult.targetPID.map { targetPID in
+        restorePreviousFrontmostIfNeeded(previousApp: before, targetPID: targetPID)
+    } ?? false
+    let after = NSWorkspace.shared.frontmostApplication
+
+    var result = nativeActionResult(
+        dispatchMode: dispatchMode,
+        dispatchTarget: dispatchTarget,
+        inputRisk: inputRisk,
+        extra: actionResult.result
+    )
+    if let frontmostBefore = runningAppRecord(before) {
+        result["frontmostBefore"] = frontmostBefore
+    }
+    if let frontmostAfterAction = runningAppRecord(afterAction) {
+        result["frontmostAfterAction"] = frontmostAfterAction
+    }
+    if let frontmostAfter = runningAppRecord(after) {
+        result["frontmostAfter"] = frontmostAfter
+    }
+    result["frontmostRestored"] = restored
+    return result
 }
 
 func titleElementText(_ element: AXUIElement) -> String? {
@@ -1513,38 +1606,49 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
 
 func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let previousApp = NSWorkspace.shared.frontmostApplication
-    if findRunningApp(named: appName) != nil {
-        return [:]
-    }
+    return try withFrontmostPreservation(
+        dispatchMode: "background_app_open",
+        dispatchTarget: "target_app",
+        inputRisk: "background_app_launch"
+    ) {
+        if let runningApp = findRunningApp(named: appName) {
+            return (targetPID: runningApp.processIdentifier, result: [:])
+        }
 
-    let launchedApp = try openApplicationWithoutActivation(named: appName) ??
-        waitForRunningApp(named: appName)
-    guard let launchedApp else {
-        throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
+        let launchedApp = try openApplicationWithoutActivation(named: appName) ??
+            waitForRunningApp(named: appName)
+        guard let launchedApp else {
+            throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
+        }
+        return (targetPID: launchedApp.processIdentifier, result: [:])
     }
-    restorePreviousFrontmostIfNeeded(previousApp: previousApp, targetPID: launchedApp.processIdentifier)
-    return [:]
 }
 
 func handleElementClick(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let elementId = try requiredString(request, "elementId")
     let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
-    let element = try resolveElement(appName: appName, elementId: elementId)
-    for index in 0..<clickCount {
-        let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
-        if error != .success {
-            throw HelperFailure(
-                code: "accessibility_unavailable",
-                message: "Unable to press \(elementId): \(error.rawValue)"
-            )
+    let app = try resolveRunningApp(named: appName)
+    return try withFrontmostPreservation(
+        dispatchMode: "accessibility_action",
+        dispatchTarget: "element",
+        inputRisk: "targeted_app_action"
+    ) {
+        let element = try resolveElement(appName: appName, elementId: elementId)
+        for index in 0..<clickCount {
+            let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
+            if error != .success {
+                throw HelperFailure(
+                    code: "accessibility_unavailable",
+                    message: "Unable to press \(elementId): \(error.rawValue)"
+                )
+            }
+            if index + 1 < clickCount {
+                usleep(50_000)
+            }
         }
-        if index + 1 < clickCount {
-            usleep(50_000)
-        }
+        return (targetPID: app.processIdentifier, result: [:])
     }
-    return [:]
 }
 
 func mouseEventConfig(button: String) throws -> (
@@ -1681,98 +1785,128 @@ func handleElementClickPoint(_ request: [String: Any]) throws -> [String: Any] {
         screenshotHeight: screenshotHeight,
         sourceBounds: sourceBounds
     )
-    let target = try snapshotWindowTarget(
-        appName: appName,
-        snapshotId: snapshotId,
-        preferredScreenPoint: point,
-        windowId: windowId,
-        windowFrame: windowFrame
-    )
+    return try withFrontmostPreservation(
+        dispatchMode: "background_mouse_event",
+        dispatchTarget: "app_process",
+        inputRisk: "background_app_pointer"
+    ) {
+        let target = try snapshotWindowTarget(
+            appName: appName,
+            snapshotId: snapshotId,
+            preferredScreenPoint: point,
+            windowId: windowId,
+            windowFrame: windowFrame
+        )
 
-    let dispatcher = AddressedEventDispatcher(target: target)
-    for index in 1...clickCount {
-        try dispatcher.postMouse(
-            config.down,
-            at: point,
-            button: config.button,
-            clickState: Int64(index),
-            pressure: 1
-        )
-        usleep(30_000)
-        try dispatcher.postMouse(
-            config.up,
-            at: point,
-            button: config.button,
-            clickState: Int64(index),
-            pressure: 0
-        )
-        if index < clickCount {
-            usleep(50_000)
+        let dispatcher = AddressedEventDispatcher(target: target)
+        for index in 1...clickCount {
+            try dispatcher.postMouse(
+                config.down,
+                at: point,
+                button: config.button,
+                clickState: Int64(index),
+                pressure: 1
+            )
+            usleep(30_000)
+            try dispatcher.postMouse(
+                config.up,
+                at: point,
+                button: config.button,
+                clickState: Int64(index),
+                pressure: 0
+            )
+            if index < clickCount {
+                usleep(50_000)
+            }
         }
-    }
 
-    return [
-        "screenX": point.x,
-        "screenY": point.y,
-    ]
+        return (
+            targetPID: target.pid,
+            result: [
+                "screenX": point.x,
+                "screenY": point.y,
+            ]
+        )
+    }
 }
 
 func handleElementSetValue(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let elementId = try requiredString(request, "elementId")
     let value = try requiredString(request, "value")
-    let element = try resolveElement(appName: appName, elementId: elementId)
-    try setAttribute(element, kAXValueAttribute as CFString, value as CFString)
-    return [:]
+    let app = try resolveRunningApp(named: appName)
+    return try withFrontmostPreservation(
+        dispatchMode: "accessibility_value",
+        dispatchTarget: "element",
+        inputRisk: "targeted_app_text"
+    ) {
+        let element = try resolveElement(appName: appName, elementId: elementId)
+        try setAttribute(element, kAXValueAttribute as CFString, value as CFString)
+        return (targetPID: app.processIdentifier, result: [:])
+    }
 }
 
 func handleElementPerformAction(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let elementId = try requiredString(request, "elementId")
     let action = try requiredString(request, "action")
-    let element = try resolveElement(appName: appName, elementId: elementId)
-    let error = AXUIElementPerformAction(element, action as CFString)
-    if error != .success {
-        throw HelperFailure(
-            code: "accessibility_unavailable",
-            message: "Unable to perform \(action) on \(elementId): \(error.rawValue)"
-        )
+    let app = try resolveRunningApp(named: appName)
+    return try withFrontmostPreservation(
+        dispatchMode: "accessibility_action",
+        dispatchTarget: "element",
+        inputRisk: "targeted_app_action"
+    ) {
+        let element = try resolveElement(appName: appName, elementId: elementId)
+        let error = AXUIElementPerformAction(element, action as CFString)
+        if error != .success {
+            throw HelperFailure(
+                code: "accessibility_unavailable",
+                message: "Unable to perform \(action) on \(elementId): \(error.rawValue)"
+            )
+        }
+        return (targetPID: app.processIdentifier, result: [:])
     }
-    return [:]
 }
 
 func handleTypeText(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
-    let root = try appElement(named: appName)
-    guard let element = axElementValue(attribute(root, kAXFocusedUIElementAttribute as CFString)) else {
-        throw HelperFailure(
-            code: "unsupported_command",
-            message: "keyboard.type_text requires a focused editable text element in \(appName)"
-        )
-    }
-    let role = role(element)
-    let editableRoles = Set([
-        "AXComboBox",
-        "AXSearchField",
-        "AXTextArea",
-        "AXTextField",
-        "AXTextView",
-    ])
-    guard let role, editableRoles.contains(role) else {
-        throw HelperFailure(
-            code: "unsupported_command",
-            message: "keyboard.type_text requires a focused editable text element in \(appName)"
-        )
-    }
+    let app = try resolveRunningApp(named: appName)
+    return try withFrontmostPreservation(
+        dispatchMode: "accessibility_value",
+        dispatchTarget: "focused_editable_element",
+        inputRisk: "targeted_app_text"
+    ) {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let element = axElementValue(attribute(root, kAXFocusedUIElementAttribute as CFString)) else {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "keyboard.type_text requires a focused editable text element in \(appName)"
+            )
+        }
+        let role = role(element)
+        let editableRoles = Set([
+            "AXComboBox",
+            "AXSearchField",
+            "AXTextArea",
+            "AXTextField",
+            "AXTextView",
+        ])
+        guard let role, editableRoles.contains(role) else {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "keyboard.type_text requires a focused editable text element in \(appName)"
+            )
+        }
 
-    let currentValue = stringValue(attribute(element, kAXValueAttribute as CFString)) ?? ""
-    try setAttribute(element, kAXValueAttribute as CFString, (currentValue + inputText) as CFString)
-    var result: [String: Any] = ["role": role]
-    if let description = stringValue(attribute(element, kAXDescriptionAttribute as CFString)) {
-        result["description"] = description
+        let currentValue = stringValue(attribute(element, kAXValueAttribute as CFString)) ?? ""
+        try setAttribute(element, kAXValueAttribute as CFString, (currentValue + inputText) as CFString)
+        var result: [String: Any] = ["role": role]
+        if let description = stringValue(attribute(element, kAXDescriptionAttribute as CFString)) {
+            result["description"] = description
+        }
+        return (targetPID: app.processIdentifier, result: result)
     }
-    return result
 }
 
 func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
@@ -1780,21 +1914,28 @@ func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
     let key = try requiredString(request, "key")
     let parsed = try parseKeyPress(key)
 
-    try performWithRequiredBackgroundTarget(appName: appName) { target in
-        let dispatcher = AddressedEventDispatcher(target: target)
-        var activeFlags = 0
-        for modifier in parsed.modifiers {
-            activeFlags |= modifier.flag
-            try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: true, flags: activeFlags)
+    return try withFrontmostPreservation(
+        dispatchMode: "background_keyboard_event",
+        dispatchTarget: "app_process",
+        inputRisk: "background_app_shortcut"
+    ) {
+        let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
+            let dispatcher = AddressedEventDispatcher(target: target)
+            var activeFlags = 0
+            for modifier in parsed.modifiers {
+                activeFlags |= modifier.flag
+                try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: true, flags: activeFlags)
+            }
+            try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: true, flags: parsed.flags)
+            try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: false, flags: parsed.flags)
+            for modifier in parsed.modifiers.reversed() {
+                activeFlags &= ~modifier.flag
+                try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: false, flags: activeFlags)
+            }
+            return target.pid
         }
-        try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: true, flags: parsed.flags)
-        try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: false, flags: parsed.flags)
-        for modifier in parsed.modifiers.reversed() {
-            activeFlags &= ~modifier.flag
-            try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: false, flags: activeFlags)
-        }
+        return (targetPID: targetPID, result: ["normalizedKey": parsed.normalizedKey])
     }
-    return ["normalizedKey": parsed.normalizedKey]
 }
 
 func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
@@ -1807,20 +1948,27 @@ func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
         ? "AXHorizontalScrollBar"
         : "AXVerticalScrollBar"
     let sign = direction == "up" || direction == "left" ? -1.0 : 1.0
-    let element = try resolveElement(appName: appName, elementId: elementId)
-    guard let scrollBar = attributeArray(element, kAXChildrenAttribute as CFString).first(where: { child in
-        role(child) == axis
-    }) else {
-        return [:]
+    let app = try resolveRunningApp(named: appName)
+    return try withFrontmostPreservation(
+        dispatchMode: "accessibility_action",
+        dispatchTarget: "element",
+        inputRisk: "targeted_app_action"
+    ) {
+        let element = try resolveElement(appName: appName, elementId: elementId)
+        guard let scrollBar = attributeArray(element, kAXChildrenAttribute as CFString).first(where: { child in
+            role(child) == axis
+        }) else {
+            return (targetPID: app.processIdentifier, result: [:])
+        }
+        if let current = numberValue(attribute(scrollBar, kAXValueAttribute as CFString)) {
+            try setAttribute(
+                scrollBar,
+                kAXValueAttribute as CFString,
+                NSNumber(value: current + sign * step)
+            )
+        }
+        return (targetPID: app.processIdentifier, result: [:])
     }
-    if let current = numberValue(attribute(scrollBar, kAXValueAttribute as CFString)) {
-        try setAttribute(
-            scrollBar,
-            kAXValueAttribute as CFString,
-            NSNumber(value: current + sign * step)
-        )
-    }
-    return [:]
 }
 
 func handle(_ request: [String: Any]) throws -> [String: Any] {
