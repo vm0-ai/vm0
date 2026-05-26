@@ -49,6 +49,7 @@ import {
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
+import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
@@ -391,7 +392,10 @@ function ExpandedHeader() {
   return (
     <div className="zero-sidebar-header shrink-0 px-2 pb-0">
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
-      <div className="zero-desktop-no-drag flex items-center justify-end gap-2 rounded-lg py-0.5">
+      <div className="zero-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
+        <div className="min-w-0 flex-1">
+          <ZeroOrgSwitcher />
+        </div>
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
