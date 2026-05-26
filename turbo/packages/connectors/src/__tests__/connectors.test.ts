@@ -211,8 +211,7 @@ type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
-    // computer connector has no oauth config
-    expect(hasRequiredScopes("computer", null)).toBe(true);
+    expect(hasRequiredScopes("local-agent", null)).toBe(true);
   });
 
   it("returns true when connector has empty required scopes", () => {
@@ -368,7 +367,7 @@ describe("connector auth method config", () => {
       variables: ["GITLAB_HOST"],
     });
     expect(getConnectorManualGrantFieldNames("github")).toBeNull();
-    expect(getConnectorManualGrantFieldNames("computer")).toBeNull();
+    expect(getConnectorManualGrantFieldNames("local-agent")).toBeNull();
   });
 
   it("derives connected manual grant methods from required fields", () => {
@@ -385,7 +384,7 @@ describe("connector auth method config", () => {
       ),
     ).not.toContainEqual({ type: "atlassian", authMethod: "api-token" });
     const connected = deriveConnectedManualGrantMethods(
-      new Set(["GITHUB_ACCESS_TOKEN", "COMPUTER_CONNECTOR_BRIDGE_TOKEN"]),
+      new Set(["GITHUB_ACCESS_TOKEN"]),
       new Set(),
     );
     expect(
@@ -395,7 +394,7 @@ describe("connector auth method config", () => {
     ).toBe(false);
     expect(
       connected.some((method) => {
-        return method.type === "computer";
+        return method.type === "local-agent";
       }),
     ).toBe(false);
   });
@@ -426,7 +425,7 @@ describe("isOAuthConnectorType", () => {
       accessSecretName: "GITHUB_ACCESS_TOKEN",
       isRefreshable: false,
     });
-    expect(getConnectorOAuthSecretMetadata("computer")).toBeUndefined();
+    expect(getConnectorOAuthSecretMetadata("local-agent")).toBeUndefined();
   });
 
   it("rejects refresh for OAuth connectors without refresh-token access", async () => {
@@ -1869,25 +1868,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining(activeOAuthTypes),
     );
-  });
-
-  it("includes computer only when both ngrok env vars are configured", () => {
-    const partialComputerEnv = new Map([["NGROK_API_KEY", "ngrok-api-key"]]);
-    const fullComputerEnv = new Map([
-      ["NGROK_API_KEY", "ngrok-api-key"],
-      ["NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.example.com"],
-    ]);
-
-    expect(
-      getRuntimeAvailableConnectorTypes((name) => {
-        return partialComputerEnv.get(name);
-      }),
-    ).not.toContain("computer");
-    expect(
-      getRuntimeAvailableConnectorTypes((name) => {
-        return fullComputerEnv.get(name);
-      }),
-    ).toContain("computer");
   });
 
   it("excludes API-managed local connectors without special runtime env support", () => {

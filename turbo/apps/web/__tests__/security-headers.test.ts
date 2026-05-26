@@ -1662,21 +1662,13 @@ const ZERO_CONNECTORS_SEARCH_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors",
   "/api/zero/connectors/github",
 ] as const;
-const ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE = "/api/zero/connectors/computer";
-const ZERO_CONNECTORS_COMPUTER_PATH = "/api/zero/connectors/computer";
-const ZERO_CONNECTORS_COMPUTER_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/computer/extra",
-  "/api/zero/connectors/computers",
-  "/api/zero/connectors",
-] as const;
 const ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE =
-  "/api/zero/connectors/:type((?!search$|computer$)[^/]+)";
+  "/api/zero/connectors/:type((?!search$)[^/]+)";
 const ZERO_CONNECTORS_BY_TYPE_PATH = "/api/zero/connectors/github";
 const ZERO_CONNECTORS_BY_TYPE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors",
   "/api/zero/connectors/github/extra",
   "/api/zero/connectors/search",
-  "/api/zero/connectors/computer",
 ] as const;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
   "/api/zero/connectors/:type/scope-diff";
@@ -2466,10 +2458,6 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/connectors/search",
-        },
-        {
-          source: ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/zero/connectors/computer",
         },
         {
           source: ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE,
@@ -4243,29 +4231,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_CONNECTORS_SEARCH_PATH)).toStrictEqual({});
     for (const pathname of ZERO_CONNECTORS_SEARCH_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the zero connectors computer rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/connectors/computer",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_COMPUTER_PATH)).toStrictEqual({});
-    for (const pathname of ZERO_CONNECTORS_COMPUTER_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

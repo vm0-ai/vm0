@@ -211,9 +211,6 @@ function initEnv() {
       GITHUB_APP_SLUG: z.string().min(1).optional(),
       GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(), // Base64-encoded PEM private key
       GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).optional(),
-      // ngrok (for computer connector)
-      NGROK_API_KEY: z.string().min(1).optional(),
-      NGROK_COMPUTER_CONNECTOR_DOMAIN: z.string().min(1).optional(),
       // Email integration (Resend) — optional, only needed when email notifications are enabled
       RESEND_API_KEY: z.string().min(1).optional(),
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -424,9 +421,6 @@ function initEnv() {
       GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
       GITHUB_APP_WEBHOOK_SECRET: process.env.GITHUB_APP_WEBHOOK_SECRET,
-      NGROK_API_KEY: process.env.NGROK_API_KEY,
-      NGROK_COMPUTER_CONNECTOR_DOMAIN:
-        process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
       NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,

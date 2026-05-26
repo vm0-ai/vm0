@@ -732,14 +732,12 @@ export {
   connectorSessionResponseSchema,
   connectorSessionStatusResponseSchema,
   scopeDiffResponseSchema,
-  computerConnectorCreateResponseSchema,
   type ScopeDiffResponse,
   type ConnectorSessionStatus,
   type ConnectorResponse,
   type ConnectorListResponse,
   type ConnectorSessionResponse,
   type ConnectorSessionStatusResponse,
-  type ComputerConnectorCreateResponse,
 } from "./connector-schemas";
 
 export {
@@ -902,7 +900,6 @@ export {
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
-  zeroComputerConnectorContract,
   zeroLocalBrowserConnectorContract,
   zeroLocalAgentConnectorContract,
   type ConnectorSearchAuthMethod,
@@ -913,7 +910,6 @@ export {
   type ZeroConnectorsSearchContract,
   type ZeroConnectorSessionsContract,
   type ZeroConnectorSessionByIdContract,
-  type ZeroComputerConnectorContract,
   type ZeroLocalBrowserConnectorContract,
   type ZeroLocalAgentConnectorContract,
 } from "./zero-connectors";

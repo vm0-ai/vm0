@@ -3,7 +3,6 @@ import { randomInt } from "node:crypto";
 import { command, computed } from "ccstate";
 import type { AppRoute } from "@ts-rest/core";
 import {
-  zeroComputerConnectorContract,
   zeroConnectorAuthorizeContract,
   zeroConnectorOauthStartContract,
   zeroConnectorSessionsContract,
@@ -34,7 +33,6 @@ import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
-  deleteComputerConnector$,
   deleteZeroConnectorLocalState$,
   zeroConnectorByType,
   zeroConnectorList,
@@ -44,7 +42,6 @@ import {
 import { userConnectorAvailability } from "../services/connector-availability.service";
 import { connectLocalBrowserConnector$ } from "../services/zero-local-browser.service";
 import { connectLocalAgentConnector$ } from "../services/zero-local-agent.service";
-import { createComputerConnector$ } from "../services/zero-computer-connector.service";
 import type { RouteEntry } from "../route";
 import {
   getConnectorOAuthCanonicalRedirectUrl,
@@ -243,75 +240,6 @@ const getConnectorByTypeInner$ = computed(async (get) => {
   return { status: 200 as const, body: connector };
 });
 
-const getComputerConnectorInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const connector = await get(
-    zeroConnectorByType({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      type: "computer",
-      includeHiddenStoredConnector: true,
-    }),
-  );
-  if (!connector) {
-    return notFound("Computer connector not found");
-  }
-
-  return { status: 200 as const, body: connector };
-});
-
-const createComputerConnectorInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable("computer", "api")) {
-      return connectorUnavailable("computer");
-    }
-
-    const result = await set(
-      createComputerConnector$,
-      { orgId: auth.orgId, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    switch (result.kind) {
-      case "created": {
-        return { status: 200 as const, body: result.connector };
-      }
-      case "bad_request": {
-        return badRequestMessage("Invalid request");
-      }
-      case "conflict": {
-        return conflict("Resource conflict");
-      }
-    }
-    const exhaustive: never = result;
-    return exhaustive;
-  },
-);
-
-const deleteComputerConnectorInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const deleted = await set(
-      deleteComputerConnector$,
-      { orgId: auth.orgId, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (!deleted) {
-      return notFound("Computer connector not found");
-    }
-
-    return { status: 204 as const, body: undefined };
-  },
-);
-
 const deleteConnectorByTypeInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -457,13 +385,6 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return jsonResponse(auth.body, auth.status);
     }
 
-    if (type === "computer") {
-      return jsonResponse(
-        { error: "Computer connector does not use OAuth" },
-        400,
-      );
-    }
-
     const startType = resolveConnectorOAuthStartType(type);
     if (!startType.ok) {
       if (startType.reason === "connector_does_not_use_oauth") {
@@ -539,10 +460,6 @@ const startConnectorOauthInner$ = command(
     const request = get(request$).raw;
     const auth = get(authContext$);
     const type = params.type;
-
-    if (type === "computer") {
-      return badRequestMessage("Computer connector does not use OAuth");
-    }
 
     const startType = resolveConnectorOAuthStartType(type);
     if (!startType.ok) {
@@ -716,18 +633,6 @@ const getConnectorSessionByIdInner$ = command(
 );
 
 export const zeroConnectorsRoutes: readonly RouteEntry[] = [
-  {
-    route: zeroComputerConnectorContract.create,
-    handler: authRoute(connectorWriteAuth, createComputerConnectorInner$),
-  },
-  {
-    route: zeroComputerConnectorContract.get,
-    handler: authRoute(connectorReadAuth, getComputerConnectorInner$),
-  },
-  {
-    route: zeroComputerConnectorContract.delete,
-    handler: authRoute(connectorWriteAuth, deleteComputerConnectorInner$),
-  },
   {
     route: zeroLocalAgentConnectorContract.create,
     handler: authRoute(connectorWriteAuth, connectLocalAgentConnectorInner$),

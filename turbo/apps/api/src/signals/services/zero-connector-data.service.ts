@@ -45,13 +45,6 @@ import { z } from "zod";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import {
-  deleteBotUser,
-  deleteCloudEndpoint,
-  deleteCredential,
-  deleteReservedDomain,
-  safeDelete,
-} from "../external/ngrok-client";
 import { publishUserSignal } from "../external/realtime";
 import { bestEffort } from "../utils";
 import {
@@ -78,11 +71,6 @@ type StoredConnectorRow = {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
-const COMPUTER_CONNECTOR_SECRET_NAMES = [
-  "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
-  "COMPUTER_CONNECTOR_DOMAIN_ID",
-  "COMPUTER_CONNECTOR_DOMAIN",
-] as const;
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ExternalUserInfo {
@@ -904,135 +892,6 @@ export const upsertOAuthConnector$ = command(
       created:
         connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
     };
-  },
-);
-
-export const deleteComputerConnector$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const writeDb = set(writeDb$);
-    const featureSwitchOverrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    const featureSwitchContext = {
-      orgId: args.orgId,
-      userId: args.userId,
-      overrides: featureSwitchOverrides,
-    } satisfies FeatureSwitchContext;
-
-    const [connector] = await writeDb
-      .select({
-        id: connectors.id,
-        externalId: connectors.externalId,
-        externalUsername: connectors.externalUsername,
-        externalEmail: connectors.externalEmail,
-      })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.type, "computer"),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!connector) {
-      return false;
-    }
-
-    const apiKey = optionalEnv("NGROK_API_KEY");
-    if (apiKey) {
-      if (connector.externalUsername) {
-        await safeDelete(
-          () => {
-            return deleteCredential(apiKey, connector.externalUsername!);
-          },
-          "Credential",
-          connector.externalUsername,
-        );
-        signal.throwIfAborted();
-      }
-
-      if (connector.externalEmail) {
-        await safeDelete(
-          () => {
-            return deleteCloudEndpoint(apiKey, connector.externalEmail!);
-          },
-          "Cloud endpoint",
-          connector.externalEmail,
-        );
-        signal.throwIfAborted();
-      }
-
-      const [domainIdSecret] = await writeDb
-        .select({ encryptedValue: secrets.encryptedValue })
-        .from(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, args.orgId),
-            eq(secrets.userId, args.userId),
-            eq(secrets.name, "COMPUTER_CONNECTOR_DOMAIN_ID"),
-            eq(secrets.type, "connector"),
-          ),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (domainIdSecret) {
-        const domainId = await decryptStoredSecretValue(
-          domainIdSecret.encryptedValue,
-          featureSwitchContext,
-        );
-        signal.throwIfAborted();
-        await safeDelete(
-          () => {
-            return deleteReservedDomain(apiKey, domainId);
-          },
-          "Reserved domain",
-          domainId,
-        );
-        signal.throwIfAborted();
-      }
-
-      if (connector.externalId) {
-        await safeDelete(
-          () => {
-            return deleteBotUser(apiKey, connector.externalId!);
-          },
-          "Bot user",
-          connector.externalId,
-        );
-        signal.throwIfAborted();
-      }
-    }
-
-    await writeDb.delete(connectors).where(eq(connectors.id, connector.id));
-    signal.throwIfAborted();
-
-    for (const name of COMPUTER_CONNECTOR_SECRET_NAMES) {
-      await writeDb
-        .delete(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, args.orgId),
-            eq(secrets.userId, args.userId),
-            eq(secrets.name, name),
-            eq(secrets.type, "connector"),
-          ),
-        );
-      signal.throwIfAborted();
-    }
-
-    return true;
   },
 );
 

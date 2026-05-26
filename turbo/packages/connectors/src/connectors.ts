@@ -74,7 +74,6 @@ import { cloudflare } from "./connectors/cloudflare";
 import { cloudinary } from "./connectors/cloudinary";
 import { coda } from "./connectors/coda";
 import { coingecko } from "./connectors/coingecko";
-import { computer } from "./connectors/computer";
 import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
 import { crustdata } from "./connectors/crustdata";
@@ -660,7 +659,6 @@ const CONNECTOR_TYPES_DEF = {
   ...cloudinary,
   ...coda,
   ...coingecko,
-  ...computer,
   ...coresignal,
   ...cronlytic,
   ...crustdata,

@@ -3,7 +3,6 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
-  computerConnectorCreateResponseSchema,
   connectorOauthDeviceAuthSessionPollRequestSchema,
   connectorOauthDeviceAuthSessionPollResponseSchema,
   connectorOauthDeviceAuthSessionStartResponseSchema,
@@ -257,50 +256,6 @@ export const zeroConnectorSessionByIdContract = c.router({
 });
 
 /**
- * Zero contract for POST/GET/DELETE /api/zero/connectors/computer
- * Proxies to /api/connectors/computer (computer connector CRUD)
- */
-export const zeroComputerConnectorContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/zero/connectors/computer",
-    headers: authHeadersSchema,
-    body: z.object({}).optional(),
-    responses: {
-      200: computerConnectorCreateResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Create computer connector (zero proxy)",
-  },
-  get: {
-    method: "GET",
-    path: "/api/zero/connectors/computer",
-    headers: authHeadersSchema,
-    responses: {
-      200: connectorResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get computer connector status (zero proxy)",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/zero/connectors/computer",
-    headers: authHeadersSchema,
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Delete computer connector (zero proxy)",
-  },
-});
-
-/**
  * Zero contract for POST /api/zero/connectors/local-agent
  * Creates the local-agent connector once the user has at least one online host.
  */
@@ -355,8 +310,6 @@ export type ZeroConnectorSessionsContract =
   typeof zeroConnectorSessionsContract;
 export type ZeroConnectorSessionByIdContract =
   typeof zeroConnectorSessionByIdContract;
-export type ZeroComputerConnectorContract =
-  typeof zeroComputerConnectorContract;
 export type ZeroLocalAgentConnectorContract =
   typeof zeroLocalAgentConnectorContract;
 export type ZeroLocalBrowserConnectorContract =

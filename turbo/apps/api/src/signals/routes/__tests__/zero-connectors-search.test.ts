@@ -212,10 +212,10 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    const computer = response.body.connectors.find((c) => {
-      return c.id === "computer";
+    const localAgent = response.body.connectors.find((c) => {
+      return c.id === "local-agent";
     });
-    expect(computer).toBeUndefined();
+    expect(localAgent).toBeUndefined();
   });
 
   it("hides the test OAuth device connector when the test OAuth feature is disabled", async () => {
@@ -398,10 +398,10 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    const computer = response.body.connectors.find((c) => {
-      return c.id === "computer";
+    const localAgent = response.body.connectors.find((c) => {
+      return c.id === "local-agent";
     });
-    expect(computer).toBeUndefined();
+    expect(localAgent).toBeUndefined();
   });
 
   it("includes connectors with at least one ungated auth method", async () => {

@@ -267,11 +267,10 @@ const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
   /^\/api\/zero\/connectors\/[^/]+\/authorize$/;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE = "/api/zero/connectors/search";
-const ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE = "/api/zero/connectors/computer";
 const ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE =
-  "/api/zero/connectors/:type((?!search$|computer$)[^/]+)";
+  "/api/zero/connectors/:type((?!search$)[^/]+)";
 const ZERO_CONNECTORS_BY_TYPE_PATH_RE =
-  /^\/api\/zero\/connectors\/(?!search$|computer$)[^/]+$/;
+  /^\/api\/zero\/connectors\/(?!search$)[^/]+$/;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
   "/api/zero/connectors/:type/scope-diff";
 const ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE =
@@ -699,7 +698,6 @@ export const API_BACKEND_REWRITES = [
   [ZERO_FEATURE_SWITCHES_REWRITE_SOURCE, "/api/zero/feature-switches"],
   [ZERO_CONNECTORS_LIST_REWRITE_SOURCE, "/api/zero/connectors"],
   [ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE, "/api/zero/connectors/search"],
-  [ZERO_CONNECTORS_COMPUTER_REWRITE_SOURCE, "/api/zero/connectors/computer"],
   [
     ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE,
     "/api/zero/connectors/:type",

@@ -54,11 +54,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Canva design connector",
     enabled: false,
   },
-  [FeatureSwitchKey.ComputerConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Computer connector for local service tunneling",
-    enabled: false,
-  },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Deel HR connector",

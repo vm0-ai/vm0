@@ -55,9 +55,6 @@ const resetEnv = vi.hoisted(() => {
       "OFFICIAL_RUNNER_SECRET",
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     );
-    // ngrok (for computer connector)
-    vi.stubEnv("NGROK_API_KEY", "test-ngrok-api-key");
-    vi.stubEnv("NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.test.vm0.io");
     // Runner executor default group (runs dispatch to runner)
     // Uses "vm0" org which is hardcoded as public in isOfficialRunnerGroup
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");

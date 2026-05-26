@@ -149,18 +149,3 @@ export const connectorOauthDeviceAuthSessionPollResponseSchema =
 export type ConnectorOauthDeviceAuthSessionPollResponse = z.infer<
   typeof connectorOauthDeviceAuthSessionPollResponseSchema
 >;
-
-/**
- * Computer connector create response
- */
-export const computerConnectorCreateResponseSchema = z.object({
-  id: z.uuid(),
-  ngrokToken: z.string(),
-  bridgeToken: z.string(),
-  endpointPrefix: z.string(),
-  domain: z.string(),
-});
-
-export type ComputerConnectorCreateResponse = z.infer<
-  typeof computerConnectorCreateResponseSchema
->;

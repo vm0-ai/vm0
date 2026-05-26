@@ -216,16 +216,6 @@ function resolveOAuthConnectorType(
   }
 
   const connectorType = typeResult.data;
-  if (connectorType === "computer") {
-    return {
-      ok: false,
-      response: redirectWithError(
-        origin,
-        type,
-        "Computer connector does not use OAuth",
-      ),
-    };
-  }
   if (!isOAuthConnectorType(connectorType)) {
     return {
       ok: false,

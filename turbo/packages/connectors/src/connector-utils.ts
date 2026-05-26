@@ -527,10 +527,6 @@ export function isStaticConfidentialConnectorOAuthCredentials(
   );
 }
 
-function hasEnvValue(readEnv: ConnectorEnvReader, name: string): boolean {
-  return Boolean(readEnv(name));
-}
-
 export function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
@@ -632,13 +628,6 @@ export function getRuntimeAvailableConnectorTypes(
     ) {
       runtimeAvailable.add(type);
     }
-  }
-
-  if (
-    hasEnvValue(readEnv, "NGROK_API_KEY") &&
-    hasEnvValue(readEnv, "NGROK_COMPUTER_CONNECTOR_DOMAIN")
-  ) {
-    runtimeAvailable.add("computer");
   }
 
   return [...runtimeAvailable].sort();

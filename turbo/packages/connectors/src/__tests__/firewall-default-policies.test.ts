@@ -114,7 +114,7 @@ describe("resolveFirewallPolicies", () => {
   });
 
   it("should skip non-firewall connector types", () => {
-    const resolved = resolveFirewallPolicies(null, ["computer"]);
+    const resolved = resolveFirewallPolicies(null, ["local-agent"]);
     expect(resolved).toBeNull();
   });
 
@@ -125,12 +125,12 @@ describe("resolveFirewallPolicies", () => {
     const resolved = resolveFirewallPolicies(stored, [
       "github",
       "slack",
-      "computer",
+      "local-agent",
     ]);
     expect(resolved!["github"]!.policies["repo-read"]).toBe("allow");
     expect(resolved!["slack"]).toBeDefined();
     expect(resolved!["slack"]!.policies["channels:read"]).toBe("allow");
-    expect(resolved).not.toHaveProperty("computer");
+    expect(resolved).not.toHaveProperty("local-agent");
   });
 
   it("should produce entry for connectors with no stored policies", () => {

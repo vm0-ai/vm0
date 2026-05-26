@@ -1833,24 +1833,24 @@ describe("CLI auth routes", () => {
         client.create({
           query: {},
           body: {
-            connectorName: "computer",
-            accessToken: "computer-access-token",
+            connectorName: "local-agent",
+            accessToken: "local-agent-access-token",
           },
         }),
         400,
       );
 
       expect(response.body).toStrictEqual({
-        error: "computer connector does not use OAuth",
+        error: "local-agent connector does not use OAuth",
       });
       await expect(
-        readConnectorState({ orgId, userId, type: "computer" }),
+        readConnectorState({ orgId, userId, type: "local-agent" }),
       ).resolves.toBeNull();
       await expect(
         findConnectorSecret({
           orgId,
           userId,
-          name: "COMPUTER_CONNECTOR_AUTHTOKEN",
+          name: "LOCAL_AGENT_ACCESS_TOKEN",
         }),
       ).resolves.toBeUndefined();
     });
