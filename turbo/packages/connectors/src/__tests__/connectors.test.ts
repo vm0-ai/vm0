@@ -1283,7 +1283,7 @@ describe("getConnectorEnvironmentMapping", () => {
     });
   });
 
-  it("declares Slock firewall auth headers and control permissions", () => {
+  it("declares Slock firewall auth headers without permissions", () => {
     const firewall = getConnectorFirewall("slock");
     expect(firewall.apis).toHaveLength(1);
     expect(firewall.apis[0]?.base).toBe("https://api.slock.ai");
@@ -1291,23 +1291,7 @@ describe("getConnectorEnvironmentMapping", () => {
       Authorization: "Bearer ${{ secrets.SLOCK_ACCESS_TOKEN }}",
       "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}",
     });
-
-    const permissions = new Map(
-      firewall.apis[0]?.permissions?.map((permission) => {
-        return [permission.name, permission.rules];
-      }),
-    );
-    expect(permissions.get("agents:write")).toEqual(
-      expect.arrayContaining([
-        "POST /api/agents/{agentId}/start",
-        "POST /api/agents/{agentId}/stop",
-        "POST /api/agents/{agentId}/assign-machine",
-      ]),
-    );
-    expect(permissions.get("machines:read")).toContain(
-      "GET /api/servers/{serverId}/machines",
-    );
-    expect(permissions.get("messages:write")).toContain("POST /api/messages");
+    expect(firewall.apis[0]?.permissions).toBeUndefined();
   });
 
   it("OAuth connectors have consistent secrets and environmentMapping naming", () => {
