@@ -1146,6 +1146,12 @@ describe("computer use desktop runtime", () => {
       },
     );
     expect(state.status).toBe("succeeded");
+    expect(snapshotStore.get("Safari", "snap_1")).toMatchObject({
+      screenshotSource: "window",
+      sourceBounds: { x: 100, y: 200, width: 1600, height: 1200 },
+      windowId: 123,
+      windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
+    });
 
     const click = await executeComputerUseCommand(
       {
@@ -1191,6 +1197,48 @@ describe("computer use desktop runtime", () => {
       button: "right",
       clickCount: 2,
     });
+  });
+
+  it("rejects coordinate clicks against non-window screenshot snapshots", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    snapshotStore.set({
+      app: "Safari",
+      snapshotId: "screen_snap",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      screenshotSource: "screen",
+      screenshotSourceName: "Built-in Display",
+      sourceBounds: { x: 0, y: 0, width: 1440, height: 900 },
+    });
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "screen_snap",
+          x: 400,
+          y: 300,
+        },
+      },
+      { accessibility: true, screenRecording: false },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend: createNativeBackend({ clickPoint }),
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "Snapshot is not a target-window screenshot: screen_snap",
+      },
+    });
+    expect(clickPoint).not.toHaveBeenCalled();
   });
 
   it("uses fresh native app state for coordinate clicks without a cached snapshot", async () => {

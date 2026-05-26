@@ -168,6 +168,8 @@ interface ComputerUseSnapshotMetadata {
   readonly snapshotId: string;
   readonly elementIdsByIndex?: readonly string[];
   readonly focusedElementIndex?: number;
+  readonly windowId?: number;
+  readonly windowFrame?: ComputerUseCoordinateBounds;
   readonly screenshotWidth: number;
   readonly screenshotHeight: number;
   readonly screenshotSource: "window" | "screen";
@@ -1446,6 +1448,12 @@ async function getAppState(
     ...(indexed.focusedElementIndex !== undefined
       ? { focusedElementIndex: indexed.focusedElementIndex }
       : {}),
+    ...(indexed.snapshot.windowId !== undefined
+      ? { windowId: indexed.snapshot.windowId }
+      : {}),
+    ...(indexed.snapshot.windowFrame
+      ? { windowFrame: indexed.snapshot.windowFrame }
+      : {}),
     screenshotWidth: screenshot.width,
     screenshotHeight: screenshot.height,
     screenshotSource: screenshot.source,
@@ -1489,6 +1497,11 @@ function mapScreenshotPointToScreen(args: {
   | { readonly screenX: number; readonly screenY: number }
   | ComputerUseCommandFailure {
   const { metadata } = args;
+  if (metadata.screenshotSource !== "window") {
+    return unsupportedCommand(
+      `Snapshot is not a target-window screenshot: ${metadata.snapshotId}`,
+    );
+  }
   if (!metadata.sourceBounds) {
     return unsupportedCommand(
       `Snapshot source bounds are unavailable: ${metadata.snapshotId}`,
