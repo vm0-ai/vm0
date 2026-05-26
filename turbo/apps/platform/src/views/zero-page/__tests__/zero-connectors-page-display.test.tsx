@@ -45,11 +45,7 @@ describe("connectors page - count display", () => {
       { type: "openai", authMethod: "api-token" },
     ]);
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
@@ -71,11 +67,7 @@ describe("connectors page - count display", () => {
   it("only matching categories are shown for search-filtered results (CONN-D-002)", async () => {
     mockConnectors([{ type: "github" }]);
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
@@ -104,35 +96,6 @@ describe("connectors page - count display", () => {
 });
 
 describe("connectors page - grouped display", () => {
-  it("does not render categories or the category menu when the feature switch is off", async () => {
-    mockConnectors([
-      { type: "github" },
-      { type: "openai", authMethod: "api-token" },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByTestId("connector-category-ai"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("connector-category-engineering-team-execution"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("navigation", {
-        name: "Connector categories",
-      }),
-    ).not.toBeInTheDocument();
-  });
-
   it("renders a category menu that scrolls to grouped sections", async () => {
     const scrollIntoView = vi
       .spyOn(Element.prototype, "scrollIntoView")
@@ -143,11 +106,7 @@ describe("connectors page - grouped display", () => {
       { type: "openai", authMethod: "api-token" },
     ]);
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await screen.findByRole("navigation", {
       name: "Connector categories",
@@ -172,11 +131,7 @@ describe("connectors page - grouped display", () => {
   it("connected connectors are shown before available ones within a category", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCategories]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(

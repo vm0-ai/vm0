@@ -47,8 +47,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Base44Connector]: {
     maintainer: "liangyou@vm0.ai",
     description: "Enable the Base44 connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.BentomlConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -182,9 +181,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Show the GitHub integration card on the Works page for installing GitHub, connecting users, and managing label listeners.",
+      "Show the GitHub integration card on the Works page for installing GitHub, connecting users, and managing label listeners. Off by default; individuals opt in via the feature-switch overrides API.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
@@ -211,16 +209,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.LocalBrowserUse]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Enable the Local Browser connector and user-authorized browser host lifecycle",
+      "Enable the Local Browser connector and user-authorized browser host lifecycle. Off by default; individuals opt in via the feature-switch overrides API.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.LocalAgentConnector]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show the Local Agent connector entry on the Connectors settings page. Staff-only while adoption is being re-evaluated.",
+      "Show the Local Agent connector entry on the Connectors settings page. Off by default; individuals opt in via the feature-switch overrides API.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
@@ -261,12 +257,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ChatMarkdownMath]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable synchronous math rendering for inline and block formulas in chat Markdown.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
@@ -310,12 +300,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Route platform API traffic to the api backend host instead of the www backend host. Unported endpoints continue through the api backend's web fallback proxy.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorCategories]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show category sections and the hover-reveal outline menu on the Connectors settings page.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
