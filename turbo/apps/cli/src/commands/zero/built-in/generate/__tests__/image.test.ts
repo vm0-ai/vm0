@@ -310,7 +310,7 @@ describe("zero built-in generate image command", () => {
               id: "vm0:image-style:notion-illustration",
               source: expect.objectContaining({
                 repo: "vm0-ai/vm0-skills",
-                commit: "b35373eb12112b1e7a0caa372a5cafe02e214dd1",
+                commit: "main",
                 path: "notion-illustration",
               }),
             }),
@@ -320,6 +320,38 @@ describe("zero built-in generate image command", () => {
     );
     expect(parsed.instructions).toEqual(
       expect.stringContaining("## Stage 2: Resolve Selected Resources"),
+    );
+  });
+
+  it("should include vm0 illustration style for in-app spot prompts", async () => {
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "image",
+      "--styled",
+      "--prompt",
+      "vm0 style in-app illustration for an empty billing state",
+      "--json",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(parsed.selection).toEqual(
+      expect.objectContaining({
+        candidates: expect.objectContaining({
+          imageStyles: expect.arrayContaining([
+            expect.objectContaining({
+              id: "vm0:image-style:vm0-illustration",
+              source: expect.objectContaining({
+                repo: "vm0-ai/vm0-skills",
+                commit: "main",
+                path: "illustration-template/vm0-illustration",
+              }),
+            }),
+          ]),
+        }),
+      }),
     );
   });
 
