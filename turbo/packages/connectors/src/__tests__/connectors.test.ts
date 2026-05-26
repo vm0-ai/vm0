@@ -931,13 +931,10 @@ describe("getAvailableConnectorAuthMethods", () => {
     ).toStrictEqual(["api-token"]);
   });
 
-  it("exposes Base44 OAuth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethods("base44", {
-        [FeatureSwitchKey.Base44Connector]: true,
-      }),
-    ).toStrictEqual(["oauth"]);
+  it("exposes Base44 OAuth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([
+      "oauth",
+    ]);
   });
 
   it("exposes Lark API-token auth only when its switch is enabled", () => {
