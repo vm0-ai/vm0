@@ -448,48 +448,30 @@ export interface ConnectorAuthMethodConfig {
 }
 
 /**
- * Well-known connector auth method ids exposed as configured connection flows.
+ * Connector auth method ids exposed as configured connection flows.
  *
- * These values describe the choices users can select when connecting a
- * service. They are not necessarily the same as the persisted connected
- * credential shape returned by connector APIs.
- *
- * - `oauth` — full OAuth 2.0 flow. Enablement stored as a DB row in
- *   `connectors` (with scopes, external identity, token refresh metadata).
- * - `api-token` — user supplies an API token via the UI. No DB row:
- *   enablement is derived from the presence of required secrets/variables.
- * - `api` — service-managed connection flow for integrations established
- *   outside OAuth or user-entered API-token forms.
- * - `cli-auth` — user imports credentials through a provider CLI. The imported
- *   result may still be stored as another credential shape such as `api-token`.
+ * These values describe user-selectable connection choices. Behavior must be
+ * derived from the auth method lifecycle config, not from the id itself.
  */
-export type ConnectorWellKnownAuthMethodId =
+export type ConnectorAuthMethodId =
   | "oauth"
   | "api-token"
   | "api"
-  | "cli-auth";
+  | "cli-auth"
+  | "app-credentials";
 
-export type ConnectorLocalAuthMethodId = "app-credentials";
-
-export type ConnectorAuthMethodId =
-  | ConnectorWellKnownAuthMethodId
-  | ConnectorLocalAuthMethodId;
-
-export const CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS = [
+/**
+ * Temporary ordering for auth method ids still handled by legacy key-based
+ * API/UI paths. This is intentionally not exhaustive over ConnectorAuthMethodId.
+ */
+export const CONNECTOR_LEGACY_AUTH_METHOD_ORDER = [
   "oauth",
   "api-token",
   "api",
   "cli-auth",
-] as const satisfies readonly ConnectorWellKnownAuthMethodId[];
-
-type MissingConnectorWellKnownAuthMethodId = Exclude<
-  ConnectorWellKnownAuthMethodId,
-  (typeof CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS)[number]
->;
+] as const satisfies readonly ConnectorAuthMethodId[];
 
 type AssertNever<T extends never> = T;
-export type ConnectorWellKnownAuthMethodIdsCoverUnion =
-  AssertNever<MissingConnectorWellKnownAuthMethodId>;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -897,7 +879,7 @@ export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   string
 >;
 type ConnectorAuthMethodKeys<Type extends ConnectorType> =
-  ConnectorAuthMethodIds<Type> & ConnectorWellKnownAuthMethodId;
+  ConnectorAuthMethodIds<Type> & keyof ConnectorAuthMethodGrantKindById;
 
 type ConnectorAuthMethodGrantKindById = {
   readonly oauth: "auth-code" | "device-auth";

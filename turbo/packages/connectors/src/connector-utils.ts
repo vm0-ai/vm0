@@ -1,11 +1,10 @@
 import {
-  CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS,
+  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
-  type ConnectorWellKnownAuthMethodId,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
@@ -23,6 +22,9 @@ import {
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
+
+type ConnectorLegacyAuthMethodId =
+  (typeof CONNECTOR_LEGACY_AUTH_METHOD_ORDER)[number];
 
 /**
  * Connector utility vocabulary:
@@ -46,14 +48,28 @@ export function getConnectorAuthMethods(
   return CONNECTOR_TYPES[type].authMethods;
 }
 
+function lookupConnectorAuthMethod(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodConfig | undefined {
+  for (const [methodId, method] of Object.entries(
+    CONNECTOR_TYPES[type].authMethods,
+  )) {
+    if (methodId === authMethod) {
+      return method;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Get one auth method config for a connector type.
  */
 export function getConnectorAuthMethod(
   type: ConnectorType,
-  authMethod: ConnectorWellKnownAuthMethodId,
+  authMethod: ConnectorAuthMethodId,
 ): ConnectorAuthMethodConfig | undefined {
-  return getConnectorAuthMethods(type)[authMethod];
+  return lookupConnectorAuthMethod(type, authMethod);
 }
 
 function connectorAuthMethodValues(
@@ -82,7 +98,7 @@ function getManualGrantFields(
 
 export function getConnectorManualGrantFields(
   type: ConnectorType,
-  authMethod: ConnectorWellKnownAuthMethodId,
+  authMethod: ConnectorAuthMethodId,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
   return getManualGrantFields(getConnectorAuthMethod(type, authMethod));
 }
@@ -197,7 +213,7 @@ export interface AvailableConnectorAuthMethodsOptions {
 
 export function isConnectorAuthMethodAvailable(
   type: ConnectorType,
-  authMethod: ConnectorWellKnownAuthMethodId,
+  authMethod: ConnectorAuthMethodId,
   featureStates: ConnectorFeatureStates,
 ): boolean {
   const method = getConnectorAuthMethod(type, authMethod);
@@ -230,11 +246,11 @@ export function getAvailableConnectorAuthMethods(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
-): ConnectorWellKnownAuthMethodId[] {
+): ConnectorLegacyAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorWellKnownAuthMethodId[] = [];
+  const availableAuthMethods: ConnectorLegacyAuthMethodId[] = [];
 
-  for (const authMethod of CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS) {
+  for (const authMethod of CONNECTOR_LEGACY_AUTH_METHOD_ORDER) {
     if (!getConnectorAuthMethod(type, authMethod)) {
       continue;
     }
@@ -430,9 +446,11 @@ export function getRuntimeAvailableConnectorTypes(
  */
 export function getConnectorSecretNames(
   type: ConnectorType,
-  authMethod: ConnectorWellKnownAuthMethodId,
+  authMethod: string,
 ): string[] {
-  return connectorMethodSecretNames(getConnectorAuthMethod(type, authMethod));
+  return connectorMethodSecretNames(
+    lookupConnectorAuthMethod(type, authMethod),
+  );
 }
 
 function connectorMethodSecretNames(

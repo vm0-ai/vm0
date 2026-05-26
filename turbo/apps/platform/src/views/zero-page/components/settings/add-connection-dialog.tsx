@@ -15,9 +15,9 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import {
-  CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS,
+  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPES,
-  type ConnectorWellKnownAuthMethodId,
+  type ConnectorAuthMethodId,
   type ConnectorGrantKind,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -186,8 +186,11 @@ type ConnectMethodContentComponent = (
   props: ConnectMethodContentProps,
 ) => ReactElement;
 
+type LegacyConnectAuthMethodId =
+  (typeof CONNECTOR_LEGACY_AUTH_METHOD_ORDER)[number];
+
 type ConnectMethodContentEntry = {
-  authMethod: ConnectorWellKnownAuthMethodId;
+  authMethod: LegacyConnectAuthMethodId;
   Content: ConnectMethodContentComponent;
 };
 
@@ -888,7 +891,7 @@ function getApiConnectContentComponent(
 
 function getConnectMethodContentComponent(
   item: ConnectorTypeWithStatus,
-  authMethod: ConnectorWellKnownAuthMethodId,
+  authMethod: LegacyConnectAuthMethodId,
 ): ConnectMethodContentComponent | null {
   switch (authMethod) {
     case "oauth": {
@@ -915,7 +918,7 @@ function getConnectMethodContentComponent(
 function getConnectMethodContentEntries(
   item: ConnectorTypeWithStatus,
 ): ConnectMethodContentEntry[] {
-  return CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS.filter((authMethod) => {
+  return CONNECTOR_LEGACY_AUTH_METHOD_ORDER.filter((authMethod) => {
     return item.availableAuthMethods.includes(authMethod);
   }).flatMap((authMethod) => {
     const Content = getConnectMethodContentComponent(item, authMethod);
@@ -925,7 +928,7 @@ function getConnectMethodContentEntries(
 
 function hasAuthMethodGrantKind(
   type: ConnectorType,
-  authMethods: readonly ConnectorWellKnownAuthMethodId[],
+  authMethods: readonly ConnectorAuthMethodId[],
   kind: ConnectorGrantKind,
 ): boolean {
   return authMethods.some((authMethod) => {
@@ -952,7 +955,7 @@ function ConnectMethodHeading({
   show,
 }: {
   item: ConnectorTypeWithStatus;
-  authMethod: ConnectorWellKnownAuthMethodId;
+  authMethod: LegacyConnectAuthMethodId;
   show: boolean;
 }) {
   if (!show) {

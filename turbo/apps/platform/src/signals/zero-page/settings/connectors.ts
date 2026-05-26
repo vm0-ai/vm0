@@ -3,10 +3,10 @@ import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
-  CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS,
+  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
-  type ConnectorWellKnownAuthMethodId,
+  type ConnectorAuthMethodId,
   type ConnectorBrowserVerificationCliAuthConnectorType,
   type ConnectorType,
   type ConnectorDisplayCategory,
@@ -119,7 +119,7 @@ export interface ConnectorTypeWithStatus {
   connected: boolean;
   connector: ConnectorResponse | null;
   /** Auth methods available for this connector (considering feature flags). */
-  availableAuthMethods: ConnectorWellKnownAuthMethodId[];
+  availableAuthMethods: ConnectorAuthMethodId[];
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;
   /** True if stored OAuth scopes don't cover all currently required scopes. */
@@ -136,8 +136,8 @@ type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
 export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
-): ConnectorWellKnownAuthMethodId[] {
-  return CONNECTOR_WELL_KNOWN_AUTH_METHOD_IDS.filter((authMethod) => {
+): ConnectorAuthMethodId[] {
+  return CONNECTOR_LEGACY_AUTH_METHOD_ORDER.filter((authMethod) => {
     return authMethod in CONNECTOR_TYPES[type].authMethods;
   });
 }
@@ -148,7 +148,7 @@ export function getConnectorConnectLaunchMode({
   preferModalForGoogleOAuth = false,
 }: {
   readonly type: ConnectorType;
-  readonly availableAuthMethods: readonly ConnectorWellKnownAuthMethodId[];
+  readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
   readonly preferModalForGoogleOAuth?: boolean;
 }): ConnectorConnectLaunchMode {
   const hasAuthCodeGrant = availableAuthMethods.some((authMethod) => {

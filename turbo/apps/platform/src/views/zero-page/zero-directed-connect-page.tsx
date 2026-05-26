@@ -1,7 +1,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
-  type ConnectorWellKnownAuthMethodId,
+  type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -54,7 +54,7 @@ import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
 function runDirectedConnect(params: {
-  authMethods: readonly ConnectorWellKnownAuthMethodId[];
+  authMethods: readonly ConnectorAuthMethodId[];
   connectorType: ConnectorType;
   signal: AbortSignal;
   connect: (

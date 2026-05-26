@@ -25,7 +25,6 @@ import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
-  type ConnectorWellKnownAuthMethodId,
   type ConnectorType,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
@@ -641,7 +640,7 @@ export const deleteZeroConnectorLocalState$ = command(
 
       const secretNames = getConnectorSecretNames(
         args.type,
-        existing.authMethod as ConnectorWellKnownAuthMethodId,
+        existing.authMethod,
       );
 
       for (const name of secretNames) {

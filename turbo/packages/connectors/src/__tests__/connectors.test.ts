@@ -15,8 +15,6 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorConfig,
   type ConnectorInvalidDefaultAuthMethodType,
-  type ConnectorLocalAuthMethodId,
-  type ConnectorWellKnownAuthMethodId,
   type OAuthAuthCodeConnectorType,
 } from "../connectors";
 import {
@@ -226,9 +224,10 @@ describe("connector auth method config", () => {
     type FixtureConfig =
       (typeof connectorLocalAuthMethodFixture)["connector-local-auth-method-fixture"];
 
-    expectTypeOf<ConnectorLocalAuthMethodId>().toEqualTypeOf<"app-credentials">();
-    expectTypeOf<ConnectorLocalAuthMethodId>().toMatchTypeOf<ConnectorAuthMethodId>();
-    expectTypeOf<ConnectorWellKnownAuthMethodId>().toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
+      "oauth" | "api-token" | "api" | "cli-auth" | "app-credentials"
+    >();
+    expectTypeOf<"app-credentials">().toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<FixtureConfig>
     >().toEqualTypeOf<"app-credentials">();

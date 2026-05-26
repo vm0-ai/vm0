@@ -704,7 +704,7 @@ export {
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
   type ConnectorAuthMethodConfig,
-  type ConnectorWellKnownAuthMethodId,
+  type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 export {
   getConnectorAuthMethods,
