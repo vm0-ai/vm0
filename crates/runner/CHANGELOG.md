@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.3...runner-rs-v0.104.4) (2026-05-26)
+
+
+### Documentation
+
+* **mitm-addon:** document usage buffer contract ([#14956](https://github.com/vm0-ai/vm0/issues/14956)) ([c4b3a27](https://github.com/vm0-ai/vm0/commit/c4b3a27a3bcd23119be444cf0c20020e9d150bbf))
+
 ## [0.104.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.2...runner-rs-v0.104.3) (2026-05-26)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.389.3](https://github.com/vm0-ai/vm0/compare/web-v12.389.2...web-v12.389.3) (2026-05-26)
+
+
+### Bug Fixes
+
+* gate marketing pixels to production ([#14958](https://github.com/vm0-ai/vm0/issues/14958)) ([2075c49](https://github.com/vm0-ai/vm0/commit/2075c49ae9ed420cc891ec37963450f61d3f5fcc))
+* **web:** order docs sections by intended reading order ([#14943](https://github.com/vm0-ai/vm0/issues/14943)) ([94cb915](https://github.com/vm0-ai/vm0/commit/94cb91565839f6629f967fa2bca53fde1b046337))
+
 ## [12.389.2](https://github.com/vm0-ai/vm0/compare/web-v12.389.1...web-v12.389.2) (2026-05-26)
 
 

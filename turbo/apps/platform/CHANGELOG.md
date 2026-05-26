@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.384.8](https://github.com/vm0-ai/vm0/compare/app-v0.384.7...app-v0.384.8) (2026-05-26)
+
+
+### Bug Fixes
+
+* gate marketing pixels to production ([#14958](https://github.com/vm0-ai/vm0/issues/14958)) ([2075c49](https://github.com/vm0-ai/vm0/commit/2075c49ae9ed420cc891ec37963450f61d3f5fcc))
+
 ## [0.384.7](https://github.com/vm0-ai/vm0/compare/app-v0.384.6...app-v0.384.7) (2026-05-26)
 
 
