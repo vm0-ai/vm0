@@ -527,6 +527,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn abandoned_cleanup_keeps_mutated_result_with_same_marker_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let marker =
+            write_abandoned_result_marker(&queue.result, job_id, "local submit abandoned").unwrap();
+        let marker_metadata = std::fs::metadata(&queue.result).unwrap();
+        let runner_result = b"runner result";
+        let mut result_file = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&queue.result)
+            .unwrap();
+        std::io::Write::write_all(&mut result_file, runner_result).unwrap();
+        drop(result_file);
+        let current_metadata = std::fs::metadata(&queue.result).unwrap();
+        assert_eq!(marker_metadata.dev(), current_metadata.dev());
+        assert_eq!(marker_metadata.ino(), current_metadata.ino());
+
+        queue.cleanup_abandoned(Some(&marker));
+
+        assert!(!queue.job.exists());
+        assert_eq!(std::fs::read(&queue.result).unwrap(), runner_result);
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
     async fn wait_for_job_and_write_result(
         group_dir: std::path::PathBuf,
         profile: String,
