@@ -963,14 +963,19 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
     expect(response.body.nextCursor).toBeNull();
   });
 
-  it("returns org pinned threads even when non-pinned results are agent-scoped", async () => {
+  it("scopes pinned threads to the requested agent when agentId is provided", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
 
     const scopedFixture = await track(
       store.set(
         seedZeroChatThread$,
-        { userId, orgId, title: "Scoped unpinned" },
+        {
+          userId,
+          orgId,
+          title: "Scoped pinned",
+          pinnedAt: new Date("2025-05-02T10:00:00.000Z"),
+        },
         context.signal,
       ),
     );
@@ -1008,18 +1013,14 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
       response.body.pinned.map((t) => {
         return t.id;
       }),
-    ).toStrictEqual([otherPinnedFixture.threadId]);
-    expect(
-      response.body.threads.map((t) => {
-        return t.id;
-      }),
     ).toStrictEqual([scopedFixture.threadId]);
-    expect(
-      allListedThreads(response.body).map((t) => {
-        return t.id;
-      }),
-    ).not.toContain(otherUnpinnedFixture.threadId);
-    expect(response.body.totalCount).toBe(1);
+    expect(response.body.threads).toStrictEqual([]);
+    const allIds = allListedThreads(response.body).map((t) => {
+      return t.id;
+    });
+    expect(allIds).not.toContain(otherPinnedFixture.threadId);
+    expect(allIds).not.toContain(otherUnpinnedFixture.threadId);
+    expect(response.body.totalCount).toBe(0);
   });
 
   it("caps the non-pinned segment at `limit` and reports hasMore + nextCursor when there's overflow", async () => {
