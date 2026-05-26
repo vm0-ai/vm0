@@ -28,6 +28,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
@@ -107,12 +108,12 @@ describe("internal connector logos - interaction (ORG-I-121)", () => {
       // Default size button is "128" — clicking "16" should switch to a smaller size
       await waitFor(() => {
         expect(
-          screen.getAllByRole("button").find((el) => {
+          queryAllByRoleFast("button").find((el) => {
             return /128/.test(el.textContent ?? "");
           }),
         ).toBeInTheDocument();
       });
-      const btn16 = screen.getAllByRole("button").find((el) => {
+      const btn16 = queryAllByRoleFast("button").find((el) => {
         return /^16$/.test(el.textContent ?? "");
       });
       click(btn16!);
@@ -259,7 +260,7 @@ describe("zero unsaved bar - display (ORG-D-111)", () => {
     // ZeroUnsavedBar appears with Save/Discard buttons when there are unsaved changes
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Discard$/.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
@@ -278,19 +279,19 @@ describe("zero unsaved bar - interaction (ORG-I-113)", () => {
     await fill(descInput, "Changed description");
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Discard$/.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
     });
     click(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /^Discard$/.test(el.textContent ?? "");
       })!,
     );
     await waitFor(() => {
       expect(
-        screen.queryAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Discard$/.test(el.textContent ?? "");
         }),
       ).toBeUndefined();
@@ -315,19 +316,19 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
     await fill(descInput, "New description");
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Discard$/.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
     });
     click(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /^Save$/.test(el.textContent ?? "");
       })!,
     );
     await waitFor(() => {
       expect(
-        screen.queryAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Discard$/.test(el.textContent ?? "");
         }),
       ).toBeUndefined();

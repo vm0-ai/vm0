@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
@@ -9,6 +9,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -52,7 +53,7 @@ describe("zero chat page - suggested prompts", () => {
 
     // The prompt grid is the grandparent: <p> → <button> → <div.grid>
     const promptGrid = exploreText.closest("button")!.parentElement!;
-    const gridButtons = within(promptGrid).getAllByRole("button");
+    const gridButtons = queryAllByRoleFast("button", promptGrid);
 
     // 2 random prompt cards + 1 "Ideas & use cases" card
     expect(gridButtons).toHaveLength(3);
@@ -77,7 +78,7 @@ describe("zero chat page - suggested prompts", () => {
       return screen.getByText(/Ideas & use cases/);
     });
     const promptGrid = exploreText.closest("button")!.parentElement!;
-    const gridButtons = within(promptGrid).getAllByRole("button");
+    const gridButtons = queryAllByRoleFast("button", promptGrid);
 
     // Find the first random prompt card (not "Ideas & use cases")
     const promptCard = gridButtons.find((btn) => {
@@ -233,7 +234,7 @@ describe("zero chat page - connectors popover", () => {
 
     // Default mock has no org connectors, so all types are unconnected.
     // Check that at least one "Connect X" button exists.
-    const connectButtons = screen.getAllByRole("button").filter((el) => {
+    const connectButtons = queryAllByRoleFast("button").filter((el) => {
       return (el.getAttribute("aria-label") ?? "").startsWith("Connect ");
     });
     expect(connectButtons.length).toBeGreaterThan(0);
@@ -558,7 +559,7 @@ describe("zero chat page - ideation page", () => {
     await navigateToIdeation();
 
     // Click a specific category tab
-    const githubCategoryBtn = screen.getAllByRole("button").find((el) => {
+    const githubCategoryBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "GitHub";
     });
     expect(githubCategoryBtn).toBeDefined();

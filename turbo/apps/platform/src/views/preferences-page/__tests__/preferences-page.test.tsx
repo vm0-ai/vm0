@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
@@ -108,7 +112,7 @@ describe("zero preferences page - send mode interaction", () => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
     });
 
-    const cmdEnterButton = screen.getAllByRole("button").find((btn) => {
+    const cmdEnterButton = queryAllByRoleFast("button").find((btn) => {
       return (
         btn.textContent?.includes("Enter") &&
         btn.textContent?.includes("\u2318")

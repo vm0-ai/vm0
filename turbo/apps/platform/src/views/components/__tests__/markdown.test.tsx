@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setTheme$ } from "../../../signals/theme.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -254,7 +257,7 @@ describe("chat-d-066: markdown links open in new tab", () => {
     detachedSetupPage({ context, path: "/chats/thread-link" });
 
     await waitFor(() => {
-      const link = screen.getAllByRole("link").find((el) => {
+      const link = queryAllByRoleFast("link").find((el) => {
         return /example/.test(el.textContent ?? "");
       });
       expect(link).toHaveAttribute("href", "https://example.com");

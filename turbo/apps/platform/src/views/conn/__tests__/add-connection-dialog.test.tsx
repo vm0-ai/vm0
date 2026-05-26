@@ -20,7 +20,11 @@ import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-con
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   connectorCliAuthState$,
   setSelectedConnectorType$,
@@ -65,19 +69,13 @@ function elementTextMatches(
 }
 
 function getButtonByText(matcher: string | RegExp): HTMLElement {
-  // `screen.getAllByRole("button")` triggers @testing-library's ARIA-role
-  // resolution across the whole document — that single call took ~360ms in
-  // happy-dom on this page even with only 5 buttons present, which alone
-  // pushed the stripe CLI close test over the default 5s timeout under CI
-  // load. Native `querySelectorAll("button")` returns the same set without
-  // the ARIA tree walk.
-  const buttons = document.body.querySelectorAll<HTMLButtonElement>("button");
-  for (const button of buttons) {
-    if (elementTextMatches(button, matcher)) {
-      return button;
-    }
+  const button = queryAllByRoleFast("button").find((element) => {
+    return elementTextMatches(element, matcher);
+  });
+  if (!button) {
+    throw new Error(`Button not found: ${String(matcher)}`);
   }
-  throw new Error(`Button not found: ${String(matcher)}`);
+  return button;
 }
 
 function mockConnectorOauthStart() {

@@ -8,7 +8,11 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
@@ -259,7 +263,7 @@ describe("zero job detail page - connector display", () => {
 
 describe("zero job detail page - tab visibility", () => {
   function findTab(label: RegExp) {
-    return screen.getAllByRole("tab").find((el) => {
+    return queryAllByRoleFast("tab").find((el) => {
       return label.test(el.textContent ?? "");
     });
   }

@@ -9,7 +9,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -51,13 +55,13 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("tab").find((el) => {
+        queryAllByRoleFast("tab").find((el) => {
           return /list/i.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
     });
     expect(
-      screen.getAllByRole("tab").find((el) => {
+      queryAllByRoleFast("tab").find((el) => {
         return /calendar/i.test(el.textContent ?? "");
       }),
     ).toBeInTheDocument();
@@ -69,14 +73,14 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("tab").find((el) => {
+        queryAllByRoleFast("tab").find((el) => {
           return /list/i.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
     });
 
     // History tab should not exist
-    const historyTabs = screen.getAllByRole("tab").filter((el) => {
+    const historyTabs = queryAllByRoleFast("tab").filter((el) => {
       return /history/i.test(el.textContent ?? "");
     });
     expect(historyTabs).toHaveLength(0);
@@ -88,14 +92,14 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("tab").find((el) => {
+        queryAllByRoleFast("tab").find((el) => {
           return /list/i.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
     });
 
     click(
-      screen.getAllByRole("tab").find((el) => {
+      queryAllByRoleFast("tab").find((el) => {
         return /calendar/i.test(el.textContent ?? "");
       })!,
     );
@@ -111,7 +115,7 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("tab").find((el) => {
+        queryAllByRoleFast("tab").find((el) => {
           return /list/i.test(el.textContent ?? "");
         }),
       ).toBeInTheDocument();
@@ -119,7 +123,7 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
 
     // Go to calendar first
     click(
-      screen.getAllByRole("tab").find((el) => {
+      queryAllByRoleFast("tab").find((el) => {
         return /calendar/i.test(el.textContent ?? "");
       })!,
     );
@@ -129,7 +133,7 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
 
     // Go back to list
     click(
-      screen.getAllByRole("tab").find((el) => {
+      queryAllByRoleFast("tab").find((el) => {
         return /list/i.test(el.textContent ?? "");
       })!,
     );
@@ -175,7 +179,7 @@ describe("zero schedule page - display after refactor", () => {
     });
 
     click(
-      screen.getAllByRole("tab").find((el) => {
+      queryAllByRoleFast("tab").find((el) => {
         return /calendar/i.test(el.textContent ?? "");
       })!,
     );

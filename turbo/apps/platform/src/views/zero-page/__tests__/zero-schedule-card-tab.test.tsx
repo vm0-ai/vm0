@@ -15,6 +15,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -114,12 +115,12 @@ async function openMenuAndClick(
   click(menuTrigger);
   await waitFor(() => {
     expect(
-      screen.getAllByRole("menuitem").find((el) => {
+      queryAllByRoleFast("menuitem").find((el) => {
         return el.textContent?.includes(action);
       }),
     ).toBeDefined();
   });
-  const item = screen.getAllByRole("menuitem").find((el) => {
+  const item = queryAllByRoleFast("menuitem").find((el) => {
     return el.textContent?.includes(action);
   });
   expect(item).toBeDefined();
@@ -186,10 +187,10 @@ describe("zero-schedule-card - view mode", () => {
     });
 
     // Both view mode tabs should be present in the card header
-    const listTab = screen.getAllByRole("tab").find((el) => {
+    const listTab = queryAllByRoleFast("tab").find((el) => {
       return /^List$/i.test(el.textContent?.trim() ?? "");
     });
-    const calendarTab = screen.getAllByRole("tab").find((el) => {
+    const calendarTab = queryAllByRoleFast("tab").find((el) => {
       return /^Calendar$/i.test(el.textContent?.trim() ?? "");
     });
     expect(listTab).toBeDefined();
@@ -208,7 +209,7 @@ describe("zero-schedule-card - view mode", () => {
       ).toBeInTheDocument();
     });
 
-    const calendarTab = screen.getAllByRole("tab").find((el) => {
+    const calendarTab = queryAllByRoleFast("tab").find((el) => {
       return /Calendar/i.test(el.textContent ?? "");
     });
     expect(calendarTab).toBeDefined();

@@ -6,6 +6,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import type {
   OrgMember,
@@ -197,7 +198,7 @@ test("opens invite dialog when Add member button is clicked", async () => {
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
   });
-  const addMemberButton = screen.getAllByRole("button").find((el) => {
+  const addMemberButton = queryAllByRoleFast("button").find((el) => {
     return /Add member/i.test(el.textContent ?? "");
   });
   expect(addMemberButton).toBeDefined();
@@ -223,7 +224,7 @@ test("sends invite with typed email when Send invitation is clicked", async () =
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
   });
-  const addMemberButton031 = screen.getAllByRole("button").find((el) => {
+  const addMemberButton031 = queryAllByRoleFast("button").find((el) => {
     return /Add member/i.test(el.textContent ?? "");
   });
   expect(addMemberButton031).toBeDefined();
@@ -235,7 +236,7 @@ test("sends invite with typed email when Send invitation is clicked", async () =
   });
   const emailInput = screen.getByPlaceholderText("email@example.com");
   await fill(emailInput, "test@invite.com");
-  const sendButton031 = screen.getAllByRole("button").find((el) => {
+  const sendButton031 = queryAllByRoleFast("button").find((el) => {
     return el.textContent === "Send invitation";
   });
   expect(sendButton031).toBeDefined();
@@ -259,7 +260,7 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
   });
-  const addMemberButton032 = screen.getAllByRole("button").find((el) => {
+  const addMemberButton032 = queryAllByRoleFast("button").find((el) => {
     return /Add member/i.test(el.textContent ?? "");
   });
   expect(addMemberButton032).toBeDefined();
@@ -276,7 +277,7 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
     expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
   });
   click(screen.getByRole("option", { name: "Admin" }));
-  const sendButton032 = screen.getAllByRole("button").find((el) => {
+  const sendButton032 = queryAllByRoleFast("button").find((el) => {
     return el.textContent === "Send invitation";
   });
   expect(sendButton032).toBeDefined();

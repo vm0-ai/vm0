@@ -19,6 +19,7 @@ import { testContext } from "../../../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
   click,
+  queryAllByRoleFast,
 } from "../../../../../__tests__/page-helper.ts";
 import {
   setMockOrgModelProviders,
@@ -113,11 +114,9 @@ function findReconnectDialogTitle(): HTMLElement | null {
 }
 
 function getActionsButton(row: HTMLElement): HTMLElement {
-  const button = within(row)
-    .getAllByRole("button")
-    .find((item) => {
-      return /Actions for/i.test(item.getAttribute("aria-label") ?? "");
-    });
+  const button = queryAllByRoleFast("button", row).find((item) => {
+    return /Actions for/i.test(item.getAttribute("aria-label") ?? "");
+  });
   expect(button).toBeDefined();
   return button!;
 }
@@ -157,11 +156,9 @@ function clickRouteChoice(dialog: HTMLElement, label: string): void {
 }
 
 function getDialogButton(dialog: HTMLElement, label: string): HTMLElement {
-  const button = within(dialog)
-    .getAllByRole("button")
-    .find((item) => {
-      return item.textContent?.trim() === label;
-    });
+  const button = queryAllByRoleFast("button", dialog).find((item) => {
+    return item.textContent?.trim() === label;
+  });
   expect(button).toBeDefined();
   return button!;
 }

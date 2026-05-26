@@ -3,7 +3,11 @@ import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -128,7 +132,7 @@ async function deleteThread(nthButton: number) {
   click(menuTriggers[nthButton - 1]);
 
   const deleteItem = await waitFor(() => {
-    const item = screen.getAllByRole("menuitem").find((el) => {
+    const item = queryAllByRoleFast("menuitem").find((el) => {
       return /Delete chat/i.test(el.textContent ?? "");
     });
     if (!item) {

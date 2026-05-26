@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
@@ -9,7 +9,11 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -181,7 +185,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     expect(readRow).not.toBeNull();
 
     // Within that row, find the Allow/Deny buttons (the PolicyPill)
-    const pillButtons = within(readRow).getAllByRole("button");
+    const pillButtons = queryAllByRoleFast("button", readRow);
     // Filter to just Allow and Deny buttons (exclude the chevron toggle button)
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
@@ -208,7 +212,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       ".flex.items-center.justify-between",
     ) as HTMLElement;
 
-    const pillButtons = within(readRow).getAllByRole("button");
+    const pillButtons = queryAllByRoleFast("button", readRow);
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
     });
@@ -232,7 +236,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       ".flex.items-center.justify-between",
     ) as HTMLElement;
 
-    const pillButtons = within(readRow).getAllByRole("button");
+    const pillButtons = queryAllByRoleFast("button", readRow);
     const denyBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Deny") ?? false;
     });
@@ -250,7 +254,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     const actionsReadRow = screen
       .getByText("bookmarks:read")
       .closest(".flex.items-center") as HTMLElement;
-    const individualButtons = within(actionsReadRow).getAllByRole("button");
+    const individualButtons = queryAllByRoleFast("button", actionsReadRow);
     const individualDeny = individualButtons.find((b) => {
       return b.textContent?.includes("Deny") ?? false;
     });
@@ -271,7 +275,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     ) as HTMLElement;
     expect(unknownRow).not.toBeNull();
 
-    const pillButtons = within(unknownRow).getAllByRole("button");
+    const pillButtons = queryAllByRoleFast("button", unknownRow);
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
     });
@@ -288,7 +292,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       ".flex.items-center.justify-between",
     ) as HTMLElement;
 
-    const pillButtons = within(unknownRow).getAllByRole("button");
+    const pillButtons = queryAllByRoleFast("button", unknownRow);
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
     });

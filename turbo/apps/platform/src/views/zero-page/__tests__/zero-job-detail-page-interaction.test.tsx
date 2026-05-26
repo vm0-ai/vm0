@@ -9,7 +9,11 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
@@ -105,7 +109,7 @@ describe("zero job detail page - interaction and state", () => {
     await waitForPageLoad();
 
     // Switch to Scheduled tab
-    const scheduledTab = screen.getAllByRole("tab").find((el) => {
+    const scheduledTab = queryAllByRoleFast("tab").find((el) => {
       return /Scheduled/i.test(el.textContent ?? "");
     });
     expect(scheduledTab).toBeDefined();

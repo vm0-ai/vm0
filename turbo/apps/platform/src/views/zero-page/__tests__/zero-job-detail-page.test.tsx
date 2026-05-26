@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
@@ -75,7 +79,7 @@ describe("zero job detail page", () => {
     expect(screen.getByText("A helpful agent")).toBeInTheDocument();
 
     // All tabs should be visible
-    const tabs = screen.getAllByRole("tab");
+    const tabs = queryAllByRoleFast("tab");
     expect(
       tabs.some((el) => {
         return /Authorization/i.test(el.textContent ?? "");
@@ -109,7 +113,7 @@ describe("zero job detail page", () => {
     });
 
     // Click Profile tab
-    const profileTab = screen.getAllByRole("tab").find((el) => {
+    const profileTab = queryAllByRoleFast("tab").find((el) => {
       return /Profile/i.test(el.textContent ?? "");
     });
     expect(profileTab).toBeDefined();

@@ -7,6 +7,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -97,13 +98,13 @@ async function openMenuAndClick(
   click(menuTrigger);
   await waitFor(() => {
     expect(
-      screen.getAllByRole("menuitem").find((el) => {
+      queryAllByRoleFast("menuitem").find((el) => {
         return el.textContent?.includes(action);
       }),
     ).toBeDefined();
   });
   click(
-    screen.getAllByRole("menuitem").find((el) => {
+    queryAllByRoleFast("menuitem").find((el) => {
       return el.textContent?.includes(action);
     })!,
   );
@@ -261,7 +262,7 @@ describe("zero schedule page - agent labels", () => {
     ).toBeInTheDocument();
     // Two distinct schedules from two distinct agents should both be rendered
     expect(
-      screen.getAllByRole("link").filter((el) => {
+      queryAllByRoleFast("link").filter((el) => {
         return /Open schedule/.test(el.getAttribute("aria-label") ?? "");
       }),
     ).toHaveLength(2);
@@ -334,7 +335,7 @@ describe("zero schedule page - list view", () => {
         screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
-    const menus = screen.getAllByRole("button").filter((el) => {
+    const menus = queryAllByRoleFast("button").filter((el) => {
       return /More actions for/.test(el.getAttribute("aria-label") ?? "");
     });
     expect(menus).toHaveLength(3);

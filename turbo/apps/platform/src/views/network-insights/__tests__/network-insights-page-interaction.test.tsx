@@ -8,7 +8,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -946,7 +950,7 @@ describe("network insights page - embedded usage panels", () => {
     });
     click(screen.getByText("Last 7 Days"));
     const findYesterdayItem = () => {
-      return screen.getAllByRole("menuitem").find((item) => {
+      return queryAllByRoleFast("menuitem").find((item) => {
         return item.textContent === "Yesterday";
       });
     };

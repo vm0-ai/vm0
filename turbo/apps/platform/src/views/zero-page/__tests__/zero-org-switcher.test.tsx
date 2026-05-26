@@ -1,7 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   fireClerkListeners,
   mockedClerk,
@@ -203,7 +207,7 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
     click(screen.getByText("Current Org"));
 
     const manageBtn = await waitFor(() => {
-      const btn = screen.getAllByRole("button").find((el) => {
+      const btn = queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Manage";
       });
       expect(btn).toBeInTheDocument();

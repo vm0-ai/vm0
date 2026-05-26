@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import {
@@ -10,7 +10,11 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -141,11 +145,9 @@ function getPermissionRow(permissionName: string): HTMLElement {
 }
 
 function getPolicyButton(row: HTMLElement, label: string): HTMLElement {
-  const button = within(row)
-    .getAllByRole("button")
-    .find((el) => {
-      return el.textContent?.includes(label) ?? false;
-    });
+  const button = queryAllByRoleFast("button", row).find((el) => {
+    return el.textContent?.includes(label) ?? false;
+  });
   if (!(button instanceof HTMLElement)) {
     throw new Error(`Policy button not found: ${label}`);
   }
@@ -194,11 +196,11 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     const insertCommentsRow = insertCommentsCode?.closest("div")
       ?.parentElement as HTMLElement;
-    const denyBtn = within(insertCommentsRow)
-      .getAllByRole("button")
-      .find((b) => {
+    const denyBtn = queryAllByRoleFast("button", insertCommentsRow).find(
+      (b) => {
         return b.textContent?.includes("Deny") ?? false;
-      });
+      },
+    );
     expect(denyBtn).toHaveAttribute("aria-pressed", "true");
 
     // read_content row should show Allow as pressed (default)
@@ -207,11 +209,9 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     const readContentRow = readContentCode?.closest("div")
       ?.parentElement as HTMLElement;
-    const allowBtn = within(readContentRow)
-      .getAllByRole("button")
-      .find((b) => {
-        return b.textContent?.includes("Allow") ?? false;
-      });
+    const allowBtn = queryAllByRoleFast("button", readContentRow).find((b) => {
+      return b.textContent?.includes("Allow") ?? false;
+    });
     expect(allowBtn).toHaveAttribute("aria-pressed", "true");
   });
 });
@@ -358,7 +358,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       expect(screen.getByText("Apply")).toBeInTheDocument();
     });
 
-    const allButtons = screen.getAllByRole("button");
+    const allButtons = queryAllByRoleFast("button");
     const policyButtons = allButtons.filter((b) => {
       return (
         (b.textContent?.includes("Allow") ?? false) ||

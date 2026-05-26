@@ -5,7 +5,10 @@ import userEvent, {
 } from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import {
   setMockUsageMembers,
@@ -101,7 +104,7 @@ describe("org usage tab - credit balance display", () => {
       );
     });
 
-    const comparePlansButton = screen.getAllByRole("button").find((el) => {
+    const comparePlansButton = queryAllByRoleFast("button").find((el) => {
       return el.textContent === "Compare plans";
     });
     expect(comparePlansButton).toBeDefined();

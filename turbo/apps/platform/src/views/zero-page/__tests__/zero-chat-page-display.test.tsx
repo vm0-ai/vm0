@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 
 const context = testContext();
@@ -44,7 +47,7 @@ describe("zero chat page display - suggested prompt connector icons", () => {
       return screen.getByText(/Ideas & use cases/);
     });
     const promptGrid = exploreText.closest("button")!.parentElement!;
-    const gridButtons = within(promptGrid).getAllByRole("button");
+    const gridButtons = queryAllByRoleFast("button", promptGrid);
 
     const promptCards = gridButtons.filter((btn) => {
       return !btn.textContent?.includes("Ideas & use cases");

@@ -7,6 +7,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
@@ -286,7 +287,7 @@ describe("zero schedule detail page - instruction save button saves instructions
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    const instructionsTab = screen.getAllByRole("tab").find((el) => {
+    const instructionsTab = queryAllByRoleFast("tab").find((el) => {
       return /Instructions/.test(el.textContent ?? "");
     });
     click(instructionsTab!);
@@ -318,7 +319,7 @@ describe("zero schedule detail page - instruction discard button reverts changes
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    const instructionsTab = screen.getAllByRole("tab").find((el) => {
+    const instructionsTab = queryAllByRoleFast("tab").find((el) => {
       return /Instructions/.test(el.textContent ?? "");
     });
     click(instructionsTab!);
@@ -555,7 +556,7 @@ describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    const instructionsTab = screen.getAllByRole("tab").find((el) => {
+    const instructionsTab = queryAllByRoleFast("tab").find((el) => {
       return /Instructions/.test(el.textContent ?? "");
     });
     click(instructionsTab!);
@@ -563,7 +564,7 @@ describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-
       expect(document.querySelector("[contenteditable]")).toBeInTheDocument();
     });
 
-    const runHistoryTab = screen.getAllByRole("tab").find((el) => {
+    const runHistoryTab = queryAllByRoleFast("tab").find((el) => {
       return /Run History/.test(el.textContent ?? "");
     });
     click(runHistoryTab!);
@@ -573,7 +574,7 @@ describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-
       ).toBeInTheDocument();
     });
 
-    const settingsTab = screen.getAllByRole("tab").find((el) => {
+    const settingsTab = queryAllByRoleFast("tab").find((el) => {
       return /Settings/.test(el.textContent ?? "");
     });
     click(settingsTab!);

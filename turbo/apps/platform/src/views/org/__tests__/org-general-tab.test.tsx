@@ -7,6 +7,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { refreshOrg$ } from "../../../signals/org.ts";
 import {
@@ -221,13 +222,13 @@ describe("org general tab - interaction", () => {
     await openGeneralTab();
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Leave";
         }),
       ).toBeInTheDocument();
     });
     click(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Leave";
       })!,
     );
@@ -242,7 +243,7 @@ describe("org general tab - interaction", () => {
     await openGeneralTab();
     // Wait for page to load
     await screen.findByDisplayValue("acme-org");
-    const deleteButton = screen.getAllByRole("button").find((el) => {
+    const deleteButton = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Delete";
     });
     expect(deleteButton).toBeDefined();
@@ -262,7 +263,7 @@ describe("org general tab - validation", () => {
     setMockOrg({ slug: "my-workspace" });
     await openGeneralTab();
     await screen.findByDisplayValue("my-workspace");
-    const deleteWorkspaceBtn = screen.getAllByRole("button").find((el) => {
+    const deleteWorkspaceBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Delete";
     });
     expect(deleteWorkspaceBtn).toBeDefined();
@@ -271,7 +272,7 @@ describe("org general tab - validation", () => {
       expect(screen.getByText("Delete workspace?")).toBeInTheDocument();
     });
     // Get the destructive "Delete workspace" button inside the dialog footer
-    const deleteBtn = screen.getAllByRole("button").find((el) => {
+    const deleteBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Delete workspace";
     });
     expect(deleteBtn).toBeDefined();

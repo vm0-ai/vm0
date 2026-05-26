@@ -8,7 +8,11 @@ import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
@@ -39,13 +43,13 @@ function makeDeferred() {
 }
 
 function findButtonByText(text: string) {
-  return screen.getAllByRole("button").find((btn) => {
+  return queryAllByRoleFast("button").find((btn) => {
     return btn.textContent?.trim() === text;
   });
 }
 
 function findCmdEnterButton() {
-  return screen.getAllByRole("button").find((btn) => {
+  return queryAllByRoleFast("button").find((btn) => {
     const text = btn.textContent?.replace(/\s+/g, " ").trim() ?? "";
     return text.includes("Enter") && text !== "Enter";
   });

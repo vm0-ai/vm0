@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { parseAgentPhoneConnectParams } from "../../../signals/zero-page/agentphone-connect-params.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -19,7 +23,7 @@ const VALID_SMS_PATH = `${VALID_PATH}&channel=sms`;
 const VALID_IMESSAGE_PATH = `${VALID_PATH}&channel=imessage`;
 
 function buttonWithText(text: string): HTMLButtonElement {
-  const button = screen.getAllByRole("button").find((element) => {
+  const button = queryAllByRoleFast("button").find((element) => {
     return element.textContent === text;
   });
   expect(button).toBeDefined();

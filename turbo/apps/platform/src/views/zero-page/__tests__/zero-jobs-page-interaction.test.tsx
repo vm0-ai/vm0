@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -45,11 +46,9 @@ function mockTeamAPI(
 }
 
 function findCreateButton(scope: HTMLElement): HTMLElement {
-  const button = within(scope)
-    .getAllByRole("button")
-    .find((el) => {
-      return el.textContent?.trim() === "Create";
-    });
+  const button = queryAllByRoleFast("button", scope).find((el) => {
+    return el.textContent?.trim() === "Create";
+  });
   if (!button) {
     throw new Error("Create button not found");
   }

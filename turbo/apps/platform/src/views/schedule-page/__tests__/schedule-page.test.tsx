@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   setMockSchedules,
   createMockScheduleResponse,
@@ -52,7 +55,7 @@ describe("schedule page", () => {
     });
 
     // The "Add schedule" button appears in the header and in the empty state
-    const addButtons = screen.getAllByRole("button").filter((el) => {
+    const addButtons = queryAllByRoleFast("button").filter((el) => {
       return /Add schedule/.test(el.textContent ?? "");
     });
     expect(addButtons.length).toBeGreaterThanOrEqual(1);

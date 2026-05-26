@@ -10,7 +10,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -27,7 +31,7 @@ const mockApi = createMockApi(context);
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
 function getButtonByText(text: string): HTMLElement {
-  const button = screen.getAllByRole("button").find((element) => {
+  const button = queryAllByRoleFast("button").find((element) => {
     return element.textContent?.trim() === text;
   });
   if (!button) {

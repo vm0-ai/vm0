@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { parseTelegramConnectParams } from "../../../signals/zero-page/telegram-connect-params.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -17,7 +21,7 @@ const VALID_PATH =
   "&tgUserName=ada_tg&tgDisplayName=Ada%20Lovelace";
 
 function buttonWithText(text: string): HTMLButtonElement {
-  const button = screen.getAllByRole("button").find((element) => {
+  const button = queryAllByRoleFast("button").find((element) => {
     return element.textContent === text;
   });
   expect(button).toBeDefined();
@@ -25,7 +29,7 @@ function buttonWithText(text: string): HTMLButtonElement {
 }
 
 function buttonWithAriaLabel(label: string): HTMLButtonElement {
-  const button = screen.getAllByRole("button").find((element) => {
+  const button = queryAllByRoleFast("button").find((element) => {
     return element.getAttribute("aria-label") === label;
   });
   expect(button).toBeDefined();

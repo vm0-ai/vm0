@@ -1,7 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 import {
   setMockOrgMembers,
@@ -33,12 +37,12 @@ describe("org manage dialog - display", () => {
 
     // Always-visible tabs
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /General/i.test(el.textContent ?? "");
       })!,
     ).toBeInTheDocument();
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /Members/i.test(el.textContent ?? "");
       })!,
     ).toBeInTheDocument();
@@ -67,7 +71,7 @@ describe("org manage dialog - conditional", () => {
 
     // Desktop sidebar has tab buttons
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /General/i.test(el.textContent ?? "");
       })!,
     ).toBeInTheDocument();
@@ -118,7 +122,7 @@ describe("org manage dialog - interaction", () => {
     });
 
     click(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /Members/i.test(el.textContent ?? "");
       })!,
     );

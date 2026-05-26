@@ -11,7 +11,11 @@ import { screen, waitFor } from "@testing-library/react";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
@@ -112,7 +116,7 @@ describe("zero-slack-connect-page - back to settings link (CONN-N-055)", () => {
     detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     await waitFor(() => {
-      const link = screen.getAllByRole("link").find((el) => {
+      const link = queryAllByRoleFast("link").find((el) => {
         return /Back to settings/i.test(el.textContent ?? "");
       });
       expect(link).toBeDefined();
@@ -146,7 +150,7 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
       ).toBeInTheDocument();
     });
 
-    const connectButton = screen.getAllByRole("button").find((el) => {
+    const connectButton = queryAllByRoleFast("button").find((el) => {
       return /^Connect$/i.test(el.textContent ?? "");
     })!;
 
@@ -182,14 +186,14 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
       ).toBeInTheDocument();
     });
 
-    const connectButton = screen.getAllByRole("button").find((el) => {
+    const connectButton = queryAllByRoleFast("button").find((el) => {
       return /^Connect$/i.test(el.textContent ?? "");
     })!;
 
     click(connectButton);
 
     await waitFor(() => {
-      const loadingButton = screen.getAllByRole("button").find((el) => {
+      const loadingButton = queryAllByRoleFast("button").find((el) => {
         return /Connecting.../i.test(el.textContent ?? "");
       });
       expect(loadingButton).toBeDisabled();
@@ -211,7 +215,7 @@ describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", 
     detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     const openSlackBtn = await waitFor(() => {
-      const btn = screen.getAllByRole("button").find((el) => {
+      const btn = queryAllByRoleFast("button").find((el) => {
         return /Open Slack/i.test(el.textContent ?? "");
       });
       expect(btn).toBeDefined();

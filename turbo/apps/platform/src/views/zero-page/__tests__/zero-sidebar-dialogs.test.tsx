@@ -3,7 +3,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
@@ -487,11 +491,9 @@ describe("managePinnedAgentsDialog - pin button adds agent to pinned (SIDEBAR-D-
 
     await waitFor(() => {
       // The agent should now appear in pinned section with unpin button
-      const unpinBtn = within(dialog)
-        .getAllByRole("button")
-        .find((el) => {
-          return /Unpin /.test(el.getAttribute("aria-label") ?? "");
-        });
+      const unpinBtn = queryAllByRoleFast("button", dialog).find((el) => {
+        return /Unpin /.test(el.getAttribute("aria-label") ?? "");
+      });
       expect(unpinBtn).toBeDefined();
     });
   });

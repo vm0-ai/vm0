@@ -4,7 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   setMockBillingInvoices,
   resetMockBilling,
@@ -110,7 +113,7 @@ it("shows download link only when hostedInvoiceUrl is available", async () => {
   await waitFor(() => {
     expect(screen.getByText("INV-001")).toBeInTheDocument();
   });
-  const downloadLinks = screen.getAllByRole("link").filter((el) => {
+  const downloadLinks = queryAllByRoleFast("link").filter((el) => {
     return /Download invoice/.test(el.getAttribute("aria-label") ?? "");
   });
   expect(downloadLinks).toHaveLength(1);
@@ -157,12 +160,12 @@ it("shows tooltip when hovering download link", async () => {
   await openInvoicesTab();
   await waitFor(() => {
     expect(
-      screen.getAllByRole("link").some((el) => {
+      queryAllByRoleFast("link").some((el) => {
         return /Download invoice/.test(el.getAttribute("aria-label") ?? "");
       }),
     ).toBeTruthy();
   });
-  const downloadLink = screen.getAllByRole("link").find((el) => {
+  const downloadLink = queryAllByRoleFast("link").find((el) => {
     return /Download invoice/.test(el.getAttribute("aria-label") ?? "");
   });
   if (!downloadLink) {

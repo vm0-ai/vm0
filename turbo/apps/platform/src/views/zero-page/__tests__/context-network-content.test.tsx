@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   type RunContextResponse,
@@ -177,7 +181,7 @@ function getTypeFilterButton(): HTMLButtonElement {
 }
 
 function getMenuCheckbox(label: string): HTMLElement {
-  const item = screen.getAllByRole("menuitemcheckbox").find((el) => {
+  const item = queryAllByRoleFast("menuitemcheckbox").find((el) => {
     return el.textContent?.trim() === label;
   });
   expect(item).toBeTruthy();
@@ -185,7 +189,7 @@ function getMenuCheckbox(label: string): HTMLElement {
 }
 
 function queryMenuCheckbox(label: string): HTMLElement | undefined {
-  return screen.getAllByRole("menuitemcheckbox").find((el) => {
+  return queryAllByRoleFast("menuitemcheckbox").find((el) => {
     return el.textContent?.trim() === label;
   });
 }
@@ -201,7 +205,7 @@ async function openNetworkTypeFilter() {
 }
 
 function getAllTypesMenuItem(): HTMLElement {
-  const item = screen.getAllByRole("menuitemcheckbox").find((el) => {
+  const item = queryAllByRoleFast("menuitemcheckbox").find((el) => {
     return el.textContent?.trim() === "All types";
   });
   expect(item).toBeTruthy();
@@ -455,11 +459,11 @@ describe("networkContent", () => {
 
     // Check column headers exist
     expect(
-      screen.getAllByRole("columnheader").find((el) => {
+      queryAllByRoleFast("columnheader").find((el) => {
         return el.textContent?.trim() === "Time";
       }),
     ).toBeDefined();
-    const columnHeaders = screen.getAllByRole("columnheader");
+    const columnHeaders = queryAllByRoleFast("columnheader");
     expect(
       columnHeaders.find((el) => {
         return el.textContent?.trim() === "Type";
