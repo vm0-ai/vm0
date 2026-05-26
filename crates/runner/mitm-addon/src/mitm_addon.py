@@ -296,6 +296,11 @@ async def request(flow: http.HTTPFlow) -> None:
                     if result.reason == "malformed_network_policy"
                     else "no matching permission"
                 )
+                response_message = (
+                    "Request blocked: malformed network policy"
+                    if result.reason == "malformed_network_policy"
+                    else "Request blocked: no matching permission rule"
+                )
                 log_proxy_entry(
                     proxy_log_path,
                     "warn",
@@ -310,7 +315,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 error_body = json.dumps(
                     {
                         "error": "permission_denied",
-                        "message": "Request blocked: no matching permission rule",
+                        "message": response_message,
                         "method": result.method,
                         "path": result.path,
                         "name": result.name,

@@ -979,6 +979,7 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "DENY"
         body = json.loads(flow.response.content)
         assert body["permissions"] == []
+        assert body["message"] == "Request blocked: malformed network policy"
         assert body["reason"] == "malformed_network_policy"
         proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
         assert proxy_log_entry["type"] == "firewall_block"
