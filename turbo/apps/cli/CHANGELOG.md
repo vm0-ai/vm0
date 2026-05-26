@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.166.0](https://github.com/vm0-ai/vm0/compare/cli-v9.165.3...cli-v9.166.0) (2026-05-26)
+
+
+### Features
+
+* **cli:** require --style or --skip-style on built-in generate image ([#14983](https://github.com/vm0-ai/vm0/issues/14983)) ([1724768](https://github.com/vm0-ai/vm0/commit/1724768669baebd05104adf59650ed309862eb04))
+
+
+### Documentation
+
+* **cli:** clarify computer use help ([#14981](https://github.com/vm0-ai/vm0/issues/14981)) ([233ede2](https://github.com/vm0-ai/vm0/commit/233ede25caa9c276b54036d94b2cdeb71bb70796))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.41.1
+    * @vm0/connectors bumped to 1.35.0
+    * @vm0/core bumped to 8.296.0
+
 ## [9.165.3](https://github.com/vm0-ai/vm0/compare/cli-v9.165.2...cli-v9.165.3) (2026-05-26)
 
 

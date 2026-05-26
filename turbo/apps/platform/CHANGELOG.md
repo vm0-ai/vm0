@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.385.0](https://github.com/vm0-ai/vm0/compare/app-v0.384.10...app-v0.385.0) (2026-05-26)
+
+
+### Features
+
+* add Slock OAuth device connector ([#14922](https://github.com/vm0-ai/vm0/issues/14922)) ([0245428](https://github.com/vm0-ai/vm0/commit/02454282990b75242da2a0e05d39f3801f8e09ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.1
+    * @vm0/connectors bumped to 1.35.0
+    * @vm0/core bumped to 8.296.0
+
 ## [0.384.10](https://github.com/vm0-ai/vm0/compare/app-v0.384.9...app-v0.384.10) (2026-05-26)
 
 
