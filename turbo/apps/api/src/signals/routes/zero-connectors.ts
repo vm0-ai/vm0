@@ -263,6 +263,14 @@ const getComputerConnectorInner$ = computed(async (get) => {
 const createComputerConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (!availability.isAuthMethodAvailable("computer", "api")) {
+      return connectorUnavailable("computer");
+    }
+
     const result = await set(
       createComputerConnector$,
       { orgId: auth.orgId, userId: auth.userId },

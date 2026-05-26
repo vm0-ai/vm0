@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it, beforeEach } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
+const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
@@ -36,6 +42,30 @@ async function requestAuthorize(
     method: "GET",
     headers: options.authenticated ? sessionHeaders() : undefined,
   });
+}
+
+async function requestAuthorizeWithFeature(
+  type: string,
+  featureKey: FeatureSwitchKey,
+): Promise<Response> {
+  const userId = `user_${randomUUID()}`;
+  const orgId = `org_${randomUUID()}`;
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId,
+    userId,
+    switches: { [featureKey]: true },
+  });
+  mocks.clerk.session(userId, orgId);
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(authorizeUrl(type), {
+    method: "GET",
+    headers: sessionHeaders(),
+  });
+  await db
+    .delete(userFeatureSwitches)
+    .where(eq(userFeatureSwitches.orgId, orgId));
+  return response;
 }
 
 describe("GET /api/connectors/:type/authorize", () => {
@@ -142,6 +172,17 @@ describe("GET /api/connectors/:type/authorize", () => {
     ).toBeFalsy();
   });
 
+  it("rejects feature-disabled direct OAuth authorization", async () => {
+    const response = await requestAuthorize("docusign", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "docusign connector is not available",
+    });
+  });
+
   it("uses Slack user_scope rather than scope", async () => {
     const response = await requestAuthorize("slack", { authenticated: true });
 
@@ -158,9 +199,10 @@ describe("GET /api/connectors/:type/authorize", () => {
   });
 
   it("includes DocuSign OAuth parameters", async () => {
-    const response = await requestAuthorize("docusign", {
-      authenticated: true,
-    });
+    const response = await requestAuthorizeWithFeature(
+      "docusign",
+      FeatureSwitchKey.DocuSignConnector,
+    );
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
@@ -181,9 +223,10 @@ describe("GET /api/connectors/:type/authorize", () => {
   });
 
   it("includes Mercury OAuth parameters", async () => {
-    const response = await requestAuthorize("mercury", {
-      authenticated: true,
-    });
+    const response = await requestAuthorizeWithFeature(
+      "mercury",
+      FeatureSwitchKey.MercuryConnector,
+    );
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
@@ -221,7 +264,10 @@ describe("GET /api/connectors/:type/authorize", () => {
   });
 
   it("requests permanent Reddit authorization", async () => {
-    const response = await requestAuthorize("reddit", { authenticated: true });
+    const response = await requestAuthorizeWithFeature(
+      "reddit",
+      FeatureSwitchKey.RedditConnector,
+    );
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");

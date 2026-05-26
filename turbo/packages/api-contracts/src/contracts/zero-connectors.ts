@@ -269,6 +269,7 @@ export const zeroComputerConnectorContract = c.router({
       200: computerConnectorCreateResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       409: apiErrorSchema,
     },
     summary: "Create computer connector (zero proxy)",

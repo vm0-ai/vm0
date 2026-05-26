@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroComputerConnectorContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -56,6 +58,18 @@ async function deleteFixture(fixture: OrgUserFixture): Promise<void> {
   const db = store.set(writeDb$);
   await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
+  await db
+    .delete(userFeatureSwitches)
+    .where(eq(userFeatureSwitches.orgId, fixture.orgId));
+}
+
+async function enableComputerConnector(fixture: OrgUserFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ComputerConnector]: true },
+  });
 }
 
 function setupNgrokMocks(): NgrokCalls {
@@ -210,9 +224,30 @@ describe("POST /api/zero/connectors/computer", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 403 when the computer connector feature is disabled", async () => {
+    const fixture = uniqueOrgUser("zcomp-disabled");
+    fixtures.push(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroComputerConnectorContract);
+
+    const response = await accept(
+      client.create({
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "computer connector is not available",
+      code: "FORBIDDEN",
+    });
+  });
+
   it("returns 400 when ngrok is not configured", async () => {
     const fixture = uniqueOrgUser("zcomp-no-ngrok");
     fixtures.push(fixture);
+    await enableComputerConnector(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = setupApp({ context })(zeroComputerConnectorContract);
 
@@ -233,6 +268,7 @@ describe("POST /api/zero/connectors/computer", () => {
   it("creates a computer connector", async () => {
     const fixture = uniqueOrgUser("zcomp-create");
     fixtures.push(fixture);
+    await enableComputerConnector(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockOptionalEnv("NGROK_API_KEY", "test-ngrok-key");
     const ngrokCalls = setupNgrokMocks();
@@ -277,6 +313,7 @@ describe("POST /api/zero/connectors/computer", () => {
   it("returns 409 when the computer connector already exists", async () => {
     const fixture = uniqueOrgUser("zcomp-duplicate");
     fixtures.push(fixture);
+    await enableComputerConnector(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockOptionalEnv("NGROK_API_KEY", "test-ngrok-key");
     setupNgrokMocks();
@@ -307,6 +344,7 @@ describe("POST /api/zero/connectors/computer", () => {
   it("cleans up resources when endpoint creation fails", async () => {
     const fixture = uniqueOrgUser("zcomp-endpoint-fail");
     fixtures.push(fixture);
+    await enableComputerConnector(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockOptionalEnv("NGROK_API_KEY", "test-ngrok-key");
     const ngrokCalls = setupNgrokMocks();

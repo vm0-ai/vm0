@@ -150,6 +150,11 @@ export function createConnectorActionBlock(
   });
 
   const complete$ = computed(async (get): Promise<boolean> => {
+    const available = await get(available$);
+    if (!available) {
+      return false;
+    }
+
     const [connected, authorized] = await Promise.all([
       get(connected$),
       get(authorized$),

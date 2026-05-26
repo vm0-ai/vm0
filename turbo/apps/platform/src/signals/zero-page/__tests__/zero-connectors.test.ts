@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
 import { zeroAuthorizedConnectors$ } from "../zero-connectors.ts";
 import { authorizeConnector$ as directedAuthorizeConnector$ } from "../../connectors-page/directed-authorize-type.ts";
@@ -10,6 +13,7 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { createConnectorActionBlock } from "../../chat-page/connector-action-block.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -125,6 +129,33 @@ describe("connectors", () => {
     await expect(
       context.store.get(zeroAuthorizedConnectors$),
     ).resolves.toStrictEqual(["github"]);
+  });
+
+  it("keeps disabled chat connector action blocks non-actionable", async () => {
+    let authorizationRequests = 0;
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        authorizationRequests += 1;
+        return respond(200, { enabledTypes: ["slock"] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.SlockConnector]: false },
+      withoutRender: true,
+    });
+
+    const block = createConnectorActionBlock("connector-action-1", {
+      connectorType: "slock",
+      agentId: DEFAULT_AGENT_ID,
+      originalUrl: `https://app.vm0.ai/connectors/slock/authorize?agentId=${DEFAULT_AGENT_ID}`,
+    });
+
+    await expect(context.store.get(block.available$)).resolves.toBeFalsy();
+    await expect(context.store.get(block.complete$)).resolves.toBeFalsy();
+    expect(authorizationRequests).toBe(0);
   });
 });
 

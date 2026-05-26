@@ -14,6 +14,7 @@ export const connectorsTypeAuthorizeContract = c.router({
     responses: {
       307: c.noBody(),
       400: z.object({ error: z.string() }),
+      403: z.object({ error: z.string() }),
       500: z.object({ error: z.string() }),
     },
     summary: "Start connector OAuth authorization",
