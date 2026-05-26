@@ -29,6 +29,7 @@
         "require-in-the-middle",
         "cpu-features"
       ],
+      "ignoreBinaries": ["drizzle-kit"],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
       }
@@ -130,7 +131,8 @@
         "src/**/*.{test,spec}.ts",
         "scripts/**/*.ts"
       ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts", "drizzle.config.ts"]
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "drizzle.config.ts"],
+      "ignoreBinaries": ["drizzle-kit"]
     },
     "packages/ui": {
       "entry": [

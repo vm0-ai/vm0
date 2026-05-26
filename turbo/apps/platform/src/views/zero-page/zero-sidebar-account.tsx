@@ -198,7 +198,7 @@ function CurrentAccountHeader({
   );
 }
 
-function AdminCreditBalanceCard({
+function AdminCreditBalanceItem({
   onOpenCreditBalance,
 }: {
   onOpenCreditBalance: () => void;
@@ -212,11 +212,11 @@ function AdminCreditBalanceCard({
   }
 
   return (
-    <AdminCreditBalanceCardContent onOpenCreditBalance={onOpenCreditBalance} />
+    <AdminCreditBalanceItemContent onOpenCreditBalance={onOpenCreditBalance} />
   );
 }
 
-function AdminCreditBalanceCardContent({
+function AdminCreditBalanceItemContent({
   onOpenCreditBalance,
 }: {
   onOpenCreditBalance: () => void;
@@ -226,51 +226,29 @@ function AdminCreditBalanceCardContent({
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const loading = billingLoadable.state === "loading" && credits === null;
+  const creditLabel =
+    credits !== null
+      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
+      : null;
+
+  if (!loading && creditLabel === null) {
+    return null;
+  }
 
   return (
     <>
       <DropdownMenuItem
         onClick={onOpenCreditBalance}
-        className="group mx-1 mb-1 gap-3 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-muted/20 px-3 py-2.5 focus:bg-muted/35"
+        className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <IconCoins size={17} stroke={1.5} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-medium leading-none text-muted-foreground">
-            Credit balance
-          </span>
+        <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
           {loading ? (
-            <span className="mt-2 block h-4 w-24 rounded bg-muted/60" />
+            <span className="block h-4 w-24 rounded bg-muted/60" />
           ) : (
-            <span
-              className="mt-1 block text-[15px] font-semibold leading-snug text-foreground tabular-nums break-words"
-              title={
-                credits !== null
-                  ? `${credits.toLocaleString("en-US")} credits`
-                  : undefined
-              }
-            >
-              {credits !== null ? (
-                <>
-                  {credits.toLocaleString("en-US")}
-                  <span className="ml-1 text-xs font-medium text-muted-foreground">
-                    {credits === 1 ? "credit" : "credits"}
-                  </span>
-                </>
-              ) : (
-                <span className="text-xs font-medium text-muted-foreground">
-                  Unavailable
-                </span>
-              )}
-            </span>
+            creditLabel
           )}
         </span>
-        <IconChevronRight
-          size={14}
-          stroke={1.5}
-          className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground/70"
-        />
       </DropdownMenuItem>
       <DropdownMenuSeparator />
     </>
@@ -526,7 +504,7 @@ export function AccountDropdown({
           visible={current !== undefined || user !== undefined}
         />
         {!hidePreferences && (
-          <AdminCreditBalanceCard
+          <AdminCreditBalanceItem
             onOpenCreditBalance={handleOpenCreditBalance}
           />
         )}

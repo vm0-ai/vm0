@@ -196,7 +196,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     });
   });
 
-  it("shows credit balance in the account dropdown for org admins", async () => {
+  it("shows credits in the account dropdown for org admins", async () => {
     setMockBillingStatus({ credits: 12_345 });
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
@@ -209,8 +209,11 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
 
     const menu = await screen.findByRole("menu");
     await waitFor(() => {
-      expect(within(menu).getByText("Credit balance")).toBeInTheDocument();
-      expect(within(menu).getByText(/12,345/)).toBeInTheDocument();
+      expect(
+        within(menu).getByRole("menuitem", {
+          name: /12,345 credits/,
+        }),
+      ).toBeInTheDocument();
     });
   });
 
