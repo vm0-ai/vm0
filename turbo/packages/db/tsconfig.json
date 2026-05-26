@@ -5,5 +5,5 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*", "scripts/**/*", "drizzle.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "scripts/migrations"]
 }

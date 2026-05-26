@@ -8,7 +8,7 @@
 
 - **main branch is always stable** - All code merged to main has passed CI (build + tests). If your branch fails to build or pass tests, the issue is in your branch code, not main.
 - **Use dev-tunnel for local development** - Run `/dev-tunnel` to start a local server accessible by sandbox webhooks. Without this, webhooks cannot reach your local server.
-- **Run `pnpm db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
+- **Run `pnpm -F @vm0/db db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
 - **Run `script/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
 - **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data.
 - **API migration is in progress** - `apps/web` API traffic is migrating to `apps/api`; read https://github.com/vm0-ai/vm0/issues/12290 before API work. New or migrated endpoint routes should be implemented in `apps/api`, not as new `apps/web/app/api/**/route.ts` handlers. When a web-compatible path is still needed, route it back to the API backend through `apps/web/next.config.js` Next rewrites instead of adding thin web proxy routes. For routes that still have implementations in both `apps/web` and `apps/api`, bug fixes and behavior or logic changes must update both implementations together until the route is fully API-authoritative.

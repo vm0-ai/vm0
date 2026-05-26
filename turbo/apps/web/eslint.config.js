@@ -139,16 +139,7 @@ export default [
     },
   },
   {
-    ignores: [
-      "custom-eslint/**",
-      "public/**",
-      "scripts/migrations/001-backfill-clerk-orgs/**",
-      "scripts/migrations/002-backfill-clerk-metadata/**",
-      "scripts/migrations/003-sync-clerk-slugs/**",
-      "scripts/migrations/004-backfill-default-agent/**",
-      "scripts/migrations/005-backfill-clerk-metadata/**",
-      "scripts/migrations/006-cleanup-orphaned-orgs/**",
-    ],
+    ignores: ["custom-eslint/**", "public/**"],
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
 ];

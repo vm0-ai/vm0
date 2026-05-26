@@ -674,9 +674,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1053.0
         version: 3.1053.0
-      '@clerk/backend':
-        specifier: ^3.4.13
-        version: 3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/nextjs':
         specifier: ^7.2.7
         version: 7.2.7(next@16.2.6(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -966,6 +963,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@clerk/backend':
+        specifier: ^3.4.13
+        version: 3.4.13(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts

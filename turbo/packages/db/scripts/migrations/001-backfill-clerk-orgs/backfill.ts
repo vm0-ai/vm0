@@ -8,7 +8,7 @@
  * back to the row. After this completes, Phase 3 can add a NOT NULL constraint.
  *
  * Usage:
- *   tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--migrate] [--user-id=<clerkUserId>]
+ *   pnpm exec tsx scripts/migrations/001-backfill-clerk-orgs/backfill.ts [--migrate] [--user-id=<clerkUserId>]
  *
  * Environment:
  *   DATABASE_URL        — Required
@@ -16,6 +16,7 @@
  */
 
 import { parseArgs } from "node:util";
+import { createClerkClient } from "@clerk/backend";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, isNull, asc, sql } from "drizzle-orm";
 import postgres from "postgres";
@@ -205,7 +206,6 @@ async function main() {
     if (!clerkSecretKey) {
       throw new Error("CLERK_SECRET_KEY is required for --migrate");
     }
-    const { createClerkClient } = await import("@clerk/backend");
     clerkClient = createClerkClient({ secretKey: clerkSecretKey });
   }
 

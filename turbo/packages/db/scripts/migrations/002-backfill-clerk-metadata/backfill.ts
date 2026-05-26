@@ -7,7 +7,7 @@
  * publicMetadata.
  *
  * Usage:
- *   tsx scripts/migrations/002-backfill-clerk-metadata/backfill.ts [--migrate]
+ *   pnpm exec tsx scripts/migrations/002-backfill-clerk-metadata/backfill.ts [--migrate]
  *
  * Environment:
  *   DATABASE_URL        — Required
@@ -15,6 +15,7 @@
  */
 
 import { parseArgs } from "node:util";
+import { createClerkClient } from "@clerk/backend";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { asc } from "drizzle-orm";
 import postgres from "postgres";
@@ -182,7 +183,6 @@ async function main() {
     if (!clerkSecretKey) {
       throw new Error("CLERK_SECRET_KEY is required for --migrate");
     }
-    const { createClerkClient } = await import("@clerk/backend");
     client = createClerkClient({ secretKey: clerkSecretKey });
   }
 

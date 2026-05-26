@@ -13,4 +13,4 @@ Caddyfile
 **/codereviews/**
 apps/web/src/db/migrations/
 packages/db/src/migrations/
-apps/web/scripts/migrations/
+packages/db/scripts/migrations/

@@ -12,10 +12,10 @@
  *   Phase 2: S3 storage objects
  *   Phase 3: Database records
  *
- * Usage (from turbo/apps/web):
- *   dotenv -e .env.local -- tsx scripts/migrations/006-cleanup-orphaned-orgs/cleanup.ts
- *   dotenv -e .env.local -- tsx scripts/migrations/006-cleanup-orphaned-orgs/cleanup.ts --migrate
- *   dotenv -e .env.local -- tsx scripts/migrations/006-cleanup-orphaned-orgs/cleanup.ts --migrate --org-id=org_xxx
+ * Usage (from turbo/packages/db):
+ *   pnpm exec tsx scripts/migrations/006-cleanup-orphaned-orgs/cleanup.ts
+ *   pnpm exec tsx scripts/migrations/006-cleanup-orphaned-orgs/cleanup.ts --migrate
+ *   pnpm exec tsx scripts/migrations/006-cleanup-orphaned-orgs/cleanup.ts --migrate --org-id=org_xxx
  *
  * Environment:
  *   DATABASE_URL        — Required
@@ -23,13 +23,13 @@
  */
 
 import { parseArgs } from "node:util";
-import { createRequire } from "node:module";
+import { createClerkClient } from "@clerk/backend";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 
 // ---------------------------------------------------------------------------
-// Clerk client (CJS require — ESM export is broken under tsx runner)
+// Clerk client
 // ---------------------------------------------------------------------------
 
 type ClerkClient = {
@@ -39,11 +39,6 @@ type ClerkClient = {
       offset: number;
     }) => Promise<{ data: Array<{ id: string }>; totalCount: number }>;
   };
-};
-
-const require = createRequire(import.meta.url);
-const { createClerkClient } = require("@clerk/nextjs/server") as {
-  createClerkClient: (opts: { secretKey: string }) => ClerkClient;
 };
 
 // ---------------------------------------------------------------------------

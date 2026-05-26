@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
   "extends": ["../../.oxlintrc.json"],
+  "ignorePatterns": ["scripts/migrations/**"],
   "overrides": [
     {
       "files": ["drizzle.config.ts", "eslint.config.mjs", "vitest.config.ts"],
