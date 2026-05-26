@@ -218,19 +218,23 @@ impl JobProvider for ApiProvider {
             }
         };
 
-        if let Err(e) = self
-            .api
-            .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
-            .await
-        {
-            warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            if let Err(e) = self
+        const MAX_ATTEMPTS: usize = 2;
+        const RETRY_DELAY: Duration = Duration::from_secs(2);
+
+        for attempt in 1..=MAX_ATTEMPTS {
+            match self
                 .api
                 .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
                 .await
             {
-                error!(run_id = %run_id, error = %e, "failed to report completion after retry");
+                Ok(()) => return,
+                Err(e) if attempt < MAX_ATTEMPTS => {
+                    warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
+                    tokio::time::sleep(RETRY_DELAY).await;
+                }
+                Err(e) => {
+                    error!(run_id = %run_id, error = %e, "failed to report completion after retry");
+                }
             }
         }
     }
