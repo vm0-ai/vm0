@@ -260,6 +260,12 @@ impl Operations {
         self.operations.get_mut(&seq)
     }
 
+    fn mark_host_cancel_requested(&mut self, seq: u32) {
+        if let Some(operation) = self.operations.get_mut(&seq) {
+            operation.host_cancel_requested = true;
+        }
+    }
+
     fn insert_pending_control(
         &mut self,
         target_seq: u32,
@@ -328,6 +334,7 @@ struct ExecOperation {
     stderr_stream: Option<ExecStreamState>,
     expected_output_seq: u32,
     stream_overflowed: bool,
+    host_cancel_requested: bool,
     pending_controls: HashMap<u32, PendingExecControl>,
 }
 
@@ -462,6 +469,7 @@ struct ExecTerminalLogContext {
     stderr_truncated: bool,
     stream_overflowed: bool,
     diagnostic_present: bool,
+    host_cancel_requested: bool,
 }
 
 #[derive(Clone)]
@@ -621,6 +629,7 @@ impl ExecOperationDiagnostic {
         lifecycle: ExecTerminalLogLifecycle,
         result: &vsock_proto::DecodedExecResult<'_>,
         stream_overflowed: bool,
+        host_cancel_requested: bool,
     ) {
         let elapsed_ms = self.elapsed_ms();
         let slow = elapsed_ms >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD.as_millis();
@@ -635,6 +644,7 @@ impl ExecOperationDiagnostic {
             stderr_truncated,
             stream_overflowed,
             diagnostic_present,
+            host_cancel_requested,
         }) else {
             return;
         };
@@ -651,6 +661,7 @@ impl ExecOperationDiagnostic {
                     stdout_truncated,
                     stderr_truncated,
                     diagnostic_present,
+                    host_cancel_requested,
                     "exec operation terminal result"
                 );
             }
@@ -665,6 +676,7 @@ impl ExecOperationDiagnostic {
                     stdout_truncated,
                     stderr_truncated,
                     diagnostic_present,
+                    host_cancel_requested,
                     "exec operation terminal result"
                 );
             }
@@ -773,7 +785,7 @@ impl ExecOperationHandle {
             &payload,
             Some(self.diagnostic.frame("cancel")),
             None,
-            FrameWriteObserver::default(),
+            exec_cancel_write_observer(&self.shared, seq),
         )
         .await?;
         tracing::info!(
@@ -1220,7 +1232,7 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     &payload,
                     Some(diagnostic.frame("drop-cancel")),
                     None,
-                    FrameWriteObserver::default(),
+                    exec_cancel_write_observer(&shared, seq),
                 ),
             )
             .await;
@@ -1259,6 +1271,21 @@ fn exec_operation_protocol_error(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
 }
 
+fn exec_cancel_write_observer(shared: &Arc<Shared>, seq: u32) -> FrameWriteObserver {
+    let shared = Arc::clone(shared);
+    FrameWriteObserver::new(move || {
+        mark_exec_operation_host_cancel_requested(&shared, seq);
+        Ok(())
+    })
+}
+
+fn mark_exec_operation_host_cancel_requested(shared: &Arc<Shared>, seq: u32) {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let ConnectionState::Connected { operations, .. } = &mut *guard {
+        operations.mark_host_cancel_requested(seq);
+    }
+}
+
 async fn send_supervised_exec_cancel_frame(
     shared: &Arc<Shared>,
     seq: u32,
@@ -1272,7 +1299,7 @@ async fn send_supervised_exec_cancel_frame(
         &payload,
         Some(diagnostic.frame("cancel")),
         None,
-        FrameWriteObserver::default(),
+        exec_cancel_write_observer(shared, seq),
     )
     .await?;
     tracing::info!(
@@ -1341,6 +1368,15 @@ fn exec_termination_requires_low_level_warning(termination: ExecTermination) -> 
     }
 }
 
+fn exec_terminal_cancel_is_expected(context: ExecTerminalLogContext) -> bool {
+    matches!(context.termination, ExecTermination::Cancelled)
+        && context.host_cancel_requested
+        && !context.stdout_truncated
+        && !context.stderr_truncated
+        && !context.stream_overflowed
+        && !context.diagnostic_present
+}
+
 fn exec_terminal_log_lifecycle(lifecycle: &ExecOperationLifecycle) -> ExecTerminalLogLifecycle {
     match lifecycle {
         ExecOperationLifecycle::OneShot => ExecTerminalLogLifecycle::OneShot,
@@ -1350,6 +1386,10 @@ fn exec_terminal_log_lifecycle(lifecycle: &ExecOperationLifecycle) -> ExecTermin
 }
 
 fn exec_terminal_log_severity(context: ExecTerminalLogContext) -> Option<ExecTerminalLogSeverity> {
+    if exec_terminal_cancel_is_expected(context) {
+        return Some(ExecTerminalLogSeverity::Info);
+    }
+
     let notable = exec_termination_requires_low_level_warning(context.termination)
         || context.stdout_truncated
         || context.stderr_truncated
@@ -1717,7 +1757,15 @@ fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
 }
 
 fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let Some((diagnostic, result_tx, start_tx, log_lifecycle, stream_overflowed, decoded)) = ({
+    let Some((
+        diagnostic,
+        result_tx,
+        start_tx,
+        log_lifecycle,
+        stream_overflowed,
+        host_cancel_requested,
+        decoded,
+    )) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
@@ -1737,6 +1785,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
                     diagnostic,
                     result_tx,
                     stream_overflowed,
+                    host_cancel_requested,
                     ..
                 } = operation;
                 let log_lifecycle = exec_terminal_log_lifecycle(&lifecycle);
@@ -1756,16 +1805,23 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
                     start_tx,
                     log_lifecycle,
                     stream_overflowed,
+                    host_cancel_requested,
                     decoded,
                 ))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed => None,
         }
-    }) else {
+    })
+    else {
         return Ok(());
     };
 
-    diagnostic.log_terminal(log_lifecycle, &decoded, stream_overflowed);
+    diagnostic.log_terminal(
+        log_lifecycle,
+        &decoded,
+        stream_overflowed,
+        host_cancel_requested,
+    );
     let result = owned_result(decoded, stream_overflowed);
     if let Some(start_tx) = start_tx {
         let message = if result.diagnostic.is_empty() {
@@ -2279,6 +2335,7 @@ async fn start_exec_operation_on_shared_with_tracking(
         stderr_stream: stream_state(request.stderr),
         expected_output_seq: 0,
         stream_overflowed: false,
+        host_cancel_requested: false,
         pending_controls: HashMap::new(),
     };
 
@@ -2415,6 +2472,7 @@ where
         stderr_stream: stream_state(request.stderr),
         expected_output_seq: 0,
         stream_overflowed: false,
+        host_cancel_requested: false,
         pending_controls: HashMap::new(),
     };
 
@@ -2903,6 +2961,7 @@ mod tests {
             stderr_stream: None,
             expected_output_seq: 0,
             stream_overflowed: false,
+            host_cancel_requested: false,
             pending_controls: HashMap::new(),
         }
     }
@@ -2931,7 +2990,7 @@ mod tests {
         result: &vsock_proto::DecodedExecResult<'_>,
         stream_overflowed: bool,
     ) -> Vec<Level> {
-        capture_terminal_log_events_with_context(lifecycle, slow, result, stream_overflowed)
+        capture_terminal_log_events_with_context(lifecycle, slow, result, stream_overflowed, false)
             .into_iter()
             .map(|event| event.level)
             .collect()
@@ -2942,6 +3001,7 @@ mod tests {
         slow: bool,
         result: &vsock_proto::DecodedExecResult<'_>,
         stream_overflowed: bool,
+        host_cancel_requested: bool,
     ) -> Vec<CapturedEvent> {
         let mut diagnostic = ExecOperationDiagnostic::new(7, "terminal-log");
         if slow {
@@ -2952,7 +3012,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            diagnostic.log_terminal(lifecycle, result, stream_overflowed);
+            diagnostic.log_terminal(lifecycle, result, stream_overflowed, host_cancel_requested);
         });
         captured.events()
     }
@@ -3031,6 +3091,7 @@ mod tests {
             true,
             &clean,
             false,
+            false,
         );
         assert_eq!(info_events.len(), 1, "captured events: {info_events:#?}");
         let info_event = &info_events[0];
@@ -3049,6 +3110,7 @@ mod tests {
         assert_terminal_log_field(info_event, "stdout_truncated", "false");
         assert_terminal_log_field(info_event, "stderr_truncated", "false");
         assert_terminal_log_field(info_event, "diagnostic_present", "false");
+        assert_terminal_log_field(info_event, "host_cancel_requested", "false");
 
         let warn_result = vsock_proto::DecodedExecResult {
             termination: ExecTermination::TimedOut,
@@ -3068,6 +3130,7 @@ mod tests {
             false,
             &warn_result,
             true,
+            false,
         );
         assert_eq!(warn_events.len(), 1, "captured events: {warn_events:#?}");
         let warn_event = &warn_events[0];
@@ -3082,6 +3145,27 @@ mod tests {
         assert_terminal_log_field(warn_event, "stdout_truncated", "true");
         assert_terminal_log_field(warn_event, "stderr_truncated", "true");
         assert_terminal_log_field(warn_event, "diagnostic_present", "true");
+        assert_terminal_log_field(warn_event, "host_cancel_requested", "false");
+    }
+
+    #[test]
+    fn exec_operation_diagnostic_logs_host_requested_cancel_as_info() {
+        let cancelled = vsock_proto::DecodedExecResult {
+            termination: ExecTermination::Cancelled,
+            ..clean_terminal_result()
+        };
+        let events = capture_terminal_log_events_with_context(
+            ExecTerminalLogLifecycle::Supervised,
+            false,
+            &cancelled,
+            false,
+            true,
+        );
+
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::INFO);
+        assert_terminal_log_field(&events[0], "termination", "Cancelled");
+        assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
     }
 
     #[test]
@@ -3189,6 +3273,20 @@ mod tests {
         lifecycle: ExecOperationLifecycle,
         label: &str,
     ) -> (Vec<CapturedEvent>, ExecOperationResult) {
+        capture_dispatch_terminal_log_events_with_options(
+            lifecycle,
+            label,
+            ExecTermination::Exited { exit_code: 0 },
+            false,
+        )
+    }
+
+    fn capture_dispatch_terminal_log_events_with_options(
+        lifecycle: ExecOperationLifecycle,
+        label: &str,
+        termination: ExecTermination,
+        host_cancel_requested: bool,
+    ) -> (Vec<CapturedEvent>, ExecOperationResult) {
         let (result_tx, mut result_rx) = oneshot::channel();
         let (_read_stream, write_stream) = tokio::net::UnixStream::pair().unwrap();
         let fd = write_stream.as_raw_fd();
@@ -3226,12 +3324,13 @@ mod tests {
                     stderr_stream: None,
                     expected_output_seq: 0,
                     stream_overflowed: false,
+                    host_cancel_requested,
                     pending_controls: HashMap::new(),
                 },
             );
         }
         let payload = vsock_proto::encode_exec_result(
-            ExecTermination::Exited { exit_code: 0 },
+            termination,
             10,
             ExecCapturedOutput::Discarded,
             ExecCapturedOutput::Discarded,
@@ -3304,6 +3403,26 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn dispatch_result_logs_host_requested_cancel_as_info() {
+        let lifecycle = ExecOperationLifecycle::SupervisedStarted {
+            pid: 42,
+            control_nonce: None,
+        };
+        let (events, result) = capture_dispatch_terminal_log_events_with_options(
+            lifecycle,
+            "dispatch-host-cancelled-terminal-log",
+            ExecTermination::Cancelled,
+            true,
+        );
+
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::INFO);
+        assert_terminal_log_field(&events[0], "termination", "Cancelled");
+        assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
+        assert_eq!(result.termination, ExecTermination::Cancelled);
+    }
+
     #[test]
     fn exec_terminal_log_lifecycle_maps_supervised_states() {
         let (start_tx, _start_rx) = oneshot::channel();
@@ -3343,6 +3462,7 @@ mod tests {
             stderr_truncated: false,
             stream_overflowed: false,
             diagnostic_present: false,
+            host_cancel_requested: false,
         }
     }
 
@@ -3508,6 +3628,59 @@ mod tests {
                     Some(ExecTerminalLogSeverity::Warn)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_demotes_expected_host_cancel() {
+        for lifecycle in [
+            ExecTerminalLogLifecycle::OneShot,
+            ExecTerminalLogLifecycle::Supervised,
+        ] {
+            let context = ExecTerminalLogContext {
+                host_cancel_requested: true,
+                ..clean_terminal_log_context(lifecycle, false, ExecTermination::Cancelled)
+            };
+
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Info)
+            );
+        }
+    }
+
+    #[test]
+    fn exec_terminal_log_severity_warns_for_expected_host_cancel_with_metadata() {
+        let clean_cancel = ExecTerminalLogContext {
+            host_cancel_requested: true,
+            ..clean_terminal_log_context(
+                ExecTerminalLogLifecycle::Supervised,
+                false,
+                ExecTermination::Cancelled,
+            )
+        };
+        for context in [
+            ExecTerminalLogContext {
+                stdout_truncated: true,
+                ..clean_cancel
+            },
+            ExecTerminalLogContext {
+                stderr_truncated: true,
+                ..clean_cancel
+            },
+            ExecTerminalLogContext {
+                stream_overflowed: true,
+                ..clean_cancel
+            },
+            ExecTerminalLogContext {
+                diagnostic_present: true,
+                ..clean_cancel
+            },
+        ] {
+            assert_eq!(
+                exec_terminal_log_severity(context),
+                Some(ExecTerminalLogSeverity::Warn)
+            );
         }
     }
 
