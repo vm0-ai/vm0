@@ -19,7 +19,11 @@ import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -192,11 +196,9 @@ describe("zero sidebar - active tab indicator (SIDEBAR-D-007)", () => {
 
     await waitFor(() => {
       const nav = getSidebar();
-      const agentsLink = within(nav)
-        .getAllByRole("link")
-        .find((el) => {
-          return el.textContent?.trim() === "Agents";
-        });
+      const agentsLink = queryAllByRoleFast("link", nav).find((el) => {
+        return el.textContent?.trim() === "Agents";
+      });
       expect(agentsLink).toBeDefined();
       expect(agentsLink).toHaveAttribute("aria-current", "page");
     });
@@ -278,7 +280,7 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("link").find((el) => {
+        queryAllByRoleFast("link").find((el) => {
           return /Where Zero works/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();

@@ -80,19 +80,18 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Maximum time to wait for buffered and pending usage reports before stopping.
 ///
-/// The runner polls `{addon_dir}/usage-pending` (written by the Python
-/// addon) and waits until all counters reach zero or this timeout expires.
-/// Before polling and while buffered events remain, the runner asks the addon
-/// to flush buffered usage; 30 s covers one webhook retry cycle (10 s timeout
-/// × 2 attempts plus 0.5 s backoff) with headroom for request delivery and
-/// mitmproxy event-loop drain.
+/// The runner writes `{addon_dir}/usage-flush-request`, signals the Python
+/// addon, then polls `{addon_dir}/usage-pending` until the addon acknowledges
+/// the current request with zero counters or this timeout expires. 30 s covers
+/// one webhook retry cycle (10 s timeout × 2 attempts plus 0.5 s backoff) with
+/// headroom for request delivery and mitmproxy event-loop drain.
 pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
 
-/// Minimum interval between runner-triggered usage flush requests while the
-/// addon still reports buffered events.
+/// Minimum interval between repeated runner-triggered usage flush requests
+/// while the addon is not ready.
 const USAGE_FLUSH_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Tolerated wall-clock skew when validating addon timestamps.
@@ -104,6 +103,22 @@ pub struct UsageFlushTarget {
     usage_state_started_at_ms: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct UsageFlushRequest {
+    expected_usage_state_id: String,
+    usage_state_started_at_ms: u64,
+    flush_request_id: String,
+    requested_at_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UsageFlushRequestMarker<'a> {
+    usage_state_id: &'a str,
+    flush_request_id: &'a str,
+    requested_at_ms: u64,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UsagePendingState {
@@ -113,6 +128,8 @@ struct UsagePendingState {
     flows: u32,
     buffered: u32,
     reports: u32,
+    #[serde(default)]
+    flush_request_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +140,7 @@ struct UsagePendingSnapshot {
     flows: u32,
     buffered: u32,
     reports: u32,
+    flush_request_id: Option<String>,
 }
 
 impl From<&UsagePendingState> for UsagePendingSnapshot {
@@ -134,6 +152,7 @@ impl From<&UsagePendingState> for UsagePendingSnapshot {
             flows: state.flows,
             buffered: state.buffered,
             reports: state.reports,
+            flush_request_id: state.flush_request_id.clone(),
         }
     }
 }
@@ -300,12 +319,45 @@ impl MitmProxy {
     }
 
     /// Ask the running addon to flush buffered usage before shutdown.
-    pub fn request_usage_flush(&self) {
-        let Some(child) = self.child.as_ref() else {
-            return;
+    pub fn request_usage_flush(&mut self) -> bool {
+        let Some(child) = self.child.as_mut() else {
+            return false;
         };
-        if !send_usage_flush_signal(child) {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                warn!(
+                    code = status.code(),
+                    "mitmdump exited before usage flush request"
+                );
+                self.child = None;
+                return false;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!(error = %e, "failed to query mitmdump status before usage flush request");
+            }
+        }
+
+        let signaled = send_usage_flush_signal(child);
+        if !signaled {
             warn!("failed to request mitmdump usage flush");
+            return false;
+        }
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                warn!(
+                    code = status.code(),
+                    "mitmdump exited after usage flush request"
+                );
+                self.child = None;
+                false
+            }
+            Ok(None) => true,
+            Err(e) => {
+                warn!(error = %e, "failed to query mitmdump status after usage flush request");
+                true
+            }
         }
     }
 
@@ -391,6 +443,49 @@ fn new_usage_state_id() -> (String, u64) {
     (Uuid::new_v4().to_string(), now_millis())
 }
 
+impl UsageFlushRequest {
+    fn new(target: &UsageFlushTarget) -> Self {
+        Self {
+            expected_usage_state_id: target.expected_usage_state_id.clone(),
+            usage_state_started_at_ms: target.usage_state_started_at_ms,
+            flush_request_id: Uuid::new_v4().to_string(),
+            requested_at_ms: now_millis(),
+        }
+    }
+}
+
+pub async fn write_usage_flush_request(
+    addon_dir: &Path,
+    target: &UsageFlushTarget,
+) -> RunnerResult<UsageFlushRequest> {
+    let request = UsageFlushRequest::new(target);
+    let marker = UsageFlushRequestMarker {
+        usage_state_id: &request.expected_usage_state_id,
+        flush_request_id: &request.flush_request_id,
+        requested_at_ms: request.requested_at_ms,
+    };
+    let path = addon_dir.join("usage-flush-request");
+    let tmp = addon_dir.join(format!(
+        "usage-flush-request.{}.tmp",
+        request.flush_request_id
+    ));
+    let content = serde_json::to_vec(&marker)
+        .map_err(|e| RunnerError::Internal(format!("serialize usage flush request: {e}")))?;
+    if let Err(e) = tokio::fs::write(&tmp, content).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(RunnerError::Internal(format!(
+            "write usage flush request tmp: {e}"
+        )));
+    }
+    if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(RunnerError::Internal(format!(
+            "rename usage flush request: {e}"
+        )));
+    }
+    Ok(request)
+}
+
 fn parse_usage_pending_state(content: &str) -> Result<UsagePendingState, String> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
@@ -402,19 +497,19 @@ fn parse_usage_pending_state(content: &str) -> Result<UsagePendingState, String>
 
 fn validate_usage_pending_state(
     state: &UsagePendingState,
-    target: &UsageFlushTarget,
+    request: &UsageFlushRequest,
     now_ms: u64,
 ) -> Result<(), String> {
-    if state.usage_state_id != target.expected_usage_state_id {
+    if state.usage_state_id != request.expected_usage_state_id {
         return Err("usage state id does not match current mitmdump process".to_string());
     }
 
     let skew_ms = USAGE_PENDING_CLOCK_SKEW.as_millis() as u64;
-    let min_updated_at = target.usage_state_started_at_ms.saturating_sub(skew_ms);
+    let min_updated_at = request.usage_state_started_at_ms.saturating_sub(skew_ms);
     if state.updated_at_ms < min_updated_at {
         return Err(format!(
             "updatedAtMs {} predates current usage state id start {}",
-            state.updated_at_ms, target.usage_state_started_at_ms
+            state.updated_at_ms, request.usage_state_started_at_ms
         ));
     }
     if state.updated_at_ms > now_ms.saturating_add(skew_ms) {
@@ -423,31 +518,43 @@ fn validate_usage_pending_state(
             state.updated_at_ms
         ));
     }
+    match state.flush_request_id.as_deref() {
+        Some(id) if id == request.flush_request_id => {}
+        Some(_) => {
+            return Err("usage flush request id does not match current request".to_string());
+        }
+        None => return Err("usage flush request id is missing".to_string()),
+    }
 
     Ok(())
 }
 
 /// Wait for all pending proxy usage reports to be delivered.
 ///
-/// The Python addon writes JSON to `{addon_dir}/usage-pending` with the
-/// mitmdump usage-state identity plus in-flight flow, buffered event, and
-/// report counters. A successful drain requires current valid state with
-/// `flows == 0`, `buffered == 0`, and `reports == 0`. Missing, unreadable,
-/// stale, wrong state id, or invalid state is treated as not ready and waits
-/// until timeout. The JSON `pid` is diagnostic only: mitmdump launchers can
-/// keep the runner's direct child as a wrapper while the Python addon runs in a
-/// child process.
+/// The runner writes a request marker, signals the Python addon, and then waits
+/// for JSON in `{addon_dir}/usage-pending` that acknowledges that request with
+/// the current mitmdump usage-state identity plus in-flight flow, buffered
+/// event, and report counters. A successful drain requires current valid state
+/// with the active `flushRequestId` and `flows == 0`, `buffered == 0`, and
+/// `reports == 0`. Missing, unreadable, stale, wrong state id, wrong request
+/// id, or invalid state is treated as not ready and waits until timeout. The
+/// JSON `pid` is diagnostic only: mitmdump launchers can keep the runner's
+/// direct child as a wrapper while the Python addon runs in a child process.
 #[cfg(test)]
-async fn wait_usage_flush(addon_dir: &Path, timeout: Duration, target: &UsageFlushTarget) -> bool {
-    wait_usage_flush_requesting(addon_dir, timeout, target, || {}).await
+async fn wait_usage_flush(
+    addon_dir: &Path,
+    timeout: Duration,
+    request: &UsageFlushRequest,
+) -> bool {
+    wait_usage_flush_requesting(addon_dir, timeout, request, || true).await
 }
 
-/// Wait for proxy usage drain while actively asking the addon to flush buffered events.
+/// Wait for proxy usage drain while actively asking the addon for fresh snapshots.
 pub async fn wait_usage_flush_requesting(
     addon_dir: &Path,
     timeout: Duration,
-    target: &UsageFlushTarget,
-    mut request_flush: impl FnMut(),
+    request: &UsageFlushRequest,
+    mut request_flush: impl FnMut() -> bool,
 ) -> bool {
     let path = addon_dir.join("usage-pending");
     let started_at = tokio::time::Instant::now();
@@ -458,15 +565,10 @@ pub async fn wait_usage_flush_requesting(
             Ok(content) => match parse_usage_pending_state(&content) {
                 Ok(state) => {
                     let snapshot = Some(UsagePendingSnapshot::from(&state));
-                    match validate_usage_pending_state(&state, target, now_millis()) {
+                    match validate_usage_pending_state(&state, request, now_millis()) {
                         Ok(()) => {
                             if state.flows == 0 && state.buffered == 0 && state.reports == 0 {
                                 return true;
-                            }
-                            let now = tokio::time::Instant::now();
-                            if state.buffered > 0 && now >= next_flush_request_at {
-                                request_flush();
-                                next_flush_request_at = now + USAGE_FLUSH_REQUEST_INTERVAL;
                             }
                             (
                                 format!(
@@ -484,6 +586,16 @@ pub async fn wait_usage_flush_requesting(
             Err(e) => (format!("cannot read {}: {e}", path.display()), None),
         };
         let now = tokio::time::Instant::now();
+        if now >= next_flush_request_at {
+            if !request_flush() {
+                warn!(
+                    reason = %not_ready,
+                    "usage flush request failed, proceeding with proxy stop"
+                );
+                return false;
+            }
+            next_flush_request_at = now + USAGE_FLUSH_REQUEST_INTERVAL;
+        }
         if now >= deadline {
             match snapshot {
                 Some(snapshot) => warn!(
@@ -495,6 +607,7 @@ pub async fn wait_usage_flush_requesting(
                     flows = snapshot.flows,
                     buffered = snapshot.buffered,
                     reports = snapshot.reports,
+                    flush_request_id = snapshot.flush_request_id.as_deref().unwrap_or(""),
                     "usage flush timed out, proceeding with proxy stop"
                 ),
                 None => warn!(
@@ -1763,7 +1876,7 @@ set -euo pipefail
 fifo="$0.fifo"
 mkfifo "$fifo"
 exec 3<>"$fifo"
-trap 'touch "{}"; exit 0' USR1
+trap 'touch "{}"; echo signaled' USR1
 echo ready
 while true; do read -r _ <&3 || true; done
 "#,
@@ -1790,16 +1903,49 @@ while true; do read -r _ <&3 || true; done
             .unwrap();
         assert_eq!(ready.as_deref(), Some("ready"));
 
-        proxy.request_usage_flush();
+        assert!(proxy.request_usage_flush());
 
-        let status =
-            tokio::time::timeout(Duration::from_secs(2), proxy.child.as_mut().unwrap().wait())
-                .await
-                .expect("child did not observe SIGUSR1")
-                .unwrap();
-        assert!(status.success(), "child exited with {status}");
+        let signaled = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+            .await
+            .expect("child did not observe SIGUSR1")
+            .unwrap();
+        assert_eq!(signaled.as_deref(), Some("signaled"));
         assert!(signal_file.exists(), "child did not observe SIGUSR1");
+        let _ = proxy.child.as_mut().unwrap().kill().await;
         proxy.child = None;
+    }
+
+    #[test]
+    fn request_usage_flush_returns_false_without_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+
+        assert!(!proxy.request_usage_flush());
+    }
+
+    #[tokio::test]
+    async fn request_usage_flush_returns_false_for_exited_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let mut child = tokio::process::Command::new("bash")
+            .arg("-c")
+            .arg("echo ready")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
+        assert_eq!(
+            ready_lines.next_line().await.unwrap().as_deref(),
+            Some("ready")
+        );
+        assert!(ready_lines.next_line().await.unwrap().is_none());
+        let status = child.wait().await.unwrap();
+        assert!(status.success(), "child exited with {status}");
+        proxy.child = Some(child);
+
+        assert!(!proxy.request_usage_flush());
+        assert!(proxy.child.is_none());
     }
 
     fn usage_target() -> UsageFlushTarget {
@@ -1809,7 +1955,75 @@ while true; do read -r _ <&3 || true; done
         }
     }
 
+    fn usage_request() -> UsageFlushRequest {
+        UsageFlushRequest {
+            expected_usage_state_id: "state-test".to_string(),
+            usage_state_started_at_ms: 1_770_000_000_000,
+            flush_request_id: "request-test".to_string(),
+            requested_at_ms: 1_770_000_000_000,
+        }
+    }
+
     fn usage_state(flows: u32, buffered: u32, reports: u32) -> String {
+        usage_state_with_request(flows, buffered, reports, Some("request-test"))
+    }
+
+    fn usage_state_with_request(
+        flows: u32,
+        buffered: u32,
+        reports: u32,
+        flush_request_id: Option<&str>,
+    ) -> String {
+        let mut state = serde_json::json!({
+            "pid": 1234,
+            "usageStateId": "state-test",
+            "updatedAtMs": 1_770_000_000_001u64,
+            "flows": flows,
+            "buffered": buffered,
+            "reports": reports,
+        });
+        if let Some(flush_request_id) = flush_request_id {
+            state["flushRequestId"] = serde_json::json!(flush_request_id);
+        }
+        state.to_string()
+    }
+
+    #[tokio::test]
+    async fn write_usage_flush_request_writes_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+
+        let request = write_usage_flush_request(dir.path(), &target)
+            .await
+            .unwrap();
+
+        let marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("usage-flush-request")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(marker["usageStateId"], "state-test");
+        assert_eq!(marker["flushRequestId"], request.flush_request_id);
+        assert_eq!(marker["requestedAtMs"], request.requested_at_ms);
+    }
+
+    #[tokio::test]
+    async fn write_usage_flush_request_removes_tmp_when_rename_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = usage_target();
+        std::fs::create_dir(dir.path().join("usage-flush-request")).unwrap();
+
+        let result = write_usage_flush_request(dir.path(), &target).await;
+
+        assert!(result.is_err());
+        let leaked_tmp = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .any(|name| name.to_string_lossy().ends_with(".tmp"));
+        assert!(!leaked_tmp, "usage flush request tmp file leaked");
+    }
+
+    fn usage_state_without_request(flows: u32, buffered: u32, reports: u32) -> String {
         serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -1826,22 +2040,46 @@ while true; do read -r _ <&3 || true; done
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_returns_true_when_zero() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), usage_state(0, 0, 0)).unwrap();
-        assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_rejects_missing_request_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        std::fs::write(
+            dir.path().join("usage-pending"),
+            usage_state_without_request(0, 0, 0),
+        )
+        .unwrap();
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_rejects_wrong_request_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        std::fs::write(
+            dir.path().join("usage-pending"),
+            usage_state_with_request(0, 0, 0, Some("old-request")),
+        )
+        .unwrap();
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_times_out_when_file_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        let request = usage_request();
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_waits_for_state_file_to_appear() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let path = dir.path().join("usage-pending");
 
         let p = path.clone();
@@ -1851,14 +2089,14 @@ while true; do read -r _ <&3 || true; done
         });
 
         let d = dir.path().to_path_buf();
-        assert!(wait_usage_flush(&d, Duration::from_secs(5), &target).await);
+        assert!(wait_usage_flush(&d, Duration::from_secs(5), &request).await);
         handle.await.unwrap();
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_waits_until_zero() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let path = dir.path().join("usage-pending");
         std::fs::write(&path, usage_state(2, 0, 1)).unwrap();
 
@@ -1869,14 +2107,14 @@ while true; do read -r _ <&3 || true; done
         });
 
         let d = dir.path().to_path_buf();
-        assert!(wait_usage_flush(&d, Duration::from_secs(5), &target).await);
+        assert!(wait_usage_flush(&d, Duration::from_secs(5), &request).await);
         handle.await.unwrap();
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_waits_until_buffered_zero() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let path = dir.path().join("usage-pending");
         std::fs::write(&path, usage_state(0, 2, 0)).unwrap();
 
@@ -1887,14 +2125,14 @@ while true; do read -r _ <&3 || true; done
         });
 
         let d = dir.path().to_path_buf();
-        assert!(wait_usage_flush(&d, Duration::from_secs(5), &target).await);
+        assert!(wait_usage_flush(&d, Duration::from_secs(5), &request).await);
         handle.await.unwrap();
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_requests_flush_when_buffered() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let path = dir.path().join("usage-pending");
         std::fs::write(&path, usage_state(0, 2, 0)).unwrap();
         let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1902,9 +2140,10 @@ while true; do read -r _ <&3 || true; done
         let p = path.clone();
         let requests = std::sync::Arc::clone(&request_count);
         let d = dir.path().to_path_buf();
-        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &target, || {
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
             requests.fetch_add(1, Ordering::SeqCst);
             std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
         })
         .await;
 
@@ -1913,9 +2152,131 @@ while true; do read -r _ <&3 || true; done
     }
 
     #[tokio::test(start_paused = true)]
-    async fn wait_usage_flush_throttles_buffered_flush_requests() {
+    async fn wait_usage_flush_requests_flush_when_reports_pending() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(&path, usage_state(0, 0, 1)).unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_requests_flush_when_file_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        let path = dir.path().join("usage-pending");
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_requests_flush_when_request_id_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(
+            &path,
+            usage_state_with_request(0, 0, 0, Some("old-request")),
+        )
+        .unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_requests_flush_when_usage_state_id_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        let path = dir.path().join("usage-pending");
+        let stale_state = serde_json::json!({
+            "pid": 1234,
+            "usageStateId": "old-state",
+            "updatedAtMs": 1_770_000_000_001u64,
+            "flows": 0,
+            "buffered": 0,
+            "reports": 0,
+            "flushRequestId": "request-test",
+        });
+        std::fs::write(&path, stale_state.to_string()).unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_requests_flush_when_state_file_is_corrupt() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(&path, "garbage").unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let p = path.clone();
+        let requests = std::sync::Arc::clone(&request_count);
+        let d = dir.path().to_path_buf();
+        let flushed = wait_usage_flush_requesting(&d, Duration::from_secs(5), &request, || {
+            requests.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(&p, usage_state(0, 0, 0)).unwrap();
+            true
+        })
+        .await;
+
+        assert!(flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_throttles_repeat_flush_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), usage_state(0, 2, 0)).unwrap();
         let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
@@ -1923,9 +2284,10 @@ while true; do read -r _ <&3 || true; done
         let flushed = wait_usage_flush_requesting(
             dir.path(),
             USAGE_FLUSH_REQUEST_INTERVAL - Duration::from_millis(1),
-            &target,
+            &request,
             || {
                 requests.fetch_add(1, Ordering::SeqCst);
+                true
             },
         )
         .await;
@@ -1935,34 +2297,53 @@ while true; do read -r _ <&3 || true; done
     }
 
     #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_returns_false_when_repeat_request_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        std::fs::write(dir.path().join("usage-pending"), usage_state(0, 2, 0)).unwrap();
+        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let requests = std::sync::Arc::clone(&request_count);
+        let flushed =
+            wait_usage_flush_requesting(dir.path(), Duration::from_secs(5), &request, || {
+                requests.fetch_add(1, Ordering::SeqCst);
+                false
+            })
+            .await;
+
+        assert!(!flushed);
+        assert_eq!(request_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_timeout() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), usage_state(1, 0, 3)).unwrap();
         // Very short timeout — should return false.
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_times_out_on_corrupt_file() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), "garbage").unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_times_out_on_empty_file() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), "").unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_unknown_field() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -1970,46 +2351,49 @@ while true; do read -r _ <&3 || true; done
             "flows": 0,
             "buffered": 0,
             "reports": 0,
+            "flushRequestId": "request-test",
             "extraField": "unexpected",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_legacy_state_without_buffered_count() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": 0,
             "reports": 0,
+            "flushRequestId": "request-test",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_missing_required_field() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
             "updatedAtMs": 1_770_000_000_001u64,
             "flows": 0,
             "buffered": 0,
+            "flushRequestId": "request-test",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_wrong_usage_state_id() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "old-state",
@@ -2017,15 +2401,16 @@ while true; do read -r _ <&3 || true; done
             "flows": 0,
             "buffered": 0,
             "reports": 0,
+            "flushRequestId": "request-test",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_allows_wrapper_pid_mismatch() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 5678,
             "usageStateId": "state-test",
@@ -2033,15 +2418,16 @@ while true; do read -r _ <&3 || true; done
             "flows": 0,
             "buffered": 0,
             "reports": 0,
+            "flushRequestId": "request-test",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_stale_state() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -2049,15 +2435,16 @@ while true; do read -r _ <&3 || true; done
             "flows": 0,
             "buffered": 0,
             "reports": 0,
+            "flushRequestId": "request-test",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_usage_flush_rejects_future_state() {
         let dir = tempfile::tempdir().unwrap();
-        let target = usage_target();
+        let request = usage_request();
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -2065,9 +2452,10 @@ while true; do read -r _ <&3 || true; done
             "flows": 0,
             "buffered": 0,
             "reports": 0,
+            "flushRequestId": "request-test",
         });
         std::fs::write(dir.path().join("usage-pending"), state.to_string()).unwrap();
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &target).await);
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 
     /// Regression for #10624: `begin_restart` must lock the old

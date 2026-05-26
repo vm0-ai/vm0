@@ -577,7 +577,7 @@ export {
   type OAuthConnectorType,
   type ConnectorConfig,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodType,
+  type ConnectorAuthMethodId,
   type ScopeDiff,
   type ConnectorSearchResult,
   type ConnectorSearchOutput,

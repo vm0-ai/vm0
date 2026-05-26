@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -42,7 +45,7 @@ describe("/usage page", () => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
     });
 
-    const scheduleLink = screen.getAllByRole("link").find((el) => {
+    const scheduleLink = queryAllByRoleFast("link").find((el) => {
       return /My Schedule/.test(el.textContent ?? "");
     });
     expect(scheduleLink).toBeInTheDocument();
@@ -51,7 +54,7 @@ describe("/usage page", () => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
     });
 
-    const chatLink = screen.getAllByRole("link").find((el) => {
+    const chatLink = queryAllByRoleFast("link").find((el) => {
       return /Chat with Agent/.test(el.textContent ?? "");
     });
     expect(chatLink).toBeInTheDocument();

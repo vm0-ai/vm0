@@ -6,6 +6,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -78,7 +79,7 @@ describe("ideation page - category tabs", () => {
 
     for (const category of categories) {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === category.title;
         }),
       ).toBeDefined();
@@ -107,7 +108,7 @@ describe("ideation page - category tabs", () => {
     const allTab = await waitFor(() => {
       return screen.getByText("All");
     });
-    const githubTab = screen.getAllByRole("button").find((el) => {
+    const githubTab = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "GitHub";
     });
     expect(githubTab).toBeDefined();
@@ -131,14 +132,14 @@ describe("ideation page - category tabs", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "GitHub";
         }),
       ).toBeDefined();
     });
 
     click(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "GitHub";
       })!,
     );
@@ -160,14 +161,14 @@ describe("ideation page - category tabs", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "GitHub";
         }),
       ).toBeDefined();
     });
 
     click(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "GitHub";
       })!,
     );

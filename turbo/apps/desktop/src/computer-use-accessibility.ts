@@ -3,7 +3,6 @@ import {
   ComputerUseNativeHelperError,
   createComputerUseNativeBackend,
   type ComputerUseNativeBackend,
-  type ComputerUseNativePressKeyRequest,
 } from "./computer-use-native";
 
 export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
@@ -91,12 +90,21 @@ export interface AccessibilityAppStateSnapshot {
   readonly pid?: number;
   readonly appPath?: string;
   readonly windowTitle?: string;
+  readonly windowId?: number;
+  readonly windowFrame?: ComputerUseCoordinateBounds;
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
   readonly focusedElementIndex?: number;
   readonly nodeCount?: number;
   readonly truncated?: boolean;
   readonly truncationReasons?: readonly string[];
+  readonly screenshot?: string;
+  readonly screenshotMimeType?: string;
+  readonly screenshotSource?: "window" | "screen";
+  readonly screenshotSourceName?: string;
+  readonly screenshotWidth?: number;
+  readonly screenshotHeight?: number;
+  readonly screenshotSourceBounds?: ComputerUseCoordinateBounds;
 }
 
 interface AccessibilitySnapshotOutputLimits {
@@ -114,24 +122,15 @@ export const ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS =
 
 const GENERIC_WRAPPER_ROLES = new Set(["AXGroup", "AXUnknown"]);
 
-export interface ComputerUseScreenshotCaptureRequest {
-  readonly app: string;
-  readonly windowNames: readonly string[];
-  readonly windowBounds: readonly ComputerUseWindowCaptureCandidate[];
-}
-
-export interface ComputerUseScreenshotCaptureResult {
+interface ComputerUseAppStateScreenshot {
   readonly dataUrl: string;
+  readonly mimeType: string;
   readonly source: "window" | "screen";
   readonly sourceName: string;
   readonly width: number;
   readonly height: number;
   readonly sourceBounds?: ComputerUseCoordinateBounds;
 }
-
-type ComputerUseScreenshotCapture = (
-  request: ComputerUseScreenshotCaptureRequest,
-) => Promise<ComputerUseScreenshotCaptureResult>;
 
 export interface ComputerUseCommandSuccess {
   readonly status: "succeeded";
@@ -163,16 +162,13 @@ export interface ComputerUseCoordinateBounds {
   readonly height: number;
 }
 
-export interface ComputerUseWindowCaptureCandidate {
-  readonly name: string;
-  readonly bounds?: ComputerUseCoordinateBounds;
-}
-
 interface ComputerUseSnapshotMetadata {
   readonly app: string;
   readonly snapshotId: string;
   readonly elementIdsByIndex?: readonly string[];
   readonly focusedElementIndex?: number;
+  readonly windowId?: number;
+  readonly windowFrame?: ComputerUseCoordinateBounds;
   readonly screenshotWidth: number;
   readonly screenshotHeight: number;
   readonly screenshotSource: "window" | "screen";
@@ -195,183 +191,12 @@ interface ComputerUseElementTarget {
 export type ComputerUseMouseButton = "left" | "right" | "middle";
 
 interface ComputerUseCommandExecutionDependencies {
-  readonly captureScreenshot: ComputerUseScreenshotCapture;
   readonly snapshotStore?: ComputerUseSnapshotStore;
   readonly platform?: NodeJS.Platform;
   readonly nativeBackend?: ComputerUseNativeBackend;
 }
 
 const DEFAULT_SNAPSHOT_STORE_LIMIT = 50;
-const CG_EVENT_FLAG_SHIFT = 131_072;
-const CG_EVENT_FLAG_CONTROL = 262_144;
-const CG_EVENT_FLAG_OPTION = 524_288;
-const CG_EVENT_FLAG_COMMAND = 1_048_576;
-
-type ComputerUseKeyModifier = "command" | "control" | "option" | "shift";
-
-interface ComputerUseModifierDefinition {
-  readonly name: ComputerUseKeyModifier;
-  readonly displayName: string;
-  readonly keyCode: number;
-  readonly flag: number;
-}
-
-interface ParsedComputerUseKeyPress {
-  readonly keyCode: number;
-  readonly modifiers: readonly {
-    readonly keyCode: number;
-    readonly flag: number;
-  }[];
-  readonly flags: number;
-  readonly normalizedKey: string;
-}
-
-const MODIFIER_DEFINITIONS: readonly ComputerUseModifierDefinition[] = [
-  {
-    name: "command",
-    displayName: "Command",
-    keyCode: 55,
-    flag: CG_EVENT_FLAG_COMMAND,
-  },
-  {
-    name: "control",
-    displayName: "Control",
-    keyCode: 59,
-    flag: CG_EVENT_FLAG_CONTROL,
-  },
-  {
-    name: "option",
-    displayName: "Option",
-    keyCode: 58,
-    flag: CG_EVENT_FLAG_OPTION,
-  },
-  {
-    name: "shift",
-    displayName: "Shift",
-    keyCode: 56,
-    flag: CG_EVENT_FLAG_SHIFT,
-  },
-] as const;
-
-const MODIFIER_ALIASES: Readonly<Record<string, ComputerUseKeyModifier>> =
-  Object.freeze({
-    alt: "option",
-    cmd: "command",
-    command: "command",
-    control: "control",
-    ctrl: "control",
-    meta: "command",
-    option: "option",
-    shift: "shift",
-    super: "command",
-  });
-
-const KEY_CODES: Readonly<Record<string, number>> = Object.freeze({
-  "'": 39,
-  ",": 43,
-  "-": 27,
-  ".": 47,
-  "/": 44,
-  "0": 29,
-  "1": 18,
-  "2": 19,
-  "3": 20,
-  "4": 21,
-  "5": 23,
-  "6": 22,
-  "7": 26,
-  "8": 28,
-  "9": 25,
-  ";": 41,
-  "=": 24,
-  "[": 33,
-  "\\": 42,
-  "]": 30,
-  "`": 50,
-  a: 0,
-  b: 11,
-  backspace: 51,
-  c: 8,
-  d: 2,
-  delete: 51,
-  down: 125,
-  downarrow: 125,
-  e: 14,
-  end: 119,
-  enter: 36,
-  esc: 53,
-  escape: 53,
-  f: 3,
-  f1: 122,
-  f2: 120,
-  f3: 99,
-  f4: 118,
-  f5: 96,
-  f6: 97,
-  f7: 98,
-  f8: 100,
-  f9: 101,
-  f10: 109,
-  f11: 103,
-  f12: 111,
-  forwarddelete: 117,
-  g: 5,
-  h: 4,
-  home: 115,
-  i: 34,
-  j: 38,
-  k: 40,
-  l: 37,
-  left: 123,
-  leftarrow: 123,
-  m: 46,
-  n: 45,
-  o: 31,
-  p: 35,
-  pagedown: 121,
-  pageup: 116,
-  q: 12,
-  r: 15,
-  return: 36,
-  right: 124,
-  rightarrow: 124,
-  s: 1,
-  space: 49,
-  spacebar: 49,
-  t: 17,
-  tab: 48,
-  u: 32,
-  up: 126,
-  uparrow: 126,
-  v: 9,
-  w: 13,
-  x: 7,
-  y: 16,
-  z: 6,
-});
-
-const KEY_DISPLAY_NAMES: Readonly<Record<string, string>> = Object.freeze({
-  backspace: "Backspace",
-  delete: "Backspace",
-  down: "Down",
-  downarrow: "Down",
-  enter: "Return",
-  esc: "Escape",
-  escape: "Escape",
-  forwarddelete: "ForwardDelete",
-  left: "Left",
-  leftarrow: "Left",
-  pagedown: "PageDown",
-  pageup: "PageUp",
-  return: "Return",
-  right: "Right",
-  rightarrow: "Right",
-  space: "Space",
-  spacebar: "Space",
-  tab: "Tab",
-  up: "Up",
-  uparrow: "Up",
-});
 
 class UnsupportedComputerUseCommandError extends Error {
   constructor(message: string) {
@@ -864,26 +689,6 @@ function renderAccessibilityVisibleText(
     .join("\n");
 }
 
-function normalizeKeyToken(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[\s_-]+/g, "");
-}
-
-function displayKeyToken(token: string): string {
-  if (KEY_DISPLAY_NAMES[token]) {
-    return KEY_DISPLAY_NAMES[token];
-  }
-  if (/^f\d{1,2}$/.test(token)) {
-    return token.toUpperCase();
-  }
-  if (token.length === 1) {
-    return token.toUpperCase();
-  }
-  return token;
-}
-
 function unsupportedCommand(message: string): ComputerUseCommandFailure {
   return {
     status: "failed",
@@ -901,77 +706,6 @@ function missingField(field: string): ComputerUseCommandFailure {
       code: "unsupported_command",
       message: `Missing required payload field: ${field}`,
     },
-  };
-}
-
-function parseComputerUseKeyPress(key: string): ParsedComputerUseKeyPress {
-  const rawParts = key.split("+").map((part) => {
-    return part.trim();
-  });
-  if (
-    rawParts.length === 0 ||
-    rawParts.some((part) => {
-      return part.length === 0;
-    })
-  ) {
-    throw new UnsupportedComputerUseCommandError(
-      "keyboard.press_key requires a non-empty key or key combination",
-    );
-  }
-
-  const modifiers = new Set<ComputerUseKeyModifier>();
-  let keyCode: number | null = null;
-  let displayKey: string | null = null;
-
-  for (const rawPart of rawParts) {
-    const token = normalizeKeyToken(rawPart);
-    const modifier = MODIFIER_ALIASES[token];
-    if (modifier) {
-      modifiers.add(modifier);
-      continue;
-    }
-
-    const code = KEY_CODES[token];
-    if (code === undefined) {
-      throw new UnsupportedComputerUseCommandError(
-        `Unsupported key specification: ${rawPart}`,
-      );
-    }
-    if (keyCode !== null) {
-      throw new UnsupportedComputerUseCommandError(
-        "keyboard.press_key supports exactly one non-modifier key",
-      );
-    }
-    keyCode = code;
-    displayKey = displayKeyToken(token);
-  }
-
-  if (keyCode === null || displayKey === null) {
-    throw new UnsupportedComputerUseCommandError(
-      "keyboard.press_key requires a non-modifier key",
-    );
-  }
-
-  const activeModifiers = MODIFIER_DEFINITIONS.filter((modifier) => {
-    return modifiers.has(modifier.name);
-  });
-  return {
-    keyCode,
-    modifiers: activeModifiers.map((modifier) => {
-      return {
-        keyCode: modifier.keyCode,
-        flag: modifier.flag,
-      };
-    }),
-    flags: activeModifiers.reduce((flags, modifier) => {
-      return flags | modifier.flag;
-    }, 0),
-    normalizedKey: [
-      ...activeModifiers.map((modifier) => {
-        return modifier.displayName;
-      }),
-      displayKey,
-    ].join("+"),
   };
 }
 
@@ -1312,33 +1046,6 @@ export function renderAccessibilityTree(
   return lines.join("\n");
 }
 
-function snapshotWindowNames(
-  snapshot: AccessibilityAppStateSnapshot,
-): string[] {
-  return snapshotWindowCaptureCandidates(snapshot).map((window) => {
-    return window.name;
-  });
-}
-
-function snapshotWindowCaptureCandidates(
-  snapshot: AccessibilityAppStateSnapshot,
-): ComputerUseWindowCaptureCandidate[] {
-  return snapshot.elements
-    .map((element): ComputerUseWindowCaptureCandidate | null => {
-      const name = element.name?.trim();
-      if (!name) {
-        return null;
-      }
-      return {
-        name,
-        ...(element.bounds ? { bounds: element.bounds } : {}),
-      };
-    })
-    .filter((window): window is ComputerUseWindowCaptureCandidate => {
-      return window !== null;
-    });
-}
-
 function publicElementSnapshot(
   element: AccessibilityElementSnapshot,
 ): Record<string, unknown> {
@@ -1373,7 +1080,7 @@ function publicAppStateSnapshot(
 
 function buildComputerUseAppStateResult(
   snapshot: AccessibilityAppStateSnapshot,
-  screenshot: ComputerUseScreenshotCaptureResult,
+  screenshot: ComputerUseAppStateScreenshot,
 ): Record<string, unknown> {
   const visibleElements = collectAccessibilityVisibleElements(
     snapshot,
@@ -1386,7 +1093,7 @@ function buildComputerUseAppStateResult(
     visibleText: renderAccessibilityVisibleText(visibleElements),
     visibleElements,
     screenshot: screenshot.dataUrl,
-    screenshotMimeType: "image/png",
+    screenshotMimeType: screenshot.mimeType,
     screenshotSource: screenshot.source,
     screenshotSourceName: screenshot.sourceName,
     screenshotWidth: screenshot.width,
@@ -1394,6 +1101,60 @@ function buildComputerUseAppStateResult(
     ...(screenshot.sourceBounds
       ? { screenshotSourceBounds: screenshot.sourceBounds }
       : {}),
+  };
+}
+
+function appStateScreenshotFailure(message: string): ComputerUseCommandFailure {
+  return {
+    status: "failed",
+    error: {
+      code: "screen_recording_unavailable",
+      message,
+    },
+  };
+}
+
+function nativeAppStateScreenshot(
+  snapshot: AccessibilityAppStateSnapshot,
+): ComputerUseAppStateScreenshot | ComputerUseCommandFailure {
+  if (!snapshot.screenshot || snapshot.screenshot.trim().length === 0) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state did not return a target-window screenshot",
+    );
+  }
+  if (snapshot.screenshotSource !== "window") {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state must return a target-window screenshot",
+    );
+  }
+  if (!snapshot.screenshotSourceName) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state did not return a screenshot source name",
+    );
+  }
+  if (
+    snapshot.screenshotWidth === undefined ||
+    snapshot.screenshotHeight === undefined ||
+    snapshot.screenshotWidth <= 0 ||
+    snapshot.screenshotHeight <= 0
+  ) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state returned invalid screenshot dimensions",
+    );
+  }
+  if (!snapshot.screenshotSourceBounds) {
+    return appStateScreenshotFailure(
+      "Native Computer Use app.state did not return target-window screenshot bounds",
+    );
+  }
+  return {
+    dataUrl: snapshot.screenshot,
+    mimeType: snapshot.screenshotMimeType ?? "image/png",
+    source: snapshot.screenshotSource,
+    sourceName: snapshot.screenshotSourceName,
+    width: snapshot.screenshotWidth,
+    height: snapshot.screenshotHeight,
+    sourceBounds: snapshot.screenshotSourceBounds,
   };
 }
 
@@ -1407,7 +1168,6 @@ async function listApps(
 async function getAppState(
   app: string,
   nativeBackend: ComputerUseNativeBackend,
-  captureScreenshot: ComputerUseScreenshotCapture,
   snapshotStore: ComputerUseSnapshotStore,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
@@ -1415,22 +1175,9 @@ async function getAppState(
     await nativeBackend.getAppState(app, id),
   );
   const indexed = indexAccessibilitySnapshot(snapshot);
-  const windowBounds = snapshotWindowCaptureCandidates(indexed.snapshot);
-  let screenshot: ComputerUseScreenshotCaptureResult;
-  try {
-    screenshot = await captureScreenshot({
-      app,
-      windowNames: snapshotWindowNames(indexed.snapshot),
-      windowBounds,
-    });
-  } catch (error) {
-    return {
-      status: "failed",
-      error: {
-        code: "screen_recording_unavailable",
-        message: error instanceof Error ? error.message : String(error),
-      },
-    };
+  const screenshot = nativeAppStateScreenshot(indexed.snapshot);
+  if ("status" in screenshot) {
+    return screenshot;
   }
   snapshotStore.set({
     app: indexed.snapshot.app,
@@ -1438,6 +1185,12 @@ async function getAppState(
     elementIdsByIndex: indexed.elementIdsByIndex,
     ...(indexed.focusedElementIndex !== undefined
       ? { focusedElementIndex: indexed.focusedElementIndex }
+      : {}),
+    ...(indexed.snapshot.windowId !== undefined
+      ? { windowId: indexed.snapshot.windowId }
+      : {}),
+    ...(indexed.snapshot.windowFrame
+      ? { windowFrame: indexed.snapshot.windowFrame }
       : {}),
     screenshotWidth: screenshot.width,
     screenshotHeight: screenshot.height,
@@ -1451,6 +1204,53 @@ async function getAppState(
     status: "succeeded",
     result: buildComputerUseAppStateResult(indexed.snapshot, screenshot),
   };
+}
+
+async function withPostActionAppState(args: {
+  readonly app: string;
+  readonly actionResult: ComputerUseCommandSuccess;
+  readonly nativeBackend: ComputerUseNativeBackend;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+}): Promise<ComputerUseCommandExecutionResult> {
+  const appStateResult = await getAppState(
+    args.app,
+    args.nativeBackend,
+    args.snapshotStore,
+  );
+  if (appStateResult.status === "failed") {
+    return appStateResult;
+  }
+  return {
+    status: "succeeded",
+    result: {
+      ...appStateResult.result,
+      action: args.actionResult.result,
+    },
+  };
+}
+
+async function executeWriteActionWithPostActionState(args: {
+  readonly app: string;
+  readonly permissions: ComputerUsePermissionState;
+  readonly nativeBackend: ComputerUseNativeBackend;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+  readonly execute: () => Promise<ComputerUseCommandExecutionResult>;
+}): Promise<ComputerUseCommandExecutionResult> {
+  const screenRecordingError = requireScreenRecording(args.permissions);
+  if (screenRecordingError) {
+    return screenRecordingError;
+  }
+
+  const actionResult = await args.execute();
+  if (actionResult.status === "failed") {
+    return actionResult;
+  }
+  return await withPostActionAppState({
+    app: args.app,
+    actionResult,
+    nativeBackend: args.nativeBackend,
+    snapshotStore: args.snapshotStore,
+  });
 }
 
 async function openApp(
@@ -1467,41 +1267,6 @@ async function openApp(
       inputRisk: "background_app_launch",
       text: `Opened ${app}`,
     },
-  };
-}
-
-function roundScreenCoordinate(value: number): number {
-  return Number(value.toFixed(2));
-}
-
-function mapScreenshotPointToScreen(args: {
-  readonly metadata: ComputerUseSnapshotMetadata;
-  readonly x: number;
-  readonly y: number;
-}):
-  | { readonly screenX: number; readonly screenY: number }
-  | ComputerUseCommandFailure {
-  const { metadata } = args;
-  if (!metadata.sourceBounds) {
-    return unsupportedCommand(
-      `Snapshot source bounds are unavailable: ${metadata.snapshotId}`,
-    );
-  }
-  if (metadata.screenshotWidth <= 0 || metadata.screenshotHeight <= 0) {
-    return unsupportedCommand(
-      `Snapshot dimensions are invalid: ${metadata.snapshotId}`,
-    );
-  }
-
-  return {
-    screenX: roundScreenCoordinate(
-      metadata.sourceBounds.x +
-        (args.x / metadata.screenshotWidth) * metadata.sourceBounds.width,
-    ),
-    screenY: roundScreenCoordinate(
-      metadata.sourceBounds.y +
-        (args.y / metadata.screenshotHeight) * metadata.sourceBounds.height,
-    ),
   };
 }
 
@@ -1637,18 +1402,19 @@ async function clickElement(args: {
     if ("status" in snapshot) {
       return snapshot;
     }
-    const screenPoint = mapScreenshotPointToScreen({
-      metadata: snapshot,
+    const clickPoint = await args.nativeBackend.clickPoint({
+      app: args.app,
+      snapshotId: snapshot.snapshotId,
       x: args.x,
       y: args.y,
-    });
-    if ("status" in screenPoint) {
-      return screenPoint;
-    }
-    await args.nativeBackend.clickPoint({
-      app: args.app,
-      x: screenPoint.screenX,
-      y: screenPoint.screenY,
+      screenshotSource: snapshot.screenshotSource,
+      screenshotWidth: snapshot.screenshotWidth,
+      screenshotHeight: snapshot.screenshotHeight,
+      ...(snapshot.sourceBounds ? { sourceBounds: snapshot.sourceBounds } : {}),
+      ...(snapshot.windowId !== undefined
+        ? { windowId: snapshot.windowId }
+        : {}),
+      ...(snapshot.windowFrame ? { windowFrame: snapshot.windowFrame } : {}),
       button: args.button,
       clickCount: args.clickCount,
     });
@@ -1659,8 +1425,8 @@ async function clickElement(args: {
         snapshotId: snapshot.snapshotId,
         x: args.x,
         y: args.y,
-        screenX: screenPoint.screenX,
-        screenY: screenPoint.screenY,
+        screenX: clickPoint.screenX,
+        screenY: clickPoint.screenY,
         button: args.button,
         clickCount: args.clickCount,
         dispatchMode: "background_mouse_event",
@@ -1748,24 +1514,16 @@ async function pressKey(
   key: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  const parsed = parseComputerUseKeyPress(key);
-  const request: ComputerUseNativePressKeyRequest = {
-    app,
-    keyCode: parsed.keyCode,
-    modifiers: parsed.modifiers,
-    flags: parsed.flags,
-    normalizedKey: parsed.normalizedKey,
-  };
-  await nativeBackend.pressKey(request);
+  const result = await nativeBackend.pressKey({ app, key });
   return {
     status: "succeeded",
     result: {
       app,
-      key: parsed.normalizedKey,
+      key: result.normalizedKey,
       dispatchMode: "background_keyboard_event",
       dispatchTarget: "app_process",
       inputRisk: "background_app_shortcut",
-      text: `Pressed ${parsed.normalizedKey}`,
+      text: `Pressed ${result.normalizedKey}`,
     },
   };
 }
@@ -1828,15 +1586,18 @@ export async function executeComputerUseCommand(
       if (screenRecordingError) {
         return screenRecordingError;
       }
-      return await getAppState(
-        app,
-        nativeBackend,
-        dependencies.captureScreenshot,
-        snapshotStore,
-      );
+      return await getAppState(app, nativeBackend, snapshotStore);
     }
     if (command.kind === "app.open") {
-      return await openApp(app, nativeBackend);
+      return await executeWriteActionWithPostActionState({
+        app,
+        permissions,
+        nativeBackend,
+        snapshotStore,
+        execute: async () => {
+          return await openApp(app, nativeBackend);
+        },
+      });
     }
     if (command.kind === "element.click") {
       const x = payloadNumber(command.payload, "x");
@@ -1859,24 +1620,31 @@ export async function executeComputerUseCommand(
         const snapshotResult = await getAppState(
           app,
           nativeBackend,
-          dependencies.captureScreenshot,
           snapshotStore,
         );
         if (snapshotResult.status === "failed") {
           return snapshotResult;
         }
       }
-      return await clickElement({
+      return await executeWriteActionWithPostActionState({
         app,
-        elementId,
-        elementIndex,
-        snapshotId,
-        x,
-        y,
-        button: payloadMouseButton(command.payload),
-        clickCount: payloadClickCount(command.payload),
+        permissions,
         nativeBackend,
         snapshotStore,
+        execute: async () => {
+          return await clickElement({
+            app,
+            elementId,
+            elementIndex,
+            snapshotId,
+            x,
+            y,
+            button: payloadMouseButton(command.payload),
+            clickCount: payloadClickCount(command.payload),
+            nativeBackend,
+            snapshotStore,
+          });
+        },
       });
     }
     if (command.kind === "element.scroll") {
@@ -1898,13 +1666,21 @@ export async function executeComputerUseCommand(
       if ("status" in target) {
         return target;
       }
-      return await scrollElement(
+      return await executeWriteActionWithPostActionState({
         app,
-        target,
-        direction,
-        payloadNumber(command.payload, "pages") ?? 1,
+        permissions,
         nativeBackend,
-      );
+        snapshotStore,
+        execute: async () => {
+          return await scrollElement(
+            app,
+            target,
+            direction,
+            payloadNumber(command.payload, "pages") ?? 1,
+            nativeBackend,
+          );
+        },
+      });
     }
     if (command.kind === "element.set_value") {
       const elementId = payloadString(command.payload, "elementId");
@@ -1925,7 +1701,15 @@ export async function executeComputerUseCommand(
       if ("status" in target) {
         return target;
       }
-      return await setElementValue(app, target, value, nativeBackend);
+      return await executeWriteActionWithPostActionState({
+        app,
+        permissions,
+        nativeBackend,
+        snapshotStore,
+        execute: async () => {
+          return await setElementValue(app, target, value, nativeBackend);
+        },
+      });
     }
     if (command.kind === "element.perform_action") {
       const elementId = payloadString(command.payload, "elementId");
@@ -1946,18 +1730,42 @@ export async function executeComputerUseCommand(
       if ("status" in target) {
         return target;
       }
-      return await performElementAction(app, target, action, nativeBackend);
+      return await executeWriteActionWithPostActionState({
+        app,
+        permissions,
+        nativeBackend,
+        snapshotStore,
+        execute: async () => {
+          return await performElementAction(app, target, action, nativeBackend);
+        },
+      });
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");
       return text
-        ? await typeText(app, text, nativeBackend)
+        ? await executeWriteActionWithPostActionState({
+            app,
+            permissions,
+            nativeBackend,
+            snapshotStore,
+            execute: async () => {
+              return await typeText(app, text, nativeBackend);
+            },
+          })
         : missingField("text");
     }
     if (command.kind === "keyboard.press_key") {
       const key = payloadString(command.payload, "key");
       return key
-        ? await pressKey(app, key, nativeBackend)
+        ? await executeWriteActionWithPostActionState({
+            app,
+            permissions,
+            nativeBackend,
+            snapshotStore,
+            execute: async () => {
+              return await pressKey(app, key, nativeBackend);
+            },
+          })
         : missingField("key");
     }
   } catch (error) {

@@ -21,7 +21,6 @@ import {
   ComputerUseHostRuntime,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
-import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   IDLE_COMPUTER_USE_HOST_STATE,
@@ -31,6 +30,7 @@ import {
 import type { DesktopAuthState } from "./desktop-bridge";
 import {
   getComputerUsePermissionState,
+  refreshComputerUsePermissionState,
   requestComputerUseAccessibilityPermission,
 } from "./computer-use-permissions";
 import { resolveDesktopConfig } from "./config";
@@ -80,9 +80,11 @@ const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const AUTH_ME_PATH = "/api/auth/me";
 const ZERO_ORG_PATH = "/api/zero/org";
+const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
 let appIsQuitting = false;
+let computerUseQuitStopStarted = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let desktopAuthToken: string | null = null;
@@ -222,10 +224,9 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       hostFetch: (input, init) => {
         return fetch(input, init);
       },
-      getPermissions: getComputerUsePermissionState,
+      getPermissions: refreshComputerUsePermissionState,
       executeCommand: (command, permissions) => {
         return executeComputerUseCommand(command, permissions, {
-          captureScreenshot: captureComputerUseScreenshot,
           snapshotStore: computerUseSnapshotStore,
         });
       },
@@ -236,8 +237,8 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   return getComputerUseBridgeState();
 }
 
-function requestComputerUsePermission(): DesktopComputerUseState {
-  requestComputerUseAccessibilityPermission();
+async function requestComputerUsePermission(): Promise<DesktopComputerUseState> {
+  await requestComputerUseAccessibilityPermission();
   notifyDesktopComputerUseChanged();
   return getComputerUseBridgeState();
 }
@@ -251,6 +252,30 @@ function installComputerUse(): void {
     },
     { rendererUrl: localRendererUrl },
   );
+}
+
+function refreshComputerUsePermissionsForState(): void {
+  void refreshComputerUsePermissionState()
+    .catch((error) => {
+      console.warn("Unable to refresh native Computer Use permissions", error);
+    })
+    .finally(() => {
+      notifyDesktopComputerUseChanged();
+    });
+}
+
+async function stopComputerUseRuntimeForQuit(): Promise<void> {
+  const runtime = computerUseRuntime;
+  if (!runtime) {
+    return;
+  }
+
+  await Promise.race([
+    runtime.stop(),
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, COMPUTER_USE_QUIT_STOP_TIMEOUT_MS);
+    }),
+  ]);
 }
 
 function installDesktopAuth(): void {
@@ -605,7 +630,9 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   computerUseRuntime = null;
   notifyDesktopAuthChanged();
   notifyDesktopComputerUseChanged();
-  if (hasRequiredComputerUsePermissions(getComputerUsePermissionState())) {
+  const permissions = await refreshComputerUsePermissionState();
+  notifyDesktopComputerUseChanged();
+  if (hasRequiredComputerUsePermissions(permissions)) {
     await startComputerUseRuntime();
   }
 }
@@ -722,8 +749,16 @@ if (!hasSingleInstanceLock) {
     handleDesktopAuthCallback(url);
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     appIsQuitting = true;
+    if (!computerUseRuntime || computerUseQuitStopStarted) {
+      return;
+    }
+    computerUseQuitStopStarted = true;
+    event.preventDefault();
+    void stopComputerUseRuntimeForQuit().finally(() => {
+      app.quit();
+    });
   });
 
   void app.whenReady().then(async () => {
@@ -732,6 +767,7 @@ if (!hasSingleInstanceLock) {
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
     installComputerUse();
+    refreshComputerUsePermissionsForState();
     installDesktopAuth();
     queueDesktopAuthCallbackArgv(process.argv);
 

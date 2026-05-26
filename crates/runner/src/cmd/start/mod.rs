@@ -1289,25 +1289,36 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("shutdown_factories", phase);
 
     // Wait for buffered and pending usage reports before stopping the proxy.
-    // The addon writes the current mitmdump identity plus in-flight flow,
-    // buffered event, and pending report counts; this remains bounded
-    // best-effort, and timeout is the abnormal data-loss path.
+    // The runner writes a shutdown request marker, then the addon replies with
+    // fresh pending snapshots after SIGUSR1-triggered flush requests. This
+    // remains bounded best-effort, and timeout is the abnormal data-loss path.
     let phase = teardown.phase_start("wait_usage_flush");
     if let Some(usage_flush_target) = mitm.usage_flush_target() {
-        info!("requesting proxy usage flush");
-        mitm.request_usage_flush();
-        info!("waiting for proxy usage reports to flush");
-        let flushed = proxy::wait_usage_flush_requesting(
-            &base_dir.join("mitm-addon"),
-            proxy::USAGE_FLUSH_TIMEOUT,
-            &usage_flush_target,
-            || mitm.request_usage_flush(),
-        )
-        .await;
-        if flushed {
-            info!("all usage reports flushed");
-        } else {
-            warn!("usage flush timed out, some reports may be lost");
+        let addon_dir = base_dir.join("mitm-addon");
+        match proxy::write_usage_flush_request(&addon_dir, &usage_flush_target).await {
+            Ok(usage_flush_request) => {
+                info!("requesting proxy usage flush");
+                if mitm.request_usage_flush() {
+                    info!("waiting for proxy usage reports to flush");
+                    let flushed = proxy::wait_usage_flush_requesting(
+                        &addon_dir,
+                        proxy::USAGE_FLUSH_TIMEOUT,
+                        &usage_flush_request,
+                        || mitm.request_usage_flush(),
+                    )
+                    .await;
+                    if flushed {
+                        info!("all usage reports flushed");
+                    } else {
+                        warn!("usage flush did not complete, some reports may be lost");
+                    }
+                } else {
+                    warn!("failed to request proxy usage flush, skipping usage wait");
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "failed to create proxy usage flush request, skipping usage wait");
+            }
         }
     } else {
         info!("proxy is not running; skipping usage flush wait");

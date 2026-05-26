@@ -19,7 +19,6 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -64,7 +63,6 @@ import {
   type ConnectorCategoryGroup,
 } from "../../signals/zero-page/settings/connector-categories.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
@@ -589,16 +587,14 @@ function AvailableConnectorCard({
 
 function renderBuiltinList({
   loadingState,
-  showConnectorCategories,
   grouped,
-  filtered,
+  filteredCount,
   renderCard,
   search,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
-  showConnectorCategories: boolean;
   grouped: ConnectorCategoryGroup<ConnectorTypeWithStatus>[];
-  filtered: ConnectorTypeWithStatus[];
+  filteredCount: number;
   renderCard: (connector: ConnectorTypeWithStatus) => ReactNode;
   search: string;
 }): ReactNode {
@@ -626,7 +622,7 @@ function renderBuiltinList({
     );
   }
 
-  if (filtered.length === 0 && search) {
+  if (filteredCount === 0 && search) {
     return (
       <div className="flex flex-col items-center gap-3 py-12">
         <img
@@ -641,23 +637,15 @@ function renderBuiltinList({
     );
   }
 
-  if (showConnectorCategories) {
-    return grouped.map((group) => {
-      return (
-        <ConnectorCategoryGroupSection
-          key={group.id}
-          group={group}
-          renderCard={renderCard}
-        />
-      );
-    });
-  }
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {filtered.map(renderCard)}
-    </div>
-  );
+  return grouped.map((group) => {
+    return (
+      <ConnectorCategoryGroupSection
+        key={group.id}
+        group={group}
+        renderCard={renderCard}
+      />
+    );
+  });
 }
 
 export function ZeroConnectorsPage() {
@@ -681,13 +669,8 @@ export function ZeroConnectorsPage() {
   const activeCategoryId = useGet(activeConnectorCategoryId$);
   const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
   const resetActiveCategory = useSet(resetActiveConnectorCategory$);
-  const features = useLastResolved(featureSwitch$);
-  const showConnectorCategories =
-    features?.[FeatureSwitchKey.ConnectorCategories] ?? false;
   const categoryTrackingEnabled =
-    activeTab === "builtin" &&
-    allTypesLoadable.state === "hasData" &&
-    showConnectorCategories;
+    activeTab === "builtin" && allTypesLoadable.state === "hasData";
   const scrollContainerRef = useScrollTrackingRef(
     categoryTrackingEnabled,
     attachScrollTracking,
@@ -773,15 +756,12 @@ export function ZeroConnectorsPage() {
     );
   };
 
-  const grouped = showConnectorCategories
-    ? groupConnectorsByCategory(filtered.map(getEffective))
-    : [];
+  const grouped = groupConnectorsByCategory(filtered.map(getEffective));
 
   const builtinList = renderBuiltinList({
     loadingState: allTypesLoadable.state,
-    showConnectorCategories,
     grouped,
-    filtered,
+    filteredCount: filtered.length,
     renderCard,
     search,
   });
@@ -823,14 +803,12 @@ export function ZeroConnectorsPage() {
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">
-          {activeTab === "builtin" &&
-            allTypesLoadable.state === "hasData" &&
-            showConnectorCategories && (
-              <ConnectorCategoryMenu
-                activeCategoryId={activeCategoryId}
-                groups={grouped}
-              />
-            )}
+          {activeTab === "builtin" && allTypesLoadable.state === "hasData" && (
+            <ConnectorCategoryMenu
+              activeCategoryId={activeCategoryId}
+              groups={grouped}
+            />
+          )}
 
           <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
             <div className="flex items-center justify-between">

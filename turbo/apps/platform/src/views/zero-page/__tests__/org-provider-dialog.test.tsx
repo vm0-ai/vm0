@@ -13,7 +13,11 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   orgOpenAddDialog$,
   orgOpenEditDialog$,
@@ -255,7 +259,7 @@ describe("org-provider-dialog - interaction", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^(Add|Saving)/i.test(el.textContent?.trim() ?? "");
         })!,
       ).toBeDisabled();

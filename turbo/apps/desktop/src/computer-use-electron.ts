@@ -11,7 +11,7 @@ interface ComputerUseIpcOptions {
 interface ComputerUseNativeApi {
   readonly getState: () => DesktopComputerUseState;
   readonly start: () => Promise<DesktopComputerUseState>;
-  readonly requestAccessibilityPermission: () => DesktopComputerUseState;
+  readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
 }
 
 export function notifyDesktopComputerUseChanged(): void {

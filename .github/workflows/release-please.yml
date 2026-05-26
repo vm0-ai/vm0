@@ -1014,6 +1014,7 @@ jobs:
           skip-finish: "true"
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            VITE_VERCEL_ENV=production
             VITE_API_URL=https://www.vm0.ai
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL }}
             VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}

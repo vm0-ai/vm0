@@ -244,6 +244,8 @@ const ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE = new RegExp(
 );
 const ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE =
   "/api/zero/computer-use/heartbeat";
+const ZERO_COMPUTER_USE_HOST_STOP_REWRITE_SOURCE =
+  "/api/zero/computer-use/host/stop";
 const ZERO_COMPUTER_USE_HOST_COMMANDS_NEXT_REWRITE_SOURCE =
   "/api/zero/computer-use/host/commands/next";
 const ZERO_COMPUTER_USE_HOST_COMMAND_COMPLETE_REWRITE_SOURCE = `/api/zero/computer-use/host/commands/:commandId(${UUID_PATH_SEGMENT_PATTERN})/complete`;
@@ -875,6 +877,10 @@ export const API_BACKEND_REWRITES = [
   [
     ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE,
     "/api/zero/computer-use/heartbeat",
+  ],
+  [
+    ZERO_COMPUTER_USE_HOST_STOP_REWRITE_SOURCE,
+    "/api/zero/computer-use/host/stop",
   ],
   [
     ZERO_COMPUTER_USE_HOST_COMMANDS_NEXT_REWRITE_SOURCE,

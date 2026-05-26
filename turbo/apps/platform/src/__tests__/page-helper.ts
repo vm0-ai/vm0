@@ -211,3 +211,73 @@ export function click(element: Element): void {
   fireEvent.pointerDown(element, { button: 0 });
   fireEvent.click(element);
 }
+
+/**
+ * Text-content ARIA roles — roles whose accessible name is derived from a
+ * subtree text walk, so `*ByRole(role)` from @testing-library pays for an
+ * O(documentSize) ARIA tree traversal even without `{ name }`. Profiling
+ * showed `screen.getAllByRole("button")` taking ~360ms on the /connectors
+ * page with only 5 buttons rendered.
+ */
+type TextContentRole =
+  | "button"
+  | "link"
+  | "menuitem"
+  | "menuitemcheckbox"
+  | "menuitemradio"
+  | "tab"
+  | "cell"
+  | "columnheader"
+  | "rowheader"
+  | "gridcell";
+
+const ROLE_SELECTORS: Record<TextContentRole, string> = {
+  button: 'button, [role="button"]',
+  link: 'a[href], [role="link"]',
+  menuitem: '[role="menuitem"]',
+  menuitemcheckbox: '[role="menuitemcheckbox"]',
+  menuitemradio: '[role="menuitemradio"]',
+  tab: '[role="tab"]',
+  cell: 'td, [role="cell"]',
+  // Plain <th> inside <thead> has implicit role="columnheader"; a <th
+  // scope="row"> is a rowheader, so exclude it here to match
+  // @testing-library/dom's role disambiguation.
+  columnheader: 'th:not([scope="row"]), [role="columnheader"]',
+  rowheader: 'th[scope="row"], [role="rowheader"]',
+  gridcell: '[role="gridcell"]',
+};
+
+/**
+ * Element is hidden from the accessibility tree — used to match the default
+ * `getAllByRole(role, { hidden: false })` behaviour from
+ * `@testing-library/dom`, which excludes ancestors flagged with
+ * `aria-hidden="true"`, the `hidden` attribute, or `inert`. Radix overlays
+ * commonly leave background portals mounted with `aria-hidden`; matching
+ * those would inflate counts vs. the original role queries.
+ */
+function isAccessibilityHidden(element: Element): boolean {
+  return element.closest('[aria-hidden="true"], [hidden], [inert]') !== null;
+}
+
+/**
+ * Fast role lookup that returns the same elements as
+ * `getAllByRole(role)` for text-content roles, without the ARIA tree walk
+ * `@testing-library/dom` performs. Use this anywhere you'd otherwise call
+ * `screen.getAllByRole("button").find(el => /label/.test(el.textContent))`
+ * or `within(container).getAllByRole("link")`.
+ *
+ * The native tag is the primary lookup; the `[role="…"]` fallback covers
+ * elements that override their role explicitly. Elements inside an
+ * `aria-hidden`, `hidden`, or `inert` subtree are filtered out to match the
+ * default `getAllByRole` visibility semantics.
+ */
+export function queryAllByRoleFast(
+  role: TextContentRole,
+  container: ParentNode = document.body,
+): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(ROLE_SELECTORS[role]),
+  ).filter((el) => {
+    return !isAccessibilityHidden(el);
+  });
+}

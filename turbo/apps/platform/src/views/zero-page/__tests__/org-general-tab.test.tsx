@@ -7,6 +7,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import {
@@ -375,7 +376,7 @@ describe("org general tab - danger zone", () => {
     await openGeneralTab();
 
     const leaveTrigger = await waitFor(() => {
-      const btn = screen.getAllByRole("button").find((el) => {
+      const btn = queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Leave";
       });
       expect(btn).toBeInTheDocument();
@@ -384,7 +385,7 @@ describe("org general tab - danger zone", () => {
     click(leaveTrigger);
 
     const confirmBtn = await waitFor(() => {
-      const buttons = screen.getAllByRole("button");
+      const buttons = queryAllByRoleFast("button");
       const btn = buttons.find((el) => {
         return (
           el.textContent?.trim() === "Leave" && el.closest('[role="dialog"]')
@@ -423,7 +424,7 @@ describe("org general tab - danger zone", () => {
     await openGeneralTab();
 
     const deleteTrigger = await waitFor(() => {
-      const btn = screen.getAllByRole("button").find((el) => {
+      const btn = queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Delete";
       });
       expect(btn).toBeInTheDocument();
@@ -435,7 +436,7 @@ describe("org general tab - danger zone", () => {
     await fill(slugInput, "my-org");
 
     const confirmBtn = await waitFor(() => {
-      const buttons = screen.getAllByRole("button");
+      const buttons = queryAllByRoleFast("button");
       const btn = buttons.find((el) => {
         return el.textContent?.trim() === "Delete workspace";
       });
@@ -475,7 +476,7 @@ describe("org general tab - danger zone", () => {
     await openGeneralTab();
 
     const leaveTrigger = await waitFor(() => {
-      const btn = screen.getAllByRole("button").find((el) => {
+      const btn = queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Leave";
       });
       expect(btn).toBeInTheDocument();
@@ -484,7 +485,7 @@ describe("org general tab - danger zone", () => {
     click(leaveTrigger);
 
     const confirmBtn = await waitFor(() => {
-      const buttons = screen.getAllByRole("button");
+      const buttons = queryAllByRoleFast("button");
       const btn = buttons.find((el) => {
         return (
           el.textContent?.trim() === "Leave" && el.closest('[role="dialog"]')

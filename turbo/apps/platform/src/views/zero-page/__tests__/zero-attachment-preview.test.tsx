@@ -19,6 +19,7 @@ import { computed } from "ccstate";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { fetchPreviewText } from "../../../signals/chat-page/parse-body-blocks.ts";
 import { lightboxUrl$ } from "../../../signals/zero-page/zero-attachment-chips.ts";
@@ -417,7 +418,7 @@ describe("text preview loading and error states", () => {
     });
 
     // Click to collapse
-    const button = screen.getAllByRole("button").find((el) => {
+    const button = queryAllByRoleFast("button").find((el) => {
       return /collapse/i.test(el.getAttribute("aria-label") ?? "");
     })!;
     fireEvent.click(button);

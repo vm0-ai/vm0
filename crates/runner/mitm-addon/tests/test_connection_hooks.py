@@ -11,6 +11,7 @@ from mitmproxy.flow import Error
 
 import mitm_addon
 import usage
+from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -28,6 +29,73 @@ class TestDoneHook:
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
+
+    def test_done_waits_for_runner_flush_before_executor_shutdown(self):
+        """done() must not shut down the executor while a SIGUSR1 flush is enqueueing."""
+
+        class _InstrumentedLock:
+            def __init__(self) -> None:
+                self._lock = threading.Lock()
+                self.blocking_acquire_started = threading.Event()
+
+            def acquire(self, blocking: bool = True) -> bool:
+                if blocking:
+                    self.blocking_acquire_started.set()
+                return self._lock.acquire(blocking)
+
+            def release(self) -> None:
+                self._lock.release()
+
+            def __enter__(self):
+                self.acquire()
+                return self
+
+            def __exit__(self, exc_type, exc, traceback) -> None:
+                del exc_type, exc, traceback
+                self.release()
+
+        lock = _InstrumentedLock()
+        runner_flush_started = threading.Event()
+        release_runner_flush = threading.Event()
+        shutdown_called = threading.Event()
+        calls: list[str] = []
+
+        def flush_usage_events(*, trigger: str) -> int:
+            calls.append(f"flush:{trigger}")
+            if trigger == "runner":
+                runner_flush_started.set()
+                if not release_runner_flush.wait(timeout=1):
+                    calls.append("runner_flush_timeout")
+            return 0
+
+        def shutdown(*, wait: bool) -> None:
+            calls.append(f"shutdown:{wait}")
+            shutdown_called.set()
+
+        mock_executor = MagicMock()
+        mock_executor.shutdown.side_effect = shutdown
+
+        with (
+            patch.object(mitm_addon, "_usage_flush_signal_lock", lock),
+            patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+        ):
+            runner_thread = threading.Thread(target=mitm_addon._flush_usage_for_runner_request)
+            runner_thread.start()
+            assert runner_flush_started.wait(timeout=1)
+
+            done_thread = threading.Thread(target=mitm_addon.done)
+            done_thread.start()
+            assert lock.blocking_acquire_started.wait(timeout=1)
+            assert not shutdown_called.is_set()
+
+            release_runner_flush.set()
+            runner_thread.join(timeout=1)
+            done_thread.join(timeout=1)
+
+        assert not runner_thread.is_alive()
+        assert not done_thread.is_alive()
+        assert calls == ["flush:runner", "flush:shutdown", "shutdown:True"]
 
     def test_done_shuts_down_executor_when_flush_fails(self):
         mock_executor = MagicMock()
@@ -50,17 +118,125 @@ class TestDoneHook:
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
-    def test_signal_handler_flushes_usage_in_background(self):
+    def test_signal_handler_flushes_usage_in_background(self, tmp_path):
         flushed = threading.Event()
+        snapshotted = threading.Event()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
 
         def flush_usage_events(*, trigger: str) -> int:
             assert trigger == "runner"
+            usage.counters.increment_pending_reports()
+            usage.counters.decrement_pending_reports()
             flushed.set()
             return 0
 
-        with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
-            assert flushed.wait(timeout=1)
+        original_write_pending_snapshot = usage.write_pending_snapshot
+
+        def write_pending_snapshot(*, flush_request_id: str | None = None) -> None:
+            original_write_pending_snapshot(flush_request_id=flush_request_id)
+            snapshotted.set()
+
+        try:
+            with (
+                patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+                patch.object(
+                    usage,
+                    "write_pending_snapshot",
+                    side_effect=write_pending_snapshot,
+                ),
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                assert flushed.wait(timeout=1)
+                assert snapshotted.wait(timeout=1)
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.set_pending_path("")
+
+    def test_signal_handler_writes_snapshot_when_flush_fails(self, tmp_path):
+        snapshotted = threading.Event()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        usage.counters.increment_pending_reports()
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+
+        original_write_pending_snapshot = usage.write_pending_snapshot
+
+        def write_pending_snapshot(*, flush_request_id: str | None = None) -> None:
+            original_write_pending_snapshot(flush_request_id=flush_request_id)
+            snapshotted.set()
+
+        try:
+            with (
+                patch.object(
+                    usage,
+                    "flush_usage_events",
+                    side_effect=RuntimeError("flush failed"),
+                ),
+                patch.object(
+                    usage,
+                    "write_pending_snapshot",
+                    side_effect=write_pending_snapshot,
+                ),
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                assert snapshotted.wait(timeout=1)
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=1,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.counters.decrement_pending_reports()
+            usage.set_pending_path("")
+
+    def test_runner_flush_failure_warns_without_error_text(self):
+        log = MagicMock()
+
+        with (
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=RuntimeError("secret-token"),
+            ),
+        ):
+            mitm_addon._flush_usage_for_runner_request()
+
+        log.warn.assert_called_once()
+        message = log.warn.call_args.args[0]
+        assert "RuntimeError" in message
+        assert "secret-token" not in message
 
 
 class TestTlsClienthello:

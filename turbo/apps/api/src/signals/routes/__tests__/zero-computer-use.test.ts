@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
   zeroComputerUseCommandContract,
+  zeroComputerUseHeartbeatContract,
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
   zeroComputerUseWriteCommandContract,
@@ -15,7 +16,7 @@ import {
 } from "@vm0/db/schema/computer-use-host";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -83,6 +84,7 @@ async function seedComputerUseHost(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly hostToken: string;
+  readonly lastSeenAt?: Date;
 }): Promise<string> {
   const writeDb = store.set(writeDb$);
   const [host] = await writeDb
@@ -96,6 +98,7 @@ async function seedComputerUseHost(args: {
       osVersion: "macOS 15",
       supportedCapabilities: [...supportedCapabilities],
       permissions: { accessibility: true, screenRecording: true },
+      ...(args.lastSeenAt ? { lastSeenAt: args.lastSeenAt } : {}),
     })
     .returning({ id: computerUseHosts.id });
 
@@ -247,6 +250,103 @@ describe("desktop computer-use runtime", () => {
     );
     expect(listed.body.hosts).toHaveLength(1);
     expect(listed.body.hosts[0]?.id).toBe(started.body.hostId);
+  });
+
+  it("rejects a stale host heartbeat when another Desktop host is active", async () => {
+    const fixture = await createOrgFixture();
+    const staleHostToken = "stale-host-token";
+    const staleHostId = await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken: staleHostToken,
+      lastSeenAt: new Date(now() - 120_000),
+    });
+    const hostsClient = setupApp({ context })(zeroComputerUseHostsContract);
+    const heartbeatClient = setupApp({ context })(
+      zeroComputerUseHeartbeatContract,
+    );
+
+    await accept(
+      hostsClient.start({
+        body: {
+          hostName: "Zero Desktop",
+          appVersion: "0.1.0",
+          osVersion: "macOS 15",
+          supportedCapabilities: [...supportedCapabilities],
+          permissions: { accessibility: true, screenRecording: true },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const rejected = await accept(
+      heartbeatClient.heartbeat({
+        body: {
+          hostName: "Zero Desktop",
+          appVersion: "0.1.0",
+          osVersion: "macOS 15",
+          supportedCapabilities: [...supportedCapabilities],
+          permissions: { accessibility: true, screenRecording: true },
+        },
+        headers: { authorization: `Bearer ${staleHostToken}` },
+      }),
+      [409],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "A Desktop Computer Use host is already active",
+    );
+    const writeDb = store.set(writeDb$);
+    const [staleHost] = await writeDb
+      .select()
+      .from(computerUseHosts)
+      .where(eq(computerUseHosts.id, staleHostId));
+    expect(staleHost).toMatchObject({ status: "offline" });
+    expect(staleHost?.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it("stops a Desktop host so another host can start immediately", async () => {
+    await createOrgFixture();
+    const hostsClient = setupApp({ context })(zeroComputerUseHostsContract);
+    const heartbeatClient = setupApp({ context })(
+      zeroComputerUseHeartbeatContract,
+    );
+    const body = {
+      hostName: "Zero Desktop",
+      appVersion: "0.1.0",
+      osVersion: "macOS 15",
+      supportedCapabilities: [...supportedCapabilities],
+      permissions: { accessibility: true, screenRecording: true },
+    };
+
+    const started = await accept(
+      hostsClient.start({
+        body,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const stopped = await accept(
+      heartbeatClient.stop({
+        body: {},
+        headers: { authorization: `Bearer ${started.body.hostToken}` },
+      }),
+      [200],
+    );
+
+    expect(stopped.body).toStrictEqual({
+      ok: true,
+      hostId: started.body.hostId,
+    });
+    const restarted = await accept(
+      hostsClient.start({
+        body,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(restarted.body.hostId).not.toBe(started.body.hostId);
   });
 
   it("refuses to route commands when multiple active hosts already exist", async () => {

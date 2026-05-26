@@ -1,21 +1,34 @@
 /**
  * ESLint rule: no-get-by-role-name
  *
- * Warns when *ByRole queries use the `name` option for roles whose accessible
- * name comes from subtree text content (button, link, menuitem, tab, …).
+ * Warns when *ByRole queries are used for roles whose accessible name comes
+ * from subtree text content (button, link, menuitem, tab, …).
  *
- * In happy-dom, `getByRole("button", { name: /text/ })` must compute the ARIA
- * accessible name for every matching element, traversing each element's entire
- * subtree. With 20+ buttons in a rendered page this costs ~300–900ms per call
- * — a 100–900× slowdown compared to text-content alternatives.
+ * Two layers of cost in @testing-library/happy-dom:
+ *
+ * 1. Adding `{ name }` forces the accessible-name algorithm to walk every
+ *    candidate element's subtree. With 20+ buttons that is ~300–900ms per
+ *    call.
+ * 2. Even without `{ name }`, *ByRole walks the entire document running ARIA
+ *    role inference per node. Profiling the /connectors page showed
+ *    `getAllByRole("button")` taking ~360ms with only 5 buttons present —
+ *    pushed the stripe CLI close test over the 5s vitest timeout in CI
+ *    (#14871, then re-skipped in #14891) until we replaced the call.
+ *
+ * For native HTML elements (`button`, `a` → `link`, `[role="tab"]`, …) the
+ * tag is the role, so querySelectorAll resolves the same set without the
+ * ARIA tree walk.
  *
  * Bad:
- *   screen.getByRole("button", { name: /Add member/i })     // ~333ms
- *   within(dialog).getByRole("link", { name: "Cancel" })    // still slow
+ *   screen.getByRole("button", { name: /Add member/i })       // ~333ms
+ *   within(dialog).getByRole("link", { name: "Cancel" })      // still slow
+ *   screen.getAllByRole("button").find(el => /…/.test(el.textContent ?? ""))
  *
- * Good — use text content directly:
- *   screen.getByText("Add member")
- *   screen.getAllByRole("button").find(el => /Add member/i.test(el.textContent ?? ""))
+ * Good — native tag selector + textContent filter:
+ *   for (const btn of document.body.querySelectorAll<HTMLButtonElement>("button")) {
+ *     if (/Add member/.test(btn.textContent ?? "")) return btn;
+ *   }
+ *   // or, when uniqueness is guaranteed, screen.getByText("Add member")
  *
  * Exception — roles that have few instances or whose names come from labels
  * (heading, dialog, combobox, textbox, checkbox) are not flagged because they
@@ -73,7 +86,7 @@ export default createRule<[], MessageIds>({
     schema: [],
     messages: {
       avoidRoleWithName:
-        'Avoid *ByRole("{{role}}", { name }) — accessible name computation traverses every matching element\'s subtree and costs ~300ms per call in happy-dom. Use getByText("label") or getAllByRole("{{role}}").find(el => /label/.test(el.textContent ?? "")) instead.',
+        'Avoid *ByRole("{{role}}", …) — even without `{ name }` this walks the whole DOM running ARIA role inference per node (~360ms per call on a typical page). Use `queryAllByRoleFast("{{role}}"[, container])` from src/__tests__/page-helper, then filter on textContent.',
     },
   },
   defaultOptions: [],
@@ -108,23 +121,6 @@ export default createRule<[], MessageIds>({
 
         const role = roleArg.value;
         if (!TEXT_CONTENT_ROLES.has(role)) {
-          return;
-        }
-
-        // Second argument must be an options object containing a `name` key.
-        const optionsArg = node.arguments[1];
-        if (!optionsArg || optionsArg.type !== "ObjectExpression") {
-          return;
-        }
-
-        const hasNameProp = optionsArg.properties.some(
-          (prop) =>
-            prop.type === "Property" &&
-            prop.key.type === "Identifier" &&
-            prop.key.name === "name",
-        );
-
-        if (!hasNameProp) {
           return;
         }
 

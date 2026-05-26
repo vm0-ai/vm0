@@ -6,6 +6,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
@@ -65,7 +66,7 @@ describe("org billing tab - plan display", () => {
     });
 
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /^Upgrade$/i.test(el.textContent?.trim() ?? "");
       }),
     ).toBeDefined();
@@ -150,7 +151,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
     });
 
     // The "Current plan" button for the pro plan should be disabled
-    const currentPlanButtons = screen.getAllByRole("button").filter((el) => {
+    const currentPlanButtons = queryAllByRoleFast("button").filter((el) => {
       return /Current plan/i.test(el.textContent ?? "");
     });
     expect(currentPlanButtons.length).toBeGreaterThanOrEqual(1);
@@ -601,7 +602,7 @@ describe("org billing tab - cancellation pending", () => {
     });
 
     expect(
-      screen.queryAllByRole("button").filter((el) => {
+      queryAllByRoleFast("button").filter((el) => {
         return el.textContent?.trim() === "Downgrade";
       }),
     ).toHaveLength(0);
@@ -624,7 +625,7 @@ describe("org billing tab - cancellation pending", () => {
     });
 
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Manage";
       }),
     ).toBeDefined();
@@ -647,7 +648,7 @@ describe("org billing tab - cancellation pending", () => {
     });
 
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Downgrade";
       }),
     ).toBeDefined();
@@ -674,19 +675,19 @@ describe("org billing tab - plan card details", () => {
 
     // Plan cards are rendered for each tier
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /Upgrade to Pro/i.test(el.textContent ?? "");
       }),
     ).toBeDefined();
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /Upgrade to Team/i.test(el.textContent ?? "");
       }),
     ).toBeDefined();
 
     // Current plan card shows "Current plan" label
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /Current plan/i.test(el.textContent ?? "");
       }),
     ).toBeDefined();
@@ -774,7 +775,7 @@ describe("org billing tab - billing states", () => {
     });
 
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return /^Retry$/i.test(el.textContent?.trim() ?? "");
       }),
     ).toBeDefined();
@@ -807,7 +808,7 @@ describe("org billing tab - plan card actions", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    const upgradeToProBtn = screen.getAllByRole("button").find((el) => {
+    const upgradeToProBtn = queryAllByRoleFast("button").find((el) => {
       return /Upgrade to Pro/i.test(el.textContent ?? "");
     });
     expect(upgradeToProBtn).toBeDefined();
@@ -848,7 +849,7 @@ describe("org billing tab - stripe portal", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    const manageBtn = screen.getAllByRole("button").find((el) => {
+    const manageBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Manage";
     });
     expect(manageBtn).toBeDefined();
@@ -878,7 +879,7 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Downgrade";
       }),
     ).toBeDefined();
@@ -899,7 +900,7 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     expect(
-      screen.getAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Downgrade";
       }),
     ).toBeDefined();
@@ -915,7 +916,7 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     expect(
-      screen.queryAllByRole("button").filter((el) => {
+      queryAllByRoleFast("button").filter((el) => {
         return el.textContent?.trim() === "Downgrade";
       }),
     ).toHaveLength(0);
@@ -935,7 +936,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    const downgradeBtn1 = screen.getAllByRole("button").find((el) => {
+    const downgradeBtn1 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Downgrade";
     });
     expect(downgradeBtn1).toBeDefined();
@@ -965,7 +966,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Team plan")).toBeInTheDocument();
     });
 
-    const downgradeBtn2 = screen.getAllByRole("button").find((el) => {
+    const downgradeBtn2 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Downgrade";
     });
     expect(downgradeBtn2).toBeDefined();
@@ -1003,7 +1004,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    const downgradeBtn3 = screen.getAllByRole("button").find((el) => {
+    const downgradeBtn3 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Downgrade";
     });
     expect(downgradeBtn3).toBeDefined();
@@ -1013,7 +1014,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    const downgradeToFreeBtn = screen.getAllByRole("button").find((el) => {
+    const downgradeToFreeBtn = queryAllByRoleFast("button").find((el) => {
       return /Downgrade to Free/i.test(el.textContent ?? "");
     });
     expect(downgradeToFreeBtn).toBeDefined();
@@ -1046,7 +1047,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    const downgradeBtn4 = screen.getAllByRole("button").find((el) => {
+    const downgradeBtn4 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Downgrade";
     });
     expect(downgradeBtn4).toBeDefined();
@@ -1057,11 +1058,9 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     const dialog = screen.getByRole("dialog");
-    const cancelBtn = within(dialog)
-      .getAllByRole("button")
-      .find((el) => {
-        return /^Cancel$/i.test(el.textContent?.trim() ?? "");
-      });
+    const cancelBtn = queryAllByRoleFast("button", dialog).find((el) => {
+      return /^Cancel$/i.test(el.textContent?.trim() ?? "");
+    });
     expect(cancelBtn).toBeDefined();
     click(cancelBtn!);
 
@@ -1094,7 +1093,7 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     // Click "Manage subscription" (the downgrade button on pricing page for free tier)
-    const manageButtons = screen.getAllByRole("button").filter((el) => {
+    const manageButtons = queryAllByRoleFast("button").filter((el) => {
       return /Manage subscription/i.test(el.textContent ?? "");
     });
     expect(manageButtons.length).toBeGreaterThanOrEqual(1);

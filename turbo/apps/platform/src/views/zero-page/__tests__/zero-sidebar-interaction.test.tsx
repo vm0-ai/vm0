@@ -20,7 +20,11 @@ import {
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   fireClerkListeners,
   mockedClerk,
@@ -390,7 +394,7 @@ describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)
     const menuTriggers = screen.getAllByLabelText("Open chat menu");
     click(menuTriggers[0]);
     const deleteItem = await waitFor(() => {
-      const item = screen.getAllByRole("menuitem").find((el) => {
+      const item = queryAllByRoleFast("menuitem").find((el) => {
         return /Delete chat/i.test(el.textContent ?? "");
       });
       if (!item) {
@@ -453,7 +457,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
     const menuTriggers = screen.getAllByLabelText("Open chat menu");
     click(menuTriggers[0]);
     const deleteItem = await waitFor(() => {
-      const item = screen.getAllByRole("menuitem").find((el) => {
+      const item = queryAllByRoleFast("menuitem").find((el) => {
         return /Delete chat/i.test(el.textContent ?? "");
       });
       if (!item) {
@@ -467,11 +471,9 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
       return screen.getByRole("dialog");
     });
 
-    const confirmButton = within(dialog)
-      .getAllByRole("button")
-      .find((el) => {
-        return el.textContent?.trim() === "Delete";
-      });
+    const confirmButton = queryAllByRoleFast("button", dialog).find((el) => {
+      return el.textContent?.trim() === "Delete";
+    });
     expect(confirmButton).toBeDefined();
     click(confirmButton!);
 

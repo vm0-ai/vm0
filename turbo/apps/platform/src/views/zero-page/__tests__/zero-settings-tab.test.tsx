@@ -10,6 +10,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -420,7 +421,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
     });
 
-    const deleteButtons = screen.getAllByRole("button").filter((el) => {
+    const deleteButtons = queryAllByRoleFast("button").filter((el) => {
       return /Delete agent/i.test(el.textContent ?? "");
     });
     click(deleteButtons[deleteButtons.length - 1]);

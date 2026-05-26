@@ -365,7 +365,7 @@ export interface ConnectorInteractivePairingGrantConfig {
     label: string;
     description?: string;
   }[];
-  readonly importsAuthMethod?: ConnectorAuthMethodType;
+  readonly importsAuthMethod?: ConnectorAuthMethodId;
 }
 
 export interface ConnectorManagedGrantConfig {
@@ -448,42 +448,30 @@ export interface ConnectorAuthMethodConfig {
 }
 
 /**
- * Connector auth method variants exposed as configured connection flows.
+ * Connector auth method ids exposed as configured connection flows.
  *
- * These values describe the choices users can select when connecting a
- * service. They are not necessarily the same as the persisted connected
- * credential shape returned by connector APIs.
- *
- * - `oauth` — full OAuth 2.0 flow. Enablement stored as a DB row in
- *   `connectors` (with scopes, external identity, token refresh metadata).
- * - `api-token` — user supplies an API token via the UI. No DB row:
- *   enablement is derived from the presence of required secrets/variables.
- * - `api` — service-managed connection flow for integrations established
- *   outside OAuth or user-entered API-token forms.
- * - `cli-auth` — user imports credentials through a provider CLI. The imported
- *   result may still be stored as another credential shape such as `api-token`.
+ * These values describe user-selectable connection choices. Behavior must be
+ * derived from the auth method lifecycle config, not from the id itself.
  */
-export type ConnectorAuthMethodType =
+export type ConnectorAuthMethodId =
   | "oauth"
   | "api-token"
   | "api"
-  | "cli-auth";
+  | "cli-auth"
+  | "app-credentials";
 
-export const CONNECTOR_AUTH_METHOD_TYPES = [
+/**
+ * Temporary ordering for auth method ids still handled by legacy key-based
+ * API/UI paths. This is intentionally not exhaustive over ConnectorAuthMethodId.
+ */
+export const CONNECTOR_LEGACY_AUTH_METHOD_ORDER = [
   "oauth",
   "api-token",
   "api",
   "cli-auth",
-] as const satisfies readonly ConnectorAuthMethodType[];
-
-type MissingConnectorAuthMethodType = Exclude<
-  ConnectorAuthMethodType,
-  (typeof CONNECTOR_AUTH_METHOD_TYPES)[number]
->;
+] as const satisfies readonly ConnectorAuthMethodId[];
 
 type AssertNever<T extends never> = T;
-export type ConnectorAuthMethodTypesCoverUnion =
-  AssertNever<MissingConnectorAuthMethodType>;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -594,14 +582,14 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
   ];
 
 type ConnectorAuthMethods = Partial<
-  Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
+  Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
 >;
 
 type ConnectorConfigBase = {
   readonly label: string;
   readonly helpText: string;
   readonly category: ConnectorDisplayCategory;
-  readonly defaultAuthMethod?: ConnectorAuthMethodType;
+  readonly defaultAuthMethod?: ConnectorAuthMethodId;
   /**
    * Output categories this connector skill can generate. This is product
    * metadata for discovery and routing, not a permission/capability grant.
@@ -891,13 +879,14 @@ export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   string
 >;
 type ConnectorAuthMethodKeys<Type extends ConnectorType> =
-  ConnectorAuthMethodIds<Type> & ConnectorAuthMethodType;
+  ConnectorAuthMethodIds<Type> & keyof ConnectorAuthMethodGrantKindById;
 
 type ConnectorAuthMethodGrantKindById = {
   readonly oauth: "auth-code" | "device-auth";
   readonly "api-token": "manual";
   readonly api: "managed";
   readonly "cli-auth": "interactive-pairing";
+  readonly "app-credentials": "manual";
 };
 
 type ConnectorAuthMethodAccessKindById = {
@@ -905,6 +894,7 @@ type ConnectorAuthMethodAccessKindById = {
   readonly "api-token": "static";
   readonly api: "managed" | "none";
   readonly "cli-auth": "none";
+  readonly "app-credentials": "static";
 };
 
 type ConnectorAuthMethodRevokeKindById = {
@@ -912,7 +902,14 @@ type ConnectorAuthMethodRevokeKindById = {
   readonly "api-token": "none";
   readonly api: "none";
   readonly "cli-auth": "none";
+  readonly "app-credentials": "none";
 };
+
+export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<
+  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodGrantKindById>
+  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodAccessKindById>
+  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodRevokeKindById>
+>;
 
 type InvalidAuthMethodGrantKindConnectorType = {
   [Type in ConnectorType]: {
@@ -1007,17 +1004,21 @@ export type ConnectorBrowserVerificationCliAuthConnectorType = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-type InvalidDefaultAuthMethodConnectorType = {
-  [Type in ConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type] extends {
+export type ConnectorInvalidDefaultAuthMethodType<
+  Configs extends Record<string, ConnectorConfig>,
+> = {
+  [Type in keyof Configs & string]: Configs[Type] extends {
     readonly defaultAuthMethod: infer DefaultMethod;
   }
-    ? DefaultMethod extends ConnectorAuthMethodIds<Type>
+    ? DefaultMethod extends Extract<keyof Configs[Type]["authMethods"], string>
       ? never
       : Type
     : never;
-}[ConnectorType];
-export type ConnectorDefaultAuthMethodsMatchConfig =
-  AssertNever<InvalidDefaultAuthMethodConnectorType>;
+}[keyof Configs & string];
+
+export type ConnectorDefaultAuthMethodsMatchConfig = AssertNever<
+  ConnectorInvalidDefaultAuthMethodType<typeof CONNECTOR_TYPES_DEF>
+>;
 
 export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
 export const CONNECTOR_TYPE_KEYS = Object.freeze(

@@ -18,6 +18,7 @@ const BASE_URL = "https://www.vm0.ai";
 
 interface DocsIndexPageProps {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export const dynamic = "force-dynamic";
@@ -60,14 +61,19 @@ export async function generateMetadata({
   };
 }
 
-export default async function DocsIndexPage({ params }: DocsIndexPageProps) {
+export default async function DocsIndexPage({
+  params,
+  searchParams,
+}: DocsIndexPageProps) {
   if (!(await canViewDocs())) {
     notFound();
   }
 
   const { locale } = await params;
+  const { status } = await searchParams;
+  const draft = status === "draft";
   const t = await getTranslations({ locale, namespace: "docs" });
-  const pages = await getDocsPages(locale);
+  const pages = await getDocsPages(locale, { draft });
   const navigation = buildDocsNavigation(pages);
 
   const breadcrumbJsonLd = {
@@ -104,14 +110,18 @@ export default async function DocsIndexPage({ params }: DocsIndexPageProps) {
           <p className="docs-description">{t("description")}</p>
         </div>
       </section>
-      <DocsShell navigation={navigation} homeLabel={t("home")}>
+      <DocsShell navigation={navigation} homeLabel={t("home")} draft={draft}>
         {pages.length > 0 ? (
           <div className="docs-index-grid">
             {pages.map((page) => {
               return (
                 <Link
                   key={page.path}
-                  href={`/docs/${page.path}`}
+                  href={
+                    draft
+                      ? `/docs/${page.path}?status=draft`
+                      : `/docs/${page.path}`
+                  }
                   className="docs-index-card"
                 >
                   <span className="docs-index-section">

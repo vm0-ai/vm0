@@ -71,6 +71,7 @@ function slugify(value: string): string {
 
 function titleForKind(kind: HtmlArtifactKind): string {
   const titles: Record<HtmlArtifactKind, string> = {
+    image: "image",
     presentation: "HTML presentation",
     website: "hosted website",
     "dashboard-design": "dashboard design prototype",

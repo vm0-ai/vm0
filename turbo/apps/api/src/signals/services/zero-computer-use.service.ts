@@ -97,6 +97,15 @@ type StartComputerUseHostResult =
     }
   | { readonly status: "active_host_exists"; readonly hostId: string };
 
+type HeartbeatComputerUseHostResult =
+  | { readonly status: "ok"; readonly hostId: string }
+  | { readonly status: "invalid_token" }
+  | { readonly status: "active_host_exists"; readonly hostId: string };
+
+type StopComputerUseHostResult =
+  | { readonly status: "stopped"; readonly hostId: string }
+  | { readonly status: "invalid_token" };
+
 type ClaimNextComputerUseHostCommandResult =
   | { readonly status: "invalid_token" }
   | { readonly status: "idle" }
@@ -411,6 +420,31 @@ async function hostFromToken(
   return host ?? null;
 }
 
+async function hostIdentityFromToken(
+  tx: ComputerUseTx,
+  hostToken: string,
+  signal: AbortSignal,
+): Promise<{
+  readonly orgId: string;
+  readonly userId: string;
+} | null> {
+  const [host] = await tx
+    .select({
+      orgId: computerUseHosts.orgId,
+      userId: computerUseHosts.userId,
+    })
+    .from(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.tokenHash, hashSecret(hostToken)),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return host ?? null;
+}
+
 export const startComputerUseHost$ = command(
   async (
     { set },
@@ -506,17 +540,56 @@ export const heartbeatComputerUseHost$ = command(
       };
     },
     signal: AbortSignal,
-  ): Promise<
-    | { readonly status: "ok"; readonly hostId: string }
-    | { readonly status: "invalid_token" }
-  > => {
+  ): Promise<HeartbeatComputerUseHostResult> => {
     const db = set(writeDb$);
     const now = nowDate();
     const result = await db.transaction(async (tx) => {
-      const host = await hostFromToken(tx, params.hostToken, signal);
-      if (!host) {
+      const hostIdentity = await hostIdentityFromToken(
+        tx,
+        params.hostToken,
+        signal,
+      );
+      if (!hostIdentity) {
         return { status: "invalid_token" as const };
       }
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('computer_use_host:' || ${hostIdentity.orgId} || ':' || ${hostIdentity.userId}))`,
+      );
+      signal.throwIfAborted();
+
+      const lockedHost = await hostFromToken(tx, params.hostToken, signal);
+      if (!lockedHost) {
+        return { status: "invalid_token" as const };
+      }
+
+      const existingHosts = await tx
+        .select()
+        .from(computerUseHosts)
+        .where(
+          and(
+            eq(computerUseHosts.orgId, lockedHost.orgId),
+            eq(computerUseHosts.userId, lockedHost.userId),
+            isNull(computerUseHosts.revokedAt),
+          ),
+        )
+        .for("update");
+      signal.throwIfAborted();
+
+      const activeHost = existingHosts.find((candidate) => {
+        return candidate.id !== lockedHost.id && hostIsOnline(candidate, now);
+      });
+      if (activeHost) {
+        await tx
+          .update(computerUseHosts)
+          .set({ status: "offline", revokedAt: now, updatedAt: now })
+          .where(eq(computerUseHosts.id, lockedHost.id));
+        signal.throwIfAborted();
+        return {
+          status: "active_host_exists" as const,
+          hostId: activeHost.id,
+        };
+      }
+
       await tx
         .update(computerUseHosts)
         .set({
@@ -531,9 +604,37 @@ export const heartbeatComputerUseHost$ = command(
           lastSeenAt: now,
           updatedAt: now,
         })
+        .where(eq(computerUseHosts.id, lockedHost.id));
+      signal.throwIfAborted();
+      return { status: "ok" as const, hostId: lockedHost.id };
+    });
+    signal.throwIfAborted();
+    return result;
+  },
+);
+
+export const stopComputerUseHost$ = command(
+  async (
+    { set },
+    params: {
+      readonly hostToken: string;
+    },
+    signal: AbortSignal,
+  ): Promise<StopComputerUseHostResult> => {
+    const db = set(writeDb$);
+    const now = nowDate();
+    const result = await db.transaction(async (tx) => {
+      const host = await hostFromToken(tx, params.hostToken, signal);
+      if (!host) {
+        return { status: "invalid_token" as const };
+      }
+
+      await tx
+        .update(computerUseHosts)
+        .set({ status: "offline", revokedAt: now, updatedAt: now })
         .where(eq(computerUseHosts.id, host.id));
       signal.throwIfAborted();
-      return { status: "ok" as const, hostId: host.id };
+      return { status: "stopped" as const, hostId: host.id };
     });
     signal.throwIfAborted();
     return result;

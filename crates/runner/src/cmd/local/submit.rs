@@ -4,7 +4,10 @@
 //! for a group-wide `{job_id}.result` file written by the runner that claimed
 //! the job.
 
+use std::collections::HashMap;
+use std::io::Write;
 use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -218,26 +221,101 @@ fn abandon_job(
     );
 }
 
-pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
-    run_submit_with_home(args, HomePaths::new()?).await
+struct SubmitPlan {
+    job_id: RunId,
+    group: String,
+    profile: String,
+    job_dir: PathBuf,
+    job_path: PathBuf,
+    result_path: PathBuf,
+    cancel_path: PathBuf,
+    claim_path: PathBuf,
+    timeout: Duration,
+    request_json: Vec<u8>,
 }
 
-async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult<ExitCode> {
-    crate::group::validate_or_err(&args.group)?;
+enum SubmitOutcome {
+    Completed(Vec<u8>),
+    Cancelled,
+}
 
-    let profile = match args.profile {
-        Some(profile) => {
-            crate::profile::validate_or_err(&profile)?;
-            profile
+impl SubmitPlan {
+    fn from_args(args: SubmitArgs, home: HomePaths) -> RunnerResult<Self> {
+        let SubmitArgs {
+            group,
+            prompt,
+            working_dir,
+            cli_agent_type,
+            profile,
+            session_id,
+            feature_flags,
+            timeout,
+        } = args;
+
+        crate::group::validate_or_err(&group)?;
+
+        let profile = match profile {
+            Some(profile) => {
+                crate::profile::validate_or_err(&profile)?;
+                profile
+            }
+            None => crate::profile::DEFAULT_PROFILE.to_owned(),
+        };
+
+        let feature_flags = Self::parse_feature_flags(&feature_flags)?;
+        let group_dir = home.groups_dir().join(&group);
+        let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile)?;
+
+        std::fs::create_dir_all(&job_dir).map_err(|e| {
+            RunnerError::Config(format!("create job dir {}: {e}", job_dir.display()))
+        })?;
+        std::fs::create_dir_all(local_queue::results_dir(&group_dir))
+            .map_err(|e| RunnerError::Config(format!("create results dir: {e}")))?;
+        std::fs::create_dir_all(local_queue::cancels_dir(&group_dir))
+            .map_err(|e| RunnerError::Config(format!("create cancels dir: {e}")))?;
+
+        let job_id = RunId::new_v4();
+        let request = JobRequest {
+            job_id,
+            prompt,
+            working_dir,
+            cli_agent_type,
+            vars: None,
+            environment: None,
+            user_timezone: detect_system_timezone(),
+            profile: Some(profile.clone()),
+            session_id,
+            feature_flags,
+        };
+
+        let request_json = serde_json::to_vec(&request)
+            .map_err(|e| RunnerError::Internal(format!("serialize request: {e}")))?;
+        let job_path = local_queue::job_path(&group_dir, &profile, job_id)?;
+        let result_path = local_queue::result_path(&group_dir, job_id);
+        let cancel_path = local_queue::cancel_path(&group_dir, job_id);
+        let claim_path = local_queue::claim_path(&group_dir, job_id);
+
+        Ok(Self {
+            job_id,
+            group,
+            profile,
+            job_dir,
+            job_path,
+            result_path,
+            cancel_path,
+            claim_path,
+            timeout: Duration::from_secs(timeout),
+            request_json,
+        })
+    }
+
+    fn parse_feature_flags(flags: &[String]) -> RunnerResult<Option<HashMap<String, bool>>> {
+        if flags.is_empty() {
+            return Ok(None);
         }
-        None => crate::profile::DEFAULT_PROFILE.to_owned(),
-    };
 
-    let feature_flags = if args.feature_flags.is_empty() {
-        None
-    } else {
-        let mut map = std::collections::HashMap::new();
-        for flag in &args.feature_flags {
+        let mut map = HashMap::new();
+        for flag in flags {
             let (key, value) = flag.split_once('=').ok_or_else(|| {
                 RunnerError::Config(format!("invalid feature flag (expected key=value): {flag}"))
             })?;
@@ -248,138 +326,118 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
             })?;
             map.insert(key.to_string(), bool_val);
         }
-        Some(map)
-    };
-
-    let group_dir = home.groups_dir().join(&args.group);
-    let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile)?;
-
-    std::fs::create_dir_all(&job_dir)
-        .map_err(|e| RunnerError::Config(format!("create job dir {}: {e}", job_dir.display())))?;
-    std::fs::create_dir_all(local_queue::results_dir(&group_dir))
-        .map_err(|e| RunnerError::Config(format!("create results dir: {e}")))?;
-    std::fs::create_dir_all(local_queue::cancels_dir(&group_dir))
-        .map_err(|e| RunnerError::Config(format!("create cancels dir: {e}")))?;
-
-    let job_id = RunId::new_v4();
-    let request = JobRequest {
-        job_id,
-        prompt: args.prompt,
-        working_dir: args.working_dir,
-        cli_agent_type: args.cli_agent_type,
-        vars: None,
-        environment: None,
-        user_timezone: detect_system_timezone(),
-        profile: Some(profile.clone()),
-        session_id: args.session_id,
-        feature_flags,
-    };
-
-    let json = serde_json::to_vec(&request)
-        .map_err(|e| RunnerError::Internal(format!("serialize request: {e}")))?;
-
-    // Write atomically: tmp file then rename.
-    let tmp_path = job_dir.join(format!("{job_id}.job.tmp"));
-    let job_path = local_queue::job_path(&group_dir, &profile, job_id)?;
-    if let Err(e) = std::fs::write(&tmp_path, &json) {
-        let _ = remove_file_if_exists(&tmp_path);
-        return Err(RunnerError::Internal(format!("write job file: {e}")));
-    }
-    if let Err(e) = std::fs::rename(&tmp_path, &job_path) {
-        let _ = remove_file_if_exists(&tmp_path);
-        return Err(RunnerError::Internal(format!("rename job file: {e}")));
+        Ok(Some(map))
     }
 
-    // Poll for result, listening for Ctrl+C to cancel.
-    let result_path = local_queue::result_path(&group_dir, job_id);
-    let cancel_path = local_queue::cancel_path(&group_dir, job_id);
-    let claim_path = local_queue::claim_path(&group_dir, job_id);
-    let timeout = Duration::from_secs(args.timeout);
-    let deadline = tokio::time::Instant::now() + timeout;
+    fn write_job_file(&self) -> RunnerResult<()> {
+        let tmp_path = self.job_dir.join(format!("{}.job.tmp", self.job_id));
+        if let Err(e) = std::fs::write(&tmp_path, &self.request_json) {
+            let _ = remove_file_if_exists(&tmp_path);
+            return Err(RunnerError::Internal(format!("write job file: {e}")));
+        }
+        if let Err(e) = std::fs::rename(&tmp_path, &self.job_path) {
+            let _ = remove_file_if_exists(&tmp_path);
+            return Err(RunnerError::Internal(format!("rename job file: {e}")));
+        }
+        Ok(())
+    }
 
-    let buf = loop {
-        if let Some(b) = try_read_result(&result_path) {
-            break b;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            if let Some(b) = try_read_result(&result_path) {
-                break b;
+    async fn wait_for_result(&self) -> RunnerResult<SubmitOutcome> {
+        let deadline = tokio::time::Instant::now() + self.timeout;
+
+        loop {
+            if let Some(buf) = try_read_result(&self.result_path) {
+                return Ok(SubmitOutcome::Completed(buf));
             }
-            let error = format!(
-                "timeout waiting for local result after {timeout:?} (group: {}, profile: {}). no local runner may be running for this group, or no runner in the group may support this profile",
-                args.group, profile
-            );
-            abandon_job(
-                &job_path,
-                &result_path,
-                &cancel_path,
-                &claim_path,
-                job_id,
-                &error,
-            );
-            return Err(RunnerError::Internal(error));
-        }
-        tokio::select! {
-            () = tokio::time::sleep(POLL_INTERVAL) => {}
-            _ = tokio::signal::ctrl_c() => {
-                eprintln!("interrupted — requesting cancel for {job_id}");
-                let _ = std::fs::write(&cancel_path, b"");
-                // Give the runner a short window to finish and write .result.
-                // A second Ctrl+C exits immediately.
-                let grace = tokio::time::Instant::now() + CANCEL_GRACE;
-                let cancelled_buf = loop {
-                    if let Some(b) = try_read_result(&result_path) {
-                        break b;
-                    }
-                    if tokio::time::Instant::now() >= grace {
-                        eprintln!("grace period expired, exiting");
-                        // Leave .cancel for the runner to process — don't
-                        // delete it here or the cancel request may be lost.
-                        abandon_job(
-                            &job_path,
-                            &result_path,
-                            &cancel_path,
-                            &claim_path,
-                            job_id,
-                            "local submit cancelled before job completed",
-                        );
-                        return Ok(ExitCode::FAILURE);
-                    }
-                    tokio::select! {
-                        () = tokio::time::sleep(POLL_INTERVAL) => {}
-                        _ = tokio::signal::ctrl_c() => {
-                            eprintln!("second interrupt, exiting immediately");
-                            abandon_job(
-                                &job_path,
-                                &result_path,
-                                &cancel_path,
-                                &claim_path,
-                                job_id,
-                                "local submit interrupted before job completed",
-                            );
-                            return Ok(ExitCode::FAILURE);
-                        }
-                    }
-                };
-                break cancelled_buf;
+            if tokio::time::Instant::now() >= deadline {
+                if let Some(buf) = try_read_result(&self.result_path) {
+                    return Ok(SubmitOutcome::Completed(buf));
+                }
+                let error = format!(
+                    "timeout waiting for local result after {:?} (group: {}, profile: {}). no local runner may be running for this group, or no runner in the group may support this profile",
+                    self.timeout, self.group, self.profile
+                );
+                self.abandon(&error);
+                return Err(RunnerError::Internal(error));
+            }
+            tokio::select! {
+                () = tokio::time::sleep(POLL_INTERVAL) => {}
+                _ = tokio::signal::ctrl_c() => {
+                    eprintln!("interrupted — requesting cancel for {}", self.job_id);
+                    let _ = std::fs::write(&self.cancel_path, b"");
+                    return Ok(self.wait_for_cancel_grace().await);
+                }
             }
         }
-    };
+    }
 
-    let response: JobResponse = serde_json::from_slice(&buf)
-        .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
+    async fn wait_for_cancel_grace(&self) -> SubmitOutcome {
+        let grace = tokio::time::Instant::now() + CANCEL_GRACE;
+        loop {
+            if let Some(buf) = try_read_result(&self.result_path) {
+                return SubmitOutcome::Completed(buf);
+            }
+            if tokio::time::Instant::now() >= grace {
+                eprintln!("grace period expired, exiting");
+                // Leave .cancel for the runner to process — don't delete it here
+                // or the cancel request may be lost.
+                self.abandon("local submit cancelled before job completed");
+                return SubmitOutcome::Cancelled;
+            }
+            tokio::select! {
+                () = tokio::time::sleep(POLL_INTERVAL) => {}
+                _ = tokio::signal::ctrl_c() => {
+                    eprintln!("second interrupt, exiting immediately");
+                    self.abandon("local submit interrupted before job completed");
+                    return SubmitOutcome::Cancelled;
+                }
+            }
+        }
+    }
 
-    // Clean up queue files.
-    cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
+    fn abandon(&self, error: &str) {
+        abandon_job(
+            &self.job_path,
+            &self.result_path,
+            &self.cancel_path,
+            &self.claim_path,
+            self.job_id,
+            error,
+        );
+    }
 
-    use std::io::Write;
-    std::io::stdout().write_all(&buf).ok();
-    std::io::stdout().write_all(b"\n").ok();
+    fn finish_completed(&self, buf: &[u8]) -> RunnerResult<ExitCode> {
+        let response: JobResponse = serde_json::from_slice(buf)
+            .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
 
-    if response.exit_code == 0 {
-        Ok(ExitCode::SUCCESS)
-    } else {
-        Ok(ExitCode::FAILURE)
+        cleanup_completed_files(
+            &self.job_path,
+            &self.result_path,
+            &self.cancel_path,
+            &self.claim_path,
+        );
+
+        std::io::stdout().write_all(buf).ok();
+        std::io::stdout().write_all(b"\n").ok();
+
+        if response.exit_code == 0 {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Ok(ExitCode::FAILURE)
+        }
+    }
+}
+
+pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
+    run_submit_with_home(args, HomePaths::new()?).await
+}
+
+async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult<ExitCode> {
+    let plan = SubmitPlan::from_args(args, home)?;
+    plan.write_job_file()?;
+    match plan.wait_for_result().await? {
+        SubmitOutcome::Completed(buf) => plan.finish_completed(&buf),
+        SubmitOutcome::Cancelled => Ok(ExitCode::FAILURE),
     }
 }
 
@@ -499,9 +557,11 @@ mod tests {
         );
     }
 
-    async fn wait_for_job_and_write_success(
+    async fn wait_for_job_and_write_result(
         group_dir: std::path::PathBuf,
         profile: String,
+        exit_code: i32,
+        error: Option<String>,
     ) -> JobRequest {
         let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile).unwrap();
         loop {
@@ -515,8 +575,8 @@ mod tests {
                         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
                     let response = JobResponse {
                         run_id: request.job_id,
-                        exit_code: 0,
-                        error: None,
+                        exit_code,
+                        error: error.clone(),
                     };
                     let result_path = local_queue::result_path(&group_dir, request.job_id);
                     std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
@@ -527,6 +587,13 @@ mod tests {
 
             tokio::task::yield_now().await;
         }
+    }
+
+    async fn wait_for_job_and_write_success(
+        group_dir: std::path::PathBuf,
+        profile: String,
+    ) -> JobRequest {
+        wait_for_job_and_write_result(group_dir, profile, 0, None).await
     }
 
     #[tokio::test]
@@ -558,6 +625,9 @@ mod tests {
         let request = watcher.await.unwrap();
 
         assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+        assert_eq!(request.working_dir, "/workspace");
+        assert_eq!(request.cli_agent_type, "claude-code");
         assert_eq!(
             request.profile.as_deref(),
             Some(crate::profile::DEFAULT_PROFILE)
@@ -595,6 +665,82 @@ mod tests {
 
         assert_eq!(code, ExitCode::SUCCESS);
         assert_eq!(request.profile.as_deref(), Some(profile));
+    }
+
+    #[tokio::test]
+    async fn submit_serializes_feature_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let watcher = tokio::spawn(wait_for_job_and_write_success(
+            group_dir,
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+        ));
+
+        let code = run_submit_with_home(
+            SubmitArgs {
+                group: group.into(),
+                prompt: "hello".into(),
+                working_dir: "/project".into(),
+                cli_agent_type: "codex".into(),
+                profile: None,
+                session_id: Some("sess-123".into()),
+                feature_flags: vec!["alpha=true".into(), "beta=false".into()],
+                timeout: 5,
+            },
+            home,
+        )
+        .await
+        .unwrap();
+        let request = watcher.await.unwrap();
+        let flags = request.feature_flags.as_ref().unwrap();
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+        assert_eq!(request.working_dir, "/project");
+        assert_eq!(request.cli_agent_type, "codex");
+        assert_eq!(request.session_id.as_deref(), Some("sess-123"));
+        assert_eq!(flags.get("alpha"), Some(&true));
+        assert_eq!(flags.get("beta"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn submit_returns_failure_for_nonzero_job_response() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let watcher = tokio::spawn(wait_for_job_and_write_result(
+            group_dir.clone(),
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+            42,
+            Some("agent failed".into()),
+        ));
+
+        let code = run_submit_with_home(
+            SubmitArgs {
+                group: group.into(),
+                prompt: "hello".into(),
+                working_dir: "/workspace".into(),
+                cli_agent_type: "claude-code".into(),
+                profile: None,
+                session_id: None,
+                feature_flags: vec![],
+                timeout: 5,
+            },
+            home,
+        )
+        .await
+        .unwrap();
+        let request = watcher.await.unwrap();
+        let result_path = local_queue::result_path(&group_dir, request.job_id);
+
+        assert_eq!(code, ExitCode::FAILURE);
+        assert!(
+            !result_path.exists(),
+            "completed cleanup should remove nonzero result files"
+        );
     }
 
     #[test]
@@ -978,5 +1124,45 @@ mod tests {
         assert!(msg.contains("profile: vm0/large"), "got: {msg}");
         assert!(msg.contains("no local runner"), "got: {msg}");
         assert!(msg.contains("support this profile"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn timeout_removes_unclaimed_job_from_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let args = SubmitArgs {
+            group: group.into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            session_id: None,
+            feature_flags: vec![],
+            timeout: 0,
+        };
+
+        let err = run_submit_with_home(args, home).await.unwrap_err();
+
+        let job_dir =
+            local_queue::profile_jobs_dir(&group_dir, crate::profile::DEFAULT_PROFILE).unwrap();
+        let job_files: Vec<_> = std::fs::read_dir(&job_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("job"))
+            .collect();
+        let result_files: Vec<_> = std::fs::read_dir(local_queue::results_dir(&group_dir))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("result"))
+            .collect();
+
+        assert!(err.to_string().contains("timeout waiting for local result"));
+        assert!(job_files.is_empty(), "job files left behind: {job_files:?}");
+        assert!(
+            result_files.is_empty(),
+            "result files left behind: {result_files:?}"
+        );
     }
 }

@@ -11,7 +11,11 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
@@ -132,13 +136,13 @@ describe("scope review modal - display", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Reconnect";
         }),
       ).toBeDefined();
     });
     const dialog = screen.getByRole("dialog");
-    const closeButtons = within(dialog).getAllByRole("button");
+    const closeButtons = queryAllByRoleFast("button", dialog);
     const textCloseButton = closeButtons.find((btn) => {
       return btn.textContent?.trim() === "Close";
     });
@@ -166,7 +170,7 @@ describe("scope review modal - states", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(
-      screen.queryAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Reconnect";
       }),
     ).toBeUndefined();
@@ -193,7 +197,7 @@ describe("scope review modal - states", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(
-      screen.queryAllByRole("button").find((el) => {
+      queryAllByRoleFast("button").find((el) => {
         return el.textContent?.trim() === "Reconnect";
       }),
     ).toBeUndefined();
@@ -217,13 +221,13 @@ describe("scope review modal - interactions", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Reconnect";
         }),
       ).toBeDefined();
     });
 
-    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+    const reconnectBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Reconnect";
     });
     expect(reconnectBtn).toBeDefined();
@@ -254,7 +258,7 @@ describe("scope review modal - interactions", () => {
     });
 
     const dialog = screen.getByRole("dialog");
-    const closeButtons = within(dialog).getAllByRole("button");
+    const closeButtons = queryAllByRoleFast("button", dialog);
     const textCloseButton = closeButtons.find((btn) => {
       return btn.textContent?.trim() === "Close";
     });

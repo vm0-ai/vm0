@@ -4,6 +4,8 @@ import json
 import uuid
 from unittest.mock import patch
 
+import pytest
+
 import usage
 import usage.buffer as usage_buffer
 
@@ -27,6 +29,14 @@ def _event(
 
 def _payloads_from_enqueue_calls(call_args_list):
     return [call.args[2] for call in call_args_list]
+
+
+def _flush_log_entries(proxy_log_path):
+    return [
+        json.loads(line)
+        for line in proxy_log_path.read_text().splitlines()
+        if '"usage_event_buffer_flush"' in line
+    ]
 
 
 class _FakeTimer:
@@ -273,22 +283,58 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
         assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
-    [entry] = [
-        json.loads(line)
-        for line in proxy_log_path.read_text().splitlines()
-        if '"usage_event_buffer_flush"' in line
+    entries = _flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert [entry["message"] for entry in entries] == [
+        "Usage event buffer flush started",
+        "Usage event buffer flush completed",
     ]
-    assert entry["level"] == "info"
-    assert entry["message"] == "Usage event buffer flushed"
-    assert entry["type"] == "usage_event_buffer_flush"
-    assert entry["trigger"] == "test"
-    assert entry["flush_sequence"] == 1
-    assert entry["source_event_count"] == 2
-    assert entry["aggregate_event_count"] == 2
-    assert entry["webhook_batch_count"] == 1
-    assert entry["run_count"] == 1
-    assert entry["destination_count"] == 1
-    assert "secret-token" not in json.dumps(entry)
+    for entry in entries:
+        assert entry["level"] == "info"
+        assert entry["type"] == "usage_event_buffer_flush"
+        assert entry["trigger"] == "test"
+        assert entry["flush_sequence"] == 1
+        assert entry["source_event_count"] == 2
+        assert entry["aggregate_event_count"] == 2
+        assert entry["webhook_batch_count"] == 1
+        assert entry["run_count"] == 1
+        assert entry["destination_count"] == 1
+        assert "secret-token" not in json.dumps(entry)
+    assert "duration_ms" not in entries[0]
+    assert isinstance(entries[1]["duration_ms"], int)
+    assert entries[1]["duration_ms"] >= 0
+
+
+def test_flush_logs_failure_without_token(tmp_path):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+
+    with (
+        patch.object(
+            usage_buffer,
+            "_enqueue_webhook",
+            side_effect=RuntimeError("secret-token"),
+        ) as enqueue,
+        pytest.raises(RuntimeError, match="secret-token"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    enqueue.assert_called_once()
+    entries = _flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "failed"]
+    assert entries[1]["level"] == "error"
+    assert entries[1]["message"] == "Usage event buffer flush failed"
+    assert entries[1]["error_type"] == "RuntimeError"
+    assert isinstance(entries[1]["duration_ms"], int)
+    assert entries[1]["duration_ms"] >= 0
+    assert "secret-token" not in json.dumps(entries)
+    assert usage.counters._buffered_usage_events == 0
 
 
 def test_flush_preserves_events_buffered_during_enqueue(tmp_path):

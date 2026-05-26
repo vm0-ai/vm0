@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.104.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.2...runner-rs-v0.104.3) (2026-05-26)
+
+
+### Refactoring
+
+* **runner:** deduplicate completion retry call ([#14946](https://github.com/vm0-ai/vm0/issues/14946)) ([cdb3989](https://github.com/vm0-ai/vm0/commit/cdb398987be187a306161acdf39868ff96dd658a))
+* **runner:** split local submit flow ([#14940](https://github.com/vm0-ai/vm0/issues/14940)) ([9d973ba](https://github.com/vm0-ai/vm0/commit/9d973baa76c8a03545a8eb86ddf883846e773b5e))
+
+## [0.104.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.1...runner-rs-v0.104.2) (2026-05-26)
+
+
+### Bug Fixes
+
+* improve usage buffer flush shutdown ([#14918](https://github.com/vm0-ai/vm0/issues/14918)) ([5bed24f](https://github.com/vm0-ai/vm0/commit/5bed24f62322eeb37282b97478d2e16cf0062f91))
+
+## [0.104.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.0...runner-rs-v0.104.1) (2026-05-26)
+
+
+### Performance Improvements
+
+* **runner:** snapshot usage pending on flush request ([#14896](https://github.com/vm0-ai/vm0/issues/14896)) ([13044ce](https://github.com/vm0-ai/vm0/commit/13044ced03ccf4819932f09092d3efaa86387b25))
+
 ## [0.104.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.22...runner-rs-v0.104.0) (2026-05-25)
 
 

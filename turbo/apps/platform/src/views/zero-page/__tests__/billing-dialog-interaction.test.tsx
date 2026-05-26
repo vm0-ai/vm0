@@ -12,6 +12,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   resetMockBilling,
@@ -148,7 +149,7 @@ describe("chat-i-079: threshold input updates form state on change", () => {
     const thresholdInput = screen.getByPlaceholderText("e.g. 1000");
     await fill(thresholdInput, "2000");
 
-    const saveBtn1 = screen.getAllByRole("button").find((el) => {
+    const saveBtn1 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn1).toBeDefined();
@@ -191,7 +192,7 @@ describe("chat-i-080: amount input updates form state on change", () => {
     const amountInput = screen.getByPlaceholderText("e.g. 10000");
     await fill(amountInput, "20000");
 
-    const saveBtn2 = screen.getAllByRole("button").find((el) => {
+    const saveBtn2 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn2).toBeDefined();
@@ -229,13 +230,13 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Save";
         }),
       ).toBeDefined();
     });
 
-    const saveBtn3 = screen.getAllByRole("button").find((el) => {
+    const saveBtn3 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn3).toBeDefined();
@@ -251,7 +252,7 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Save";
         }),
       ).not.toBeDisabled();
@@ -319,13 +320,13 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /Upgrade to Team/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
     });
 
-    const upgradeBtn1 = screen.getAllByRole("button").find((el) => {
+    const upgradeBtn1 = queryAllByRoleFast("button").find((el) => {
       return /Upgrade to Team/i.test(el.textContent ?? "");
     });
     expect(upgradeBtn1).toBeDefined();
@@ -360,13 +361,13 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Downgrade$/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
     });
 
-    const downgradeBtn = screen.getAllByRole("button").find((el) => {
+    const downgradeBtn = queryAllByRoleFast("button").find((el) => {
       return /^Downgrade$/i.test(el.textContent ?? "");
     });
     expect(downgradeBtn).toBeDefined();
@@ -443,7 +444,7 @@ describe("chat-i-086: form overrides clear after successful save", () => {
     await fill(amountInput, "20000");
 
     // Click Save
-    const saveBtn = screen.getAllByRole("button").find((el) => {
+    const saveBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn).toBeDefined();

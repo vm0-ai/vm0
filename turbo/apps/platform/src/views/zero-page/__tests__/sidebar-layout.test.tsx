@@ -14,7 +14,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
   setSidebarExpanded$,
@@ -49,7 +53,7 @@ describe("sidebar layout - breadcrumb section text (SIDEBAR-D-045)", () => {
     await waitFor(() => {
       // The breadcrumb renders a link in the mobile top bar pointing to /agents
       expect(
-        screen.getAllByRole("link").some((el) => {
+        queryAllByRoleFast("link").some((el) => {
           return (
             el.getAttribute("href") === "/agents" &&
             el.textContent?.trim() === "Agents"
@@ -162,7 +166,7 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
     });
 
     // Click the breadcrumb section link to /agents in the mobile top bar
-    const agentsLink = screen.getAllByRole("link").find((el) => {
+    const agentsLink = queryAllByRoleFast("link").find((el) => {
       return (
         el.getAttribute("href") === "/agents" &&
         el.textContent?.trim() === "Agents"

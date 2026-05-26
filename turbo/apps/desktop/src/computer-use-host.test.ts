@@ -108,7 +108,7 @@ describe("ComputerUseHostRuntime", () => {
     });
     expect(hostFetch).not.toHaveBeenCalled();
 
-    runtime.stop();
+    await runtime.stop();
   });
 
   it("uses the host bearer token for polling after registration", async () => {
@@ -143,7 +143,7 @@ describe("ComputerUseHostRuntime", () => {
       "https://api.vm0.ai/api/zero/computer-use/hosts/start",
     );
 
-    runtime.stop();
+    await runtime.stop();
   });
 
   it("records local native command payloads and results", async () => {
@@ -231,7 +231,62 @@ describe("ComputerUseHostRuntime", () => {
       },
     });
 
-    runtime.stop();
+    await runtime.stop();
+  });
+
+  it("stops the registered host through the host API", async () => {
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async () => {
+      return jsonResponse({ ok: true, hostId: "host-1" });
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await runtime.stop();
+
+    const stopCall = hostFetch.mock.calls.find(([url]) => {
+      return url.endsWith("/api/zero/computer-use/host/stop");
+    });
+    if (!stopCall) {
+      throw new Error("Expected Computer Use host stop request");
+    }
+    const headers = new Headers(stopCall[1]?.headers);
+    expect(stopCall[1]?.method).toBe("POST");
+    expect(headers.get("authorization")).toBe("Bearer token-1");
+    expect(runtime.getState()).toMatchObject({
+      status: "idle",
+      hostId: null,
+      lastError: null,
+    });
+  });
+
+  it("reports heartbeat active host conflicts without retrying", async () => {
+    vi.useFakeTimers();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse(
+          {
+            error: { message: "A Desktop Computer Use host is already active" },
+          },
+          { status: 409 },
+        );
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(hostFetch).toHaveBeenCalledOnce();
+    expect(hostFetch.mock.calls[0]?.[0]).toBe(
+      "https://api.vm0.ai/api/zero/computer-use/heartbeat",
+    );
+    expect(runtime.getState()).toMatchObject({
+      status: "error",
+      hostId: null,
+      lastError:
+        "Computer Use is already active in another Zero Desktop session.",
+    });
   });
 
   it("stops after a 401 registration response so retry stays manual", async () => {

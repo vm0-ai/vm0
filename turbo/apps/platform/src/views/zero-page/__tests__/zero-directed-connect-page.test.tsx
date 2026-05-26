@@ -11,7 +11,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -129,7 +133,7 @@ describe("directed connect page", () => {
       expect(screen.getByText("GitHub connected")).toBeInTheDocument();
     });
     expect(screen.getByText("Connected")).toBeInTheDocument();
-    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+    const reconnectBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Reconnect";
     });
     expect(reconnectBtn).toBeDefined();
@@ -146,13 +150,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Reconnect";
         }),
       ).toBeDefined();
     });
 
-    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+    const reconnectBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Reconnect";
     });
     expect(reconnectBtn).toBeDefined();
@@ -177,13 +181,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Reconnect";
         }),
       ).toBeDefined();
     });
 
-    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+    const reconnectBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Reconnect";
     });
     expect(reconnectBtn).toBeDefined();
@@ -296,13 +300,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Connect";
         }),
       ).toBeDefined();
     });
 
-    const connectBtn1 = screen.getAllByRole("button").find((el) => {
+    const connectBtn1 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn1).toBeDefined();
@@ -313,7 +317,7 @@ describe("directed connect page", () => {
     });
 
     await user.type(screen.getByPlaceholderText("xaat-..."), "bad-token");
-    const saveBtn1 = screen.getAllByRole("button").find((el) => {
+    const saveBtn1 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn1).toBeDefined();
@@ -335,13 +339,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Connect";
         }),
       ).toBeDefined();
     });
 
-    const connectBtn2 = screen.getAllByRole("button").find((el) => {
+    const connectBtn2 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn2).toBeDefined();
@@ -383,7 +387,7 @@ describe("directed connect page", () => {
       ).toBeInTheDocument();
     });
 
-    const connectButton = screen.getAllByRole("button").find((el) => {
+    const connectButton = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectButton).toBeDefined();
@@ -424,13 +428,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Connect";
         }),
       ).toBeDefined();
     });
 
-    const connectBtn3 = screen.getAllByRole("button").find((el) => {
+    const connectBtn3 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn3).toBeDefined();
@@ -444,7 +448,7 @@ describe("directed connect page", () => {
       screen.getByPlaceholderText("xaat-..."),
       "test-token-value",
     );
-    const saveBtn2 = screen.getAllByRole("button").find((el) => {
+    const saveBtn2 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn2).toBeDefined();
@@ -487,13 +491,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Connect";
         }),
       ).toBeDefined();
     });
 
-    const connectBtn = screen.getAllByRole("button").find((el) => {
+    const connectBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn).toBeDefined();
@@ -507,7 +511,7 @@ describe("directed connect page", () => {
       screen.getByPlaceholderText("xaat-..."),
       "test-token-value",
     );
-    const saveBtn = screen.getAllByRole("button").find((el) => {
+    const saveBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn).toBeDefined();
@@ -659,13 +663,13 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Connect";
         }),
       ).toBeDefined();
     });
 
-    const connectBtn = screen.getAllByRole("button").find((el) => {
+    const connectBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Connect";
     });
     expect(connectBtn).toBeDefined();
@@ -679,7 +683,7 @@ describe("directed connect page", () => {
       screen.getByPlaceholderText("xaat-..."),
       "test-token-value",
     );
-    const saveBtn = screen.getAllByRole("button").find((el) => {
+    const saveBtn = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn).toBeDefined();

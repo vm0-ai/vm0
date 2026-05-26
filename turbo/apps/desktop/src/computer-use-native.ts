@@ -4,25 +4,40 @@ import path from "node:path";
 import type {
   AccessibilityAppStateSnapshot,
   ComputerUseCommandFailure,
+  ComputerUseCoordinateBounds,
   ComputerUseMouseButton,
 } from "./computer-use-accessibility";
+import type { ComputerUsePermissionState } from "./computer-use-types";
 
 type ComputerUseNativeErrorCode = ComputerUseCommandFailure["error"]["code"];
 
-export interface ComputerUseNativeKeyModifier {
-  readonly keyCode: number;
-  readonly flag: number;
+export interface ComputerUseNativeClickPointRequest {
+  readonly app: string;
+  readonly snapshotId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly screenshotSource: "window" | "screen";
+  readonly screenshotWidth: number;
+  readonly screenshotHeight: number;
+  readonly sourceBounds?: ComputerUseCoordinateBounds;
+  readonly windowId?: number;
+  readonly windowFrame?: ComputerUseCoordinateBounds;
+  readonly button: ComputerUseMouseButton;
+  readonly clickCount: number;
 }
 
-export interface ComputerUseNativePressKeyRequest {
-  readonly app: string;
-  readonly keyCode: number;
-  readonly modifiers: readonly ComputerUseNativeKeyModifier[];
-  readonly flags: number;
+export interface ComputerUseNativeClickPointResult {
+  readonly screenX: number;
+  readonly screenY: number;
+}
+
+export interface ComputerUseNativePressKeyResult {
   readonly normalizedKey: string;
 }
 
 export interface ComputerUseNativeBackend {
+  readonly getPermissions: () => Promise<ComputerUsePermissionState>;
+  readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
   readonly listApps: () => Promise<readonly string[]>;
   readonly getAppState: (
     app: string,
@@ -35,13 +50,9 @@ export interface ComputerUseNativeBackend {
     readonly button: ComputerUseMouseButton;
     readonly clickCount: number;
   }) => Promise<void>;
-  readonly clickPoint: (args: {
-    readonly app: string;
-    readonly x: number;
-    readonly y: number;
-    readonly button: ComputerUseMouseButton;
-    readonly clickCount: number;
-  }) => Promise<void>;
+  readonly clickPoint: (
+    args: ComputerUseNativeClickPointRequest,
+  ) => Promise<ComputerUseNativeClickPointResult>;
   readonly setElementValue: (args: {
     readonly app: string;
     readonly elementId: string;
@@ -56,7 +67,10 @@ export interface ComputerUseNativeBackend {
     readonly app: string;
     readonly text: string;
   }) => Promise<{ readonly role?: string; readonly description?: string }>;
-  readonly pressKey: (args: ComputerUseNativePressKeyRequest) => Promise<void>;
+  readonly pressKey: (args: {
+    readonly app: string;
+    readonly key: string;
+  }) => Promise<ComputerUseNativePressKeyResult>;
   readonly scrollElement: (args: {
     readonly app: string;
     readonly elementId: string;
@@ -194,6 +208,52 @@ function resultOptionalString(
     : undefined;
 }
 
+function resultRequiredString(
+  result: Record<string, unknown>,
+  key: string,
+): string {
+  const value = result[key];
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  throw new ComputerUseNativeHelperError(
+    "accessibility_unavailable",
+    `Native Computer Use helper returned invalid ${key}`,
+  );
+}
+
+function resultRequiredNumber(
+  result: Record<string, unknown>,
+  key: string,
+): number {
+  const value = result[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw new ComputerUseNativeHelperError(
+    "accessibility_unavailable",
+    `Native Computer Use helper returned invalid ${key}`,
+  );
+}
+
+function resultPermissions(
+  result: Record<string, unknown>,
+): ComputerUsePermissionState {
+  if (
+    typeof result.accessibility === "boolean" &&
+    typeof result.screenRecording === "boolean"
+  ) {
+    return {
+      accessibility: result.accessibility,
+      screenRecording: result.screenRecording,
+    };
+  }
+  throw new ComputerUseNativeHelperError(
+    "accessibility_unavailable",
+    "Native Computer Use helper returned invalid permissions",
+  );
+}
+
 function helperPathCandidates(
   options: ResolveComputerUseHelperPathOptions,
 ): readonly [string, string, string] {
@@ -293,6 +353,14 @@ export function createComputerUseNativeBackend(
   };
 
   return {
+    getPermissions: async () => {
+      const result = await run({ kind: "permissions.state" });
+      return resultPermissions(result);
+    },
+    requestAccessibilityPermission: async () => {
+      const result = await run({ kind: "permissions.request_accessibility" });
+      return resultPermissions(result);
+    },
     listApps: async () => {
       const result = await run({ kind: "apps.list" });
       return resultStringArray(result, "apps");
@@ -308,7 +376,11 @@ export function createComputerUseNativeBackend(
       await run({ kind: "element.click", ...args });
     },
     clickPoint: async (args) => {
-      await run({ kind: "element.click_point", ...args });
+      const result = await run({ kind: "element.click_point", ...args });
+      return {
+        screenX: resultRequiredNumber(result, "screenX"),
+        screenY: resultRequiredNumber(result, "screenY"),
+      };
     },
     setElementValue: async (args) => {
       await run({ kind: "element.set_value", ...args });
@@ -324,7 +396,10 @@ export function createComputerUseNativeBackend(
       };
     },
     pressKey: async (args) => {
-      await run({ kind: "keyboard.press_key", ...args });
+      const result = await run({ kind: "keyboard.press_key", ...args });
+      return {
+        normalizedKey: resultRequiredString(result, "normalizedKey"),
+      };
     },
     scrollElement: async (args) => {
       await run({ kind: "element.scroll", ...args });

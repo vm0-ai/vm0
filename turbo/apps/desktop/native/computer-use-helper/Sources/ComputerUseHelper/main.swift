@@ -52,10 +52,163 @@ let visibleCollectionChildSources = [
     ChildSource(attribute: "AXContents", prefix: "c"),
 ]
 
+let keyModifierDefinitions = [
+    KeyModifierDefinition(
+        name: "command",
+        displayName: "Command",
+        keyCode: 55,
+        flag: Int(CGEventFlags.maskCommand.rawValue)
+    ),
+    KeyModifierDefinition(
+        name: "control",
+        displayName: "Control",
+        keyCode: 59,
+        flag: Int(CGEventFlags.maskControl.rawValue)
+    ),
+    KeyModifierDefinition(
+        name: "option",
+        displayName: "Option",
+        keyCode: 58,
+        flag: Int(CGEventFlags.maskAlternate.rawValue)
+    ),
+    KeyModifierDefinition(
+        name: "shift",
+        displayName: "Shift",
+        keyCode: 56,
+        flag: Int(CGEventFlags.maskShift.rawValue)
+    ),
+]
+
+let keyModifierAliases = [
+    "alt": "option",
+    "cmd": "command",
+    "command": "command",
+    "control": "control",
+    "ctrl": "control",
+    "meta": "command",
+    "option": "option",
+    "shift": "shift",
+    "super": "command",
+]
+
+let keyCodes = [
+    "'": 39,
+    ",": 43,
+    "-": 27,
+    ".": 47,
+    "/": 44,
+    "0": 29,
+    "1": 18,
+    "2": 19,
+    "3": 20,
+    "4": 21,
+    "5": 23,
+    "6": 22,
+    "7": 26,
+    "8": 28,
+    "9": 25,
+    ";": 41,
+    "=": 24,
+    "[": 33,
+    "\\": 42,
+    "]": 30,
+    "`": 50,
+    "a": 0,
+    "b": 11,
+    "backspace": 51,
+    "c": 8,
+    "d": 2,
+    "delete": 51,
+    "down": 125,
+    "downarrow": 125,
+    "e": 14,
+    "end": 119,
+    "enter": 36,
+    "esc": 53,
+    "escape": 53,
+    "f": 3,
+    "f1": 122,
+    "f2": 120,
+    "f3": 99,
+    "f4": 118,
+    "f5": 96,
+    "f6": 97,
+    "f7": 98,
+    "f8": 100,
+    "f9": 101,
+    "f10": 109,
+    "f11": 103,
+    "f12": 111,
+    "forwarddelete": 117,
+    "g": 5,
+    "h": 4,
+    "home": 115,
+    "i": 34,
+    "j": 38,
+    "k": 40,
+    "l": 37,
+    "left": 123,
+    "leftarrow": 123,
+    "m": 46,
+    "n": 45,
+    "o": 31,
+    "p": 35,
+    "pagedown": 121,
+    "pageup": 116,
+    "q": 12,
+    "r": 15,
+    "return": 36,
+    "right": 124,
+    "rightarrow": 124,
+    "s": 1,
+    "space": 49,
+    "spacebar": 49,
+    "t": 17,
+    "tab": 48,
+    "u": 32,
+    "up": 126,
+    "uparrow": 126,
+    "v": 9,
+    "w": 13,
+    "x": 7,
+    "y": 16,
+    "z": 6,
+]
+
+let keyDisplayNames = [
+    "backspace": "Backspace",
+    "delete": "Backspace",
+    "down": "Down",
+    "downarrow": "Down",
+    "enter": "Return",
+    "esc": "Escape",
+    "escape": "Escape",
+    "forwarddelete": "ForwardDelete",
+    "left": "Left",
+    "leftarrow": "Left",
+    "pagedown": "PageDown",
+    "pageup": "PageUp",
+    "return": "Return",
+    "right": "Right",
+    "rightarrow": "Right",
+    "space": "Space",
+    "spacebar": "Space",
+    "tab": "Tab",
+    "up": "Up",
+    "uparrow": "Up",
+]
+
 struct WindowTarget {
     let pid: pid_t
     let windowNumber: Int
+    let title: String?
     let frame: CGRect
+}
+
+struct WindowScreenshot {
+    let dataUrl: String
+    let width: Int
+    let height: Int
 }
 
 struct AXWindowInfo {
@@ -70,6 +223,20 @@ struct CGWindowCandidate {
     let title: String?
     let frame: CGRect
     let area: Double
+}
+
+struct KeyModifierDefinition {
+    let name: String
+    let displayName: String
+    let keyCode: Int
+    let flag: Int
+}
+
+struct ParsedKeyPress {
+    let keyCode: Int
+    let modifiers: [KeyModifierDefinition]
+    let flags: Int
+    let normalizedKey: String
 }
 
 final class LaunchResultBox: @unchecked Sendable {
@@ -93,6 +260,93 @@ enum BackgroundWindowLocalEvent {
         guard let setWindowLocation else { return false }
         setWindowLocation(event, point)
         return true
+    }
+}
+
+enum BackgroundWindowScreenshot {
+    private static let maxLongEdgePixels = 1_600
+    private static let maxPixelArea = 1_920_000
+
+    private typealias CreateImageFn = @convention(c) (
+        CGRect,
+        UInt32,
+        CGWindowID,
+        UInt32
+    ) -> Unmanaged<CGImage>?
+
+    private static let createImage: CreateImageFn? = {
+        _ = dlopen(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+            RTLD_LAZY
+        )
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
+            return nil
+        }
+        return unsafeBitCast(symbol, to: CreateImageFn.self)
+    }()
+
+    static func capture(windowNumber: Int) throws -> WindowScreenshot {
+        guard let createImage else {
+            throw HelperFailure(
+                code: "screen_recording_unavailable",
+                message: "Native window screenshot capture is unavailable"
+            )
+        }
+        let imageOptions: CGWindowImageOption = [.bestResolution, .boundsIgnoreFraming]
+        guard let image = createImage(
+            .null,
+            CGWindowListOption.optionIncludingWindow.rawValue,
+            CGWindowID(windowNumber),
+            imageOptions.rawValue
+        )?.takeRetainedValue() else {
+            throw HelperFailure(
+                code: "screen_recording_unavailable",
+                message: "Unable to capture target window screenshot"
+            )
+        }
+        let scaledImage = scaledForTransport(image)
+        let bitmap = NSBitmapImageRep(cgImage: scaledImage)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else {
+            throw HelperFailure(
+                code: "screen_recording_unavailable",
+                message: "Unable to encode target window screenshot"
+            )
+        }
+        return WindowScreenshot(
+            dataUrl: "data:image/png;base64,\(data.base64EncodedString())",
+            width: scaledImage.width,
+            height: scaledImage.height
+        )
+    }
+
+    private static func scaledForTransport(_ image: CGImage) -> CGImage {
+        let width = image.width
+        let height = image.height
+        let longEdge = max(width, height)
+        let area = width * height
+        let longEdgeScale = CGFloat(maxLongEdgePixels) / CGFloat(max(longEdge, 1))
+        let areaScale = sqrt(CGFloat(maxPixelArea) / CGFloat(max(area, 1)))
+        let scale = min(1, min(longEdgeScale, areaScale))
+        guard scale < 1 else {
+            return image
+        }
+
+        let scaledWidth = max(1, Int((CGFloat(width) * scale).rounded()))
+        let scaledHeight = max(1, Int((CGFloat(height) * scale).rounded()))
+        guard let context = CGContext(
+            data: nil,
+            width: scaledWidth,
+            height: scaledHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return image
+        }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: scaledWidth, height: scaledHeight))
+        return context.makeImage() ?? image
     }
 }
 
@@ -205,16 +459,6 @@ func requiredNumber(_ request: [String: Any], _ key: String) throws -> Double {
     return value.doubleValue
 }
 
-func requiredInt(_ request: [String: Any], _ key: String) throws -> Int {
-    guard let value = request[key] as? NSNumber else {
-        throw HelperFailure(
-            code: "unsupported_command",
-            message: "Missing required payload field: \(key)"
-        )
-    }
-    return value.intValue
-}
-
 func optionalString(_ request: [String: Any], _ key: String) -> String? {
     guard let value = request[key] as? String else {
         return nil
@@ -223,8 +467,46 @@ func optionalString(_ request: [String: Any], _ key: String) -> String? {
     return trimmed.isEmpty ? nil : trimmed
 }
 
+func optionalInt(_ request: [String: Any], _ key: String) -> Int? {
+    return (request[key] as? NSNumber)?.intValue
+}
+
 func optionalInt(_ request: [String: Any], _ key: String, default defaultValue: Int) -> Int {
     return (request[key] as? NSNumber)?.intValue ?? defaultValue
+}
+
+func rectPayload(_ request: [String: Any], _ key: String) throws -> CGRect {
+    guard let record = request[key] as? [String: Any],
+          let x = record["x"] as? NSNumber,
+          let y = record["y"] as? NSNumber,
+          let width = record["width"] as? NSNumber,
+          let height = record["height"] as? NSNumber
+    else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Missing required payload field: \(key)"
+        )
+    }
+    let rect = CGRect(
+        x: x.doubleValue,
+        y: y.doubleValue,
+        width: width.doubleValue,
+        height: height.doubleValue
+    )
+    guard rect.width > 0, rect.height > 0 else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Invalid bounds payload field: \(key)"
+        )
+    }
+    return rect
+}
+
+func optionalRectPayload(_ request: [String: Any], _ key: String) throws -> CGRect? {
+    if request[key] == nil {
+        return nil
+    }
+    return try rectPayload(request, key)
 }
 
 func findRunningApp(named appName: String) -> NSRunningApplication? {
@@ -405,16 +687,20 @@ func elementFrame(_ element: AXUIElement) -> CGRect? {
     return CGRect(origin: position, size: size)
 }
 
-func bounds(_ element: AXUIElement) -> [String: Double]? {
-    guard let frame = elementFrame(element) else {
-        return nil
-    }
+func boundsRecord(_ frame: CGRect) -> [String: Double] {
     return [
         "x": Double(frame.minX),
         "y": Double(frame.minY),
         "width": Double(frame.width),
         "height": Double(frame.height),
     ]
+}
+
+func bounds(_ element: AXUIElement) -> [String: Double]? {
+    guard let frame = elementFrame(element) else {
+        return nil
+    }
+    return boundsRecord(frame)
 }
 
 func actionNames(_ element: AXUIElement) -> [String] {
@@ -615,7 +901,7 @@ func resolveWindowTarget(
     guard let best else {
         return nil
     }
-    return WindowTarget(pid: pid, windowNumber: best.windowNumber, frame: best.frame)
+    return WindowTarget(pid: pid, windowNumber: best.windowNumber, title: best.title, frame: best.frame)
 }
 
 func waitForWindowTarget(app: NSRunningApplication, timeout: TimeInterval = 3) -> WindowTarget? {
@@ -631,6 +917,73 @@ func waitForWindowTarget(app: NSRunningApplication, timeout: TimeInterval = 3) -
 
 func backgroundTargetUnavailableMessage(appName: String) -> String {
     return "Unable to resolve a background window target for \(appName)"
+}
+
+func roundScreenCoordinate(_ value: CGFloat) -> Double {
+    return (Double(value) * 100).rounded() / 100
+}
+
+func screenPointFromScreenshotPoint(
+    x: Double,
+    y: Double,
+    screenshotWidth: Double,
+    screenshotHeight: Double,
+    sourceBounds: CGRect
+) throws -> CGPoint {
+    guard screenshotWidth > 0, screenshotHeight > 0 else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Snapshot dimensions are invalid"
+        )
+    }
+    return CGPoint(
+        x: roundScreenCoordinate(
+            sourceBounds.minX + (x / screenshotWidth) * sourceBounds.width
+        ),
+        y: roundScreenCoordinate(
+            sourceBounds.minY + (y / screenshotHeight) * sourceBounds.height
+        )
+    )
+}
+
+func snapshotWindowTarget(
+    appName: String,
+    snapshotId: String,
+    preferredScreenPoint: CGPoint,
+    windowId: Int?,
+    windowFrame: CGRect?
+) throws -> WindowTarget {
+    let app = try resolveRunningApp(named: appName)
+    if let windowId {
+        guard let candidate = cgWindowCandidates(pid: app.processIdentifier).first(where: { candidate in
+            candidate.windowNumber == windowId
+        }) else {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "Snapshot target window is no longer available: \(snapshotId)"
+            )
+        }
+        if let windowFrame, rectDistance(candidate.frame, windowFrame) > 4 {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "Snapshot target window moved or resized: \(snapshotId)"
+            )
+        }
+        return WindowTarget(
+            pid: app.processIdentifier,
+            windowNumber: candidate.windowNumber,
+            title: candidate.title,
+            frame: candidate.frame
+        )
+    }
+
+    guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
+        throw HelperFailure(
+            code: "accessibility_unavailable",
+            message: backgroundTargetUnavailableMessage(appName: appName)
+        )
+    }
+    return target
 }
 
 func performWithRequiredBackgroundTarget<T>(
@@ -1054,19 +1407,34 @@ func handleAppsList() -> [String: Any] {
     return ["apps": Array(names).sorted()]
 }
 
+func computerUsePermissionState() -> [String: Any] {
+    return [
+        "accessibility": AXIsProcessTrusted(),
+        "screenRecording": CGPreflightScreenCaptureAccess(),
+    ]
+}
+
+func handlePermissionsState() -> [String: Any] {
+    return computerUsePermissionState()
+}
+
+func handlePermissionsRequestAccessibility() -> [String: Any] {
+    let options = [
+        "AXTrustedCheckOptionPrompt": true,
+    ] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(options)
+    return computerUsePermissionState()
+}
+
 func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let snapshotId = try requiredString(request, "snapshotId")
 
     guard let runningApp = findRunningApp(named: appName) else {
-        return [
-            "app": appName,
-            "snapshotId": snapshotId,
-            "elements": [],
-            "nodeCount": 0,
-            "truncated": false,
-            "truncationReasons": [],
-        ]
+        throw HelperFailure(
+            code: "app_not_found",
+            message: "App is not running: \(appName)"
+        )
     }
 
     let root = AXUIElementCreateApplication(runningApp.processIdentifier)
@@ -1119,6 +1487,27 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     if let windowTitle = elements.first?["name"] as? String {
         response["windowTitle"] = windowTitle
     }
+    guard let target = resolveWindowTarget(app: runningApp, root: root) else {
+        throw HelperFailure(
+            code: "accessibility_unavailable",
+            message: backgroundTargetUnavailableMessage(appName: appName)
+        )
+    }
+    let screenshot = try BackgroundWindowScreenshot.capture(windowNumber: target.windowNumber)
+    let sourceName = target.title ??
+        (elements.first?["name"] as? String) ??
+        runningApp.localizedName ??
+        appName
+    let sourceBounds = boundsRecord(target.frame)
+    response["windowId"] = target.windowNumber
+    response["windowFrame"] = sourceBounds
+    response["screenshot"] = screenshot.dataUrl
+    response["screenshotMimeType"] = "image/png"
+    response["screenshotSource"] = "window"
+    response["screenshotSourceName"] = sourceName
+    response["screenshotWidth"] = screenshot.width
+    response["screenshotHeight"] = screenshot.height
+    response["screenshotSourceBounds"] = sourceBounds
     return response
 }
 
@@ -1178,40 +1567,154 @@ func mouseEventConfig(button: String) throws -> (
     )
 }
 
+func normalizeKeyToken(_ value: String) -> String {
+    return value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+        .filter { character in
+            !character.isWhitespace && character != "_" && character != "-"
+        }
+}
+
+func displayKeyToken(_ token: String) -> String {
+    if let displayName = keyDisplayNames[token] {
+        return displayName
+    }
+    if token.first == "f",
+       token.count <= 3,
+       Int(token.dropFirst()) != nil
+    {
+        return token.uppercased()
+    }
+    if token.count == 1 {
+        return token.uppercased()
+    }
+    return token
+}
+
+func parseKeyPress(_ key: String) throws -> ParsedKeyPress {
+    let rawParts = key.split(separator: "+", omittingEmptySubsequences: false).map { part in
+        String(part).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    if rawParts.isEmpty || rawParts.contains(where: { part in part.isEmpty }) {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "keyboard.press_key requires a non-empty key or key combination"
+        )
+    }
+
+    var modifierNames = Set<String>()
+    var keyCode: Int?
+    var displayKey: String?
+
+    for rawPart in rawParts {
+        let token = normalizeKeyToken(rawPart)
+        if let modifierName = keyModifierAliases[token] {
+            modifierNames.insert(modifierName)
+            continue
+        }
+        guard let code = keyCodes[token] else {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "Unsupported key specification: \(rawPart)"
+            )
+        }
+        if keyCode != nil {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "keyboard.press_key supports exactly one non-modifier key"
+            )
+        }
+        keyCode = code
+        displayKey = displayKeyToken(token)
+    }
+
+    guard let keyCode, let displayKey else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "keyboard.press_key requires a non-modifier key"
+        )
+    }
+
+    let activeModifiers = keyModifierDefinitions.filter { definition in
+        modifierNames.contains(definition.name)
+    }
+    let flags = activeModifiers.reduce(0) { partial, definition in
+        partial | definition.flag
+    }
+    let normalizedKey = (
+        activeModifiers.map { definition in definition.displayName } + [displayKey]
+    ).joined(separator: "+")
+
+    return ParsedKeyPress(
+        keyCode: keyCode,
+        modifiers: activeModifiers,
+        flags: flags,
+        normalizedKey: normalizedKey
+    )
+}
+
 func handleElementClickPoint(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
+    let snapshotId = try requiredString(request, "snapshotId")
     let x = try requiredNumber(request, "x")
     let y = try requiredNumber(request, "y")
+    let screenshotSource = try requiredString(request, "screenshotSource")
+    guard screenshotSource == "window" else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Snapshot is not a target-window screenshot: \(snapshotId)"
+        )
+    }
+    let screenshotWidth = try requiredNumber(request, "screenshotWidth")
+    let screenshotHeight = try requiredNumber(request, "screenshotHeight")
+    let sourceBounds = try rectPayload(request, "sourceBounds")
+    let windowFrame = try optionalRectPayload(request, "windowFrame")
+    let windowId = optionalInt(request, "windowId")
     let button = optionalString(request, "button") ?? "left"
     let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
     let config = try mouseEventConfig(button: button)
-    let point = CGPoint(x: x, y: y)
+    let point = try screenPointFromScreenshotPoint(
+        x: x,
+        y: y,
+        screenshotWidth: screenshotWidth,
+        screenshotHeight: screenshotHeight,
+        sourceBounds: sourceBounds
+    )
+    let target = try snapshotWindowTarget(
+        appName: appName,
+        snapshotId: snapshotId,
+        preferredScreenPoint: point,
+        windowId: windowId,
+        windowFrame: windowFrame
+    )
 
-    try performWithRequiredBackgroundTarget(appName: appName, preferredScreenPoint: point) { target in
-        let dispatcher = AddressedEventDispatcher(target: target)
-        for index in 1...clickCount {
-            try dispatcher.postMouse(
-                config.down,
-                at: point,
-                button: config.button,
-                clickState: Int64(index),
-                pressure: 1
-            )
-            usleep(30_000)
-            try dispatcher.postMouse(
-                config.up,
-                at: point,
-                button: config.button,
-                clickState: Int64(index),
-                pressure: 0
-            )
-            if index < clickCount {
-                usleep(50_000)
-            }
+    let dispatcher = AddressedEventDispatcher(target: target)
+    for index in 1...clickCount {
+        try dispatcher.postMouse(
+            config.down,
+            at: point,
+            button: config.button,
+            clickState: Int64(index),
+            pressure: 1
+        )
+        usleep(30_000)
+        try dispatcher.postMouse(
+            config.up,
+            at: point,
+            button: config.button,
+            clickState: Int64(index),
+            pressure: 0
+        )
+        if index < clickCount {
+            usleep(50_000)
         }
     }
 
-    return [:]
+    return [
+        "screenX": point.x,
+        "screenY": point.y,
+    ]
 }
 
 func handleElementSetValue(_ request: [String: Any]) throws -> [String: Any] {
@@ -1274,36 +1777,24 @@ func handleTypeText(_ request: [String: Any]) throws -> [String: Any] {
 
 func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let keyCode = try requiredInt(request, "keyCode")
-    let flags = try requiredInt(request, "flags")
-    let modifierRecords = (request["modifiers"] as? [[String: Any]]) ?? []
-    let modifiers = try modifierRecords.map { record -> (keyCode: Int, flag: Int) in
-        guard let keyCode = record["keyCode"] as? NSNumber,
-              let flag = record["flag"] as? NSNumber
-        else {
-            throw HelperFailure(
-                code: "unsupported_command",
-                message: "Invalid keyboard modifier payload"
-            )
-        }
-        return (keyCode: keyCode.intValue, flag: flag.intValue)
-    }
+    let key = try requiredString(request, "key")
+    let parsed = try parseKeyPress(key)
 
     try performWithRequiredBackgroundTarget(appName: appName) { target in
         let dispatcher = AddressedEventDispatcher(target: target)
         var activeFlags = 0
-        for modifier in modifiers {
+        for modifier in parsed.modifiers {
             activeFlags |= modifier.flag
             try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: true, flags: activeFlags)
         }
-        try dispatcher.postKey(keyCode: keyCode, keyDown: true, flags: flags)
-        try dispatcher.postKey(keyCode: keyCode, keyDown: false, flags: flags)
-        for modifier in modifiers.reversed() {
+        try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: true, flags: parsed.flags)
+        try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: false, flags: parsed.flags)
+        for modifier in parsed.modifiers.reversed() {
             activeFlags &= ~modifier.flag
             try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: false, flags: activeFlags)
         }
     }
-    return [:]
+    return ["normalizedKey": parsed.normalizedKey]
 }
 
 func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
@@ -1335,6 +1826,10 @@ func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
 func handle(_ request: [String: Any]) throws -> [String: Any] {
     let kind = try requiredString(request, "kind")
     switch kind {
+    case "permissions.state":
+        return handlePermissionsState()
+    case "permissions.request_accessibility":
+        return handlePermissionsRequestAccessibility()
     case "apps.list":
         return handleAppsList()
     case "app.state":

@@ -8,7 +8,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   resetMockBilling,
   setMockBillingStatus,
@@ -128,13 +132,13 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Save";
         }),
       ).toBeDefined();
     });
 
-    const saveBtn1 = screen.getAllByRole("button").find((el) => {
+    const saveBtn1 = queryAllByRoleFast("button").find((el) => {
       return el.textContent?.trim() === "Save";
     });
     expect(saveBtn1).toBeDefined();
@@ -142,7 +146,7 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Saving...";
         }),
       ).toBeDisabled();
@@ -152,7 +156,7 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return el.textContent?.trim() === "Save";
         }),
       ).not.toBeDisabled();
@@ -266,7 +270,7 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /Upgrade to Team/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
@@ -292,7 +296,7 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /^Downgrade$/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
@@ -335,13 +339,13 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /Upgrade to Team/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
     });
 
-    const upgradeBtn1 = screen.getAllByRole("button").find((el) => {
+    const upgradeBtn1 = queryAllByRoleFast("button").find((el) => {
       return /Upgrade to Team/i.test(el.textContent ?? "");
     });
     expect(upgradeBtn1).toBeDefined();
@@ -349,7 +353,7 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /Redirecting/i.test(el.textContent ?? "");
         }),
       ).toBeDisabled();
@@ -359,7 +363,7 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button").find((el) => {
+        queryAllByRoleFast("button").find((el) => {
           return /Upgrade to Team/i.test(el.textContent ?? "");
         }),
       ).not.toBeDisabled();

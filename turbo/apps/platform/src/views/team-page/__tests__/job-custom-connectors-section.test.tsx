@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroAgentsByIdContract,
@@ -72,7 +75,7 @@ describe("jobCustomConnectorsSection", () => {
 
     // Verify the Authorization tab is visible (the tab where custom connectors section lives)
     expect(
-      screen.getAllByRole("tab").find((el) => {
+      queryAllByRoleFast("tab").find((el) => {
         return /Authorization/.test(el.textContent ?? "");
       }),
     ).toBeInTheDocument();

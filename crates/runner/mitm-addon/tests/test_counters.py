@@ -25,35 +25,49 @@ class TestUsagePendingCounter:
     def test_increment_decrement_in_flight_flows(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+
         usage.increment_in_flight_flows()
         usage.increment_in_flight_flows()
         assert usage.counters._in_flight_flows == 2
-        assert_pending(pending_path, flows=2, buffered=0, reports=0)
-
-        usage.decrement_in_flight_flows()
-        assert_pending(pending_path, flows=1, buffered=0, reports=0)
-
-        usage.decrement_in_flight_flows()
         assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=2, buffered=0, reports=0, flush_request_id="request-1")
+
+        usage.decrement_in_flight_flows()
+        assert usage.counters._in_flight_flows == 1
+        assert_pending(pending_path, flows=2, buffered=0, reports=0, flush_request_id="request-1")
+        usage.write_pending_snapshot(flush_request_id="request-2")
+        assert_pending(pending_path, flows=1, buffered=0, reports=0, flush_request_id="request-2")
+
+        usage.decrement_in_flight_flows()
+        usage.write_pending_snapshot(flush_request_id="request-3")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-3")
 
     def test_increment_decrement_pending_reports(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         usage.counters.increment_pending_reports()
         assert usage.counters._pending_reports == 1
-        assert_pending(pending_path, flows=0, buffered=0, reports=1)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=1, flush_request_id="request-1")
 
         usage.counters.decrement_pending_reports()
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-2")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
     def test_set_buffered_usage_events(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         usage.counters.set_buffered_usage_events(3)
-        assert_pending(pending_path, flows=0, buffered=3, reports=0)
+        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=3, reports=0, flush_request_id="request-1")
 
         usage.counters.set_buffered_usage_events(0)
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-2")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
     def test_buffered_usage_blocks_pending_until_flush(
         self, tmp_path, real_flow, fresh_usage_executor
@@ -74,14 +88,18 @@ class TestUsagePendingCounter:
         ):
             mock_opener.open.return_value = MagicMock()
             usage.report_model_provider_usage(flow, "run-1")
-            assert_pending(pending_path, flows=0, buffered=1, reports=0)
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1"
+            )
             mock_opener.open.assert_not_called()
 
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-2")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
     def test_enqueue_deep_copies_nested_payload(self):
         payload = {
@@ -159,13 +177,79 @@ class TestUsagePendingCounter:
             )
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
     def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="explicit-usage-state-id")
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "explicit-usage-state-id"
+
+    def test_read_usage_flush_request_id_returns_none_without_pending_path(self):
+        usage.set_pending_path("")
+
+        assert usage.read_usage_flush_request_id() is None
+
+    def test_read_usage_flush_request_id_returns_none_when_marker_missing(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+
+        assert usage.read_usage_flush_request_id() is None
+
+    def test_read_usage_flush_request_id_accepts_matching_marker(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        (tmp_path / "usage-flush-request").write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+
+        assert usage.read_usage_flush_request_id() == "request-1"
+
+    def test_read_usage_flush_request_id_rejects_stale_marker(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        (tmp_path / "usage-flush-request").write_text(
+            json.dumps(
+                {
+                    "usageStateId": "old-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+
+        assert usage.read_usage_flush_request_id() is None
+
+    def test_read_usage_flush_request_id_ignores_invalid_marker(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        (tmp_path / "usage-flush-request").write_text("not-json")
+
+        assert usage.read_usage_flush_request_id() is None
+
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            [],
+            {},
+            {"usageStateId": "runner-state"},
+            {"usageStateId": "runner-state", "flushRequestId": ""},
+            {"usageStateId": "runner-state", "flushRequestId": 123},
+        ],
+    )
+    def test_read_usage_flush_request_id_rejects_invalid_marker_shape(self, tmp_path, marker):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        (tmp_path / "usage-flush-request").write_text(json.dumps(marker))
+
+        assert usage.read_usage_flush_request_id() is None
 
     def test_decrement_does_not_go_negative(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
@@ -180,6 +264,7 @@ class TestUsagePendingCounter:
         usage.decrement_in_flight_flows()
         usage.counters.increment_pending_reports()
         usage.counters.decrement_pending_reports()
+        usage.write_pending_snapshot(flush_request_id="request-1")
         # Should not raise — just no file written.
         assert usage.counters._in_flight_flows == 0
         assert usage.counters._pending_reports == 0
@@ -187,7 +272,7 @@ class TestUsagePendingCounter:
     # ---- one-shot warn on write failure (issue #10483) ----
 
     def test_write_failure_warns_once_per_process(self, tmp_path):
-        """Repeated OSErrors from ``_write_pending`` emit exactly one
+        """Repeated OSErrors from pending snapshot writes emit exactly one
         ``ctx.log.warn`` per addon process — enough to seed FS-trouble
         investigation without spamming logs on sustained failure."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
@@ -198,7 +283,7 @@ class TestUsagePendingCounter:
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
             for _ in range(3):
-                usage.increment_in_flight_flows()
+                usage.write_pending_snapshot(flush_request_id="request-1")
 
         assert mock_log.warn.call_count == 1
         assert "Failed to write pending count" in mock_log.warn.call_args[0][0]
@@ -213,8 +298,7 @@ class TestUsagePendingCounter:
             patch.object(usage.counters.ctx, "log", MagicMock(), create=True),
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
-            usage.increment_in_flight_flows()  # should not raise
-            usage.decrement_in_flight_flows()  # should not raise
+            usage.write_pending_snapshot(flush_request_id="request-1")  # should not raise
 
     def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
         """Retry exhaustion still runs the decrement finally-block."""
@@ -238,7 +322,8 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
     def test_enqueue_increments_and_drains_reports(self, tmp_path, real_flow, fresh_usage_executor):
         """Public entry increments pending on enqueue; executor drain decrements to 0."""
@@ -262,7 +347,8 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
     def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
@@ -323,4 +409,5 @@ class TestUsagePendingCounter:
             usage.flush_usage_events(trigger="test")
 
         assert usage.counters._pending_reports == 0
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")

@@ -6,7 +6,6 @@
 export enum FeatureSwitchKey {
   Dummy = "dummy",
   AhrefsConnector = "ahrefsConnector",
-  Base44Connector = "base44Connector",
   BentomlConnector = "bentomlConnector",
   CanvaConnector = "canvaConnector",
   ComputerConnector = "computerConnector",
@@ -47,7 +46,6 @@ export enum FeatureSwitchKey {
   ChatHeaderNewButton = "chatHeaderNewButton",
 
   ChatMessageStartButton = "chatMessageStartButton",
-  ChatMarkdownMath = "chatMarkdownMath",
   ChatThreadRename = "chatThreadRename",
   DocsSite = "docsSite",
   FreshdeskConnector = "freshdeskConnector",
@@ -55,7 +53,6 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
   ApiBackend = "apiBackend",
-  ConnectorCategories = "connectorCategories",
 
   ZapierConnector = "zapierConnector",
   HostedSites = "hostedSites",

@@ -11,7 +11,6 @@ import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -814,7 +813,7 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders assistant inline and block math when chat markdown math is enabled", async () => {
+  it("renders assistant inline and block math", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -825,11 +824,7 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: true },
-    });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       const assistant = document.querySelector(
@@ -837,32 +832,6 @@ describe("zero chat thread page display - body link document preview", () => {
       );
       expect(assistant?.querySelector(".katex")).toBeInTheDocument();
       expect(assistant?.querySelector(".katex-display")).toBeInTheDocument();
-    });
-  });
-
-  it("keeps assistant math delimiters as text when chat markdown math is disabled", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content: "Inline $x^2$.\n\n$$\nx^2\n$$",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: false },
-    });
-
-    await waitFor(() => {
-      const assistant = document.querySelector(
-        '[data-role="assistant"] .zero-chat-bubble-assistant',
-      );
-      expect(assistant?.textContent).toContain("$x^2$");
-      expect(assistant?.querySelector(".katex")).toBeNull();
     });
   });
 
@@ -877,11 +846,7 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: true },
-    });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       const assistant = document.querySelector(
@@ -903,11 +868,7 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatMarkdownMath]: true },
-    });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       const assistant = document.querySelector(

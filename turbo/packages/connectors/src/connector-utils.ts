@@ -1,10 +1,10 @@
 import {
-  CONNECTOR_AUTH_METHOD_TYPES,
+  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodType,
+  type ConnectorAuthMethodId,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
@@ -22,6 +22,9 @@ import {
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
+
+type ConnectorLegacyAuthMethodId =
+  (typeof CONNECTOR_LEGACY_AUTH_METHOD_ORDER)[number];
 
 /**
  * Connector utility vocabulary:
@@ -41,8 +44,22 @@ export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors
  */
 export function getConnectorAuthMethods(
   type: ConnectorType,
-): Partial<Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>> {
+): Partial<Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>> {
   return CONNECTOR_TYPES[type].authMethods;
+}
+
+function lookupConnectorAuthMethod(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodConfig | undefined {
+  for (const [methodId, method] of Object.entries(
+    CONNECTOR_TYPES[type].authMethods,
+  )) {
+    if (methodId === authMethod) {
+      return method;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -50,9 +67,9 @@ export function getConnectorAuthMethods(
  */
 export function getConnectorAuthMethod(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorAuthMethodId,
 ): ConnectorAuthMethodConfig | undefined {
-  return getConnectorAuthMethods(type)[authMethod];
+  return lookupConnectorAuthMethod(type, authMethod);
 }
 
 function connectorAuthMethodValues(
@@ -81,7 +98,7 @@ function getManualGrantFields(
 
 export function getConnectorManualGrantFields(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorAuthMethodId,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
   return getManualGrantFields(getConnectorAuthMethod(type, authMethod));
 }
@@ -196,7 +213,7 @@ export interface AvailableConnectorAuthMethodsOptions {
 
 export function isConnectorAuthMethodAvailable(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: ConnectorAuthMethodId,
   featureStates: ConnectorFeatureStates,
 ): boolean {
   const method = getConnectorAuthMethod(type, authMethod);
@@ -229,11 +246,11 @@ export function getAvailableConnectorAuthMethods(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
-): ConnectorAuthMethodType[] {
+): ConnectorLegacyAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorAuthMethodType[] = [];
+  const availableAuthMethods: ConnectorLegacyAuthMethodId[] = [];
 
-  for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
+  for (const authMethod of CONNECTOR_LEGACY_AUTH_METHOD_ORDER) {
     if (!getConnectorAuthMethod(type, authMethod)) {
       continue;
     }
@@ -429,9 +446,16 @@ export function getRuntimeAvailableConnectorTypes(
  */
 export function getConnectorSecretNames(
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
+  authMethod: string,
 ): string[] {
-  const method = getConnectorAuthMethod(type, authMethod);
+  return connectorMethodSecretNames(
+    lookupConnectorAuthMethod(type, authMethod),
+  );
+}
+
+function connectorMethodSecretNames(
+  method: ConnectorAuthMethodConfig | undefined,
+): string[] {
   if (!method) {
     return [];
   }
@@ -503,8 +527,8 @@ export function getConnectorDerivedNames(
   for (const type of allTypes) {
     const config = CONNECTOR_TYPES[type];
 
-    const found = CONNECTOR_AUTH_METHOD_TYPES.some((authMethod) => {
-      return getConnectorSecretNames(type, authMethod).includes(secretName);
+    const found = Object.values(config.authMethods).some((method) => {
+      return connectorMethodSecretNames(method).includes(secretName);
     });
     if (!found) {
       continue;
@@ -636,8 +660,8 @@ export function getConnectorManagedSecretNames(
         managed.add(name);
       }
     }
-    for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-      for (const name of getConnectorSecretNames(type, authMethod)) {
+    for (const method of Object.values(config.authMethods)) {
+      for (const name of connectorMethodSecretNames(method)) {
         managed.add(name);
       }
     }
@@ -666,8 +690,8 @@ export function getConnectorTypeForSecretName(
         return type;
       }
     }
-    for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-      if (getConnectorSecretNames(type, authMethod).includes(name)) {
+    for (const method of Object.values(config.authMethods)) {
+      if (connectorMethodSecretNames(method).includes(name)) {
         return type;
       }
     }

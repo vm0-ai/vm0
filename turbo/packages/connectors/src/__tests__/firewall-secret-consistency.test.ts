@@ -1,11 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { connectorTypeSchema } from "../connectors";
 import {
-  CONNECTOR_AUTH_METHOD_TYPES,
-  connectorTypeSchema,
-} from "../connectors";
-import {
+  getConnectorAuthMethods,
   getConnectorEnvironmentMapping,
-  getConnectorManualGrantFields,
 } from "../connector-utils";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
@@ -49,13 +46,24 @@ describe("firewall secret name consistency", () => {
         }
       } else {
         // API-token path: use manual grant fields directly.
-        for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-          const fields = getConnectorManualGrantFields(
-            connectorType,
-            authMethod,
-          );
-          for (const name of Object.keys(fields ?? {})) {
-            connectorSecretNames.add(name);
+        for (const method of Object.values(
+          getConnectorAuthMethods(connectorType),
+        )) {
+          switch (method.grant.kind) {
+            case "manual":
+              for (const name of Object.keys(method.grant.fields)) {
+                connectorSecretNames.add(name);
+              }
+              break;
+            case "managed":
+              for (const name of Object.keys(method.grant.fields ?? {})) {
+                connectorSecretNames.add(name);
+              }
+              break;
+            case "auth-code":
+            case "device-auth":
+            case "interactive-pairing":
+              break;
           }
         }
       }

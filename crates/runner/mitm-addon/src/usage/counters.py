@@ -2,8 +2,9 @@
 
 The runner reads the pending-count file before sending SIGTERM so it can
 wait until flows are processed, buffered usage is enqueued, and reports are
-delivered.  File format is JSON written atomically (tmp + ``Path.replace``)
-so the runner can reject stale state from an old mitmproxy process.
+delivered. Counter mutations update memory only; runner-requested snapshots
+are JSON written atomically (tmp + ``Path.replace``) so the runner can reject
+stale state from an old mitmproxy process or old flush request.
 """
 
 import json
@@ -11,17 +12,20 @@ import os
 import threading
 import time
 import uuid
+from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 from mitmproxy import ctx
 
 _counter_lock = threading.Lock()
+_pending_write_lock = threading.Lock()
 _in_flight_flows = 0
 _buffered_usage_events = 0
 _pending_reports = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
-# One-shot guard: sustained ``_write_pending`` failure makes the runner
+# One-shot guard: sustained pending snapshot write failure makes the runner
 # hit the bounded usage-drain timeout without any local signal pointing at
 # filesystem trouble.  Emit one warn per addon process on first failure —
 # enough to seed the operator investigation without spamming logs under
@@ -30,6 +34,7 @@ _usage_state_id = str(uuid.uuid4())
 # shares the same filesystem we just failed to write and is likely
 # affected by the same root cause.
 _pending_write_error_logged = False
+_FLUSH_REQUEST_FILE = "usage-flush-request"
 
 
 def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
@@ -39,11 +44,12 @@ def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
         _pending_path = path
         if usage_state_id:
             _usage_state_id = usage_state_id
-        _write_pending()
+        pending_path, state = _pending_snapshot_locked()
+    _write_pending_state(pending_path, state)
 
 
-def _pending_state() -> dict:
-    return {
+def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, dict[str, Any]]:
+    state: dict[str, Any] = {
         "pid": os.getpid(),
         "usageStateId": _usage_state_id,
         "updatedAtMs": int(time.time() * 1000),
@@ -51,33 +57,67 @@ def _pending_state() -> dict:
         "buffered": _buffered_usage_events,
         "reports": _pending_reports,
     }
+    if flush_request_id:
+        state["flushRequestId"] = flush_request_id
+    return _pending_path, state
 
 
-def _write_pending() -> None:
-    """Atomically write current counters to file."""
-    global _pending_write_error_logged
-    if not _pending_path:
-        return
-    tmp = Path(_pending_path + ".tmp")
+def write_pending_snapshot(flush_request_id: str | None = None) -> None:
+    """Write an explicit pending-count snapshot for runner shutdown polling."""
+    with _counter_lock:
+        pending_path, state = _pending_snapshot_locked(flush_request_id)
+    _write_pending_state(pending_path, state)
+
+
+def read_usage_flush_request_id() -> str | None:
+    """Read the current runner usage-flush request id if it matches this addon."""
+    with _counter_lock:
+        pending_path = _pending_path
+        usage_state_id = _usage_state_id
+    if not pending_path:
+        return None
+
+    marker_path = Path(pending_path).with_name(_FLUSH_REQUEST_FILE)
     try:
-        with tmp.open("w") as f:
-            json.dump(_pending_state(), f, separators=(",", ":"))
-        tmp.replace(_pending_path)
-    except OSError as exc:
-        # Best-effort: this file is observability (runner polls it to
-        # wait for in-flight flows, buffered usage, and pending reports
-        # to drain before SIGTERM).  Transient write failures are
-        # upper-bounded by the runner's drain timeout and mitmdump stop
-        # timeout — in the worst case the runner proceeds with possible
-        # in-flight webhooks lost,
-        # which is the same outcome as a genuinely stalled flow.
-        if not _pending_write_error_logged:
-            _pending_write_error_logged = True
-            ctx.log.warn(
-                f"Failed to write pending count to {_pending_path!r}: {exc}.  "
-                "Subsequent failures in this process will be silent; runner "
-                "shutdown may hit the bounded proxy stop timeout."
-            )
+        marker = json.loads(marker_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(marker, dict):
+        return None
+    if marker.get("usageStateId") != usage_state_id:
+        return None
+    flush_request_id = marker.get("flushRequestId")
+    if not isinstance(flush_request_id, str) or not flush_request_id:
+        return None
+    return flush_request_id
+
+
+def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
+    """Atomically write a pending-count snapshot to file."""
+    global _pending_write_error_logged
+    if not pending_path:
+        return
+    tmp = Path(f"{pending_path}.{uuid.uuid4()}.tmp")
+    with _pending_write_lock:
+        try:
+            with tmp.open("w") as f:
+                json.dump(state, f, separators=(",", ":"))
+            tmp.replace(pending_path)
+        except OSError as exc:
+            with suppress(OSError):
+                tmp.unlink()
+            # Best-effort: the runner polls this file to wait for in-flight
+            # flows, buffered usage, and pending reports to drain before
+            # SIGTERM. Transient write failures are upper-bounded by the
+            # runner's drain timeout and mitmdump stop timeout.
+            if not _pending_write_error_logged:
+                _pending_write_error_logged = True
+                ctx.log.warn(
+                    f"Failed to write pending count to {pending_path!r}: {exc}.  "
+                    "Subsequent failures in this process will be silent; runner "
+                    "shutdown may hit the bounded proxy stop timeout."
+                )
 
 
 def increment_in_flight_flows() -> None:
@@ -89,7 +129,6 @@ def increment_in_flight_flows() -> None:
     global _in_flight_flows
     with _counter_lock:
         _in_flight_flows += 1
-        _write_pending()
 
 
 def decrement_in_flight_flows() -> None:
@@ -97,25 +136,21 @@ def decrement_in_flight_flows() -> None:
     global _in_flight_flows
     with _counter_lock:
         _in_flight_flows = max(0, _in_flight_flows - 1)
-        _write_pending()
 
 
 def increment_pending_reports() -> None:
     global _pending_reports
     with _counter_lock:
         _pending_reports += 1
-        _write_pending()
 
 
 def decrement_pending_reports() -> None:
     global _pending_reports
     with _counter_lock:
         _pending_reports = max(0, _pending_reports - 1)
-        _write_pending()
 
 
 def set_buffered_usage_events(count: int) -> None:
     global _buffered_usage_events
     with _counter_lock:
         _buffered_usage_events = max(0, count)
-        _write_pending()

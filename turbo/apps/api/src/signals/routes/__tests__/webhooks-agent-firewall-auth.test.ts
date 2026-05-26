@@ -1158,6 +1158,55 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.expiresAt).toBeLessThanOrEqual(after + 10);
   });
 
+  it("uses the default 15-minute access-token expiry when refresh omits expires_in", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "default-expiry-notion-token",
+          refresh_token: "default-expiry-refresh-token",
+        });
+      }),
+    );
+
+    const before = currentSecond();
+    const beforeMs = now();
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    const afterMs = now();
+    const after = currentSecond();
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer default-expiry-notion-token",
+    );
+    expect(response.body.expiresAt).toBeGreaterThanOrEqual(before + 15 * 60);
+    expect(response.body.expiresAt).toBeLessThanOrEqual(after + 15 * 60);
+
+    const connector = await notionConnectorState(fixture);
+    expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThanOrEqual(
+      beforeMs + 15 * 60 * 1000,
+    );
+    expect(connector.tokenExpiresAt?.getTime()).toBeLessThanOrEqual(
+      afterMs + 15 * 60 * 1000,
+    );
+  });
+
   it("uses billable credit lease when it is earlier than OAuth token expiry", async () => {
     const fixture = await track(seedFixture());
     await seedCreditState(fixture, { credits: 10_000 });

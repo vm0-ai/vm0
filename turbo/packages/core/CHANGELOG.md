@@ -1,5 +1,39 @@
 # Changelog
 
+## [8.294.0](https://github.com/vm0-ai/vm0/compare/core-v8.293.6...core-v8.294.0) (2026-05-26)
+
+
+### Features
+
+* make base44 connector generally available ([#14909](https://github.com/vm0-ai/vm0/issues/14909)) ([5bea76c](https://github.com/vm0-ai/vm0/commit/5bea76c103ccbebdd3017b033bef8ff159f8eaf1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.5
+    * @vm0/connectors bumped to 1.34.0
+
+## [8.293.6](https://github.com/vm0-ai/vm0/compare/core-v8.293.5...core-v8.293.6) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.4
+    * @vm0/connectors bumped to 1.33.4
+
+## [8.293.5](https://github.com/vm0-ai/vm0/compare/core-v8.293.4...core-v8.293.5) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.3
+
 ## [8.293.4](https://github.com/vm0-ai/vm0/compare/core-v8.293.3...core-v8.293.4) (2026-05-25)
 
 

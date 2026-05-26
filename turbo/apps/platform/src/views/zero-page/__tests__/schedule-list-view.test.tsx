@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
@@ -79,17 +83,17 @@ describe("schedule list view - schedule list renders (SCHED-D-081)", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getAllByRole("columnheader").find((el) => {
+      queryAllByRoleFast("columnheader").find((el) => {
         return /Instruction/.test(el.textContent ?? "");
       }),
     ).toBeDefined();
     expect(
-      screen.getAllByRole("columnheader").find((el) => {
+      queryAllByRoleFast("columnheader").find((el) => {
         return /Schedule at/.test(el.textContent ?? "");
       }),
     ).toBeDefined();
     expect(
-      screen.getAllByRole("columnheader").find((el) => {
+      queryAllByRoleFast("columnheader").find((el) => {
         return /Status/.test(el.textContent ?? "");
       }),
     ).toBeDefined();
@@ -186,7 +190,7 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
     );
     await waitFor(() => {
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Run now");
         }),
       ).toBeDefined();
@@ -194,7 +198,7 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
 
     // Click Run now — API hangs
     click(
-      screen.getAllByRole("menuitem").find((el) => {
+      queryAllByRoleFast("menuitem").find((el) => {
         return el.textContent?.includes("Run now");
       })!,
     );
@@ -221,7 +225,7 @@ describe("schedule list view - empty state add schedule button (SCHED-D-086)", (
     });
 
     // The empty state "Add schedule" button
-    const addButtons = screen.getAllByRole("button").filter((el) => {
+    const addButtons = queryAllByRoleFast("button").filter((el) => {
       return /Add schedule/i.test(el.textContent ?? "");
     });
     // At least one Add schedule button exists in the empty state
@@ -338,17 +342,17 @@ describe("schedule list view - more actions dropdown (SCHED-D-089)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Run now");
         }),
       ).toBeDefined();
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Edit");
         }),
       ).toBeDefined();
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Delete");
         }),
       ).toBeDefined();
@@ -384,14 +388,14 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Run now");
         }),
       ).toBeDefined();
     });
 
     click(
-      screen.getAllByRole("menuitem").find((el) => {
+      queryAllByRoleFast("menuitem").find((el) => {
         return el.textContent?.includes("Run now");
       })!,
     );
@@ -422,14 +426,14 @@ describe("schedule list view - edit action (SCHED-D-091)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Edit");
         }),
       ).toBeDefined();
     });
 
     click(
-      screen.getAllByRole("menuitem").find((el) => {
+      queryAllByRoleFast("menuitem").find((el) => {
         return el.textContent?.includes("Edit");
       })!,
     );
@@ -461,14 +465,14 @@ describe("schedule list view - delete action (SCHED-D-092)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("menuitem").find((el) => {
+        queryAllByRoleFast("menuitem").find((el) => {
           return el.textContent?.includes("Delete");
         }),
       ).toBeDefined();
     });
 
     click(
-      screen.getAllByRole("menuitem").find((el) => {
+      queryAllByRoleFast("menuitem").find((el) => {
         return el.textContent?.includes("Delete");
       })!,
     );

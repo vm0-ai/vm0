@@ -19,13 +19,15 @@ export type ComputerUseHostFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+type MaybePromise<T> = T | Promise<T>;
+
 interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
   readonly displayName: string;
   readonly appVersion: string;
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
-  readonly getPermissions: () => ComputerUsePermissionState;
+  readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
   readonly executeCommand: (
     command: ComputerUseCommand,
     permissions: ComputerUsePermissionState,
@@ -87,7 +89,7 @@ export class ComputerUseHostRuntime {
   private readonly appVersion: string;
   private readonly sessionFetch: ComputerUseHostFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
-  private readonly getPermissions: () => ComputerUsePermissionState;
+  private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
   private readonly onChange: () => void;
   private readonly scheduleTimeout: typeof setTimeout;
@@ -126,11 +128,29 @@ export class ComputerUseHostRuntime {
     await this.tick();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false;
     if (this.timer) {
       this.clearScheduledTimeout(this.timer);
       this.timer = null;
+    }
+    const hostToken = this.hostToken;
+    if (!hostToken) {
+      return;
+    }
+    this.hostToken = null;
+    this.setState({
+      status: "idle",
+      hostId: null,
+      lastError: null,
+    });
+    try {
+      await this.stopHost(hostToken);
+    } catch (error) {
+      this.setState({
+        status: "error",
+        lastError: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -138,11 +158,11 @@ export class ComputerUseHostRuntime {
     return this.state;
   }
 
-  private runtimeBody(): Record<string, unknown> {
+  private async runtimeBody(): Promise<Record<string, unknown>> {
     return buildComputerUseRuntimeBody({
       displayName: this.displayName,
       appVersion: this.appVersion,
-      permissions: this.getPermissions(),
+      permissions: await this.getPermissions(),
     });
   }
 
@@ -247,7 +267,7 @@ export class ComputerUseHostRuntime {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(this.runtimeBody()),
+        body: JSON.stringify(await this.runtimeBody()),
       },
     );
     if (response.status === 401) {
@@ -310,7 +330,7 @@ export class ComputerUseHostRuntime {
   private async heartbeat(): Promise<boolean> {
     const response = await this.hostFetch("/api/zero/computer-use/heartbeat", {
       method: "POST",
-      body: JSON.stringify(this.runtimeBody()),
+      body: JSON.stringify(await this.runtimeBody()),
     });
     if (response.status === 401) {
       this.hostToken = null;
@@ -319,6 +339,16 @@ export class ComputerUseHostRuntime {
         hostId: null,
         lastError:
           "Desktop host could not authenticate with the API session. Sign in and retry.",
+      });
+      return false;
+    }
+    if (response.status === 409) {
+      this.hostToken = null;
+      this.setState({
+        status: "error",
+        hostId: null,
+        lastError:
+          "Computer Use is already active in another Zero Desktop session.",
       });
       return false;
     }
@@ -389,7 +419,7 @@ export class ComputerUseHostRuntime {
     try {
       completed = await this.executeCommand(
         body.command,
-        this.getPermissions(),
+        await this.getPermissions(),
       );
     } catch (error) {
       const completedAtMs = Date.now();
@@ -446,5 +476,25 @@ export class ComputerUseHostRuntime {
         ...init.headers,
       },
     });
+  }
+
+  private async stopHost(hostToken: string): Promise<void> {
+    const response = await this.hostFetchRequest(
+      `${this.apiBaseUrl}/api/zero/computer-use/host/stop`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${hostToken}`,
+        },
+      },
+    );
+    if (response.status === 401) {
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`Computer Use host stop failed: ${response.status}`);
+    }
   }
 }

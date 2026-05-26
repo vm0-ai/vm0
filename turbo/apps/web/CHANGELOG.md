@@ -1,5 +1,61 @@
 # Changelog
 
+## [12.389.2](https://github.com/vm0-ai/vm0/compare/web-v12.389.1...web-v12.389.2) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.5
+    * @vm0/core bumped to 8.294.0
+    * @vm0/db bumped to 1.18.16
+  * devDependencies
+    * @vm0/connectors bumped to 1.34.0
+
+## [12.389.1](https://github.com/vm0-ai/vm0/compare/web-v12.389.0...web-v12.389.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* make gallery route public ([#14931](https://github.com/vm0-ai/vm0/issues/14931)) ([07d905a](https://github.com/vm0-ai/vm0/commit/07d905a268548b3f2b193223a4e00b5c659708ab))
+
+## [12.389.0](https://github.com/vm0-ai/vm0/compare/web-v12.388.2...web-v12.389.0) (2026-05-26)
+
+
+### Features
+
+* **web:** propagate draft mode through docs index and sidebar ([#14928](https://github.com/vm0-ai/vm0/issues/14928)) ([ace21e0](https://github.com/vm0-ai/vm0/commit/ace21e00c2c3417f94221058cb70be4d6cae6b9d))
+
+## [12.388.2](https://github.com/vm0-ai/vm0/compare/web-v12.388.1...web-v12.388.2) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.4
+    * @vm0/core bumped to 8.293.6
+    * @vm0/db bumped to 1.18.15
+  * devDependencies
+    * @vm0/connectors bumped to 1.33.4
+
+## [12.388.1](https://github.com/vm0-ai/vm0/compare/web-v12.388.0...web-v12.388.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* prevent stale computer-use hosts from reactivating ([#14915](https://github.com/vm0-ai/vm0/issues/14915)) ([5732e94](https://github.com/vm0-ai/vm0/commit/5732e9456429c15ac4506c58944ee7ba3926bef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.3
+    * @vm0/core bumped to 8.293.5
+    * @vm0/db bumped to 1.18.14
+
 ## [12.388.0](https://github.com/vm0-ai/vm0/compare/web-v12.387.6...web-v12.388.0) (2026-05-26)
 
 

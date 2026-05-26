@@ -115,6 +115,23 @@ function resolvePathAndSlug(page: StrapiDocsPage): {
   return { path, slug };
 }
 
+// Sections are stored as free-text strings on docs-page, so the data layer
+// has no natural ordering for them. This map encodes the intended reading
+// order; sections not listed sort to the end alphabetically.
+const SECTION_ORDER: Record<string, number> = {
+  Overview: 10,
+  "Get started": 20,
+  "Getting Started": 20,
+  "Core concepts": 30,
+  "Core Concepts": 30,
+  "What Zero delivers": 40,
+  Channels: 50,
+  Connectors: 60,
+  "Who it's for": 70,
+};
+
+const UNKNOWN_SECTION_ORDER = 1000;
+
 function resolveSection(
   section: string | StrapiDocsSection | undefined,
 ): DocsSection {
@@ -123,14 +140,20 @@ function resolveSection(
     if (!title) {
       return { title: "Docs", slug: "docs", order: 0 };
     }
-    return { title, slug: slugify(title), order: 0 };
+    return {
+      title,
+      slug: slugify(title),
+      order: SECTION_ORDER[title] ?? UNKNOWN_SECTION_ORDER,
+    };
   }
   const sectionTitle = section?.title || section?.name || "Docs";
   const sectionSlug = section?.slug || slugify(sectionTitle);
+  const explicitOrder = section?.order;
   return {
     title: sectionTitle,
     slug: sectionSlug,
-    order: section?.order ?? 0,
+    order:
+      explicitOrder ?? SECTION_ORDER[sectionTitle] ?? UNKNOWN_SECTION_ORDER,
   };
 }
 
@@ -179,24 +202,33 @@ function compareDocsPages(a: DocsPage, b: DocsPage): number {
   );
 }
 
-function buildBaseDocsParams(locale: string): URLSearchParams {
+function buildBaseDocsParams(
+  locale: string,
+  draft: boolean = false,
+): URLSearchParams {
   const params = new URLSearchParams();
   params.set("locale", locale);
   params.set("pagination[pageSize]", "100");
   params.append("populate[0]", "blocks");
   params.append("sort[0]", "order:asc");
   params.append("sort[1]", "title:asc");
+  if (draft) {
+    params.set("status", "draft");
+  }
   return params;
 }
 
 export async function getDocsPagesFromStrapi(
   locale: string = "en",
+  options: { draft?: boolean } = {},
 ): Promise<DocsPage[]> {
-  const params = buildBaseDocsParams(locale);
+  const params = buildBaseDocsParams(locale, options.draft);
   const url = `${getStrapiUrl()}/api/docs-pages?${params.toString()}`;
 
   const res = await fetch(url, {
-    next: { revalidate: 3600 },
+    ...(options.draft
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 3600 } }),
     signal: AbortSignal.timeout(10_000),
   });
 
@@ -223,12 +255,9 @@ export async function getDocsPageByPathFromStrapi(
   options: { draft?: boolean } = {},
 ): Promise<DocsPage | null> {
   const normalizedPath = normalizeDocsPath(path);
-  const params = buildBaseDocsParams(locale);
+  const params = buildBaseDocsParams(locale, options.draft);
   params.set("filters[$or][0][path][$eq]", normalizedPath);
   params.set("filters[$or][1][slug][$eq]", normalizedPath);
-  if (options.draft) {
-    params.set("status", "draft");
-  }
 
   const url = `${getStrapiUrl()}/api/docs-pages?${params.toString()}`;
 

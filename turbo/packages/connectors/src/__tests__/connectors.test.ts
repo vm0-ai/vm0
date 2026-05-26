@@ -1,8 +1,20 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+} from "vitest";
 import {
   connectorTypeSchema,
+  type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodId,
+  type ConnectorConfig,
+  type ConnectorInvalidDefaultAuthMethodType,
   type OAuthAuthCodeConnectorType,
 } from "../connectors";
 import {
@@ -124,6 +136,44 @@ function restoreEnv(values: Record<string, string | undefined>): void {
   }
 }
 
+const localAuthMethodConfig = {
+  label: "App Credentials",
+  helpText: "Enter app credentials.",
+  grant: {
+    kind: "manual",
+    fields: {
+      APP_CREDENTIALS_TOKEN: {
+        label: "Token",
+        required: true,
+      },
+    },
+  },
+  access: {
+    kind: "static",
+    outputs: {
+      APP_CREDENTIALS_TOKEN: "$secrets.APP_CREDENTIALS_TOKEN",
+    },
+  },
+  revoke: { kind: "none" },
+} as const satisfies ConnectorAuthMethodConfig;
+
+const connectorLocalAuthMethodFixture = {
+  "connector-local-auth-method-fixture": {
+    label: "Connector Local Auth Method Fixture",
+    category: "data-automation-infrastructure",
+    helpText: "Fixture used for connector auth method type coverage.",
+    authMethods: {
+      "app-credentials": localAuthMethodConfig,
+    },
+    defaultAuthMethod: "app-credentials",
+  },
+} as const satisfies Record<string, ConnectorConfig>;
+
+type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
+  keyof Config["authMethods"],
+  string
+>;
+
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
     // computer connector has no oauth config
@@ -170,6 +220,49 @@ describe("hasRequiredScopes", () => {
 });
 
 describe("connector auth method config", () => {
+  it("keeps connector-local auth method ids explicit and typed", () => {
+    type FixtureConfig =
+      (typeof connectorLocalAuthMethodFixture)["connector-local-auth-method-fixture"];
+
+    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
+      "oauth" | "api-token" | "api" | "cli-auth" | "app-credentials"
+    >();
+    expectTypeOf<"app-credentials">().toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<
+      keyof ConnectorConfig["authMethods"]
+    >();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<
+      ConnectorConfig["defaultAuthMethod"]
+    >();
+    expectTypeOf<
+      ConnectorConfigAuthMethodIds<FixtureConfig>
+    >().toEqualTypeOf<"app-credentials">();
+    expectTypeOf<
+      FixtureConfig["defaultAuthMethod"]
+    >().toEqualTypeOf<"app-credentials">();
+    expectTypeOf<
+      ConnectorInvalidDefaultAuthMethodType<
+        typeof connectorLocalAuthMethodFixture
+      >
+    >().toEqualTypeOf<never>();
+
+    const missingDefaultMethodFixture = {
+      "missing-default-method-fixture": {
+        label: "Missing Default Method Fixture",
+        category: "data-automation-infrastructure",
+        helpText: "Fixture used for connector auth method type coverage.",
+        authMethods: {
+          "api-token": localAuthMethodConfig,
+        },
+        defaultAuthMethod: "app-credentials",
+      },
+    } as const satisfies Record<string, ConnectorConfig>;
+    expectTypeOf<
+      ConnectorInvalidDefaultAuthMethodType<typeof missingDefaultMethodFixture>
+    >().toEqualTypeOf<"missing-default-method-fixture">();
+  });
+
   it("returns a single auth method config when present", () => {
     expect(getConnectorAuthMethod("stripe", "cli-auth")?.label).toBe(
       "Sign in with Stripe",
@@ -838,13 +931,10 @@ describe("getAvailableConnectorAuthMethods", () => {
     ).toStrictEqual(["api-token"]);
   });
 
-  it("exposes Base44 OAuth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethods("base44", {
-        [FeatureSwitchKey.Base44Connector]: true,
-      }),
-    ).toStrictEqual(["oauth"]);
+  it("exposes Base44 OAuth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([
+      "oauth",
+    ]);
   });
 
   it("exposes Lark API-token auth only when its switch is enabled", () => {

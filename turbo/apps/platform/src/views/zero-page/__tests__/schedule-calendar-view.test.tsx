@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setCalendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
 import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
@@ -157,14 +161,14 @@ async function switchToCalendarView() {
     const hasScheduled =
       screen.queryAllByLabelText(/More actions for/i).length > 0;
     const hasEmpty = screen.queryByText("No runs scheduled") !== null;
-    const hasTab = screen.queryAllByRole("tab").some((el) => {
+    const hasTab = queryAllByRoleFast("tab").some((el) => {
       return /Calendar/i.test(el.textContent ?? "");
     });
     if (!hasTab || (!hasScheduled && !hasEmpty)) {
       throw new Error("page not loaded");
     }
   });
-  const calendarTab = screen.getAllByRole("tab").find((el) => {
+  const calendarTab = queryAllByRoleFast("tab").find((el) => {
     return /Calendar/i.test(el.textContent ?? "");
   });
   expect(calendarTab).toBeDefined();

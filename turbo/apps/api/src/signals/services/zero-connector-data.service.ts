@@ -25,7 +25,6 @@ import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
-  type ConnectorAuthMethodType,
   type ConnectorType,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
@@ -74,7 +73,7 @@ type StoredConnectorRow = {
 };
 
 const oauthScopesSchema = z.array(z.string());
-const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
+const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const COMPUTER_CONNECTOR_SECRET_NAMES = [
   "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
   "COMPUTER_CONNECTOR_DOMAIN_ID",
@@ -641,7 +640,7 @@ export const deleteZeroConnectorLocalState$ = command(
 
       const secretNames = getConnectorSecretNames(
         args.type,
-        existing.authMethod as ConnectorAuthMethodType,
+        existing.authMethod,
       );
 
       for (const name of secretNames) {

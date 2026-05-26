@@ -91,15 +91,16 @@ export default async function DocsPage({
 
   const { locale, slug } = await params;
   const { status } = await searchParams;
+  const draft = status === "draft";
   const path = pathFromSlug(slug);
-  const page = await getDocsPage(path, locale, { draft: status === "draft" });
+  const page = await getDocsPage(path, locale, { draft });
 
   if (!page) {
     notFound();
   }
 
   const t = await getTranslations({ locale, namespace: "docs" });
-  const navigation = await getDocsNavigation(locale);
+  const navigation = await getDocsNavigation(locale, { draft });
   const pageUrl = `${getDocsBaseUrl()}/${locale}/docs/${page.path}`;
 
   const breadcrumbJsonLd = {
@@ -162,9 +163,13 @@ export default async function DocsPage({
         navigation={navigation}
         homeLabel={t("home")}
         activePath={page.path}
+        draft={draft}
       >
         <header className="docs-article-header">
-          <Link href="/docs" className="blog-post-back">
+          <Link
+            href={draft ? "/docs?status=draft" : "/docs"}
+            className="blog-post-back"
+          >
             <svg
               viewBox="0 0 24 24"
               fill="none"

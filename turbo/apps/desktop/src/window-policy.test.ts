@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
   ComputerUseSnapshotStore,
+  type ComputerUseCoordinateBounds,
   collectAccessibilityVisibleElements,
   executeComputerUseCommand,
   normalizeAccessibilitySnapshot,
@@ -11,7 +12,6 @@ import {
   ComputerUseNativeHelperError,
   resolveComputerUseHelperPath,
   type ComputerUseNativeBackend,
-  type ComputerUseNativePressKeyRequest,
 } from "./computer-use-native";
 import {
   buildComputerUseRuntimeBody,
@@ -37,22 +37,83 @@ function createNativeBackend(
   overrides: Partial<ComputerUseNativeBackend> = {},
 ): ComputerUseNativeBackend {
   const defaults: ComputerUseNativeBackend = {
+    getPermissions: async () => {
+      return { accessibility: true, screenRecording: true };
+    },
+    requestAccessibilityPermission: async () => {
+      return { accessibility: true, screenRecording: true };
+    },
     listApps: async () => [],
     getAppState: async (app, snapshotId) => {
       return { app, snapshotId, elements: [] };
     },
     openApp: async () => {},
     clickElement: async () => {},
-    clickPoint: async () => {},
+    clickPoint: async (args) => {
+      return { screenX: args.x, screenY: args.y };
+    },
     setElementValue: async () => {},
     performElementAction: async () => {},
     typeText: async () => {
       return {};
     },
-    pressKey: async () => {},
+    pressKey: async (args) => {
+      return { normalizedKey: args.key };
+    },
     scrollElement: async () => {},
   };
   return { ...defaults, ...overrides };
+}
+
+interface NativeScreenshotFields {
+  readonly screenshot: string;
+  readonly screenshotMimeType: string;
+  readonly screenshotSource: "window";
+  readonly screenshotSourceName: string;
+  readonly screenshotWidth: number;
+  readonly screenshotHeight: number;
+  readonly screenshotSourceBounds: ComputerUseCoordinateBounds;
+  readonly windowId: number;
+  readonly windowFrame: ComputerUseCoordinateBounds;
+}
+
+function nativeScreenshotFields(
+  overrides: Partial<NativeScreenshotFields> = {},
+): NativeScreenshotFields {
+  const sourceBounds =
+    overrides.screenshotSourceBounds ??
+    overrides.windowFrame ??
+    ({
+      x: 100,
+      y: 200,
+      width: 800,
+      height: 600,
+    } satisfies ComputerUseCoordinateBounds);
+  return {
+    screenshot: "data:image/png;base64,abc123",
+    screenshotMimeType: "image/png",
+    screenshotSource: "window",
+    screenshotSourceName: "Example",
+    screenshotWidth: 800,
+    screenshotHeight: 600,
+    screenshotSourceBounds: sourceBounds,
+    windowId: 123,
+    windowFrame: sourceBounds,
+    ...overrides,
+  };
+}
+
+function nativeAppStateWithScreenshot(
+  app: string,
+  snapshotId: string,
+  sourceName = "Example",
+) {
+  return {
+    app,
+    snapshotId,
+    ...nativeScreenshotFields({ screenshotSourceName: sourceName }),
+    elements: [],
+  };
 }
 
 describe("resolveDesktopConfig", () => {
@@ -491,13 +552,15 @@ describe("computer use desktop runtime", () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     const result = await executeComputerUseCommand(
       { id: "cmd_1", kind: "app.open", payload: { app: "Safari" } },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        nativeBackend: createNativeBackend({ openApp }),
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
+        nativeBackend: createNativeBackend({
+          openApp,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
       },
     );
 
@@ -505,9 +568,13 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         app: "Safari",
-        dispatchMode: "background_app_open",
-        dispatchTarget: "target_app",
-        inputRisk: "background_app_launch",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          dispatchMode: "background_app_open",
+          dispatchTarget: "target_app",
+          inputRisk: "background_app_launch",
+        },
       },
     });
     expect(openApp).toHaveBeenCalledWith("Safari");
@@ -790,6 +857,9 @@ describe("computer use desktop runtime", () => {
             return {
               app,
               snapshotId,
+              ...nativeScreenshotFields({
+                screenshotSourceName: "Example",
+              }),
               elements: [
                 {
                   id: "w0",
@@ -800,20 +870,6 @@ describe("computer use desktop runtime", () => {
             };
           },
         }),
-        captureScreenshot: async (request) => {
-          expect(request).toStrictEqual({
-            app: "Safari",
-            windowNames: ["Example"],
-            windowBounds: [{ name: "Example" }],
-          });
-          return {
-            dataUrl: "data:image/png;base64,abc123",
-            source: "window",
-            sourceName: "Example",
-            width: 800,
-            height: 600,
-          };
-        },
       },
     );
 
@@ -843,6 +899,7 @@ describe("computer use desktop runtime", () => {
         screenshotSourceName: "Example",
         screenshotWidth: 800,
         screenshotHeight: 600,
+        screenshotSourceBounds: { x: 100, y: 200, width: 800, height: 600 },
       },
     });
     expect(result.result.text).toContain("0 standard window Example");
@@ -871,6 +928,9 @@ describe("computer use desktop runtime", () => {
             return {
               app,
               snapshotId,
+              ...nativeScreenshotFields({
+                screenshotSourceName: "Slack",
+              }),
               nodeCount: 7,
               truncated: false,
               truncationReasons: [],
@@ -917,15 +977,6 @@ describe("computer use desktop runtime", () => {
             };
           },
         }),
-        captureScreenshot: async () => {
-          return {
-            dataUrl: "data:image/png;base64,abc123",
-            source: "window",
-            sourceName: "Slack",
-            width: 800,
-            height: 600,
-          };
-        },
       },
     );
 
@@ -968,13 +1019,15 @@ describe("computer use desktop runtime", () => {
         kind: "element.click",
         payload: { app: "Slack", elementId: "w0.c0.v2" },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        nativeBackend: createNativeBackend({ clickElement }),
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
+        nativeBackend: createNativeBackend({
+          clickElement,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId, "Slack");
+          },
+        }),
       },
     );
 
@@ -985,6 +1038,82 @@ describe("computer use desktop runtime", () => {
       button: "left",
       clickCount: 1,
     });
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Slack",
+          elementId: "w0.c0.v2",
+          dispatchMode: "accessibility_action",
+        },
+      },
+    });
+  });
+
+  it("returns fresh app state and screenshot after element clicks", async () => {
+    const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: { app: "Things", elementId: "sidebar.inbox" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          clickElement,
+          getAppState: async (app, snapshotId) => {
+            return {
+              app,
+              snapshotId,
+              ...nativeScreenshotFields({ screenshotSourceName: "Inbox" }),
+              windowTitle: "Inbox",
+              elements: [
+                {
+                  id: "w0",
+                  role: "AXWindow",
+                  name: "Inbox",
+                  children: [
+                    {
+                      id: "w0.todo0",
+                      role: "AXStaticText",
+                      value: "Can you see this?",
+                    },
+                  ],
+                },
+              ],
+            };
+          },
+        }),
+      },
+    );
+
+    expect(clickElement).toHaveBeenCalledWith({
+      app: "Things",
+      elementId: "sidebar.inbox",
+      button: "left",
+      clickCount: 1,
+    });
+    expect(result.status).toBe("succeeded");
+    if (result.status !== "succeeded") {
+      throw new Error("expected click to succeed");
+    }
+    expect(result.result).toMatchObject({
+      app: "Things",
+      windowTitle: "Inbox",
+      screenshot: "data:image/png;base64,abc123",
+      screenshotSourceName: "Inbox",
+      action: {
+        app: "Things",
+        elementId: "sidebar.inbox",
+        dispatchMode: "accessibility_action",
+        text: "Clicked sidebar.inbox",
+      },
+    });
+    expect(result.result.text).toContain("Can you see this?");
+    expect(result.result.visibleText).toContain("Can you see this?");
   });
 
   it("maps model-facing element indexes back to internal element ids", async () => {
@@ -996,6 +1125,9 @@ describe("computer use desktop runtime", () => {
         return {
           app,
           snapshotId,
+          ...nativeScreenshotFields({
+            screenshotSourceName: "Example",
+          }),
           elements: [
             {
               id: "w0",
@@ -1022,15 +1154,6 @@ describe("computer use desktop runtime", () => {
         platform: "darwin",
         snapshotStore,
         nativeBackend,
-        captureScreenshot: async () => {
-          return {
-            dataUrl: "data:image/png;base64,abc123",
-            source: "window",
-            sourceName: "Example",
-            width: 800,
-            height: 600,
-          };
-        },
       },
     );
     expect(state.status).toBe("succeeded");
@@ -1065,14 +1188,11 @@ describe("computer use desktop runtime", () => {
         kind: "element.click",
         payload: { app: "Safari", snapshotId, elementIndex: 1 },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
         snapshotStore,
         nativeBackend,
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
       },
     );
 
@@ -1088,22 +1208,44 @@ describe("computer use desktop runtime", () => {
     }
     expect(click.result).toMatchObject({
       app: "Safari",
-      snapshotId,
-      elementIndex: 1,
-      dispatchMode: "accessibility_action",
+      screenshot: "data:image/png;base64,abc123",
+      action: {
+        app: "Safari",
+        snapshotId,
+        elementIndex: 1,
+        dispatchMode: "accessibility_action",
+      },
     });
-    expect(click.result).not.toHaveProperty("elementId");
+    const action = click.result.action;
+    expect(action).toBeTruthy();
+    if (!action || typeof action !== "object" || Array.isArray(action)) {
+      throw new Error("expected click action metadata");
+    }
+    expect(action).not.toHaveProperty("elementId");
   });
 
   it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    clickPoint.mockResolvedValue({ screenX: 900, screenY: 800 });
     const nativeBackend = createNativeBackend({
       clickPoint,
       getAppState: async (app) => {
         return {
           app,
           snapshotId: "snap_1",
+          ...nativeScreenshotFields({
+            screenshotSourceName: "Example",
+            screenshotWidth: 800,
+            screenshotHeight: 600,
+            screenshotSourceBounds: {
+              x: 100,
+              y: 200,
+              width: 1600,
+              height: 1200,
+            },
+            windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
+          }),
           elements: [
             {
               id: "w0",
@@ -1123,29 +1265,15 @@ describe("computer use desktop runtime", () => {
         platform: "darwin",
         snapshotStore,
         nativeBackend,
-        captureScreenshot: async (request) => {
-          expect(request).toStrictEqual({
-            app: "Safari",
-            windowNames: ["Example"],
-            windowBounds: [
-              {
-                name: "Example",
-                bounds: { x: 100, y: 200, width: 1600, height: 1200 },
-              },
-            ],
-          });
-          return {
-            dataUrl: "data:image/png;base64,abc123",
-            source: "window",
-            sourceName: "Example",
-            width: 800,
-            height: 600,
-            sourceBounds: { x: 100, y: 200, width: 1600, height: 1200 },
-          };
-        },
       },
     );
     expect(state.status).toBe("succeeded");
+    expect(snapshotStore.get("Safari", "snap_1")).toMatchObject({
+      screenshotSource: "window",
+      sourceBounds: { x: 100, y: 200, width: 1600, height: 1200 },
+      windowId: 123,
+      windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
+    });
 
     const click = await executeComputerUseCommand(
       {
@@ -1160,14 +1288,11 @@ describe("computer use desktop runtime", () => {
           clickCount: 2,
         },
       },
-      { accessibility: true, screenRecording: false },
+      { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
         snapshotStore,
         nativeBackend,
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
       },
     );
 
@@ -1175,31 +1300,102 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         app: "Safari",
-        snapshotId: "snap_1",
-        x: 400,
-        y: 300,
-        screenX: 900,
-        screenY: 800,
-        button: "right",
-        clickCount: 2,
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_pointer",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          x: 400,
+          y: 300,
+          screenX: 900,
+          screenY: 800,
+          button: "right",
+          clickCount: 2,
+          dispatchMode: "background_mouse_event",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_pointer",
+        },
       },
     });
     expect(clickPoint).toHaveBeenCalledWith({
       app: "Safari",
-      x: 900,
-      y: 800,
+      snapshotId: "snap_1",
+      x: 400,
+      y: 300,
+      screenshotSource: "window",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      sourceBounds: { x: 100, y: 200, width: 1600, height: 1200 },
+      windowId: 123,
+      windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
       button: "right",
       clickCount: 2,
     });
   });
 
-  it("captures fresh app state for coordinate clicks without a cached snapshot", async () => {
+  it("surfaces native rejection for coordinate clicks against non-window snapshots", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
-    let captureCount = 0;
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    clickPoint.mockRejectedValue(
+      new ComputerUseNativeHelperError(
+        "unsupported_command",
+        "Snapshot is not a target-window screenshot: screen_snap",
+      ),
+    );
+    snapshotStore.set({
+      app: "Safari",
+      snapshotId: "screen_snap",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      screenshotSource: "screen",
+      screenshotSourceName: "Built-in Display",
+      sourceBounds: { x: 0, y: 0, width: 1440, height: 900 },
+    });
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "screen_snap",
+          x: 400,
+          y: 300,
+        },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend: createNativeBackend({ clickPoint }),
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "Snapshot is not a target-window screenshot: screen_snap",
+      },
+    });
+    expect(clickPoint).toHaveBeenCalledWith({
+      app: "Safari",
+      snapshotId: "screen_snap",
+      x: 400,
+      y: 300,
+      screenshotSource: "screen",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      sourceBounds: { x: 0, y: 0, width: 1440, height: 900 },
+      button: "left",
+      clickCount: 1,
+    });
+  });
+
+  it("uses fresh native app state for coordinate clicks without a cached snapshot", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    let stateCaptureCount = 0;
+    const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    clickPoint.mockResolvedValue({ screenX: 440, screenY: 380 });
 
     const result = await executeComputerUseCommand(
       {
@@ -1214,9 +1410,22 @@ describe("computer use desktop runtime", () => {
         nativeBackend: createNativeBackend({
           clickPoint,
           getAppState: async () => {
+            stateCaptureCount += 1;
             return {
               app: "Safari",
               snapshotId: "snap_fresh",
+              ...nativeScreenshotFields({
+                screenshotSourceName: "Example",
+                screenshotWidth: 400,
+                screenshotHeight: 300,
+                screenshotSourceBounds: {
+                  x: 40,
+                  y: 80,
+                  width: 800,
+                  height: 600,
+                },
+                windowFrame: { x: 40, y: 80, width: 800, height: 600 },
+              }),
               elements: [
                 {
                   id: "w0",
@@ -1228,17 +1437,6 @@ describe("computer use desktop runtime", () => {
             };
           },
         }),
-        captureScreenshot: async () => {
-          captureCount += 1;
-          return {
-            dataUrl: "data:image/png;base64,abc123",
-            source: "window",
-            sourceName: "Example",
-            width: 400,
-            height: 300,
-            sourceBounds: { x: 40, y: 80, width: 800, height: 600 },
-          };
-        },
       },
     );
 
@@ -1246,23 +1444,34 @@ describe("computer use desktop runtime", () => {
       status: "succeeded",
       result: {
         app: "Safari",
-        snapshotId: "snap_fresh",
-        x: 200,
-        y: 150,
-        screenX: 440,
-        screenY: 380,
-        button: "left",
-        clickCount: 1,
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_pointer",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          snapshotId: "snap_fresh",
+          x: 200,
+          y: 150,
+          screenX: 440,
+          screenY: 380,
+          button: "left",
+          clickCount: 1,
+          dispatchMode: "background_mouse_event",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_pointer",
+        },
       },
     });
-    expect(captureCount).toBe(1);
+    expect(stateCaptureCount).toBe(2);
     expect(clickPoint).toHaveBeenCalledWith({
       app: "Safari",
-      x: 440,
-      y: 380,
+      snapshotId: "snap_fresh",
+      x: 200,
+      y: 150,
+      screenshotSource: "window",
+      screenshotWidth: 400,
+      screenshotHeight: 300,
+      sourceBounds: { x: 40, y: 80, width: 800, height: 600 },
+      windowId: 123,
+      windowFrame: { x: 40, y: 80, width: 800, height: 600 },
       button: "left",
       clickCount: 1,
     });
@@ -1274,9 +1483,6 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: false },
       {
         platform: "darwin",
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
       },
     );
 
@@ -1289,36 +1495,62 @@ describe("computer use desktop runtime", () => {
     });
   });
 
-  it("parses press-key combinations before posting background input", async () => {
+  it("rejects native app state screenshots that are not target-window captures", async () => {
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          getAppState: async (app, snapshotId) => {
+            return {
+              app,
+              snapshotId,
+              elements: [],
+              screenshot: "data:image/png;base64,abc123",
+              screenshotMimeType: "image/png",
+              screenshotSource: "screen",
+              screenshotSourceName: "Built-in Display",
+              screenshotWidth: 800,
+              screenshotHeight: 600,
+              screenshotSourceBounds: { x: 0, y: 0, width: 1440, height: 900 },
+            };
+          },
+        }),
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "screen_recording_unavailable",
+        message:
+          "Native Computer Use app.state must return a target-window screenshot",
+      },
+    });
+  });
+
+  it("passes press-key combinations to the native helper", async () => {
     const cases = [
       {
         key: "Command+K",
         normalizedKey: "Command+K",
-        keyCode: 40,
-        flags: 1_048_576,
-        modifiers: [{ keyCode: 55, flag: 1_048_576 }],
       },
       {
         key: "Control+K",
         normalizedKey: "Control+K",
-        keyCode: 40,
-        flags: 262_144,
-        modifiers: [{ keyCode: 59, flag: 262_144 }],
       },
       {
         key: "Command+Shift+S",
         normalizedKey: "Command+Shift+S",
-        keyCode: 1,
-        flags: 1_179_648,
-        modifiers: [
-          { keyCode: 55, flag: 1_048_576 },
-          { keyCode: 56, flag: 131_072 },
-        ],
       },
     ];
 
     for (const testCase of cases) {
-      const pressRequests: ComputerUseNativePressKeyRequest[] = [];
+      const pressRequests: Array<{
+        readonly app: string;
+        readonly key: string;
+      }> = [];
       const result = await executeComputerUseCommand(
         {
           id: "cmd_1",
@@ -1331,25 +1563,26 @@ describe("computer use desktop runtime", () => {
           nativeBackend: createNativeBackend({
             pressKey: async (request) => {
               pressRequests.push(request);
+              return { normalizedKey: testCase.normalizedKey };
+            },
+            getAppState: async (app, snapshotId) => {
+              return nativeAppStateWithScreenshot(app, snapshotId);
             },
           }),
-          captureScreenshot: async () => {
-            throw new Error("unexpected screenshot capture");
-          },
         },
       );
 
       expect(result).toMatchObject({
         status: "succeeded",
-        result: { key: testCase.normalizedKey },
+        result: {
+          screenshot: "data:image/png;base64,abc123",
+          action: { key: testCase.normalizedKey },
+        },
       });
       expect(pressRequests).toStrictEqual([
         {
           app: "Safari",
-          keyCode: testCase.keyCode,
-          flags: testCase.flags,
-          modifiers: testCase.modifiers,
-          normalizedKey: testCase.normalizedKey,
+          key: testCase.key,
         },
       ]);
     }
@@ -1358,6 +1591,7 @@ describe("computer use desktop runtime", () => {
   it("posts press-key combinations to the target process without app activation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
+    pressKey.mockResolvedValue({ normalizedKey: "Command+K" });
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1367,34 +1601,43 @@ describe("computer use desktop runtime", () => {
       { accessibility: true, screenRecording: true },
       {
         platform: "darwin",
-        nativeBackend: createNativeBackend({ openApp, pressKey }),
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
+        nativeBackend: createNativeBackend({
+          openApp,
+          pressKey,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
       },
     );
 
     expect(result).toMatchObject({
       status: "succeeded",
       result: {
-        key: "Command+K",
-        dispatchMode: "background_keyboard_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_shortcut",
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          key: "Command+K",
+          dispatchMode: "background_keyboard_event",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_shortcut",
+        },
       },
     });
     expect(pressKey).toHaveBeenCalledWith({
       app: "Safari",
-      keyCode: 40,
-      modifiers: [{ keyCode: 55, flag: 1_048_576 }],
-      flags: 1_048_576,
-      normalizedKey: "Command+K",
+      key: "Command+K",
     });
     expect(openApp).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported press-key syntax before dispatching input", async () => {
+  it("surfaces native press-key syntax rejections", async () => {
     const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
+    pressKey.mockRejectedValue(
+      new ComputerUseNativeHelperError(
+        "unsupported_command",
+        "Unsupported key specification: Launchpad",
+      ),
+    );
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1405,9 +1648,6 @@ describe("computer use desktop runtime", () => {
       {
         platform: "darwin",
         nativeBackend: createNativeBackend({ pressKey }),
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
       },
     );
 
@@ -1418,7 +1658,10 @@ describe("computer use desktop runtime", () => {
         message: "Unsupported key specification: Launchpad",
       },
     });
-    expect(pressKey).not.toHaveBeenCalled();
+    expect(pressKey).toHaveBeenCalledWith({
+      app: "Safari",
+      key: "Command+Launchpad",
+    });
   });
 
   it("rejects type-text when the target app has no focused editable element", async () => {
@@ -1439,9 +1682,6 @@ describe("computer use desktop runtime", () => {
             );
           },
         }),
-        captureScreenshot: async () => {
-          throw new Error("unexpected screenshot capture");
-        },
       },
     );
 

@@ -1,4 +1,5 @@
 export type OpenDesignTarget =
+  | "image"
   | "presentation"
   | "website"
   | "dashboard-design"
@@ -100,8 +101,8 @@ export interface OpenDesignCandidateSlice {
 
 const OPEN_DESIGN_REPO = "vm0-ai/open-design";
 const OPEN_DESIGN_COMMIT = "d021b04720ace133f1d6133d1487326f5fc28f07";
-const VM0_REPO = "vm0-ai/vm0";
-const NOTION_ILLUSTRATION_COMMIT = "12d5aa42de4323c034cfb6e8005c69304dd510e5";
+const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
+const VM0_SKILLS_REF = "main";
 
 const OPEN_DESIGN_REGISTRY_VERSION = `federated:${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
 
@@ -402,11 +403,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
     source: sourceRef(
-      VM0_REPO,
-      NOTION_ILLUSTRATION_COMMIT,
-      ".claude/skills/notion-illustration",
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/notion-illustration",
     ),
-    targets: ["website", "poster", "presentation", "report"],
+    targets: ["image", "website", "poster", "presentation", "report"],
     tags: ["image", "illustration", "notion", "spot", "hand-drawn", "product"],
     triggers: [
       "illustration",
@@ -427,6 +428,47 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     remixHint: "prompt-with-resource-hints",
     status: "experimental",
     priority: 18,
+  },
+  {
+    id: "vm0:image-style:vm0-illustration",
+    kind: "image-style",
+    name: "vm0 Illustration",
+    description:
+      "vm0 in-app spot illustration style with bold hand-drawn ink line art, white-filled interiors, and a soft rounded color backdrop.",
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/vm0-illustration",
+    ),
+    targets: ["image", "website", "poster", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "spot",
+      "in-app",
+      "empty-state",
+      "hand-drawn",
+      "vm0",
+    ],
+    triggers: [
+      "vm0 style",
+      "in-app illustration",
+      "empty state illustration",
+      "vm0 illustration",
+      "soft rounded color backdrop",
+    ],
+    bestFor: [
+      "in-app empty states",
+      "billing and permission illustrations",
+      "small product state artwork",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 19,
   },
 ];
 
@@ -561,8 +603,8 @@ export function selectOpenDesignCandidates(options: {
         commit: OPEN_DESIGN_COMMIT,
       },
       {
-        repo: VM0_REPO,
-        commit: NOTION_ILLUSTRATION_COMMIT,
+        repo: VM0_SKILLS_REPO,
+        commit: VM0_SKILLS_REF,
       },
     ],
     candidates: {

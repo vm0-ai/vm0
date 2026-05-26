@@ -1,5 +1,58 @@
 # Changelog
 
+## [9.165.1](https://github.com/vm0-ai/vm0/compare/cli-v9.165.0...cli-v9.165.1) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.40.5
+    * @vm0/connectors bumped to 1.34.0
+    * @vm0/core bumped to 8.294.0
+
+## [9.165.0](https://github.com/vm0-ai/vm0/compare/cli-v9.164.0...cli-v9.165.0) (2026-05-26)
+
+
+### Features
+
+* register vm0 illustration image style ([#14949](https://github.com/vm0-ai/vm0/issues/14949)) ([5c7e67a](https://github.com/vm0-ai/vm0/commit/5c7e67aa00ae4558cb9907bdf3ecdb02f448771c))
+
+## [9.164.0](https://github.com/vm0-ai/vm0/compare/cli-v9.163.3...cli-v9.164.0) (2026-05-26)
+
+
+### Features
+
+* add styled image resource selection ([#14917](https://github.com/vm0-ai/vm0/issues/14917)) ([8e0da80](https://github.com/vm0-ai/vm0/commit/8e0da80aca2ea24f01935358d53be2d8ed2c3a26))
+
+## [9.163.3](https://github.com/vm0-ai/vm0/compare/cli-v9.163.2...cli-v9.163.3) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.40.4
+    * @vm0/connectors bumped to 1.33.4
+    * @vm0/core bumped to 8.293.6
+
+## [9.163.2](https://github.com/vm0-ai/vm0/compare/cli-v9.163.1...cli-v9.163.2) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.40.3
+    * @vm0/core bumped to 8.293.5
+
+## [9.163.1](https://github.com/vm0-ai/vm0/compare/cli-v9.163.0...cli-v9.163.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* add static website hosting context ([#14907](https://github.com/vm0-ai/vm0/issues/14907)) ([af1204d](https://github.com/vm0-ai/vm0/commit/af1204d019a80b6711283f176ab9114909f2dc68))
+
 ## [9.163.0](https://github.com/vm0-ai/vm0/compare/cli-v9.162.2...cli-v9.163.0) (2026-05-26)
 
 

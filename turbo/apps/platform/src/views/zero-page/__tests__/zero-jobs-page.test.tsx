@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   setMockSchedules,
@@ -98,7 +101,7 @@ describe("zero jobs page - team list", () => {
       expect(screen.getByText("Public")).toBeInTheDocument();
     });
     expect(screen.getByText("Private")).toBeInTheDocument();
-    const createButtons = screen.getAllByRole("button").filter((el) => {
+    const createButtons = queryAllByRoleFast("button").filter((el) => {
       return el.textContent?.trim() === "Create";
     });
     expect(createButtons).toHaveLength(2);
@@ -112,7 +115,7 @@ describe("zero jobs page - team list", () => {
       expect(screen.getByText("Public")).toBeInTheDocument();
     });
     expect(screen.getByText("Private")).toBeInTheDocument();
-    const createButtons = screen.getAllByRole("button").filter((el) => {
+    const createButtons = queryAllByRoleFast("button").filter((el) => {
       return el.textContent?.trim() === "Create";
     });
     expect(createButtons).toHaveLength(2);

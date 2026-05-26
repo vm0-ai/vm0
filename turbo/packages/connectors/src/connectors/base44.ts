@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const base44 = {
   base44: {
@@ -9,7 +8,6 @@ export const base44 = {
       "Connect your Base44 account to let agents access and manage your Base44 apps",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.Base44Connector,
         label: "OAuth",
         helpText: "Sign in with Base44 to grant access.",
         grant: {

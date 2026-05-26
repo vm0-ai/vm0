@@ -2295,6 +2295,18 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
   });
 
+  it("matches the zero computer-use host stop rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/host/stop"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/host/stop/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/computer-use/host")).toBe(
+      true,
+    );
+  });
+
   it("matches the zero chat threads collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads-extra")).toBe(

@@ -7,6 +7,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   getMockTelegramIntegration,
@@ -501,7 +502,7 @@ describe("telegram settings page", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Uninstall")).not.toBeInTheDocument();
 
-    const connectLink = screen.getAllByRole("link").find((element) => {
+    const connectLink = queryAllByRoleFast("link").find((element) => {
       return element.textContent === "Connect";
     });
     expect(connectLink).toBeDefined();
@@ -588,7 +589,7 @@ describe("telegram settings page", () => {
       expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
     });
 
-    const connectLink = screen.getAllByRole("link").find((element) => {
+    const connectLink = queryAllByRoleFast("link").find((element) => {
       return element.textContent === "Connect";
     });
     expect(connectLink).toBeDefined();
@@ -619,7 +620,7 @@ describe("telegram settings page", () => {
     click(screen.getByText("Reinstall"));
     const dialog = await screen.findByRole("dialog");
     await fill(screen.getByLabelText("New bot token"), "123:new-token");
-    const reinstallButton = screen.getAllByRole("button").find((element) => {
+    const reinstallButton = queryAllByRoleFast("button").find((element) => {
       return element.textContent === "Reinstall" && dialog.contains(element);
     });
     expect(reinstallButton).toBeDefined();
@@ -646,7 +647,7 @@ describe("telegram settings page", () => {
       expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
     });
 
-    const connectLink = screen.getAllByRole("link").find((element) => {
+    const connectLink = queryAllByRoleFast("link").find((element) => {
       return element.textContent === "Connect";
     });
     expect(connectLink).toBeDefined();
@@ -679,7 +680,7 @@ describe("telegram settings page", () => {
     click(uninstallButton);
 
     const dialog = await screen.findByRole("dialog");
-    const confirmButton = screen.getAllByRole("button").find((element) => {
+    const confirmButton = queryAllByRoleFast("button").find((element) => {
       return element.textContent === "Uninstall" && dialog.contains(element);
     });
     expect(confirmButton).toBeDefined();

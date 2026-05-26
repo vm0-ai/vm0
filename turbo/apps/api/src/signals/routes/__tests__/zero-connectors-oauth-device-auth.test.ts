@@ -54,21 +54,6 @@ async function enableTestOauthDevice(userId: string, orgId: string) {
     });
 }
 
-async function enableBase44(userId: string, orgId: string) {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.Base44Connector]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches: { [FeatureSwitchKey.Base44Connector]: true } },
-    });
-}
-
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
@@ -650,7 +635,6 @@ describe("OAuth device authorization connector routes", () => {
     const orgId = `org_${randomUUID()}`;
     users.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
-    await enableBase44(userId, orgId);
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
     );

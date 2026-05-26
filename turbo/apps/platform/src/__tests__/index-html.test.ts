@@ -19,3 +19,18 @@ describe("platform index.html translation opt-out", () => {
     );
   });
 });
+
+describe("platform index.html marketing scripts", () => {
+  it("gates Google Ads and LinkedIn pixels to production deployments", () => {
+    expect(indexHtml).toContain('"%VITE_VERCEL_ENV%" !== "production"');
+    expect(indexHtml).not.toMatch(
+      /<script[^>]*\bsrc="https:\/\/www\.googletagmanager\.com\/gtag\/js/,
+    );
+    expect(indexHtml).not.toMatch(
+      /<script[^>]*\bsrc="https:\/\/snap\.licdn\.com\/li\.lms-analytics\/insight\.min\.js/,
+    );
+    expect(indexHtml).not.toMatch(
+      /<noscript[\s\S]*px\.ads\.linkedin\.com\/collect/,
+    );
+  });
+});
