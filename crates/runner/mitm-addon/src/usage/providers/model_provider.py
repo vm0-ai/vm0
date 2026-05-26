@@ -14,8 +14,8 @@ from auth import get_api_url
 from logging_utils import log_proxy_entry
 
 from ..buffer import UsageEvent, buffer_usage_events
+from ..idempotency import USAGE_EVENT_NAMESPACE_MODEL, encode_uuid_name
 from ..model_tokens import MODEL_USAGE_CATEGORIES
-from ..namespaces import USAGE_EVENT_NAMESPACE_MODEL
 
 MODEL_USAGE_KIND = "model"
 
@@ -88,13 +88,9 @@ def _derive_idempotency_key(run_id: str, message_id: str, category: str) -> str:
     return str(
         uuid.uuid5(
             USAGE_EVENT_NAMESPACE_MODEL,
-            _encode_uuid_name((run_id, message_id, category)),
+            encode_uuid_name((run_id, message_id, category)),
         )
     )
-
-
-def _encode_uuid_name(parts: tuple[str, ...]) -> str:
-    return "\0".join(f"{len(part.encode('utf-8'))}:{part}" for part in parts)
 
 
 def _is_positive_int(value: object) -> TypeGuard[int]:

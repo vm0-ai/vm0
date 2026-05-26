@@ -18,8 +18,8 @@ from auth import get_api_url
 from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
+from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR
 from ...json_selective import JsonSelectiveExtractor, ScalarField
-from ...namespaces import USAGE_EVENT_NAMESPACE_CONNECTOR
 from .x_billing import (
     classify_bucket,
     classify_includes_bucket,
