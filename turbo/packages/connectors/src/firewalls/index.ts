@@ -234,7 +234,7 @@ import { shortioFirewall } from "./shortio.generated";
 import { stabilityAiFirewall } from "./stability-ai.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackWebhookFirewall } from "./slack-webhook.generated";
-import { slockFirewall } from "./slock";
+import { slockFirewall } from "./slock.generated";
 import { sociavaultFirewall } from "./sociavault.generated";
 import { spongeFirewall } from "./sponge.generated";
 import { sproutgigsFirewall } from "./sproutgigs.generated";

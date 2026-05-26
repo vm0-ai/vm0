@@ -31,7 +31,7 @@ export const slock = {
           accessToken: "SLOCK_ACCESS_TOKEN",
           refreshToken: "SLOCK_REFRESH_TOKEN",
           outputs: {
-            SLOCK_ACCESS_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
+            SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
             SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",
           },
         },

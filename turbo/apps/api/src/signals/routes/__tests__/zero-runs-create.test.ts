@@ -5,6 +5,7 @@ import type {
   FirewallPolicyValue,
   RawPermissionPolicies,
 } from "@vm0/connectors/firewall-types";
+import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
   agentComposeVersions,
@@ -1434,27 +1435,30 @@ describe("POST /api/zero/runs", () => {
       }[];
     };
 
-    expect(executionContext.environment.SLOCK_ACCESS_TOKEN).toBe(
-      "slock_access_token_placeholder",
+    const slockFirewall = getConnectorFirewall("slock");
+    expect(executionContext.environment.SLOCK_TOKEN).toBe(
+      slockFirewall.placeholders?.SLOCK_TOKEN,
     );
     expect(executionContext.environment.SLOCK_SERVER_ID).toBe(
-      "slock_server_id_placeholder",
+      slockFirewall.placeholders?.SLOCK_SERVER_ID,
     );
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     expect(decrypted).toMatchObject({
-      SLOCK_ACCESS_TOKEN: "slock-access",
+      SLOCK_TOKEN: "slock-access",
       SLOCK_SERVER_ID: "slock-server-id",
     });
+    expect(decrypted).not.toHaveProperty("SLOCK_ACCESS_TOKEN");
     expect(decrypted).not.toHaveProperty("SLOCK_REFRESH_TOKEN");
     expect(executionContext.secretConnectorMap).toStrictEqual({
       SLOCK_ACCESS_TOKEN: "slock",
+      SLOCK_TOKEN: "slock",
     });
     const firewall = executionContext.firewalls.find((candidate) => {
       return candidate.name === "slock";
     });
     expect(firewall?.apis[0]?.base).toBe("https://api.slock.ai");
     expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
-      Authorization: ["Bearer $", "{{ secrets.SLOCK_ACCESS_TOKEN }}"].join(""),
+      Authorization: ["Bearer $", "{{ secrets.SLOCK_TOKEN }}"].join(""),
       "X-Server-Id": ["$", "{{ secrets.SLOCK_SERVER_ID }}"].join(""),
     });
   });
