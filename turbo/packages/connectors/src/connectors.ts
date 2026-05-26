@@ -460,26 +460,6 @@ export type ConnectorAuthMethodId =
   | "cli-auth"
   | "app-credentials";
 
-const CONNECTOR_AUTH_METHOD_ID_MAP: Readonly<
-  Record<ConnectorAuthMethodId, true>
-> = {
-  oauth: true,
-  "api-token": true,
-  api: true,
-  "cli-auth": true,
-  "app-credentials": true,
-};
-
-function isConnectorAuthMethodId(
-  authMethod: string,
-): authMethod is ConnectorAuthMethodId {
-  return authMethod in CONNECTOR_AUTH_METHOD_ID_MAP;
-}
-
-export const CONNECTOR_AUTH_METHOD_IDS = Object.keys(
-  CONNECTOR_AUTH_METHOD_ID_MAP,
-).filter(isConnectorAuthMethodId);
-
 /**
  * Temporary ordering for auth method ids still handled by legacy key-based
  * API/UI paths. This is intentionally not exhaustive over ConnectorAuthMethodId.
