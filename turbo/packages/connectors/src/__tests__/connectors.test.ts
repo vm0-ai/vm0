@@ -21,6 +21,7 @@ import {
 import {
   getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
+  getConfiguredConnectorAuthMethods,
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
@@ -1264,6 +1265,19 @@ describe("isOAuthConnectorType", () => {
       refreshToken: "slock-refresh-malformed-rotated",
       expiresIn: undefined,
     });
+  });
+});
+
+describe("getConfiguredConnectorAuthMethods", () => {
+  it("returns configured auth methods without feature filtering", () => {
+    expect(getConfiguredConnectorAuthMethods("stripe")).toStrictEqual([
+      "oauth",
+      "api-token",
+      "cli-auth",
+    ]);
+    expect(getConfiguredConnectorAuthMethods("local-browser")).toStrictEqual([
+      "api",
+    ]);
   });
 });
 

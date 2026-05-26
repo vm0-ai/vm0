@@ -1,5 +1,4 @@
 import {
-  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
@@ -23,8 +22,31 @@ import {
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
 
-type ConnectorLegacyAuthMethodId =
-  (typeof CONNECTOR_LEGACY_AUTH_METHOD_ORDER)[number];
+const CONNECTOR_AUTH_METHOD_PRIORITY = {
+  oauth: 0,
+  "api-token": 1,
+  api: 2,
+  "cli-auth": 3,
+} as const satisfies Record<ConnectorAuthMethodId, number>;
+
+function isConnectorAuthMethodId(
+  authMethod: string,
+): authMethod is ConnectorAuthMethodId {
+  return Object.hasOwn(CONNECTOR_AUTH_METHOD_PRIORITY, authMethod);
+}
+
+export function getConfiguredConnectorAuthMethods(
+  type: ConnectorType,
+): ConnectorAuthMethodId[] {
+  // Configured methods are raw registry entries; callers apply feature flags.
+  return Object.keys(CONNECTOR_TYPES[type].authMethods)
+    .filter(isConnectorAuthMethodId)
+    .sort((a, b) => {
+      return (
+        CONNECTOR_AUTH_METHOD_PRIORITY[a] - CONNECTOR_AUTH_METHOD_PRIORITY[b]
+      );
+    });
+}
 
 /**
  * Connector utility vocabulary:
@@ -88,7 +110,6 @@ function getManualGrantFields(
     case "manual":
       return method.grant.fields;
     case "managed":
-      return method.grant.fields;
     case "auth-code":
     case "device-auth":
     case "interactive-pairing":
@@ -298,11 +319,12 @@ export function getAvailableConnectorAuthMethods(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
-): ConnectorLegacyAuthMethodId[] {
+): ConnectorAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorLegacyAuthMethodId[] = [];
+  const availableAuthMethods: ConnectorAuthMethodId[] = [];
+  const configuredAuthMethods = getConfiguredConnectorAuthMethods(type);
 
-  for (const authMethod of CONNECTOR_LEGACY_AUTH_METHOD_ORDER) {
+  for (const authMethod of configuredAuthMethods) {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "managed": {

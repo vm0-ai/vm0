@@ -8,6 +8,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  getConfiguredConnectorAuthMethods,
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
@@ -22,7 +23,6 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getConfiguredConnectorAuthMethods,
   getConnectorConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,

@@ -12,23 +12,7 @@ export const computer = {
         featureFlag: FeatureSwitchKey.ComputerConnector,
         label: "API",
         helpText: "Server-provisioned ngrok tunnel credentials.",
-        grant: {
-          kind: "managed",
-          fields: {
-            COMPUTER_CONNECTOR_BRIDGE_TOKEN: {
-              label: "Bridge Token",
-              required: true,
-            },
-            COMPUTER_CONNECTOR_DOMAIN_ID: {
-              label: "Domain ID",
-              required: true,
-            },
-            COMPUTER_CONNECTOR_DOMAIN: {
-              label: "Tunnel Domain",
-              required: true,
-            },
-          },
-        },
+        grant: { kind: "managed" },
         access: {
           kind: "managed",
           outputs: {

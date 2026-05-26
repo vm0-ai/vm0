@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
 import { zeroBuiltInCommand } from "../../index";
+import { selectOpenDesignCandidates } from "../../../shared/open-design-registry";
 
 describe("zero built-in generate Open Design artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -119,5 +120,50 @@ describe("zero built-in generate Open Design artifact commands", () => {
         },
       },
     });
+  });
+
+  it("selects registered experimental style skills by slug", () => {
+    const selection = selectOpenDesignCandidates({
+      target: "website",
+      prompt: "Use theme-factory styling for a launch page",
+    });
+
+    expect(selection.candidates.skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "od:skill:theme-factory",
+          description: expect.stringContaining(
+            "Apply professional font and color themes",
+          ),
+          source: expect.objectContaining({
+            path: "skills/theme-factory/SKILL.md",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("selects registered templates and design systems by slug", () => {
+    const selection = selectOpenDesignCandidates({
+      target: "website",
+      prompt: "Create a saas-landing page in a shopify style",
+    });
+
+    expect(selection.candidates.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "od:template:saas-landing",
+          description: expect.stringContaining("Single-page SaaS landing"),
+        }),
+      ]),
+    );
+    expect(selection.candidates.designSystems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "od:design-system:shopify",
+          description: expect.stringContaining("E-commerce platform"),
+        }),
+      ]),
+    );
   });
 });
