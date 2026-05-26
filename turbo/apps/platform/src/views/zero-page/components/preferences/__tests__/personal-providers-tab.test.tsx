@@ -119,11 +119,11 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     expect(
       screen.getByTestId("oauth-card-codex-oauth-token"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Connect Claude Code OAuth")).toHaveClass(
-      "cursor-pointer",
+    expect(screen.getByLabelText("Connect Claude Code OAuth").tagName).toBe(
+      "BUTTON",
     );
-    expect(screen.getByLabelText("Connect ChatGPT (Codex)")).toHaveClass(
-      "cursor-pointer",
+    expect(screen.getByLabelText("Connect ChatGPT (Codex)").tagName).toBe(
+      "BUTTON",
     );
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(

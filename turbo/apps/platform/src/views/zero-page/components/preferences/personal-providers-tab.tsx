@@ -79,15 +79,18 @@ function OAuthCredentialsSection() {
         title="Personal"
         description="Used only in your runs, with your own credentials."
       />
-      <div className="flex flex-col gap-3">
+      <div
+        className="overflow-hidden rounded-xl bg-card"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
         {isLoading ? (
           <>
-            <OAuthCardSkeleton />
-            <OAuthCardSkeleton />
+            <OAuthCredentialRowSkeleton />
+            <OAuthCredentialRowSkeleton />
           </>
         ) : (
           <>
-            <OAuthCredentialCard
+            <OAuthCredentialRow
               type="claude-code-oauth-token"
               title="Claude Code OAuth"
               description="Connect with Claude Code login for Claude-backed model routes."
@@ -118,7 +121,7 @@ function OAuthCredentialsSection() {
               onAction={connectClaudeCode}
               testId="oauth-card-claude-code-oauth-token"
             />
-            <OAuthCredentialCard
+            <OAuthCredentialRow
               type="codex-oauth-token"
               title="ChatGPT (Codex)"
               description="Connect with Codex device login for Codex-backed model routes."
@@ -180,7 +183,7 @@ interface OAuthMenuItem {
   onSelect: () => void;
 }
 
-function OAuthCredentialCard({
+function OAuthCredentialRow({
   type,
   title,
   description,
@@ -199,59 +202,10 @@ function OAuthCredentialCard({
   onAction: () => void;
   testId: string;
 }) {
-  if (status === "missing") {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={`Connect ${title}`}
-        data-testid={testId}
-        className="group flex cursor-pointer items-center gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 transition-colors hover:bg-[hsl(var(--gray-50))]"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-        onClick={() => {
-          if (!disabled) {
-            onAction();
-          }
-        }}
-        onKeyDown={(event) => {
-          if (disabled) {
-            return;
-          }
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onAction();
-          }
-        }}
-      >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ProviderIcon type={type} size={20} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p
-            data-testid="connector-card-label"
-            className="truncate text-sm font-medium text-foreground"
-          >
-            {title}
-          </p>
-          <p
-            data-testid="connector-help-text"
-            className="mt-0.5 truncate text-xs text-muted-foreground"
-          >
-            {description}
-          </p>
-        </div>
-        <span className="shrink-0 text-xs text-muted-foreground group-hover:text-foreground">
-          Connect
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div
-      className="flex items-center gap-3 overflow-hidden rounded-xl bg-card px-5 py-4"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       data-testid={testId}
+      className="flex items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
         <ProviderIcon type={type} size={20} />
@@ -270,36 +224,50 @@ function OAuthCredentialCard({
           {description}
         </p>
       </div>
-      <div className="flex items-center gap-1.5">
-        <OAuthFooterStatus status={status} />
-        {menuItems.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
-                aria-label="More options"
-              >
-                <IconDotsVertical size={14} stroke={1.5} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {menuItems.map((item) => {
-                return (
-                  <DropdownMenuItem
-                    key={item.label}
-                    disabled={item.disabled}
-                    onClick={item.onSelect}
-                  >
-                    {item.label}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      {status === "missing" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+          aria-label={`Connect ${title}`}
+          disabled={disabled}
+          onClick={onAction}
+        >
+          Connect
+        </Button>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <OAuthFooterStatus status={status} />
+          {menuItems.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+                  aria-label="More options"
+                >
+                  <IconDotsVertical size={14} stroke={1.5} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {menuItems.map((item) => {
+                  return (
+                    <DropdownMenuItem
+                      key={item.label}
+                      disabled={item.disabled}
+                      onClick={item.onSelect}
+                    >
+                      {item.label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -328,19 +296,18 @@ function OAuthFooterStatus({ status }: { status: OAuthStatus }) {
   );
 }
 
-function OAuthCardSkeleton() {
+function OAuthCredentialRowSkeleton() {
   return (
     <div
       data-testid="oauth-card-skeleton"
-      className="flex animate-pulse items-center gap-3 overflow-hidden rounded-xl bg-card px-5 py-4"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      className="flex animate-pulse items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
     >
       <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
       <div className="min-w-0 flex-1">
         <span className="block h-4 w-32 rounded bg-muted/50" />
         <span className="mt-1.5 block h-3 w-48 rounded bg-muted/30" />
       </div>
-      <span className="h-3 w-16 shrink-0 rounded bg-muted/30" />
+      <span className="h-9 w-20 shrink-0 rounded bg-muted/30" />
     </div>
   );
 }
