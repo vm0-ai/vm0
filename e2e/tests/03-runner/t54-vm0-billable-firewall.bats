@@ -11,6 +11,8 @@
 
 load '../../helpers/setup'
 
+export BATS_TEST_TIMEOUT=180
+
 setup_file() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
@@ -65,8 +67,12 @@ teardown_file() {
         return 1
     }
 
+    wait_for_zero_run_completed "$RUN_ID"
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- "[model-provider:anthropic-api-key]"
     refute_output --partial '[model-provider:anthropic-api-key $]'
+
+    usage_body=$(zero_usage_runs_response "$RUN_ID")
+    assert_equal "$(printf '%s' "$usage_body" | jq -r '.runs | length')" "0"
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
@@ -86,5 +92,13 @@ teardown_file() {
         return 1
     }
 
+    wait_for_zero_run_completed "$RUN_ID"
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- '[model-provider:anthropic-api-key $]'
+
+    usage_run=$(wait_for_zero_usage_run "$RUN_ID")
+    assert_equal "$(printf '%s' "$usage_run" | jq -r '.runId')" "$RUN_ID"
+    assert_equal "$(printf '%s' "$usage_run" | jq -r '.model')" "claude-sonnet-4-6"
+    jq -e '.inputTokens > 0' <<<"$usage_run" >/dev/null
+    jq -e '.outputTokens > 0' <<<"$usage_run" >/dev/null
+    jq -e '.creditsCharged > 0' <<<"$usage_run" >/dev/null
 }

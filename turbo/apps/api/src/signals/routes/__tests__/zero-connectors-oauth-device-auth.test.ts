@@ -11,9 +11,10 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { nowDate } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
@@ -33,10 +34,32 @@ const TEST_OAUTH_TOKEN_URL =
 const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
+const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
+const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
+const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
+const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 function sessionTokenHash(sessionToken: string): string {
   return createHash("sha256").update(sessionToken).digest("hex");
+}
+
+function jwtAccessToken(subject: string): string {
+  const issuedAt = Math.floor(now() / 1000);
+  const encode = (value: unknown) => {
+    return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+  };
+  return [
+    encode({ alg: "none", typ: "JWT" }),
+    encode({
+      sub: subject,
+      type: "access",
+      iat: issuedAt,
+      exp: issuedAt + SLOCK_ACCESS_TOKEN_TTL_SECONDS,
+    }),
+    "signature",
+  ].join(".");
 }
 
 async function enableTestOauthDevice(userId: string, orgId: string) {
@@ -51,6 +74,21 @@ async function enableTestOauthDevice(userId: string, orgId: string) {
     .onConflictDoUpdate({
       target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
       set: { switches: { [FeatureSwitchKey.TestOauthConnector]: true } },
+    });
+}
+
+async function enableSlock(userId: string, orgId: string) {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.SlockConnector]: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: { switches: { [FeatureSwitchKey.SlockConnector]: true } },
     });
 }
 
@@ -80,11 +118,14 @@ async function cleanupUser(userId: string, orgId: string) {
     );
 }
 
-function encryptedProviderState(deviceCode: string): string {
+function encryptedProviderState(args: {
+  readonly connectorType?: "test-oauth-device" | "slock";
+  readonly deviceCode: string;
+}): string {
   return encryptSecretValue(
     JSON.stringify({
-      connectorType: "test-oauth-device",
-      deviceCode,
+      connectorType: args.connectorType ?? "test-oauth-device",
+      deviceCode: args.deviceCode,
     }),
   );
 }
@@ -212,9 +253,74 @@ function mockBase44OAuthProvider(): void {
   );
 }
 
+function mockSlockOAuthProvider(): { readonly accessToken: string } {
+  const accessToken = jwtAccessToken("slock-user-id");
+  server.use(
+    http.post(SLOCK_DEVICE_CODE_URL, async ({ request }) => {
+      await expect(request.json()).resolves.toStrictEqual({});
+      return HttpResponse.json({
+        deviceCode: "slock-device-code",
+        userCode: "SLOCK-1",
+        verificationUri: "https://api.slock.ai/device",
+        expiresIn: 600,
+        interval: 0,
+      });
+    }),
+    http.post(SLOCK_TOKEN_URL, async ({ request }) => {
+      const body = await request.json();
+      expect(body).toHaveProperty("deviceCode");
+      const deviceCode = z
+        .object({ deviceCode: z.string() })
+        .parse(body).deviceCode;
+      if (deviceCode === "userinfo-error") {
+        return HttpResponse.json({
+          accessToken: "slock-access-userinfo-error",
+          refreshToken: "slock-refresh-token",
+          userId: "slock-user-id",
+        });
+      }
+      expect(deviceCode).toBe("slock-device-code");
+      return HttpResponse.json({
+        accessToken,
+        refreshToken: "slock-refresh-token",
+        userId: "slock-user-id",
+      });
+    }),
+    http.get(SLOCK_SERVERS_URL, ({ request }) => {
+      const authorization = request.headers.get("authorization");
+      if (authorization !== "Bearer slock-access-userinfo-error") {
+        expect(authorization).toBe(`Bearer ${accessToken}`);
+      }
+      return HttpResponse.json([
+        {
+          id: "slock-server-id",
+          name: "Primary",
+        },
+      ]);
+    }),
+    http.get(SLOCK_USERINFO_URL, ({ request }) => {
+      const authorization = request.headers.get("authorization");
+      if (authorization === "Bearer slock-access-userinfo-error") {
+        return HttpResponse.json(
+          { code: "userinfo_lookup_failed" },
+          { status: 500 },
+        );
+      }
+      expect(authorization).toBe(`Bearer ${accessToken}`);
+      return HttpResponse.json({
+        id: "slock-user-id",
+        name: "Slock User",
+        email: "slock@example.com",
+      });
+    }),
+  );
+  return { accessToken };
+}
+
 async function createSession(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly connectorType?: "test-oauth-device" | "slock";
   readonly deviceCode: string;
   readonly status?: "awaiting_user_authorization" | "polling";
   readonly intervalSeconds?: number;
@@ -230,10 +336,13 @@ async function createSession(args: {
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      connectorType: "test-oauth-device",
+      connectorType: args.connectorType ?? "test-oauth-device",
       status: args.status ?? "awaiting_user_authorization",
       sessionTokenHash: sessionTokenHash(sessionToken),
-      encryptedProviderState: encryptedProviderState(args.deviceCode),
+      encryptedProviderState: encryptedProviderState({
+        connectorType: args.connectorType ?? "test-oauth-device",
+        deviceCode: args.deviceCode,
+      }),
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
       verificationUriComplete:
@@ -629,6 +738,65 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });
 
+  it.each<{
+    readonly caseName: string;
+    readonly extraConnectorSecrets: Readonly<Record<string, string>>;
+  }>([
+    {
+      caseName: "primary token",
+      extraConnectorSecrets: {
+        TEST_OAUTH_DEVICE_ACCESS_TOKEN: "shadow-access-token",
+      },
+    },
+    {
+      caseName: "unsupported secret",
+      extraConnectorSecrets: {
+        TEST_OAUTH_DEVICE_UNDECLARED_SECRET: "undeclared-secret",
+      },
+    },
+  ])(
+    "rejects $caseName in extra connector secrets without persisting tokens",
+    async ({ extraConnectorSecrets }) => {
+      const { userId, orgId } = await setupUser();
+      const client = setupApp({ context })(
+        zeroConnectorOauthDeviceAuthSessionContract,
+      );
+      const start = await accept(
+        client.create({
+          params: { type: "test-oauth-device" },
+          body: {},
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+      testOauthDeviceProvider.grant.pollDeviceAuth = async (args) => {
+        const result = await originalPollDeviceAuth(args);
+        if (result.status !== "complete") {
+          return result;
+        }
+        return {
+          ...result,
+          token: { ...result.token, extraConnectorSecrets },
+        };
+      };
+
+      const response = await client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      });
+
+      expect(response.status).toBe(500);
+      await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+      expect((await onlySession(start.body.sessionId)).status).toBe(
+        "awaiting_user_authorization",
+      );
+    },
+  );
+
   it("completes a Base44 session and stores OAuth access and refresh secrets", async () => {
     mockBase44OAuthProvider();
     const userId = `user_${randomUUID()}`;
@@ -707,6 +875,145 @@ describe("OAuth device authorization connector routes", () => {
         oauthScopes: JSON.stringify(["apps:read", "apps:write", "offline"]),
       },
     ]);
+  });
+
+  it("completes a Slock session and stores OAuth tokens plus server id", async () => {
+    const slockTokens = mockSlockOAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    await enableSlock(userId, orgId);
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const start = await accept(
+      client.create({
+        params: { type: "slock" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(start.body).toMatchObject({
+      type: "slock",
+      status: "pending",
+      userCode: "SLOCK-1",
+      verificationUri: "https://api.slock.ai/device",
+      expiresIn: 600,
+      interval: 0,
+    });
+    expect(JSON.stringify(start.body)).not.toContain("slock-device-code");
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "slock",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain(
+      slockTokens.accessToken,
+    );
+    expect(JSON.stringify(response.body)).not.toContain("slock-refresh-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_ACCESS_TOKEN"),
+    ).resolves.toBe(slockTokens.accessToken);
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_REFRESH_TOKEN"),
+    ).resolves.toBe("slock-refresh-token");
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_SERVER_ID"),
+    ).resolves.toBe("slock-server-id");
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "slock"),
+        ),
+      );
+    expect(stored).toStrictEqual([
+      {
+        authMethod: "oauth",
+        externalId: "slock-user-id",
+        externalUsername: "Slock User",
+        externalEmail: "slock@example.com",
+        oauthScopes: JSON.stringify([]),
+        tokenExpiresAt: expect.any(Date),
+      },
+    ]);
+    const tokenExpiresAt = stored[0]?.tokenExpiresAt;
+    if (!tokenExpiresAt) {
+      throw new Error("Expected Slock connector token expiry to be stored");
+    }
+    expect(tokenExpiresAt.getTime()).toBeGreaterThan(
+      nowDate().getTime() + 850_000,
+    );
+    expect(tokenExpiresAt.getTime()).toBeLessThanOrEqual(
+      nowDate().getTime() + SLOCK_ACCESS_TOKEN_TTL_SECONDS * 1000,
+    );
+  });
+
+  it("marks Slock post-token lookup failures as terminal errors", async () => {
+    mockSlockOAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    await enableSlock(userId, orgId);
+    const session = await createSession({
+      userId,
+      orgId,
+      connectorType: "slock",
+      deviceCode: "userinfo-error",
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.poll({
+        params: { type: "slock", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      status: "error",
+      errorCode: "post_token_lookup_failed",
+      errorMessage:
+        "Unable to load Slock account metadata after authorization.",
+    });
+    await expect(onlySession(session.id)).resolves.toMatchObject({
+      status: "error",
+      errorCode: "post_token_lookup_failed",
+      errorMessage:
+        "Unable to load Slock account metadata after authorization.",
+    });
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_ACCESS_TOKEN"),
+    ).resolves.toBeNull();
   });
 
   it("returns terminal denied, expired, and error states", async () => {

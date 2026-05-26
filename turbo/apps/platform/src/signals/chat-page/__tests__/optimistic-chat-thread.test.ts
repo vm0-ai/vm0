@@ -7,11 +7,14 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { createDeferredPromise, detach, Reason } from "../../utils.ts";
+import { currentLeftThread$ } from "../chat-thread-panes.ts";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
+  sendNewThreadOptimistically$,
 } from "../optimistic-chat-thread-page.ts";
 
 const context = testContext();
@@ -217,5 +220,97 @@ describe("optimistic chat thread (local mode)", () => {
     expect(patchCount).toBe(0);
 
     createDeferred.resolve();
+  });
+
+  it("settles an optimistic new thread when the first send returns no run", async () => {
+    setupBaseHandlers();
+    let createdThreadId = "";
+    let clientMessageId = "msg-no-credit-user";
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        createdThreadId = body.clientThreadId ?? "fallback-thread-id";
+        clientMessageId = body.clientMessageId ?? clientMessageId;
+        return respond(201, {
+          runId: null,
+          threadId: createdThreadId,
+          createdAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: clientMessageId,
+              role: "user",
+              content: "blocked by credits",
+              error: "insufficient_credits",
+              createdAt: "2026-04-13T00:00:00Z",
+            },
+            {
+              id: "msg-no-credit-assistant",
+              role: "assistant",
+              content: "Insufficient credits.",
+              error: "insufficient_credits",
+              createdAt: "2026-04-13T00:00:00.001Z",
+            },
+          ],
+          hasHistoryBefore: false,
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: AGENT_ID,
+          latestSessionId: null,
+          activeRunIds: [],
+          activeRuns: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      withoutRender: true,
+    });
+
+    await context.store.set(
+      sendNewThreadOptimistically$,
+      {
+        agentId: AGENT_ID,
+        prompt: "blocked by credits",
+        modelSelection: null,
+      },
+      context.signal,
+    );
+
+    expect(createdThreadId).not.toBe("");
+    await expect
+      .poll(() => {
+        return context.store.get(optimisticChatThread$);
+      })
+      .toBeNull();
+
+    await expect
+      .poll(() => {
+        return context.store.get(currentLeftThread$)?.threadId;
+      })
+      .toBe(createdThreadId);
+
+    const thread = context.store.get(currentLeftThread$);
+    expect(thread).not.toBeNull();
+    const groups = await context.store.get(thread!.groupedChatMessages$);
+    expect(
+      groups.flatMap((group) => {
+        return group.messages.map((message) => {
+          return message.content;
+        });
+      }),
+    ).toStrictEqual(["blocked by credits", "Insufficient credits."]);
   });
 });

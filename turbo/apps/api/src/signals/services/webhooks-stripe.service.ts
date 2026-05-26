@@ -13,6 +13,7 @@ import { getStripeClient } from "../external/stripe-client";
 import { getCampaign } from "./one-time-products";
 
 const L = logger("WebhookStripe");
+const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -21,6 +22,7 @@ interface CheckoutSessionInput {
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly amount_total?: number | null;
   readonly payment_status?: string | null;
 }
 
@@ -86,6 +88,20 @@ function monthlyCreditsForTier(tier: OrgTier): number {
   }
 }
 
+const CREDITS_PER_DOLLAR = 1000;
+
+function creditPurchaseAmount(session: CheckoutSessionInput): number {
+  const metadata = session.metadata ?? {};
+  if (metadata.creditsAmountMode === "amount_total") {
+    const amountTotal = session.amount_total;
+    if (amountTotal === undefined || amountTotal === null) {
+      return Number.NaN;
+    }
+    return Math.floor((amountTotal * CREDITS_PER_DOLLAR) / 100);
+  }
+  return Number(metadata.creditsAmount);
+}
+
 function autoRechargeNeverExpiresAt(): Date {
   return new Date("2999-12-31T00:00:00Z");
 }
@@ -93,9 +109,9 @@ function autoRechargeNeverExpiresAt(): Date {
 function tierFromPriceId(priceId: string): OrgTier {
   const priceMap = env("ZERO_PRICE");
   if (priceMap) {
-    for (const [tier, ids] of Object.entries(priceMap)) {
-      if (ids.includes(priceId)) {
-        return tier as OrgTier;
+    for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
+      if (priceMap[tier]?.includes(priceId)) {
+        return tier;
       }
     }
   }
@@ -296,7 +312,7 @@ async function handleCreditPurchaseCompleted(
 ): Promise<void> {
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
-  const creditsAmount = Number(metadata.creditsAmount);
+  const creditsAmount = creditPurchaseAmount(session);
 
   if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
     L.warn("credit_purchase missing metadata", {

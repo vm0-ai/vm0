@@ -4,11 +4,95 @@ use super::support::{
     mock_run_config_with_api_url, mock_run_config_with_delay, mock_run_config_with_overrides,
     push_job, shutdown, test_profiles, wait_budget_count, wait_budget_exhausted_reactor,
     wait_cancel_token, wait_cancel_token_removed, wait_discover_entered, wait_parking_state,
-    wait_status_mode,
+    wait_status_mode, wait_usage_flush_requested,
 };
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
 use crate::idle_pool::ParkingState;
+
+fn usage_pending_path(base_dir: &std::path::Path) -> std::path::PathBuf {
+    base_dir.join("mitm-addon").join("usage-pending")
+}
+
+fn usage_test_now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn write_usage_pending_state(
+    base_dir: &std::path::Path,
+    usage_state_id: &str,
+    flows: u32,
+    buffered: u32,
+    reports: u32,
+) {
+    let addon_dir = base_dir.join("mitm-addon");
+    std::fs::create_dir_all(&addon_dir).unwrap();
+    std::fs::write(
+        usage_pending_path(base_dir),
+        serde_json::json!({
+            "pid": std::process::id(),
+            "usageStateId": usage_state_id,
+            "updatedAtMs": usage_test_now_millis(),
+            "flows": flows,
+            "buffered": buffered,
+            "reports": reports,
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+async fn install_usage_flush_child(config: &mut RunConfig) {
+    use std::os::unix::fs::PermissionsExt;
+    use tokio::io::AsyncBufReadExt;
+
+    let script = config.base_dir.join("usage-flush-child.sh");
+    std::fs::write(
+        &script,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+fifo="$0.fifo"
+base_dir="$(dirname "$0")"
+request="$base_dir/mitm-addon/usage-flush-request"
+pending="$base_dir/mitm-addon/usage-pending"
+write_pending_snapshot() {
+  [[ -f "$request" ]] || return 0
+  flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$request")"
+  state_id="$(sed -n 's/.*"usageStateId":"\([^"]*\)".*/\1/p' "$request")"
+  [[ -n "$flush_id" && -n "$state_id" ]] || return 0
+  now_ms="$(date +%s%3N)"
+  printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flows":0,"buffered":0,"reports":0,"flushRequestId":"%s"}' "$$" "$state_id" "$now_ms" "$flush_id" > "$pending"
+}
+mkfifo "$fifo"
+exec 3<>"$fifo"
+trap write_pending_snapshot USR1
+trap 'exit 0' TERM
+echo ready
+while true; do read -r _ <&3 || true; done
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut child = tokio::process::Command::new(&script)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
+    let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+        .await
+        .expect("usage flush child did not print ready")
+        .unwrap()
+        .expect("usage flush child stdout closed before ready");
+    assert_eq!(ready, "ready");
+    config.mitm.set_child_for_test(child);
+}
 
 // -----------------------------------------------------------------------
 // Test 1: Normal discover → claim → execute → complete
@@ -31,6 +115,34 @@ async fn main_loop_discover_claim_execute_complete() {
     assert_eq!(c.exit_code, 0);
     assert!(c.error.is_none());
 
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn job_completion_requests_proxy_usage_flush_without_waiting() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    install_usage_flush_child(&mut config).await;
+    let usage_state_id = config.mitm.usage_state_id_for_test().to_string();
+    write_usage_pending_state(&config.base_dir, &usage_state_id, 0, 0, 1);
+    let base_dir = config.base_dir.clone();
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "job completion must not wait for proxy usage drain"
+    );
+    wait_usage_flush_requested(&env, Duration::from_secs(5)).await;
+
+    write_usage_pending_state(&base_dir, &usage_state_id, 0, 0, 0);
     shutdown(&env, run_handle).await;
 }
 

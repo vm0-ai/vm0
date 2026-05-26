@@ -147,6 +147,7 @@ export interface ApiTestMocks {
     };
     readonly prices: {
       readonly retrieve: AsyncMock;
+      readonly create: AsyncMock;
     };
   };
   readonly vercelOidc: {
@@ -312,6 +313,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     prices: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
 
@@ -688,6 +690,7 @@ vi.mock("stripe", async (importOriginal) => {
         },
         prices: {
           retrieve: apiTestMocks.stripe.prices.retrieve,
+          create: apiTestMocks.stripe.prices.create,
         },
       };
     }),
@@ -899,6 +902,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   apiTestMocks.stripe.coupons.retrieve.mockReset();
   apiTestMocks.stripe.prices.retrieve.mockReset();
+  apiTestMocks.stripe.prices.create.mockReset();
   apiTestMocks.vercelSandbox.create.mockReset();
   apiTestMocks.vercelSandbox.create.mockResolvedValue({
     sandboxId: "sb_created",

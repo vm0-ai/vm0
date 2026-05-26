@@ -34,7 +34,7 @@ from typing import Literal, Protocol, TypedDict
 from logging_utils import log_proxy_entry
 
 from .counters import set_buffered_usage_events
-from .namespaces import USAGE_EVENT_NAMESPACE_AGGREGATE
+from .idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, encode_uuid_name
 from .webhook import _enqueue_webhook
 
 DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
@@ -395,7 +395,7 @@ class UsageEventBuffer:
         return str(
             uuid.uuid5(
                 USAGE_EVENT_NAMESPACE_AGGREGATE,
-                _encode_uuid_name(
+                encode_uuid_name(
                     (
                         self._buffer_id,
                         str(flush_sequence),
@@ -493,10 +493,6 @@ def _log_flush_summaries(
 
 def _elapsed_ms(started_at: float) -> int:
     return max(0, int((time.monotonic() - started_at) * 1000))
-
-
-def _encode_uuid_name(parts: tuple[str, ...]) -> str:
-    return "\0".join(f"{len(part.encode('utf-8'))}:{part}" for part in parts)
 
 
 _usage_event_buffer = UsageEventBuffer()

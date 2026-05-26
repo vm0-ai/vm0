@@ -135,19 +135,63 @@ export type ConnectorOAuthGrantConfig =
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig;
 
+function isConnectorOAuthGrantConfig(
+  method: ConnectorAuthMethodConfig,
+): method is ConnectorAuthMethodConfig & {
+  readonly grant: ConnectorOAuthGrantConfig;
+} {
+  switch (method.grant.kind) {
+    case "auth-code":
+    case "device-auth":
+      return true;
+    case "manual":
+    case "managed":
+    case "interactive-pairing":
+      return false;
+  }
+}
+
 export function getConnectorOAuthGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined {
-  const method = getConnectorAuthMethod(type, "oauth");
+  for (const method of connectorAuthMethodValues(type)) {
+    if (isConnectorOAuthGrantConfig(method)) {
+      return method.grant;
+    }
+  }
+  return undefined;
+}
+
+export function connectorAuthMethodHasOAuthGrant(
+  type: ConnectorType,
+  authMethod: string,
+): boolean {
+  const method = lookupConnectorAuthMethod(type, authMethod);
   switch (method?.grant.kind) {
     case "auth-code":
     case "device-auth":
-      return method.grant;
+      return true;
     case "manual":
     case "managed":
     case "interactive-pairing":
     case undefined:
-      return undefined;
+      return false;
+  }
+}
+
+function isConnectorInteractivePairingGrantConfig(
+  method: ConnectorAuthMethodConfig,
+): method is ConnectorAuthMethodConfig & {
+  readonly grant: ConnectorInteractivePairingGrantConfig;
+} {
+  switch (method.grant.kind) {
+    case "interactive-pairing":
+      return true;
+    case "manual":
+    case "auth-code":
+    case "device-auth":
+    case "managed":
+      return false;
   }
 }
 
@@ -155,14 +199,26 @@ export function getConnectorAuthCodeGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorAuthCodeGrantConfig | undefined {
   const grant = getConnectorOAuthGrantConfigIfSupported(type);
-  return grant?.kind === "auth-code" ? grant : undefined;
+  switch (grant?.kind) {
+    case "auth-code":
+      return grant;
+    case "device-auth":
+    case undefined:
+      return undefined;
+  }
 }
 
 export function getConnectorDeviceAuthGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorDeviceAuthGrantConfig | undefined {
   const grant = getConnectorOAuthGrantConfigIfSupported(type);
-  return grant?.kind === "device-auth" ? grant : undefined;
+  switch (grant?.kind) {
+    case "device-auth":
+      return grant;
+    case "auth-code":
+    case undefined:
+      return undefined;
+  }
 }
 
 export function getConnectorOAuthScopes(type: ConnectorType): string[] {
@@ -172,17 +228,12 @@ export function getConnectorOAuthScopes(type: ConnectorType): string[] {
 export function getConnectorInteractivePairingGrantConfigIfSupported(
   type: ConnectorType,
 ): ConnectorInteractivePairingGrantConfig | undefined {
-  const method = getConnectorAuthMethod(type, "cli-auth");
-  switch (method?.grant.kind) {
-    case "interactive-pairing":
+  for (const method of connectorAuthMethodValues(type)) {
+    if (isConnectorInteractivePairingGrantConfig(method)) {
       return method.grant;
-    case "manual":
-    case "auth-code":
-    case "device-auth":
-    case "managed":
-    case undefined:
-      return undefined;
+    }
   }
+  return undefined;
 }
 
 export function getConnectorGenerationTypes(
@@ -227,11 +278,12 @@ function shouldIncludeApiAuthMethod(
   type: ConnectorType,
   policy: ApiAuthMethodPolicy | undefined,
 ): boolean {
-  if (policy === "include") {
-    return true;
-  }
-  if (!policy || policy === "exclude") {
-    return false;
+  switch (policy) {
+    case "include":
+      return true;
+    case "exclude":
+    case undefined:
+      return false;
   }
   return policy.includeForTypes.includes(type);
 }
@@ -251,14 +303,23 @@ export function getAvailableConnectorAuthMethods(
   const availableAuthMethods: ConnectorLegacyAuthMethodId[] = [];
 
   for (const authMethod of CONNECTOR_LEGACY_AUTH_METHOD_ORDER) {
-    if (!getConnectorAuthMethod(type, authMethod)) {
-      continue;
-    }
-    if (
-      authMethod === "api" &&
-      !shouldIncludeApiAuthMethod(type, apiAuthMethodPolicy)
-    ) {
-      continue;
+    const method = getConnectorAuthMethod(type, authMethod);
+    switch (method?.grant.kind) {
+      case "managed": {
+        if (!shouldIncludeApiAuthMethod(type, apiAuthMethodPolicy)) {
+          continue;
+        }
+        break;
+      }
+      case "auth-code":
+      case "device-auth":
+      case "interactive-pairing":
+      case "manual": {
+        break;
+      }
+      case undefined: {
+        continue;
+      }
     }
     if (isConnectorAuthMethodAvailable(type, authMethod, featureStates)) {
       availableAuthMethods.push(authMethod);

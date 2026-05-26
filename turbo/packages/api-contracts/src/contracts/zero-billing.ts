@@ -94,6 +94,7 @@ const checkoutRequestSchema = z.object({
 const creditCheckoutRequestSchema = z
   .object({
     credits: z.number().int().min(1000).max(10_000_000),
+    customAmount: z.boolean().optional(),
     successUrl: z.string().url(),
     cancelUrl: z.string().url(),
     autoRecharge: z
@@ -104,6 +105,12 @@ const creditCheckoutRequestSchema = z
       })
       .optional(),
   })
+  .refine(
+    (data) => {
+      return data.customAmount !== true || data.autoRecharge === undefined;
+    },
+    { message: "auto-recharge is not supported for custom amount checkout" },
+  )
   .refine(
     (data) => {
       return (

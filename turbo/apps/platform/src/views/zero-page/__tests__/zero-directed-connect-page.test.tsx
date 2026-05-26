@@ -23,7 +23,10 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import {
+  zeroSecretsContract,
+  zeroVariablesContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   setMockConnectors,
@@ -269,6 +272,85 @@ describe("directed connect page", () => {
       expect(
         screen.getByRole("heading", { name: config.label }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("opens manual credential dialog by manual grant shape", async () => {
+    const user = userEvent.setup();
+    let submittedSecret: { name: string; value: string } | undefined;
+    const submittedVariables: { name: string; value: string }[] = [];
+
+    server.use(
+      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
+        submittedSecret = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
+        submittedVariables.push({ name: body.name, value: body.value });
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          value: body.value,
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/zendesk/connect",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Zendesk to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Connect"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("your-zendesk-api-token"),
+      ).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText("your-zendesk-api-token"),
+      "zendesk-token",
+    );
+    await user.type(
+      screen.getByPlaceholderText("your-email@company.com"),
+      "support@example.com",
+    );
+    await user.type(
+      screen.getByPlaceholderText("yourcompany"),
+      "example-subdomain",
+    );
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(submittedVariables).toStrictEqual(
+        expect.arrayContaining([
+          { name: "ZENDESK_EMAIL", value: "support@example.com" },
+          { name: "ZENDESK_SUBDOMAIN", value: "example-subdomain" },
+        ]),
+      );
+      expect(submittedSecret).toStrictEqual({
+        name: "ZENDESK_API_TOKEN",
+        value: "zendesk-token",
+      });
     });
   });
 

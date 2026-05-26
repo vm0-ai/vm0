@@ -1,5 +1,5 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
-import { IconDotsVertical, IconPlus } from "@tabler/icons-react";
+import { IconDotsVertical } from "@tabler/icons-react";
 import {
   Button,
   DropdownMenu,
@@ -24,6 +24,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
+import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 type OAuthStatus = "connected" | "stale" | "missing";
 
@@ -73,26 +74,23 @@ function OAuthCredentialsSection() {
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="space-y-1 text-sm text-muted-foreground">
-        <p>
-          Personal Claude Code and ChatGPT subscription, used only in your own
-          runs.
-        </p>
-        <p>
-          Organization admins can add more models from the Models page in
-          organization management.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <section className="flex flex-col gap-4">
+      <SettingsSectionHeading
+        title="Personal"
+        description="Used only in your runs, with your own credentials."
+      />
+      <div
+        className="overflow-hidden rounded-xl bg-card"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
         {isLoading ? (
           <>
-            <OAuthCardSkeleton />
-            <OAuthCardSkeleton />
+            <OAuthCredentialRowSkeleton />
+            <OAuthCredentialRowSkeleton />
           </>
         ) : (
           <>
-            <OAuthCredentialCard
+            <OAuthCredentialRow
               type="claude-code-oauth-token"
               title="Claude Code OAuth"
               description="Connect with Claude Code login for Claude-backed model routes."
@@ -123,7 +121,7 @@ function OAuthCredentialsSection() {
               onAction={connectClaudeCode}
               testId="oauth-card-claude-code-oauth-token"
             />
-            <OAuthCredentialCard
+            <OAuthCredentialRow
               type="codex-oauth-token"
               title="ChatGPT (Codex)"
               description="Connect with Codex device login for Codex-backed model routes."
@@ -185,7 +183,7 @@ interface OAuthMenuItem {
   onSelect: () => void;
 }
 
-function OAuthCredentialCard({
+function OAuthCredentialRow({
   type,
   title,
   description,
@@ -204,110 +202,73 @@ function OAuthCredentialCard({
   onAction: () => void;
   testId: string;
 }) {
-  if (status === "missing") {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={`Connect ${title}`}
-        className="zero-card cursor-pointer overflow-hidden"
-        data-testid={testId}
-        onClick={() => {
-          if (!disabled) {
-            onAction();
-          }
-        }}
-        onKeyDown={(event) => {
-          if (disabled) {
-            return;
-          }
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onAction();
-          }
-        }}
-      >
-        <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-            <ProviderIcon type={type} size={20} />
-          </span>
-          <span
-            data-testid="connector-card-label"
-            className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
-          >
-            {title}
-          </span>
-          <OAuthConnectIcon />
-        </div>
-        <div className="px-5 pb-4 pt-1">
-          <div
-            data-testid="connector-help-text"
-            className="text-xs text-muted-foreground line-clamp-2"
-          >
-            {description}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="zero-card flex flex-col" data-testid={testId}>
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ProviderIcon type={type} size={20} />
-        </span>
-        <span
+    <div
+      data-testid={testId}
+      className="flex items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+        <ProviderIcon type={type} size={20} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p
           data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+          className="truncate text-sm font-medium text-foreground"
         >
           {title}
-        </span>
+        </p>
+        <p
+          data-testid="connector-help-text"
+          className="mt-0.5 truncate text-xs text-muted-foreground"
+        >
+          {description}
+        </p>
       </div>
-      <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex items-center gap-2 min-w-0">
+      {status === "missing" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+          aria-label={`Connect ${title}`}
+          disabled={disabled}
+          onClick={onAction}
+        >
+          Connect
+        </Button>
+      ) : (
+        <div className="flex items-center gap-1.5">
           <OAuthFooterStatus status={status} />
+          {menuItems.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+                  aria-label="More options"
+                >
+                  <IconDotsVertical size={14} stroke={1.5} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {menuItems.map((item) => {
+                  return (
+                    <DropdownMenuItem
+                      key={item.label}
+                      disabled={item.disabled}
+                      onClick={item.onSelect}
+                    >
+                      {item.label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
-        {menuItems.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                aria-label="More options"
-              >
-                <IconDotsVertical size={14} stroke={1.5} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {menuItems.map((item) => {
-                return (
-                  <DropdownMenuItem
-                    key={item.label}
-                    disabled={item.disabled}
-                    onClick={item.onSelect}
-                  >
-                    {item.label}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      )}
     </div>
-  );
-}
-
-function OAuthConnectIcon() {
-  return (
-    <span
-      className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
-      aria-hidden="true"
-    >
-      <IconPlus size={14} stroke={1.5} />
-    </span>
   );
 }
 
@@ -335,19 +296,18 @@ function OAuthFooterStatus({ status }: { status: OAuthStatus }) {
   );
 }
 
-function OAuthCardSkeleton() {
+function OAuthCredentialRowSkeleton() {
   return (
     <div
       data-testid="oauth-card-skeleton"
-      className="zero-card flex flex-col overflow-hidden animate-pulse"
+      className="flex animate-pulse items-center gap-3 px-5 py-4 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50"
     >
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
-        <span className="h-4 w-28 rounded bg-muted/50" />
+      <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
+      <div className="min-w-0 flex-1">
+        <span className="block h-4 w-32 rounded bg-muted/50" />
+        <span className="mt-1.5 block h-3 w-48 rounded bg-muted/30" />
       </div>
-      <div className="flex h-11 items-center px-5 zero-border-t">
-        <span className="h-3 w-16 rounded bg-muted/30" />
-      </div>
+      <span className="h-9 w-20 shrink-0 rounded bg-muted/30" />
     </div>
   );
 }

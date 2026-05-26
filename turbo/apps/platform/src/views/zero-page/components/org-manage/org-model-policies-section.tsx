@@ -79,6 +79,7 @@ import {
   getVm0ModelMultiplier,
 } from "../settings/provider-ui-config.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
+import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 function isOAuthMemberType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
@@ -241,7 +242,7 @@ function makePolicyDefault(
   });
 }
 
-function DefaultModelSection({
+function DefaultModelRow({
   policies,
   workspaceDefaultModel,
   disabled,
@@ -262,55 +263,51 @@ function DefaultModelSection({
     : "";
 
   return (
-    <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-foreground">Default</h3>
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
-        <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Default model</p>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">
-              Applied to workspace tasks that do not pick a model.
-            </p>
-          </div>
-          {selectItems.length === 0 ? (
-            <span className="shrink-0 text-sm text-muted-foreground">
-              No available models
-            </span>
-          ) : (
-            <Select
-              value={currentDefault}
-              onValueChange={(value) => {
-                onChange(value as SupportedRunModel);
-              }}
-              disabled={disabled}
-            >
-              <SelectTrigger
-                className="h-9 w-full shrink-0 rounded-lg sm:w-[280px]"
-                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-              >
-                <SelectValue placeholder="Select a default model" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectItems.map((policy) => {
-                  const iconType = getModelIconType(policy.model);
-                  return (
-                    <SelectItem key={policy.id} value={policy.model}>
-                      <div className="flex items-center gap-2">
-                        {iconType && <ProviderIcon type={iconType} size={16} />}
-                        <span>{policy.modelLabel}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+    <div
+      data-testid="default-model-row"
+      className="flex flex-col gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">Default model</p>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          Used when a task doesn&apos;t choose its own model.
+        </p>
       </div>
-    </section>
+      {selectItems.length === 0 ? (
+        <span className="shrink-0 text-sm text-muted-foreground">
+          No available models
+        </span>
+      ) : (
+        <Select
+          value={currentDefault}
+          onValueChange={(value) => {
+            onChange(value as SupportedRunModel);
+          }}
+          disabled={disabled}
+        >
+          <SelectTrigger
+            className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]"
+            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          >
+            <SelectValue placeholder="Select a default model" />
+          </SelectTrigger>
+          <SelectContent>
+            {selectItems.map((policy) => {
+              const iconType = getModelIconType(policy.model);
+              return (
+                <SelectItem key={policy.id} value={policy.model}>
+                  <div className="flex items-center gap-2">
+                    {iconType && <ProviderIcon type={iconType} size={16} />}
+                    <span>{policy.modelLabel}</span>
+                  </div>
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
   );
 }
 
@@ -464,11 +461,12 @@ function AddModelButton({
     <Button
       type="button"
       variant="outline"
-      className="h-8 gap-2 rounded-lg px-3 text-sm"
+      size="sm"
+      className="zero-btn-morandi h-9 gap-2 rounded-lg border"
       disabled={disabled}
       onClick={onClick}
     >
-      <IconPlus size={14} stroke={1.8} />
+      <IconPlus size={14} stroke={2} />
       Add model
     </Button>
   );
@@ -1150,43 +1148,44 @@ export function OrgModelPoliciesSection() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
-      <DefaultModelSection
-        policies={visiblePolicies}
-        workspaceDefaultModel={data.workspaceDefaultModel}
-        disabled={saving}
-        onChange={handleDefaultModelChange}
-      />
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-medium text-foreground">Models</h3>
+    <section className="flex flex-col gap-4">
+      <SettingsSectionHeading
+        title="Workspace"
+        description="Available to everyone in this workspace."
+        action={
           <AddModelButton
             hasModels={addableModels.length > 0}
             disabled={saving}
             onClick={handleOpenAddModel}
           />
+        }
+      />
+      <DefaultModelRow
+        policies={visiblePolicies}
+        workspaceDefaultModel={data.workspaceDefaultModel}
+        disabled={saving}
+        onChange={handleDefaultModelChange}
+      />
+      <div
+        className="overflow-hidden rounded-xl bg-card"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
+        <div className="divide-y divide-border/50">
+          {visiblePolicies.map((policy) => {
+            return (
+              <PolicyRow
+                key={policy.id}
+                policy={policy}
+                providers={providers}
+                disabled={false}
+                canDelete={policies.length > 1}
+                onEdit={handleEditPolicy}
+                onDelete={handleDeletePolicy}
+              />
+            );
+          })}
         </div>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-        >
-          <div className="divide-y divide-border/50">
-            {visiblePolicies.map((policy) => {
-              return (
-                <PolicyRow
-                  key={policy.id}
-                  policy={policy}
-                  providers={providers}
-                  disabled={false}
-                  canDelete={policies.length > 1}
-                  onEdit={handleEditPolicy}
-                  onDelete={handleDeletePolicy}
-                />
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      </div>
       <ModelPolicyRouteDialog
         policies={policies}
         addableModels={addableModels}
@@ -1194,7 +1193,7 @@ export function OrgModelPoliciesSection() {
         saving={saving}
         onSubmit={submit}
       />
-    </div>
+    </section>
   );
 }
 

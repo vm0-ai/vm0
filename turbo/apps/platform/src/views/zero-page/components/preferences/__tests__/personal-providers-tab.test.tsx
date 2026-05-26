@@ -94,17 +94,10 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          /Personal Claude Code and ChatGPT subscription, used only in your own runs/,
-        ),
+        screen.getByText(/Used only in your runs, with your own credentials/),
       ).toBeInTheDocument();
     });
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Organization admins can add more models from the Models page in organization management/,
-      ),
-    ).toBeInTheDocument();
   });
 
   it("renders fixed OAuth actions without default or add-provider UI", async () => {
@@ -117,9 +110,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          /Personal Claude Code and ChatGPT subscription, used only in your own runs/,
-        ),
+        screen.getByText(/Used only in your runs, with your own credentials/),
       ).toBeInTheDocument();
     });
     expect(
@@ -128,11 +119,11 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     expect(
       screen.getByTestId("oauth-card-codex-oauth-token"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Connect Claude Code OAuth")).toHaveClass(
-      "cursor-pointer",
+    expect(screen.getByLabelText("Connect Claude Code OAuth").tagName).toBe(
+      "BUTTON",
     );
-    expect(screen.getByLabelText("Connect ChatGPT (Codex)")).toHaveClass(
-      "cursor-pointer",
+    expect(screen.getByLabelText("Connect ChatGPT (Codex)").tagName).toBe(
+      "BUTTON",
     );
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(

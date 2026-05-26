@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
@@ -16,6 +17,9 @@ import { accept } from "../../lib/accept.ts";
 // ---------------------------------------------------------------------------
 
 export type BillingTier = "free" | "pro" | "team";
+export type CreditCheckoutSelection =
+  | { readonly credits: number; readonly customAmount?: false }
+  | { readonly credits: number; readonly customAmount: true };
 
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   if (tier === "free" || tier === "pro" || tier === "team") {
@@ -119,6 +123,52 @@ export const startCheckout$ = command(
     } else {
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
+    }
+  },
+);
+
+export const startCreditCheckout$ = command(
+  async (
+    { get },
+    selection: CreditCheckoutSelection,
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("credits", "purchased");
+    successUrl.searchParams.set(
+      "credit_checkout_session_id",
+      "{CHECKOUT_SESSION_ID}",
+    );
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "credit_checkout_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+      );
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("credits", "canceled");
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCreditCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          credits: selection.credits,
+          ...(selection.customAmount === true ? { customAmount: true } : {}),
+          successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
     }
   },
 );

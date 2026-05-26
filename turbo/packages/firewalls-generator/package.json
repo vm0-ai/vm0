@@ -193,6 +193,7 @@
     "generate:similarweb": "tsx src/index.ts similarweb",
     "generate:slack": "tsx src/index.ts slack",
     "generate:slack-webhook": "tsx src/index.ts slack-webhook",
+    "generate:slock": "tsx src/index.ts slock",
     "generate:sociavault": "tsx src/index.ts sociavault",
     "generate:snowflake": "tsx src/index.ts snowflake",
     "generate:sproutgigs": "tsx src/index.ts sproutgigs",

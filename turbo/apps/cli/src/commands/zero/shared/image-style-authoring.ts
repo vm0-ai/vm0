@@ -1,12 +1,14 @@
 import {
   type GenerationOutputKind,
   type OpenDesignCandidateSlice,
+  type OpenDesignRegistryEntry,
   selectOpenDesignCandidates,
 } from "./open-design-registry";
 
 interface StyledImageAuthoringOptions {
   readonly prompt: string;
   readonly details: readonly string[];
+  readonly style: OpenDesignRegistryEntry;
 }
 
 interface StyledImageAuthoringPacket {
@@ -46,7 +48,6 @@ interface StyledImageAuthoringPacket {
 
 const outputDir = "./opendesign/images";
 const artifactRules = [
-  "Select the image style that best matches the prompt before generation.",
   "Resolve the selected style source before generating the image.",
   "Use the style skill's referenced assets and generation path when it provides one.",
   "Produce a single final image file and keep any temporary metadata under the output directory.",
@@ -55,10 +56,17 @@ const artifactRules = [
 export function createStyledImageAuthoringPacket(
   options: StyledImageAuthoringOptions,
 ): StyledImageAuthoringPacket {
-  const candidateSlice = selectOpenDesignCandidates({
+  const baseSlice = selectOpenDesignCandidates({
     target: "image",
     prompt: [options.prompt, ...options.details, ...artifactRules].join("\n"),
   });
+  const candidateSlice: OpenDesignCandidateSlice = {
+    ...baseSlice,
+    candidates: {
+      ...baseSlice.candidates,
+      imageStyles: [options.style],
+    },
+  };
   const selectionSchema = {
     imageStyle: "string",
     skills: "string[]",
@@ -81,18 +89,20 @@ export function createStyledImageAuthoringPacket(
     outputDir,
   } as const;
   const instructions = [
-    "# Zero built-in generate image --styled",
+    `# Zero built-in generate image --style ${options.style.id}`,
     "",
     "This is a federated generation resource-selection packet for the current agent.",
-    "Zero is not generating this image on the server yet. You select resources, resolve them, and generate the styled image.",
+    "Zero is not generating this image on the server yet. The image style has already been selected by the caller — resolve it and generate the styled image.",
     "",
     "## User Prompt",
     options.prompt,
     "",
-    "## Stage 1: Resource Selection",
-    "- Choose an image style from the bundled federated registry slice below.",
+    "## Selected Image Style",
+    `- \`${options.style.id}\` — ${options.style.name}`,
+    "",
+    "## Stage 1: Supporting Resource Selection",
+    "- The image style is locked. Optionally pick supporting skills/templates from the candidate slice below.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
-    "- Prefer image-style resources with matching triggers, but the user prompt is the highest-priority signal.",
     "- Treat the selection JSON as internal working state, then continue to generation.",
     "",
     "## Selection Output Schema",

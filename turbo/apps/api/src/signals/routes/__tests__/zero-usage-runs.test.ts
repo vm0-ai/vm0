@@ -180,6 +180,154 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs[1]?.creditsCharged).toBe(50);
   });
 
+  it("filters by runId", async () => {
+    mockClerkUserLookup();
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const included = await store.set(
+      seedRun$,
+      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(2) },
+      context.signal,
+    );
+    const excluded = await store.set(
+      seedRun$,
+      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(1) },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: included.runId,
+        inputTokens: 123,
+        outputTokens: 45,
+        creditsCharged: 67,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: excluded.runId,
+        inputTokens: 999,
+        outputTokens: 999,
+        creditsCharged: 999,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { runId: included.runId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.pagination).toStrictEqual({
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+    expect(response.body.runs).toHaveLength(1);
+    expect(response.body.runs[0]).toMatchObject({
+      runId: included.runId,
+      model: "claude-sonnet-4-6",
+      inputTokens: 123,
+      outputTokens: 45,
+      creditsCharged: 67,
+    });
+  });
+
+  it("rejects invalid runId format", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { runId: "not-a-uuid" },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns empty result for runId without processed usage", async () => {
+    mockClerkUserLookup();
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const run = await store.set(
+      seedRun$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { runId: run.runId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      runs: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+    });
+  });
+
+  it("does not leak another org's runId", async () => {
+    mockClerkUserLookup();
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const otherFixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const otherRun = await store.set(
+      seedRun$,
+      { orgId: otherFixture.orgId, userId: otherFixture.userId },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: otherFixture.orgId,
+        userId: otherFixture.userId,
+        runId: otherRun.runId,
+        inputTokens: 100,
+        outputTokens: 50,
+        creditsCharged: 25,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { runId: otherRun.runId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      runs: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+    });
+  });
+
   it("paginates results correctly", async () => {
     mockClerkUserLookup();
     const fixture = await track(

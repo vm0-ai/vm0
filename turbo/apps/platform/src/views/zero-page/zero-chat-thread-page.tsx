@@ -1,6 +1,7 @@
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   ReactNode,
 } from "react";
 import {
@@ -147,7 +148,17 @@ import {
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import {
+  billingStatusAsync$,
+  type CreditCheckoutSelection,
+  startCheckout$,
+  startCreditCheckout$,
+} from "../../signals/zero-page/billing.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -1034,40 +1045,55 @@ function ArtifactBulkActionsMenu({
   );
 }
 
-type ChatImagePreviewButtonProps = {
+type ChatImagePreviewLinkProps = {
   alt: string;
   ariaLabel: string;
-  buttonClassName: string;
   imageClassName: string;
+  linkClassName: string;
   onPreview: () => void;
   placeholderClassName: string;
   url: string;
 };
 
-function ChatImagePreviewButton({
+function ChatImagePreviewLink({
   alt,
   ariaLabel,
-  buttonClassName,
   imageClassName,
+  linkClassName,
   onPreview,
   placeholderClassName,
   url,
-}: ChatImagePreviewButtonProps) {
+}: ChatImagePreviewLinkProps) {
   const imageLoadStatuses = useGet(imageLoadStatusByKey$);
   const imageLoadStatusRef = useSet(imageLoadStatusRef$);
   const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const imageLoadKey = `chat-image-preview:${url}`;
+  const imageUrl = publicAttachmentUrl(url);
+  const imageLoadKey = `chat-image-preview:${imageUrl}`;
   const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
   const showPlaceholder = imageStatus !== "loaded";
 
+  const openPreview = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    event.preventDefault();
+    onPreview();
+  };
+
   return (
-    <button
-      type="button"
-      onClick={onPreview}
+    <a
+      href={imageUrl}
+      onClick={openPreview}
       className={cn(
-        "group/image-preview relative overflow-hidden",
-        buttonClassName,
+        "group/image-preview relative inline-block overflow-hidden",
+        linkClassName,
       )}
       aria-label={ariaLabel}
     >
@@ -1089,7 +1115,7 @@ function ChatImagePreviewButton({
       <img
         key={imageLoadKey}
         ref={imageLoadStatusRef}
-        src={url}
+        src={imageUrl}
         alt={alt}
         data-image-load-key={imageLoadKey}
         loading="lazy"
@@ -1110,7 +1136,7 @@ function ChatImagePreviewButton({
           className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
         />
       </span>
-    </button>
+    </a>
   );
 }
 
@@ -1187,11 +1213,11 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
 
   if (previewKind === "image") {
     return (
-      <ChatImagePreviewButton
+      <ChatImagePreviewLink
         alt={`Preview ${file.filename}`}
         ariaLabel={`Preview ${file.filename}`}
-        buttonClassName="flex h-full w-full items-center justify-center bg-muted"
         imageClassName="h-full w-full object-contain"
+        linkClassName="flex h-full w-full items-center justify-center bg-muted"
         onPreview={() => {
           openImageLightbox(file.url);
         }}
@@ -2462,12 +2488,12 @@ function BodyContentBlocks({
 
         if (block.preview.kind === "image") {
           return (
-            <ChatImagePreviewButton
+            <ChatImagePreviewLink
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName="w-fit max-w-full rounded-lg border border-foreground/10"
               imageClassName="max-h-48 max-w-full object-contain"
+              linkClassName="w-fit max-w-full rounded-lg border border-foreground/10"
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
@@ -2579,10 +2605,237 @@ function isImageFilename(filename: string): boolean {
   );
 }
 
+const CREDITS_PER_DOLLAR = 1000;
+const CREDIT_TOP_UP_OPTIONS = [100_000, 200_000, 300_000] as const;
+
+function formatCreditsUsd(credits: number): string {
+  const dollars = credits / CREDITS_PER_DOLLAR;
+  return dollars.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Number.isInteger(dollars) ? 0 : 2,
+  });
+}
+
+function customCreditsFromForm(form: HTMLFormElement | null): number | null {
+  const element = form?.elements.namedItem("customUsd");
+  if (!(element instanceof HTMLInputElement)) {
+    return null;
+  }
+
+  const usd = Number(element.value);
+  const credits = usd * CREDITS_PER_DOLLAR;
+  if (!Number.isInteger(credits) || credits < 1000 || credits > 10_000_000) {
+    return null;
+  }
+  return credits;
+}
+
+function CreditsAvailableMessage() {
+  return (
+    <div className="max-w-md">
+      <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+        Credits available
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Your credits have been added. You can continue chatting with Zero.
+      </p>
+    </div>
+  );
+}
+
+function insufficientCreditsCopy(params: {
+  readonly isFree: boolean;
+  readonly roleResolved: boolean;
+  readonly canManageBilling: boolean;
+}): { readonly headline: string; readonly helper: string } {
+  const headline = params.isFree
+    ? "You've used your free credits"
+    : "You're out of credits";
+  if (!params.roleResolved) {
+    return { headline, helper: "Checking billing permissions..." };
+  }
+  if (!params.canManageBilling) {
+    return {
+      headline,
+      helper: params.isFree
+        ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
+        : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+    };
+  }
+  return {
+    headline,
+    helper: params.isFree
+      ? "Upgrade to Pro to keep chatting with Zero."
+      : "Add credits to keep chatting with Zero.",
+  };
+}
+
+function PaidCreditCheckoutActions({
+  redirecting,
+  handleCreditClick,
+}: {
+  readonly redirecting: boolean;
+  readonly handleCreditClick: (
+    selection: CreditCheckoutSelection,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void;
+}) {
+  const handleCustomCreditClick = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    const credits = customCreditsFromForm(event.currentTarget.form);
+    if (credits === null) {
+      toast.error("Enter between $1 and $10,000");
+      return;
+    }
+    handleCreditClick({ credits, customAmount: true }, event);
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        {CREDIT_TOP_UP_OPTIONS.map((credits) => {
+          return (
+            <button
+              key={credits}
+              type="button"
+              onClick={(event) => {
+                handleCreditClick({ credits }, event);
+              }}
+              disabled={redirecting}
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {formatCreditsUsd(credits)}
+            </button>
+          );
+        })}
+        <details>
+          <summary
+            role="button"
+            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
+          >
+            Custom
+          </summary>
+          <form className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              name="customUsd"
+              defaultValue="100"
+              onInput={(event) => {
+                event.currentTarget.value = event.currentTarget.value.replace(
+                  /\D/g,
+                  "",
+                );
+              }}
+              aria-label="Custom dollar amount"
+              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none transition-colors focus:border-ring"
+            />
+            <button
+              type="button"
+              onClick={handleCustomCreditClick}
+              disabled={redirecting}
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {redirecting ? "Redirecting..." : "Buy"}
+            </button>
+          </form>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+function InsufficientCreditsCard() {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
+  const [creditCheckoutLoadable, creditCheckout] =
+    useLoadableSet(startCreditCheckout$);
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const pageSignal = useGet(pageSignal$);
+
+  const tier =
+    billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
+  const credits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const roleResolved = isAdminLoadable.state === "hasData";
+  const canManageBilling = roleResolved ? isAdminLoadable.data : false;
+  const hasAvailableCredits = credits !== null && credits > 0;
+  const isFree = tier === "free" || tier === null;
+  const shouldStartProCheckout = tier === "free";
+  const redirecting =
+    checkoutLoadable.state === "loading" ||
+    creditCheckoutLoadable.state === "loading";
+
+  if (hasAvailableCredits) {
+    return <CreditsAvailableMessage />;
+  }
+
+  const { headline, helper } = insufficientCreditsCopy({
+    isFree,
+    roleResolved,
+    canManageBilling,
+  });
+
+  const openBilling = () => {
+    setTab("billing");
+    setSubPage(false);
+    detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+  };
+
+  const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (shouldStartProCheckout) {
+      const newTab = event.metaKey || event.ctrlKey;
+      detach(checkout("pro", newTab, pageSignal), Reason.DomCallback);
+      return;
+    }
+    openBilling();
+  };
+
+  const handleCreditClick = (
+    selection: CreditCheckoutSelection,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    const newTab = event.metaKey || event.ctrlKey;
+    detach(creditCheckout(selection, newTab, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
+      <p className="text-sm font-medium text-foreground">{headline}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      {!canManageBilling ? null : isFree ? (
+        <button
+          type="button"
+          onClick={handleUpgradeClick}
+          disabled={redirecting}
+          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+        >
+          {redirecting ? "Redirecting..." : "Upgrade to Pro"}
+        </button>
+      ) : (
+        <PaidCreditCheckoutActions
+          redirecting={redirecting}
+          handleCreditClick={handleCreditClick}
+        />
+      )}
+    </div>
+  );
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
+
+  if (error === "insufficient_credits") {
+    return <InsufficientCreditsCard />;
+  }
 
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
@@ -2942,12 +3195,12 @@ function UserMessageAttachments({
       {attachments.map((a) => {
         if (a.isImage) {
           return (
-            <ChatImagePreviewButton
+            <ChatImagePreviewLink
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              buttonClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
               imageClassName="h-9 max-w-[72px] object-cover"
+              linkClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
               onPreview={() => {
                 onImageClick(a.url);
               }}

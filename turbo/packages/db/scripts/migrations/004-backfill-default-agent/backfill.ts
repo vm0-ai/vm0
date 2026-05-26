@@ -7,7 +7,7 @@
  * to the corresponding Clerk org's publicMetadata.default_agent_compose_id.
  *
  * Usage:
- *   tsx scripts/migrations/004-backfill-default-agent/backfill.ts [--migrate]
+ *   pnpm exec tsx scripts/migrations/004-backfill-default-agent/backfill.ts [--migrate]
  *
  * Environment:
  *   DATABASE_URL        — Required

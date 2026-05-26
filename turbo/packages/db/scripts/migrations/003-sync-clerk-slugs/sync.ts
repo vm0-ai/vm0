@@ -7,7 +7,7 @@
  * In migrate mode, updates Clerk org slugs to match the database (DB is source of truth).
  *
  * Usage:
- *   tsx scripts/migrations/003-sync-clerk-slugs/sync.ts [--migrate]
+ *   pnpm exec tsx scripts/migrations/003-sync-clerk-slugs/sync.ts [--migrate]
  *
  * Environment:
  *   DATABASE_URL        — Required

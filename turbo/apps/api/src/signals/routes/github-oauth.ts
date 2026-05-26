@@ -763,6 +763,7 @@ const callbackGithubUserOauth$ = command(
         accessToken: token.accessToken,
         userInfo: token.userInfo,
         oauthScopes: getConnectorOAuthScopes(GITHUB_CONNECTOR_TYPE),
+        extraConnectorSecrets: token.extraConnectorSecrets,
       },
       signal,
     );

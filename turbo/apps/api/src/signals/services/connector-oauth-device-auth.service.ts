@@ -887,6 +887,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
               ? secretMetadata.refreshSecretName
               : undefined,
             expiresIn: result.token.expiresIn,
+            extraConnectorSecrets: result.token.extraConnectorSecrets,
           },
           signal,
         );

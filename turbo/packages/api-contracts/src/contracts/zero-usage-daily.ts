@@ -42,6 +42,7 @@ export const zeroUsageRunsContract = c.router({
     query: z.object({
       page: z.coerce.number().int().positive().default(1),
       pageSize: z.coerce.number().int().positive().max(100).default(20),
+      runId: z.string().uuid().optional(),
       agentId: z.string().optional(),
       // Comma-separated list of user IDs to filter by. Empty string = no filter.
       userIds: z.string().optional(),
@@ -50,6 +51,7 @@ export const zeroUsageRunsContract = c.router({
     }),
     responses: {
       200: usageRunsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,

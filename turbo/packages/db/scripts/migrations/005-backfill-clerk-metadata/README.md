@@ -33,7 +33,7 @@ their metadata to the corresponding DB tables:
 
 - Node.js 18+
 - `pnpm install` completed in the `turbo` directory
-- Database migrations applied (`pnpm db:migrate`)
+- Database migrations applied (`pnpm -F @vm0/db db:migrate`)
 
 ## Environment Variables
 
@@ -44,14 +44,14 @@ their metadata to the corresponding DB tables:
 
 ## Usage
 
-Run from the `turbo/apps/web` directory:
+Run from the `turbo/packages/db` directory:
 
 ```bash
 # Dry run (default) — preview what would be backfilled
-tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts
+pnpm exec tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts
 
 # Actual migration
-tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts --migrate
+pnpm exec tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts --migrate
 ```
 
 ## Options

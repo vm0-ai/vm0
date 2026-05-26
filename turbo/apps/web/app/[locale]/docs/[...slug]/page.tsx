@@ -29,6 +29,19 @@ function pathFromSlug(slug: string[]): string {
   return slug.join("/");
 }
 
+function titlesMatch(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function stripDuplicateLeadingHeading(content: string, title: string): string {
+  const match = content.match(/^\s*#{1,3}\s+(.+?)\s*\n+/);
+  const heading = match?.[1];
+  if (match && heading && titlesMatch(heading, title)) {
+    return content.slice(match[0].length);
+  }
+  return content;
+}
+
 export async function generateMetadata({
   params,
   searchParams,
@@ -102,6 +115,8 @@ export default async function DocsPage({
   const t = await getTranslations({ locale, namespace: "docs" });
   const navigation = await getDocsNavigation(locale, { draft });
   const pageUrl = `${getDocsBaseUrl()}/${locale}/docs/${page.path}`;
+  const showKicker = !titlesMatch(page.section.title, page.title);
+  const articleContent = stripDuplicateLeadingHeading(page.content, page.title);
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
@@ -181,7 +196,9 @@ export default async function DocsPage({
             </svg>
             {t("backToDocs")}
           </Link>
-          <span className="docs-kicker">{page.section.title}</span>
+          {showKicker && (
+            <span className="docs-kicker">{page.section.title}</span>
+          )}
           <h1 className="docs-title">{page.title}</h1>
           {page.description && (
             <p className="docs-description">{page.description}</p>
@@ -203,7 +220,7 @@ export default async function DocsPage({
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight]}
           >
-            {page.content}
+            {articleContent}
           </ReactMarkdown>
         </article>
       </DocsShell>

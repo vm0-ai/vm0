@@ -1,5 +1,7 @@
 """Tests for raw firewall request matching."""
 
+import pytest
+
 import matching
 from tests.firewall_helpers import grant_all, wrap_firewalls
 
@@ -992,6 +994,85 @@ class TestThreeLevelMatching:
             network_policies=None,
         )
         assert isinstance(result, matching.FirewallAllow)
+
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            {"github": {"deny": None, "ask": [], "unknownPolicy": "deny"}},
+            {"github": {"deny": [], "ask": None, "unknownPolicy": "deny"}},
+        ],
+    )
+    def test_null_permission_lists_behave_as_empty(self, policies):
+        result = matching.match_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            {"github": None},
+            {"github": "denied"},
+            {"github": {"deny": "repo-read", "ask": [], "unknownPolicy": "allow"}},
+            {"github": {"deny": [], "ask": [None], "unknownPolicy": "allow"}},
+        ],
+    )
+    def test_malformed_permission_policy_fails_closed_after_base_match(self, policies):
+        result = matching.match_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_network_policy"
+
+    def test_top_level_malformed_network_policy_fails_closed_after_base_match(self):
+        unrelated = matching.match_firewall_request(
+            "https://api.example.com/foo",
+            "GET",
+            self._firewalls(),
+            network_policies="denied",
+        )
+        matched = matching.match_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies="denied",
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_network_policy"
+
+    def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch(self):
+        policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
+
+        allowed = matching.match_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        blocked = matching.match_firewall_request(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            network_policies=policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.reason == "malformed_network_policy"
 
     def test_empty_permissions_with_unknown_policy_allow(self, headers):
         """Firewall with no permission rules + unknownPolicy=allow allows all."""

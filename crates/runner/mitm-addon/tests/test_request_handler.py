@@ -938,6 +938,102 @@ class TestRequestHandler:
         assert proxy_log_entry["type"] == "firewall_block"
         assert proxy_log_entry["reason"] == "malformed_firewall_config"
 
+    async def test_firewall_malformed_network_policy_block_reports_reason(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        """Malformed network policy blocks fail closed instead of raising."""
+        vm_info = _single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        )
+        vm_info["networkPolicies"] = {"github": "denied"}
+        reg_path = _write_registry(tmp_path, vm_info=vm_info)
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos/org/repo",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata["firewall_action"] == "DENY"
+        body = json.loads(flow.response.content)
+        assert body["permissions"] == []
+        assert body["message"] == "Request blocked: malformed network policy"
+        assert body["reason"] == "malformed_network_policy"
+        proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+        assert proxy_log_entry["type"] == "firewall_block"
+        assert proxy_log_entry["reason"] == "malformed_network_policy"
+        assert "networkPolicies" not in proxy_log_entry
+
+    async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        """Top-level malformed network policy blocks fail closed after base match."""
+        vm_info = _single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        )
+        vm_info["networkPolicies"] = "denied"
+        reg_path = _write_registry(tmp_path, vm_info=vm_info)
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos/org/repo",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata["firewall_action"] == "DENY"
+        body = json.loads(flow.response.content)
+        assert body["permissions"] == []
+        assert body["message"] == "Request blocked: malformed network policy"
+        assert body["reason"] == "malformed_network_policy"
+        proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+        assert proxy_log_entry["type"] == "firewall_block"
+        assert proxy_log_entry["reason"] == "malformed_network_policy"
+        assert "networkPolicies" not in proxy_log_entry
+
     async def test_firewall_permission_denied_block_reports_reason(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):

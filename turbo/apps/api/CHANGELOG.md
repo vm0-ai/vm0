@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.74.1](https://github.com/vm0-ai/vm0/compare/api-v1.74.0...api-v1.74.1) (2026-05-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.0
+    * @vm0/core bumped to 8.295.1
+    * @vm0/db bumped to 1.18.17
+
+## [1.74.0](https://github.com/vm0-ai/vm0/compare/api-v1.73.0...api-v1.74.0) (2026-05-26)
+
+
+### Features
+
+* enable google ads connector for everyone ([#14911](https://github.com/vm0-ai/vm0/issues/14911)) ([bbb2480](https://github.com/vm0-ai/vm0/commit/bbb24801eaa8161642354cfe27ec97192446a11b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.295.0
+
 ## [1.73.0](https://github.com/vm0-ai/vm0/compare/api-v1.72.7...api-v1.73.0) (2026-05-26)
 
 

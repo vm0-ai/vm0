@@ -4,6 +4,11 @@ import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { createStyledImageAuthoringPacket } from "./image-style-authoring";
+import {
+  findImageStyle,
+  listImageStyles,
+  type OpenDesignRegistryEntry,
+} from "./open-design-registry";
 
 interface ImageOptions {
   prompt?: string;
@@ -21,7 +26,8 @@ interface ImageOptions {
   maskImageUrl?: string;
   inputFidelity?: string;
   imagePromptStrength?: string;
-  styled?: boolean;
+  style?: string;
+  skipStyle?: boolean;
   json?: boolean;
 }
 
@@ -29,6 +35,49 @@ interface ImageGenerateCommandConfig {
   name: string;
   usageCommand: string;
   examples: string;
+}
+
+function formatStyleListing(
+  styles: readonly OpenDesignRegistryEntry[],
+): string {
+  if (styles.length === 0) {
+    return "  (no image styles registered)";
+  }
+  return styles
+    .map((style) => {
+      const desc = style.desc ?? style.description;
+      return `  ${style.id}\n    ${desc}`;
+    })
+    .join("\n\n");
+}
+
+function requireStyleError(usageCommand: string): Error {
+  const styles = listImageStyles();
+  const message = [
+    "--style <id> or --skip-style is required",
+    "",
+    "Available styles:",
+    formatStyleListing(styles),
+    "",
+    `Examples:`,
+    `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
+    `  ${usageCommand} --skip-style --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
+}
+
+function unknownStyleError(id: string, usageCommand: string): Error {
+  const styles = listImageStyles();
+  const message = [
+    `Unknown image style: ${id}`,
+    "",
+    "Available styles:",
+    formatStyleListing(styles),
+    "",
+    `Example:`,
+    `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
 }
 
 function readPrompt(options: ImageOptions, usageCommand: string): string {
@@ -152,19 +201,24 @@ export function createImageGenerateCommand(
       "Reference strength override for Flux Redux",
     )
     .option(
-      "--styled",
-      "Print a resource-selection packet for styled image generation",
+      "--style <id>",
+      "Image style id from the registry (see Image Styles below)",
+    )
+    .option(
+      "--skip-style",
+      "Opt out of styled image generation for this invocation",
     )
     .option("--json", "Print metadata as JSON")
-    .addHelpText(
-      "after",
-      `
+    .addHelpText("after", () => {
+      const styles = listImageStyles();
+      return `
 Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ image file URL and metadata. With --styled, prints
-  an Open Design resource-selection packet for the current agent.
+  Prints the generated /f/ image file URL and metadata. With --style <id>,
+  prints an Open Design resource-selection packet for the current agent
+  with the selected style locked in.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -181,6 +235,8 @@ Models:
 
 Options:
   - Prompt: required, up to 32,000 characters; stdin is supported.
+  - Style: required. Pass --style <id> to generate in a registered style
+    or --skip-style to bypass styled generation entirely.
   - Size: gpt-image-2 accepts auto or WIDTHxHEIGHT. Popular sizes include
     1024x1024,
     1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160,
@@ -200,15 +256,29 @@ Options:
     Flux Redux accepts --image-prompt-strength to override the provider
     default; GPT edit models accept --input-fidelity and supported models
     accept --mask-image-url.
-  - Styled mode: pass --styled to select an image style resource first. In this
-    mode the agent resolves the selected style source and generates the image.`,
-    )
+
+Image Styles:
+${formatStyleListing(styles)}`;
+    })
     .action(
       withErrorHandler(async (options: ImageOptions, command: Command) => {
+        if (options.style && options.skipStyle) {
+          throw new Error("--style and --skip-style cannot be combined");
+        }
+        if (!options.style && !options.skipStyle) {
+          throw requireStyleError(config.usageCommand);
+        }
+
         const prompt = readPrompt(options, config.usageCommand);
-        if (options.styled) {
+        if (options.style) {
+          const style = findImageStyle(options.style);
+          if (!style) {
+            throw unknownStyleError(options.style, config.usageCommand);
+          }
+
           const packet = createStyledImageAuthoringPacket({
             prompt,
+            style,
             details: [
               `Model preference if direct image generation is used: ${options.model}`,
               `Requested size: ${options.size}`,

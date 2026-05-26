@@ -651,6 +651,14 @@ impl MitmProxy {
             crash_rx,
         )
     }
+
+    pub fn usage_state_id_for_test(&self) -> &str {
+        &self.usage_state_id
+    }
+
+    pub fn set_child_for_test(&mut self, child: tokio::process::Child) {
+        self.child = Some(child);
+    }
 }
 
 impl Drop for MitmProxy {
@@ -1151,8 +1159,8 @@ exit 0
             "usage/__init__.py",
             "usage/anthropic_messages.py",
             "usage/counters.py",
+            "usage/idempotency.py",
             "usage/model_tokens.py",
-            "usage/namespaces.py",
             "usage/openai_responses.py",
             "usage/sse.py",
             "usage/webhook.py",

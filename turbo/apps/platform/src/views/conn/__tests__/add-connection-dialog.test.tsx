@@ -17,7 +17,10 @@ import {
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import {
+  zeroSecretsContract,
+  zeroVariablesContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -540,6 +543,74 @@ describe("connect modal - interactions", () => {
       expect(submittedSecret).toBeDefined();
       expect(submittedSecret?.name).toBe("AXIOM_TOKEN");
       expect(submittedSecret?.value).toBe("test-token-value");
+    });
+  });
+
+  it("stores manual credential fields by selected method metadata", async () => {
+    const user = userEvent.setup();
+    let submittedSecret: { name: string; value: string } | undefined;
+    const submittedVariables: { name: string; value: string }[] = [];
+
+    server.use(
+      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
+        submittedSecret = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
+        submittedVariables.push({ name: body.name, value: body.value });
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          value: body.value,
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }),
+    );
+
+    await openConnectModal("zendesk");
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("your-zendesk-api-token"),
+      ).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText("your-zendesk-api-token"),
+      "zendesk-token",
+    );
+    await user.type(
+      screen.getByPlaceholderText("your-email@company.com"),
+      "support@example.com",
+    );
+    await user.type(
+      screen.getByPlaceholderText("yourcompany"),
+      "example-subdomain",
+    );
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(submittedVariables).toStrictEqual(
+        expect.arrayContaining([
+          { name: "ZENDESK_EMAIL", value: "support@example.com" },
+          { name: "ZENDESK_SUBDOMAIN", value: "example-subdomain" },
+        ]),
+      );
+      expect(submittedSecret).toStrictEqual({
+        name: "ZENDESK_API_TOKEN",
+        value: "zendesk-token",
+      });
     });
   });
 

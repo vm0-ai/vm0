@@ -13,9 +13,8 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  getApiTokenFieldStorageType,
-  getAvailableConnectorAuthMethods,
   getConnectorAuthMethod,
+  connectorAuthMethodHasOAuthGrant,
   getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
   hasRequiredScopes,
@@ -86,7 +85,7 @@ const LOCAL_BROWSER_WEB_MESSAGE_SOURCE = "vm0-local-browser-web";
 const LOCAL_BROWSER_EXTENSION_MESSAGE_SOURCE = "vm0-local-browser-extension";
 const LOCAL_BROWSER_EXTENSION_DETECT_TIMEOUT_MS = 1000;
 const LOCAL_BROWSER_EXTENSION_PAIR_TIMEOUT_MS = 10_000;
-const CONNECTOR_LIST_API_AUTH_METHOD_TYPES = [
+const CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES = [
   LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
 ] as const satisfies readonly ConnectorType[];
@@ -134,11 +133,67 @@ export interface ConnectorTypeWithStatus {
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
+function parseConnectorAuthMethodId(
+  authMethod: string,
+): ConnectorAuthMethodId | null {
+  switch (authMethod) {
+    case "oauth":
+    case "api-token":
+    case "api":
+    case "cli-auth": {
+      return authMethod;
+    }
+  }
+  return null;
+}
+
+function getLegacyAuthMethodPriority(authMethod: string): number {
+  const index = CONNECTOR_LEGACY_AUTH_METHOD_ORDER.findIndex((method) => {
+    return method === authMethod;
+  });
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
 export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
-  return CONNECTOR_LEGACY_AUTH_METHOD_ORDER.filter((authMethod) => {
-    return authMethod in CONNECTOR_TYPES[type].authMethods;
+  return Object.keys(CONNECTOR_TYPES[type].authMethods)
+    .flatMap((authMethod) => {
+      const parsed = parseConnectorAuthMethodId(authMethod);
+      return parsed ? [parsed] : [];
+    })
+    .sort((a, b) => {
+      return getLegacyAuthMethodPriority(a) - getLegacyAuthMethodPriority(b);
+    });
+}
+
+function getAvailableConnectorConnectAuthMethods(
+  type: ConnectorType,
+  featureStates: Record<string, boolean> | null | undefined,
+  options: {
+    readonly includeManagedForTypes: readonly ConnectorType[];
+  },
+): ConnectorAuthMethodId[] {
+  return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
+    const method = getConnectorAuthMethod(type, authMethod);
+    switch (method?.grant.kind) {
+      case "managed": {
+        if (!options.includeManagedForTypes.includes(type)) {
+          return false;
+        }
+        break;
+      }
+      case "auth-code":
+      case "device-auth":
+      case "interactive-pairing":
+      case "manual": {
+        break;
+      }
+      case undefined: {
+        return false;
+      }
+    }
+    return !method.featureFlag || !!featureStates?.[method.featureFlag];
   });
 }
 
@@ -283,27 +338,36 @@ function buildConnectorTypeStatus(params: {
   const config = CONNECTOR_TYPES[params.type];
   const isLocalAgent = isLocalAgentConnector(params.type);
   const isLocalBrowser = isLocalBrowserConnector(params.type);
-  const availableAuthMethods = getAvailableConnectorAuthMethods(
+  const availableAuthMethods = getAvailableConnectorConnectAuthMethods(
     params.type,
     params.features,
     {
-      apiAuthMethodPolicy: {
-        includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
-      },
+      includeManagedForTypes: CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES,
     },
   );
-  const hasApiToken = availableAuthMethods.includes("api-token");
+  const hasManualCredentialGrant = availableAuthMethods.some((authMethod) => {
+    return (
+      getConnectorAuthMethod(params.type, authMethod)?.grant.kind === "manual"
+    );
+  });
   const showExperimentalLabel = availableAuthMethods.some((authMethod) => {
     const method = getConnectorAuthMethod(params.type, authMethod);
     return !!method?.featureFlag && method.showExperimentalLabel !== false;
   });
   const connected = params.connector !== null;
+  const connectedAuthMethodHasOAuthGrant =
+    params.connector !== null &&
+    connectorAuthMethodHasOAuthGrant(params.type, params.connector.authMethod);
+  const scopeMismatch =
+    params.connector !== null &&
+    connectedAuthMethodHasOAuthGrant &&
+    !hasRequiredScopes(params.type, params.connector.oauthScopes);
 
   return {
     type: params.type,
     label:
       showExperimentalLabel &&
-      !hasApiToken &&
+      !hasManualCredentialGrant &&
       !isHostBackedConnector(params.type)
         ? `[Experimental] ${config.label}`
         : config.label,
@@ -313,11 +377,7 @@ function buildConnectorTypeStatus(params: {
     connected,
     connector: params.connector,
     availableAuthMethods,
-    scopeMismatch:
-      !isHostBackedConnector(params.type) &&
-      params.connector !== null &&
-      params.connector.authMethod === "oauth" &&
-      !hasRequiredScopes(params.type, params.connector.oauthScopes),
+    scopeMismatch: !isHostBackedConnector(params.type) && scopeMismatch,
     needsReconnect:
       !isHostBackedConnector(params.type) &&
       (params.connector?.needsReconnect ?? false),
@@ -394,10 +454,8 @@ export const allConnectorTypes$ = computed(async (get) => {
 
   const items = CONNECTOR_TYPE_KEYS.filter((type) => {
     return (
-      getAvailableConnectorAuthMethods(type, features, {
-        apiAuthMethodPolicy: {
-          includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
-        },
+      getAvailableConnectorConnectAuthMethods(type, features, {
+        includeManagedForTypes: CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES,
       }).length > 0
     );
   }).map((type) => {
@@ -697,16 +755,41 @@ const finishConnectorConnection$ = command(
   },
 );
 
+function getManualCredentialFieldStorageType(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+  name: string,
+): "secret" | "variable" {
+  const method = getConnectorAuthMethod(type, authMethod);
+  switch (method?.grant.kind) {
+    case "manual": {
+      return method.grant.fields[name]?.storage ?? "secret";
+    }
+    case "auth-code":
+    case "device-auth":
+    case "interactive-pairing":
+    case "managed":
+    case undefined: {
+      throw new Error(`${type} ${authMethod} does not use manual credentials`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Submit API token command
+// Submit manual connector credentials command
 // ---------------------------------------------------------------------------
 
-export const submitApiToken$ = command(
+type SubmitManualCredentialsParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly inputSecrets: Record<string, string>;
+  readonly options: PostConnectOptions;
+};
+
+export const submitManualCredentials$ = command(
   async (
     { get, set },
-    type: ConnectorType,
-    inputSecrets: Record<string, string>,
-    options: PostConnectOptions,
+    { type, authMethod, inputSecrets, options }: SubmitManualCredentialsParams,
     signal: AbortSignal,
   ) => {
     const flow = createConnectorConnectFlowState(type);
@@ -722,7 +805,8 @@ export const submitApiToken$ = command(
             continue;
           }
           const isVariable =
-            getApiTokenFieldStorageType(type, name) === "variable";
+            getManualCredentialFieldStorageType(type, authMethod, name) ===
+            "variable";
           if (isVariable) {
             await accept(
               variablesClient.set({

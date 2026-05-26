@@ -406,16 +406,17 @@ class TestGetVmContext:
         context = registry.get_vm_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls = context
+        vm_info, compiled_firewalls, compiled_network_policies = context
         assert vm_info["runId"] == "run-abc-123"
         assert registry.get_vm_info("10.200.0.1", str(path)) is vm_info
         assert compiled_firewalls is not None
+        assert compiled_network_policies is not None
 
         result = matching.match_compiled_firewall_request(
             "https://api.example.com/items",
             "GET",
             compiled_firewalls,
-            vm_info["networkPolicies"],
+            compiled_network_policies,
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry is vm_info["firewalls"][0]["apis"][0]
@@ -443,23 +444,24 @@ class TestGetVmContext:
         _write_firewall_registry(path, rule="/items")
         first_context = registry.get_vm_context("10.200.0.1", str(path))
         assert first_context is not None
-        first_vm_info, first_compiled = first_context
+        first_vm_info, first_compiled, first_compiled_policies = first_context
         assert first_compiled is not None
 
         _write_firewall_registry(path, rule="/other-resource")
         second_context = registry.get_vm_context("10.200.0.1", str(path))
         assert second_context is not None
-        second_vm_info, second_compiled = second_context
+        second_vm_info, second_compiled, second_compiled_policies = second_context
 
         assert second_vm_info is not first_vm_info
         assert second_compiled is not None
         assert second_compiled is not first_compiled
+        assert second_compiled_policies is not first_compiled_policies
         assert isinstance(
             matching.match_compiled_firewall_request(
                 "https://api.example.com/items",
                 "GET",
                 second_compiled,
-                second_vm_info["networkPolicies"],
+                second_compiled_policies,
             ),
             matching.FirewallBlock,
         )
@@ -468,7 +470,7 @@ class TestGetVmContext:
                 "https://api.example.com/other-resource",
                 "GET",
                 second_compiled,
-                second_vm_info["networkPolicies"],
+                second_compiled_policies,
             ),
             matching.FirewallAllow,
         )
@@ -478,7 +480,7 @@ class TestGetVmContext:
         _write_firewall_registry(path)
         first_context = registry.get_vm_context("10.200.0.1", str(path))
         assert first_context is not None
-        _, first_compiled = first_context
+        _, first_compiled, first_compiled_policies = first_context
         assert first_compiled is not None
 
         path.write_text(
@@ -503,15 +505,16 @@ class TestGetVmContext:
 
         second_context = registry.get_vm_context("10.200.0.1", str(path))
         assert second_context is not None
-        _, second_compiled = second_context
+        _, second_compiled, second_compiled_policies = second_context
         assert second_compiled is None
+        assert second_compiled_policies is not first_compiled_policies
 
     def test_parse_failure_preserves_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         _write_firewall_registry(path)
         context = registry.get_vm_context("10.200.0.1", str(path))
         assert context is not None
-        vm_info, compiled_firewalls = context
+        vm_info, compiled_firewalls, compiled_network_policies = context
         assert compiled_firewalls is not None
 
         path.write_text("{ broken")
@@ -519,15 +522,16 @@ class TestGetVmContext:
             preserved_context = registry.get_vm_context("10.200.0.1", str(path))
 
         assert preserved_context is not None
-        preserved_vm_info, preserved_compiled = preserved_context
+        preserved_vm_info, preserved_compiled, preserved_compiled_policies = preserved_context
         assert preserved_vm_info is vm_info
         assert preserved_compiled is compiled_firewalls
+        assert preserved_compiled_policies is compiled_network_policies
         assert isinstance(
             matching.match_compiled_firewall_request(
                 "https://api.example.com/items",
                 "GET",
                 preserved_compiled,
-                preserved_vm_info["networkPolicies"],
+                preserved_compiled_policies,
             ),
             matching.FirewallAllow,
         )
@@ -537,7 +541,7 @@ class TestGetVmContext:
         _write_firewall_registry(path)
         context = registry.get_vm_context("10.200.0.1", str(path))
         assert context is not None
-        vm_info, compiled_firewalls = context
+        vm_info, compiled_firewalls, compiled_network_policies = context
         assert compiled_firewalls is not None
 
         path.unlink()
@@ -545,18 +549,40 @@ class TestGetVmContext:
             preserved_context = registry.get_vm_context("10.200.0.1", str(path))
 
         assert preserved_context is not None
-        preserved_vm_info, preserved_compiled = preserved_context
+        preserved_vm_info, preserved_compiled, preserved_compiled_policies = preserved_context
         assert preserved_vm_info is vm_info
         assert preserved_compiled is compiled_firewalls
+        assert preserved_compiled_policies is compiled_network_policies
         assert isinstance(
             matching.match_compiled_firewall_request(
                 "https://api.example.com/items",
                 "GET",
                 preserved_compiled,
-                preserved_vm_info["networkPolicies"],
+                preserved_compiled_policies,
             ),
             matching.FirewallAllow,
         )
+
+    def test_malformed_network_policy_shape_compiles_without_load_failure(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["networkPolicies"] = {"example": "denied"}
+        path.write_text(json.dumps(data))
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        _, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is not None
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_network_policy"
 
 
 class TestLogNetworkEntry:

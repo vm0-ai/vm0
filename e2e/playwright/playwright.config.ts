@@ -40,6 +40,7 @@ export default defineConfig({
         "chat.spec.ts",
         "create-agent.spec.ts",
         "create-schedule.spec.ts",
+        "billing-payment.spec.ts",
         "webchat.spec.ts",
       ],
       dependencies: ["setup"],

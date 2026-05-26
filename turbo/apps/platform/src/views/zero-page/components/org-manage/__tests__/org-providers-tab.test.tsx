@@ -199,20 +199,15 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     await openProvidersPage();
 
-    const defaultSection = (await screen.findByText("Default model")).closest(
-      "section",
-    );
-    expect(defaultSection).toBeDefined();
-    expect(within(defaultSection!).getByText("DeepSeek V4 Pro")).toBeDefined();
+    const defaultRow = await screen.findByTestId("default-model-row");
+    expect(within(defaultRow).getByText("DeepSeek V4 Pro")).toBeDefined();
 
-    click(within(defaultSection!).getByRole("combobox"));
+    click(within(defaultRow).getByRole("combobox"));
     const listbox = await screen.findByRole("listbox");
     click(within(listbox).getByText("Claude Opus 4.7"));
 
     await waitFor(() => {
-      expect(
-        within(defaultSection!).getByText("Claude Opus 4.7"),
-      ).toBeDefined();
+      expect(within(defaultRow).getByText("Claude Opus 4.7")).toBeDefined();
     });
   });
 

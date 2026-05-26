@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
   FirewallPolicyValue,
   RawPermissionPolicies,
 } from "@vm0/connectors/firewall-types";
+import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
   agentComposeVersions,
@@ -65,6 +70,18 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
 
 interface ZeroAgentSeed {
   readonly fixture: UsageInsightFixture;
@@ -708,20 +725,18 @@ describe("POST /api/zero/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_API_KEY: modelProviderSecretPlaceholder(
+        "anthropic-api-key",
+        "ANTHROPIC_API_KEY",
+      ),
       ANTHROPIC_MODEL: "claude-opus-4-6",
     });
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     // Local dev databases may already have dev-seeded exact keys.
     if (!hasExistingExactKey) {
-      expect(executionContext.environment.ANTHROPIC_API_KEY).toBe(
-        "sk-vm0-managed",
-      );
+      expect(decrypted?.ANTHROPIC_API_KEY).toBe("sk-vm0-managed");
     }
-    expect(executionContext.environment.ANTHROPIC_API_KEY).not.toBe(
-      "sk-vm0-fallback",
-    );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
-    });
+    expect(decrypted?.ANTHROPIC_API_KEY).not.toBe("sk-vm0-fallback");
     expect(executionContext.billableFirewalls).toContain(
       "model-provider:anthropic-api-key",
     );
@@ -783,18 +798,19 @@ describe("POST /api/zero/runs", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
+        "minimax-api-key",
+        "MINIMAX_API_KEY",
+      ),
       ANTHROPIC_MODEL: "MiniMax-M2.7",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
     });
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
     // Local dev databases may already have dev-seeded vendor keys.
     if (existingVendorKeys.length === 0) {
-      expect(executionContext.environment.ANTHROPIC_AUTH_TOKEN).toBe(
-        "sk-vm0-fallback",
-      );
+      expect(decrypted?.MINIMAX_API_KEY).toBe("sk-vm0-fallback");
     }
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      MINIMAX_API_KEY: executionContext.environment.ANTHROPIC_AUTH_TOKEN,
-    });
+    expect(decrypted?.MINIMAX_API_KEY).toBeDefined();
   });
 
   it("injects multi-auth Codex OAuth model provider secrets and refresh metadata", async () => {
@@ -877,8 +893,14 @@ describe("POST /api/zero/runs", () => {
       readonly modelUsageProvider: string | undefined;
     };
     expect(executionContext.environment).toMatchObject({
-      CHATGPT_ACCESS_TOKEN: "chatgpt-access",
-      CHATGPT_ACCOUNT_ID: "workspace-id",
+      CHATGPT_ACCESS_TOKEN: modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+      CHATGPT_ACCOUNT_ID: modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCOUNT_ID",
+      ),
       OPENAI_MODEL: "gpt-5.4",
     });
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
@@ -972,7 +994,10 @@ describe("POST /api/zero/runs", () => {
       readonly billableFirewalls: readonly string[];
     };
     expect(executionContext.environment).toMatchObject({
-      ANTHROPIC_API_KEY: "test-secret-value",
+      ANTHROPIC_API_KEY: modelProviderSecretPlaceholder(
+        "anthropic-api-key",
+        "ANTHROPIC_API_KEY",
+      ),
       ANTHROPIC_MODEL: "claude-sonnet-4-6",
     });
     expect(
@@ -1360,6 +1385,106 @@ describe("POST /api/zero/runs", () => {
     expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
       ["Bearer $", "{{ secrets.BASE44_TOKEN }}"].join(""),
     );
+  });
+
+  it("injects authorized Slock OAuth secrets through the runtime firewall", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: {
+        [FeatureSwitchKey.SlockConnector]: true,
+      },
+    });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "slock",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "slock",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "SLOCK_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("slock-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "SLOCK_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("slock-refresh"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "SLOCK_SERVER_ID",
+        encryptedValue: encryptSecretForTests("slock-server-id"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "slock connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth?: { readonly headers?: Record<string, string> };
+        }[];
+      }[];
+    };
+
+    const slockFirewall = getConnectorFirewall("slock");
+    expect(executionContext.environment.SLOCK_TOKEN).toBe(
+      slockFirewall.placeholders?.SLOCK_TOKEN,
+    );
+    expect(executionContext.environment.SLOCK_SERVER_ID).toBe(
+      slockFirewall.placeholders?.SLOCK_SERVER_ID,
+    );
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    expect(decrypted).toMatchObject({
+      SLOCK_TOKEN: "slock-access",
+      SLOCK_SERVER_ID: "slock-server-id",
+    });
+    expect(decrypted).not.toHaveProperty("SLOCK_ACCESS_TOKEN");
+    expect(decrypted).not.toHaveProperty("SLOCK_REFRESH_TOKEN");
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      SLOCK_ACCESS_TOKEN: "slock",
+      SLOCK_TOKEN: "slock",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "slock";
+    });
+    expect(firewall?.apis[0]?.base).toBe("https://api.slock.ai");
+    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
+      Authorization: ["Bearer $", "{{ secrets.SLOCK_TOKEN }}"].join(""),
+      "X-Server-Id": ["$", "{{ secrets.SLOCK_SERVER_ID }}"].join(""),
+    });
   });
 
   it("adds the Google Ads developer token for authorized OAuth connector runs", async () => {

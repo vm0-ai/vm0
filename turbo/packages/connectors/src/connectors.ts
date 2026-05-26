@@ -6,6 +6,7 @@ import { notion } from "./connectors/notion";
 import { x } from "./connectors/x";
 import { googleDrive } from "./connectors/google-drive";
 import { slack } from "./connectors/slack";
+import { slock } from "./connectors/slock";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleDocs } from "./connectors/google-docs";
@@ -453,12 +454,7 @@ export interface ConnectorAuthMethodConfig {
  * These values describe user-selectable connection choices. Behavior must be
  * derived from the auth method lifecycle config, not from the id itself.
  */
-export type ConnectorAuthMethodId =
-  | "oauth"
-  | "api-token"
-  | "api"
-  | "cli-auth"
-  | "app-credentials";
+export type ConnectorAuthMethodId = "oauth" | "api-token" | "api" | "cli-auth";
 
 /**
  * Temporary ordering for auth method ids still handled by legacy key-based
@@ -625,6 +621,7 @@ const CONNECTOR_TYPES_DEF = {
   ...x,
   ...googleDrive,
   ...slack,
+  ...slock,
   ...googleSheets,
   ...googleCalendar,
   ...googleDocs,
@@ -886,7 +883,6 @@ type ConnectorAuthMethodGrantKindById = {
   readonly "api-token": "manual";
   readonly api: "managed";
   readonly "cli-auth": "interactive-pairing";
-  readonly "app-credentials": "manual";
 };
 
 type ConnectorAuthMethodAccessKindById = {
@@ -894,7 +890,6 @@ type ConnectorAuthMethodAccessKindById = {
   readonly "api-token": "static";
   readonly api: "managed" | "none";
   readonly "cli-auth": "none";
-  readonly "app-credentials": "static";
 };
 
 type ConnectorAuthMethodRevokeKindById = {
@@ -902,7 +897,6 @@ type ConnectorAuthMethodRevokeKindById = {
   readonly "api-token": "none";
   readonly api: "none";
   readonly "cli-auth": "none";
-  readonly "app-credentials": "none";
 };
 
 export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<

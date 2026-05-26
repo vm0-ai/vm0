@@ -419,6 +419,7 @@ const completeOAuthCallback$ = command(
           ? secretMetadata.refreshSecretName
           : undefined,
         expiresIn: token.expiresIn,
+        extraConnectorSecrets: token.extraConnectorSecrets,
       },
       signal,
     );

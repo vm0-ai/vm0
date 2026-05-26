@@ -155,6 +155,23 @@ describe("computer-use command visibility", () => {
     }
   });
 
+  it("should explain the recommended Desktop Computer Use workflow", () => {
+    let helpOutput = "";
+    zeroComputerUseCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    zeroComputerUseCommand.outputHelp();
+
+    expect(helpOutput).toContain("Workflow:");
+    expect(helpOutput).toContain("zero computer-use list-apps");
+    expect(helpOutput).toContain("zero computer-use get-app-state --app <app>");
+    expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
+    expect(helpOutput).toContain("/tmp/vm0/computer-use");
+  });
+
   it("should write screenshot data URLs to a local file in command result console output", async () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");

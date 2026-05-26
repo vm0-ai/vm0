@@ -3,9 +3,20 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
@@ -17,6 +28,19 @@ import {
 const context = testContext();
 
 const THREAD_ID = "thread-test-1";
+
+function queryButtonByText(text: string): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((button) => {
+    return button.textContent?.trim() === text;
+  });
+}
+
+async function findButtonByText(text: string): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(queryButtonByText(text)).toBeDefined();
+  });
+  return queryButtonByText(text)!;
+}
 
 beforeEach(() => {
   vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
@@ -65,9 +89,218 @@ describe("zero chat thread page - sending state affects composer button display"
   });
 });
 
-// CHAT-I-049 / CHAT-I-050: Image preview button opens ImageLightbox
+describe("zero chat thread page - insufficient credits card", () => {
+  const seedInsufficientCreditsMessages = () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "blocked by credits",
+          error: "insufficient_credits",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Insufficient credits.",
+          error: "insufficient_credits",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+  };
+
+  it("starts Pro checkout directly for free-tier workspaces", async () => {
+    let capturedCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "free",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+    });
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        capturedCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?tier=pro",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const upgradeButton = await findButtonByText("Upgrade to Pro");
+    click(upgradeButton);
+
+    await waitFor(() => {
+      expect(capturedCheckoutBody).toMatchObject({
+        tier: "pro",
+        successUrl: expect.stringContaining(
+          "billing_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
+    });
+  });
+
+  it("asks non-admins to have an admin upgrade free-tier workspaces", async () => {
+    const createCheckout = vi.fn();
+    setMockOrg({ role: "member" });
+    setMockBillingStatus({
+      tier: "free",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+    });
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ respond }) => {
+        createCheckout();
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?tier=pro",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByText(
+        "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("Upgrade to Pro")).toBeUndefined();
+    expect(createCheckout).not.toHaveBeenCalled();
+  });
+
+  it("starts fixed credit checkout for paid-tier workspaces", async () => {
+    let capturedCreditCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 0,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedCreditCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=200000",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const creditButton = await findButtonByText("$200");
+    click(creditButton);
+
+    await waitFor(() => {
+      expect(capturedCreditCheckoutBody).toMatchObject({
+        credits: 200_000,
+        successUrl: expect.stringContaining(
+          "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
+    });
+  });
+
+  it("asks non-admins to have an admin add credits to paid workspaces", async () => {
+    const createCreditCheckout = vi.fn();
+    setMockOrg({ role: "member" });
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 0,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ respond }) => {
+        createCreditCheckout();
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=200000",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByText(
+        "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("$100")).toBeUndefined();
+    expect(queryButtonByText("Custom")).toBeUndefined();
+    expect(createCreditCheckout).not.toHaveBeenCalled();
+  });
+
+  it("starts custom amount credit checkout for paid-tier workspaces", async () => {
+    let capturedCreditCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 0,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedCreditCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=custom",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const customButton = await findButtonByText("Custom");
+    click(customButton);
+    await expect(
+      screen.findByLabelText("Custom dollar amount"),
+    ).resolves.toBeInTheDocument();
+    const buyButton = await findButtonByText("Buy");
+    click(buyButton);
+
+    await waitFor(() => {
+      expect(capturedCreditCheckoutBody).toMatchObject({
+        credits: 100_000,
+        customAmount: true,
+        successUrl: expect.stringContaining(
+          "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+        ),
+      });
+    });
+  });
+
+  it("shows a success state when credits are available again", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByText("Credits available"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your credits have been added. You can continue chatting with Zero.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryButtonByText("$100")).toBeUndefined();
+  });
+});
+
+// CHAT-I-049 / CHAT-I-050: Image preview link opens ImageLightbox
 describe("zero chat thread page - image attachment opens lightbox", () => {
-  it("clicking image preview button opens ImageLightbox (CHAT-I-049, CHAT-I-050)", async () => {
+  it("clicking image preview link opens ImageLightbox (CHAT-I-049, CHAT-I-050)", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -85,8 +318,9 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       expect(screen.getByAltText("photo.png")).toBeInTheDocument();
     });
 
-    const imageButton = screen.getByAltText("photo.png").closest("button")!;
-    click(imageButton);
+    const imageLink = screen.getByLabelText("Preview photo.png");
+    expect(imageLink).toHaveAttribute("href", "https://example.com/photo.png");
+    click(imageLink);
 
     await waitFor(() => {
       const lightboxImg = screen.getAllByRole("img").find((img) => {
@@ -128,10 +362,11 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const imageButton = await waitFor(() => {
-      return screen.getByAltText("photo.png").closest("button")!;
+    const imageLink = await waitFor(() => {
+      return screen.getByLabelText("Preview photo.png");
     });
-    click(imageButton);
+    expect(imageLink).toHaveAttribute("href", imageUrl);
+    click(imageLink);
 
     const downloadButton = await waitFor(() => {
       return screen.getByLabelText("Download");

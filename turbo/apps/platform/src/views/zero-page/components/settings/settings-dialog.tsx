@@ -60,9 +60,8 @@ const SECTION_META = {
     description: "Create and manage API keys for programmatic access.",
   },
   model: {
-    title: "Model",
-    description:
-      "Configure the AI providers and models available to you and your workspace.",
+    title: "Models",
+    description: "Choose which AI models your workspace and your runs use.",
   },
   debug: {
     title: "Debug",
@@ -114,7 +113,6 @@ const PERSONAL_GROUP = {
       icon: IconAdjustmentsHorizontal,
     },
     { id: "api-keys", label: "API Keys", icon: IconKey },
-    { id: "model", label: "Model", icon: IconCpu },
     { id: "debug", label: "Debug", icon: IconBug },
   ],
 } as const satisfies SidebarGroup;
@@ -125,6 +123,11 @@ const WORKSPACE_GROUP = {
     { id: "general", label: "General", icon: IconBuilding },
     { id: "people", label: "People", icon: IconUsers },
   ],
+} as const satisfies SidebarGroup;
+
+const MODELS_GROUP = {
+  label: "Models",
+  items: [{ id: "model", label: "Models", icon: IconCpu }],
 } as const satisfies SidebarGroup;
 
 const BILLING_GROUP = {
@@ -197,7 +200,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   const sidebarGroups: readonly SidebarGroup[] = [
     PERSONAL_GROUP,
-    ...(isAdmin ? [WORKSPACE_GROUP, BILLING_GROUP] : []),
+    ...(isAdmin ? [WORKSPACE_GROUP] : []),
+    MODELS_GROUP,
+    ...(isAdmin ? [BILLING_GROUP] : []),
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section

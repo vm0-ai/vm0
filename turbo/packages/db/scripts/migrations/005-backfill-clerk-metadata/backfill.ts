@@ -7,9 +7,9 @@
  * org_metadata, org_members_metadata, and users tables. Ensures complete
  * data coverage beyond what lazy migration (#5591) achieves.
  *
- * Usage (from turbo/apps/web):
- *   tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts
- *   tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts --migrate
+ * Usage (from turbo/packages/db):
+ *   pnpm exec tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts
+ *   pnpm exec tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts --migrate
  *
  * Environment:
  *   DATABASE_URL        — Required

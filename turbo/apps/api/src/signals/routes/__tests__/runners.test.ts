@@ -6,6 +6,10 @@ import {
   runnersPollContract,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
@@ -65,6 +69,18 @@ function runnerHeartbeatBody(runnerId: string) {
 
 function encryptedSecretsMap(values: Record<string, string>): string {
   return encryptSecretValue(JSON.stringify(values));
+}
+
+function modelProviderSecretPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
 }
 
 function storedExecutionContext(args?: {
@@ -722,6 +738,39 @@ describe("POST /api/runners/*", () => {
       contextOverrides: {
         encryptedSecrets: encryptedSecretsMap({ SECRET: "not-in-env" }),
         environment: { SOME_VAR: "other-value" },
+      },
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 200,
+    });
+
+    expect(response.body).toMatchObject({ secretValues: [] });
+  });
+
+  it("does not return model provider secretValues when environment contains placeholders", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const queued = await seedQueuedRun({
+      fixture,
+      contextOverrides: {
+        encryptedSecrets: encryptedSecretsMap({
+          ANTHROPIC_API_KEY: "real-model-provider-key",
+        }),
+        environment: {
+          ANTHROPIC_API_KEY: modelProviderSecretPlaceholder(
+            "anthropic-api-key",
+            "ANTHROPIC_API_KEY",
+          ),
+        },
       },
     });
 

@@ -20,6 +20,7 @@ const mocks = createZeroRouteMocks(context);
 const APP_ORIGIN = "http://localhost:3002";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const TEST_PRICE_CUSTOM_CREDITS = "price_test_custom_credits";
 
 function setZeroPrice(): void {
   mockEnv(
@@ -27,6 +28,7 @@ function setZeroPrice(): void {
     JSON.stringify({
       pro: [TEST_PRICE_PRO],
       team: [TEST_PRICE_TEAM],
+      customCredits: [TEST_PRICE_CUSTOM_CREDITS],
     }),
   );
 }
@@ -357,6 +359,16 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       expect.objectContaining({
         mode: "payment",
         customer: customerId,
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              unit_amount: 2000,
+              product_data: { name: "20,000 Zero credits" },
+            },
+            quantity: 1,
+          },
+        ],
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
@@ -364,5 +376,115 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         },
       }),
     );
+  });
+
+  it("creates custom amount credit checkout with the configured Stripe price", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const checkoutPriceId = "price_test_custom_checkout";
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.prices.retrieve.mockResolvedValue({
+      id: TEST_PRICE_CUSTOM_CREDITS,
+      currency: "usd",
+      product: "prod_test_custom_credits",
+      custom_unit_amount: { minimum: 100, maximum: 1_000_000, preset: 10_000 },
+    });
+    context.mocks.stripe.prices.create.mockResolvedValue({
+      id: checkoutPriceId,
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/custom-credit",
+    });
+
+    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          credits: 150_000,
+          customAmount: true,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/custom-credit",
+    });
+    expect(context.mocks.stripe.prices.retrieve).toHaveBeenCalledWith(
+      TEST_PRICE_CUSTOM_CREDITS,
+    );
+    expect(context.mocks.stripe.prices.create).toHaveBeenCalledWith({
+      currency: "usd",
+      product: "prod_test_custom_credits",
+      custom_unit_amount: {
+        enabled: true,
+        minimum: 100,
+        maximum: 1_000_000,
+        preset: 15_000,
+      },
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "payment",
+        customer: customerId,
+        line_items: [{ price: checkoutPriceId, quantity: 1 }],
+        metadata: {
+          purpose: "credit_purchase",
+          orgId: fixture.orgId,
+          creditsAmountMode: "amount_total",
+          requestedCreditsAmount: "150000",
+        },
+        payment_intent_data: {
+          setup_future_usage: "off_session",
+          metadata: {
+            type: "credit_purchase",
+            purpose: "credit_purchase",
+            orgId: fixture.orgId,
+            creditsAmountMode: "amount_total",
+            requestedCreditsAmount: "150000",
+          },
+        },
+      }),
+    );
+  });
+
+  it("returns 400 when custom credit price is not configured", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockEnv(
+      "ZERO_PRICE",
+      JSON.stringify({
+        pro: [TEST_PRICE_PRO],
+        team: [TEST_PRICE_TEAM],
+      }),
+    );
+
+    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          credits: 100_000,
+          customAmount: true,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Custom credit price not configured",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 });

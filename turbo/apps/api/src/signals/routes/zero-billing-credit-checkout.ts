@@ -9,7 +9,10 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { createCreditCheckoutSession$ } from "../services/zero-billing-checkout.service";
+import {
+  activeCustomCreditPriceId,
+  createCreditCheckoutSession$,
+} from "../services/zero-billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
 import type { RouteEntry } from "../route";
 
@@ -39,6 +42,7 @@ const creditCheckoutAuthed$ = command(
       return bodyResult.response;
     }
     const { credits, successUrl, cancelUrl, autoRecharge } = bodyResult.data;
+    const customAmount = bodyResult.data.customAmount === true;
 
     const appOrigin = new URL(env("APP_URL")).origin;
     if (
@@ -48,6 +52,10 @@ const creditCheckoutAuthed$ = command(
       return badRequestMessage(
         "successUrl and cancelUrl must match the platform origin",
       );
+    }
+
+    if (customAmount && !activeCustomCreditPriceId()) {
+      return badRequestMessage("Custom credit price not configured");
     }
 
     if (autoRecharge?.enabled === true) {
@@ -82,7 +90,13 @@ const creditCheckoutAuthed$ = command(
 
     const url = await set(
       createCreditCheckoutSession$,
-      { orgId: auth.orgId, credits, successUrl, cancelUrl },
+      {
+        orgId: auth.orgId,
+        credits,
+        customAmount,
+        successUrl,
+        cancelUrl,
+      },
       signal,
     );
     signal.throwIfAborted();

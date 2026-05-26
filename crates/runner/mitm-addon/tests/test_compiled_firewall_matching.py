@@ -2,11 +2,27 @@
 
 from unittest.mock import patch
 
+import pytest
+
 import matching
 from tests.firewall_helpers import wrap_firewalls
 
 
 class TestCompiledFirewallMatching:
+    def _github_firewalls(self):
+        return wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+
     def _compiled(self, firewalls):
         compiled = matching.compile_firewalls(firewalls)
         assert compiled is not None
@@ -280,6 +296,52 @@ class TestCompiledFirewallMatching:
         ]
         policies = {
             "broad": {"allow": [], "deny": [], "unknownPolicy": "deny"},
+            "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        }
+        url = "https://api.example.com/items/123"
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, matching.FirewallAllow)
+        assert compiled.name == "specific"
+        assert compiled.permission == "items-read"
+
+    def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "specific",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer specific"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": "denied",
             "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
         }
         url = "https://api.example.com/items/123"
@@ -579,3 +641,106 @@ class TestCompiledFirewallMatching:
 
         assert isinstance(result, matching.FirewallAllow)
         assert spy.call_count == 1
+
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            {"github": {"deny": None, "ask": [], "unknownPolicy": "deny"}},
+            {"github": {"deny": [], "ask": None, "unknownPolicy": "deny"}},
+        ],
+    )
+    def test_null_permission_lists_behave_as_empty(self, policies):
+        fws = self._github_firewalls()
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies(policies),
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            {"github": None},
+            {"github": "denied"},
+            {"github": {"deny": "repo-read", "ask": [], "unknownPolicy": "allow"}},
+            {"github": {"deny": [], "ask": "repo-read", "unknownPolicy": "allow"}},
+            {"github": {"deny": [123], "ask": [], "unknownPolicy": "allow"}},
+            {"github": {"deny": [], "ask": [None], "unknownPolicy": "allow"}},
+        ],
+    )
+    def test_malformed_permission_policy_fails_closed_after_base_match(self, policies):
+        fws = self._github_firewalls()
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies(policies),
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_network_policy"
+
+    def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch(self):
+        fws = self._github_firewalls()
+        policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
+        compiled_policies = matching.compile_network_policies(policies)
+        compiled_firewalls = self._compiled(fws)
+
+        allowed = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            compiled_policies,
+        )
+        blocked = matching.match_compiled_firewall_request(
+            "https://api.github.com/users/octocat",
+            "GET",
+            compiled_firewalls,
+            compiled_policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.reason == "malformed_network_policy"
+
+    def test_unrelated_malformed_policy_does_not_block_other_firewall(self):
+        fws = self._github_firewalls()
+        policies = {"slack": {"deny": "channels-read"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies(policies),
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
+    def test_top_level_malformed_policy_fails_closed_only_after_base_match(self):
+        fws = self._github_firewalls()
+        compiled_policies = matching.compile_network_policies("broken")
+        compiled_firewalls = self._compiled(fws)
+
+        unrelated = matching.match_compiled_firewall_request(
+            "https://api.example.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            compiled_policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            compiled_policies,
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.reason == "malformed_network_policy"

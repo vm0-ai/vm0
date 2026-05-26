@@ -96,6 +96,7 @@ interface UsageRunsArgs {
   readonly orgId: string;
   readonly page: number;
   readonly pageSize: number;
+  readonly runId?: string;
   readonly agentId?: string;
   readonly userIds?: readonly string[];
   readonly dateFrom?: string;
@@ -112,6 +113,9 @@ export const zeroUsageRuns$ = command(
     const eventUsage = buildUsageEventRunUsageTotalsSubquery(db, args.orgId);
     const conditions = [eq(agentRuns.orgId, args.orgId)];
 
+    if (args.runId) {
+      conditions.push(eq(agentRuns.id, args.runId));
+    }
     if (args.agentId) {
       conditions.push(eq(agentComposes.id, args.agentId));
     }

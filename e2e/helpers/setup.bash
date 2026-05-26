@@ -133,6 +133,71 @@ zero_curl() {
     curl -fsS "${hdrs[@]}" "$@" "$base$path"
 }
 
+zero_usage_runs_response() {
+    local run_id="$1"
+    zero_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"
+}
+
+zero_run_response() {
+    local run_id="$1"
+    zero_curl "/api/zero/runs/$run_id"
+}
+
+wait_for_zero_run_completed() {
+    local run_id="$1"
+    local timeout="${2:-100}"
+    local interval="${ZERO_RUN_POLL_INTERVAL_S:-2}"
+    local start=$SECONDS
+    local body=""
+    local status_value=""
+
+    while (( SECONDS - start < timeout )); do
+        if body=$(zero_run_response "$run_id" 2>&1); then
+            status_value=$(printf '%s' "$body" | jq -r '.status // ""')
+            case "$status_value" in
+                completed)
+                    return 0
+                    ;;
+                failed|timeout|cancelled)
+                    echo "# Run $run_id reached terminal status: $status_value" >&2
+                    echo "# Run response: $body" >&2
+                    return 1
+                    ;;
+            esac
+        fi
+        sleep "$interval"
+    done
+
+    echo "# Timed out (${timeout}s) waiting for run $run_id to complete" >&2
+    echo "# Last run response: $body" >&2
+    return 1
+}
+
+wait_for_zero_usage_run() {
+    local run_id="$1"
+    local timeout="${2:-60}"
+    local interval="${ZERO_USAGE_POLL_INTERVAL_S:-2}"
+    local start=$SECONDS
+    local body=""
+    local count=""
+
+    while (( SECONDS - start < timeout )); do
+        if body=$(zero_usage_runs_response "$run_id" 2>&1); then
+            count=$(printf '%s' "$body" | jq -r '.runs | length')
+            if [[ "$count" == "1" ]]; then
+                printf '%s' "$body" | jq -c '.runs[0]'
+                return 0
+            fi
+        fi
+        sleep "$interval"
+    done
+
+    echo "# Timed out (${timeout}s) waiting for usage run $run_id" >&2
+    echo "# Last usage response: $body" >&2
+    echo "# Run response: $(zero_run_response "$run_id" 2>&1 || true)" >&2
+    return 1
+}
+
 zero_model_provider_id_by_type() {
     local provider_type="$1"
     local body provider_id

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/db",
-  "version": "1.18.16",
+  "version": "1.18.17",
   "private": true,
   "type": "module",
   "exports": {
@@ -29,6 +29,7 @@
     "test:migration-consistency": "tsx scripts/test-migration-consistency-schema.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.4.13",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/connectors": "workspace:*",
     "drizzle-orm": "^0.45.2",
