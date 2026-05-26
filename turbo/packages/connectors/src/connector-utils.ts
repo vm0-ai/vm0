@@ -96,18 +96,10 @@ function connectorAuthMethodValues(
 function getManualGrantFields(
   method: ConnectorAuthMethodConfig | undefined,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
-  if (!method) {
+  if (!method || method.grant.kind !== "manual") {
     return undefined;
   }
-  switch (method.grant.kind) {
-    case "manual":
-      return method.grant.fields;
-    case "managed":
-    case "auth-code":
-    case "device-auth":
-    case "interactive-pairing":
-      return undefined;
-  }
+  return method.grant.fields;
 }
 
 export function getConnectorManualGrantFields(
