@@ -20,6 +20,7 @@ import {
 import {
   getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
+  getConfiguredConnectorAuthMethods,
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
@@ -908,6 +909,17 @@ describe("isOAuthConnectorType", () => {
 });
 
 describe("getAvailableConnectorAuthMethods", () => {
+  it("returns configured auth methods without feature filtering", () => {
+    expect(getConfiguredConnectorAuthMethods("stripe")).toStrictEqual([
+      "oauth",
+      "api-token",
+      "cli-auth",
+    ]);
+    expect(getConfiguredConnectorAuthMethods("local-browser")).toStrictEqual([
+      "api",
+    ]);
+  });
+
   it("exposes Stripe CLI auth only when its switch is enabled", () => {
     expect(getAvailableConnectorAuthMethods("stripe", {})).toStrictEqual([
       "api-token",

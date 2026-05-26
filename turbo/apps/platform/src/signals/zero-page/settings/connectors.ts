@@ -133,8 +133,6 @@ export interface ConnectorTypeWithStatus {
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
-export { getConfiguredConnectorAuthMethods };
-
 function getAvailableConnectorConnectAuthMethods(
   type: ConnectorType,
   featureStates: Record<string, boolean> | null | undefined,
