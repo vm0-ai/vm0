@@ -311,6 +311,7 @@ function mockNotionOAuth(options: {
   readonly accessToken?: string;
   readonly refreshToken?: string | null;
   readonly expiresIn?: number;
+  readonly omitExpiresIn?: boolean;
   readonly tokenError?: string;
 }): void {
   server.use(
@@ -327,7 +328,9 @@ function mockNotionOAuth(options: {
           options.refreshToken !== undefined
             ? options.refreshToken
             : "notion-refresh-token",
-        expires_in: options.expiresIn ?? 7200,
+        ...(options.omitExpiresIn
+          ? {}
+          : { expires_in: options.expiresIn ?? 7200 }),
         token_type: "bearer",
         owner: {
           user: {
@@ -2138,6 +2141,33 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(decryptSecretValue(refreshSecret!.encryptedValue)).toBe(
       "notion-refresh",
     );
+  });
+
+  it("uses the default 15-minute access-token expiry when OAuth callback omits expires_in", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    mockNotionOAuth({
+      accessToken: "notion-access",
+      refreshToken: "notion-refresh",
+      omitExpiresIn: true,
+    });
+
+    const before = now();
+    const response = await requestCallback({
+      type: "notion",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+    const after = now();
+
+    expect(response.status).toBe(307);
+    const connector = await findConnector({ orgId, userId, type: "notion" });
+    expect(connector?.tokenExpiresAt).toBeInstanceOf(Date);
+    const expiresAt = connector!.tokenExpiresAt!.getTime();
+    expect(expiresAt).toBeGreaterThanOrEqual(before + 15 * 60 * 1000);
+    expect(expiresAt).toBeLessThanOrEqual(after + 15 * 60 * 1000);
   });
 
   it.each(providerSuccessCases)(

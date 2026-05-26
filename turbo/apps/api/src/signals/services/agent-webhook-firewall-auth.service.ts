@@ -224,7 +224,7 @@ interface BasicArgContext {
 const L = logger("webhook:firewall-auth");
 const ORG_SENTINEL_USER_ID = "__org__";
 const REFRESH_BUFFER_SECS = 60;
-const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
+const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function getOAuthProviderKeySourceType(providerKey: string): OAuthSecretSource {
