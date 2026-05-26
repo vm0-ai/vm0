@@ -227,6 +227,7 @@ export const zeroConnectorSessionsContract = c.router({
       200: connectorSessionResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Create connector session for device flow (zero proxy)",
   },

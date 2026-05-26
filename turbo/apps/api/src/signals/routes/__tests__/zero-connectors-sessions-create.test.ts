@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { zeroConnectorSessionsContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -72,6 +72,38 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
       userId,
       status: "pending",
     });
+  });
+
+  it("rejects feature-disabled connector sessions without creating a row", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionsContract);
+    const response = await accept(
+      client.create({
+        params: { type: "docusign" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "docusign connector is not available",
+      code: "FORBIDDEN",
+    });
+
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({ id: connectorSessions.id })
+      .from(connectorSessions)
+      .where(
+        and(
+          eq(connectorSessions.userId, userId),
+          eq(connectorSessions.type, "docusign"),
+        ),
+      );
+    expect(rows).toStrictEqual([]);
   });
 
   it("returns 401 when unauthenticated", async () => {

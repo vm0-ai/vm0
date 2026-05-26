@@ -619,8 +619,16 @@ const startConnectorOauthInner$ = command(
 
 const createConnectorSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
+    const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorSessionsContract.create));
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (!availability.isAuthMethodAvailable(params.type, "oauth")) {
+      return connectorUnavailable(params.type);
+    }
+
     const code = generateConnectorSessionCode();
     const expiresAt = new Date(
       nowDate().getTime() + CONNECTOR_SESSION_TTL_SECONDS * 1000,
@@ -754,7 +762,7 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroConnectorSessionsContract.create,
-    handler: authRoute({}, createConnectorSessionInner$),
+    handler: authRoute(connectorWriteAuth, createConnectorSessionInner$),
   },
   {
     route: zeroConnectorsByTypeContract.get,
