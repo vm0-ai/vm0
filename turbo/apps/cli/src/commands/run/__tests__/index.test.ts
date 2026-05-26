@@ -154,6 +154,38 @@ describe("run command", () => {
       });
     });
 
+    it("should pass hidden model provider type to create run", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--model-provider-type",
+        "openai-api-key",
+      ]);
+
+      expect(capturedBody).toEqual({
+        agentComposeId: testUuid,
+        prompt: "test prompt",
+        vars: undefined,
+        secrets: undefined,
+        volumeVersions: undefined,
+        conversationId: undefined,
+        modelProviderType: "openai-api-key",
+      });
+    });
+
     it("should accept and resolve agent names", async () => {
       let capturedBody: unknown;
       server.use(

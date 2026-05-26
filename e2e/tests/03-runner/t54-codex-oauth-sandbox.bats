@@ -130,7 +130,7 @@ teardown_file() {
         skip "Requires REAL ChatGPT account tokens (synthetic seed produces 401 from real codex; mock codex doesn't invoke Bash tool). Placeholder claims covered by Rust tests in crates/guest-agent/src/codex_auth.rs. Run with E2E_CHATGPT_REAL_ACCOUNT_TOKENS=1 in nightly real-account job."
     fi
 
-    audit_sandbox_via_agent "$AGENT_NAME"
+    audit_chatgpt_oauth_sandbox_via_agent "$AGENT_NAME"
 
     # The guest-agent's auth.json fabrication put the sandbox in ChatGPT
     # mode with placeholder JWT claims (Epic SC #4). All three ChatGPT-mode
@@ -216,7 +216,7 @@ teardown_file() {
 
     seed_codex_oauth_via_authjson "$raw_json"
 
-    audit_sandbox_via_agent "$AGENT_NAME"
+    audit_chatgpt_oauth_sandbox_via_agent "$AGENT_NAME"
 
     assert_chatgpt_auth_mode
     assert_placeholder_account_id

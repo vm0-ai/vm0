@@ -78,7 +78,6 @@ teardown_file() {
     if [[ -n "${THREAD_ID:-}" ]]; then
         _codex_zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
     fi
-    $ZERO_CLI org model-provider remove "openai-api-key" 2>/dev/null || true
     disable_codex_beta
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then
         rm -rf "$TEST_DIR"

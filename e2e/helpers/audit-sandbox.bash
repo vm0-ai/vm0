@@ -20,12 +20,12 @@
 #
 # Side effects:
 #   Sets AUDIT_JSON env var on success. Returns non-zero on failure.
-audit_sandbox_via_agent() {
+audit_chatgpt_oauth_sandbox_via_agent() {
     local agent_name="$1"
     local artifact_path="${2:-/artifacts/audit-runner.sh}"
 
     if [ -z "${CHATGPT_AUDIT_FORBIDDEN_ACCESS_TOKEN:-}" ]; then
-        echo "audit_sandbox_via_agent: CHATGPT_AUDIT_FORBIDDEN_* env vars not set" >&2
+        echo "audit_chatgpt_oauth_sandbox_via_agent: CHATGPT_AUDIT_FORBIDDEN_* env vars not set" >&2
         return 1
     fi
 
@@ -62,7 +62,7 @@ EOF
     ' | tr -d '\n' | sed 's/^ *//;s/ *$//')
 
     if [ -z "$AUDIT_JSON" ]; then
-        echo "audit_sandbox_via_agent: could not extract audit JSON from agent output" >&2
+        echo "audit_chatgpt_oauth_sandbox_via_agent: could not extract audit JSON from agent output" >&2
         echo "Agent output was:" >&2
         echo "$output" >&2
         return 1
@@ -70,7 +70,7 @@ EOF
 
     # Validate parseable JSON.
     if ! echo "$AUDIT_JSON" | jq . >/dev/null 2>&1; then
-        echo "audit_sandbox_via_agent: extracted output is not valid JSON" >&2
+        echo "audit_chatgpt_oauth_sandbox_via_agent: extracted output is not valid JSON" >&2
         echo "Extracted: $AUDIT_JSON" >&2
         return 1
     fi

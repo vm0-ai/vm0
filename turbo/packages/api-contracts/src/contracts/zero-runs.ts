@@ -31,6 +31,7 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
     secrets: true,
     agentComposeId: true,
     appendSystemPrompt: true,
+    modelProviderType: true,
   })
   .extend({
     agentId: z.string().optional(),
