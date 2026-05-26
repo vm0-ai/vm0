@@ -21,7 +21,10 @@ import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/connectors.ts";
+import {
+  connectorCliAuthState$,
+  setSelectedConnectorType$,
+} from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -843,7 +846,7 @@ describe("connect modal - state management", () => {
     });
   });
 
-  it.skip("clears Stripe CLI auth state when the dialog closes", async () => {
+  it("clears Stripe CLI auth state when the dialog closes", async () => {
     vi.spyOn(window, "open").mockReturnValue(null);
 
     await openConnectModal("stripe", {
@@ -867,14 +870,14 @@ describe("connect modal - state management", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    context.store.set(setSelectedConnectorType$, "stripe");
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
-    expect(getButtonByText("Select a mode to continue")).toBeDisabled();
+    // Verify the signal-layer cleanup directly. Re-opening the dialog and
+    // asserting on the rendered UI used to do the same job but doubled the
+    // wall time and made the test flake under CI load (#14871, then #14891
+    // re-skipped after the previous refactor still hit ~3s outliers).
+    const cleared = context.store.get(connectorCliAuthState$);
+    expect(cleared.status).toBe("idle");
+    expect(cleared.connectorType).toBeNull();
+    expect(cleared.mode).toBeNull();
   });
 
   it("clears Stripe CLI auth state when switching connectors", async () => {
