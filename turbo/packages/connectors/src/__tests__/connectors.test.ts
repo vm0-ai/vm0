@@ -23,7 +23,7 @@ import {
 import {
   getAvailableConnectorAuthMethods,
   getConfiguredConnectorAuthMethods,
-  deriveConnectedManualCredentialMethods,
+  deriveConnectedManualGrantMethods,
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
@@ -37,7 +37,7 @@ import {
   getConnectorOAuthCredentials,
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthScopes,
-  getConnectorManualCredentialFields,
+  getConnectorManualGrantFields,
   getApiTokenFieldStorageType,
   getApiTokenFieldsByType,
   getEligibleConnectorTypes,
@@ -338,7 +338,7 @@ describe("connector auth method config", () => {
     ]);
   });
 
-  it("returns manual credential field storage types with secret default", () => {
+  it("returns manual grant field storage types with secret default", () => {
     expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_EMAIL")).toBe(
       "variable",
     );
@@ -358,22 +358,22 @@ describe("connector auth method config", () => {
     expect(getApiTokenFieldsByType("github")).toBeNull();
   });
 
-  it("groups all manual credential fields by storage", () => {
-    expect(getConnectorManualCredentialFields("atlassian")).toStrictEqual({
+  it("groups all manual grant fields by storage", () => {
+    expect(getConnectorManualGrantFields("atlassian")).toStrictEqual({
       secrets: ["ATLASSIAN_TOKEN"],
       variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
     });
-    expect(getConnectorManualCredentialFields("gitlab")).toStrictEqual({
+    expect(getConnectorManualGrantFields("gitlab")).toStrictEqual({
       secrets: ["GITLAB_TOKEN"],
       variables: ["GITLAB_HOST"],
     });
-    expect(getConnectorManualCredentialFields("github")).toBeNull();
-    expect(getConnectorManualCredentialFields("computer")).toBeNull();
+    expect(getConnectorManualGrantFields("github")).toBeNull();
+    expect(getConnectorManualGrantFields("computer")).toBeNull();
   });
 
-  it("derives connected manual credential methods from required fields", () => {
+  it("derives connected manual grant methods from required fields", () => {
     expect(
-      deriveConnectedManualCredentialMethods(
+      deriveConnectedManualGrantMethods(
         new Set(["ATLASSIAN_TOKEN"]),
         new Set(["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"]),
       ),
@@ -381,14 +381,14 @@ describe("connector auth method config", () => {
       expect.objectContaining({ type: "atlassian", authMethod: "api-token" }),
     );
     expect(
-      deriveConnectedManualCredentialMethods(
+      deriveConnectedManualGrantMethods(
         new Set(["ATLASSIAN_TOKEN"]),
         new Set(["ATLASSIAN_EMAIL"]),
       ),
     ).not.toContainEqual(
       expect.objectContaining({ type: "atlassian", authMethod: "api-token" }),
     );
-    const connected = deriveConnectedManualCredentialMethods(
+    const connected = deriveConnectedManualGrantMethods(
       new Set(["GITHUB_ACCESS_TOKEN", "COMPUTER_CONNECTOR_BRIDGE_TOKEN"]),
       new Set(),
     );

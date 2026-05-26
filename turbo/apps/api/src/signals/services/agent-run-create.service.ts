@@ -22,7 +22,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  deriveConnectedManualCredentialMethods,
+  deriveConnectedManualGrantMethods,
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
 } from "@vm0/connectors/connector-utils";
@@ -771,14 +771,14 @@ function missingEnvironmentReferences(args: {
   return [...missingVars, ...missingSecrets];
 }
 
-function allowedManualCredentialConnectorTypes(args: {
-  readonly manualCredentialTypes: readonly ConnectorType[];
+function allowedManualGrantConnectorTypes(args: {
+  readonly manualGrantTypes: readonly ConnectorType[];
   readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
 }): readonly ConnectorType[] {
   if (!args.allowedConnectorTypes) {
-    return args.manualCredentialTypes;
+    return args.manualGrantTypes;
   }
-  return args.manualCredentialTypes.filter((type) => {
+  return args.manualGrantTypes.filter((type) => {
     return args.allowedConnectorTypes?.includes(type);
   });
 }
@@ -1336,13 +1336,13 @@ async function loadReferencedSecrets(
         return ref.name;
       })
     : [];
-  const manualCredentialTypes = await loadManualCredentialConnectorTypes(db, {
+  const manualGrantTypes = await loadManualGrantConnectorTypes(db, {
     orgId: args.orgId,
     userId: args.userId,
   });
   const dynamicConnectorSecretNames = connectorEnvironmentSecretTemplateNames(
-    allowedManualCredentialConnectorTypes({
-      manualCredentialTypes,
+    allowedManualGrantConnectorTypes({
+      manualGrantTypes,
       allowedConnectorTypes: args.allowedConnectorTypes,
     }),
   );
@@ -1351,7 +1351,7 @@ async function loadReferencedSecrets(
   }
 
   // Load all user secrets, not only those named in the compose environment:
-  // Manual connector credentials are consumed by firewall auth templates,
+  // Manual grant secrets are consumed by firewall auth templates,
   // which the compose environment never references. Connector-owned secrets
   // are still scoped by filterDbSecretsByConnectorPermissions below.
   const rows = await db
@@ -1385,7 +1385,7 @@ async function loadReferencedSecrets(
 
   const filteredSecrets = filterDbSecretsByConnectorPermissions({
     dbSecrets: { ...orgSecrets, ...userSecrets },
-    allManualCredentialTypes: manualCredentialTypes,
+    allManualGrantTypes: manualGrantTypes,
     allowedConnectorTypes: args.allowedConnectorTypes,
   });
   const connectorSecrets =
@@ -1396,7 +1396,7 @@ async function loadReferencedSecrets(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-async function loadManualCredentialConnectorTypes(
+async function loadManualGrantConnectorTypes(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1422,7 +1422,7 @@ async function loadManualCredentialConnectorTypes(
       ),
   ]);
 
-  return deriveConnectedManualCredentialMethods(
+  return deriveConnectedManualGrantMethods(
     new Set(
       secretRows.map((row) => {
         return row.name;
@@ -1440,7 +1440,7 @@ async function loadManualCredentialConnectorTypes(
 
 function filterDbSecretsByConnectorPermissions(args: {
   readonly dbSecrets: Record<string, string>;
-  readonly allManualCredentialTypes: readonly ConnectorType[];
+  readonly allManualGrantTypes: readonly ConnectorType[];
   readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
 }): Record<string, string> | undefined {
   if (Object.keys(args.dbSecrets).length === 0) {
@@ -1451,15 +1451,13 @@ function filterDbSecretsByConnectorPermissions(args: {
   }
 
   const allConnectorSecretNames = getConnectorProvidedSecretNames([
-    ...args.allManualCredentialTypes,
+    ...args.allManualGrantTypes,
   ]);
-  const allowedManualCredentialTypes = args.allManualCredentialTypes.filter(
-    (type) => {
-      return args.allowedConnectorTypes?.includes(type);
-    },
-  );
+  const allowedManualGrantTypes = args.allManualGrantTypes.filter((type) => {
+    return args.allowedConnectorTypes?.includes(type);
+  });
   const allowedConnectorSecretNames = getConnectorProvidedSecretNames(
-    allowedManualCredentialTypes,
+    allowedManualGrantTypes,
   );
   const filtered: Record<string, string> = {};
 
@@ -3169,7 +3167,7 @@ async function loadRunConnectorContexts(
 }> {
   const [
     oauthConnectorContext,
-    manualCredentialConnectorTypes,
+    manualGrantConnectorTypes,
     customConnectorContext,
   ] = await Promise.all([
     loadOauthConnectorContext(db, {
@@ -3178,7 +3176,7 @@ async function loadRunConnectorContexts(
       allowedConnectorTypes: args.allowedConnectorTypes,
       featureSwitchContext,
     }),
-    loadManualCredentialConnectorTypes(db, {
+    loadManualGrantConnectorTypes(db, {
       orgId: args.orgId,
       userId: args.userId,
     }),
@@ -3189,18 +3187,18 @@ async function loadRunConnectorContexts(
       featureSwitchContext,
     }),
   ]);
-  const allowedManualCredentialTypes = args.allowedConnectorTypes
-    ? manualCredentialConnectorTypes.filter((type) => {
+  const allowedManualGrantTypes = args.allowedConnectorTypes
+    ? manualGrantConnectorTypes.filter((type) => {
         return args.allowedConnectorTypes?.includes(type);
       })
-    : manualCredentialConnectorTypes;
+    : manualGrantConnectorTypes;
   return {
     connectorContext: {
       ...oauthConnectorContext,
       connectorTypes: [
         ...new Set([
           ...oauthConnectorContext.connectorTypes,
-          ...allowedManualCredentialTypes,
+          ...allowedManualGrantTypes,
         ]),
       ],
     },
