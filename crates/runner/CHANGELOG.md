@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.4...runner-rs-v0.104.5) (2026-05-26)
+
+
+### Refactoring
+
+* **mitm-addon:** centralize usage idempotency helpers ([#14968](https://github.com/vm0-ai/vm0/issues/14968)) ([f804857](https://github.com/vm0-ai/vm0/commit/f80485717a148d6ee3bd462d2f02013f9d832cb0))
+
 ## [0.104.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.3...runner-rs-v0.104.4) (2026-05-26)
 
 
