@@ -38,6 +38,7 @@ function isConnectorAuthMethodId(
 export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
+  // Configured methods are raw registry entries; callers apply feature flags.
   return Object.keys(CONNECTOR_TYPES[type].authMethods)
     .filter(isConnectorAuthMethodId)
     .sort((a, b) => {
