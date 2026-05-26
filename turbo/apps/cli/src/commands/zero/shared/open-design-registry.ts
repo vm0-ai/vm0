@@ -1339,21 +1339,22 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   ),
   {
-    id: "vm0:image-style:brush-pen-accent",
+    id: "vm0:image-style:inkdab",
     kind: "image-style",
-    name: "Brush-Pen Accent Illustration",
+    name: "Inkdab Illustration",
     description:
-      "Brush-pen editorial illustration style with a single free-floating accent color, black hand-wobbled ink linework, scribbled hatched hair, and open-outline bodies on pure white.",
-    desc: 'Brush-pen editorial illustration with a single free-floating accent color. Black hand-wobbled ink linework on pure white background, ONE flat accent-color shape per prop (painted-first, never outlined in black), scribbled hatched hair, open-outline bodies with zero fill, and one small solid-accent triangle floating freely as a recurring motif. Trigger when user says /brush-pen-accent, asks for a "brush-pen illustration with a single accent color", a "free-floating color block illustration", or briefs in the style of the included reference images.',
+      "Brush-pen editorial illustration where a free-floating color dab is painted first, then loose black ink linework is drawn freely on top — never as an outline around the color. Scribbled hatched hair, open-outline bodies, pure white background.",
+    desc: 'Brush-pen editorial illustration style — a flat accent-color "dab" painted first, then loose black ink drawn freely on top. ONE flat accent-color shape per prop (painted-first, never outlined in black), black hand-wobbled ink on pure white background, scribbled hatched hair, open-outline bodies with zero fill, and one small solid-accent triangle floating freely as a recurring motif. Trigger when user says /inkdab, asks for an "inkdab illustration", a "brush-pen illustration with a single accent color", a "free-floating color block illustration", or briefs in the style of the included reference images.',
     source: sourceRef(
       VM0_SKILLS_REPO,
       VM0_SKILLS_REF,
-      "illustration-template/brush-pen-accent",
+      "illustration-template/inkdab",
     ),
     targets: ["image", "website", "poster", "presentation", "report"],
     tags: [
       "image",
       "illustration",
+      "inkdab",
       "brush-pen",
       "spot",
       "hand-drawn",
@@ -1361,6 +1362,8 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       "single-accent-color",
     ],
     triggers: [
+      "inkdab",
+      "inkdab illustration",
       "brush-pen illustration",
       "accent color illustration",
       "single accent color",
