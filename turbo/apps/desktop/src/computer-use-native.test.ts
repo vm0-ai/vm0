@@ -49,6 +49,17 @@ const requestLogPath = ${JSON.stringify(requestLogPath)};
 let buffer = "";
 
 function responseFor(request) {
+  if (
+    request.kind === "permissions.state" ||
+    request.kind === "permissions.request_accessibility" ||
+    request.kind === "permissions.request_screen_recording"
+  ) {
+    return {
+      id: request.id,
+      status: "succeeded",
+      result: { accessibility: true, screenRecording: true }
+    };
+  }
   if (request.kind === "app.state") {
     return {
       id: request.id,
@@ -169,6 +180,36 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("requests screen recording permission through the native helper", async () => {
+    const helper = await createSessionHelper();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+    });
+
+    try {
+      await expect(backend.requestScreenRecordingPermission()).resolves.toEqual(
+        {
+          accessibility: true,
+          screenRecording: true,
+        },
+      );
+
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as Record<string, unknown>;
+        });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        kind: "permissions.request_screen_recording",
+      });
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("reads coordinate click screen points from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",
@@ -271,6 +312,7 @@ describe("computer use native backend", () => {
   it.each([
     ["app_not_found", "Unable to open Things: Unable to find application"],
     ["app_open_failed", "Unable to open Things"],
+    ["window_unavailable", "Unable to resolve a background window target"],
   ])("preserves %s helper failures", async (code, message) => {
     const helper = await createHelper({
       status: "failed",

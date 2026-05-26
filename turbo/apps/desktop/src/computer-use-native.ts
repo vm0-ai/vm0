@@ -48,6 +48,7 @@ export interface ComputerUseNativeBackend {
   readonly dispose: () => void;
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
   readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
+  readonly requestScreenRecordingPermission: () => Promise<ComputerUsePermissionState>;
   readonly listApps: () => Promise<readonly string[]>;
   readonly getAppState: (
     app: string,
@@ -147,6 +148,7 @@ function responseErrorCode(value: unknown): ComputerUseNativeErrorCode {
   if (
     value === "permission_denied" ||
     value === "accessibility_unavailable" ||
+    value === "window_unavailable" ||
     value === "screen_recording_unavailable" ||
     value === "app_not_found" ||
     value === "app_open_failed" ||
@@ -561,6 +563,12 @@ export function createComputerUseNativeBackend(
     },
     requestAccessibilityPermission: async () => {
       const result = await run({ kind: "permissions.request_accessibility" });
+      return resultPermissions(result);
+    },
+    requestScreenRecordingPermission: async () => {
+      const result = await run({
+        kind: "permissions.request_screen_recording",
+      });
       return resultPermissions(result);
     },
     listApps: async () => {

@@ -35,8 +35,10 @@ export interface DesktopAuthApi {
 
 export interface DesktopComputerUseApi {
   readonly getState: () => Promise<DesktopComputerUseState>;
+  readonly refreshPermissions: () => Promise<DesktopComputerUseState>;
   readonly start: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
+  readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
   readonly subscribe: (callback: () => void) => () => void;

@@ -52,6 +52,9 @@ function createNativeBackend(
     requestAccessibilityPermission: async () => {
       return { accessibility: true, screenRecording: true };
     },
+    requestScreenRecordingPermission: async () => {
+      return { accessibility: true, screenRecording: true };
+    },
     listApps: async () => [],
     getAppState: async (app, snapshotId) => {
       return { app, snapshotId, elements: [] };

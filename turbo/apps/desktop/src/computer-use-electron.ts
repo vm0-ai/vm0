@@ -10,8 +10,10 @@ interface ComputerUseIpcOptions {
 
 interface ComputerUseNativeApi {
   readonly getState: () => DesktopComputerUseState;
+  readonly refreshPermissions: () => Promise<DesktopComputerUseState>;
   readonly start: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
+  readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
 }
 
 export function notifyDesktopComputerUseChanged(): void {
@@ -41,6 +43,10 @@ export function installComputerUseIpc(
     assertComputerUsePage(event);
     return api.getState();
   });
+  ipcMain.handle(COMPUTER_USE_CHANNELS.refreshPermissions, (event) => {
+    assertComputerUsePage(event);
+    return api.refreshPermissions();
+  });
   ipcMain.handle(COMPUTER_USE_CHANNELS.start, async (event) => {
     assertComputerUsePage(event);
     return api.start();
@@ -50,6 +56,13 @@ export function installComputerUseIpc(
     (event) => {
       assertComputerUsePage(event);
       return api.requestAccessibilityPermission();
+    },
+  );
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.requestScreenRecordingPermission,
+    (event) => {
+      assertComputerUsePage(event);
+      return api.requestScreenRecordingPermission();
     },
   );
   ipcMain.handle(

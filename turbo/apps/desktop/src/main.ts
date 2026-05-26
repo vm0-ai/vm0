@@ -32,11 +32,13 @@ import {
   getComputerUsePermissionState,
   refreshComputerUsePermissionState,
   requestComputerUseAccessibilityPermission,
+  requestComputerUseScreenRecordingPermission,
   setComputerUsePermissionNativeBackend,
 } from "./computer-use-permissions";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { headersWithSessionCookies } from "./desktop-session-cookies";
 import {
   installDesktopAuthIpc,
   notifyDesktopAuthChanged,
@@ -165,16 +167,21 @@ function signedOutDesktopAuthState(): DesktopAuthState {
   };
 }
 
-async function getDesktopAuthState(): Promise<DesktopAuthState> {
-  if (!desktopAuthToken) {
-    return signedOutDesktopAuthState();
+async function desktopAuthHeadersFor(requestUrl: URL): Promise<Headers> {
+  const headers = await headersWithSessionCookies(
+    session.fromPartition(config.sessionPartition),
+    [config.webUrl, config.platformUrl, requestUrl],
+  );
+  if (desktopAuthToken) {
+    headers.set("authorization", `Bearer ${desktopAuthToken}`);
   }
+  return headers;
+}
 
-  const authHeaders = {
-    authorization: `Bearer ${desktopAuthToken}`,
-  };
-  const meResponse = await fetch(`${desktopApiBaseUrl}${AUTH_ME_PATH}`, {
-    headers: authHeaders,
+async function getDesktopAuthState(): Promise<DesktopAuthState> {
+  const meUrl = new URL(AUTH_ME_PATH, desktopApiBaseUrl);
+  const meResponse = await fetch(meUrl, {
+    headers: await desktopAuthHeadersFor(meUrl),
   });
   if (meResponse.status === 401) {
     desktopAuthToken = null;
@@ -185,8 +192,9 @@ async function getDesktopAuthState(): Promise<DesktopAuthState> {
   }
 
   const user = (await meResponse.json()) as AuthMeResponse;
-  const orgResponse = await fetch(`${desktopApiBaseUrl}${ZERO_ORG_PATH}`, {
-    headers: authHeaders,
+  const orgUrl = new URL(ZERO_ORG_PATH, desktopApiBaseUrl);
+  const orgResponse = await fetch(orgUrl, {
+    headers: await desktopAuthHeadersFor(orgUrl),
   });
   if (orgResponse.status === 401) {
     desktopAuthToken = null;
@@ -248,12 +256,26 @@ async function requestComputerUsePermission(): Promise<DesktopComputerUseState> 
   return getComputerUseBridgeState();
 }
 
+async function requestComputerUseScreenRecording(): Promise<DesktopComputerUseState> {
+  await requestComputerUseScreenRecordingPermission();
+  notifyDesktopComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
+async function refreshComputerUsePermissions(): Promise<DesktopComputerUseState> {
+  await refreshComputerUsePermissionState();
+  notifyDesktopComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
 function installComputerUse(): void {
   installComputerUseIpc(
     {
       getState: getComputerUseBridgeState,
+      refreshPermissions: refreshComputerUsePermissions,
       start: startComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
+      requestScreenRecordingPermission: requestComputerUseScreenRecording,
     },
     { rendererUrl: localRendererUrl },
   );
