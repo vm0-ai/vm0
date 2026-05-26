@@ -224,41 +224,111 @@ class TestAuthBaseForwarderSecurity:
             skip_accept_encoding=True,
         )
 
-    def test_https_scheme_uses_https_connection_and_default_port_host(self):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+    @pytest.mark.parametrize(
+        (
+            "url",
+            "scheme",
+            "expected_connection_host",
+            "expected_connection_port",
+            "expected_host_header",
+        ),
+        [
+            pytest.param(
                 "https://example.com:443/path",
-                "GET",
-                [],
-                None,
-            )
-
-        upstream.connection_cls.assert_called_once_with("example.com", port=443, timeout=30)
-        assert call("Host", "example.com") in upstream.conn.putheader.call_args_list
-
-    def test_http_scheme_uses_http_connection_and_default_port_host(self):
-        with _patched_forwarder_connection(scheme="http") as upstream:
-            forwarder._forward_request_sync(
+                "https",
+                "example.com",
+                443,
+                "example.com",
+                id="https-default-port",
+            ),
+            pytest.param(
                 "http://example.com:80/path",
-                "GET",
-                [],
-                None,
-            )
-
-        upstream.connection_cls.assert_called_once_with("example.com", port=80, timeout=30)
-        assert call("Host", "example.com") in upstream.conn.putheader.call_args_list
-
-    def test_ipv6_host_header_is_bracketed(self):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+                "http",
+                "example.com",
+                80,
+                "example.com",
+                id="http-default-port",
+            ),
+            pytest.param(
                 "https://[2001:db8::1]:444/path",
+                "https",
+                "2001:db8::1",
+                444,
+                "[2001:db8::1]:444",
+                id="ipv6-non-default-port",
+            ),
+            pytest.param(
+                "https://[2001:db8::1]/path",
+                "https",
+                "2001:db8::1",
+                None,
+                "[2001:db8::1]",
+                id="ipv6-no-port",
+            ),
+            pytest.param(
+                "https://[2001:db8::1]:443/path",
+                "https",
+                "2001:db8::1",
+                443,
+                "[2001:db8::1]",
+                id="ipv6-https-default-port",
+            ),
+            pytest.param(
+                "http://[2001:db8::1]:80/path",
+                "http",
+                "2001:db8::1",
+                80,
+                "[2001:db8::1]",
+                id="ipv6-http-default-port",
+            ),
+            pytest.param(
+                "http://[2001:db8::1]:8080/path",
+                "http",
+                "2001:db8::1",
+                8080,
+                "[2001:db8::1]:8080",
+                id="ipv6-http-non-default-port",
+            ),
+            pytest.param(
+                "https://[2001:db8::1]:80/path",
+                "https",
+                "2001:db8::1",
+                80,
+                "[2001:db8::1]:80",
+                id="ipv6-https-http-default-port",
+            ),
+            pytest.param(
+                "http://[2001:db8::1]:443/path",
+                "http",
+                "2001:db8::1",
+                443,
+                "[2001:db8::1]:443",
+                id="ipv6-http-https-default-port",
+            ),
+        ],
+    )
+    def test_url_authority_sets_connection_target_and_host_header(
+        self,
+        url: str,
+        scheme: Literal["http", "https"],
+        expected_connection_host: str,
+        expected_connection_port: int | None,
+        expected_host_header: str,
+    ):
+        with _patched_forwarder_connection(scheme=scheme) as upstream:
+            forwarder._forward_request_sync(
+                url,
                 "GET",
                 [],
                 None,
             )
 
-        upstream.connection_cls.assert_called_once_with("2001:db8::1", port=444, timeout=30)
-        assert call("Host", "[2001:db8::1]:444") in upstream.conn.putheader.call_args_list
+        upstream.connection_cls.assert_called_once_with(
+            expected_connection_host,
+            port=expected_connection_port,
+            timeout=30,
+        )
+        assert call("Host", expected_host_header) in upstream.conn.putheader.call_args_list
 
     def test_filters_request_hop_by_hop_headers_and_recomputes_content_length(self):
         with _patched_forwarder_connection() as upstream:
