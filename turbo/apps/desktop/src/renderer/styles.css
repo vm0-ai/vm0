@@ -146,33 +146,18 @@ button {
 
 .account-copy {
   min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.account-email,
-.account-workspace {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
 }
 
 .account-email {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #202631;
   font-size: 12px;
-  line-height: 1.15;
+  line-height: 1.2;
   font-weight: 650;
-}
-
-.account-workspace {
-  color: #667085;
-  font-size: 11px;
-  line-height: 1.1;
-  font-weight: 500;
-}
-
-.account-workspace-missing {
-  color: #b54708;
 }
 
 .account-popover {
@@ -245,6 +230,7 @@ button {
   padding: 18px 20px 32px;
   display: grid;
   justify-items: center;
+  align-content: start;
   gap: 14px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -278,9 +264,10 @@ button {
 
 .panel {
   border-radius: 8px;
-  padding: 16px;
+  padding: 14px 16px;
   display: grid;
-  gap: 14px;
+  align-content: start;
+  gap: 10px;
 }
 
 .panel-heading {

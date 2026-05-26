@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  IconActivityHeartbeat,
   IconAlertCircle,
   IconBuilding,
   IconChevronDown,
@@ -412,7 +413,7 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
     startLoadable.state === "loading";
 
   return (
-    <Panel title="Runtime">
+    <Panel title="Runtime" icon={<IconActivityHeartbeat size={18} />}>
       <div className="runtime-grid">
         <div>
           <span>Status</span>
@@ -892,9 +893,6 @@ function AccountMenu({
   }
 
   const workspaceLabel = authState.organization?.name ?? "Select workspace";
-  const workspaceMeta = authState.organization?.slug
-    ? `/${authState.organization.slug}`
-    : "No active workspace";
 
   return (
     <details className="account-menu">
@@ -902,15 +900,6 @@ function AccountMenu({
         <IconUserCircle size={17} />
         <span className="account-copy">
           <span className="account-email">{authState.user.email}</span>
-          <span
-            className={
-              authState.organization
-                ? "account-workspace"
-                : "account-workspace account-workspace-missing"
-            }
-          >
-            {workspaceLabel}
-          </span>
         </span>
         <IconChevronDown size={14} />
       </summary>
@@ -922,7 +911,6 @@ function AccountMenu({
         <div className="account-popover-heading">
           <span>Workspace</span>
           <strong>{workspaceLabel}</strong>
-          <small>{workspaceMeta}</small>
         </div>
         <button
           type="button"
