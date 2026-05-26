@@ -70,7 +70,10 @@ export function getConnectorAuthMethods(
   return CONNECTOR_TYPES[type].authMethods;
 }
 
-function lookupConnectorAuthMethod(
+/**
+ * Get one auth method config for a connector type.
+ */
+export function getConnectorAuthMethod(
   type: ConnectorType,
   authMethod: string,
 ): ConnectorAuthMethodConfig | undefined {
@@ -82,16 +85,6 @@ function lookupConnectorAuthMethod(
     }
   }
   return undefined;
-}
-
-/**
- * Get one auth method config for a connector type.
- */
-export function getConnectorAuthMethod(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): ConnectorAuthMethodConfig | undefined {
-  return lookupConnectorAuthMethod(type, authMethod);
 }
 
 function connectorAuthMethodValues(
@@ -314,7 +307,7 @@ export function connectorAuthMethodHasOAuthGrant(
   type: ConnectorType,
   authMethod: string,
 ): boolean {
-  const method = lookupConnectorAuthMethod(type, authMethod);
+  const method = getConnectorAuthMethod(type, authMethod);
   switch (method?.grant.kind) {
     case "auth-code":
     case "device-auth":
@@ -658,9 +651,7 @@ export function getConnectorSecretNames(
   type: ConnectorType,
   authMethod: string,
 ): string[] {
-  return connectorMethodSecretNames(
-    lookupConnectorAuthMethod(type, authMethod),
-  );
+  return connectorMethodSecretNames(getConnectorAuthMethod(type, authMethod));
 }
 
 function connectorMethodSecretNames(
