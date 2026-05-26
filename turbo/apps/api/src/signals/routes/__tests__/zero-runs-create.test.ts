@@ -421,10 +421,6 @@ describe("POST /api/zero/runs", () => {
     expect(run?.appendSystemPrompt).toContain("# Agent Tools");
     for (const toolHint of [
       "zero web download-file -h",
-      "zero slack download-file -h",
-      "zero github download-file -h",
-      "zero telegram download-file -h",
-      "zero phone download-file -h",
       "zero connector status <type>",
       "zero doctor check-connector --help",
       "zero doctor generate -h",
@@ -437,6 +433,14 @@ describe("POST /api/zero/runs", () => {
       "zero developer-support --help",
     ]) {
       expect(run?.appendSystemPrompt).toContain(toolHint);
+    }
+    for (const otherIntegrationHint of [
+      "zero slack download-file -h",
+      "zero github download-file -h",
+      "zero telegram download-file -h",
+      "zero phone download-file -h",
+    ]) {
+      expect(run?.appendSystemPrompt).not.toContain(otherIntegrationHint);
     }
     expect(run?.appendSystemPrompt).toContain("# Current User Info");
     expect(run?.appendSystemPrompt).toContain("Name: Test User");
