@@ -886,6 +886,7 @@ type ConnectorAuthMethodGrantKindById = {
   readonly "api-token": "manual";
   readonly api: "managed";
   readonly "cli-auth": "interactive-pairing";
+  readonly "app-credentials": "manual";
 };
 
 type ConnectorAuthMethodAccessKindById = {
@@ -893,6 +894,7 @@ type ConnectorAuthMethodAccessKindById = {
   readonly "api-token": "static";
   readonly api: "managed" | "none";
   readonly "cli-auth": "none";
+  readonly "app-credentials": "static";
 };
 
 type ConnectorAuthMethodRevokeKindById = {
@@ -900,7 +902,14 @@ type ConnectorAuthMethodRevokeKindById = {
   readonly "api-token": "none";
   readonly api: "none";
   readonly "cli-auth": "none";
+  readonly "app-credentials": "none";
 };
+
+export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<
+  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodGrantKindById>
+  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodAccessKindById>
+  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodRevokeKindById>
+>;
 
 type InvalidAuthMethodGrantKindConnectorType = {
   [Type in ConnectorType]: {
