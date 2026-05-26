@@ -651,6 +651,14 @@ impl MitmProxy {
             crash_rx,
         )
     }
+
+    pub fn usage_state_id_for_test(&self) -> &str {
+        &self.usage_state_id
+    }
+
+    pub fn set_child_for_test(&mut self, child: tokio::process::Child) {
+        self.child = Some(child);
+    }
 }
 
 impl Drop for MitmProxy {

@@ -202,3 +202,7 @@ pub(in super::super) async fn wait_idle_cleanup_processed_with_expired_entries(
         .wait_idle_cleanup_processed_with_expired_entries(timeout)
         .await
 }
+
+pub(in super::super) async fn wait_usage_flush_requested(env: &MockRunEnv, timeout: Duration) {
+    env.start_observer.wait_usage_flush_requested(timeout).await;
+}

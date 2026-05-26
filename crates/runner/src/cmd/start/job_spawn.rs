@@ -11,6 +11,7 @@ use std::sync::Arc;
 use agent_diagnostics::{FailureClass, FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
 use sandbox::SandboxId;
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -63,6 +64,8 @@ pub(super) struct SpawnContext {
     /// This eliminates the up-to-10s blind spot where the server doesn't know
     /// which runner holds a newly-parked session.
     pub(super) park_notify: Arc<tokio::sync::Notify>,
+    /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
+    pub(super) usage_flush_tx: mpsc::Sender<()>,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
@@ -118,6 +121,7 @@ pub(super) fn spawn_job(
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
     let park_notify = Arc::clone(&ctx.park_notify);
+    let usage_flush_tx = ctx.usage_flush_tx.clone();
     let parking_gate = ctx.parking_gate.clone();
     let factory_for_cleanup = Arc::clone(&factory);
     let cleanup_state = RunCleanupState::new();
@@ -280,6 +284,12 @@ pub(super) fn spawn_job(
             .await;
 
             // Structural guarantee: claim (in provider) is always paired with complete.
+            match usage_flush_tx.try_send(()) {
+                Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
+                Err(mpsc::error::TrySendError::Closed(())) => {
+                    warn!(run_id = %run_id, "proxy usage flush signal channel closed before completion");
+                }
+            }
             let ownership = OwnershipTransitions::new(status.as_ref());
             completion_ready
                 .complete_and_release(provider.as_ref(), &ownership, &cleanup_state_for_body)

@@ -44,6 +44,7 @@ const getUsageRunsInner$ = command(
         orgId: auth.orgId,
         page: query.page,
         pageSize: query.pageSize,
+        runId: query.runId,
         agentId: query.agentId,
         userIds: parseUserIds(query.userIds),
         dateFrom: query.dateFrom,

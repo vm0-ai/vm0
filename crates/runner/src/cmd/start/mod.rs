@@ -578,6 +578,7 @@ enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
+    UsageFlushRequested,
 }
 
 #[cfg(test)]
@@ -682,6 +683,10 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
 
+    fn notify_usage_flush_requested(&self) {
+        self.record(StartLoopEvent::UsageFlushRequested);
+    }
+
     async fn wait_budget_exhausted_reactor(&self, timeout: Duration) {
         self.wait_for(timeout, "budget-exhausted reactor entry", |event| {
             matches!(event, StartLoopEvent::BudgetExhaustedReactorEntered).then_some(())
@@ -714,6 +719,13 @@ impl StartLoopTestObserver {
                 _ => None,
             },
         )
+        .await
+    }
+
+    async fn wait_usage_flush_requested(&self, timeout: Duration) {
+        self.wait_for(timeout, "usage flush request", |event| {
+            matches!(event, StartLoopEvent::UsageFlushRequested).then_some(())
+        })
         .await
     }
 }
@@ -939,6 +951,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // immediate heartbeat after parking a VM, so the server learns about the
     // new heldSession without waiting for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
+    let (usage_flush_tx, mut usage_flush_rx) = tokio::sync::mpsc::channel(1);
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
@@ -966,6 +979,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         orphaned_active_runs: orphaned_active_runs.clone(),
         parking_gate: parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
+        usage_flush_tx,
         device_rate_limits: device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic,
@@ -1111,6 +1125,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     ).await;
                 }
             }
+            Some(()) = usage_flush_rx.recv() => {
+                #[cfg(test)]
+                test_observer.notify_usage_flush_requested();
+                mitm.request_usage_flush();
+            }
             // Reconcile active runs left visible after an outer job-task panic.
             _ = orphan_reap_tick.tick(), if !orphaned_active_runs.is_empty() => {
                 reap_orphaned_active_runs(
@@ -1226,6 +1245,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             orphan_reap_process_discovery.as_ref(),
                         ).await;
                     }
+                }
+                Some(()) = usage_flush_rx.recv() => {
+                    #[cfg(test)]
+                    test_observer.notify_usage_flush_requested();
+                    mitm.request_usage_flush();
                 }
                 Some(result) = destroy_tasks.join_next() => {
                     if let Err(e) = result {
