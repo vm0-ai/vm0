@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -88,18 +88,48 @@ struct PublishedMarker {
     ino: u64,
 }
 
-/// Clean up queue files after a completed job has produced a result.
-fn cleanup_completed_files(
-    job_path: &std::path::Path,
-    result_path: &std::path::Path,
-    cancel_path: &std::path::Path,
-    claim_path: &std::path::Path,
-) {
-    let job_removed = remove_file_if_exists(job_path);
-    let _ = remove_file_if_exists(cancel_path);
-    let _ = remove_file_if_exists(claim_path);
-    if job_removed {
-        let _ = remove_file_if_exists(result_path);
+struct SubmitQueueEntry {
+    job_id: RunId,
+    job_dir: PathBuf,
+    job: PathBuf,
+    result: PathBuf,
+    cancel: PathBuf,
+    claim: PathBuf,
+}
+
+impl SubmitQueueEntry {
+    fn for_job(group_dir: &Path, profile: &str, job_id: RunId) -> RunnerResult<Self> {
+        Ok(Self {
+            job_id,
+            job_dir: local_queue::profile_jobs_dir(group_dir, profile)?,
+            job: local_queue::job_path(group_dir, profile, job_id)?,
+            result: local_queue::result_path(group_dir, job_id),
+            cancel: local_queue::cancel_path(group_dir, job_id),
+            claim: local_queue::claim_path(group_dir, job_id),
+        })
+    }
+
+    /// Clean up queue files after a completed job has produced a result.
+    fn cleanup_completed(&self) {
+        let job_removed = remove_file_if_exists(&self.job);
+        let _ = remove_file_if_exists(&self.cancel);
+        let _ = remove_file_if_exists(&self.claim);
+        if job_removed {
+            let _ = remove_file_if_exists(&self.result);
+        }
+    }
+
+    /// Clean up submit-owned queue files after timing out while waiting for a result.
+    fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
+        if remove_file_if_exists(&self.job) && !self.claim.exists() {
+            let _ = remove_file_if_exists(&self.cancel);
+            remove_marker_if_unchanged(&self.result, marker);
+        }
+    }
+
+    fn abandon(&self, error: &str) {
+        let marker = write_abandoned_result_marker(&self.result, self.job_id, error);
+        self.cleanup_abandoned(marker.as_ref());
     }
 }
 
@@ -189,47 +219,10 @@ fn remove_marker_if_unchanged(result_path: &std::path::Path, marker: Option<&Pub
     }
 }
 
-/// Clean up submit-owned queue files after timing out while waiting for a result.
-fn cleanup_abandoned_files(
-    job_path: &std::path::Path,
-    result_path: &std::path::Path,
-    cancel_path: &std::path::Path,
-    claim_path: &std::path::Path,
-    marker: Option<&PublishedMarker>,
-) {
-    if remove_file_if_exists(job_path) && !claim_path.exists() {
-        let _ = remove_file_if_exists(cancel_path);
-        remove_marker_if_unchanged(result_path, marker);
-    }
-}
-
-fn abandon_job(
-    job_path: &std::path::Path,
-    result_path: &std::path::Path,
-    cancel_path: &std::path::Path,
-    claim_path: &std::path::Path,
-    run_id: RunId,
-    error: &str,
-) {
-    let marker = write_abandoned_result_marker(result_path, run_id, error);
-    cleanup_abandoned_files(
-        job_path,
-        result_path,
-        cancel_path,
-        claim_path,
-        marker.as_ref(),
-    );
-}
-
 struct SubmitPlan {
-    job_id: RunId,
     group: String,
     profile: String,
-    job_dir: PathBuf,
-    job_path: PathBuf,
-    result_path: PathBuf,
-    cancel_path: PathBuf,
-    claim_path: PathBuf,
+    queue: SubmitQueueEntry,
     timeout: Duration,
     request_json: Vec<u8>,
 }
@@ -290,20 +283,12 @@ impl SubmitPlan {
 
         let request_json = serde_json::to_vec(&request)
             .map_err(|e| RunnerError::Internal(format!("serialize request: {e}")))?;
-        let job_path = local_queue::job_path(&group_dir, &profile, job_id)?;
-        let result_path = local_queue::result_path(&group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(&group_dir, job_id);
-        let claim_path = local_queue::claim_path(&group_dir, job_id);
+        let queue = SubmitQueueEntry::for_job(&group_dir, &profile, job_id)?;
 
         Ok(Self {
-            job_id,
             group,
             profile,
-            job_dir,
-            job_path,
-            result_path,
-            cancel_path,
-            claim_path,
+            queue,
             timeout: Duration::from_secs(timeout),
             request_json,
         })
@@ -330,12 +315,15 @@ impl SubmitPlan {
     }
 
     fn write_job_file(&self) -> RunnerResult<()> {
-        let tmp_path = self.job_dir.join(format!("{}.job.tmp", self.job_id));
+        let tmp_path = self
+            .queue
+            .job_dir
+            .join(format!("{}.job.tmp", self.queue.job_id));
         if let Err(e) = std::fs::write(&tmp_path, &self.request_json) {
             let _ = remove_file_if_exists(&tmp_path);
             return Err(RunnerError::Internal(format!("write job file: {e}")));
         }
-        if let Err(e) = std::fs::rename(&tmp_path, &self.job_path) {
+        if let Err(e) = std::fs::rename(&tmp_path, &self.queue.job) {
             let _ = remove_file_if_exists(&tmp_path);
             return Err(RunnerError::Internal(format!("rename job file: {e}")));
         }
@@ -346,11 +334,11 @@ impl SubmitPlan {
         let deadline = tokio::time::Instant::now() + self.timeout;
 
         loop {
-            if let Some(buf) = try_read_result(&self.result_path) {
+            if let Some(buf) = try_read_result(&self.queue.result) {
                 return Ok(SubmitOutcome::Completed(buf));
             }
             if tokio::time::Instant::now() >= deadline {
-                if let Some(buf) = try_read_result(&self.result_path) {
+                if let Some(buf) = try_read_result(&self.queue.result) {
                     return Ok(SubmitOutcome::Completed(buf));
                 }
                 let error = format!(
@@ -363,8 +351,8 @@ impl SubmitPlan {
             tokio::select! {
                 () = tokio::time::sleep(POLL_INTERVAL) => {}
                 _ = tokio::signal::ctrl_c() => {
-                    eprintln!("interrupted — requesting cancel for {}", self.job_id);
-                    let _ = std::fs::write(&self.cancel_path, b"");
+                    eprintln!("interrupted — requesting cancel for {}", self.queue.job_id);
+                    let _ = std::fs::write(&self.queue.cancel, b"");
                     return Ok(self.wait_for_cancel_grace().await);
                 }
             }
@@ -374,7 +362,7 @@ impl SubmitPlan {
     async fn wait_for_cancel_grace(&self) -> SubmitOutcome {
         let grace = tokio::time::Instant::now() + CANCEL_GRACE;
         loop {
-            if let Some(buf) = try_read_result(&self.result_path) {
+            if let Some(buf) = try_read_result(&self.queue.result) {
                 return SubmitOutcome::Completed(buf);
             }
             if tokio::time::Instant::now() >= grace {
@@ -396,26 +384,14 @@ impl SubmitPlan {
     }
 
     fn abandon(&self, error: &str) {
-        abandon_job(
-            &self.job_path,
-            &self.result_path,
-            &self.cancel_path,
-            &self.claim_path,
-            self.job_id,
-            error,
-        );
+        self.queue.abandon(error);
     }
 
     fn finish_completed(&self, buf: &[u8]) -> RunnerResult<ExitCode> {
         let response: JobResponse = serde_json::from_slice(buf)
             .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
 
-        cleanup_completed_files(
-            &self.job_path,
-            &self.result_path,
-            &self.cancel_path,
-            &self.claim_path,
-        );
+        self.queue.cleanup_completed();
 
         std::io::stdout().write_all(buf).ok();
         std::io::stdout().write_all(b"\n").ok();
@@ -448,6 +424,10 @@ mod tests {
 
     /// Serialize tests that mutate environment variables to prevent UB.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
+        SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap()
+    }
 
     #[test]
     fn detect_system_timezone_from_env() {
@@ -527,32 +507,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
 
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
         let marker =
-            write_abandoned_result_marker(&result_path, job_id, "local submit abandoned").unwrap();
-        let replacement_path = result_path.with_extension("replacement");
+            write_abandoned_result_marker(&queue.result, job_id, "local submit abandoned").unwrap();
+        let replacement_path = queue.result.with_extension("replacement");
         std::fs::write(&replacement_path, &marker.bytes).unwrap();
-        std::fs::rename(&replacement_path, &result_path).unwrap();
+        std::fs::rename(&replacement_path, &queue.result).unwrap();
 
-        cleanup_abandoned_files(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            Some(&marker),
-        );
+        queue.cleanup_abandoned(Some(&marker));
 
         assert!(
-            result_path.exists(),
+            queue.result.exists(),
             "cleanup must not remove a result that replaced the submit marker"
         );
     }
@@ -744,38 +714,34 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_completed_files_is_idempotent() {
+    fn cleanup_completed_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
 
         // Create some files
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&result_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
-        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
 
         // First cleanup
-        cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
-        assert!(!job_path.exists());
-        assert!(!result_path.exists());
-        assert!(!cancel_path.exists());
+        queue.cleanup_completed();
+        assert!(!queue.job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
         assert!(
-            !claim_path.exists(),
+            !queue.claim.exists(),
             "completed-result cleanup should remove stale claims left after result write"
         );
 
         // Second cleanup (idempotent — no panic on missing files)
-        cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
+        queue.cleanup_completed();
     }
 
     #[test]
@@ -783,28 +749,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(&job_path).unwrap();
-        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(&queue.job).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
 
-        std::fs::write(&result_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
-        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
 
-        cleanup_completed_files(&job_path, &result_path, &cancel_path, &claim_path);
+        queue.cleanup_completed();
 
         assert!(
-            result_path.exists(),
+            queue.result.exists(),
             "result must remain as the terminal marker if the job path was not removed"
         );
-        assert!(!cancel_path.exists());
-        assert!(!claim_path.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[test]
@@ -812,39 +774,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.claim.parent().unwrap()).unwrap();
 
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
-        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        std::fs::write(&queue.claim, b"").unwrap();
 
-        abandon_job(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            job_id,
-            "timed out",
-        );
+        queue.abandon("timed out");
+        let response: JobResponse =
+            serde_json::from_slice(&std::fs::read(&queue.result).unwrap()).unwrap();
 
-        assert!(!job_path.exists());
+        assert_eq!(response.run_id, queue.job_id);
+        assert!(!queue.job.exists());
         assert!(
-            result_path.exists(),
+            queue.result.exists(),
             "abandoned cleanup must keep a terminal marker while a runner owns the claim"
         );
         assert!(
-            cancel_path.exists(),
+            queue.cancel.exists(),
             "abandoned cleanup must not delete files while a runner owns the claim"
         );
-        assert!(claim_path.exists());
+        assert!(queue.claim.exists());
     }
 
     #[test]
@@ -852,32 +806,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
 
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
 
-        abandon_job(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            job_id,
-            "timed out",
-        );
+        queue.abandon("timed out");
 
-        assert!(!job_path.exists());
-        assert!(!result_path.exists());
-        assert!(!cancel_path.exists());
+        assert!(!queue.job.exists());
+        assert!(!queue.result.exists());
+        assert!(!queue.cancel.exists());
         assert!(
-            !claim_path.exists(),
+            !queue.claim.exists(),
             "abandoned cleanup should not create a temporary claim"
         );
     }
@@ -887,35 +830,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
 
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&result_path, b"").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.result, b"").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
 
-        abandon_job(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            job_id,
-            "timed out",
-        );
+        queue.abandon("timed out");
 
-        assert!(!job_path.exists());
+        assert!(!queue.job.exists());
         assert!(
-            !result_path.exists(),
+            !queue.result.exists(),
             "empty stale result should not strand an unclaimed abandoned job"
         );
-        assert!(!cancel_path.exists());
-        assert!(!claim_path.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[test]
@@ -923,34 +855,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
         let result_dir = local_queue::results_dir(group_dir);
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
 
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
         std::fs::write(&result_dir, b"not a directory").unwrap();
 
-        abandon_job(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            job_id,
-            "timed out",
-        );
+        queue.abandon("timed out");
 
         assert!(
-            !job_path.exists(),
+            !queue.job.exists(),
             "timed-out unclaimed job should not remain executable after marker write failure"
         );
-        assert!(!cancel_path.exists());
-        assert!(!claim_path.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
         assert!(result_dir.is_file());
     }
 
@@ -959,35 +880,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(job_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
 
-        std::fs::write(&job_path, b"{}").unwrap();
-        std::fs::write(&result_path, b"{}").unwrap();
-        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.result, b"{}").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
 
-        abandon_job(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            job_id,
-            "timed out",
-        );
+        queue.abandon("timed out");
 
-        assert!(!job_path.exists());
+        assert!(!queue.job.exists());
         assert!(
-            result_path.exists(),
+            queue.result.exists(),
             "abandoned cleanup must not delete a non-empty result written by a runner"
         );
-        assert!(!cancel_path.exists());
-        assert!(!claim_path.exists());
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[test]
@@ -995,31 +905,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
-        let job_path =
-            local_queue::job_path(group_dir, crate::profile::DEFAULT_PROFILE, job_id).unwrap();
-        let result_path = local_queue::result_path(group_dir, job_id);
-        let cancel_path = local_queue::cancel_path(group_dir, job_id);
-        let claim_path = local_queue::claim_path(group_dir, job_id);
-        std::fs::create_dir_all(&job_path).unwrap();
-        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(&queue.job).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
 
-        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
 
-        abandon_job(
-            &job_path,
-            &result_path,
-            &cancel_path,
-            &claim_path,
-            job_id,
-            "timed out",
-        );
+        queue.abandon("timed out");
 
         assert!(
-            result_path.exists(),
+            queue.result.exists(),
             "terminal marker must remain if the stale job path could not be removed"
         );
-        assert!(cancel_path.exists());
-        assert!(!claim_path.exists());
+        assert!(queue.cancel.exists());
+        assert!(!queue.claim.exists());
     }
 
     #[tokio::test]
