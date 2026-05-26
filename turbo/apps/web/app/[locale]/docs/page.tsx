@@ -103,14 +103,12 @@ export default async function DocsIndexPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <Particles />
-      <section className="docs-hero">
-        <div className="container">
+      <DocsShell navigation={navigation} homeLabel={t("home")} draft={draft}>
+        <header className="docs-article-header">
           <p className="docs-kicker">{t("kicker")}</p>
           <h1 className="docs-title">{t("title")}</h1>
           <p className="docs-description">{t("description")}</p>
-        </div>
-      </section>
-      <DocsShell navigation={navigation} homeLabel={t("home")} draft={draft}>
+        </header>
         {pages.length > 0 ? (
           <div className="docs-index-grid">
             {pages.map((page) => {
