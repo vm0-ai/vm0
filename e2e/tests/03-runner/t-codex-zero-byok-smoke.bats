@@ -4,7 +4,8 @@
 #
 # Validates the chain added by epic #11520:
 #   feature-switch on  →  zero org model-provider setup --type openai-api-key
-#   →  model policy routes gpt-5.5 to that BYOK provider  →  vm0 compose  →
+#   →  model policy routes the selected Codex model to that BYOK provider
+#   →  vm0 compose  →
 #   POST /api/zero/chat/messages (the same unified create-thread + run endpoint
 #   the web composer uses) → thread pins the selected model  →  real codex CLI runs with
 #   $OPENAI_API_KEY  →  response contains the expected sentinel.
@@ -36,7 +37,7 @@ setup_file() {
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
-    export CODEX_ZERO_SELECTED_MODEL="gpt-5.5"
+    export CODEX_ZERO_SELECTED_MODEL="gpt-5.4-mini"
     export CODEX_ZERO_MODEL_PROVIDER_ID="$OPENAI_PROVIDER_ID"
 
     # 3. Compose declares framework: codex explicitly. The framework is

@@ -36,6 +36,7 @@ agents:
     framework: codex
     environment:
       OPENAI_API_KEY: "\${{ secrets.OPENAI_API_KEY }}"
+      OPENAI_MODEL: "gpt-5.4-mini"
     volumes:
       - codex-files:/home/user/.codex
     working_dir: /home/user/workspace
