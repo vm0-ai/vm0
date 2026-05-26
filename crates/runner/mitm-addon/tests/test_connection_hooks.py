@@ -30,6 +30,73 @@ class TestDoneHook:
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
 
+    def test_done_waits_for_runner_flush_before_executor_shutdown(self):
+        """done() must not shut down the executor while a SIGUSR1 flush is enqueueing."""
+
+        class _InstrumentedLock:
+            def __init__(self) -> None:
+                self._lock = threading.Lock()
+                self.blocking_acquire_started = threading.Event()
+
+            def acquire(self, blocking: bool = True) -> bool:
+                if blocking:
+                    self.blocking_acquire_started.set()
+                return self._lock.acquire(blocking)
+
+            def release(self) -> None:
+                self._lock.release()
+
+            def __enter__(self):
+                self.acquire()
+                return self
+
+            def __exit__(self, exc_type, exc, traceback) -> None:
+                del exc_type, exc, traceback
+                self.release()
+
+        lock = _InstrumentedLock()
+        runner_flush_started = threading.Event()
+        release_runner_flush = threading.Event()
+        shutdown_called = threading.Event()
+        calls: list[str] = []
+
+        def flush_usage_events(*, trigger: str) -> int:
+            calls.append(f"flush:{trigger}")
+            if trigger == "runner":
+                runner_flush_started.set()
+                if not release_runner_flush.wait(timeout=1):
+                    calls.append("runner_flush_timeout")
+            return 0
+
+        def shutdown(*, wait: bool) -> None:
+            calls.append(f"shutdown:{wait}")
+            shutdown_called.set()
+
+        mock_executor = MagicMock()
+        mock_executor.shutdown.side_effect = shutdown
+
+        with (
+            patch.object(mitm_addon, "_usage_flush_signal_lock", lock),
+            patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+        ):
+            runner_thread = threading.Thread(target=mitm_addon._flush_usage_for_runner_request)
+            runner_thread.start()
+            assert runner_flush_started.wait(timeout=1)
+
+            done_thread = threading.Thread(target=mitm_addon.done)
+            done_thread.start()
+            assert lock.blocking_acquire_started.wait(timeout=1)
+            assert not shutdown_called.is_set()
+
+            release_runner_flush.set()
+            runner_thread.join(timeout=1)
+            done_thread.join(timeout=1)
+
+        assert not runner_thread.is_alive()
+        assert not done_thread.is_alive()
+        assert calls == ["flush:runner", "flush:shutdown", "shutdown:True"]
+
     def test_done_shuts_down_executor_when_flush_fails(self):
         mock_executor = MagicMock()
 

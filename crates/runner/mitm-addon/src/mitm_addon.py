@@ -656,7 +656,10 @@ def done():
     ``shutdown(wait=True)`` drains already-submitted futures during graceful stop.
     """
     try:
-        usage.flush_usage_events(trigger="shutdown")
+        # A SIGUSR1 flush can already have snapshotted buffered events but not
+        # yet enqueued them; wait before closing the executor.
+        with _usage_flush_signal_lock:
+            usage.flush_usage_events(trigger="shutdown")
     finally:
         usage.webhook.usage_executor.shutdown(wait=True)
 
