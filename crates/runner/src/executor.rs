@@ -2471,6 +2471,10 @@ mod tests {
                 "CHATGPT_ACCOUNT_ID".into(),
                 model_provider_placeholders::CHATGPT_ACCOUNT_ID.into(),
             ),
+            (
+                "CHATGPT_REFRESH_TOKEN".into(),
+                model_provider_placeholders::CHATGPT_REFRESH_TOKEN.into(),
+            ),
         ]));
 
         assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
@@ -2487,6 +2491,20 @@ mod tests {
         let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
 
         assert!(error.contains("CHATGPT_ACCESS_TOKEN"));
+        assert!(!error.contains(secret));
+    }
+
+    #[test]
+    fn model_provider_env_placeholder_validation_rejects_real_chatgpt_refresh_token() {
+        let secret = "rt_real_chatgpt_refresh_token";
+        let ctx = context_with_env(HashMap::from([(
+            "CHATGPT_REFRESH_TOKEN".into(),
+            secret.into(),
+        )]));
+
+        let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+
+        assert!(error.contains("CHATGPT_REFRESH_TOKEN"));
         assert!(!error.contains(secret));
     }
 
