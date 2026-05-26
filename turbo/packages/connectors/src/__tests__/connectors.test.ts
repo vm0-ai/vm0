@@ -228,6 +228,13 @@ describe("connector auth method config", () => {
       "oauth" | "api-token" | "api" | "cli-auth" | "app-credentials"
     >();
     expectTypeOf<"app-credentials">().toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<
+      keyof ConnectorConfig["authMethods"]
+    >();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<
+      ConnectorConfig["defaultAuthMethod"]
+    >();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<FixtureConfig>
     >().toEqualTypeOf<"app-credentials">();
@@ -239,34 +246,6 @@ describe("connector auth method config", () => {
         typeof connectorLocalAuthMethodFixture
       >
     >().toEqualTypeOf<never>();
-
-    const invalidMethodKeyFixture = {
-      "invalid-local-auth-method-key-fixture": {
-        label: "Invalid Local Auth Method Key Fixture",
-        category: "data-automation-infrastructure",
-        helpText: "Fixture used for connector auth method type coverage.",
-        authMethods: {
-          // @ts-expect-error connector-local auth method ids must be explicit union members.
-          "app-credential": localAuthMethodConfig,
-        },
-        defaultAuthMethod: "app-credentials",
-      },
-    } as const satisfies Record<string, ConnectorConfig>;
-    void invalidMethodKeyFixture;
-
-    const invalidDefaultFixture = {
-      "invalid-local-auth-method-default-fixture": {
-        label: "Invalid Local Auth Method Default Fixture",
-        category: "data-automation-infrastructure",
-        helpText: "Fixture used for connector auth method type coverage.",
-        authMethods: {
-          "app-credentials": localAuthMethodConfig,
-        },
-        // @ts-expect-error default auth method ids must be explicit union members.
-        defaultAuthMethod: "app-credential",
-      },
-    } as const satisfies Record<string, ConnectorConfig>;
-    void invalidDefaultFixture;
 
     const missingDefaultMethodFixture = {
       "missing-default-method-fixture": {
