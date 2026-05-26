@@ -60,9 +60,8 @@ const SECTION_META = {
     description: "Create and manage API keys for programmatic access.",
   },
   model: {
-    title: "Model",
-    description:
-      "Configure the AI providers and models available to you and your workspace.",
+    title: "Models",
+    description: "Choose which AI models your workspace and your runs use.",
   },
   debug: {
     title: "Debug",
@@ -114,7 +113,7 @@ const PERSONAL_GROUP = {
       icon: IconAdjustmentsHorizontal,
     },
     { id: "api-keys", label: "API Keys", icon: IconKey },
-    { id: "model", label: "Model", icon: IconCpu },
+    { id: "model", label: "Models", icon: IconCpu },
     { id: "debug", label: "Debug", icon: IconBug },
   ],
 } as const satisfies SidebarGroup;

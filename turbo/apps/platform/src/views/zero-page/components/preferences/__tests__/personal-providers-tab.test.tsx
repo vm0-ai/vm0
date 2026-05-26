@@ -94,17 +94,10 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          /Personal Claude Code and ChatGPT subscription, used only in your own runs/,
-        ),
+        screen.getByText(/Used only in your runs, with your own credentials/),
       ).toBeInTheDocument();
     });
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Organization admins can add more models from the Models page in organization management/,
-      ),
-    ).toBeInTheDocument();
   });
 
   it("renders fixed OAuth actions without default or add-provider UI", async () => {
@@ -117,9 +110,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          /Personal Claude Code and ChatGPT subscription, used only in your own runs/,
-        ),
+        screen.getByText(/Used only in your runs, with your own credentials/),
       ).toBeInTheDocument();
     });
     expect(
