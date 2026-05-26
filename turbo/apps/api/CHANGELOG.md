@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.73.0](https://github.com/vm0-ai/vm0/compare/api-v1.72.7...api-v1.73.0) (2026-05-26)
+
+
+### Features
+
+* make base44 connector generally available ([#14909](https://github.com/vm0-ai/vm0/issues/14909)) ([5bea76c](https://github.com/vm0-ai/vm0/commit/5bea76c103ccbebdd3017b033bef8ff159f8eaf1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.40.5
+    * @vm0/connectors bumped to 1.34.0
+    * @vm0/core bumped to 8.294.0
+    * @vm0/db bumped to 1.18.16
+
 ## [1.72.7](https://github.com/vm0-ai/vm0/compare/api-v1.72.6...api-v1.72.7) (2026-05-26)
 
 
