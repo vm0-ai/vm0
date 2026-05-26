@@ -1940,6 +1940,8 @@ while true; do read -r _ <&3 || true; done
             Some("ready")
         );
         assert!(ready_lines.next_line().await.unwrap().is_none());
+        let status = child.wait().await.unwrap();
+        assert!(status.success(), "child exited with {status}");
         proxy.child = Some(child);
 
         assert!(!proxy.request_usage_flush());
