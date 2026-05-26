@@ -858,41 +858,37 @@ function modelProviderEnvironment(
 
 function providerEnvironmentFromSecretRefs(
   type: ModelProviderType,
-  secretName: string | undefined,
-  secretValue: string | undefined,
+  secretName: string,
+  secretValue: string,
   selectedModel: string | null,
 ): Record<string, string> {
   const mapping = getEnvironmentMapping(type);
   if (!mapping) {
-    return secretName && secretValue
-      ? {
-          [secretName]: modelProviderEnvironmentSecretValue(
-            type,
-            secretName,
-            secretValue,
-          ),
-        }
-      : {};
+    return {
+      [secretName]: modelProviderEnvironmentSecretValue(
+        type,
+        secretName,
+        secretValue,
+      ),
+    };
   }
 
   const model = selectedModel ?? MODEL_PROVIDER_TYPES[type].defaultModel ?? "";
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(mapping)) {
     if (value === "$secret") {
-      if (secretName && secretValue) {
-        environment[key] = modelProviderEnvironmentSecretValue(
-          type,
-          secretName,
-          secretValue,
-        );
-      }
+      environment[key] = modelProviderEnvironmentSecretValue(
+        type,
+        secretName,
+        secretValue,
+      );
     } else if (value === "$model") {
       if (model) {
         environment[key] = model;
       }
     } else if (value.startsWith("$secrets.")) {
       const referencedSecret = value.slice("$secrets.".length);
-      if (referencedSecret === secretName && secretValue) {
+      if (referencedSecret === secretName) {
         environment[key] = modelProviderEnvironmentSecretValue(
           type,
           referencedSecret,
