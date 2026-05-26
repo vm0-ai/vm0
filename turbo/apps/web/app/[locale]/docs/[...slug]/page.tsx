@@ -35,7 +35,8 @@ function titlesMatch(a: string, b: string): boolean {
 
 function stripDuplicateLeadingHeading(content: string, title: string): string {
   const match = content.match(/^\s*#{1,3}\s+(.+?)\s*\n+/);
-  if (match && titlesMatch(match[1], title)) {
+  const heading = match?.[1];
+  if (match && heading && titlesMatch(heading, title)) {
     return content.slice(match[0].length);
   }
   return content;
