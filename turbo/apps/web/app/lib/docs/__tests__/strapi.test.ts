@@ -119,7 +119,7 @@ describe("docs/strapi", () => {
     expect(pages[0]?.section).toEqual({
       title: "Getting Started",
       slug: "getting-started",
-      order: 0,
+      order: 20,
     });
   });
 
