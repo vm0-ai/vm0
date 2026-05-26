@@ -1414,6 +1414,51 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:sunlit-gouache",
+    kind: "image-style",
+    name: "Sunlit Gouache",
+    description:
+      "Bright pastel travel-painting illustration in opaque gouache on textured paper with chunky flat brushstrokes, vertical one-point perspective, and figures walking into warm sunlight.",
+    desc: 'Sunlit Gouache travel-painting illustration. Opaque gouache on textured paper, visible chunky flat brushstrokes with dry-brush highlights, locked six-color palette (cream, butter-yellow, sky-blue, sage-green, terracotta, one small red accent), vertical 2:3 one-point-perspective composition drawing the eye into a bright sunlit focal point, figures seen from behind walking into the scene, an overhead band of hanging elements (awning, prayer flags, catenary, bunting, lanterns) creating depth, dappled painterly reflections on the ground, airy optimistic warm mood. Trigger when user says /sunlit-gouache, asks for a "sunlit gouache illustration", "painterly travel scene", "gouache café/market/temple/station scene", or a new piece in this bright pastel painted-light style.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/sunlit-gouache",
+    ),
+    targets: ["image", "website", "poster", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "gouache",
+      "painterly",
+      "travel",
+      "editorial",
+      "pastel",
+      "sunlit",
+    ],
+    triggers: [
+      "sunlit gouache",
+      "gouache illustration",
+      "painterly travel scene",
+      "gouache travel painting",
+      "painted travel illustration",
+      "pastel travel illustration",
+    ],
+    bestFor: [
+      "editorial cover art",
+      "travel narrative artwork",
+      "blog hero illustrations",
+      "presentation section dividers",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 18,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
