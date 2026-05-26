@@ -111,6 +111,25 @@ async function seedAtlassianApiTokenState(
   ]);
 }
 
+async function seedGitlabApiTokenState(
+  fixture: OrgMembershipFixture,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(secrets).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "GITLAB_TOKEN",
+    encryptedValue: "encrypted_gitlab_token",
+    type: "user",
+  });
+  await writeDb.insert(variables).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "GITLAB_HOST",
+    value: "gitlab.example.com",
+  });
+}
+
 async function remainingConnectorCount(
   fixture: OrgMembershipFixture,
 ): Promise<number> {
@@ -256,6 +275,29 @@ describe("DELETE /api/zero/connectors/:type", () => {
     const response = await accept(
       client.delete({
         params: { type: "atlassian" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    expect(response.body).toBeUndefined();
+    await expect(
+      remainingSecretAndVariableState(fixture),
+    ).resolves.toStrictEqual({
+      secrets: 0,
+      variables: 0,
+    });
+  });
+
+  it("deletes optional manual grant variables", async () => {
+    const fixture = await track(seedFixture());
+    await seedGitlabApiTokenState(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const response = await accept(
+      client.delete({
+        params: { type: "gitlab" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],

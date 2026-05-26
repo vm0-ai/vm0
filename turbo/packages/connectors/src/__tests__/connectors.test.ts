@@ -37,7 +37,7 @@ import {
   getConnectorOAuthCredentials,
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthScopes,
-  getConnectorManualGrantFields,
+  getConnectorManualGrantFieldNames,
   getApiTokenFieldStorageType,
   getApiTokenFieldsByType,
   getEligibleConnectorTypes,
@@ -358,17 +358,17 @@ describe("connector auth method config", () => {
     expect(getApiTokenFieldsByType("github")).toBeNull();
   });
 
-  it("groups all manual grant fields by storage", () => {
-    expect(getConnectorManualGrantFields("atlassian")).toStrictEqual({
+  it("groups all manual grant field names by storage", () => {
+    expect(getConnectorManualGrantFieldNames("atlassian")).toStrictEqual({
       secrets: ["ATLASSIAN_TOKEN"],
       variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
     });
-    expect(getConnectorManualGrantFields("gitlab")).toStrictEqual({
+    expect(getConnectorManualGrantFieldNames("gitlab")).toStrictEqual({
       secrets: ["GITLAB_TOKEN"],
       variables: ["GITLAB_HOST"],
     });
-    expect(getConnectorManualGrantFields("github")).toBeNull();
-    expect(getConnectorManualGrantFields("computer")).toBeNull();
+    expect(getConnectorManualGrantFieldNames("github")).toBeNull();
+    expect(getConnectorManualGrantFieldNames("computer")).toBeNull();
   });
 
   it("derives connected manual grant methods from required fields", () => {
@@ -377,17 +377,13 @@ describe("connector auth method config", () => {
         new Set(["ATLASSIAN_TOKEN"]),
         new Set(["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"]),
       ),
-    ).toContainEqual(
-      expect.objectContaining({ type: "atlassian", authMethod: "api-token" }),
-    );
+    ).toContainEqual({ type: "atlassian", authMethod: "api-token" });
     expect(
       deriveConnectedManualGrantMethods(
         new Set(["ATLASSIAN_TOKEN"]),
         new Set(["ATLASSIAN_EMAIL"]),
       ),
-    ).not.toContainEqual(
-      expect.objectContaining({ type: "atlassian", authMethod: "api-token" }),
-    );
+    ).not.toContainEqual({ type: "atlassian", authMethod: "api-token" });
     const connected = deriveConnectedManualGrantMethods(
       new Set(["GITHUB_ACCESS_TOKEN", "COMPUTER_CONNECTOR_BRIDGE_TOKEN"]),
       new Set(),

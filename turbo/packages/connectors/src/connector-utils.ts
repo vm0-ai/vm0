@@ -147,7 +147,7 @@ function hasRequiredManualGrantFields(fields: ManualGrantFieldNames): boolean {
   return fields.secrets.length > 0 || fields.variables.length > 0;
 }
 
-function getConnectorRequiredManualGrantFields(
+function getConnectorRequiredManualGrantFieldNames(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ManualGrantFieldNames | null {
@@ -166,7 +166,7 @@ function getConnectorManualGrantFieldStorageType(
   return fieldConfig?.storage ?? "secret";
 }
 
-export function getConnectorManualGrantFields(
+export function getConnectorManualGrantFieldNames(
   type: ConnectorType,
 ): ManualGrantFieldNames | null {
   const secretNames = new Set<string>();
@@ -910,7 +910,7 @@ export function getApiTokenFieldsByType(
 ): ManualGrantFieldNames | null {
   // Compatibility wrapper for legacy API-token callers. New state inference
   // should use manual grant helpers so the method id is preserved.
-  return getConnectorRequiredManualGrantFields(type, "api-token");
+  return getConnectorRequiredManualGrantFieldNames(type, "api-token");
 }
 
 export function getApiTokenFieldStorageType(

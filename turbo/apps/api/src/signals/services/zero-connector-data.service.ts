@@ -10,7 +10,7 @@ import {
   deriveConnectedManualGrantMethod,
   deriveConnectedManualGrantMethods,
   getAvailableConnectorAuthMethods,
-  getConnectorManualGrantFields,
+  getConnectorManualGrantFieldNames,
   getConnectorOAuthCredentials,
   getConnectorProvidedSecretNames,
   getConnectorSecretNames,
@@ -569,7 +569,7 @@ export const deleteZeroConnectorLocalState$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const fields = getConnectorManualGrantFields(args.type);
+    const fields = getConnectorManualGrantFieldNames(args.type);
     const hasManualGrantState = existing
       ? false
       : await hasManualGrantConnectorLocalState({
@@ -804,7 +804,7 @@ export const upsertOAuthConnector$ = command(
         ? secretMetadata.refreshSecretName
         : undefined,
     });
-    const manualGrantFields = getConnectorManualGrantFields(args.type);
+    const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
 
     await invalidateActiveCliAuthSessionsForConnectorType({
       writeDb,
