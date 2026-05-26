@@ -12,7 +12,6 @@ import {
   ComputerUseNativeHelperError,
   resolveComputerUseHelperPath,
   type ComputerUseNativeBackend,
-  type ComputerUseNativePressKeyRequest,
 } from "./computer-use-native";
 import {
   buildComputerUseRuntimeBody,
@@ -50,13 +49,17 @@ function createNativeBackend(
     },
     openApp: async () => {},
     clickElement: async () => {},
-    clickPoint: async () => {},
+    clickPoint: async (args) => {
+      return { screenX: args.x, screenY: args.y };
+    },
     setElementValue: async () => {},
     performElementAction: async () => {},
     typeText: async () => {
       return {};
     },
-    pressKey: async () => {},
+    pressKey: async (args) => {
+      return { normalizedKey: args.key };
+    },
     scrollElement: async () => {},
   };
   return { ...defaults, ...overrides };
@@ -1224,6 +1227,7 @@ describe("computer use desktop runtime", () => {
   it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    clickPoint.mockResolvedValue({ screenX: 900, screenY: 800 });
     const nativeBackend = createNativeBackend({
       clickPoint,
       getAppState: async (app) => {
@@ -1314,16 +1318,29 @@ describe("computer use desktop runtime", () => {
     });
     expect(clickPoint).toHaveBeenCalledWith({
       app: "Safari",
-      x: 900,
-      y: 800,
+      snapshotId: "snap_1",
+      x: 400,
+      y: 300,
+      screenshotSource: "window",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      sourceBounds: { x: 100, y: 200, width: 1600, height: 1200 },
+      windowId: 123,
+      windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
       button: "right",
       clickCount: 2,
     });
   });
 
-  it("rejects coordinate clicks against non-window screenshot snapshots", async () => {
+  it("surfaces native rejection for coordinate clicks against non-window snapshots", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    clickPoint.mockRejectedValue(
+      new ComputerUseNativeHelperError(
+        "unsupported_command",
+        "Snapshot is not a target-window screenshot: screen_snap",
+      ),
+    );
     snapshotStore.set({
       app: "Safari",
       snapshotId: "screen_snap",
@@ -1360,13 +1377,25 @@ describe("computer use desktop runtime", () => {
         message: "Snapshot is not a target-window screenshot: screen_snap",
       },
     });
-    expect(clickPoint).not.toHaveBeenCalled();
+    expect(clickPoint).toHaveBeenCalledWith({
+      app: "Safari",
+      snapshotId: "screen_snap",
+      x: 400,
+      y: 300,
+      screenshotSource: "screen",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      sourceBounds: { x: 0, y: 0, width: 1440, height: 900 },
+      button: "left",
+      clickCount: 1,
+    });
   });
 
   it("uses fresh native app state for coordinate clicks without a cached snapshot", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     let stateCaptureCount = 0;
     const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>();
+    clickPoint.mockResolvedValue({ screenX: 440, screenY: 380 });
 
     const result = await executeComputerUseCommand(
       {
@@ -1434,8 +1463,15 @@ describe("computer use desktop runtime", () => {
     expect(stateCaptureCount).toBe(2);
     expect(clickPoint).toHaveBeenCalledWith({
       app: "Safari",
-      x: 440,
-      y: 380,
+      snapshotId: "snap_fresh",
+      x: 200,
+      y: 150,
+      screenshotSource: "window",
+      screenshotWidth: 400,
+      screenshotHeight: 300,
+      sourceBounds: { x: 40, y: 80, width: 800, height: 600 },
+      windowId: 123,
+      windowFrame: { x: 40, y: 80, width: 800, height: 600 },
       button: "left",
       clickCount: 1,
     });
@@ -1494,36 +1530,27 @@ describe("computer use desktop runtime", () => {
     });
   });
 
-  it("parses press-key combinations before posting background input", async () => {
+  it("passes press-key combinations to the native helper", async () => {
     const cases = [
       {
         key: "Command+K",
         normalizedKey: "Command+K",
-        keyCode: 40,
-        flags: 1_048_576,
-        modifiers: [{ keyCode: 55, flag: 1_048_576 }],
       },
       {
         key: "Control+K",
         normalizedKey: "Control+K",
-        keyCode: 40,
-        flags: 262_144,
-        modifiers: [{ keyCode: 59, flag: 262_144 }],
       },
       {
         key: "Command+Shift+S",
         normalizedKey: "Command+Shift+S",
-        keyCode: 1,
-        flags: 1_179_648,
-        modifiers: [
-          { keyCode: 55, flag: 1_048_576 },
-          { keyCode: 56, flag: 131_072 },
-        ],
       },
     ];
 
     for (const testCase of cases) {
-      const pressRequests: ComputerUseNativePressKeyRequest[] = [];
+      const pressRequests: Array<{
+        readonly app: string;
+        readonly key: string;
+      }> = [];
       const result = await executeComputerUseCommand(
         {
           id: "cmd_1",
@@ -1536,6 +1563,7 @@ describe("computer use desktop runtime", () => {
           nativeBackend: createNativeBackend({
             pressKey: async (request) => {
               pressRequests.push(request);
+              return { normalizedKey: testCase.normalizedKey };
             },
             getAppState: async (app, snapshotId) => {
               return nativeAppStateWithScreenshot(app, snapshotId);
@@ -1554,10 +1582,7 @@ describe("computer use desktop runtime", () => {
       expect(pressRequests).toStrictEqual([
         {
           app: "Safari",
-          keyCode: testCase.keyCode,
-          flags: testCase.flags,
-          modifiers: testCase.modifiers,
-          normalizedKey: testCase.normalizedKey,
+          key: testCase.key,
         },
       ]);
     }
@@ -1566,6 +1591,7 @@ describe("computer use desktop runtime", () => {
   it("posts press-key combinations to the target process without app activation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
+    pressKey.mockResolvedValue({ normalizedKey: "Command+K" });
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1599,16 +1625,19 @@ describe("computer use desktop runtime", () => {
     });
     expect(pressKey).toHaveBeenCalledWith({
       app: "Safari",
-      keyCode: 40,
-      modifiers: [{ keyCode: 55, flag: 1_048_576 }],
-      flags: 1_048_576,
-      normalizedKey: "Command+K",
+      key: "Command+K",
     });
     expect(openApp).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported press-key syntax before dispatching input", async () => {
+  it("surfaces native press-key syntax rejections", async () => {
     const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
+    pressKey.mockRejectedValue(
+      new ComputerUseNativeHelperError(
+        "unsupported_command",
+        "Unsupported key specification: Launchpad",
+      ),
+    );
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1629,7 +1658,10 @@ describe("computer use desktop runtime", () => {
         message: "Unsupported key specification: Launchpad",
       },
     });
-    expect(pressKey).not.toHaveBeenCalled();
+    expect(pressKey).toHaveBeenCalledWith({
+      app: "Safari",
+      key: "Command+Launchpad",
+    });
   });
 
   it("rejects type-text when the target app has no focused editable element", async () => {

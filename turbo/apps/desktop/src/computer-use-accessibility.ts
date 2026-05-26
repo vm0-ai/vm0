@@ -3,7 +3,6 @@ import {
   ComputerUseNativeHelperError,
   createComputerUseNativeBackend,
   type ComputerUseNativeBackend,
-  type ComputerUseNativePressKeyRequest,
 } from "./computer-use-native";
 
 export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
@@ -198,176 +197,6 @@ interface ComputerUseCommandExecutionDependencies {
 }
 
 const DEFAULT_SNAPSHOT_STORE_LIMIT = 50;
-const CG_EVENT_FLAG_SHIFT = 131_072;
-const CG_EVENT_FLAG_CONTROL = 262_144;
-const CG_EVENT_FLAG_OPTION = 524_288;
-const CG_EVENT_FLAG_COMMAND = 1_048_576;
-
-type ComputerUseKeyModifier = "command" | "control" | "option" | "shift";
-
-interface ComputerUseModifierDefinition {
-  readonly name: ComputerUseKeyModifier;
-  readonly displayName: string;
-  readonly keyCode: number;
-  readonly flag: number;
-}
-
-interface ParsedComputerUseKeyPress {
-  readonly keyCode: number;
-  readonly modifiers: readonly {
-    readonly keyCode: number;
-    readonly flag: number;
-  }[];
-  readonly flags: number;
-  readonly normalizedKey: string;
-}
-
-const MODIFIER_DEFINITIONS: readonly ComputerUseModifierDefinition[] = [
-  {
-    name: "command",
-    displayName: "Command",
-    keyCode: 55,
-    flag: CG_EVENT_FLAG_COMMAND,
-  },
-  {
-    name: "control",
-    displayName: "Control",
-    keyCode: 59,
-    flag: CG_EVENT_FLAG_CONTROL,
-  },
-  {
-    name: "option",
-    displayName: "Option",
-    keyCode: 58,
-    flag: CG_EVENT_FLAG_OPTION,
-  },
-  {
-    name: "shift",
-    displayName: "Shift",
-    keyCode: 56,
-    flag: CG_EVENT_FLAG_SHIFT,
-  },
-] as const;
-
-const MODIFIER_ALIASES: Readonly<Record<string, ComputerUseKeyModifier>> =
-  Object.freeze({
-    alt: "option",
-    cmd: "command",
-    command: "command",
-    control: "control",
-    ctrl: "control",
-    meta: "command",
-    option: "option",
-    shift: "shift",
-    super: "command",
-  });
-
-const KEY_CODES: Readonly<Record<string, number>> = Object.freeze({
-  "'": 39,
-  ",": 43,
-  "-": 27,
-  ".": 47,
-  "/": 44,
-  "0": 29,
-  "1": 18,
-  "2": 19,
-  "3": 20,
-  "4": 21,
-  "5": 23,
-  "6": 22,
-  "7": 26,
-  "8": 28,
-  "9": 25,
-  ";": 41,
-  "=": 24,
-  "[": 33,
-  "\\": 42,
-  "]": 30,
-  "`": 50,
-  a: 0,
-  b: 11,
-  backspace: 51,
-  c: 8,
-  d: 2,
-  delete: 51,
-  down: 125,
-  downarrow: 125,
-  e: 14,
-  end: 119,
-  enter: 36,
-  esc: 53,
-  escape: 53,
-  f: 3,
-  f1: 122,
-  f2: 120,
-  f3: 99,
-  f4: 118,
-  f5: 96,
-  f6: 97,
-  f7: 98,
-  f8: 100,
-  f9: 101,
-  f10: 109,
-  f11: 103,
-  f12: 111,
-  forwarddelete: 117,
-  g: 5,
-  h: 4,
-  home: 115,
-  i: 34,
-  j: 38,
-  k: 40,
-  l: 37,
-  left: 123,
-  leftarrow: 123,
-  m: 46,
-  n: 45,
-  o: 31,
-  p: 35,
-  pagedown: 121,
-  pageup: 116,
-  q: 12,
-  r: 15,
-  return: 36,
-  right: 124,
-  rightarrow: 124,
-  s: 1,
-  space: 49,
-  spacebar: 49,
-  t: 17,
-  tab: 48,
-  u: 32,
-  up: 126,
-  uparrow: 126,
-  v: 9,
-  w: 13,
-  x: 7,
-  y: 16,
-  z: 6,
-});
-
-const KEY_DISPLAY_NAMES: Readonly<Record<string, string>> = Object.freeze({
-  backspace: "Backspace",
-  delete: "Backspace",
-  down: "Down",
-  downarrow: "Down",
-  enter: "Return",
-  esc: "Escape",
-  escape: "Escape",
-  forwarddelete: "ForwardDelete",
-  left: "Left",
-  leftarrow: "Left",
-  pagedown: "PageDown",
-  pageup: "PageUp",
-  return: "Return",
-  right: "Right",
-  rightarrow: "Right",
-  space: "Space",
-  spacebar: "Space",
-  tab: "Tab",
-  up: "Up",
-  uparrow: "Up",
-});
 
 class UnsupportedComputerUseCommandError extends Error {
   constructor(message: string) {
@@ -860,26 +689,6 @@ function renderAccessibilityVisibleText(
     .join("\n");
 }
 
-function normalizeKeyToken(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[\s_-]+/g, "");
-}
-
-function displayKeyToken(token: string): string {
-  if (KEY_DISPLAY_NAMES[token]) {
-    return KEY_DISPLAY_NAMES[token];
-  }
-  if (/^f\d{1,2}$/.test(token)) {
-    return token.toUpperCase();
-  }
-  if (token.length === 1) {
-    return token.toUpperCase();
-  }
-  return token;
-}
-
 function unsupportedCommand(message: string): ComputerUseCommandFailure {
   return {
     status: "failed",
@@ -897,77 +706,6 @@ function missingField(field: string): ComputerUseCommandFailure {
       code: "unsupported_command",
       message: `Missing required payload field: ${field}`,
     },
-  };
-}
-
-function parseComputerUseKeyPress(key: string): ParsedComputerUseKeyPress {
-  const rawParts = key.split("+").map((part) => {
-    return part.trim();
-  });
-  if (
-    rawParts.length === 0 ||
-    rawParts.some((part) => {
-      return part.length === 0;
-    })
-  ) {
-    throw new UnsupportedComputerUseCommandError(
-      "keyboard.press_key requires a non-empty key or key combination",
-    );
-  }
-
-  const modifiers = new Set<ComputerUseKeyModifier>();
-  let keyCode: number | null = null;
-  let displayKey: string | null = null;
-
-  for (const rawPart of rawParts) {
-    const token = normalizeKeyToken(rawPart);
-    const modifier = MODIFIER_ALIASES[token];
-    if (modifier) {
-      modifiers.add(modifier);
-      continue;
-    }
-
-    const code = KEY_CODES[token];
-    if (code === undefined) {
-      throw new UnsupportedComputerUseCommandError(
-        `Unsupported key specification: ${rawPart}`,
-      );
-    }
-    if (keyCode !== null) {
-      throw new UnsupportedComputerUseCommandError(
-        "keyboard.press_key supports exactly one non-modifier key",
-      );
-    }
-    keyCode = code;
-    displayKey = displayKeyToken(token);
-  }
-
-  if (keyCode === null || displayKey === null) {
-    throw new UnsupportedComputerUseCommandError(
-      "keyboard.press_key requires a non-modifier key",
-    );
-  }
-
-  const activeModifiers = MODIFIER_DEFINITIONS.filter((modifier) => {
-    return modifiers.has(modifier.name);
-  });
-  return {
-    keyCode,
-    modifiers: activeModifiers.map((modifier) => {
-      return {
-        keyCode: modifier.keyCode,
-        flag: modifier.flag,
-      };
-    }),
-    flags: activeModifiers.reduce((flags, modifier) => {
-      return flags | modifier.flag;
-    }, 0),
-    normalizedKey: [
-      ...activeModifiers.map((modifier) => {
-        return modifier.displayName;
-      }),
-      displayKey,
-    ].join("+"),
   };
 }
 
@@ -1532,46 +1270,6 @@ async function openApp(
   };
 }
 
-function roundScreenCoordinate(value: number): number {
-  return Number(value.toFixed(2));
-}
-
-function mapScreenshotPointToScreen(args: {
-  readonly metadata: ComputerUseSnapshotMetadata;
-  readonly x: number;
-  readonly y: number;
-}):
-  | { readonly screenX: number; readonly screenY: number }
-  | ComputerUseCommandFailure {
-  const { metadata } = args;
-  if (metadata.screenshotSource !== "window") {
-    return unsupportedCommand(
-      `Snapshot is not a target-window screenshot: ${metadata.snapshotId}`,
-    );
-  }
-  if (!metadata.sourceBounds) {
-    return unsupportedCommand(
-      `Snapshot source bounds are unavailable: ${metadata.snapshotId}`,
-    );
-  }
-  if (metadata.screenshotWidth <= 0 || metadata.screenshotHeight <= 0) {
-    return unsupportedCommand(
-      `Snapshot dimensions are invalid: ${metadata.snapshotId}`,
-    );
-  }
-
-  return {
-    screenX: roundScreenCoordinate(
-      metadata.sourceBounds.x +
-        (args.x / metadata.screenshotWidth) * metadata.sourceBounds.width,
-    ),
-    screenY: roundScreenCoordinate(
-      metadata.sourceBounds.y +
-        (args.y / metadata.screenshotHeight) * metadata.sourceBounds.height,
-    ),
-  };
-}
-
 function resolveClickSnapshot(args: {
   readonly app: string;
   readonly snapshotId: string | null;
@@ -1704,18 +1402,19 @@ async function clickElement(args: {
     if ("status" in snapshot) {
       return snapshot;
     }
-    const screenPoint = mapScreenshotPointToScreen({
-      metadata: snapshot,
+    const clickPoint = await args.nativeBackend.clickPoint({
+      app: args.app,
+      snapshotId: snapshot.snapshotId,
       x: args.x,
       y: args.y,
-    });
-    if ("status" in screenPoint) {
-      return screenPoint;
-    }
-    await args.nativeBackend.clickPoint({
-      app: args.app,
-      x: screenPoint.screenX,
-      y: screenPoint.screenY,
+      screenshotSource: snapshot.screenshotSource,
+      screenshotWidth: snapshot.screenshotWidth,
+      screenshotHeight: snapshot.screenshotHeight,
+      ...(snapshot.sourceBounds ? { sourceBounds: snapshot.sourceBounds } : {}),
+      ...(snapshot.windowId !== undefined
+        ? { windowId: snapshot.windowId }
+        : {}),
+      ...(snapshot.windowFrame ? { windowFrame: snapshot.windowFrame } : {}),
       button: args.button,
       clickCount: args.clickCount,
     });
@@ -1726,8 +1425,8 @@ async function clickElement(args: {
         snapshotId: snapshot.snapshotId,
         x: args.x,
         y: args.y,
-        screenX: screenPoint.screenX,
-        screenY: screenPoint.screenY,
+        screenX: clickPoint.screenX,
+        screenY: clickPoint.screenY,
         button: args.button,
         clickCount: args.clickCount,
         dispatchMode: "background_mouse_event",
@@ -1815,24 +1514,16 @@ async function pressKey(
   key: string,
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  const parsed = parseComputerUseKeyPress(key);
-  const request: ComputerUseNativePressKeyRequest = {
-    app,
-    keyCode: parsed.keyCode,
-    modifiers: parsed.modifiers,
-    flags: parsed.flags,
-    normalizedKey: parsed.normalizedKey,
-  };
-  await nativeBackend.pressKey(request);
+  const result = await nativeBackend.pressKey({ app, key });
   return {
     status: "succeeded",
     result: {
       app,
-      key: parsed.normalizedKey,
+      key: result.normalizedKey,
       dispatchMode: "background_keyboard_event",
       dispatchTarget: "app_process",
       inputRisk: "background_app_shortcut",
-      text: `Pressed ${parsed.normalizedKey}`,
+      text: `Pressed ${result.normalizedKey}`,
     },
   };
 }
