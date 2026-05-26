@@ -1,5 +1,4 @@
 import {
-  CONNECTOR_LEGACY_AUTH_METHOD_ORDER,
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
@@ -23,8 +22,34 @@ import {
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
 
-type ConnectorLegacyAuthMethodId =
-  (typeof CONNECTOR_LEGACY_AUTH_METHOD_ORDER)[number];
+function parseConnectorAuthMethodId(
+  authMethod: string,
+): ConnectorAuthMethodId | null {
+  switch (authMethod) {
+    case "oauth":
+    case "api-token":
+    case "api":
+    case "cli-auth": {
+      return authMethod;
+    }
+  }
+  return null;
+}
+
+export function getConnectorAuthMethodPriority(
+  authMethod: ConnectorAuthMethodId,
+): number {
+  switch (authMethod) {
+    case "oauth":
+      return 0;
+    case "api-token":
+      return 1;
+    case "api":
+      return 2;
+    case "cli-auth":
+      return 3;
+  }
+}
 
 /**
  * Connector utility vocabulary:
@@ -298,11 +323,21 @@ export function getAvailableConnectorAuthMethods(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
-): ConnectorLegacyAuthMethodId[] {
+): ConnectorAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorLegacyAuthMethodId[] = [];
+  const availableAuthMethods: ConnectorAuthMethodId[] = [];
+  const configuredAuthMethods = Object.keys(CONNECTOR_TYPES[type].authMethods)
+    .flatMap((authMethod) => {
+      const parsed = parseConnectorAuthMethodId(authMethod);
+      return parsed ? [parsed] : [];
+    })
+    .sort((a, b) => {
+      return (
+        getConnectorAuthMethodPriority(a) - getConnectorAuthMethodPriority(b)
+      );
+    });
 
-  for (const authMethod of CONNECTOR_LEGACY_AUTH_METHOD_ORDER) {
+  for (const authMethod of configuredAuthMethods) {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "managed": {
