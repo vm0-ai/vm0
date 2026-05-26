@@ -107,13 +107,10 @@ export interface ManualCredentialFieldNames {
   readonly variables: readonly string[];
 }
 
-export type RequiredManualCredentialFieldNames = ManualCredentialFieldNames;
-
 export interface ManualCredentialAuthMethod {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly fields: ManualCredentialFieldNames;
-  readonly requiredFields: RequiredManualCredentialFieldNames;
 }
 
 function manualCredentialFieldNames(
@@ -133,7 +130,7 @@ function manualCredentialFieldNames(
 
 function requiredManualCredentialFieldNames(
   fields: Record<string, ConnectorManualGrantFieldConfig>,
-): RequiredManualCredentialFieldNames {
+): ManualCredentialFieldNames {
   const secretNames: string[] = [];
   const variableNames: string[] = [];
   for (const [name, cfg] of Object.entries(fields)) {
@@ -148,7 +145,7 @@ function requiredManualCredentialFieldNames(
 }
 
 function hasRequiredManualCredentialFields(
-  fields: RequiredManualCredentialFieldNames,
+  fields: ManualCredentialFieldNames,
 ): boolean {
   return fields.secrets.length > 0 || fields.variables.length > 0;
 }
@@ -156,7 +153,7 @@ function hasRequiredManualCredentialFields(
 function getConnectorRequiredManualCredentialFields(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
-): RequiredManualCredentialFieldNames | null {
+): ManualCredentialFieldNames | null {
   const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
   return fields ? requiredManualCredentialFieldNames(fields) : null;
 }
@@ -226,7 +223,6 @@ export function deriveConnectedManualCredentialMethod(
         type,
         authMethod,
         fields: manualCredentialFieldNames(method.grant.fields),
-        requiredFields,
       };
     }
   }
@@ -917,7 +913,7 @@ export function getConnectorTypeForSecretName(
 
 export function getApiTokenFieldsByType(
   type: ConnectorType,
-): RequiredManualCredentialFieldNames | null {
+): ManualCredentialFieldNames | null {
   // Compatibility wrapper for legacy API-token callers. New state inference
   // should use manual credential helpers so the method id is preserved.
   return getConnectorRequiredManualCredentialFields(type, "api-token");
