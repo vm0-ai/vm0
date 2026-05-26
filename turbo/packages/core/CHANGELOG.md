@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.295.0](https://github.com/vm0-ai/vm0/compare/core-v8.294.0...core-v8.295.0) (2026-05-26)
+
+
+### Features
+
+* enable google ads connector for everyone ([#14911](https://github.com/vm0-ai/vm0/issues/14911)) ([bbb2480](https://github.com/vm0-ai/vm0/commit/bbb24801eaa8161642354cfe27ec97192446a11b))
+
 ## [8.294.0](https://github.com/vm0-ai/vm0/compare/core-v8.293.6...core-v8.294.0) (2026-05-26)
 
 
