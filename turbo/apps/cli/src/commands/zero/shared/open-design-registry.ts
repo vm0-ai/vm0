@@ -1414,6 +1414,52 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:iso-scene",
+    kind: "image-style",
+    name: "Isometric Editorial Scene",
+    description:
+      "Isometric editorial-magazine scene illustration with ultra-fine hairline outlines, flat fills, a saturated monochromatic background, and a scene-as-metaphor composition built from theme-native props.",
+    desc: 'Isometric editorial-magazine scene illustration in a locked flat-vector style — ultra-fine hairline outlines, monochromatic saturated background filling the canvas, and a single composed scene whose props themselves embody the theme. Trigger when users say /iso-scene, ask for an "isometric editorial illustration", a "scene illustration in the editorial machine style", or brief with palette + scene archetype + complexity.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/iso-scene",
+    ),
+    targets: ["image", "website", "poster", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "isometric",
+      "editorial",
+      "magazine",
+      "flat-vector",
+      "scene",
+    ],
+    triggers: [
+      "isometric illustration",
+      "isometric scene",
+      "iso scene",
+      "iso-scene",
+      "editorial scene illustration",
+      "construction machine style",
+      "monocle illustration",
+      "bloomberg illustration",
+    ],
+    bestFor: [
+      "editorial cover art",
+      "blog post hero illustrations",
+      "marketing campaign visuals",
+      "thematic scene metaphors",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 18,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
