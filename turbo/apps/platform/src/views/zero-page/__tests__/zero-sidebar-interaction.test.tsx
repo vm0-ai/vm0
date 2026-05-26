@@ -32,6 +32,8 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -192,6 +194,44 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     await waitFor(() => {
       expect(screen.getByText("Sign out")).toBeInTheDocument();
     });
+  });
+
+  it("shows credit balance in the account dropdown for org admins", async () => {
+    setMockBillingStatus({ credits: 12_345 });
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Default Org")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("Credit balance")).toBeInTheDocument();
+      expect(within(menu).getByText(/12,345/)).toBeInTheDocument();
+    });
+  });
+
+  it("hides credit balance in the account dropdown for org members", async () => {
+    setMockOrg({ role: "member" });
+    setMockBillingStatus({ credits: 12_345 });
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Default Org")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("Settings")).toBeInTheDocument();
+    });
+    expect(within(menu).queryByText("Credit balance")).not.toBeInTheDocument();
+    expect(within(menu).queryByText(/12,345/)).not.toBeInTheDocument();
   });
 
   it("shows Lab entry in account dropdown when FeatureSwitchKey.Lab is on", async () => {
