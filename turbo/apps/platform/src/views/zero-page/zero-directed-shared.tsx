@@ -10,7 +10,6 @@ import {
   setOrgManageDialogOpen$,
 } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
-import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { Link } from "../router/link.tsx";
 
@@ -29,9 +28,6 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
         }}
       />
       <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
-        <div className="shrink-0 px-2 pt-1.5">
-          <ZeroOrgSwitcher />
-        </div>
         <div className="flex-1" />
         <div className="p-2">
           <AccountDropdown onAccountAction={onAccountAction} />
