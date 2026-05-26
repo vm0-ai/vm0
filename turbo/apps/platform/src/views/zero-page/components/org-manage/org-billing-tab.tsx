@@ -106,6 +106,10 @@ const PLANS = [
   },
 ] as const;
 
+const COMPARE_PLANS = PLANS.filter((plan) => {
+  return plan.tier !== "free";
+});
+
 function getPlanPrice(tier: string): string {
   const plan = PLANS.find((p) => {
     return p.tier === tier;
@@ -316,8 +320,8 @@ function PricingPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {PLANS.map((plan) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {COMPARE_PLANS.map((plan) => {
           return (
             <PlanCard
               key={plan.tier}

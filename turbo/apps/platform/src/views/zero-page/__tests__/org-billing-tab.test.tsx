@@ -124,8 +124,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Should show all three plan cards
-    expect(screen.getByText("Free")).toBeInTheDocument();
+    expect(screen.queryByText("Free")).not.toBeInTheDocument();
     expect(screen.getByText("Pro")).toBeInTheDocument();
     expect(screen.getByText("Team")).toBeInTheDocument();
   });
@@ -726,12 +725,11 @@ describe("org billing tab - plan card details", () => {
       }),
     ).toBeDefined();
 
-    // Current plan card shows "Current plan" label
     expect(
       queryAllByRoleFast("button").find((el) => {
         return /Current plan/i.test(el.textContent ?? "");
       }),
-    ).toBeDefined();
+    ).toBeUndefined();
   });
 
   it("should show Voice input feature in all plan cards on pricing page", async () => {
@@ -749,12 +747,10 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Voice input appears in all three plan feature lists (one per plan: Free, Pro, Team)
-    // Free = "Voice input (10/month)", Pro and Team = "Voice input"
-    expect(screen.getAllByText(/Voice input/)).toHaveLength(3);
+    expect(screen.getAllByText(/Voice input/)).toHaveLength(2);
   });
 
-  it("should show Voice input with limit in Free plan features", async () => {
+  it("should not show legacy Free plan features", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -769,8 +765,9 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Free plan shows "Voice input (10/month)" while Pro/Team show "Voice input"
-    expect(screen.getByText("Voice input (10/month)")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Voice input (10/month)"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -1112,7 +1109,7 @@ describe("org billing tab - downgrade flow", () => {
     expect(apiCalled).toBeFalsy();
   });
 
-  it("should route pricing page downgrade through dialog", async () => {
+  it("should not show legacy Free downgrade action on pricing page", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -1133,18 +1130,10 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Click "Manage subscription" (the downgrade button on pricing page for free tier)
     const manageButtons = queryAllByRoleFast("button").filter((el) => {
       return /Manage subscription/i.test(el.textContent ?? "");
     });
-    expect(manageButtons.length).toBeGreaterThanOrEqual(1);
-
-    click(manageButtons[0]!);
-
-    // Should open downgrade dialog instead of redirecting to Stripe
-    await waitFor(() => {
-      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
-    });
+    expect(manageButtons).toHaveLength(0);
   });
 });
 
