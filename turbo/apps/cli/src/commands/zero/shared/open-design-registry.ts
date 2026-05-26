@@ -1414,6 +1414,52 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:painterly-botanical",
+    kind: "image-style",
+    name: "Painterly Botanical",
+    description:
+      "Painterly watercolor + gouache portrait illustration with a single figure embraced by lush botanicals, closed-eye introspective expression, and a softly tinted paper-wash background.",
+    desc: 'Painterly watercolor + gouache portrait illustration. Single figure (closed eyes, contemplative) embraced by botanicals — leaves, blossoms, grasses. Translucent washes with visible pigment bleeds, sparse crisp ink line accents on key edges, tiny handwritten cursive signature in an upper corner, and a tinted paper-wash background (never pure white). Eight user axes drive composition: subject, hair, pose, botanicals, palette, background wash, complexity (L1/L2/L3), and format. Trigger when a brief describes a contemplative figure with foliage, a "watercolor portrait", a "botanical embrace", or asks for a piece in this painterly editorial style.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/painterly-botanical",
+    ),
+    targets: ["image", "poster", "presentation", "report", "website"],
+    tags: [
+      "image",
+      "illustration",
+      "painterly",
+      "watercolor",
+      "gouache",
+      "botanical",
+      "portrait",
+      "editorial",
+    ],
+    triggers: [
+      "painterly botanical",
+      "watercolor portrait",
+      "botanical embrace",
+      "watercolor illustration",
+      "gouache portrait",
+      "figure with foliage",
+      "contemplative portrait",
+    ],
+    bestFor: [
+      "editorial portrait covers",
+      "literary magazine artwork",
+      "poetic poster illustrations",
+      "book-jacket-style hero images",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 20,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
