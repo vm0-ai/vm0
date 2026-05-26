@@ -13,6 +13,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
@@ -99,6 +100,11 @@ async function seedChatCallbackFixture(): Promise<ChatCallbackFixture> {
     owner: userId,
     name,
     visibility: "public",
+  });
+  await db.insert(orgMetadata).values({
+    orgId,
+    tier: "free",
+    credits: 10_000,
   });
   await db.insert(chatThreads).values({
     id: threadId,
@@ -214,6 +220,7 @@ async function deleteFixture(fixture: ChatCallbackFixture): Promise<void> {
     .delete(pushSubscriptions)
     .where(eq(pushSubscriptions.userId, fixture.userId));
   await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
   await db
     .delete(agentComposeVersions)

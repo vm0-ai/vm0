@@ -179,6 +179,8 @@ export const onboardingStepNext$ = command(
     const step = await get(onboardingEffectiveStep$);
     signal.throwIfAborted();
     const isUseCase = get(onboardingIsUseCase$);
+    const isAdmin = await get(onboardingIsAdmin$);
+    signal.throwIfAborted();
     switch (step) {
       case "1": {
         // Eagerly provision the workspace + default agent so onboarding is
@@ -202,9 +204,10 @@ export const onboardingStepNext$ = command(
       }
       case "3":
       case "4": {
-        // Step 3 (use-case "Try It") finishes by continuing into web chat.
-        // Step 4 starts the Stripe Pro trial; onboarding completes only after
-        // the subscription checkout webhook clears the pending-payment marker.
+        // Admin use-case step 3 and regular step 4 start the Stripe Pro trial;
+        // onboarding completes only after the subscription checkout webhook
+        // clears the pending-payment marker. Already-onboarded/non-admin
+        // use-case step 3 can continue straight into the prompt flow.
         if (step === "4") {
           const selectedConnectors = get(zeroSelectedConnectors$);
           if (
@@ -214,6 +217,10 @@ export const onboardingStepNext$ = command(
             await set(authorizeStep2Connectors$, signal);
             signal.throwIfAborted();
           }
+          await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
+          break;
+        }
+        if (isUseCase && isAdmin) {
           await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
           break;
         }

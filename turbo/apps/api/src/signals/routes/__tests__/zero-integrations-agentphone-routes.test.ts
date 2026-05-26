@@ -392,6 +392,7 @@ async function seedAgentPhoneGroupFixture(): Promise<AgentPhoneGroupFixture> {
   await writeDb.insert(orgMetadata).values({
     orgId,
     defaultAgentId: composeId,
+    tier: "free",
     credits: 100_000,
   });
   await writeDb.insert(orgMembersMetadata).values({
@@ -569,6 +570,7 @@ async function seedAgentPhoneModelReuseFixture(args: {
   await writeDb.insert(orgMetadata).values({
     orgId: args.orgId,
     defaultAgentId: composeId,
+    tier: "free",
     credits: 100_000,
   });
   await writeDb.insert(orgMembersMetadata).values({

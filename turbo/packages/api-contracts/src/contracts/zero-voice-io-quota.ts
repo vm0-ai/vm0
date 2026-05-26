@@ -7,7 +7,7 @@ const c = initContract();
 export const audioInputQuotaResponseSchema = z.object({
   allowed: z.boolean(),
   count: z.number().int().nonnegative(),
-  limit: z.number().int().positive().nullable(),
+  limit: z.number().int().nonnegative().nullable(),
 });
 export type AudioInputQuotaResponse = z.infer<
   typeof audioInputQuotaResponseSchema

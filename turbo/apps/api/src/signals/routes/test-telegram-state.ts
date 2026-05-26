@@ -311,10 +311,10 @@ async function ensureStarterCreditGrant(
   }
 
   await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, now(), now())
+    sql`INSERT INTO org_metadata (org_id, credits, tier, created_at, updated_at)
+        VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, 'free', now(), now())
         ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, updated_at = now()`,
+        DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, tier = 'free', updated_at = now()`,
   );
   signal.throwIfAborted();
 }

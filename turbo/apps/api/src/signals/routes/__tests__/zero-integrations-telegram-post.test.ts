@@ -212,10 +212,15 @@ const seedTelegramPostFixture$ = command(
     if (args.seedDefaultAgent ?? true) {
       await db
         .insert(orgMetadata)
-        .values({ orgId, defaultAgentId: composeId, credits: 100_000 })
+        .values({
+          orgId,
+          defaultAgentId: composeId,
+          tier: "free",
+          credits: 100_000,
+        })
         .onConflictDoUpdate({
           target: orgMetadata.orgId,
-          set: { defaultAgentId: composeId, credits: 100_000 },
+          set: { defaultAgentId: composeId, tier: "free", credits: 100_000 },
         });
       signal.throwIfAborted();
     }

@@ -144,6 +144,7 @@ export const seedSlackWebhookFixture$ = command(
     await db.insert(orgMetadata).values({
       orgId,
       defaultAgentId,
+      tier: "free",
       credits: 100_000,
     });
     signal.throwIfAborted();

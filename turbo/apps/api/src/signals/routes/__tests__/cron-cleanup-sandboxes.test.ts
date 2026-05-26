@@ -9,6 +9,7 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { exportJobs } from "@vm0/db/schema/export-job";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -31,6 +32,7 @@ interface RunFixture {
   readonly sessionId: string;
   readonly composeId: string;
   readonly versionId: string;
+  readonly orgId: string;
 }
 
 interface ExportJobFixture {
@@ -66,6 +68,7 @@ function minutesAgo(minutes: number): Date {
 async function cleanupRunFixture(fixture: RunFixture): Promise<void> {
   const db = store.set(writeDb$);
   await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, fixture.runId));
+  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await db.delete(agentRuns).where(eq(agentRuns.id, fixture.runId));
   await db.delete(agentSessions).where(eq(agentSessions.id, fixture.sessionId));
   await db
@@ -111,6 +114,12 @@ async function insertRunFixture(args?: {
     .set({ headVersionId: id })
     .where(eq(agentComposes.id, compose.id));
 
+  await db.insert(orgMetadata).values({
+    orgId,
+    tier: "free",
+    credits: 10_000,
+  });
+
   const [session] = await db
     .insert(agentSessions)
     .values({
@@ -147,6 +156,7 @@ async function insertRunFixture(args?: {
     sessionId: session.id,
     composeId: compose.id,
     versionId: id,
+    orgId,
   };
 }
 

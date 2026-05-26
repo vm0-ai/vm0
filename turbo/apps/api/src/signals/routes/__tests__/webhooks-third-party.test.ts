@@ -840,11 +840,13 @@ const seedGitHubWebhookFixture$ = command(
       customSkills: [],
     });
     signal.throwIfAborted();
-    await db.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 100_000,
-      tier: "pro",
-    });
+    await db
+      .update(orgMetadata)
+      .set({
+        credits: 100_000,
+        tier: "pro",
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.insert(vm0ApiKeys).values({
       vendor: "deepseek",
@@ -1218,13 +1220,16 @@ describe("POST /api/webhooks/github", () => {
       installationId: fixture.remoteInstallationId,
     });
 
+    const repo = `vm0-ai/failure-comment-${fixture.composeId.slice(0, 8)}`;
     const capturedComments: CapturedGitHubIssueComment[] = [];
     server.use(
       http.post(
         "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-        async ({ request }) => {
+        async ({ params, request }) => {
           const body = (await request.json()) as { readonly body: string };
-          capturedComments.push({ body: body.body });
+          if (params.owner === "vm0-ai" && params.repo === repo.split("/")[1]) {
+            capturedComments.push({ body: body.body });
+          }
           return HttpResponse.json({ id: 9876 });
         },
       ),
@@ -1241,7 +1246,7 @@ describe("POST /api/webhooks/github", () => {
 
     const response = await postGitHubWebhook({
       event: "issues",
-      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
     await clearAllDetached();
 
@@ -1265,14 +1270,17 @@ describe("POST /api/webhooks/github", () => {
       installationId: fixture.remoteInstallationId,
     });
 
+    const repo = `vm0-ai/callback-failure-${fixture.composeId.slice(0, 8)}`;
     const capturedComments: CapturedGitHubIssueComment[] = [];
     const capturedCallbacks: CapturedRunCallback[] = [];
     server.use(
       http.post(
         "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-        async ({ request }) => {
+        async ({ params, request }) => {
           const body = (await request.json()) as { readonly body: string };
-          capturedComments.push({ body: body.body });
+          if (params.owner === "vm0-ai" && params.repo === repo.split("/")[1]) {
+            capturedComments.push({ body: body.body });
+          }
           return HttpResponse.json({ id: 9876 });
         },
       ),
@@ -1313,7 +1321,7 @@ describe("POST /api/webhooks/github", () => {
 
     const response = await postGitHubWebhook({
       event: "issues",
-      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
     await clearAllDetached();
 
