@@ -14,7 +14,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethod,
   connectorAuthMethodHasOAuthGrant,
-  getConnectorAuthMethodPriority,
+  getConfiguredConnectorAuthMethods,
   getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
   hasRequiredScopes,
@@ -133,34 +133,7 @@ export interface ConnectorTypeWithStatus {
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
-function parseConnectorAuthMethodId(
-  authMethod: string,
-): ConnectorAuthMethodId | null {
-  switch (authMethod) {
-    case "oauth":
-    case "api-token":
-    case "api":
-    case "cli-auth": {
-      return authMethod;
-    }
-  }
-  return null;
-}
-
-export function getConfiguredConnectorAuthMethods(
-  type: ConnectorType,
-): ConnectorAuthMethodId[] {
-  return Object.keys(CONNECTOR_TYPES[type].authMethods)
-    .flatMap((authMethod) => {
-      const parsed = parseConnectorAuthMethodId(authMethod);
-      return parsed ? [parsed] : [];
-    })
-    .sort((a, b) => {
-      return (
-        getConnectorAuthMethodPriority(a) - getConnectorAuthMethodPriority(b)
-      );
-    });
-}
+export { getConfiguredConnectorAuthMethods };
 
 function getAvailableConnectorConnectAuthMethods(
   type: ConnectorType,

@@ -51,6 +51,21 @@ export function getConnectorAuthMethodPriority(
   }
 }
 
+export function getConfiguredConnectorAuthMethods(
+  type: ConnectorType,
+): ConnectorAuthMethodId[] {
+  return Object.keys(CONNECTOR_TYPES[type].authMethods)
+    .flatMap((authMethod) => {
+      const parsed = parseConnectorAuthMethodId(authMethod);
+      return parsed ? [parsed] : [];
+    })
+    .sort((a, b) => {
+      return (
+        getConnectorAuthMethodPriority(a) - getConnectorAuthMethodPriority(b)
+      );
+    });
+}
+
 /**
  * Connector utility vocabulary:
  *
@@ -326,16 +341,7 @@ export function getAvailableConnectorAuthMethods(
 ): ConnectorAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
   const availableAuthMethods: ConnectorAuthMethodId[] = [];
-  const configuredAuthMethods = Object.keys(CONNECTOR_TYPES[type].authMethods)
-    .flatMap((authMethod) => {
-      const parsed = parseConnectorAuthMethodId(authMethod);
-      return parsed ? [parsed] : [];
-    })
-    .sort((a, b) => {
-      return (
-        getConnectorAuthMethodPriority(a) - getConnectorAuthMethodPriority(b)
-      );
-    });
+  const configuredAuthMethods = getConfiguredConnectorAuthMethods(type);
 
   for (const authMethod of configuredAuthMethods) {
     const method = getConnectorAuthMethod(type, authMethod);
