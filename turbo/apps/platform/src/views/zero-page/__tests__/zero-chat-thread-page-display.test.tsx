@@ -58,19 +58,23 @@ describe("zero chat thread page display - attachment image preview", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    const previewButton = await waitFor(() => {
+    const previewLink = await waitFor(() => {
       return screen.getByLabelText("Preview photo.png");
     });
-    const previewImage = within(previewButton).getByAltText("photo.png");
+    expect(previewLink).toHaveAttribute(
+      "href",
+      "https://example.com/photo.png",
+    );
+    const previewImage = within(previewLink).getByAltText("photo.png");
     expect(previewImage).toBeInTheDocument();
     expect(
-      within(previewButton).getByTestId("chat-image-preview-loading"),
+      within(previewLink).getByTestId("chat-image-preview-loading"),
     ).toBeInTheDocument();
 
     fireEvent.load(previewImage);
     await waitFor(() => {
       expect(
-        within(previewButton).queryByTestId("chat-image-preview-loading"),
+        within(previewLink).queryByTestId("chat-image-preview-loading"),
       ).not.toBeInTheDocument();
     });
   });
@@ -481,8 +485,11 @@ describe("zero chat thread page display - body link document preview", () => {
   });
 
   it("renders bare platform image file urls as image previews", async () => {
+    const user = userEvent.setup();
     const imageUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    const publicImageUrl =
+      "https://cdn.vm7.io/artifacts/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
     server.use(
       http.get(imageUrl, () => {
         return new HttpResponse("png", {
@@ -503,8 +510,15 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
     });
+    const previewLink = screen.getByLabelText("Preview chart.png");
+    expect(previewLink).toHaveAttribute("href", publicImageUrl);
+    expect(within(previewLink).getByAltText("chart.png")).toBeInTheDocument();
+
+    await user.click(previewLink);
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(lightbox).toBeInTheDocument();
   });
 
   it("renders json body links inline and supports collapse for platform file urls", async () => {
@@ -1170,7 +1184,11 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(screen.getByText("Artifacts")).toBeInTheDocument();
     });
     expect(artifactsRequests).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+    const previewLink = screen.getByLabelText("Preview chart.png");
+    expect(previewLink).toHaveAttribute(
+      "href",
+      "https://example.com/chart.png",
+    );
     expect(
       document.querySelectorAll('img[src="https://example.com/chart.png"]')
         .length,
@@ -1197,7 +1215,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(deckButton).toBeInTheDocument();
     expect(within(deckButton).getByText("PPTX")).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Preview chart.png"));
+    await user.click(previewLink);
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
     await user.click(within(lightbox).getByLabelText("Close"));

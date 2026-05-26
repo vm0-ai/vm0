@@ -1045,40 +1045,55 @@ function ArtifactBulkActionsMenu({
   );
 }
 
-type ChatImagePreviewButtonProps = {
+type ChatImagePreviewLinkProps = {
   alt: string;
   ariaLabel: string;
-  buttonClassName: string;
   imageClassName: string;
+  linkClassName: string;
   onPreview: () => void;
   placeholderClassName: string;
   url: string;
 };
 
-function ChatImagePreviewButton({
+function ChatImagePreviewLink({
   alt,
   ariaLabel,
-  buttonClassName,
   imageClassName,
+  linkClassName,
   onPreview,
   placeholderClassName,
   url,
-}: ChatImagePreviewButtonProps) {
+}: ChatImagePreviewLinkProps) {
   const imageLoadStatuses = useGet(imageLoadStatusByKey$);
   const imageLoadStatusRef = useSet(imageLoadStatusRef$);
   const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const imageLoadKey = `chat-image-preview:${url}`;
+  const imageUrl = publicAttachmentUrl(url);
+  const imageLoadKey = `chat-image-preview:${imageUrl}`;
   const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
   const showPlaceholder = imageStatus !== "loaded";
 
+  const openPreview = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    event.preventDefault();
+    onPreview();
+  };
+
   return (
-    <button
-      type="button"
-      onClick={onPreview}
+    <a
+      href={imageUrl}
+      onClick={openPreview}
       className={cn(
-        "group/image-preview relative overflow-hidden",
-        buttonClassName,
+        "group/image-preview relative inline-block overflow-hidden",
+        linkClassName,
       )}
       aria-label={ariaLabel}
     >
@@ -1100,7 +1115,7 @@ function ChatImagePreviewButton({
       <img
         key={imageLoadKey}
         ref={imageLoadStatusRef}
-        src={url}
+        src={imageUrl}
         alt={alt}
         data-image-load-key={imageLoadKey}
         loading="lazy"
@@ -1121,7 +1136,7 @@ function ChatImagePreviewButton({
           className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
         />
       </span>
-    </button>
+    </a>
   );
 }
 
@@ -1198,11 +1213,11 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
 
   if (previewKind === "image") {
     return (
-      <ChatImagePreviewButton
+      <ChatImagePreviewLink
         alt={`Preview ${file.filename}`}
         ariaLabel={`Preview ${file.filename}`}
-        buttonClassName="flex h-full w-full items-center justify-center bg-muted"
         imageClassName="h-full w-full object-contain"
+        linkClassName="flex h-full w-full items-center justify-center bg-muted"
         onPreview={() => {
           openImageLightbox(file.url);
         }}
@@ -2473,12 +2488,12 @@ function BodyContentBlocks({
 
         if (block.preview.kind === "image") {
           return (
-            <ChatImagePreviewButton
+            <ChatImagePreviewLink
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName="w-fit max-w-full rounded-lg border border-foreground/10"
               imageClassName="max-h-48 max-w-full object-contain"
+              linkClassName="w-fit max-w-full rounded-lg border border-foreground/10"
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
@@ -3180,12 +3195,12 @@ function UserMessageAttachments({
       {attachments.map((a) => {
         if (a.isImage) {
           return (
-            <ChatImagePreviewButton
+            <ChatImagePreviewLink
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              buttonClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
               imageClassName="h-9 max-w-[72px] object-cover"
+              linkClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
               onPreview={() => {
                 onImageClick(a.url);
               }}
