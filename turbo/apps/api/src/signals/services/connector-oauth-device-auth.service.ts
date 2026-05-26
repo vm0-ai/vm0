@@ -34,7 +34,10 @@ import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
-import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import {
+  decryptPersistentSecretValue,
+  encryptPersistentSecretValue,
+} from "./crypto.utils";
 import { userConnectorAvailability } from "./connector-availability.service";
 import {
   upsertOAuthConnector$,
@@ -381,12 +384,19 @@ async function claimSession(args: {
   return claimedSession ?? null;
 }
 
-function parseEncryptedProviderState(args: {
+async function parseEncryptedProviderState(args: {
   readonly session: DeviceAuthSessionRow;
   readonly type: OAuthDeviceAuthConnectorType;
-}): EncryptedProviderState {
+}): Promise<EncryptedProviderState> {
+  const decrypted = await decryptPersistentSecretValue(
+    args.session.encryptedProviderState,
+    {
+      orgId: args.session.orgId,
+      userId: args.session.userId,
+    },
+  );
   const providerState = encryptedProviderStateSchema.parse(
-    JSON.parse(decryptSecretValue(args.session.encryptedProviderState)),
+    JSON.parse(decrypted) as unknown,
   );
   if (providerState.connectorType !== args.type) {
     throw new Error("OAuth device provider state connector type mismatch");
@@ -581,7 +591,7 @@ async function completeSessionResponse(args: {
 async function runClaimedSession(
   args: PollClaimedSessionArgs,
 ): Promise<PollSuccess> {
-  const providerState = parseEncryptedProviderState({
+  const providerState = await parseEncryptedProviderState({
     session: args.session,
     type: args.type,
   });
@@ -705,12 +715,17 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       startResult.interval ?? DEFAULT_POLL_INTERVAL_SECONDS;
     const now = nowDate();
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
-    const encryptedProviderState = encryptSecretValue(
+    const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
         connectorType: resolvedType,
         deviceCode: startResult.deviceCode,
       }),
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+      },
     );
+    signal.throwIfAborted();
 
     const [session] = await set(writeDb$).transaction(async (tx) => {
       await lockDeviceAuthSessionOwner({

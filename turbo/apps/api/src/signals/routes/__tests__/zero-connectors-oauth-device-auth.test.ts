@@ -14,13 +14,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
+  decryptPersistentSecretValue,
   decryptSecretValue,
   encryptSecretValue,
+  inspectPersistentSecretCiphertext,
+  resetSecretKmsClientForTests,
+  setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
+import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -395,6 +401,8 @@ describe("OAuth device authorization connector routes", () => {
   const users: { readonly userId: string; readonly orgId: string }[] = [];
 
   afterEach(async () => {
+    clearMockedEnv();
+    resetSecretKmsClientForTests();
     testOauthDeviceProvider.grant.pollDeviceAuth = originalPollDeviceAuth;
     while (users.length > 0) {
       const user = users.pop();
@@ -416,6 +424,9 @@ describe("OAuth device authorization connector routes", () => {
 
   it("starts a session and stores only encrypted provider state plus a token hash", async () => {
     const { userId, orgId } = await setupUser();
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
     );
@@ -449,12 +460,25 @@ describe("OAuth device authorization connector routes", () => {
       sessionTokenHash(response.body.sessionToken),
     );
     expect(session.encryptedProviderState).not.toContain("test-device:");
-    expect(decryptSecretValue(session.encryptedProviderState)).toContain(
+    expect(
+      inspectPersistentSecretCiphertext(session.encryptedProviderState),
+    ).toStrictEqual({
+      format: "dual",
+      hasLegacy: true,
+      hasKms: true,
+    });
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      {
+        orgId,
+        userId,
+      },
+    );
+    expect(decryptedProviderState).toContain(
       "test-device:test-oauth-device-client:read",
     );
-    expect(decryptSecretValue(session.encryptedProviderState)).not.toContain(
-      "scopes",
-    );
+    expect(decryptedProviderState).not.toContain("scopes");
+    expect(kms.calls).toHaveLength(2);
   });
 
   it("marks the previous active session as superseded when a new session starts", async () => {

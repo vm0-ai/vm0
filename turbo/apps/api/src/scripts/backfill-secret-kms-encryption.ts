@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { and, eq, isNotNull, like, not } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { secrets } from "@vm0/db/schema/secret";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
@@ -10,35 +10,48 @@ import {
   decryptStoredSecretValueWithMode,
   encryptStoredSecretValueWithMode,
   inspectStoredSecretCiphertext,
-  STORED_SECRET_ENVELOPE_PREFIX,
   type StoredSecretCiphertextFormat,
   type StoredSecretWriteMode,
 } from "../signals/services/crypto.utils";
 import { settle } from "../signals/utils";
 
-interface MigrationArgs {
+export interface MigrationArgs {
   readonly dryRun: boolean;
   readonly reportOnly: boolean;
   readonly mode: Exclude<StoredSecretWriteMode, "legacy">;
   readonly batchSize: number;
 }
 
-interface CiphertextCounts {
+export interface CiphertextCounts {
   readonly legacy: number;
   readonly dual: number;
   readonly kms: number;
 }
 
-interface MigrationReport {
+export interface MigrationReport {
   readonly name: string;
   readonly before: CiphertextCounts;
   readonly migrated: number;
   readonly after: CiphertextCounts;
 }
 
-type EncryptedRow = {
+type CiphertextRow = {
   readonly encrypted: string | null;
 };
+
+export type EncryptedRow = CiphertextRow & {
+  readonly id: string;
+};
+
+type SelectBatch = (
+  cursor: string | undefined,
+  batchSize: number,
+) => Promise<readonly EncryptedRow[]>;
+
+type UpdateEncryptedRow = (
+  row: EncryptedRow,
+  encrypted: string,
+) => Promise<number>;
 
 const DEFAULT_BATCH_SIZE = 100;
 
@@ -56,7 +69,7 @@ function incrementCount(
   };
 }
 
-function countCiphertexts(rows: readonly EncryptedRow[]): CiphertextCounts {
+function countCiphertexts(rows: readonly CiphertextRow[]): CiphertextCounts {
   return rows.reduce((counts, row) => {
     if (!row.encrypted) {
       return counts;
@@ -66,6 +79,30 @@ function countCiphertexts(rows: readonly EncryptedRow[]): CiphertextCounts {
       inspectStoredSecretCiphertext(row.encrypted).format,
     );
   }, emptyCounts());
+}
+
+function needsMigration(
+  encrypted: string | null,
+  mode: Exclude<StoredSecretWriteMode, "legacy">,
+): boolean {
+  if (!encrypted) {
+    return false;
+  }
+
+  const format = inspectStoredSecretCiphertext(encrypted).format;
+  if (mode === "dual") {
+    return format === "legacy";
+  }
+  return format !== "kms";
+}
+
+export function filterStoredSecretMigrationRows(
+  rows: readonly EncryptedRow[],
+  mode: Exclude<StoredSecretWriteMode, "legacy">,
+): readonly EncryptedRow[] {
+  return rows.filter((row) => {
+    return needsMigration(row.encrypted, mode);
+  });
 }
 
 function parseMode(
@@ -135,171 +172,140 @@ async function reencryptCiphertext(
   return encryptStoredSecretValueWithMode(plaintext, mode);
 }
 
-async function migrateSecretsTable(args: MigrationArgs): Promise<number> {
+async function migrateEncryptedRows(
+  args: MigrationArgs,
+  selectBatch: SelectBatch,
+  updateRow: UpdateEncryptedRow,
+): Promise<number> {
   let migrated = 0;
-  const database = db();
+  let cursor: string | undefined;
 
   while (!args.reportOnly) {
-    const rows = await database
-      .select({ id: secrets.id, encrypted: secrets.encryptedValue })
-      .from(secrets)
-      .where(
-        not(like(secrets.encryptedValue, `${STORED_SECRET_ENVELOPE_PREFIX}%`)),
-      )
-      .limit(args.batchSize);
+    const rows = await selectBatch(cursor, args.batchSize);
 
     if (rows.length === 0) {
       return migrated;
     }
+    cursor = rows[rows.length - 1]?.id;
 
-    for (const row of rows) {
+    for (const row of filterStoredSecretMigrationRows(rows, args.mode)) {
+      if (!row.encrypted) {
+        continue;
+      }
       const encryptedValue = await reencryptCiphertext(
         row.encrypted,
         args.mode,
       );
       if (!args.dryRun) {
-        const updatedRows = await database
-          .update(secrets)
-          .set({ encryptedValue })
-          .where(
-            and(
-              eq(secrets.id, row.id),
-              eq(secrets.encryptedValue, row.encrypted),
-            ),
-          )
-          .returning({ id: secrets.id });
-        migrated += updatedRows.length;
+        migrated += await updateRow(row, encryptedValue);
       } else {
         migrated += 1;
       }
     }
-
-    if (args.dryRun) {
-      return migrated;
-    }
   }
 
   return migrated;
+}
+
+async function migrateSecretsTable(args: MigrationArgs): Promise<number> {
+  const database = db();
+  return await migrateEncryptedRows(
+    args,
+    async (cursor, batchSize) => {
+      return await database
+        .select({ id: secrets.id, encrypted: secrets.encryptedValue })
+        .from(secrets)
+        .where(cursor ? gt(secrets.id, cursor) : undefined)
+        .orderBy(asc(secrets.id))
+        .limit(batchSize);
+    },
+    async (row, encryptedValue) => {
+      const updatedRows = await database
+        .update(secrets)
+        .set({ encryptedValue })
+        .where(
+          and(
+            eq(secrets.id, row.id),
+            eq(secrets.encryptedValue, row.encrypted!),
+          ),
+        )
+        .returning({ id: secrets.id });
+      return updatedRows.length;
+    },
+  );
 }
 
 async function migrateOrgCustomConnectorSecretsTable(
   args: MigrationArgs,
 ): Promise<number> {
-  let migrated = 0;
   const database = db();
-
-  while (!args.reportOnly) {
-    const rows = await database
-      .select({
-        id: orgCustomConnectorSecrets.id,
-        encrypted: orgCustomConnectorSecrets.encryptedValue,
-      })
-      .from(orgCustomConnectorSecrets)
-      .where(
-        not(
-          like(
-            orgCustomConnectorSecrets.encryptedValue,
-            `${STORED_SECRET_ENVELOPE_PREFIX}%`,
+  return await migrateEncryptedRows(
+    args,
+    async (cursor, batchSize) => {
+      return await database
+        .select({
+          id: orgCustomConnectorSecrets.id,
+          encrypted: orgCustomConnectorSecrets.encryptedValue,
+        })
+        .from(orgCustomConnectorSecrets)
+        .where(cursor ? gt(orgCustomConnectorSecrets.id, cursor) : undefined)
+        .orderBy(asc(orgCustomConnectorSecrets.id))
+        .limit(batchSize);
+    },
+    async (row, encryptedValue) => {
+      const updatedRows = await database
+        .update(orgCustomConnectorSecrets)
+        .set({ encryptedValue })
+        .where(
+          and(
+            eq(orgCustomConnectorSecrets.id, row.id),
+            eq(orgCustomConnectorSecrets.encryptedValue, row.encrypted!),
           ),
-        ),
-      )
-      .limit(args.batchSize);
-
-    if (rows.length === 0) {
-      return migrated;
-    }
-
-    for (const row of rows) {
-      const encryptedValue = await reencryptCiphertext(
-        row.encrypted,
-        args.mode,
-      );
-      if (!args.dryRun) {
-        const updatedRows = await database
-          .update(orgCustomConnectorSecrets)
-          .set({ encryptedValue })
-          .where(
-            and(
-              eq(orgCustomConnectorSecrets.id, row.id),
-              eq(orgCustomConnectorSecrets.encryptedValue, row.encrypted),
-            ),
-          )
-          .returning({ id: orgCustomConnectorSecrets.id });
-        migrated += updatedRows.length;
-      } else {
-        migrated += 1;
-      }
-    }
-
-    if (args.dryRun) {
-      return migrated;
-    }
-  }
-
-  return migrated;
+        )
+        .returning({ id: orgCustomConnectorSecrets.id });
+      return updatedRows.length;
+    },
+  );
 }
 
 async function migrateZeroAgentSchedulesTable(
   args: MigrationArgs,
 ): Promise<number> {
-  let migrated = 0;
   const database = db();
-
-  while (!args.reportOnly) {
-    const rows = await database
-      .select({
-        id: zeroAgentSchedules.id,
-        encrypted: zeroAgentSchedules.encryptedSecrets,
-      })
-      .from(zeroAgentSchedules)
-      .where(
-        and(
-          isNotNull(zeroAgentSchedules.encryptedSecrets),
-          not(
-            like(
-              zeroAgentSchedules.encryptedSecrets,
-              `${STORED_SECRET_ENVELOPE_PREFIX}%`,
-            ),
+  return await migrateEncryptedRows(
+    args,
+    async (cursor, batchSize) => {
+      return await database
+        .select({
+          id: zeroAgentSchedules.id,
+          encrypted: zeroAgentSchedules.encryptedSecrets,
+        })
+        .from(zeroAgentSchedules)
+        .where(
+          cursor
+            ? and(
+                isNotNull(zeroAgentSchedules.encryptedSecrets),
+                gt(zeroAgentSchedules.id, cursor),
+              )
+            : isNotNull(zeroAgentSchedules.encryptedSecrets),
+        )
+        .orderBy(asc(zeroAgentSchedules.id))
+        .limit(batchSize);
+    },
+    async (row, encryptedSecrets) => {
+      const updatedRows = await database
+        .update(zeroAgentSchedules)
+        .set({ encryptedSecrets })
+        .where(
+          and(
+            eq(zeroAgentSchedules.id, row.id),
+            eq(zeroAgentSchedules.encryptedSecrets, row.encrypted!),
           ),
-        ),
-      )
-      .limit(args.batchSize);
-
-    if (rows.length === 0) {
-      return migrated;
-    }
-
-    for (const row of rows) {
-      if (!row.encrypted) {
-        continue;
-      }
-      const encryptedSecrets = await reencryptCiphertext(
-        row.encrypted,
-        args.mode,
-      );
-      if (!args.dryRun) {
-        const updatedRows = await database
-          .update(zeroAgentSchedules)
-          .set({ encryptedSecrets })
-          .where(
-            and(
-              eq(zeroAgentSchedules.id, row.id),
-              eq(zeroAgentSchedules.encryptedSecrets, row.encrypted),
-            ),
-          )
-          .returning({ id: zeroAgentSchedules.id });
-        migrated += updatedRows.length;
-      } else {
-        migrated += 1;
-      }
-    }
-
-    if (args.dryRun) {
-      return migrated;
-    }
-  }
-
-  return migrated;
+        )
+        .returning({ id: zeroAgentSchedules.id });
+      return updatedRows.length;
+    },
+  );
 }
 
 async function countSecretsTable(): Promise<CiphertextCounts> {
@@ -335,10 +341,10 @@ function printReport(report: MigrationReport): void {
   );
 }
 
-async function run(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-
-  const reports: MigrationReport[] = [
+export async function runStoredSecretKmsBackfill(
+  args: MigrationArgs,
+): Promise<readonly MigrationReport[]> {
+  return [
     {
       name: "secrets.encrypted_value",
       before: await countSecretsTable(),
@@ -358,6 +364,11 @@ async function run(): Promise<void> {
       after: await countZeroAgentSchedulesTable(),
     },
   ];
+}
+
+async function run(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const reports = await runStoredSecretKmsBackfill(args);
 
   process.stdout.write(
     `mode=${args.mode} dryRun=${String(args.dryRun)} batchSize=${
@@ -369,8 +380,10 @@ async function run(): Promise<void> {
   }
 }
 
-const result = await settle(run());
-await closeDbPool();
-if (!result.ok) {
-  throw result.error;
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const result = await settle(run());
+  await closeDbPool();
+  if (!result.ok) {
+    throw result.error;
+  }
 }

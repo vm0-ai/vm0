@@ -126,14 +126,14 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(0);
   });
 
-  it("dual-writes legacy AES and reads AWS KMS material by default when KMS env is set", async () => {
+  it("writes and reads KMS-only material by default when KMS env is set", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = await encryptStoredSecretValue("secret-value");
 
     expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "dual",
-      hasLegacy: true,
+      format: "kms",
+      hasLegacy: false,
       hasKms: true,
     });
 
@@ -143,6 +143,32 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(2);
     expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
     expect(fakeKmsClient.calls[1]).toBeInstanceOf(DecryptCommand);
+  });
+
+  it("reads existing dual ciphertext by default when KMS env is set", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = await encryptStoredSecretValueWithMode(
+      "secret-value",
+      "dual",
+    );
+
+    expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
+      format: "dual",
+    });
+    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
+      "secret-value",
+    );
+  });
+
+  it("keeps reading legacy-only ciphertext by default until cleanup finishes", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = encryptSecretValue("secret-value");
+
+    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
+      "secret-value",
+    );
   });
 
   it("can write and strictly read KMS-only ciphertext", async () => {
@@ -196,7 +222,7 @@ describe("stored secret encryption", () => {
     ).rejects.toThrow("Stored secret ciphertext does not include KMS data");
   });
 
-  it("dual-writes stored secrets maps when KMS env is set", async () => {
+  it("writes stored secrets maps as KMS-only when KMS env is set", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = await encryptStoredSecretsMap({ API_KEY: "secret" });
@@ -206,7 +232,7 @@ describe("stored secret encryption", () => {
       throw new Error("Expected encrypted secrets map");
     }
     expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
-      format: "dual",
+      format: "kms",
     });
   });
 

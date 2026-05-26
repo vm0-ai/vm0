@@ -347,7 +347,7 @@ describe("POST /api/zero/secrets", () => {
       throw new Error("Expected secret row to be written");
     }
     const envelope = storedSecretEnvelope(row.encryptedValue);
-    expect(envelope.legacy).toBeTruthy();
+    expect(envelope.legacy).toBeUndefined();
     expect(envelope.kms?.encryptedDataKey).toBeTruthy();
   });
 

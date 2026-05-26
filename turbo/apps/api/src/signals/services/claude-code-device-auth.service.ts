@@ -17,7 +17,12 @@ import {
   safeSync,
   settle,
 } from "../utils";
-import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import {
+  decryptPersistentSecretValue,
+  decryptSecretValue,
+  encryptPersistentSecretValue,
+  encryptSecretValue,
+} from "./crypto.utils";
 import {
   upsertOrgModelProvider$,
   upsertUserModelProvider$,
@@ -139,10 +144,14 @@ function encodeSession(payload: ClaudeCodeDeviceAuthSessionToken): string {
   return encryptSecretValue(JSON.stringify(payload));
 }
 
-function encodeProviderState(
+async function encodeProviderState(
   payload: ClaudeCodeDeviceAuthProviderState,
-): string {
-  return encryptSecretValue(JSON.stringify(payload));
+  session: ConnectorCliAuthSession,
+): Promise<string> {
+  return await encryptPersistentSecretValue(JSON.stringify(payload), {
+    orgId: session.orgId,
+    userId: session.userId,
+  });
 }
 
 function decodeSession(token: string): ClaudeCodeDeviceAuthSessionToken | null {
@@ -158,15 +167,25 @@ function decodeSession(token: string): ClaudeCodeDeviceAuthSessionToken | null {
   return decoded.ok;
 }
 
-function decodeProviderState(
+async function decodeProviderState(
   encryptedProviderState: string | null,
-): ClaudeCodeDeviceAuthProviderState | null {
+  session: ConnectorCliAuthSession,
+): Promise<ClaudeCodeDeviceAuthProviderState | null> {
   if (!encryptedProviderState) {
+    return null;
+  }
+  const decrypted = await settle(
+    decryptPersistentSecretValue(encryptedProviderState, {
+      orgId: session.orgId,
+      userId: session.userId,
+    }),
+  );
+  if (!decrypted.ok) {
     return null;
   }
   const decoded = safeSync(() => {
     const parsed = claudeCodeDeviceAuthProviderStateSchema.safeParse(
-      safeJsonParse(decryptSecretValue(encryptedProviderState)),
+      safeJsonParse(decrypted.value),
     );
     return parsed.success ? parsed.data : null;
   });
@@ -387,13 +406,16 @@ async function moveSessionToAwaitingApproval(args: {
       status: "awaiting_user_approval",
       approvalUrl: args.approvalUrl,
       verificationCode: null,
-      encryptedProviderState: encodeProviderState({
-        version: 1,
-        type: "claude-code",
-        scope: args.scope,
-        state: args.state,
-        codeVerifier: args.codeVerifier,
-      }),
+      encryptedProviderState: await encodeProviderState(
+        {
+          version: 1,
+          type: "claude-code",
+          scope: args.scope,
+          state: args.state,
+          codeVerifier: args.codeVerifier,
+        },
+        args.session,
+      ),
       updatedAt: nowDate(),
     })
     .where(eq(connectorCliAuthSessions.id, args.session.id))
@@ -732,7 +754,10 @@ async function completeLoadedClaudeCodeDeviceAuth(args: {
     };
   }
 
-  const providerState = decodeProviderState(session.encryptedProviderState);
+  const providerState = await decodeProviderState(
+    session.encryptedProviderState,
+    session,
+  );
   if (!providerState) {
     return {
       status: "error",

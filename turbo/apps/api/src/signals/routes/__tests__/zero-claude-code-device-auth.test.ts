@@ -10,9 +10,16 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import {
+  decryptSecretValue,
+  inspectPersistentSecretCiphertext,
+  resetSecretKmsClientForTests,
+  setSecretKmsClientForTests,
+} from "../../services/crypto.utils";
+import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -126,6 +133,8 @@ describe("Claude Code device auth routes", () => {
   const fixtures: { readonly userId: string; readonly orgId: string }[] = [];
 
   afterEach(async () => {
+    clearMockedEnv();
+    resetSecretKmsClientForTests();
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
@@ -144,6 +153,9 @@ describe("Claude Code device auth routes", () => {
 
   it("starts Claude Code device auth and returns setup-token OAuth details", async () => {
     const { userId, orgId } = setupUser();
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const response = await accept(
       client().start({
@@ -171,6 +183,15 @@ describe("Claude Code device auth routes", () => {
     await expect(
       claudeCodeDeviceAuthSessions(userId, orgId),
     ).resolves.toHaveLength(1);
+    const [session] = await claudeCodeDeviceAuthSessions(userId, orgId);
+    expect(
+      inspectPersistentSecretCiphertext(session!.encryptedProviderState!),
+    ).toStrictEqual({
+      format: "dual",
+      hasLegacy: true,
+      hasKms: true,
+    });
+    expect(kms.calls).toHaveLength(1);
   });
 
   it("cancels pending Claude Code device auth", async () => {

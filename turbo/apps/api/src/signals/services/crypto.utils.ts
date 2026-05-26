@@ -343,7 +343,7 @@ export async function encryptStoredSecretValue(
     return encryptSecretValue(plaintext);
   }
 
-  return await encryptStoredSecretValueWithMode(plaintext, "dual");
+  return await encryptStoredSecretValueWithMode(plaintext, "kms");
 }
 
 export async function decryptStoredSecretValue(

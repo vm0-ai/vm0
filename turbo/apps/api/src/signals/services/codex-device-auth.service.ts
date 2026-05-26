@@ -15,7 +15,12 @@ import {
   safeSync,
   settle,
 } from "../utils";
-import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import {
+  decryptPersistentSecretValue,
+  decryptSecretValue,
+  encryptPersistentSecretValue,
+  encryptSecretValue,
+} from "./crypto.utils";
 import { handleCodexAuthJsonPaste } from "./codex-auth-json-paste-handler";
 import {
   upsertOrgMultiAuthModelProvider$,
@@ -185,8 +190,14 @@ function encodeSession(payload: CodexDeviceAuthSessionToken): string {
   return encryptSecretValue(JSON.stringify(payload));
 }
 
-function encodeProviderState(payload: CodexDeviceAuthProviderState): string {
-  return encryptSecretValue(JSON.stringify(payload));
+async function encodeProviderState(
+  payload: CodexDeviceAuthProviderState,
+  session: ConnectorCliAuthSession,
+): Promise<string> {
+  return await encryptPersistentSecretValue(JSON.stringify(payload), {
+    orgId: session.orgId,
+    userId: session.userId,
+  });
 }
 
 function decodeSession(token: string): CodexDeviceAuthSessionToken | null {
@@ -202,15 +213,25 @@ function decodeSession(token: string): CodexDeviceAuthSessionToken | null {
   return decoded.ok;
 }
 
-function decodeProviderState(
+async function decodeProviderState(
   encryptedProviderState: string | null,
-): CodexDeviceAuthProviderState | null {
+  session: ConnectorCliAuthSession,
+): Promise<CodexDeviceAuthProviderState | null> {
   if (!encryptedProviderState) {
+    return null;
+  }
+  const decrypted = await settle(
+    decryptPersistentSecretValue(encryptedProviderState, {
+      orgId: session.orgId,
+      userId: session.userId,
+    }),
+  );
+  if (!decrypted.ok) {
     return null;
   }
   const decoded = safeSync(() => {
     const parsed = codexDeviceAuthProviderStateSchema.safeParse(
-      safeJsonParse(decryptSecretValue(encryptedProviderState)),
+      safeJsonParse(decrypted.value),
     );
     return parsed.success ? parsed.data : null;
   });
@@ -428,13 +449,16 @@ async function moveSessionToAwaitingApproval(args: {
       status: "awaiting_user_approval",
       approvalUrl: CODEX_DEVICE_AUTH_VERIFICATION_URL,
       verificationCode: args.userCode,
-      encryptedProviderState: encodeProviderState({
-        version: 1,
-        type: "codex",
-        scope: args.scope,
-        deviceAuthId: args.deviceAuthId,
-        userCode: args.userCode,
-      }),
+      encryptedProviderState: await encodeProviderState(
+        {
+          version: 1,
+          type: "codex",
+          scope: args.scope,
+          deviceAuthId: args.deviceAuthId,
+          userCode: args.userCode,
+        },
+        args.session,
+      ),
       updatedAt: nowDate(),
     })
     .where(eq(connectorCliAuthSessions.id, args.session.id))
@@ -891,7 +915,10 @@ async function completeLoadedCodexDeviceAuth(args: {
     };
   }
 
-  const providerState = decodeProviderState(session.encryptedProviderState);
+  const providerState = await decodeProviderState(
+    session.encryptedProviderState,
+    session,
+  );
   if (!providerState) {
     return {
       status: "error",
