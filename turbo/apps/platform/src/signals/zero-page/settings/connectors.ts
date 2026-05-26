@@ -84,7 +84,7 @@ const LOCAL_BROWSER_WEB_MESSAGE_SOURCE = "vm0-local-browser-web";
 const LOCAL_BROWSER_EXTENSION_MESSAGE_SOURCE = "vm0-local-browser-extension";
 const LOCAL_BROWSER_EXTENSION_DETECT_TIMEOUT_MS = 1000;
 const LOCAL_BROWSER_EXTENSION_PAIR_TIMEOUT_MS = 10_000;
-const CONNECTOR_LIST_API_AUTH_METHOD_TYPES = [
+const CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES = [
   LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
 ] as const satisfies readonly ConnectorType[];
@@ -147,6 +147,31 @@ function parseConnectorAuthMethodId(
   return null;
 }
 
+export function connectorAuthMethodHasOAuthGrant(
+  type: ConnectorType,
+  authMethod: string,
+): boolean {
+  const parsed = parseConnectorAuthMethodId(authMethod);
+  if (!parsed) {
+    return false;
+  }
+  const method = getConnectorAuthMethod(type, parsed);
+  if (!method) {
+    return false;
+  }
+  switch (method.grant.kind) {
+    case "auth-code":
+    case "device-auth": {
+      return true;
+    }
+    case "manual":
+    case "interactive-pairing":
+    case "managed": {
+      return false;
+    }
+  }
+}
+
 function getLegacyAuthMethodPriority(authMethod: string): number {
   const index = CONNECTOR_LEGACY_AUTH_METHOD_ORDER.findIndex((method) => {
     return method === authMethod;
@@ -167,33 +192,25 @@ export function getConfiguredConnectorAuthMethods(
     });
 }
 
-function isConnectorAuthMethodAvailableForConnectUi(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-  featureStates: Record<string, boolean> | null | undefined,
-): boolean {
-  const method = getConnectorAuthMethod(type, authMethod);
-  return (
-    !!method && (!method.featureFlag || !!featureStates?.[method.featureFlag])
-  );
-}
-
 function getAvailableConnectorConnectAuthMethods(
   type: ConnectorType,
   featureStates: Record<string, boolean> | null | undefined,
   options: {
-    readonly includeApiForTypes: readonly ConnectorType[];
+    readonly includeManagedForTypes: readonly ConnectorType[];
   },
 ): ConnectorAuthMethodId[] {
   return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
-    if (authMethod === "api" && !options.includeApiForTypes.includes(type)) {
+    const method = getConnectorAuthMethod(type, authMethod);
+    if (!method) {
       return false;
     }
-    return isConnectorAuthMethodAvailableForConnectUi(
-      type,
-      authMethod,
-      featureStates,
-    );
+    if (
+      method.grant.kind === "managed" &&
+      !options.includeManagedForTypes.includes(type)
+    ) {
+      return false;
+    }
+    return !method.featureFlag || !!featureStates?.[method.featureFlag];
   });
 }
 
@@ -342,21 +359,32 @@ function buildConnectorTypeStatus(params: {
     params.type,
     params.features,
     {
-      includeApiForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
+      includeManagedForTypes: CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES,
     },
   );
-  const hasApiToken = availableAuthMethods.includes("api-token");
+  const hasManualCredentialGrant = availableAuthMethods.some((authMethod) => {
+    return (
+      getConnectorAuthMethod(params.type, authMethod)?.grant.kind === "manual"
+    );
+  });
   const showExperimentalLabel = availableAuthMethods.some((authMethod) => {
     const method = getConnectorAuthMethod(params.type, authMethod);
     return !!method?.featureFlag && method.showExperimentalLabel !== false;
   });
   const connected = params.connector !== null;
+  const connectedAuthMethodHasOAuthGrant =
+    params.connector !== null &&
+    connectorAuthMethodHasOAuthGrant(params.type, params.connector.authMethod);
+  const scopeMismatch =
+    params.connector !== null &&
+    connectedAuthMethodHasOAuthGrant &&
+    !hasRequiredScopes(params.type, params.connector.oauthScopes);
 
   return {
     type: params.type,
     label:
       showExperimentalLabel &&
-      !hasApiToken &&
+      !hasManualCredentialGrant &&
       !isHostBackedConnector(params.type)
         ? `[Experimental] ${config.label}`
         : config.label,
@@ -366,11 +394,7 @@ function buildConnectorTypeStatus(params: {
     connected,
     connector: params.connector,
     availableAuthMethods,
-    scopeMismatch:
-      !isHostBackedConnector(params.type) &&
-      params.connector !== null &&
-      params.connector.authMethod === "oauth" &&
-      !hasRequiredScopes(params.type, params.connector.oauthScopes),
+    scopeMismatch: !isHostBackedConnector(params.type) && scopeMismatch,
     needsReconnect:
       !isHostBackedConnector(params.type) &&
       (params.connector?.needsReconnect ?? false),
@@ -448,7 +472,7 @@ export const allConnectorTypes$ = computed(async (get) => {
   const items = CONNECTOR_TYPE_KEYS.filter((type) => {
     return (
       getAvailableConnectorConnectAuthMethods(type, features, {
-        includeApiForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
+        includeManagedForTypes: CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES,
       }).length > 0
     );
   }).map((type) => {

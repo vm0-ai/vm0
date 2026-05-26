@@ -48,6 +48,7 @@ import {
   deleteLocalBrowserHost$,
   detectLocalBrowserExtension$,
   pairLocalBrowserExtension$,
+  connectorAuthMethodHasOAuthGrant,
   tokenFormValuesFor$,
   selectedConnectorType$,
   clearConnectorCliAuth$,
@@ -185,10 +186,6 @@ type ConnectMethodSharedContentProps = Omit<
   "authMethod" | "method"
 >;
 
-type ApiConnectContentComponent = (
-  props: ConnectModalContentProps,
-) => ReactElement;
-
 type ConnectMethodContentComponent = (
   props: ConnectMethodContentProps,
 ) => ReactElement | null;
@@ -221,6 +218,15 @@ function connectorOAuthDeviceAuthFlowIsActive(
       state.status === "pending" ||
       state.status === "polling")
   );
+}
+
+function connectedConnectorHasOAuthGrant(
+  item: ConnectorTypeWithStatus,
+): boolean {
+  if (!item.connector) {
+    return false;
+  }
+  return connectorAuthMethodHasOAuthGrant(item.type, item.connector.authMethod);
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +283,7 @@ function ManualCredentialForm({
 
   return (
     <div className="flex flex-col gap-3">
-      {item.connected && item.connector?.authMethod === "oauth" && (
+      {item.connected && connectedConnectorHasOAuthGrant(item) && (
         <p className="text-xs text-amber-600">
           This will replace your current OAuth connection.
         </p>
@@ -313,14 +319,10 @@ function ManualCredentialForm({
 
 function LocalAgentConnectContent({
   item,
+  method,
   onSuccess,
   showPermissionDialogOnConnect,
-}: {
-  item: ConnectorTypeWithStatus;
-  onSuccess: () => void | Promise<void>;
-  showPermissionDialogOnConnect: boolean;
-}) {
-  const localAgentConfig = getConnectorAuthMethod(item.type, "api");
+}: ConnectMethodContentProps) {
   const hostListLoadable = useLastLoadable(localAgentHosts$);
   const watchHostsRef = useSet(localAgentHostsWatcherRef$);
   const [connectLoadable, connectLocalAgent] = useLoadableSet(
@@ -348,9 +350,7 @@ function LocalAgentConnectContent({
 
   return (
     <div ref={watchHostsRef} className="flex flex-col gap-3">
-      {localAgentConfig?.helpText && (
-        <ConnectorHelpText text={localAgentConfig.helpText} />
-      )}
+      {method.helpText && <ConnectorHelpText text={method.helpText} />}
 
       <div className="mt-1 flex items-center justify-between gap-3">
         <h3 className="text-sm font-medium text-foreground">Online hosts</h3>
@@ -517,14 +517,10 @@ function LocalBrowserHostList({
 
 function LocalBrowserConnectContent({
   item,
+  method,
   onSuccess,
   showPermissionDialogOnConnect,
-}: {
-  item: ConnectorTypeWithStatus;
-  onSuccess: () => void | Promise<void>;
-  showPermissionDialogOnConnect: boolean;
-}) {
-  const localBrowserConfig = getConnectorAuthMethod(item.type, "api");
+}: ConnectMethodContentProps) {
   const hostListLoadable = useLastLoadable(localBrowserHosts$);
   const watchConnectionRef = useSet(localBrowserConnectionRef$);
   const extensionStatus = useGet(localBrowserExtensionStatus$);
@@ -586,9 +582,7 @@ function LocalBrowserConnectContent({
 
   return (
     <div ref={watchConnectionRef} className="flex flex-col gap-3">
-      {localBrowserConfig?.helpText && (
-        <ConnectorHelpText text={localBrowserConfig.helpText} />
-      )}
+      {method.helpText && <ConnectorHelpText text={method.helpText} />}
 
       <LocalBrowserExtensionPanel
         status={extensionStatus}
@@ -885,9 +879,9 @@ function ManualCredentialConnectMethodContent(
   );
 }
 
-function getApiConnectContentComponent(
+function getManagedConnectContentComponent(
   type: ConnectorType,
-): ApiConnectContentComponent | null {
+): ConnectMethodContentComponent | null {
   switch (type) {
     case LOCAL_AGENT_CONNECTOR_TYPE: {
       return LocalAgentConnectContent;
@@ -924,13 +918,13 @@ function getConnectMethodContentComponent(
     case "interactive-pairing": {
       switch (method.grant.flow) {
         case "browser-verification": {
-          return getCliAuthConnectMethodContentComponent(item.type);
+          return getCliAuthConnectMethodContentComponent(method);
         }
       }
       return null;
     }
     case "managed": {
-      return getApiConnectContentComponent(item.type);
+      return getManagedConnectContentComponent(item.type);
     }
   }
 }

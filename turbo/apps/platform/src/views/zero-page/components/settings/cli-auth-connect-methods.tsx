@@ -1,11 +1,11 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui/components/ui/button";
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethod,
-  getConnectorInteractivePairingGrantConfigIfSupported,
-} from "@vm0/connectors/connector-utils";
+import type {
+  ConnectorAuthMethodConfig,
+  ConnectorInteractivePairingGrantConfig,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
 import type { MouseEventHandler, ReactElement } from "react";
 
 import {
@@ -21,6 +21,7 @@ import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 type CliAuthConnectMethodContentProps = {
   item: ConnectorTypeWithStatus;
+  method: ConnectorAuthMethodConfig;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
   signal: AbortSignal;
@@ -28,7 +29,7 @@ type CliAuthConnectMethodContentProps = {
 
 type CliAuthConnectMethodContentComponent = (
   props: CliAuthConnectMethodContentProps,
-) => ReactElement;
+) => ReactElement | null;
 
 type CliAuthModeOption = {
   readonly value: string;
@@ -50,10 +51,10 @@ function stateForConnector(
     : { status: "idle", connectorType: type, mode: null };
 }
 
-function cliAuthModeOptions(type: ConnectorType): readonly CliAuthModeOption[] {
-  return (
-    getConnectorInteractivePairingGrantConfigIfSupported(type)?.modes ?? []
-  );
+function cliAuthModeOptions(
+  grant: ConnectorInteractivePairingGrantConfig,
+): readonly CliAuthModeOption[] {
+  return grant.modes ?? [];
 }
 
 function CliAuthModePicker({
@@ -162,18 +163,24 @@ function cliAuthErrorText(state: ConnectorCliAuthState): string | null {
 
 function BrowserVerificationCliAuthConnectMethodContent({
   item,
+  method,
   onSuccess,
   showPermissionDialogOnConnect,
   signal,
 }: CliAuthConnectMethodContentProps) {
   const type = item.type;
-  const cliAuthConfig = getConnectorAuthMethod(type, "cli-auth");
   const rawState = useGet(connectorCliAuthState$);
   const cliAuthState = stateForConnector(rawState, type);
   const setMode = useSet(setConnectorCliAuthMode$);
   const openApprovalPage = useSet(openConnectorCliAuthApprovalPage$);
   const [runLoadable, runCliAuth] = useLoadableSet(runConnectorCliAuth$);
-  const modeOptions = cliAuthModeOptions(type);
+  if (
+    method.grant.kind !== "interactive-pairing" ||
+    method.grant.flow !== "browser-verification"
+  ) {
+    return null;
+  }
+  const modeOptions = cliAuthModeOptions(method.grant);
   const inFlight =
     cliAuthState.status === "starting" ||
     cliAuthState.status === "pending" ||
@@ -186,14 +193,6 @@ function BrowserVerificationCliAuthConnectMethodContent({
   const requiresMode = modeOptions.length > 0;
   const canStart = !inFlight && (!requiresMode || !!cliAuthState.mode);
   const errorText = cliAuthErrorText(cliAuthState);
-
-  if (!cliAuthConfig) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        This connection method is not configured for this connector.
-      </p>
-    );
-  }
 
   const handleStart = onDomEventFn(async () => {
     if (!canStart) {
@@ -215,9 +214,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
 
   return (
     <div className="flex flex-col gap-3">
-      {cliAuthConfig.helpText && (
-        <ConnectorHelpText text={cliAuthConfig.helpText} />
-      )}
+      {method.helpText && <ConnectorHelpText text={method.helpText} />}
 
       {!pendingState && (
         <>
@@ -243,7 +240,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
               ? "Starting..."
               : requiresMode && !cliAuthState.mode
                 ? "Select a mode to continue"
-                : cliAuthConfig.label}
+                : method.label}
           </Button>
         </>
       )}
@@ -259,13 +256,21 @@ function BrowserVerificationCliAuthConnectMethodContent({
 }
 
 export function getCliAuthConnectMethodContentComponent(
-  type: ConnectorType,
+  method: ConnectorAuthMethodConfig,
 ): CliAuthConnectMethodContentComponent | null {
-  switch (getConnectorInteractivePairingGrantConfigIfSupported(type)?.flow) {
-    case "browser-verification": {
-      return BrowserVerificationCliAuthConnectMethodContent;
+  switch (method.grant.kind) {
+    case "interactive-pairing": {
+      switch (method.grant.flow) {
+        case "browser-verification": {
+          return BrowserVerificationCliAuthConnectMethodContent;
+        }
+      }
+      return null;
     }
-    default: {
+    case "auth-code":
+    case "device-auth":
+    case "managed":
+    case "manual": {
       return null;
     }
   }
