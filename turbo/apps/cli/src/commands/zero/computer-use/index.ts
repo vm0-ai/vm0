@@ -63,6 +63,44 @@ interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
 
 const COMPUTER_USE_SCREENSHOT_DIR = "/tmp/vm0/computer-use";
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
+const COMPUTER_USE_HELP_TEXT = `
+Workflow:
+  1. Start the Zero Desktop app and make sure Computer Use is online.
+  2. Run "zero computer-use list-apps" to find the target app name or bundle id.
+  3. Run "zero computer-use get-app-state --app <app>" to get a screenshot,
+     snapshotId, visible element indexes, and accessibility state.
+  4. Prefer element actions with --snapshot-id and --element-index. Use --x/--y
+     only when the target is visible in the returned screenshot but has no useful
+     accessibility element.
+  5. Read the JSON result. Screenshot data is saved under /tmp/vm0/computer-use
+     and replaced with a local file path in CLI output.
+
+Notes:
+  Write commands are sent to the connected Desktop host and may wait for local
+  approval before they run. Coordinate fallbacks use screenshot coordinates from
+  get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
+
+Examples:
+  List available apps:
+    zero computer-use list-apps
+
+  Inspect Safari state:
+    zero computer-use get-app-state --app Safari
+
+  Click element index 7 from snapshot desktop_abc:
+    zero computer-use click --app Safari --snapshot-id desktop_abc --element-index 7
+
+  Click screenshot coordinate (320, 240) from snapshot desktop_abc:
+    zero computer-use click --app Safari --snapshot-id desktop_abc --x 320 --y 240
+
+  Type text into the current focus in Safari:
+    zero computer-use type-text --app Safari --text "Hello"
+
+  Press a keyboard shortcut:
+    zero computer-use press-key --app Safari --key Command+L
+
+  Open an app without activating the current foreground app:
+    zero computer-use open-app --app Things`;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -500,6 +538,7 @@ const openAppCommand = appOption(
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
   .description("Desktop app computer use through Zero CLI")
+  .addHelpText("after", COMPUTER_USE_HELP_TEXT)
   .addCommand(listAppsCommand)
   .addCommand(getAppStateCommand)
   .addCommand(clickCommand)
