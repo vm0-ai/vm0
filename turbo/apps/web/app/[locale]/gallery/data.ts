@@ -94,7 +94,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A source-backed report example that treats tables and charts as supporting assets inside one output directory.",
     prompt:
-      "Generate a concise executive report about multimodal generation usage trends. Include a summary, ranked opportunities, risks, and a clear recommendation section. Use realistic placeholder data if live sources are unavailable.",
+      "Create a polished executive report website about multimodal generation usage trends using Zero's built-in generation flow. The final output should be a shareable website, not just a text response. Use realistic placeholder data if live sources are not available. Include a concise summary, clear trend charts, ranked opportunities, key risks, and a recommendation section with a strong point of view. Use the data-report skill for the analysis structure and the finance-report template for the layout.",
     previewImage: "/assets/bg_4.webp",
     previewKind: "website",
     generationKind: "report",
