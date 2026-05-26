@@ -730,6 +730,34 @@ mod tests {
         assert_eq!(flags.get("beta"), Some(&false));
     }
 
+    #[test]
+    fn write_job_file_removes_tmp_when_publish_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(&queue.job).unwrap();
+        let plan = SubmitPlan {
+            group: "test/group".into(),
+            profile: crate::profile::DEFAULT_PROFILE.to_owned(),
+            queue,
+            timeout: Duration::ZERO,
+            request_json: b"{}".to_vec(),
+        };
+
+        let err = plan.write_job_file().unwrap_err();
+
+        assert!(err.to_string().contains("rename job file"), "got: {err}");
+        assert!(plan.queue.job.is_dir());
+        let tmp_files: Vec<_> = std::fs::read_dir(&plan.queue.job_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
+            .collect();
+        assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
+    }
+
     #[tokio::test]
     async fn submit_returns_failure_for_nonzero_job_response() {
         let dir = tempfile::tempdir().unwrap();
