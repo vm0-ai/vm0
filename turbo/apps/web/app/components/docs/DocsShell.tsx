@@ -6,20 +6,26 @@ interface DocsShellProps {
   navigation: DocsNavigationSection[];
   homeLabel: string;
   activePath?: string;
+  draft?: boolean;
   children: ReactNode;
+}
+
+function withDraft(href: string, draft?: boolean): string {
+  return draft ? `${href}?status=draft` : href;
 }
 
 export function DocsShell({
   navigation,
   homeLabel,
   activePath,
+  draft,
   children,
 }: DocsShellProps) {
   return (
     <div className="docs-shell">
       <aside className="docs-sidebar" aria-label="Documentation navigation">
         <Link
-          href="/docs"
+          href={withDraft("/docs", draft)}
           className={`docs-nav-home${activePath ? "" : " active"}`}
         >
           {homeLabel}
@@ -33,7 +39,7 @@ export function DocsShell({
                   return (
                     <li key={page.path}>
                       <Link
-                        href={`/docs/${page.path}`}
+                        href={withDraft(`/docs/${page.path}`, draft)}
                         className={`docs-nav-link${
                           activePath === page.path ? " active" : ""
                         }`}

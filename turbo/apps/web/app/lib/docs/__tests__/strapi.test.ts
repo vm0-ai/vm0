@@ -218,6 +218,22 @@ describe("docs/strapi", () => {
     expect(capturedStatus).toBe("draft");
   });
 
+  it("requests draft content for the page list when draft option is set", async () => {
+    let capturedStatus: string | null = null;
+
+    server.use(
+      http.get(`${STRAPI_URL}/api/docs-pages`, ({ request }) => {
+        const url = new URL(request.url);
+        capturedStatus = url.searchParams.get("status");
+        return HttpResponse.json({ data: [], meta: {} });
+      }),
+    );
+
+    await getDocsPagesFromStrapi("en", { draft: true });
+
+    expect(capturedStatus).toBe("draft");
+  });
+
   it("throws when Strapi fetch fails", async () => {
     server.use(
       http.get(`${STRAPI_URL}/api/docs-pages`, () => {

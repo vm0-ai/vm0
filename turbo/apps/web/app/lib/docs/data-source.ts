@@ -5,8 +5,11 @@ import type {
 } from "./types";
 import { getDocsPageByPathFromStrapi, getDocsPagesFromStrapi } from "./strapi";
 
-export async function getDocsPages(locale: string = "en"): Promise<DocsPage[]> {
-  return getDocsPagesFromStrapi(locale);
+export async function getDocsPages(
+  locale: string = "en",
+  options: { draft?: boolean } = {},
+): Promise<DocsPage[]> {
+  return getDocsPagesFromStrapi(locale, options);
 }
 
 export async function getDocsPage(
@@ -62,8 +65,9 @@ export function buildDocsNavigation(
 
 export async function getDocsNavigation(
   locale: string = "en",
+  options: { draft?: boolean } = {},
 ): Promise<DocsNavigationSection[]> {
-  return buildDocsNavigation(await getDocsPages(locale));
+  return buildDocsNavigation(await getDocsPages(locale, options));
 }
 
 export async function getDocsAvailableLocales(
