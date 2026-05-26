@@ -50,6 +50,7 @@ _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
+_usage_flush_requested = threading.Event()
 _usage_flush_signal_lock = threading.Lock()
 
 # ============================================================================
@@ -107,29 +108,49 @@ def configure(updated: set[str]) -> None:
 
 def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
     del signum
+    _usage_flush_requested.set()
+    _start_usage_flush_worker()
+
+
+def _start_usage_flush_worker() -> None:
+    if not _usage_flush_signal_lock.acquire(blocking=False):
+        return
+
     thread = threading.Thread(
-        target=_flush_usage_for_runner_request,
+        target=_run_usage_flush_worker,
         name="usage-flush-request",
         daemon=True,
     )
-    thread.start()
+    started = False
+    try:
+        thread.start()
+        started = True
+    finally:
+        if not started:
+            _usage_flush_signal_lock.release()
+
+
+def _run_usage_flush_worker() -> None:
+    try:
+        while True:
+            _usage_flush_requested.clear()
+            _flush_usage_for_runner_request()
+            if not _usage_flush_requested.is_set():
+                return
+    finally:
+        _usage_flush_signal_lock.release()
+        if _usage_flush_requested.is_set():
+            _start_usage_flush_worker()
 
 
 def _flush_usage_for_runner_request() -> None:
-    if not _usage_flush_signal_lock.acquire(blocking=False):
-        return
+    flush_request_id = usage.read_usage_flush_request_id()
     try:
-        flush_request_id = usage.read_usage_flush_request_id()
-        try:
-            usage.flush_usage_events(trigger="runner")
-        except Exception as exc:
-            ctx.log.warn(
-                f"Failed to flush usage events after runner request ({type(exc).__name__})"
-            )
-        finally:
-            usage.write_pending_snapshot(flush_request_id=flush_request_id)
+        usage.flush_usage_events(trigger="runner")
+    except Exception as exc:
+        ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
     finally:
-        _usage_flush_signal_lock.release()
+        usage.write_pending_snapshot(flush_request_id=flush_request_id)
 
 
 def get_api_url() -> str:

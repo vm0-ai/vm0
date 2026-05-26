@@ -15,6 +15,17 @@ from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
+def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
+    acquired = mitm_addon._usage_flush_signal_lock.acquire(timeout=timeout)
+    assert acquired
+    mitm_addon._usage_flush_signal_lock.release()
+
+
+def reset_runner_usage_flush_state() -> None:
+    mitm_addon._usage_flush_requested.clear()
+    wait_for_usage_flush_worker_to_stop()
+
+
 class TestDoneHook:
     """Tests for the done() graceful shutdown hook."""
 
@@ -80,8 +91,7 @@ class TestDoneHook:
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
         ):
-            runner_thread = threading.Thread(target=mitm_addon._flush_usage_for_runner_request)
-            runner_thread.start()
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
             assert runner_flush_started.wait(timeout=1)
 
             done_thread = threading.Thread(target=mitm_addon.done)
@@ -90,10 +100,8 @@ class TestDoneHook:
             assert not shutdown_called.is_set()
 
             release_runner_flush.set()
-            runner_thread.join(timeout=1)
             done_thread.join(timeout=1)
 
-        assert not runner_thread.is_alive()
         assert not done_thread.is_alive()
         assert calls == ["flush:runner", "flush:shutdown", "shutdown:True"]
 
@@ -119,6 +127,7 @@ class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
     def test_signal_handler_flushes_usage_in_background(self, tmp_path):
+        reset_runner_usage_flush_state()
         flushed = threading.Event()
         snapshotted = threading.Event()
         pending_path = tmp_path / "usage-pending"
@@ -159,6 +168,7 @@ class TestRunnerUsageFlushSignal:
                 mitm_addon._handle_runner_usage_flush_signal(0, None)
                 assert flushed.wait(timeout=1)
                 assert snapshotted.wait(timeout=1)
+                wait_for_usage_flush_worker_to_stop()
 
             assert_pending(
                 pending_path,
@@ -171,6 +181,7 @@ class TestRunnerUsageFlushSignal:
             usage.set_pending_path("")
 
     def test_signal_handler_writes_snapshot_when_flush_fails(self, tmp_path):
+        reset_runner_usage_flush_state()
         snapshotted = threading.Event()
         pending_path = tmp_path / "usage-pending"
         request_path = tmp_path / "usage-flush-request"
@@ -208,6 +219,7 @@ class TestRunnerUsageFlushSignal:
             ):
                 mitm_addon._handle_runner_usage_flush_signal(0, None)
                 assert snapshotted.wait(timeout=1)
+                wait_for_usage_flush_worker_to_stop()
 
             assert_pending(
                 pending_path,
@@ -237,6 +249,63 @@ class TestRunnerUsageFlushSignal:
         message = log.warn.call_args.args[0]
         assert "RuntimeError" in message
         assert "secret-token" not in message
+
+    def test_signal_during_active_flush_runs_follow_up_flush(self):
+        reset_runner_usage_flush_state()
+        first_flush_started = threading.Event()
+        release_first_flush = threading.Event()
+        second_flush_completed = threading.Event()
+        worker_timed_out = threading.Event()
+        flush_triggers: list[str] = []
+
+        def flush_usage_events(*, trigger: str) -> int:
+            flush_triggers.append(trigger)
+            if len(flush_triggers) == 1:
+                first_flush_started.set()
+                if not release_first_flush.wait(timeout=2):
+                    worker_timed_out.set()
+            else:
+                second_flush_completed.set()
+            return 0
+
+        with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            assert first_flush_started.wait(timeout=1)
+
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            release_first_flush.set()
+
+            assert second_flush_completed.wait(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+        assert not worker_timed_out.is_set()
+        assert flush_triggers == ["runner", "runner"]
+
+    def test_failed_signal_flush_releases_worker_for_later_signal(self, mitm_ctx):
+        reset_runner_usage_flush_state()
+        second_flush_completed = threading.Event()
+        flush_triggers: list[str] = []
+
+        def flush_usage_events(*, trigger: str) -> int:
+            flush_triggers.append(trigger)
+            if len(flush_triggers) == 1:
+                raise RuntimeError("flush failed")
+            second_flush_completed.set()
+            return 0
+
+        with (
+            mitm_ctx() as log,
+            patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+        ):
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            wait_for_usage_flush_worker_to_stop()
+
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            assert second_flush_completed.wait(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+        log.warn.assert_called_once()
+        assert flush_triggers == ["runner", "runner"]
 
 
 class TestTlsClienthello:
