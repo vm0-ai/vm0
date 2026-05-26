@@ -745,7 +745,7 @@ function validateExtraOAuthConnectorSecrets(args: {
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
-}): ReadonlyArray<readonly [string, string]> {
+}): readonly (readonly [string, string])[] {
   const extraSecrets = Object.entries(args.extraConnectorSecrets ?? {});
   if (extraSecrets.length === 0) {
     return [];
@@ -779,7 +779,7 @@ async function upsertExtraOAuthConnectorSecrets(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: OAuthConnectorType;
-  readonly extraSecrets: ReadonlyArray<readonly [string, string]>;
+  readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<void> {
