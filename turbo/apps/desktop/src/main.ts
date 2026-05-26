@@ -80,9 +80,11 @@ const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const AUTH_ME_PATH = "/api/auth/me";
 const ZERO_ORG_PATH = "/api/zero/org";
+const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
 let appIsQuitting = false;
+let computerUseQuitStopStarted = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let desktopAuthToken: string | null = null;
@@ -251,6 +253,20 @@ function installComputerUse(): void {
     },
     { rendererUrl: localRendererUrl },
   );
+}
+
+async function stopComputerUseRuntimeForQuit(): Promise<void> {
+  const runtime = computerUseRuntime;
+  if (!runtime) {
+    return;
+  }
+
+  await Promise.race([
+    runtime.stop(),
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, COMPUTER_USE_QUIT_STOP_TIMEOUT_MS);
+    }),
+  ]);
 }
 
 function installDesktopAuth(): void {
@@ -722,8 +738,16 @@ if (!hasSingleInstanceLock) {
     handleDesktopAuthCallback(url);
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     appIsQuitting = true;
+    if (!computerUseRuntime || computerUseQuitStopStarted) {
+      return;
+    }
+    computerUseQuitStopStarted = true;
+    event.preventDefault();
+    void stopComputerUseRuntimeForQuit().finally(() => {
+      app.quit();
+    });
   });
 
   void app.whenReady().then(async () => {

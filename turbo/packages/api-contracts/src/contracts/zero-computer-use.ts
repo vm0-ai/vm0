@@ -289,6 +289,13 @@ export const computerUseHeartbeatResponseSchema = z.object({
   hostId: z.string(),
 });
 
+export const computerUseHostStopBodySchema = z.object({});
+
+export const computerUseHostStopResponseSchema = z.object({
+  ok: z.literal(true),
+  hostId: z.string(),
+});
+
 export const computerUseHostListResponseSchema = z.object({
   hosts: z.array(computerUseHostSchema),
 });
@@ -427,8 +434,20 @@ export const zeroComputerUseHeartbeatContract = c.router({
     responses: {
       200: computerUseHeartbeatResponseSchema,
       401: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Refresh a desktop computer-use host heartbeat",
+  },
+  stop: {
+    method: "POST",
+    path: "/api/zero/computer-use/host/stop",
+    headers: authHeadersSchema,
+    body: computerUseHostStopBodySchema,
+    responses: {
+      200: computerUseHostStopResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Stop a desktop computer-use host",
   },
 });
 

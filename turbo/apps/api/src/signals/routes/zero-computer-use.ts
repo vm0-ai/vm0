@@ -27,6 +27,7 @@ import {
   listComputerUseAuditEvents$,
   listComputerUseHosts$,
   startComputerUseHost$,
+  stopComputerUseHost$,
 } from "../services/zero-computer-use.service";
 import type { RouteEntry } from "../route";
 
@@ -147,6 +148,34 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     { hostToken, ...bodyResult.data },
     signal,
   );
+  signal.throwIfAborted();
+
+  if (result.status === "invalid_token") {
+    return invalidComputerUseToken;
+  }
+  if (result.status === "active_host_exists") {
+    return conflict("A Desktop Computer Use host is already active");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, hostId: result.hostId },
+  };
+});
+
+const hostStopBody$ = bodyResultOf(zeroComputerUseHeartbeatContract.stop);
+const hostStopInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const bodyResult = await get(hostStopBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const hostToken = parseBearerToken(get(authorization$));
+  if (!hostToken) {
+    return unauthorizedComputerUse;
+  }
+
+  const result = await set(stopComputerUseHost$, { hostToken }, signal);
   signal.throwIfAborted();
 
   if (result.status === "invalid_token") {
@@ -520,6 +549,10 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHeartbeatContract.heartbeat,
     handler: heartbeatInner$,
+  },
+  {
+    route: zeroComputerUseHeartbeatContract.stop,
+    handler: hostStopInner$,
   },
   {
     route: zeroComputerUseHostsContract.list,

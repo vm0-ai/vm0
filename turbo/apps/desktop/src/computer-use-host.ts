@@ -126,11 +126,29 @@ export class ComputerUseHostRuntime {
     await this.tick();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false;
     if (this.timer) {
       this.clearScheduledTimeout(this.timer);
       this.timer = null;
+    }
+    const hostToken = this.hostToken;
+    if (!hostToken) {
+      return;
+    }
+    this.hostToken = null;
+    this.setState({
+      status: "idle",
+      hostId: null,
+      lastError: null,
+    });
+    try {
+      await this.stopHost(hostToken);
+    } catch (error) {
+      this.setState({
+        status: "error",
+        lastError: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -322,6 +340,16 @@ export class ComputerUseHostRuntime {
       });
       return false;
     }
+    if (response.status === 409) {
+      this.hostToken = null;
+      this.setState({
+        status: "error",
+        hostId: null,
+        lastError:
+          "Computer Use is already active in another Zero Desktop session.",
+      });
+      return false;
+    }
     if (!response.ok) {
       throw new Error(`Computer Use heartbeat failed: ${response.status}`);
     }
@@ -446,5 +474,25 @@ export class ComputerUseHostRuntime {
         ...init.headers,
       },
     });
+  }
+
+  private async stopHost(hostToken: string): Promise<void> {
+    const response = await this.hostFetchRequest(
+      `${this.apiBaseUrl}/api/zero/computer-use/host/stop`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${hostToken}`,
+        },
+      },
+    );
+    if (response.status === 401) {
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`Computer Use host stop failed: ${response.status}`);
+    }
   }
 }
