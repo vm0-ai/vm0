@@ -227,7 +227,6 @@ import { supermemory } from "./connectors/supermemory";
 import { tavily } from "./connectors/tavily";
 import { testOauth } from "./connectors/test-oauth";
 import { testOauthDevice } from "./connectors/test-oauth-device";
-import { testLocalAuthMethod } from "./connectors/test-local-auth-method";
 import { testrail } from "./connectors/testrail";
 import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
@@ -867,7 +866,6 @@ const CONNECTOR_TYPES_DEF = {
   ...tavily,
   ...testOauth,
   ...testOauthDevice,
-  ...testLocalAuthMethod,
   ...testrail,
   ...ticketmaster,
   ...tldv,

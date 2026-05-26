@@ -548,10 +548,10 @@ describe("connect modal - interactions", () => {
     });
   });
 
-  it("renders connector-local manual auth methods and stores fields by selected method metadata", async () => {
+  it("stores manual credential fields by selected method metadata", async () => {
     const user = userEvent.setup();
     let submittedSecret: { name: string; value: string } | undefined;
-    let submittedVariable: { name: string; value: string } | undefined;
+    const submittedVariables: { name: string; value: string }[] = [];
 
     server.use(
       mockApi(zeroSecretsContract.set, ({ body, respond }) => {
@@ -567,7 +567,7 @@ describe("connect modal - interactions", () => {
         });
       }),
       mockApi(zeroVariablesContract.set, ({ body, respond }) => {
-        submittedVariable = { name: body.name, value: body.value };
+        submittedVariables.push({ name: body.name, value: body.value });
         const now = new Date().toISOString();
         return respond(201, {
           id: crypto.randomUUID(),
@@ -580,32 +580,38 @@ describe("connect modal - interactions", () => {
       }),
     );
 
-    await openConnectModal("test-local-auth-method", {
-      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
-    });
+    await openConnectModal("zendesk");
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("app-id")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("your-zendesk-api-token"),
+      ).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByText("Test-only connector-local manual credentials."),
-    ).toBeInTheDocument();
-    await user.type(screen.getByPlaceholderText("app-id"), "local-app-id");
     await user.type(
-      screen.getByPlaceholderText("app-secret"),
-      "local-app-secret",
+      screen.getByPlaceholderText("your-zendesk-api-token"),
+      "zendesk-token",
+    );
+    await user.type(
+      screen.getByPlaceholderText("your-email@company.com"),
+      "support@example.com",
+    );
+    await user.type(
+      screen.getByPlaceholderText("yourcompany"),
+      "example-subdomain",
     );
     click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(submittedVariable).toStrictEqual({
-        name: "TEST_LOCAL_APP_ID",
-        value: "local-app-id",
-      });
+      expect(submittedVariables).toStrictEqual(
+        expect.arrayContaining([
+          { name: "ZENDESK_EMAIL", value: "support@example.com" },
+          { name: "ZENDESK_SUBDOMAIN", value: "example-subdomain" },
+        ]),
+      );
       expect(submittedSecret).toStrictEqual({
-        name: "TEST_LOCAL_APP_SECRET",
-        value: "local-app-secret",
+        name: "ZENDESK_API_TOKEN",
+        value: "zendesk-token",
       });
     });
   });
