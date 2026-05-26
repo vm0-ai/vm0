@@ -16,7 +16,6 @@ export const googleMeet = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
             clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
           },

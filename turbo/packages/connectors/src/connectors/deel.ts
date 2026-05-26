@@ -18,7 +18,6 @@ export const deel = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
             clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
           },

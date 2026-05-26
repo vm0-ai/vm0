@@ -16,7 +16,6 @@ export const airtable = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
             clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
           },

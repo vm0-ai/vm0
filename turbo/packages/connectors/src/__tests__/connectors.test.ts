@@ -1756,7 +1756,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
       },
       (name) => {
@@ -1771,7 +1770,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       client: {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
       },
       clientId: "public-client-id",
@@ -1782,7 +1780,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     const client = {
       clientRegistration: "dynamic",
       clientType: "public",
-      tokenEndpointAuthMethod: "none",
     } as const;
 
     expect(
@@ -1818,7 +1815,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientId: "public-client-id",
       },
       emptyEnv,
@@ -1835,7 +1831,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     const dynamicClient = {
       clientRegistration: "dynamic",
       clientType: "public",
-      tokenEndpointAuthMethod: "none",
     } as const;
     const dynamicCredentials = resolveConnectorOAuthClientCredentials(
       dynamicClient,
@@ -1972,7 +1967,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       client: {
         clientRegistration: "static",
         clientType: "confidential",
-        tokenEndpointAuthMethod: "client_secret_post",
         clientIdEnv: "GH_OAUTH_CLIENT_ID",
         clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
       },
@@ -1989,7 +1983,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       client: {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientId: "test-oauth-device-client",
       },
       scopes: ["read"],
@@ -2003,7 +1996,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       client: {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientId: "base44_cli",
       },
       scopes: ["apps:read", "apps:write", "offline"],
@@ -2016,7 +2008,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
         client: {
           clientRegistration: "static",
           clientType: "public",
-          tokenEndpointAuthMethod: "none",
           clientId: "vm0",
         },
         scopes: [],
@@ -2081,7 +2072,6 @@ describe("connector OAuth device authorization config", () => {
       client: {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientId: "test-oauth-device-client",
       },
       scopes: ["read"],
@@ -2099,7 +2089,6 @@ describe("connector OAuth device authorization config", () => {
       client: {
         clientRegistration: "static",
         clientType: "public",
-        tokenEndpointAuthMethod: "none",
         clientId: "base44_cli",
       },
       scopes: ["apps:read", "apps:write", "offline"],
@@ -2116,7 +2105,6 @@ describe("connector OAuth device authorization config", () => {
         client: {
           clientRegistration: "static",
           clientType: "public",
-          tokenEndpointAuthMethod: "none",
           clientId: "vm0",
         },
         scopes: [],

@@ -18,7 +18,6 @@ export const supabase = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
             clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
           },

@@ -16,7 +16,6 @@ export const notion = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
             clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
           },

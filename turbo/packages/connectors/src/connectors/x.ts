@@ -16,7 +16,6 @@ export const x = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "X_OAUTH_CLIENT_ID",
             clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
           },

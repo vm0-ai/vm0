@@ -18,7 +18,6 @@ export const webflow = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "WEBFLOW_OAUTH_CLIENT_ID",
             clientSecretEnv: "WEBFLOW_OAUTH_CLIENT_SECRET",
           },

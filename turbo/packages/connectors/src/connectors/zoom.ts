@@ -18,7 +18,6 @@ export const zoom = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
             clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
           },

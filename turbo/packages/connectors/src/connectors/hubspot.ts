@@ -16,7 +16,6 @@ export const hubspot = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "HUBSPOT_OAUTH_CLIENT_ID",
             clientSecretEnv: "HUBSPOT_OAUTH_CLIENT_SECRET",
           },

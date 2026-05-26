@@ -18,7 +18,6 @@ export const docusign = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "DOCUSIGN_OAUTH_CLIENT_ID",
             clientSecretEnv: "DOCUSIGN_OAUTH_CLIENT_SECRET",
           },

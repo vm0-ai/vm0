@@ -16,7 +16,6 @@ export const slack = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "SLACK_CLIENT_ID",
             clientSecretEnv: "SLACK_CLIENT_SECRET",
           },

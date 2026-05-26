@@ -18,7 +18,6 @@ export const canva = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
             clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
           },

@@ -16,7 +16,6 @@ export const intervalsIcu = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "INTERVALS_ICU_OAUTH_CLIENT_ID",
             clientSecretEnv: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
           },

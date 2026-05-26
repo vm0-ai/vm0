@@ -19,7 +19,6 @@ export const slock = {
           client: {
             clientRegistration: "static",
             clientType: "public",
-            tokenEndpointAuthMethod: "none",
             clientId: "vm0",
           },
           scopes: [],

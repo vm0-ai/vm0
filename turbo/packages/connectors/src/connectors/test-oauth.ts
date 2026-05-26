@@ -18,7 +18,6 @@ export const testOauth = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientId: "test-oauth-client",
             clientSecret: "test-oauth-secret",
           },

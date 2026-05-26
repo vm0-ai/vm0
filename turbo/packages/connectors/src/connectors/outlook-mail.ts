@@ -18,7 +18,6 @@ export const outlookMail = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
             clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
           },

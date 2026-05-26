@@ -17,7 +17,6 @@ export const base44 = {
           client: {
             clientRegistration: "static",
             clientType: "public",
-            tokenEndpointAuthMethod: "none",
             clientId: "base44_cli",
           },
           scopes: ["apps:read", "apps:write", "offline"],

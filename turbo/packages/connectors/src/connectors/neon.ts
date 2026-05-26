@@ -18,7 +18,6 @@ export const neon = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "NEON_OAUTH_CLIENT_ID",
             clientSecretEnv: "NEON_OAUTH_CLIENT_SECRET",
           },

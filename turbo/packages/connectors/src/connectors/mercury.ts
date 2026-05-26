@@ -18,7 +18,6 @@ export const mercury = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
             clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
           },

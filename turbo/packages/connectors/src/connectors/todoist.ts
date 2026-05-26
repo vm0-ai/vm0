@@ -16,7 +16,6 @@ export const todoist = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "TODOIST_OAUTH_CLIENT_ID",
             clientSecretEnv: "TODOIST_OAUTH_CLIENT_SECRET",
           },

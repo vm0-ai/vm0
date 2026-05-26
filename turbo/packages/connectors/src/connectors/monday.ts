@@ -16,7 +16,6 @@ export const monday = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
             clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
           },

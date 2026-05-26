@@ -18,7 +18,6 @@ export const spotify = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "SPOTIFY_OAUTH_CLIENT_ID",
             clientSecretEnv: "SPOTIFY_OAUTH_CLIENT_SECRET",
           },

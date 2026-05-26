@@ -288,7 +288,6 @@ async function seedExpiredTestOAuthConnector(
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
-  tokenEndpointAuthMethod: "none",
 } as const satisfies ConnectorOAuthClientConfig;
 
 type CapturedOAuthRefresh = {

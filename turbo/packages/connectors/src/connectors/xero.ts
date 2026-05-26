@@ -16,7 +16,6 @@ export const xero = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "XERO_OAUTH_CLIENT_ID",
             clientSecretEnv: "XERO_OAUTH_CLIENT_SECRET",
           },

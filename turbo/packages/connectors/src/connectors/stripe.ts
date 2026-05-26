@@ -19,7 +19,6 @@ export const stripe = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
             clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
           },

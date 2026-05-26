@@ -19,7 +19,6 @@ export const testOauthDevice = {
           client: {
             clientRegistration: "static",
             clientType: "public",
-            tokenEndpointAuthMethod: "none",
             clientId: "test-oauth-device-client",
           },
           scopes: ["read"],

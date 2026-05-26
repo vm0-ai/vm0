@@ -18,7 +18,6 @@ export const reddit = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
             clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
           },

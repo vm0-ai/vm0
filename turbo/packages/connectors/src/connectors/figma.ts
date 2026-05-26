@@ -17,7 +17,6 @@ export const figma = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_basic",
             clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
             clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
           },

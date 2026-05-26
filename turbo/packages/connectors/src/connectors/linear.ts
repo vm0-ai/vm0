@@ -16,7 +16,6 @@ export const linear = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
             clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
           },

@@ -16,7 +16,6 @@ export const strava = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "STRAVA_OAUTH_CLIENT_ID",
             clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
           },

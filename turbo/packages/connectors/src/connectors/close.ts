@@ -18,7 +18,6 @@ export const close = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "CLOSE_OAUTH_CLIENT_ID",
             clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
           },

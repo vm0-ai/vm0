@@ -18,7 +18,6 @@ export const garminConnect = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            tokenEndpointAuthMethod: "client_secret_post",
             clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
             clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
           },

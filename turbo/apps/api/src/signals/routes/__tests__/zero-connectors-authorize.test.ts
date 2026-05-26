@@ -86,7 +86,6 @@ function mockOAuthEnv(): void {
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
-  tokenEndpointAuthMethod: "none",
 } as const satisfies ConnectorOAuthClientConfig;
 
 function useDynamicTestOAuthAuthorize(): () => void {
