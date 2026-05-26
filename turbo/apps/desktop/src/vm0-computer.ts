@@ -22,6 +22,11 @@ interface ParsedArgs {
   readonly values: ReadonlyMap<string, string>;
 }
 
+interface ParsedRuntimeCommands {
+  readonly commands: readonly RuntimeCommand[];
+  readonly outputArray: boolean;
+}
+
 interface PendingResponse {
   readonly resolve: (response: RuntimeResponse) => void;
   readonly reject: (error: Error) => void;
@@ -92,16 +97,16 @@ function isRuntimeCommand(value: unknown): value is RuntimeCommand {
   );
 }
 
-function parseRuntimeCommands(raw: string): readonly RuntimeCommand[] {
+function parseRuntimeCommands(raw: string): ParsedRuntimeCommands {
   const parsed: unknown = JSON.parse(raw);
   if (Array.isArray(parsed)) {
     if (parsed.every(isRuntimeCommand)) {
-      return parsed;
+      return { commands: parsed, outputArray: true };
     }
     fail("vm0-computer run requires every array item to be a runtime command");
   }
   if (isRuntimeCommand(parsed)) {
-    return [parsed];
+    return { commands: [parsed], outputArray: false };
   }
   fail("vm0-computer run requires a runtime command or command array");
 }
@@ -334,8 +339,8 @@ async function main(): Promise<void> {
     if (!raw) {
       fail("vm0-computer run requires a JSON command or command array");
     }
-    const commands = parseRuntimeCommands(raw);
-    await runCommands(helperPath, commands, commands.length > 1);
+    const { commands, outputArray } = parseRuntimeCommands(raw);
+    await runCommands(helperPath, commands, outputArray);
     return;
   }
   const mappedKind = zeroCommands.get(command);

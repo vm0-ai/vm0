@@ -431,6 +431,42 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("preserves vm0-computer run array output for single-command arrays", async () => {
+    const helper = await createSessionHelper();
+    const commandInput = [
+      { kind: "app.state", payload: { app: "Safari", snapshotId: "snap_1" } },
+    ];
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          cliPath,
+          "run",
+          JSON.stringify(commandInput),
+          "--helper-path",
+          helper.helperPath,
+        ],
+        { cwd: desktopRoot },
+      );
+      const responses = JSON.parse(stdout) as readonly Record<
+        string,
+        unknown
+      >[];
+      expect(responses).toHaveLength(1);
+      expect(responses[0]).toMatchObject({
+        status: "succeeded",
+        result: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIdsByIndex: ["w0", "w0.e0"],
+        },
+      });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("maps Zero CLI command names through vm0-computer", async () => {
     const helper = await createSessionHelper();
     const commandArgs = [
