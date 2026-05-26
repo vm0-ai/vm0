@@ -740,29 +740,19 @@ function isOAuthPrimaryTokenSecret(args: {
   );
 }
 
-async function upsertExtraOAuthConnectorSecrets(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
+function validateExtraOAuthConnectorSecrets(args: {
   readonly type: OAuthConnectorType;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+}): ReadonlyArray<readonly [string, string]> {
   const extraSecrets = Object.entries(args.extraConnectorSecrets ?? {});
   if (extraSecrets.length === 0) {
-    return;
+    return [];
   }
 
   const allowedSecretNames = allowedOAuthConnectorSecretNames(args.type);
-  for (const [name, value] of extraSecrets) {
-    if (!allowedSecretNames.has(name)) {
-      throw new Error(
-        `${args.type} OAuth provider returned unsupported connector secret ${name}`,
-      );
-    }
+  for (const [name] of extraSecrets) {
     if (
       isOAuthPrimaryTokenSecret({
         name,
@@ -770,9 +760,34 @@ async function upsertExtraOAuthConnectorSecrets(args: {
         refreshSecretName: args.refreshSecretName,
       })
     ) {
-      continue;
+      throw new Error(
+        `${args.type} OAuth provider returned primary token ${name} in extra connector secrets`,
+      );
     }
+    if (!allowedSecretNames.has(name)) {
+      throw new Error(
+        `${args.type} OAuth provider returned unsupported connector secret ${name}`,
+      );
+    }
+  }
 
+  return extraSecrets;
+}
+
+async function upsertExtraOAuthConnectorSecrets(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: OAuthConnectorType;
+  readonly extraSecrets: ReadonlyArray<readonly [string, string]>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.extraSecrets.length === 0) {
+    return;
+  }
+
+  for (const [name, value] of args.extraSecrets) {
     await upsertConnectorSecret(args.db, {
       orgId: args.orgId,
       userId: args.userId,
@@ -810,6 +825,14 @@ export const upsertOAuthConnector$ = command(
     const tokenExpiresAt = connectorTokenExpiresAt({
       isRefreshable: secretMetadata.isRefreshable,
       expiresIn: args.expiresIn,
+    });
+    const extraSecrets = validateExtraOAuthConnectorSecrets({
+      type: args.type,
+      extraConnectorSecrets: args.extraConnectorSecrets,
+      accessSecretName: secretMetadata.accessSecretName,
+      refreshSecretName: secretMetadata.isRefreshable
+        ? secretMetadata.refreshSecretName
+        : undefined,
     });
     const apiTokenFields = getApiTokenFieldsByType(args.type);
 
@@ -854,11 +877,7 @@ export const upsertOAuthConnector$ = command(
       orgId: args.orgId,
       userId: args.userId,
       type: args.type,
-      extraConnectorSecrets: args.extraConnectorSecrets,
-      accessSecretName: secretMetadata.accessSecretName,
-      refreshSecretName: secretMetadata.isRefreshable
-        ? secretMetadata.refreshSecretName
-        : undefined,
+      extraSecrets,
       featureSwitchContext,
       signal,
     });

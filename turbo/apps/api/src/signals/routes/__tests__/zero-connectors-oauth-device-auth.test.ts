@@ -694,6 +694,65 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });
 
+  it.each<{
+    readonly caseName: string;
+    readonly extraConnectorSecrets: Readonly<Record<string, string>>;
+  }>([
+    {
+      caseName: "primary token",
+      extraConnectorSecrets: {
+        TEST_OAUTH_DEVICE_ACCESS_TOKEN: "shadow-access-token",
+      },
+    },
+    {
+      caseName: "unsupported secret",
+      extraConnectorSecrets: {
+        TEST_OAUTH_DEVICE_UNDECLARED_SECRET: "undeclared-secret",
+      },
+    },
+  ])(
+    "rejects $caseName in extra connector secrets without persisting tokens",
+    async ({ extraConnectorSecrets }) => {
+      const { userId, orgId } = await setupUser();
+      const client = setupApp({ context })(
+        zeroConnectorOauthDeviceAuthSessionContract,
+      );
+      const start = await accept(
+        client.create({
+          params: { type: "test-oauth-device" },
+          body: {},
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+      testOauthDeviceProvider.grant.pollDeviceAuth = async (args) => {
+        const result = await originalPollDeviceAuth(args);
+        if (result.status !== "complete") {
+          return result;
+        }
+        return {
+          ...result,
+          token: { ...result.token, extraConnectorSecrets },
+        };
+      };
+
+      const response = await client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      });
+
+      expect(response.status).toBe(500);
+      await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+      expect((await onlySession(start.body.sessionId)).status).toBe(
+        "awaiting_user_authorization",
+      );
+    },
+  );
+
   it("completes a Base44 session and stores OAuth access and refresh secrets", async () => {
     mockBase44OAuthProvider();
     const userId = `user_${randomUUID()}`;
