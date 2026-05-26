@@ -557,9 +557,11 @@ mod tests {
         );
     }
 
-    async fn wait_for_job_and_write_success(
+    async fn wait_for_job_and_write_result(
         group_dir: std::path::PathBuf,
         profile: String,
+        exit_code: i32,
+        error: Option<String>,
     ) -> JobRequest {
         let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile).unwrap();
         loop {
@@ -573,8 +575,8 @@ mod tests {
                         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
                     let response = JobResponse {
                         run_id: request.job_id,
-                        exit_code: 0,
-                        error: None,
+                        exit_code,
+                        error: error.clone(),
                     };
                     let result_path = local_queue::result_path(&group_dir, request.job_id);
                     std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
@@ -585,6 +587,13 @@ mod tests {
 
             tokio::task::yield_now().await;
         }
+    }
+
+    async fn wait_for_job_and_write_success(
+        group_dir: std::path::PathBuf,
+        profile: String,
+    ) -> JobRequest {
+        wait_for_job_and_write_result(group_dir, profile, 0, None).await
     }
 
     #[tokio::test]
@@ -616,6 +625,9 @@ mod tests {
         let request = watcher.await.unwrap();
 
         assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+        assert_eq!(request.working_dir, "/workspace");
+        assert_eq!(request.cli_agent_type, "claude-code");
         assert_eq!(
             request.profile.as_deref(),
             Some(crate::profile::DEFAULT_PROFILE)
@@ -670,10 +682,10 @@ mod tests {
             SubmitArgs {
                 group: group.into(),
                 prompt: "hello".into(),
-                working_dir: "/workspace".into(),
-                cli_agent_type: "claude-code".into(),
+                working_dir: "/project".into(),
+                cli_agent_type: "codex".into(),
                 profile: None,
-                session_id: None,
+                session_id: Some("sess-123".into()),
                 feature_flags: vec!["alpha=true".into(), "beta=false".into()],
                 timeout: 5,
             },
@@ -685,8 +697,50 @@ mod tests {
         let flags = request.feature_flags.as_ref().unwrap();
 
         assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(request.prompt, "hello");
+        assert_eq!(request.working_dir, "/project");
+        assert_eq!(request.cli_agent_type, "codex");
+        assert_eq!(request.session_id.as_deref(), Some("sess-123"));
         assert_eq!(flags.get("alpha"), Some(&true));
         assert_eq!(flags.get("beta"), Some(&false));
+    }
+
+    #[tokio::test]
+    async fn submit_returns_failure_for_nonzero_job_response() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let group = "test/group";
+        let group_dir = home.groups_dir().join(group);
+        let watcher = tokio::spawn(wait_for_job_and_write_result(
+            group_dir.clone(),
+            crate::profile::DEFAULT_PROFILE.to_owned(),
+            42,
+            Some("agent failed".into()),
+        ));
+
+        let code = run_submit_with_home(
+            SubmitArgs {
+                group: group.into(),
+                prompt: "hello".into(),
+                working_dir: "/workspace".into(),
+                cli_agent_type: "claude-code".into(),
+                profile: None,
+                session_id: None,
+                feature_flags: vec![],
+                timeout: 5,
+            },
+            home,
+        )
+        .await
+        .unwrap();
+        let request = watcher.await.unwrap();
+        let result_path = local_queue::result_path(&group_dir, request.job_id);
+
+        assert_eq!(code, ExitCode::FAILURE);
+        assert!(
+            !result_path.exists(),
+            "completed cleanup should remove nonzero result files"
+        );
     }
 
     #[test]
