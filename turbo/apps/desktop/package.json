@@ -5,6 +5,9 @@
   "productName": "Zero",
   "description": "Zero desktop shell",
   "main": "dist/main.js",
+  "bin": {
+    "vm0-computer": "bin/vm0-computer"
+  },
   "scripts": {
     "build": "pnpm build:native && pnpm build:electron && pnpm build:renderer",
     "build:electron": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
@@ -17,7 +20,8 @@
     "make": "pnpm build && electron-forge make --platform darwin",
     "package": "pnpm build && electron-forge package --platform darwin",
     "start": "electron-forge start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "vm0-computer": "node bin/vm0-computer.mjs"
   },
   "dependencies": {
     "@tabler/icons-react": "^3.36.1",

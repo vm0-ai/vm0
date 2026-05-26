@@ -94,6 +94,7 @@ export interface AccessibilityAppStateSnapshot {
   readonly windowFrame?: ComputerUseCoordinateBounds;
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
+  readonly elementIdsByIndex?: readonly string[];
   readonly focusedElementIndex?: number;
   readonly nodeCount?: number;
   readonly truncated?: boolean;
@@ -183,7 +184,7 @@ interface IndexedAccessibilitySnapshot {
 }
 
 interface ComputerUseElementTarget {
-  readonly elementId: string;
+  readonly elementId?: string;
   readonly elementIndex?: number;
   readonly snapshotId?: string;
 }
@@ -751,6 +752,30 @@ function indexAccessibilitySnapshot(
   };
 }
 
+function nativeIndexedAccessibilitySnapshot(
+  snapshot: AccessibilityAppStateSnapshot,
+): IndexedAccessibilitySnapshot | null {
+  if (!snapshot.elementIdsByIndex) {
+    return null;
+  }
+  return {
+    snapshot,
+    elementIdsByIndex: snapshot.elementIdsByIndex,
+    ...(snapshot.focusedElementIndex !== undefined
+      ? { focusedElementIndex: snapshot.focusedElementIndex }
+      : {}),
+  };
+}
+
+function indexedAccessibilitySnapshot(
+  snapshot: AccessibilityAppStateSnapshot,
+): IndexedAccessibilitySnapshot {
+  return (
+    nativeIndexedAccessibilitySnapshot(snapshot) ??
+    indexAccessibilitySnapshot(snapshot)
+  );
+}
+
 const ROLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
   AXButton: "button",
   AXCheckBox: "checkbox",
@@ -1003,7 +1028,7 @@ function focusedElementLine(
 export function renderAccessibilityTree(
   snapshot: AccessibilityAppStateSnapshot,
 ): string {
-  const indexed = indexAccessibilitySnapshot(snapshot).snapshot;
+  const indexed = indexedAccessibilitySnapshot(snapshot).snapshot;
   const appName = indexed.appDisplayName ?? indexed.app;
   const appIdentity = indexed.appPath ?? appName;
   const appDetails = [
@@ -1174,7 +1199,7 @@ async function getAppState(
   const snapshot = normalizeAccessibilitySnapshot(
     await nativeBackend.getAppState(app, id),
   );
-  const indexed = indexAccessibilitySnapshot(snapshot);
+  const indexed = indexedAccessibilitySnapshot(snapshot);
   const screenshot = nativeAppStateScreenshot(indexed.snapshot);
   if ("status" in screenshot) {
     return screenshot;
@@ -1315,14 +1340,7 @@ function resolveElementTarget(args: {
   if ("status" in snapshot) {
     return snapshot;
   }
-  const elementId = snapshot.elementIdsByIndex?.[args.elementIndex];
-  if (!elementId) {
-    return unsupportedCommand(
-      `Element index ${args.elementIndex} was not found in snapshot ${snapshot.snapshotId}`,
-    );
-  }
   return {
-    elementId,
     elementIndex: args.elementIndex,
     snapshotId: snapshot.snapshotId,
   };
@@ -1337,13 +1355,13 @@ function elementTargetResult(
       ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
     };
   }
-  return { elementId: target.elementId };
+  return target.elementId ? { elementId: target.elementId } : {};
 }
 
 function elementTargetText(target: ComputerUseElementTarget): string {
   return target.elementIndex !== undefined
     ? `elementIndex=${target.elementIndex}`
-    : target.elementId;
+    : (target.elementId ?? "element");
 }
 
 async function clickElement(args: {
@@ -1377,7 +1395,11 @@ async function clickElement(args: {
     }
     const nativeResult = await args.nativeBackend.clickElement({
       app: args.app,
-      elementId: target.elementId,
+      ...(target.elementId ? { elementId: target.elementId } : {}),
+      ...(target.elementIndex !== undefined
+        ? { elementIndex: target.elementIndex }
+        : {}),
+      ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
       button: args.button,
       clickCount: args.clickCount,
     });
@@ -1444,7 +1466,11 @@ async function setElementValue(
 ): Promise<ComputerUseCommandSuccess> {
   const nativeResult = await nativeBackend.setElementValue({
     app,
-    elementId: target.elementId,
+    ...(target.elementId ? { elementId: target.elementId } : {}),
+    ...(target.elementIndex !== undefined
+      ? { elementIndex: target.elementIndex }
+      : {}),
+    ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
     value,
   });
   return {
@@ -1466,7 +1492,11 @@ async function performElementAction(
 ): Promise<ComputerUseCommandSuccess> {
   const nativeResult = await nativeBackend.performElementAction({
     app,
-    elementId: target.elementId,
+    ...(target.elementId ? { elementId: target.elementId } : {}),
+    ...(target.elementIndex !== undefined
+      ? { elementIndex: target.elementIndex }
+      : {}),
+    ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
     action,
   });
   return {
@@ -1524,7 +1554,11 @@ async function scrollElement(
 ): Promise<ComputerUseCommandSuccess> {
   const nativeResult = await nativeBackend.scrollElement({
     app,
-    elementId: target.elementId,
+    ...(target.elementId ? { elementId: target.elementId } : {}),
+    ...(target.elementIndex !== undefined
+      ? { elementIndex: target.elementIndex }
+      : {}),
+    ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
     direction,
     pages,
   });

@@ -52,6 +52,139 @@ let visibleCollectionChildSources = [
     ChildSource(attribute: "AXContents", prefix: "c"),
 ]
 
+func appSnapshotKey(_ appName: String) -> String {
+    return appName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+}
+
+func snapshotStorageKey(appName: String, snapshotId: String) -> String {
+    return "\(appSnapshotKey(appName))\u{0}\(snapshotId)"
+}
+
+final class ComputerUseRuntimeSession {
+    private var snapshots: [String: [String: Any]] = [:]
+    private var snapshotOrder: [String] = []
+    private var latestByApp: [String: String] = [:]
+    private let maxSnapshots = 50
+
+    func recordSnapshot(_ response: [String: Any]) {
+        guard let appName = response["app"] as? String,
+              let snapshotId = response["snapshotId"] as? String
+        else {
+            return
+        }
+
+        let key = snapshotStorageKey(appName: appName, snapshotId: snapshotId)
+        var metadata: [String: Any] = [
+            "app": appName,
+            "snapshotId": snapshotId,
+        ]
+        for field in [
+            "elementIdsByIndex",
+            "focusedElementIndex",
+            "windowId",
+            "windowFrame",
+            "screenshotSource",
+            "screenshotWidth",
+            "screenshotHeight",
+            "screenshotSourceBounds",
+        ] {
+            if let value = response[field] {
+                metadata[field] = value
+            }
+        }
+
+        snapshots[key] = metadata
+        latestByApp[appSnapshotKey(appName)] = key
+        snapshotOrder.removeAll { existingKey in
+            existingKey == key
+        }
+        snapshotOrder.append(key)
+
+        while snapshotOrder.count > maxSnapshots {
+            let removedKey = snapshotOrder.removeFirst()
+            snapshots.removeValue(forKey: removedKey)
+            for (appKey, snapshotKey) in latestByApp where snapshotKey == removedKey {
+                latestByApp.removeValue(forKey: appKey)
+            }
+        }
+    }
+
+    func snapshot(appName: String, snapshotId: String?) throws -> [String: Any] {
+        let key: String?
+        if let snapshotId {
+            key = snapshotStorageKey(appName: appName, snapshotId: snapshotId)
+        } else {
+            key = latestByApp[appSnapshotKey(appName)]
+        }
+
+        guard let key, let metadata = snapshots[key] else {
+            let target = snapshotId.map { "\(appName): \($0)" } ?? appName
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "No app state snapshot is available for \(target)"
+            )
+        }
+        return metadata
+    }
+
+    func elementId(
+        appName: String,
+        snapshotId: String?,
+        elementIndex: Int,
+        commandName: String
+    ) throws -> String {
+        let metadata = try snapshot(appName: appName, snapshotId: snapshotId)
+        let storedSnapshotId = (metadata["snapshotId"] as? String) ?? snapshotId ?? "latest"
+        guard let elementIdsByIndex = metadata["elementIdsByIndex"] as? [String],
+              elementIndex >= 0,
+              elementIndex < elementIdsByIndex.count
+        else {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "Element index \(elementIndex) was not found in snapshot \(storedSnapshotId)"
+            )
+        }
+        let elementId = elementIdsByIndex[elementIndex]
+        guard !elementId.isEmpty else {
+            throw HelperFailure(
+                code: "unsupported_command",
+                message: "Element index \(elementIndex) was not found in snapshot \(storedSnapshotId)"
+            )
+        }
+        return elementId
+    }
+
+    func requestWithPointMetadata(_ request: [String: Any]) throws -> [String: Any] {
+        if request["screenshotSource"] != nil,
+           request["screenshotWidth"] != nil,
+           request["screenshotHeight"] != nil,
+           request["sourceBounds"] != nil || request["screenshotSourceBounds"] != nil
+        {
+            return request
+        }
+
+        let appName = try requiredString(request, "app")
+        let metadata = try snapshot(appName: appName, snapshotId: optionalString(request, "snapshotId"))
+        var enriched = request
+        for field in [
+            "snapshotId",
+            "screenshotSource",
+            "screenshotWidth",
+            "screenshotHeight",
+            "windowId",
+            "windowFrame",
+        ] {
+            if enriched[field] == nil, let value = metadata[field] {
+                enriched[field] = value
+            }
+        }
+        if enriched["sourceBounds"] == nil {
+            enriched["sourceBounds"] = metadata["screenshotSourceBounds"]
+        }
+        return enriched
+    }
+}
+
 let keyModifierDefinitions = [
     KeyModifierDefinition(
         name: "command",
@@ -1487,6 +1620,74 @@ func resolveElement(appName: String, elementId: String) throws -> AXUIElement {
     return resolved
 }
 
+func indexedSnapshotElements(_ elements: [[String: Any]]) -> (
+    elements: [[String: Any]],
+    elementIdsByIndex: [String],
+    focusedElementIndex: Int?
+) {
+    var nextIndex = 0
+    var elementIdsByIndex: [String] = []
+    var focusedElementIndex: Int?
+
+    func indexElement(_ element: [String: Any]) -> [String: Any] {
+        let index = nextIndex
+        nextIndex += 1
+        elementIdsByIndex.append((element["id"] as? String) ?? "")
+        if focusedElementIndex == nil,
+           let focused = element["focused"] as? Bool,
+           focused
+        {
+            focusedElementIndex = index
+        }
+
+        var indexed = element
+        indexed["index"] = index
+        if let children = element["children"] as? [[String: Any]], !children.isEmpty {
+            indexed["children"] = children.map { child in
+                indexElement(child)
+            }
+        }
+        return indexed
+    }
+
+    return (
+        elements.map { element in
+            indexElement(element)
+        },
+        elementIdsByIndex,
+        focusedElementIndex
+    )
+}
+
+func resolveElementId(
+    _ request: [String: Any],
+    session: ComputerUseRuntimeSession?,
+    commandName: String
+) throws -> String {
+    if let elementId = optionalString(request, "elementId") {
+        return elementId
+    }
+    guard let elementIndex = optionalInt(request, "elementIndex") else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "\(commandName) requires elementId or elementIndex"
+        )
+    }
+    guard let session else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "\(commandName) with elementIndex requires a runtime session snapshot"
+        )
+    }
+    let appName = try requiredString(request, "app")
+    return try session.elementId(
+        appName: appName,
+        snapshotId: optionalString(request, "snapshotId"),
+        elementIndex: elementIndex,
+        commandName: commandName
+    )
+}
+
 func handleAppsList() -> [String: Any] {
     var names = Set<String>()
     for app in NSWorkspace.shared.runningApplications {
@@ -1519,9 +1720,9 @@ func handlePermissionsRequestAccessibility() -> [String: Any] {
     return computerUsePermissionState()
 }
 
-func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
+func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let snapshotId = try requiredString(request, "snapshotId")
+    let snapshotId = optionalString(request, "snapshotId") ?? UUID().uuidString.lowercased()
 
     guard let runningApp = findRunningApp(named: appName) else {
         throw HelperFailure(
@@ -1560,6 +1761,8 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     {
         elements.append(menuBarSnapshot)
     }
+    let indexed = indexedSnapshotElements(elements)
+    elements = indexed.elements
 
     var response: [String: Any] = [
         "app": appName,
@@ -1567,10 +1770,14 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
         "pid": Int(runningApp.processIdentifier),
         "snapshotId": snapshotId,
         "elements": elements,
+        "elementIdsByIndex": indexed.elementIdsByIndex,
         "nodeCount": nodeCount,
         "truncated": !truncationReasons.isEmpty,
         "truncationReasons": truncationReasons,
     ]
+    if let focusedElementIndex = indexed.focusedElementIndex {
+        response["focusedElementIndex"] = focusedElementIndex
+    }
     if let bundleId = runningApp.bundleIdentifier {
         response["bundleId"] = bundleId
     }
@@ -1601,6 +1808,7 @@ func handleAppState(_ request: [String: Any]) throws -> [String: Any] {
     response["screenshotWidth"] = screenshot.width
     response["screenshotHeight"] = screenshot.height
     response["screenshotSourceBounds"] = sourceBounds
+    session?.recordSnapshot(response)
     return response
 }
 
@@ -1624,9 +1832,13 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
     }
 }
 
-func handleElementClick(_ request: [String: Any]) throws -> [String: Any] {
+func handleElementClick(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let elementId = try requiredString(request, "elementId")
+    let hasElementTarget = optionalString(request, "elementId") != nil || optionalInt(request, "elementIndex") != nil
+    if !hasElementTarget, request["x"] != nil || request["y"] != nil {
+        return try handleElementClickPoint(request, session: session)
+    }
+    let elementId = try resolveElementId(request, session: session, commandName: "element.click")
     let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
     let app = try resolveRunningApp(named: appName)
     return try withFrontmostPreservation(
@@ -1758,25 +1970,29 @@ func parseKeyPress(_ key: String) throws -> ParsedKeyPress {
     )
 }
 
-func handleElementClickPoint(_ request: [String: Any]) throws -> [String: Any] {
-    let appName = try requiredString(request, "app")
-    let snapshotId = try requiredString(request, "snapshotId")
-    let x = try requiredNumber(request, "x")
-    let y = try requiredNumber(request, "y")
-    let screenshotSource = try requiredString(request, "screenshotSource")
+func handleElementClickPoint(
+    _ request: [String: Any],
+    session: ComputerUseRuntimeSession?
+) throws -> [String: Any] {
+    let preparedRequest = try session?.requestWithPointMetadata(request) ?? request
+    let appName = try requiredString(preparedRequest, "app")
+    let snapshotId = try requiredString(preparedRequest, "snapshotId")
+    let x = try requiredNumber(preparedRequest, "x")
+    let y = try requiredNumber(preparedRequest, "y")
+    let screenshotSource = try requiredString(preparedRequest, "screenshotSource")
     guard screenshotSource == "window" else {
         throw HelperFailure(
             code: "unsupported_command",
             message: "Snapshot is not a target-window screenshot: \(snapshotId)"
         )
     }
-    let screenshotWidth = try requiredNumber(request, "screenshotWidth")
-    let screenshotHeight = try requiredNumber(request, "screenshotHeight")
-    let sourceBounds = try rectPayload(request, "sourceBounds")
-    let windowFrame = try optionalRectPayload(request, "windowFrame")
-    let windowId = optionalInt(request, "windowId")
-    let button = optionalString(request, "button") ?? "left"
-    let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
+    let screenshotWidth = try requiredNumber(preparedRequest, "screenshotWidth")
+    let screenshotHeight = try requiredNumber(preparedRequest, "screenshotHeight")
+    let sourceBounds = try rectPayload(preparedRequest, "sourceBounds")
+    let windowFrame = try optionalRectPayload(preparedRequest, "windowFrame")
+    let windowId = optionalInt(preparedRequest, "windowId")
+    let button = optionalString(preparedRequest, "button") ?? "left"
+    let clickCount = max(1, min(optionalInt(preparedRequest, "clickCount", default: 1), 3))
     let config = try mouseEventConfig(button: button)
     let point = try screenPointFromScreenshotPoint(
         x: x,
@@ -1830,9 +2046,9 @@ func handleElementClickPoint(_ request: [String: Any]) throws -> [String: Any] {
     }
 }
 
-func handleElementSetValue(_ request: [String: Any]) throws -> [String: Any] {
+func handleElementSetValue(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let elementId = try requiredString(request, "elementId")
+    let elementId = try resolveElementId(request, session: session, commandName: "element.set_value")
     let value = try requiredString(request, "value")
     let app = try resolveRunningApp(named: appName)
     return try withFrontmostPreservation(
@@ -1846,9 +2062,9 @@ func handleElementSetValue(_ request: [String: Any]) throws -> [String: Any] {
     }
 }
 
-func handleElementPerformAction(_ request: [String: Any]) throws -> [String: Any] {
+func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let elementId = try requiredString(request, "elementId")
+    let elementId = try resolveElementId(request, session: session, commandName: "element.perform_action")
     let action = try requiredString(request, "action")
     let app = try resolveRunningApp(named: appName)
     return try withFrontmostPreservation(
@@ -1938,9 +2154,9 @@ func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
     }
 }
 
-func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
+func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
-    let elementId = try requiredString(request, "elementId")
+    let elementId = try resolveElementId(request, session: session, commandName: "element.scroll")
     let direction = try requiredString(request, "direction")
     let pages = request["pages"] as? NSNumber
     let step = pages?.doubleValue ?? 1
@@ -1971,7 +2187,21 @@ func handleScrollElement(_ request: [String: Any]) throws -> [String: Any] {
     }
 }
 
-func handle(_ request: [String: Any]) throws -> [String: Any] {
+func commandRequest(from request: [String: Any]) throws -> [String: Any] {
+    var command = (request["payload"] as? [String: Any]) ?? request
+    if let kind = request["kind"] {
+        command["kind"] = kind
+    }
+    guard command["kind"] != nil else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Native Computer Use helper requires a command kind"
+        )
+    }
+    return command
+}
+
+func handle(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let kind = try requiredString(request, "kind")
     switch kind {
     case "permissions.state":
@@ -1981,23 +2211,23 @@ func handle(_ request: [String: Any]) throws -> [String: Any] {
     case "apps.list":
         return handleAppsList()
     case "app.state":
-        return try handleAppState(request)
+        return try handleAppState(request, session: session)
     case "app.open":
         return try handleAppOpen(request)
     case "element.click":
-        return try handleElementClick(request)
+        return try handleElementClick(request, session: session)
     case "element.click_point":
-        return try handleElementClickPoint(request)
+        return try handleElementClickPoint(request, session: session)
     case "element.set_value":
-        return try handleElementSetValue(request)
+        return try handleElementSetValue(request, session: session)
     case "element.perform_action":
-        return try handleElementPerformAction(request)
+        return try handleElementPerformAction(request, session: session)
     case "keyboard.type_text":
         return try handleTypeText(request)
     case "keyboard.press_key":
         return try handlePressKey(request)
     case "element.scroll":
-        return try handleScrollElement(request)
+        return try handleScrollElement(request, session: session)
     default:
         throw HelperFailure(
             code: "unsupported_command",
@@ -2012,21 +2242,55 @@ func writeJSONObject(_ object: [String: Any]) throws {
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
-func run() {
+func responseObject(for request: [String: Any], session: ComputerUseRuntimeSession?) -> [String: Any] {
+    var response: [String: Any]
     do {
-        let input = FileHandle.standardInput.readDataToEndOfFile()
-        let parsed = try JSONSerialization.jsonObject(with: input, options: [])
-        guard let request = isRecord(parsed) else {
-            throw HelperFailure(
-                code: "unsupported_command",
-                message: "Native Computer Use helper requires a JSON object request"
-            )
-        }
-        let result = try handle(request)
-        try writeJSONObject([
+        let command = try commandRequest(from: request)
+        let result = try handle(command, session: session)
+        response = [
             "status": "succeeded",
             "result": result,
-        ])
+        ]
+    } catch let failure as HelperFailure {
+        response = [
+            "status": "failed",
+            "error": [
+                "code": failure.code,
+                "message": failure.message,
+            ],
+        ]
+    } catch {
+        response = [
+            "status": "failed",
+            "error": [
+                "code": "accessibility_unavailable",
+                "message": String(describing: error),
+            ],
+        ]
+    }
+
+    if let id = request["id"] {
+        response["id"] = id
+    }
+    return response
+}
+
+func parseRequestData(_ data: Data) throws -> [String: Any] {
+    let parsed = try JSONSerialization.jsonObject(with: data, options: [])
+    guard let request = isRecord(parsed) else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Native Computer Use helper requires a JSON object request"
+        )
+    }
+    return request
+}
+
+func runOneShot() {
+    do {
+        let input = FileHandle.standardInput.readDataToEndOfFile()
+        let request = try parseRequestData(input)
+        try writeJSONObject(responseObject(for: request, session: nil))
     } catch let failure as HelperFailure {
         try? writeJSONObject([
             "status": "failed",
@@ -2044,6 +2308,45 @@ func run() {
             ],
         ])
     }
+}
+
+func runStdioSession() {
+    let session = ComputerUseRuntimeSession()
+    while let line = readLine(strippingNewline: true) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            continue
+        }
+        do {
+            let request = try parseRequestData(Data(trimmed.utf8))
+            try writeJSONObject(responseObject(for: request, session: session))
+        } catch let failure as HelperFailure {
+            try? writeJSONObject([
+                "status": "failed",
+                "error": [
+                    "code": failure.code,
+                    "message": failure.message,
+                ],
+            ])
+        } catch {
+            try? writeJSONObject([
+                "status": "failed",
+                "error": [
+                    "code": "accessibility_unavailable",
+                    "message": String(describing: error),
+                ],
+            ])
+        }
+    }
+}
+
+func run() {
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments.contains("serve") || arguments.contains("--stdio") {
+        runStdioSession()
+        return
+    }
+    runOneShot()
 }
 
 run()

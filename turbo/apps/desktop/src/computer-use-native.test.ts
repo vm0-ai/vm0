@@ -1,8 +1,17 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { createComputerUseNativeBackend } from "./computer-use-native";
+
+const execFileAsync = promisify(execFile);
+const desktopRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 async function createHelper(
   response: unknown,
@@ -23,6 +32,95 @@ process.stdin.on("end", () => {
   return { dir, helperPath };
 }
 
+async function createSessionHelper(): Promise<{
+  readonly dir: string;
+  readonly helperPath: string;
+  readonly requestLogPath: string;
+}> {
+  const dir = await mkdtemp(path.join(tmpdir(), "computer-use-helper-"));
+  const helperPath = path.join(dir, "helper");
+  const requestLogPath = path.join(dir, "requests.ndjson");
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+const requestLogPath = ${JSON.stringify(requestLogPath)};
+let buffer = "";
+
+function responseFor(request) {
+  if (request.kind === "app.state") {
+    return {
+      id: request.id,
+      status: "succeeded",
+      result: {
+        app: request.payload.app,
+        snapshotId: request.payload.snapshotId,
+        elements: [
+          {
+            index: 0,
+            role: "AXWindow",
+            children: [{ index: 1, role: "AXButton", name: "Open" }]
+          }
+        ],
+        elementIdsByIndex: ["w0", "w0.e0"],
+        screenshot: "data:image/png;base64,abc123",
+        screenshotSource: "window",
+        screenshotSourceName: "Example",
+        screenshotWidth: 800,
+        screenshotHeight: 600,
+        screenshotSourceBounds: { x: 0, y: 0, width: 800, height: 600 }
+      }
+    };
+  }
+  if (request.kind === "element.click") {
+    if (request.payload.x !== undefined && request.payload.y !== undefined) {
+      return {
+        id: request.id,
+        status: "succeeded",
+        result: {
+          snapshotId: request.payload.snapshotId,
+          screenX: 400,
+          screenY: 300,
+          button: request.payload.button
+        }
+      };
+    }
+    return {
+      id: request.id,
+      status: "succeeded",
+      result: {
+        snapshotId: request.payload.snapshotId,
+        elementIndex: request.payload.elementIndex,
+        button: request.payload.button
+      }
+    };
+  }
+  return { id: request.id, status: "succeeded", result: {} };
+}
+
+function handleLine(line) {
+  if (line.trim().length === 0) return;
+  const request = JSON.parse(line);
+  fs.appendFileSync(requestLogPath, JSON.stringify(request) + "\\n");
+  process.stdout.write(JSON.stringify(responseFor(request)) + "\\n");
+}
+
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (buffer.includes("\\n")) {
+    const index = buffer.indexOf("\\n");
+    const line = buffer.slice(0, index);
+    buffer = buffer.slice(index + 1);
+    handleLine(line);
+  }
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { dir, helperPath, requestLogPath };
+}
+
 describe("computer use native backend", () => {
   it("reads permissions from the native helper", async () => {
     const helper = await createHelper({
@@ -33,6 +131,7 @@ describe("computer use native backend", () => {
     try {
       const backend = createComputerUseNativeBackend({
         helperPath: helper.helperPath,
+        mode: "oneshot",
       });
 
       await expect(backend.getPermissions()).resolves.toEqual({
@@ -53,6 +152,7 @@ describe("computer use native backend", () => {
     try {
       const backend = createComputerUseNativeBackend({
         helperPath: helper.helperPath,
+        mode: "oneshot",
       });
 
       await expect(backend.requestAccessibilityPermission()).resolves.toEqual({
@@ -78,6 +178,7 @@ describe("computer use native backend", () => {
     try {
       const backend = createComputerUseNativeBackend({
         helperPath: helper.helperPath,
+        mode: "oneshot",
       });
 
       await expect(
@@ -120,6 +221,7 @@ describe("computer use native backend", () => {
     try {
       const backend = createComputerUseNativeBackend({
         helperPath: helper.helperPath,
+        mode: "oneshot",
       });
 
       await expect(backend.openApp("Things")).resolves.toEqual({
@@ -146,6 +248,7 @@ describe("computer use native backend", () => {
     try {
       const backend = createComputerUseNativeBackend({
         helperPath: helper.helperPath,
+        mode: "oneshot",
       });
 
       await expect(
@@ -172,6 +275,7 @@ describe("computer use native backend", () => {
     try {
       const backend = createComputerUseNativeBackend({
         helperPath: helper.helperPath,
+        mode: "oneshot",
       });
 
       await expect(backend.openApp("Things")).rejects.toMatchObject({
@@ -181,5 +285,267 @@ describe("computer use native backend", () => {
     } finally {
       await rm(helper.dir, { recursive: true, force: true });
     }
+  });
+
+  it("uses a session runtime for multiple commands in one helper process", async () => {
+    const helper = await createSessionHelper();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+    });
+
+    try {
+      await expect(
+        backend.getAppState("Safari", "snap_1"),
+      ).resolves.toMatchObject({
+        app: "Safari",
+        snapshotId: "snap_1",
+        elementIdsByIndex: ["w0", "w0.e0"],
+      });
+      await expect(
+        backend.clickElement({
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          button: "left",
+          clickCount: 1,
+        }),
+      ).resolves.toEqual({
+        snapshotId: "snap_1",
+        elementIndex: 1,
+        button: "left",
+      });
+      await expect(
+        backend.clickPoint({
+          app: "Safari",
+          snapshotId: "snap_1",
+          x: 200,
+          y: 150,
+          screenshotSource: "window",
+          screenshotWidth: 800,
+          screenshotHeight: 600,
+          sourceBounds: { x: 0, y: 0, width: 800, height: 600 },
+          button: "right",
+          clickCount: 1,
+        }),
+      ).resolves.toEqual({
+        snapshotId: "snap_1",
+        screenX: 400,
+        screenY: 300,
+        button: "right",
+      });
+
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as Record<string, unknown>;
+        });
+      expect(requests).toHaveLength(3);
+      expect(requests[0]).toMatchObject({
+        kind: "app.state",
+        payload: { app: "Safari", snapshotId: "snap_1" },
+      });
+      expect(requests[1]).toMatchObject({
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          button: "left",
+          clickCount: 1,
+        },
+      });
+      expect(requests[2]).toMatchObject({
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          x: 200,
+          y: 150,
+          screenshotSource: "window",
+          button: "right",
+        },
+      });
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the same runtime contract from the vm0-computer CLI", async () => {
+    const helper = await createSessionHelper();
+    const commandInput = [
+      { kind: "app.state", payload: { app: "Safari", snapshotId: "snap_1" } },
+      {
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          button: "left",
+          clickCount: 1,
+        },
+      },
+    ];
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          path.join(desktopRoot, "bin", "vm0-computer.mjs"),
+          "run",
+          JSON.stringify(commandInput),
+          "--helper-path",
+          helper.helperPath,
+        ],
+        { cwd: desktopRoot },
+      );
+      const responses = JSON.parse(stdout) as readonly Record<
+        string,
+        unknown
+      >[];
+      expect(responses).toHaveLength(2);
+      expect(responses[0]).toMatchObject({
+        status: "succeeded",
+        result: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          elementIdsByIndex: ["w0", "w0.e0"],
+        },
+      });
+      expect(responses[1]).toMatchObject({
+        status: "succeeded",
+        result: {
+          snapshotId: "snap_1",
+          elementIndex: 1,
+          button: "left",
+        },
+      });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("maps Zero CLI command names through vm0-computer", async () => {
+    const helper = await createSessionHelper();
+    const cliPath = path.join(desktopRoot, "bin", "vm0-computer.mjs");
+    const commandArgs = [
+      ["list-apps"],
+      ["get-app-state", "--app", "Safari"],
+      ["open-app", "--app", "Safari"],
+      [
+        "click",
+        "--app",
+        "Safari",
+        "--snapshot-id",
+        "snap_1",
+        "--element",
+        "w0.e0",
+        "--button",
+        "right",
+        "--click-count",
+        "2",
+      ],
+      [
+        "scroll",
+        "--app",
+        "Safari",
+        "--snapshot-id",
+        "snap_1",
+        "--element-index",
+        "1",
+        "--direction",
+        "down",
+        "--pages",
+        "2",
+      ],
+      [
+        "set-value",
+        "--app",
+        "Safari",
+        "--snapshot-id",
+        "snap_1",
+        "--element-index",
+        "1",
+        "--value",
+        "hello",
+      ],
+      [
+        "perform-action",
+        "--app",
+        "Safari",
+        "--snapshot-id",
+        "snap_1",
+        "--element-index",
+        "1",
+        "--action",
+        "AXShowMenu",
+      ],
+      ["type-text", "--app", "Safari", "--text", "hello"],
+      ["press-key", "--app", "Safari", "--key", "Escape"],
+    ];
+
+    try {
+      for (const args of commandArgs) {
+        await execFileAsync(
+          process.execPath,
+          [cliPath, ...args, "--helper-path", helper.helperPath],
+          { cwd: desktopRoot },
+        );
+      }
+
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as {
+            readonly kind: string;
+            readonly payload?: Record<string, unknown>;
+          };
+        });
+      expect(requests.map((request) => request.kind)).toStrictEqual([
+        "apps.list",
+        "app.state",
+        "app.open",
+        "element.click",
+        "element.scroll",
+        "element.set_value",
+        "element.perform_action",
+        "keyboard.type_text",
+        "keyboard.press_key",
+      ]);
+      expect(requests[3]?.payload).toMatchObject({
+        app: "Safari",
+        snapshotId: "snap_1",
+        elementId: "w0.e0",
+        button: "right",
+        clickCount: 2,
+      });
+      expect(requests[4]?.payload).toMatchObject({
+        elementIndex: 1,
+        direction: "down",
+        pages: 2,
+      });
+      expect(requests[5]?.payload).toMatchObject({ value: "hello" });
+      expect(requests[6]?.payload).toMatchObject({ action: "AXShowMenu" });
+      expect(requests[7]?.payload).toMatchObject({ text: "hello" });
+      expect(requests[8]?.payload).toMatchObject({ key: "Escape" });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not expose native command kinds as vm0-computer commands", async () => {
+    const cliPath = path.join(desktopRoot, "bin", "vm0-computer.mjs");
+
+    await expect(
+      execFileAsync(
+        process.execPath,
+        [cliPath, "app.state", "--app", "Safari", "--helper-path", "/missing"],
+        { cwd: desktopRoot },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("Unknown vm0-computer command"),
+    });
   });
 });
