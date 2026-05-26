@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.0...runner-rs-v0.104.1) (2026-05-26)
+
+
+### Performance Improvements
+
+* **runner:** snapshot usage pending on flush request ([#14896](https://github.com/vm0-ai/vm0/issues/14896)) ([13044ce](https://github.com/vm0-ai/vm0/commit/13044ced03ccf4819932f09092d3efaa86387b25))
+
 ## [0.104.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.22...runner-rs-v0.104.0) (2026-05-25)
 
 
