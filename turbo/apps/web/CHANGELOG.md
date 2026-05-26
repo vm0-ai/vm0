@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.389.1](https://github.com/vm0-ai/vm0/compare/web-v12.389.0...web-v12.389.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* make gallery route public ([#14931](https://github.com/vm0-ai/vm0/issues/14931)) ([07d905a](https://github.com/vm0-ai/vm0/commit/07d905a268548b3f2b193223a4e00b5c659708ab))
+
 ## [12.389.0](https://github.com/vm0-ai/vm0/compare/web-v12.388.2...web-v12.389.0) (2026-05-26)
 
 

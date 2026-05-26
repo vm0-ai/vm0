@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.165.0](https://github.com/vm0-ai/vm0/compare/cli-v9.164.0...cli-v9.165.0) (2026-05-26)
+
+
+### Features
+
+* register vm0 illustration image style ([#14949](https://github.com/vm0-ai/vm0/issues/14949)) ([5c7e67a](https://github.com/vm0-ai/vm0/commit/5c7e67aa00ae4558cb9907bdf3ecdb02f448771c))
+
 ## [9.164.0](https://github.com/vm0-ai/vm0/compare/cli-v9.163.3...cli-v9.164.0) (2026-05-26)
 
 

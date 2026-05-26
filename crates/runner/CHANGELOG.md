@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.104.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.2...runner-rs-v0.104.3) (2026-05-26)
+
+
+### Refactoring
+
+* **runner:** deduplicate completion retry call ([#14946](https://github.com/vm0-ai/vm0/issues/14946)) ([cdb3989](https://github.com/vm0-ai/vm0/commit/cdb398987be187a306161acdf39868ff96dd658a))
+* **runner:** split local submit flow ([#14940](https://github.com/vm0-ai/vm0/issues/14940)) ([9d973ba](https://github.com/vm0-ai/vm0/commit/9d973baa76c8a03545a8eb86ddf883846e773b5e))
+
 ## [0.104.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.1...runner-rs-v0.104.2) (2026-05-26)
 
 
