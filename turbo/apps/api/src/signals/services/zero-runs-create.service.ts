@@ -148,19 +148,65 @@ function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
   return parts.length > 0 ? `# Agent Identity\n${parts.join("\n")}` : null;
 }
 
-function buildAgentToolsPrompt(): string {
+function buildIntegrationToolsPrompt(
+  triggerSource: TriggerSource,
+): readonly string[] {
+  const localFileContext = [
+    "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
+    "A local file needs separate delivery only when it is the requested artifact or the only available user-accessible copy. If the artifact is already available through a hosted URL, email, cloud document, or another user-accessible destination, duplicate file upload is usually unnecessary unless the user asks for the file itself.",
+  ];
+  const localFileContextLines = localFileContext.map((line) => {
+    return `- ${line}`;
+  });
+
+  switch (triggerSource) {
+    case "web": {
+      return [
+        "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
+        ...localFileContextLines,
+      ];
+    }
+    case "slack": {
+      return [
+        "- Slack messaging and files: use `zero slack --help`. Normal replies are automatically sent to the originating thread, so Slack commands are for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks. `zero slack upload-file -h` can attach a local file to Slack when file delivery is needed. Never use SLACK_TOKEN directly — it's a user OAuth token.",
+        ...localFileContextLines,
+      ];
+    }
+    case "github": {
+      return [
+        "- GitHub issue/PR files: use `zero github --help`. Normal replies are automatically sent to the originating issue or pull request, so GitHub commands are for explicit extra file delivery. Use `zero github download-file -h` for `[GitHub file]` blocks. `zero github upload-file -h` can share a local file back to the issue or pull request when file delivery is needed.",
+        ...localFileContextLines,
+      ];
+    }
+    case "telegram": {
+      return [
+        "- Telegram messaging and files: use `zero telegram --help`. Normal replies are automatically sent to the originating chat, so Telegram commands are for different chats, topics, reply targets, or explicit extra messages. Use `zero telegram bot list` to inspect available bots, `zero telegram download-file -h` for `[Telegram file]` blocks, and `zero telegram upload-file -h` when file delivery is needed. When sending or uploading, explicitly choose the bot with `--bot-id`; if you do not know which bot to use, ask the user before sending.",
+        ...localFileContextLines,
+      ];
+    }
+    case "agentphone": {
+      return [
+        "- AgentPhone messaging and files: use `zero phone --help`. Normal replies are automatically sent to the originating conversation, so phone commands are for explicit extra messages or file delivery. Use `zero phone download-file -h` for `[AgentPhone file]` blocks. `zero phone upload-file -h` can share a local file when the phone channel supports the requested file delivery.",
+        ...localFileContextLines,
+      ];
+    }
+    default: {
+      return [
+        "- Use integration-specific messaging or file commands only when the task names an explicit delivery target or the current surface provides one.",
+        ...localFileContextLines,
+      ];
+    }
+  }
+}
+
+function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
   return [
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
-    "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block, and `zero web upload-file -h` when you need to share a local file back to the web chat user.",
-    "- Slack messaging and files: use `zero slack --help`. Your replies are automatically sent to the originating thread, so only use Slack commands for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks and `zero slack upload-file -h` to share local files. Never use SLACK_TOKEN directly — it's a user OAuth token.",
-    "- GitHub issue/PR files: use `zero github --help`. Your replies are automatically sent to the originating issue or pull request, so only use GitHub commands for explicit extra file delivery. Use `zero github download-file -h` for `[GitHub file]` blocks and `zero github upload-file -h` to share local files back to the issue or pull request.",
-    "- Telegram messaging and files: use `zero telegram --help`. Your replies are automatically sent to the originating chat, so only use Telegram commands for different chats, topics, reply targets, or explicit extra messages. Use `zero telegram bot list` to inspect available bots, `zero telegram message send --help` to send messages, `zero telegram download-file -h` for `[Telegram file]` blocks, and `zero telegram upload-file -h` to share local files. When sending or uploading, explicitly choose the bot with `--bot-id`; if you do not know which bot to use, ask the user before sending. Pass the Telegram message context's Bot ID and Chat ID with `--bot-id` and `--chat-id` for uploads.",
-    "- AgentPhone messaging and files: use `zero phone --help`. Your replies are automatically sent to the originating conversation, so only use phone commands for explicit extra messages or file delivery. Use `zero phone download-file -h` for `[AgentPhone file]` blocks and `zero phone upload-file -h` to share local files.",
-    "- The user cannot see files on your local filesystem. If the user needs to view or download a local file, upload it through the appropriate integration first: use `zero web upload-file` for web chat, `zero slack upload-file` for Slack, `zero github upload-file` for GitHub, `zero telegram upload-file` for Telegram, or `zero phone upload-file` for AgentPhone, then share the returned URL or platform file reference. Do not present a local path as something the user can open.",
+    ...buildIntegrationToolsPrompt(triggerSource),
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose env vars like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `zero doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins.",
@@ -214,11 +260,12 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 function buildAppendSystemPrompt(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly triggerSource: TriggerSource;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
   return [
     identity,
-    buildAgentToolsPrompt(),
+    buildAgentToolsPrompt(args.triggerSource),
     buildCurrentUserPrompt(args.userInfo),
   ]
     .filter((part): part is string => {
@@ -410,9 +457,13 @@ function createRunBody(args: {
   readonly triggerSource: TriggerSource | undefined;
   readonly appendSystemPrompt: string | undefined;
 }) {
+  const triggerSource =
+    args.triggerSource ??
+    (args.triggerAgentId ? ("agent" as const) : ("web" as const));
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
     userInfo: args.userInfo,
+    triggerSource,
   });
   return {
     prompt: args.body.prompt,
@@ -429,9 +480,7 @@ function createRunBody(args: {
     settings: args.body.settings,
     permissionPolicies:
       args.body.permissionPolicies ?? args.permissionPolicies ?? undefined,
-    triggerSource:
-      args.triggerSource ??
-      (args.triggerAgentId ? ("agent" as const) : ("web" as const)),
+    triggerSource,
     appendSystemPrompt: [baseAppendSystemPrompt, args.appendSystemPrompt]
       .filter((part): part is string => {
         return Boolean(part);
@@ -463,6 +512,7 @@ function createIntegrationRunBody(args: {
       buildAppendSystemPrompt({
         agent: args.agent,
         userInfo: args.userInfo,
+        triggerSource: args.triggerSource,
       }),
       args.appendSystemPrompt,
     ),
