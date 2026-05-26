@@ -61,6 +61,7 @@ export interface OpenDesignRegistryEntry {
   readonly kind: OpenDesignResourceKind;
   readonly name: string;
   readonly description: string;
+  readonly desc?: string;
   readonly source: OpenDesignSourceRef;
   readonly targets: readonly OpenDesignTarget[];
   readonly tags: readonly string[];
@@ -402,6 +403,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     name: "Notion Illustration",
     description:
       "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
+    desc: 'Notion-editorial-style hand-drawn spot illustration. Black brush-pen ink on white, tapered confident strokes, solid-black curly hair, solid-black pants/shoes, 3/4 face turned toward viewer with closed-eye smile and soft nose hint, open breathing body outlines, and 1-3 supporting scene props + ambient marks that frame the moment. Trigger when user says /notion-illustration, asks for a "Notion-style illustration", "Notion spot illustration", or a new piece in this hand-drawn brush-pen Notion editorial style.',
     source: sourceRef(
       VM0_SKILLS_REPO,
       VM0_SKILLS_REF,
@@ -435,6 +437,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     name: "vm0 Illustration",
     description:
       "vm0 in-app spot illustration style with bold hand-drawn ink line art, white-filled interiors, and a soft rounded color backdrop.",
+    desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
     source: sourceRef(
       VM0_SKILLS_REPO,
       VM0_SKILLS_REF,
@@ -471,6 +474,20 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     priority: 19,
   },
 ];
+
+export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
+  return OPEN_DESIGN_REGISTRY.filter((entry) => {
+    return entry.kind === "image-style" && entry.status !== "hidden";
+  });
+}
+
+export function findImageStyle(
+  id: string,
+): OpenDesignRegistryEntry | undefined {
+  return listImageStyles().find((entry) => {
+    return entry.id === id;
+  });
+}
 
 export function toOpenDesignTarget(value: string): OpenDesignTarget {
   if (value === "dashboard") {
