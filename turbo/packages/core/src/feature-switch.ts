@@ -127,8 +127,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Google Ads connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",

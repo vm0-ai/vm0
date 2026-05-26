@@ -101,12 +101,12 @@ describe("zeroConnectorList", () => {
     await writeDb.insert(connectors).values({
       orgId,
       userId,
-      type: "google-ads",
-      authMethod: "oauth",
+      type: "lark",
+      authMethod: "api-token",
     });
 
     const connector = await store.get(
-      zeroConnectorByType({ orgId, userId, type: "google-ads" }),
+      zeroConnectorByType({ orgId, userId, type: "lark" }),
     );
 
     expect(connector).toBeNull();

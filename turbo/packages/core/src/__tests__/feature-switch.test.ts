@@ -124,7 +124,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
   });
 
