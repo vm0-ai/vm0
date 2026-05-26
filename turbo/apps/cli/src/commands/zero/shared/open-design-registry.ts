@@ -1414,6 +1414,50 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     status: "experimental",
     priority: 19,
   },
+  {
+    id: "vm0:image-style:mosaic-still-life",
+    kind: "image-style",
+    name: "Mosaic Still Life",
+    description:
+      "Editorial still-life illustration in a mosaic-tile + painterly hybrid style — tessellated ground/sky/wall surfaces with crisp painterly objects, an animal companion, and a patterned textile peeking through.",
+    desc: 'Mosaic-tile + painterly hybrid editorial illustration. Tessellated/pointillist mosaic surfaces (grass, sky, sand, walls, floors) anchor the scene, with crisp painterly still-life objects rendered ON TOP. Always features a still-life centerpiece on a table, an animal companion at the heart of the scene, and at least one patterned textile peeking through. Cozy, nostalgic, bucolic mood. Trigger when user says /mosaic-still-life, asks for a "mosaic illustration", "mosaic-tile editorial illustration", "tessellated still life", or briefs with a palette + scene + animal in this style.',
+    source: sourceRef(
+      VM0_SKILLS_REPO,
+      VM0_SKILLS_REF,
+      "illustration-template/mosaic-still-life",
+    ),
+    targets: ["image", "website", "poster", "presentation", "report"],
+    tags: [
+      "image",
+      "illustration",
+      "mosaic",
+      "still-life",
+      "editorial",
+      "painterly",
+      "tessellated",
+    ],
+    triggers: [
+      "mosaic illustration",
+      "mosaic-tile editorial",
+      "tessellated still life",
+      "mosaic still life",
+      "painterly mosaic",
+      "ceramic-tile illustration",
+    ],
+    bestFor: [
+      "blog covers",
+      "editorial spreads",
+      "use-case page artwork",
+      "cozy storybook scenes",
+    ],
+    outputKinds: ["image"],
+    primaryOutputKind: "image",
+    executorHints: ["skill-authored", "built-in-image"],
+    previewHint: "image",
+    remixHint: "prompt-with-resource-hints",
+    status: "experimental",
+    priority: 17,
+  },
 ];
 
 export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
