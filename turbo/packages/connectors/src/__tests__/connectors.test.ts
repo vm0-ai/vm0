@@ -921,7 +921,6 @@ describe("isOAuthConnectorType", () => {
             deviceCode: "slock-device-code",
             userCode: "SLOCK-1",
             verificationUri: "/device",
-            expiresIn: 600,
             interval: 5,
           });
         },

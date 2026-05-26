@@ -10,6 +10,7 @@ import type {
 } from "../types";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
+const DEFAULT_DEVICE_AUTH_EXPIRES_IN_SECONDS = 600;
 export const SLOCK_ACCESS_SECRET_NAME = "SLOCK_ACCESS_TOKEN";
 export const SLOCK_REFRESH_SECRET_NAME = "SLOCK_REFRESH_TOKEN";
 export const SLOCK_SERVER_ID_SECRET_NAME = "SLOCK_SERVER_ID";
@@ -19,7 +20,7 @@ const deviceAuthResponseSchema = z.object({
   userCode: z.string(),
   verificationUri: z.string(),
   verificationUriComplete: z.string().optional(),
-  expiresIn: z.number(),
+  expiresIn: z.number().optional(),
   interval: z.number().optional(),
 });
 
@@ -295,7 +296,7 @@ export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult
     verificationUriComplete: data.verificationUriComplete
       ? absoluteVerificationUri(data.verificationUriComplete)
       : undefined,
-    expiresIn: data.expiresIn,
+    expiresIn: data.expiresIn ?? DEFAULT_DEVICE_AUTH_EXPIRES_IN_SECONDS,
     interval: data.interval,
   };
 }
