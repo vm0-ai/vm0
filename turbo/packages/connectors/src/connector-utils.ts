@@ -88,7 +88,6 @@ function getManualGrantFields(
     case "manual":
       return method.grant.fields;
     case "managed":
-      return method.grant.fields;
     case "auth-code":
     case "device-auth":
     case "interactive-pairing":

@@ -371,7 +371,6 @@ export interface ConnectorInteractivePairingGrantConfig {
 
 export interface ConnectorManagedGrantConfig {
   readonly kind: "managed";
-  readonly fields?: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
 export type ConnectorGrantConfig =

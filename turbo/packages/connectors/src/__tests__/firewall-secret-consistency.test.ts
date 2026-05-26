@@ -56,10 +56,6 @@ describe("firewall secret name consistency", () => {
               }
               break;
             case "managed":
-              for (const name of Object.keys(method.grant.fields ?? {})) {
-                connectorSecretNames.add(name);
-              }
-              break;
             case "auth-code":
             case "device-auth":
             case "interactive-pairing":
