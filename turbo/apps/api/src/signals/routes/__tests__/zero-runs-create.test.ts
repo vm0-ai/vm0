@@ -1306,6 +1306,77 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
+  it("ignores orphaned connector secrets for removed connector types", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      permissionPolicies: {
+        x: {
+          "tweet.read": "allow",
+        },
+      },
+    });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "x",
+    });
+    await db.insert(connectors).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "x",
+        authMethod: "oauth",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "__removed_connector__",
+        authMethod: "api",
+      },
+    ]);
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "X_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("x-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+        encryptedValue: "invalid-orphaned-secret-ciphertext",
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "ignore orphaned connector secret",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+    };
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    expect(decrypted).toMatchObject({ X_TOKEN: "x-access" });
+    expect(decrypted).not.toHaveProperty("COMPUTER_CONNECTOR_BRIDGE_TOKEN");
+  });
+
   it("injects authorized Base44 OAuth token through the runtime firewall", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);

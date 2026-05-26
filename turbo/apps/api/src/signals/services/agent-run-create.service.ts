@@ -1570,19 +1570,38 @@ async function loadOauthConnectorContext(
     };
   }
 
-  const secretRows = await db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, "connector"),
-      ),
-    );
+  const connectorMappings = allowedConnectorTypes.map((connectorType) => {
+    return {
+      connectorType,
+      mapping: getConnectorEnvironmentMapping(connectorType),
+    };
+  });
+  const requiredSecretNames = new Set<string>();
+  for (const { mapping } of connectorMappings) {
+    for (const valueRef of Object.values(mapping)) {
+      if (valueRef.startsWith("$secrets.")) {
+        requiredSecretNames.add(valueRef.slice("$secrets.".length));
+      }
+    }
+  }
+
+  const secretRows =
+    requiredSecretNames.size === 0
+      ? []
+      : await db
+          .select({
+            name: secretsTable.name,
+            encryptedValue: secretsTable.encryptedValue,
+          })
+          .from(secretsTable)
+          .where(
+            and(
+              eq(secretsTable.orgId, args.orgId),
+              eq(secretsTable.userId, args.userId),
+              eq(secretsTable.type, "connector"),
+              inArray(secretsTable.name, [...requiredSecretNames]),
+            ),
+          );
   const connectorSecrets: Record<string, string> = {};
   for (const row of secretRows) {
     connectorSecrets[row.name] = await decryptStoredSecretValue(
@@ -1593,8 +1612,7 @@ async function loadOauthConnectorContext(
 
   const resolvedSecrets: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
-  for (const connectorType of allowedConnectorTypes) {
-    const mapping = getConnectorEnvironmentMapping(connectorType);
+  for (const { connectorType, mapping } of connectorMappings) {
     for (const [envName, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {
         const secretName = valueRef.slice("$secrets.".length);
