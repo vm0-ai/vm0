@@ -64,7 +64,7 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
-    expect(stdout).toContain("od:skill:data-report");
+    expect(stdout).toContain("od:skill:article-magazine");
     expect(stdout).toContain("od:template:html-ppt-graphify-dark-graph");
     expect(stdout).toContain(
       "Write the artifact under `./opendesign/mockups/api-migration-plan/`.",
@@ -110,7 +110,7 @@ describe("zero built-in generate presentation command", () => {
       expect.objectContaining({
         candidates: expect.objectContaining({
           skills: expect.arrayContaining([
-            expect.objectContaining({ id: "od:skill:data-report" }),
+            expect.objectContaining({ id: "od:skill:article-magazine" }),
           ]),
           templates: expect.any(Array),
           designSystems: expect.any(Array),
