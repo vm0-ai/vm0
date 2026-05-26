@@ -319,15 +319,46 @@ impl MitmProxy {
     }
 
     /// Ask the running addon to flush buffered usage before shutdown.
-    pub fn request_usage_flush(&self) -> bool {
-        let Some(child) = self.child.as_ref() else {
+    pub fn request_usage_flush(&mut self) -> bool {
+        let Some(child) = self.child.as_mut() else {
             return false;
         };
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                warn!(
+                    code = status.code(),
+                    "mitmdump exited before usage flush request"
+                );
+                self.child = None;
+                return false;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!(error = %e, "failed to query mitmdump status before usage flush request");
+            }
+        }
+
         let signaled = send_usage_flush_signal(child);
         if !signaled {
             warn!("failed to request mitmdump usage flush");
+            return false;
         }
-        signaled
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                warn!(
+                    code = status.code(),
+                    "mitmdump exited after usage flush request"
+                );
+                self.child = None;
+                false
+            }
+            Ok(None) => true,
+            Err(e) => {
+                warn!(error = %e, "failed to query mitmdump status after usage flush request");
+                true
+            }
+        }
     }
 
     /// Prepare for restart: kill any lingering child, permanently silence
@@ -1839,7 +1870,7 @@ set -euo pipefail
 fifo="$0.fifo"
 mkfifo "$fifo"
 exec 3<>"$fifo"
-trap 'touch "{}"; exit 0' USR1
+trap 'touch "{}"; echo signaled' USR1
 echo ready
 while true; do read -r _ <&3 || true; done
 "#,
@@ -1868,21 +1899,45 @@ while true; do read -r _ <&3 || true; done
 
         assert!(proxy.request_usage_flush());
 
-        let status =
-            tokio::time::timeout(Duration::from_secs(2), proxy.child.as_mut().unwrap().wait())
-                .await
-                .expect("child did not observe SIGUSR1")
-                .unwrap();
-        assert!(status.success(), "child exited with {status}");
+        let signaled = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+            .await
+            .expect("child did not observe SIGUSR1")
+            .unwrap();
+        assert_eq!(signaled.as_deref(), Some("signaled"));
         assert!(signal_file.exists(), "child did not observe SIGUSR1");
+        let _ = proxy.child.as_mut().unwrap().kill().await;
         proxy.child = None;
     }
 
     #[test]
     fn request_usage_flush_returns_false_without_child() {
-        let (proxy, _crash_rx) = MitmProxy::noop();
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
 
         assert!(!proxy.request_usage_flush());
+    }
+
+    #[tokio::test]
+    async fn request_usage_flush_returns_false_for_exited_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let mut child = tokio::process::Command::new("bash")
+            .arg("-c")
+            .arg("echo ready")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
+        assert_eq!(
+            ready_lines.next_line().await.unwrap().as_deref(),
+            Some("ready")
+        );
+        assert!(ready_lines.next_line().await.unwrap().is_none());
+        proxy.child = Some(child);
+
+        assert!(!proxy.request_usage_flush());
+        assert!(proxy.child.is_none());
     }
 
     fn usage_target() -> UsageFlushTarget {
