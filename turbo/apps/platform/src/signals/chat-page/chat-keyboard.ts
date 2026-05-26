@@ -6,7 +6,6 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import { detachedNavigateTo$ } from "../route.ts";
 import type { ChatThreadSignals } from "./create-chat-thread.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
@@ -20,7 +19,6 @@ import { onRef } from "../utils.ts";
  */
 interface NavigableThread {
   readonly id: string;
-  readonly agent: { readonly id: string };
 }
 
 function plainArrowScrollDirection(
@@ -149,17 +147,6 @@ export const navigateToAdjacentThread$ = command(
       return t.id === args.currentThreadId;
     });
     if (idx === -1) {
-      return;
-    }
-    if (args.direction === "prev" && idx === 0) {
-      // Escape upwards from the first thread to the agent chat page.
-      if (inSidebarPane) {
-        return;
-      }
-      const agentId = availableThreads[0]!.agent.id;
-      set(detachedNavigateTo$, "/agents/:agentId/chat", {
-        pathParams: { agentId },
-      });
       return;
     }
     const targetIdx = args.direction === "prev" ? idx - 1 : idx + 1;

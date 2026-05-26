@@ -195,6 +195,7 @@ const CHAT_SHORTCUT_SECTIONS = [
     shortcuts: [
       { key: "shift+/", label: "Show shortcuts" },
       { key: "mod+b", label: "Toggle sidebar" },
+      { key: "mod+shift+o", label: "New chat" },
     ],
   },
   {

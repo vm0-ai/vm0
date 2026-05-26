@@ -61,7 +61,7 @@ import { setupRealtime$ } from "./realtime.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 
-import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
+import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { googleAdsBillingConversionPayload } from "./bootstrap/billing-conversion.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
@@ -394,7 +394,7 @@ export const bootstrap$ = command(
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
 
-      set(setupSidebarShortcut$, signal),
+      set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
       set(reloadFeatureSwitch$, signal),

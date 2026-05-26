@@ -4,12 +4,26 @@ import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
+import { currentChatAgentId$ } from "../agent-chat.ts";
 
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
   set(detachedNavigateTo$, "/chats/:threadId", {
     pathParams: { threadId: chatThreadId },
   });
 });
+
+export const navigateToNewChat$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const agentId = await get(currentChatAgentId$);
+    signal.throwIfAborted();
+    if (!agentId) {
+      return;
+    }
+    set(detachedNavigateTo$, "/agents/:agentId/chat", {
+      pathParams: { agentId },
+    });
+  },
+);
 
 const internalShowAboutPage$ = state(false);
 
@@ -39,16 +53,21 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
   }
 });
 
-export const setupSidebarShortcut$ = command(({ set }, signal: AbortSignal) => {
-  setupGlobalShortcut(
-    {
-      "mod+b": () => {
-        set(toggleSidebarOff$);
+export const setupGlobalKeyboardShortcuts$ = command(
+  ({ set }, signal: AbortSignal) => {
+    setupGlobalShortcut(
+      {
+        "mod+b": () => {
+          set(toggleSidebarOff$);
+        },
+        "mod+shift+o": async () => {
+          await set(navigateToNewChat$, signal);
+        },
       },
-    },
-    signal,
-  );
-});
+      signal,
+    );
+  },
+);
 
 const internalSidebarExpanded$ = state(false);
 
