@@ -3079,9 +3079,9 @@ async function resolveRunModelProvider(
   );
   const hasProviderOverride =
     args.modelProviderId !== undefined ||
-    args.modelProviderCredentialScope !== undefined ||
-    args.modelProviderType !== undefined;
-  const shouldResolveModelProvider = hasProviderOverride || !hasFrameworkKey;
+    args.modelProviderCredentialScope !== undefined;
+  const shouldResolveModelProvider =
+    hasProviderOverride || !hasFrameworkKey || args.modelProviderType === "vm0";
   const modelProvider = shouldResolveModelProvider
     ? await resolveModelProviderEnvironment(db, {
         orgId: args.orgId,
