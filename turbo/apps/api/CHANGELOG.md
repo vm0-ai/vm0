@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.72.4](https://github.com/vm0-ai/vm0/compare/api-v1.72.3...api-v1.72.4) (2026-05-26)
+
+
+### Bug Fixes
+
+* make file delivery prompt contextual ([#14898](https://github.com/vm0-ai/vm0/issues/14898)) ([b211d23](https://github.com/vm0-ai/vm0/commit/b211d23dca3dc0ca781f604589da60ffbd0d262d))
+
 ## [1.72.3](https://github.com/vm0-ai/vm0/compare/api-v1.72.2...api-v1.72.3) (2026-05-25)
 
 

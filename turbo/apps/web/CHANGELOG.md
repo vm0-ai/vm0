@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.388.0](https://github.com/vm0-ai/vm0/compare/web-v12.387.6...web-v12.388.0) (2026-05-26)
+
+
+### Features
+
+* add federated generation gallery ([#14893](https://github.com/vm0-ai/vm0/issues/14893)) ([bc505f2](https://github.com/vm0-ai/vm0/commit/bc505f2148b9c4091707f1d792a91efbf01c3974))
+
 ## [12.387.6](https://github.com/vm0-ai/vm0/compare/web-v12.387.5...web-v12.387.6) (2026-05-25)
 
 

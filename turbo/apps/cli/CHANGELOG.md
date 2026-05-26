@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.163.0](https://github.com/vm0-ai/vm0/compare/cli-v9.162.2...cli-v9.163.0) (2026-05-26)
+
+
+### Features
+
+* add federated generation gallery ([#14893](https://github.com/vm0-ai/vm0/issues/14893)) ([bc505f2](https://github.com/vm0-ai/vm0/commit/bc505f2148b9c4091707f1d792a91efbf01c3974))
+
 ## [9.162.2](https://github.com/vm0-ai/vm0/compare/cli-v9.162.1...cli-v9.162.2) (2026-05-25)
 
 
