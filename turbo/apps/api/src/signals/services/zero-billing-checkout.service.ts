@@ -137,6 +137,7 @@ export const createCreditCheckoutSession$ = command(
         customCreditPriceId,
         presetAmountCents,
       );
+      signal.throwIfAborted();
       metadata = {
         ...baseMetadata,
         creditsAmountMode: "amount_total",

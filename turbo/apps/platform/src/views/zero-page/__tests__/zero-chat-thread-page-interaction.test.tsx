@@ -12,7 +12,11 @@ import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
@@ -24,6 +28,19 @@ import {
 const context = testContext();
 
 const THREAD_ID = "thread-test-1";
+
+function queryButtonByText(text: string): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((button) => {
+    return button.textContent?.trim() === text;
+  });
+}
+
+async function findButtonByText(text: string): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(queryButtonByText(text)).toBeDefined();
+  });
+  return queryButtonByText(text)!;
+}
 
 beforeEach(() => {
   vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
@@ -112,9 +129,7 @@ describe("zero chat thread page - insufficient credits card", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const upgradeButton = await screen.findByRole("button", {
-      name: "Upgrade to Pro",
-    });
+    const upgradeButton = await findButtonByText("Upgrade to Pro");
     click(upgradeButton);
 
     await waitFor(() => {
@@ -148,14 +163,12 @@ describe("zero chat thread page - insufficient credits card", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    expect(
-      await screen.findByText(
+    await expect(
+      screen.findByText(
         "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero.",
       ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Upgrade to Pro" }),
-    ).not.toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("Upgrade to Pro")).toBeUndefined();
     expect(createCheckout).not.toHaveBeenCalled();
   });
 
@@ -179,9 +192,7 @@ describe("zero chat thread page - insufficient credits card", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const creditButton = await screen.findByRole("button", {
-      name: "$200",
-    });
+    const creditButton = await findButtonByText("$200");
     click(creditButton);
 
     await waitFor(() => {
@@ -215,17 +226,13 @@ describe("zero chat thread page - insufficient credits card", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    expect(
-      await screen.findByText(
+    await expect(
+      screen.findByText(
         "Ask a workspace admin to add credits so you can keep chatting with Zero.",
       ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "$100" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Custom" }),
-    ).not.toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("$100")).toBeUndefined();
+    expect(queryButtonByText("Custom")).toBeUndefined();
     expect(createCreditCheckout).not.toHaveBeenCalled();
   });
 
@@ -249,14 +256,12 @@ describe("zero chat thread page - insufficient credits card", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const customButton = await screen.findByRole("button", {
-      name: "Custom",
-    });
+    const customButton = await findButtonByText("Custom");
     click(customButton);
-    expect(
-      await screen.findByLabelText("Custom dollar amount"),
-    ).toBeInTheDocument();
-    const buyButton = await screen.findByRole("button", { name: "Buy" });
+    await expect(
+      screen.findByLabelText("Custom dollar amount"),
+    ).resolves.toBeInTheDocument();
+    const buyButton = await findButtonByText("Buy");
     click(buyButton);
 
     await waitFor(() => {
@@ -281,15 +286,15 @@ describe("zero chat thread page - insufficient credits card", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    expect(await screen.findByText("Credits available")).toBeInTheDocument();
+    await expect(
+      screen.findByText("Credits available"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByText(
         "Your credits have been added. You can continue chatting with Zero.",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "$100" }),
-    ).not.toBeInTheDocument();
+    expect(queryButtonByText("$100")).toBeUndefined();
   });
 });
 
