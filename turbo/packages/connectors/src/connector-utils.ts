@@ -55,8 +55,8 @@ export function getConfiguredConnectorAuthMethods(
  *   feature-switch filtering.
  * - Runtime available connector types are connector types the current server
  *   environment can offer as connection candidates.
- * - User connected connector types come from persisted OAuth rows or inferred
- *   api-token state from user secrets and variables.
+ * - User connected connector types come from persisted rows or inferred manual
+ *   credential state from user secrets and variables.
  * - Runtime injection happens later when a run receives env vars, secrets,
  *   variables, and firewall context.
  */
@@ -122,6 +122,133 @@ export function getConnectorManualGrantFields(
   authMethod: ConnectorAuthMethodId,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
   return getManualGrantFields(getConnectorAuthMethod(type, authMethod));
+}
+
+export interface ManualCredentialFieldNames {
+  readonly secrets: readonly string[];
+  readonly variables: readonly string[];
+}
+
+export interface ManualCredentialAuthMethod {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly fields: ManualCredentialFieldNames;
+}
+
+export interface ConnectedManualCredentialMethod {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+}
+
+function manualCredentialFieldNames(
+  fields: Record<string, ConnectorManualGrantFieldConfig>,
+): ManualCredentialFieldNames {
+  const secretNames: string[] = [];
+  const variableNames: string[] = [];
+  for (const [name, cfg] of Object.entries(fields)) {
+    if (!cfg.required) continue;
+    if (cfg.storage === "variable") {
+      variableNames.push(name);
+    } else {
+      secretNames.push(name);
+    }
+  }
+  return { secrets: secretNames, variables: variableNames };
+}
+
+function hasRequiredManualCredentialFields(
+  fields: ManualCredentialFieldNames,
+): boolean {
+  return fields.secrets.length > 0 || fields.variables.length > 0;
+}
+
+export function getConnectorManualCredentialFields(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ManualCredentialFieldNames | null {
+  const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
+  return fields ? manualCredentialFieldNames(fields) : null;
+}
+
+export function getConnectorManualCredentialFieldStorageType(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+  name: string,
+): "secret" | "variable" {
+  const fieldConfig = getManualGrantFields(
+    getConnectorAuthMethod(type, authMethod),
+  )?.[name];
+  return fieldConfig?.storage ?? "secret";
+}
+
+export function getConnectorManualCredentialAuthMethods(
+  type: ConnectorType,
+): ManualCredentialAuthMethod[] {
+  const manualMethods: ManualCredentialAuthMethod[] = [];
+
+  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+    const method = getConnectorAuthMethod(type, authMethod);
+    switch (method?.grant.kind) {
+      case "manual":
+        manualMethods.push({
+          type,
+          authMethod,
+          fields: manualCredentialFieldNames(method.grant.fields),
+        });
+        break;
+      case "managed":
+      case "auth-code":
+      case "device-auth":
+      case "interactive-pairing":
+      case undefined:
+        break;
+    }
+  }
+
+  return manualMethods;
+}
+
+export function deriveConnectedManualCredentialMethod(
+  type: ConnectorType,
+  userSecretNames: Set<string>,
+  userVariableNames?: Set<string>,
+): ConnectedManualCredentialMethod | null {
+  const varNames = userVariableNames ?? new Set<string>();
+
+  for (const method of getConnectorManualCredentialAuthMethods(type)) {
+    if (!hasRequiredManualCredentialFields(method.fields)) continue;
+    const secretsOk = method.fields.secrets.every((name) => {
+      return userSecretNames.has(name);
+    });
+    const variablesOk = method.fields.variables.every((name) => {
+      return varNames.has(name);
+    });
+    if (secretsOk && variablesOk) {
+      return { type, authMethod: method.authMethod };
+    }
+  }
+
+  return null;
+}
+
+export function deriveConnectedManualCredentialMethods(
+  userSecretNames: Set<string>,
+  userVariableNames?: Set<string>,
+): ConnectedManualCredentialMethod[] {
+  const connected: ConnectedManualCredentialMethod[] = [];
+
+  for (const type of CONNECTOR_TYPE_KEYS) {
+    const method = deriveConnectedManualCredentialMethod(
+      type,
+      userSecretNames,
+      userVariableNames,
+    );
+    if (method) {
+      connected.push(method);
+    }
+  }
+
+  return connected;
 }
 
 function connectorAccessOutputs(
@@ -787,75 +914,39 @@ export function getConnectorTypeForSecretName(
   return null;
 }
 
-/**
- * Get required field names grouped by storage type for a connector's api-token auth method.
- * Returns null if the connector type does not support api-token auth.
- */
 export function getApiTokenFieldsByType(
   type: ConnectorType,
-): { secrets: string[]; variables: string[] } | null {
-  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
-  const fields = getManualGrantFields(apiTokenConfig);
-  if (!fields) return null;
-
-  const secretNames: string[] = [];
-  const variableNames: string[] = [];
-  for (const [name, cfg] of Object.entries(fields)) {
-    if (!cfg.required) continue;
-    if (cfg.storage === "variable") {
-      variableNames.push(name);
-    } else {
-      secretNames.push(name);
-    }
-  }
-  return { secrets: secretNames, variables: variableNames };
+): ManualCredentialFieldNames | null {
+  // Compatibility wrapper for legacy API-token callers. New state inference
+  // should use manual credential helpers so the method id is preserved.
+  return getConnectorManualCredentialFields(type, "api-token");
 }
 
-/**
- * Return the storage target for a connector API-token field.
- *
- * Unknown fields preserve the historical form-submit behavior and are treated
- * as encrypted secrets.
- */
 export function getApiTokenFieldStorageType(
   type: ConnectorType,
   name: string,
 ): "secret" | "variable" {
-  const fieldConfig = getManualGrantFields(
-    getConnectorAuthMethod(type, "api-token"),
-  )?.[name];
-  return fieldConfig?.storage ?? "secret";
+  // Unknown fields preserve the historical form-submit behavior and are treated
+  // as encrypted secrets by the manual credential storage helper.
+  return getConnectorManualCredentialFieldStorageType(type, "api-token", name);
 }
 
-/**
- * Derive which connector types are "connected" via api-token based on present user secret and variable names.
- * A connector type is considered connected if all its required api-token fields exist
- * (secrets checked against userSecretNames, variables checked against userVariableNames).
- */
 export function deriveApiTokenConnectedTypes(
   userSecretNames: Set<string>,
   userVariableNames?: Set<string>,
 ): ConnectorType[] {
-  const allTypes = CONNECTOR_TYPE_KEYS;
-  const connected: ConnectorType[] = [];
-  const varNames = userVariableNames ?? new Set<string>();
-
-  for (const type of allTypes) {
-    const fields = getApiTokenFieldsByType(type);
-    if (!fields) continue;
-    if (fields.secrets.length === 0 && fields.variables.length === 0) continue;
-    const secretsOk = fields.secrets.every((name) => {
-      return userSecretNames.has(name);
+  // Compatibility wrapper for legacy API-token callers. The config-driven
+  // helper carries authMethod for production state inference.
+  return deriveConnectedManualCredentialMethods(
+    userSecretNames,
+    userVariableNames,
+  )
+    .filter((method) => {
+      return method.authMethod === "api-token";
+    })
+    .map((method) => {
+      return method.type;
     });
-    const variablesOk = fields.variables.every((name) => {
-      return varNames.has(name);
-    });
-    if (secretsOk && variablesOk) {
-      connected.push(type);
-    }
-  }
-
-  return connected;
 }
 
 /**

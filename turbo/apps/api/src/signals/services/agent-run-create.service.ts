@@ -22,7 +22,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  deriveApiTokenConnectedTypes,
+  deriveConnectedManualCredentialMethods,
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
 } from "@vm0/connectors/connector-utils";
@@ -771,14 +771,14 @@ function missingEnvironmentReferences(args: {
   return [...missingVars, ...missingSecrets];
 }
 
-function allowedApiTokenConnectorTypes(args: {
-  readonly apiTokenTypes: readonly ConnectorType[];
+function allowedManualCredentialConnectorTypes(args: {
+  readonly manualCredentialTypes: readonly ConnectorType[];
   readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
 }): readonly ConnectorType[] {
   if (!args.allowedConnectorTypes) {
-    return args.apiTokenTypes;
+    return args.manualCredentialTypes;
   }
-  return args.apiTokenTypes.filter((type) => {
+  return args.manualCredentialTypes.filter((type) => {
     return args.allowedConnectorTypes?.includes(type);
   });
 }
@@ -1336,13 +1336,13 @@ async function loadReferencedSecrets(
         return ref.name;
       })
     : [];
-  const apiTokenTypes = await loadApiTokenConnectorTypes(db, {
+  const manualCredentialTypes = await loadManualCredentialConnectorTypes(db, {
     orgId: args.orgId,
     userId: args.userId,
   });
   const dynamicConnectorSecretNames = connectorEnvironmentSecretTemplateNames(
-    allowedApiTokenConnectorTypes({
-      apiTokenTypes,
+    allowedManualCredentialConnectorTypes({
+      manualCredentialTypes,
       allowedConnectorTypes: args.allowedConnectorTypes,
     }),
   );
@@ -1351,7 +1351,7 @@ async function loadReferencedSecrets(
   }
 
   // Load all user secrets, not only those named in the compose environment:
-  // api-token connector credentials are consumed by firewall auth templates,
+  // Manual connector credentials are consumed by firewall auth templates,
   // which the compose environment never references. Connector-owned secrets
   // are still scoped by filterDbSecretsByConnectorPermissions below.
   const rows = await db
@@ -1385,7 +1385,7 @@ async function loadReferencedSecrets(
 
   const filteredSecrets = filterDbSecretsByConnectorPermissions({
     dbSecrets: { ...orgSecrets, ...userSecrets },
-    allApiTokenTypes: apiTokenTypes,
+    allManualCredentialTypes: manualCredentialTypes,
     allowedConnectorTypes: args.allowedConnectorTypes,
   });
   const connectorSecrets =
@@ -1396,7 +1396,7 @@ async function loadReferencedSecrets(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-async function loadApiTokenConnectorTypes(
+async function loadManualCredentialConnectorTypes(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1422,7 +1422,7 @@ async function loadApiTokenConnectorTypes(
       ),
   ]);
 
-  return deriveApiTokenConnectedTypes(
+  return deriveConnectedManualCredentialMethods(
     new Set(
       secretRows.map((row) => {
         return row.name;
@@ -1433,12 +1433,14 @@ async function loadApiTokenConnectorTypes(
         return row.name;
       }),
     ),
-  );
+  ).map((method) => {
+    return method.type;
+  });
 }
 
 function filterDbSecretsByConnectorPermissions(args: {
   readonly dbSecrets: Record<string, string>;
-  readonly allApiTokenTypes: readonly ConnectorType[];
+  readonly allManualCredentialTypes: readonly ConnectorType[];
   readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
 }): Record<string, string> | undefined {
   if (Object.keys(args.dbSecrets).length === 0) {
@@ -1449,13 +1451,16 @@ function filterDbSecretsByConnectorPermissions(args: {
   }
 
   const allConnectorSecretNames = getConnectorProvidedSecretNames([
-    ...args.allApiTokenTypes,
+    ...args.allManualCredentialTypes,
   ]);
-  const allowedApiTokenTypes = args.allApiTokenTypes.filter((type) => {
-    return args.allowedConnectorTypes?.includes(type);
-  });
-  const allowedConnectorSecretNames =
-    getConnectorProvidedSecretNames(allowedApiTokenTypes);
+  const allowedManualCredentialTypes = args.allManualCredentialTypes.filter(
+    (type) => {
+      return args.allowedConnectorTypes?.includes(type);
+    },
+  );
+  const allowedConnectorSecretNames = getConnectorProvidedSecretNames(
+    allowedManualCredentialTypes,
+  );
   const filtered: Record<string, string> = {};
 
   for (const [name, value] of Object.entries(args.dbSecrets)) {
@@ -3164,7 +3169,7 @@ async function loadRunConnectorContexts(
 }> {
   const [
     oauthConnectorContext,
-    apiTokenConnectorTypes,
+    manualCredentialConnectorTypes,
     customConnectorContext,
   ] = await Promise.all([
     loadOauthConnectorContext(db, {
@@ -3173,7 +3178,7 @@ async function loadRunConnectorContexts(
       allowedConnectorTypes: args.allowedConnectorTypes,
       featureSwitchContext,
     }),
-    loadApiTokenConnectorTypes(db, {
+    loadManualCredentialConnectorTypes(db, {
       orgId: args.orgId,
       userId: args.userId,
     }),
@@ -3184,18 +3189,18 @@ async function loadRunConnectorContexts(
       featureSwitchContext,
     }),
   ]);
-  const allowedApiTokenConnectorTypes = args.allowedConnectorTypes
-    ? apiTokenConnectorTypes.filter((type) => {
+  const allowedManualCredentialTypes = args.allowedConnectorTypes
+    ? manualCredentialConnectorTypes.filter((type) => {
         return args.allowedConnectorTypes?.includes(type);
       })
-    : apiTokenConnectorTypes;
+    : manualCredentialConnectorTypes;
   return {
     connectorContext: {
       ...oauthConnectorContext,
       connectorTypes: [
         ...new Set([
           ...oauthConnectorContext.connectorTypes,
-          ...allowedApiTokenConnectorTypes,
+          ...allowedManualCredentialTypes,
         ]),
       ],
     },

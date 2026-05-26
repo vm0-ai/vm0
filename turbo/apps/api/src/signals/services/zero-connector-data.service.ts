@@ -7,15 +7,19 @@ import type {
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodHasOAuthGrant,
-  deriveApiTokenConnectedTypes,
-  getApiTokenFieldsByType,
+  deriveConnectedManualCredentialMethod,
+  deriveConnectedManualCredentialMethods,
   getAvailableConnectorAuthMethods,
+  getConnectorManualCredentialAuthMethods,
   getConnectorOAuthCredentials,
   getConnectorProvidedSecretNames,
   getConnectorSecretNames,
   getRuntimeAvailableConnectorTypes,
   getScopeDiff,
   isConnectorAuthMethodAvailable,
+  type ConnectedManualCredentialMethod,
+  type ManualCredentialAuthMethod,
+  type ManualCredentialFieldNames,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
@@ -41,7 +45,7 @@ import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { db$, type Db, writeDb$ } from "../external/db";
+import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   deleteBotUser,
   deleteCloudEndpoint,
@@ -121,47 +125,107 @@ function storedConnectorTypeIsVisible(
   );
 }
 
-function apiTokenConnectorTypes(args: {
+function manualCredentialConnectorResponse(
+  method: ConnectedManualCredentialMethod,
+): ConnectorResponse {
+  return {
+    id: null,
+    type: method.type,
+    authMethod: method.authMethod,
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
+}
+
+async function loadUserManualCredentialNameSets(
+  db: Db | ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<{
+  readonly secretNames: Set<string>;
+  readonly variableNames: Set<string>;
+}> {
+  const [userSecretRows, userVariableRows] = await Promise.all([
+    db
+      .select({ name: secrets.name })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.type, "user"),
+        ),
+      ),
+    db
+      .select({ name: variables.name })
+      .from(variables)
+      .where(
+        and(eq(variables.orgId, args.orgId), eq(variables.userId, args.userId)),
+      ),
+  ]);
+
+  return {
+    secretNames: new Set(
+      userSecretRows.map((row) => {
+        return row.name;
+      }),
+    ),
+    variableNames: new Set(
+      userVariableRows.map((row) => {
+        return row.name;
+      }),
+    ),
+  };
+}
+
+function mergeManualCredentialFields(
+  methods: readonly ManualCredentialAuthMethod[],
+): ManualCredentialFieldNames | null {
+  const secretsSet = new Set<string>();
+  const variablesSet = new Set<string>();
+  for (const method of methods) {
+    for (const name of method.fields.secrets) {
+      secretsSet.add(name);
+    }
+    for (const name of method.fields.variables) {
+      variablesSet.add(name);
+    }
+  }
+  const secretsList = [...secretsSet];
+  const variablesList = [...variablesSet];
+  if (secretsList.length === 0 && variablesList.length === 0) {
+    return null;
+  }
+  return { secrets: secretsList, variables: variablesList };
+}
+
+function manualCredentialFieldsByType(
+  type: ConnectorType,
+): ManualCredentialFieldNames | null {
+  return mergeManualCredentialFields(
+    getConnectorManualCredentialAuthMethods(type),
+  );
+}
+
+function manualCredentialConnectorMethods(args: {
   readonly orgId: string;
   readonly userId: string;
-}): Computed<Promise<readonly ConnectorType[]>> {
-  return computed(async (get): Promise<readonly ConnectorType[]> => {
-    const db = get(db$);
-    const [userSecretRows, userVariableRows] = await Promise.all([
-      db
-        .select({ name: secrets.name })
-        .from(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, args.orgId),
-            eq(secrets.userId, args.userId),
-            eq(secrets.type, "user"),
-          ),
-        ),
-      db
-        .select({ name: variables.name })
-        .from(variables)
-        .where(
-          and(
-            eq(variables.orgId, args.orgId),
-            eq(variables.userId, args.userId),
-          ),
-        ),
-    ]);
-
-    return deriveApiTokenConnectedTypes(
-      new Set(
-        userSecretRows.map((row) => {
-          return row.name;
-        }),
-      ),
-      new Set(
-        userVariableRows.map((row) => {
-          return row.name;
-        }),
-      ),
-    );
-  });
+}): Computed<Promise<readonly ConnectedManualCredentialMethod[]>> {
+  return computed(
+    async (get): Promise<readonly ConnectedManualCredentialMethod[]> => {
+      const db = get(db$);
+      const { secretNames, variableNames } =
+        await loadUserManualCredentialNameSets(db, args);
+      return deriveConnectedManualCredentialMethods(secretNames, variableNames);
+    },
+  );
 }
 
 export function zeroConnectorList(args: {
@@ -170,7 +234,7 @@ export function zeroConnectorList(args: {
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [oauthRows, derivedTypes, overrides] = await Promise.all([
+    const [oauthRows, derivedMethods, overrides] = await Promise.all([
       db
         .select({
           id: connectors.id,
@@ -191,7 +255,7 @@ export function zeroConnectorList(args: {
             eq(connectors.userId, args.userId),
           ),
         ),
-      get(apiTokenConnectorTypes(args)),
+      get(manualCredentialConnectorMethods(args)),
       get(userFeatureSwitchOverrides(args.orgId, args.userId)),
     ]);
     const featureStates = getAllFeatureStates({
@@ -219,26 +283,19 @@ export function zeroConnectorList(args: {
     // Use a fixed timestamp for derived connectors — they are inferred from
     // secrets/variables rather than explicitly created, so a stable sentinel
     // value keeps shadow comparisons deterministic.
-    const derivedConnectors: ConnectorResponse[] = derivedTypes
-      .filter((type) => {
-        return !dbTypes.has(type);
+    const derivedConnectors: ConnectorResponse[] = derivedMethods
+      .filter((method) => {
+        return !dbTypes.has(method.type);
       })
-      .filter((type) => {
-        return isConnectorAuthMethodAvailable(type, "api-token", featureStates);
+      .filter((method) => {
+        return isConnectorAuthMethodAvailable(
+          method.type,
+          method.authMethod,
+          featureStates,
+        );
       })
-      .map((type) => {
-        return {
-          id: null,
-          type,
-          authMethod: "api-token",
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
-          oauthScopes: null,
-          needsReconnect: false,
-          createdAt: "1970-01-01T00:00:00.000Z",
-          updatedAt: "1970-01-01T00:00:00.000Z",
-        };
+      .map((method) => {
+        return manualCredentialConnectorResponse(method);
       });
 
     const connectorList = [...dbConnectors, ...derivedConnectors];
@@ -297,81 +354,23 @@ function storedConnectorByType(args: {
   });
 }
 
-function apiTokenConnectorByType(args: {
+function manualCredentialMethodByType(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: ConnectorType;
-}): Computed<Promise<ConnectorResponse | null>> {
-  return computed(async (get): Promise<ConnectorResponse | null> => {
-    const db = get(db$);
-    const fields = getApiTokenFieldsByType(args.type);
-    if (
-      !fields ||
-      (fields.secrets.length === 0 && fields.variables.length === 0)
-    ) {
-      return null;
-    }
-
-    const [userSecretRows, userVariableRows] = await Promise.all([
-      fields.secrets.length > 0
-        ? db
-            .select({ name: secrets.name })
-            .from(secrets)
-            .where(
-              and(
-                eq(secrets.orgId, args.orgId),
-                eq(secrets.userId, args.userId),
-                eq(secrets.type, "user"),
-              ),
-            )
-        : Promise.resolve([]),
-      fields.variables.length > 0
-        ? db
-            .select({ name: variables.name })
-            .from(variables)
-            .where(
-              and(
-                eq(variables.orgId, args.orgId),
-                eq(variables.userId, args.userId),
-              ),
-            )
-        : Promise.resolve([]),
-    ]);
-
-    const secretNames = new Set(
-      userSecretRows.map((row) => {
-        return row.name;
-      }),
-    );
-    const variableNames = new Set(
-      userVariableRows.map((row) => {
-        return row.name;
-      }),
-    );
-    const secretsOk = fields.secrets.every((name) => {
-      return secretNames.has(name);
-    });
-    const variablesOk = fields.variables.every((name) => {
-      return variableNames.has(name);
-    });
-    if (!secretsOk || !variablesOk) {
-      return null;
-    }
-
-    // Use a fixed timestamp — this connector is inferred, not explicitly created.
-    return {
-      id: null,
-      type: args.type,
-      authMethod: "api-token",
-      externalId: null,
-      externalUsername: null,
-      externalEmail: null,
-      oauthScopes: null,
-      needsReconnect: false,
-      createdAt: "1970-01-01T00:00:00.000Z",
-      updatedAt: "1970-01-01T00:00:00.000Z",
-    };
-  });
+}): Computed<Promise<ConnectedManualCredentialMethod | null>> {
+  return computed(
+    async (get): Promise<ConnectedManualCredentialMethod | null> => {
+      const db = get(db$);
+      const { secretNames, variableNames } =
+        await loadUserManualCredentialNameSets(db, args);
+      return deriveConnectedManualCredentialMethod(
+        args.type,
+        secretNames,
+        variableNames,
+      );
+    },
+  );
 }
 
 export function zeroConnectorByType(args: {
@@ -398,12 +397,22 @@ export function zeroConnectorByType(args: {
         return storedConnector;
       }
     }
+    const manualCredentialMethod = await get(
+      manualCredentialMethodByType(args),
+    );
+    if (!manualCredentialMethod) {
+      return null;
+    }
     if (
-      !isConnectorAuthMethodAvailable(args.type, "api-token", featureStates)
+      !isConnectorAuthMethodAvailable(
+        args.type,
+        manualCredentialMethod.authMethod,
+        featureStates,
+      )
     ) {
       return null;
     }
-    return get(apiTokenConnectorByType(args));
+    return manualCredentialConnectorResponse(manualCredentialMethod);
   });
 }
 
@@ -462,14 +471,11 @@ async function revokeExistingConnectorToken(args: {
   args.signal.throwIfAborted();
 }
 
-async function hasApiTokenConnectorLocalState(args: {
+async function hasManualCredentialConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly fields: {
-    readonly secrets: readonly string[];
-    readonly variables: readonly string[];
-  } | null;
+  readonly fields: ManualCredentialFieldNames | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   if (!args.fields) {
@@ -516,14 +522,11 @@ async function hasApiTokenConnectorLocalState(args: {
   return false;
 }
 
-async function deleteApiTokenConnectorLocalState(args: {
+async function deleteManualCredentialConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly fields: {
-    readonly secrets: readonly string[];
-    readonly variables: readonly string[];
-  } | null;
+  readonly fields: ManualCredentialFieldNames | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   if (!args.fields) {
@@ -600,17 +603,17 @@ export const deleteZeroConnectorLocalState$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const fields = getApiTokenFieldsByType(args.type);
-    const hasApiTokenState = existing
+    const fields = manualCredentialFieldsByType(args.type);
+    const hasManualCredentialState = existing
       ? false
-      : await hasApiTokenConnectorLocalState({
+      : await hasManualCredentialConnectorLocalState({
           db: writeDb,
           orgId: args.orgId,
           userId: args.userId,
           fields,
           signal,
         });
-    if (!existing && !hasApiTokenState) {
+    if (!existing && !hasManualCredentialState) {
       return false;
     }
 
@@ -660,7 +663,7 @@ export const deleteZeroConnectorLocalState$ = command(
     }
 
     deleted =
-      (await deleteApiTokenConnectorLocalState({
+      (await deleteManualCredentialConnectorLocalState({
         db: writeDb,
         orgId: args.orgId,
         userId: args.userId,
@@ -835,7 +838,7 @@ export const upsertOAuthConnector$ = command(
         ? secretMetadata.refreshSecretName
         : undefined,
     });
-    const apiTokenFields = getApiTokenFieldsByType(args.type);
+    const manualCredentialFields = manualCredentialFieldsByType(args.type);
 
     await invalidateActiveCliAuthSessionsForConnectorType({
       writeDb,
@@ -918,11 +921,11 @@ export const upsertOAuthConnector$ = command(
       throw new Error("Failed to upsert connector");
     }
 
-    await deleteApiTokenConnectorLocalState({
+    await deleteManualCredentialConnectorLocalState({
       db: writeDb,
       orgId: args.orgId,
       userId: args.userId,
-      fields: apiTokenFields,
+      fields: manualCredentialFields,
       signal,
     });
     signal.throwIfAborted();

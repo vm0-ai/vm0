@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { variables } from "@vm0/db/schema/variable";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
@@ -40,9 +42,11 @@ async function deleteConnectorsByOrg(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
   await Promise.all([
     writeDb.delete(connectors).where(eq(connectors.orgId, orgId)),
+    writeDb.delete(secrets).where(eq(secrets.orgId, orgId)),
     writeDb
       .delete(userFeatureSwitches)
       .where(eq(userFeatureSwitches.orgId, orgId)),
+    writeDb.delete(variables).where(eq(variables.orgId, orgId)),
   ]);
 }
 
@@ -113,6 +117,40 @@ describe("GET /api/zero/connectors", () => {
         return c.type === "github";
       }),
     ).toBeTruthy();
+  });
+
+  it("returns connectors inferred from manual credential secrets", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(secrets).values({
+      orgId,
+      userId,
+      name: "OPENAI_TOKEN",
+      encryptedValue: "encrypted_openai_token",
+      type: "user",
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const response = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    const openai = response.body.connectors.find((connector) => {
+      return connector.type === "openai";
+    });
+    expect(openai).toMatchObject({
+      id: null,
+      type: "openai",
+      authMethod: "api-token",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      updatedAt: "1970-01-01T00:00:00.000Z",
+    });
   });
 
   it("hides connected local-browser connector when the feature is disabled", async () => {

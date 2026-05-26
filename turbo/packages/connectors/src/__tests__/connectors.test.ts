@@ -19,9 +19,9 @@ import {
   type OAuthAuthCodeConnectorType,
 } from "../connectors";
 import {
-  getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
   getConfiguredConnectorAuthMethods,
+  deriveConnectedManualCredentialMethods,
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
@@ -36,6 +36,9 @@ import {
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthScopes,
   getConnectorManualGrantFields,
+  getConnectorManualCredentialAuthMethods,
+  getConnectorManualCredentialFields,
+  getConnectorManualCredentialFieldStorageType,
   getEligibleConnectorTypes,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
@@ -324,16 +327,84 @@ describe("connector auth method config", () => {
     ]);
   });
 
-  it("returns api-token field storage types with secret default", () => {
-    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_EMAIL")).toBe(
-      "variable",
+  it("returns manual credential field storage types with secret default", () => {
+    expect(
+      getConnectorManualCredentialFieldStorageType(
+        "zendesk",
+        "api-token",
+        "ZENDESK_EMAIL",
+      ),
+    ).toBe("variable");
+    expect(
+      getConnectorManualCredentialFieldStorageType(
+        "zendesk",
+        "api-token",
+        "ZENDESK_API_TOKEN",
+      ),
+    ).toBe("secret");
+    expect(
+      getConnectorManualCredentialFieldStorageType(
+        "zendesk",
+        "api-token",
+        "UNKNOWN_FIELD",
+      ),
+    ).toBe("secret");
+  });
+
+  it("groups required manual credential fields by storage", () => {
+    expect(
+      getConnectorManualCredentialFields("atlassian", "api-token"),
+    ).toStrictEqual({
+      secrets: ["ATLASSIAN_TOKEN"],
+      variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
+    });
+    expect(getConnectorManualCredentialFields("github", "oauth")).toBeNull();
+  });
+
+  it("lists only manual credential auth methods", () => {
+    expect(getConnectorManualCredentialAuthMethods("atlassian")).toStrictEqual([
+      {
+        type: "atlassian",
+        authMethod: "api-token",
+        fields: {
+          secrets: ["ATLASSIAN_TOKEN"],
+          variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
+        },
+      },
+    ]);
+    expect(getConnectorManualCredentialAuthMethods("github")).toStrictEqual([]);
+    expect(getConnectorManualCredentialAuthMethods("computer")).toStrictEqual(
+      [],
     );
-    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_API_TOKEN")).toBe(
-      "secret",
+  });
+
+  it("derives connected manual credential methods from required fields", () => {
+    expect(
+      deriveConnectedManualCredentialMethods(
+        new Set(["ATLASSIAN_TOKEN"]),
+        new Set(["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"]),
+      ),
+    ).toContainEqual({ type: "atlassian", authMethod: "api-token" });
+    expect(
+      deriveConnectedManualCredentialMethods(
+        new Set(["ATLASSIAN_TOKEN"]),
+        new Set(["ATLASSIAN_EMAIL"]),
+      ),
+    ).not.toContainEqual({ type: "atlassian", authMethod: "api-token" });
+    const connected = deriveConnectedManualCredentialMethods(
+      new Set(["GITHUB_ACCESS_TOKEN", "COMPUTER_CONNECTOR_BRIDGE_TOKEN"]),
+      new Set(),
     );
-    expect(getApiTokenFieldStorageType("zendesk", "UNKNOWN_FIELD")).toBe(
-      "secret",
-    );
+    expect(
+      connected.some((method) => {
+        return method.type === "github";
+      }),
+    ).toBe(false);
+    expect(
+      connected.some((method) => {
+        return method.type === "computer";
+      }),
+    ).toBe(false);
   });
 });
 

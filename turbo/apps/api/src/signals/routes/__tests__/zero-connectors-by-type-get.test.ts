@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { connectors } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
@@ -42,7 +43,10 @@ async function seedConnector(args: {
 
 async function deleteConnectorsByOrg(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
-  await writeDb.delete(connectors).where(eq(connectors.orgId, orgId));
+  await Promise.all([
+    writeDb.delete(connectors).where(eq(connectors.orgId, orgId)),
+    writeDb.delete(secrets).where(eq(secrets.orgId, orgId)),
+  ]);
 }
 
 describe("GET /api/zero/connectors/:type", () => {
@@ -122,6 +126,40 @@ describe("GET /api/zero/connectors/:type", () => {
     );
 
     expect(response.body.type).toBe("github");
+  });
+
+  it("returns a connector inferred from manual credential secrets", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(secrets).values({
+      orgId,
+      userId,
+      name: "OPENAI_TOKEN",
+      encryptedValue: "encrypted_openai_token",
+      type: "user",
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const response = await accept(
+      client.get({
+        params: { type: "openai" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: null,
+      type: "openai",
+      authMethod: "api-token",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      updatedAt: "1970-01-01T00:00:00.000Z",
+    });
   });
 
   it("allows access with a sandbox JWT carrying connector:read capability", async () => {
