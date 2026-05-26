@@ -104,6 +104,9 @@ enum BackgroundWindowLocalEvent {
 }
 
 enum BackgroundWindowScreenshot {
+    private static let maxLongEdgePixels = 1_600
+    private static let maxPixelArea = 1_920_000
+
     private typealias CreateImageFn = @convention(c) (
         CGRect,
         UInt32,
@@ -141,7 +144,8 @@ enum BackgroundWindowScreenshot {
                 message: "Unable to capture target window screenshot"
             )
         }
-        let bitmap = NSBitmapImageRep(cgImage: image)
+        let scaledImage = scaledForTransport(image)
+        let bitmap = NSBitmapImageRep(cgImage: scaledImage)
         guard let data = bitmap.representation(using: .png, properties: [:]) else {
             throw HelperFailure(
                 code: "screen_recording_unavailable",
@@ -150,9 +154,39 @@ enum BackgroundWindowScreenshot {
         }
         return WindowScreenshot(
             dataUrl: "data:image/png;base64,\(data.base64EncodedString())",
-            width: image.width,
-            height: image.height
+            width: scaledImage.width,
+            height: scaledImage.height
         )
+    }
+
+    private static func scaledForTransport(_ image: CGImage) -> CGImage {
+        let width = image.width
+        let height = image.height
+        let longEdge = max(width, height)
+        let area = width * height
+        let longEdgeScale = CGFloat(maxLongEdgePixels) / CGFloat(max(longEdge, 1))
+        let areaScale = sqrt(CGFloat(maxPixelArea) / CGFloat(max(area, 1)))
+        let scale = min(1, min(longEdgeScale, areaScale))
+        guard scale < 1 else {
+            return image
+        }
+
+        let scaledWidth = max(1, Int((CGFloat(width) * scale).rounded()))
+        let scaledHeight = max(1, Int((CGFloat(height) * scale).rounded()))
+        guard let context = CGContext(
+            data: nil,
+            width: scaledWidth,
+            height: scaledHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return image
+        }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: scaledWidth, height: scaledHeight))
+        return context.makeImage() ?? image
     }
 }
 
