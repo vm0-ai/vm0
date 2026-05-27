@@ -2795,6 +2795,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
     source: { path: "illustration-template/vm0-illustration" },
   },
+  {
+    id: "vm0:image-style:sticker-sheet",
+    kind: "image-style",
+    name: "Sticker Sheet",
+    description:
+      "Hand-painted gouache sticker-sheet illustration with ~20 themed objects floating on white, punchy saturated palette, wobbly hand-drawn ink overlay, and tiny decorative marks on every item.",
+    desc: 'Sticker Sheet — hand-painted gouache sticker-sheet illustration. ~20 small floating themed objects on pure white, punchy saturated palette (coral, mustard, sage, dusty pink, navy, cream, warm brown), flat brushy gouache fills with wobbly hand-drawn ink linework and tiny decorative marks (dots, hatches, squiggles) on every object. Each object slightly tilted, no drop shadows, cheerful cozy lifestyle journal mood. Trigger when user says /sticker-sheet, asks for a "sticker sheet illustration", "hand-painted gouache sticker pack", "themed object sheet", or briefs with a scene theme + object count in this house style.',
+    source: { path: "illustration-template/sticker-sheet" },
+  },
 ];
 
 function filterByKind(
