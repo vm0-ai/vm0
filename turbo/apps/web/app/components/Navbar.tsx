@@ -488,7 +488,10 @@ export function Navbar({
                 >
                   {t("contact")}
                 </a>
-                <NextLink href="/sign-up" className="btn-get-access">
+                <NextLink
+                  href="/sign-up"
+                  className="btn-get-access nav-desktop"
+                >
                   {t("joinWaitlist")}
                 </NextLink>
               </>
@@ -576,6 +579,15 @@ export function Navbar({
             >
               {t("contact")}
             </a>
+            {!isSignedIn && (
+              <NextLink
+                href="/sign-up"
+                className="mobile-menu-link mobile-menu-cta"
+                onClick={closeMobile}
+              >
+                {t("joinWaitlist")}
+              </NextLink>
+            )}
             {isSignedIn && (
               <>
                 <button
