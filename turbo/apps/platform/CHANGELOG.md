@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.388.2](https://github.com/vm0-ai/vm0/compare/app-v0.388.1...app-v0.388.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* add compare plans links for integration credit errors ([#15070](https://github.com/vm0-ai/vm0/issues/15070)) ([18b3bb7](https://github.com/vm0-ai/vm0/commit/18b3bb7aeb67bf7bde47d293f743ba193d912019))
+* classify hosted-site URLs as html in artifact sidebar ([#15147](https://github.com/vm0-ai/vm0/issues/15147)) ([0cc244c](https://github.com/vm0-ai/vm0/commit/0cc244c125e04a036eb3c0fada9a30461cd0108e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.43.0
+    * @vm0/connectors bumped to 1.37.2
+    * @vm0/core bumped to 8.300.2
+
 ## [0.388.1](https://github.com/vm0-ai/vm0/compare/app-v0.388.0...app-v0.388.1) (2026-05-27)
 
 

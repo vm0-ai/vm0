@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.19](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.18...sandbox-fc-v0.35.19) (2026-05-27)
+
+
+### Bug Fixes
+
+* preserve existing snapshot complete marker ([#15143](https://github.com/vm0-ai/vm0/issues/15143)) ([06b7cbf](https://github.com/vm0-ai/vm0/commit/06b7cbf96c3f28014e752b398ad2a17bb4dd1229))
+
 ## [0.35.18](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.17...sandbox-fc-v0.35.18) (2026-05-27)
 
 ## [0.35.17](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.16...sandbox-fc-v0.35.17) (2026-05-26)

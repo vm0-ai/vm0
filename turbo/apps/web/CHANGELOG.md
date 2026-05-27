@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.394.1](https://github.com/vm0-ai/vm0/compare/web-v12.394.0...web-v12.394.1) (2026-05-27)
+
+
+### Refactoring
+
+* **web:** move rankings query behind public api ([#15154](https://github.com/vm0-ai/vm0/issues/15154)) ([15b7398](https://github.com/vm0-ai/vm0/commit/15b739812c0330ae8d68822e4c3b502e69ef2660))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.43.0
+    * @vm0/core bumped to 8.300.2
+    * @vm0/db bumped to 1.20.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.2
+
 ## [12.394.0](https://github.com/vm0-ai/vm0/compare/web-v12.393.1...web-v12.394.0) (2026-05-27)
 
 

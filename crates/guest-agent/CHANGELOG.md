@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.24...guest-agent-v0.32.25) (2026-05-27)
+
+
+### Refactoring
+
+* split artifact snapshot phases ([#15146](https://github.com/vm0-ai/vm0/issues/15146)) ([5fa4ef4](https://github.com/vm0-ai/vm0/commit/5fa4ef48de916bb45e392be79e8fae25ee112325))
+
 ## [0.32.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.23...guest-agent-v0.32.24) (2026-05-27)
 
 

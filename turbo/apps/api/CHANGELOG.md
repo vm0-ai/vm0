@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.80.0](https://github.com/vm0-ai/vm0/compare/api-v1.79.1...api-v1.80.0) (2026-05-27)
+
+
+### Features
+
+* simplify computer use command output ([#15152](https://github.com/vm0-ai/vm0/issues/15152)) ([81007c6](https://github.com/vm0-ai/vm0/commit/81007c6be3b2649d5f3ea9bf1be3a3faa4d6adf8))
+
+
+### Bug Fixes
+
+* add compare plans links for integration credit errors ([#15070](https://github.com/vm0-ai/vm0/issues/15070)) ([18b3bb7](https://github.com/vm0-ai/vm0/commit/18b3bb7aeb67bf7bde47d293f743ba193d912019))
+* **zero:** gate local-agent skill and token access ([#15149](https://github.com/vm0-ai/vm0/issues/15149)) ([f388ae2](https://github.com/vm0-ai/vm0/commit/f388ae2b1ab2cf012fc4d4795596b443b6db6481))
+
+
+### Refactoring
+
+* model slock oauth client as dynamic ([#15142](https://github.com/vm0-ai/vm0/issues/15142)) ([a55ce78](https://github.com/vm0-ai/vm0/commit/a55ce78ef218ed5cf16d30a21e725cd730f6ce5c))
+* **web:** move rankings query behind public api ([#15154](https://github.com/vm0-ai/vm0/issues/15154)) ([15b7398](https://github.com/vm0-ai/vm0/commit/15b739812c0330ae8d68822e4c3b502e69ef2660))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.43.0
+    * @vm0/connectors bumped to 1.37.2
+    * @vm0/core bumped to 8.300.2
+    * @vm0/db bumped to 1.20.2
+
 ## [1.79.1](https://github.com/vm0-ai/vm0/compare/api-v1.79.0...api-v1.79.1) (2026-05-27)
 
 
