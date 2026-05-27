@@ -267,13 +267,39 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
 
-    async def test_billable_fetch_without_expiry_fails_closed(self, headers):
-        mock_fetch = AsyncMock(
-            return_value={
-                "headers": {"Authorization": "Bearer token"},
-                "expiresAt": None,
-            }
-        )
+    @pytest.mark.parametrize(
+        "fetch_result",
+        [
+            pytest.param({"headers": {"Authorization": "Bearer token"}}, id="missing"),
+            pytest.param(
+                {"headers": {"Authorization": "Bearer token"}, "expiresAt": None},
+                id="none",
+            ),
+            pytest.param(
+                {"headers": {"Authorization": "Bearer token"}, "expiresAt": True},
+                id="bool",
+            ),
+            pytest.param(
+                {"headers": {"Authorization": "Bearer token"}, "expiresAt": "123"},
+                id="string",
+            ),
+            pytest.param(
+                {"headers": {"Authorization": "Bearer token"}, "expiresAt": float("inf")},
+                id="infinity",
+            ),
+            pytest.param(
+                {"headers": {"Authorization": "Bearer token"}, "expiresAt": float("nan")},
+                id="nan",
+            ),
+            pytest.param(
+                {"headers": {"Authorization": "Bearer token"}, "expiresAt": 0},
+                id="expired",
+            ),
+        ],
+    )
+    async def test_billable_fetch_with_invalid_expiry_fails_closed(self, fetch_result):
+        cache_key = ("run-1", "api-1")
+        mock_fetch = AsyncMock(return_value=fetch_result)
 
         with (
             patch.object(auth, "fetch_firewall_headers", mock_fetch),
@@ -287,6 +313,7 @@ class TestGetFirewallHeaders:
                 "tok-xyz",
                 firewall_billable=True,
             )
+        assert cached_headers(cache_key) is None
 
     async def test_cache_hit_includes_base_when_present(self, headers):
         """Cached entry with 'base' returns it on cache hit."""
