@@ -468,18 +468,18 @@ final class ComputerUseVisualPointerView: NSView {
         path.line(to: CGPoint(x: 8, y: 22))
         path.close()
 
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor(calibratedWhite: 0.08, alpha: 0.38)
-        shadow.shadowBlurRadius = 2.2
-        shadow.shadowOffset = NSSize(width: 0, height: 1.2)
-        shadow.set()
+        let bottomShadow = NSShadow()
+        bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.48)
+        bottomShadow.shadowBlurRadius = 3.4
+        bottomShadow.shadowOffset = NSSize(width: 0.9, height: 2.1)
+        bottomShadow.set()
 
-        NSColor(calibratedRed: 0.37, green: 0.40, blue: 0.44, alpha: 1).setFill()
+        NSColor(calibratedRed: 0.34, green: 0.37, blue: 0.40, alpha: 1).setFill()
         path.fill()
 
         NSGraphicsContext.current?.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
-        NSColor(calibratedWhite: 0.08, alpha: 0.44).setStroke()
-        path.lineWidth = 0.8
+        NSColor(calibratedWhite: 1, alpha: 0.9).setStroke()
+        path.lineWidth = 1.1
         path.lineJoinStyle = .round
         path.stroke()
         NSGraphicsContext.restoreGraphicsState()
