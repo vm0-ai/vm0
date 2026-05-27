@@ -30,6 +30,10 @@ pub fn decode_error(payload: &[u8]) -> Result<&str, ProtocolError> {
 mod tests {
     use super::*;
 
+    fn assert_invalid_payload(err: ProtocolError, expected: &'static str) {
+        assert!(matches!(err, ProtocolError::InvalidPayload(msg) if msg == expected));
+    }
+
     #[test]
     fn error_payload_roundtrip() {
         let payload = encode_error("something went wrong");
@@ -85,9 +89,22 @@ mod tests {
         let payload = [0, 1, 0xC3];
         let err = decode_error(&payload).unwrap_err();
 
-        assert!(matches!(
-            err,
-            ProtocolError::InvalidPayload("invalid UTF-8 in error")
-        ));
+        assert_invalid_payload(err, "invalid UTF-8 in error");
+    }
+
+    #[test]
+    fn decode_error_rejects_too_short_payload() {
+        for payload in [b"".as_slice(), &[0]] {
+            let err = decode_error(payload).unwrap_err();
+            assert_invalid_payload(err, "error payload too short");
+        }
+    }
+
+    #[test]
+    fn decode_error_rejects_truncated_message() {
+        let payload = [0, 2, b'a'];
+        let err = decode_error(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "error message truncated");
     }
 }
