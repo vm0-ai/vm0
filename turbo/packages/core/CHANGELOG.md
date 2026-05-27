@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.297.2](https://github.com/vm0-ai/vm0/compare/core-v8.297.1...core-v8.297.2) (2026-05-27)
+
+
+### Refactoring
+
+* remove computer connector ([#15026](https://github.com/vm0-ai/vm0/issues/15026)) ([65bde32](https://github.com/vm0-ai/vm0/commit/65bde32845381c27f46858770762ab531a8565cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.4
+    * @vm0/connectors bumped to 1.36.2
+
 ## [8.297.1](https://github.com/vm0-ai/vm0/compare/core-v8.297.0...core-v8.297.1) (2026-05-26)
 
 

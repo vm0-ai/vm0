@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.389.9](https://github.com/vm0-ai/vm0/compare/web-v12.389.8...web-v12.389.9) (2026-05-27)
+
+
+### Refactoring
+
+* remove computer connector ([#15026](https://github.com/vm0-ai/vm0/issues/15026)) ([65bde32](https://github.com/vm0-ai/vm0/commit/65bde32845381c27f46858770762ab531a8565cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.4
+    * @vm0/core bumped to 8.297.2
+    * @vm0/db bumped to 1.18.21
+  * devDependencies
+    * @vm0/connectors bumped to 1.36.2
+
 ## [12.389.8](https://github.com/vm0-ai/vm0/compare/web-v12.389.7...web-v12.389.8) (2026-05-26)
 
 

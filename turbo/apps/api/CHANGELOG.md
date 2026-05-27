@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.76.2](https://github.com/vm0-ai/vm0/compare/api-v1.76.1...api-v1.76.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* stop dual-writing stored secrets ([#14975](https://github.com/vm0-ai/vm0/issues/14975)) ([b93ff4e](https://github.com/vm0-ai/vm0/commit/b93ff4ed89a6b402fdce0dc5c120b0e9d76100d0))
+
+
+### Refactoring
+
+* remove computer connector ([#15026](https://github.com/vm0-ai/vm0/issues/15026)) ([65bde32](https://github.com/vm0-ai/vm0/commit/65bde32845381c27f46858770762ab531a8565cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.4
+    * @vm0/connectors bumped to 1.36.2
+    * @vm0/core bumped to 8.297.2
+    * @vm0/db bumped to 1.18.21
+
 ## [1.76.1](https://github.com/vm0-ai/vm0/compare/api-v1.76.0...api-v1.76.1) (2026-05-26)
 
 
