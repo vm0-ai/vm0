@@ -251,6 +251,7 @@ function redactedResultForAudit(
     "key",
     "pages",
     "role",
+    "summary",
     "x",
     "y",
   ]) {
@@ -263,11 +264,27 @@ function redactedResultForAudit(
       redacted[key] = value;
     }
   }
-  if (typeof result.text === "string") {
-    redacted.textLength = result.text.length;
+  if (typeof result.appState === "string") {
+    redacted.appStateLength = result.appState.length;
   }
   if (typeof result.screenshot === "string") {
     redacted.screenshot = "[redacted]";
+  }
+  const action = result.action;
+  if (action && typeof action === "object" && !Array.isArray(action)) {
+    const redactedAction: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(action)) {
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        redactedAction[key] = value;
+      }
+    }
+    if (Object.keys(redactedAction).length > 0) {
+      redacted.action = redactedAction;
+    }
   }
   if (Object.keys(redacted).length > 0) {
     return redacted;

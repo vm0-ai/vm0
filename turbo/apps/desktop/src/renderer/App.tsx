@@ -65,12 +65,12 @@ const COMMAND_STATUS_LABELS = {
 } as const satisfies Record<CommandLogEntry["status"], string>;
 
 const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
+  "appState",
   "elements",
   "screenshot",
-  "text",
   "visibleElements",
 ]);
-const RESULT_TEXT_PREVIEW_LABEL = "[shown in App State]";
+const RESULT_APP_STATE_PREVIEW_LABEL = "[shown in App State]";
 
 function BridgeSubscription() {
   const setupBridge = useSet(setupComputerUseBridge$);
@@ -265,8 +265,8 @@ function resultSummaryRecord(
       summary[key] = jsonDisplayValue(value);
     }
   }
-  if (recordStringValue(result, "text")) {
-    summary.text = RESULT_TEXT_PREVIEW_LABEL;
+  if (recordStringValue(result, "appState")) {
+    summary.appState = RESULT_APP_STATE_PREVIEW_LABEL;
   }
   if (recordStringValue(result, "screenshot")) {
     summary.screenshot = "[shown as image]";
@@ -647,7 +647,7 @@ function CommandLogRow({
   readonly onPreviewScreenshot: (preview: ScreenshotPreview) => void;
   readonly onToggle: () => void;
 }) {
-  const resultText = recordStringValue(entry.result, "text");
+  const resultAppState = recordStringValue(entry.result, "appState");
   const screenshot = recordStringValue(entry.result, "screenshot");
   const visibleElements = visibleElementRecords(entry.result);
   const completedAt = entry.completedAt ?? entry.startedAt;
@@ -703,9 +703,9 @@ function CommandLogRow({
               />
             </CommandLogSection>
           )}
-          {resultText && (
+          {resultAppState && (
             <CommandLogSection title="App State" icon={<IconCode size={15} />}>
-              <pre className="agent-state-block">{resultText}</pre>
+              <pre className="agent-state-block">{resultAppState}</pre>
             </CommandLogSection>
           )}
           {screenshot && (

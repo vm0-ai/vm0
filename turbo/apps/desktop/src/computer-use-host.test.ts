@@ -177,7 +177,7 @@ describe("ComputerUseHostRuntime", () => {
       return {
         status: "succeeded",
         result: {
-          text: "0 standard window Inbox",
+          appState: "0 standard window Inbox",
           screenshot: "data:image/png;base64,abc123",
           screenshotWidth: 800,
           screenshotHeight: 600,
@@ -198,7 +198,7 @@ describe("ComputerUseHostRuntime", () => {
       status: "succeeded",
       payload: { app: "Things" },
       result: {
-        text: "0 standard window Inbox",
+        appState: "0 standard window Inbox",
         screenshot: "data:image/png;base64,abc123",
         screenshotWidth: 800,
         screenshotHeight: 600,
@@ -226,7 +226,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(JSON.parse(String(completionCall[1]?.body))).toMatchObject({
       status: "succeeded",
       result: {
-        text: "0 standard window Inbox",
+        appState: "0 standard window Inbox",
         screenshot: "data:image/png;base64,abc123",
       },
     });

@@ -1169,7 +1169,7 @@ function buildComputerUseAppStateResult(
   );
   return {
     ...publicAppStateSnapshot(snapshot),
-    text: renderAccessibilityTree(snapshot),
+    appState: renderAccessibilityTree(snapshot),
     visibleTextSource: "accessibility",
     visibleText: renderAccessibilityVisibleText(visibleElements),
     visibleElements,
@@ -1243,7 +1243,7 @@ async function listApps(
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
   const apps = [...(await nativeBackend.listApps())].sort();
-  return { status: "succeeded", result: { apps, text: apps.join("\n") } };
+  return { status: "succeeded", result: { apps } };
 }
 
 async function getAppState(
@@ -1344,7 +1344,7 @@ async function openApp(
     result: {
       app,
       ...nativeResult,
-      text: `Opened ${app}`,
+      summary: `Opened ${app}`,
     },
   };
 }
@@ -1467,7 +1467,7 @@ async function clickElement(args: {
         button: args.button,
         clickCount: args.clickCount,
         ...nativeResult,
-        text: `Clicked ${elementTargetText(target)}`,
+        summary: `Clicked ${elementTargetText(target)}`,
       },
     };
   }
@@ -1505,7 +1505,7 @@ async function clickElement(args: {
         button: args.button,
         clickCount: args.clickCount,
         ...nativeResult,
-        text: `Clicked ${args.x},${args.y}`,
+        summary: `Clicked ${args.x},${args.y}`,
       },
     };
   }
@@ -1535,7 +1535,7 @@ async function setElementValue(
       app,
       ...elementTargetResult(target),
       ...nativeResult,
-      text: `Set ${elementTargetText(target)}`,
+      summary: `Set ${elementTargetText(target)}`,
     },
   };
 }
@@ -1562,7 +1562,7 @@ async function performElementAction(
       ...elementTargetResult(target),
       action,
       ...nativeResult,
-      text: `Performed ${action}`,
+      summary: `Performed ${action}`,
     },
   };
 }
@@ -1578,7 +1578,7 @@ async function typeText(
     result: {
       app,
       ...result,
-      text: "Typed text",
+      summary: "Typed text",
     },
   };
 }
@@ -1596,7 +1596,7 @@ async function pressKey(
       app,
       key: normalizedKey,
       ...nativeResult,
-      text: `Pressed ${normalizedKey}`,
+      summary: `Pressed ${normalizedKey}`,
     },
   };
 }
@@ -1626,7 +1626,7 @@ async function scrollElement(
       direction,
       pages,
       ...nativeResult,
-      text: `Scrolled ${elementTargetText(target)}`,
+      summary: `Scrolled ${elementTargetText(target)}`,
     },
   };
 }

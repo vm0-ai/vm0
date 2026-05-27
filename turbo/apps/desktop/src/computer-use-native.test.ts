@@ -465,7 +465,7 @@ describe("computer use native backend", () => {
           app: "Safari",
           elementIdsByIndex: ["w0", "w0.e0"],
           screenshot: "data:image/png;base64,abc123",
-          text: expect.stringContaining("<app_state>"),
+          appState: expect.stringContaining("<app_state>"),
         },
       });
       expect(responses[1]).toMatchObject({
@@ -473,7 +473,7 @@ describe("computer use native backend", () => {
         result: {
           app: "Safari",
           screenshot: "data:image/png;base64,abc123",
-          text: expect.stringContaining("<app_state>"),
+          appState: expect.stringContaining("<app_state>"),
           action: {
             app: "Safari",
             elementIndex: 1,
@@ -514,7 +514,7 @@ describe("computer use native backend", () => {
           app: "Safari",
           elementIdsByIndex: ["w0", "w0.e0"],
           screenshot: "data:image/png;base64,abc123",
-          text: expect.stringContaining("<app_state>"),
+          appState: expect.stringContaining("<app_state>"),
         },
       });
     } finally {
