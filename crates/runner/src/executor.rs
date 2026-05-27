@@ -263,7 +263,7 @@ pub async fn execute_job(
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let outcome = if let Err(error) = validate_model_provider_env_placeholders(&context) {
+    let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             sandbox: None,
@@ -324,7 +324,7 @@ pub async fn execute_job_reuse(
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
-    let outcome = if let Err(error) = validate_model_provider_env_placeholders(&context) {
+    let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             sandbox: Some(sandbox),
@@ -483,6 +483,27 @@ fn validate_model_provider_env_placeholders(context: &ExecutionContext) -> Resul
         "model provider environment contains non-placeholder values for: {}",
         invalid_keys.join(", ")
     ))
+}
+
+fn validate_execution_context_before_sandbox(context: &ExecutionContext) -> Result<(), String> {
+    validate_model_provider_env_placeholders(context)?;
+    validate_claude_tool_lists(context)?;
+    Ok(())
+}
+
+fn validate_claude_tool_lists(context: &ExecutionContext) -> Result<(), String> {
+    if effective_cli_framework(&context.cli_agent_type) != EffectiveCliFramework::ClaudeCode {
+        return Ok(());
+    }
+
+    if let Some(tools) = &context.disallowed_tools {
+        validate_claude_tool_env_entries("VM0_DISALLOWED_TOOLS", tools)?;
+    }
+    if let Some(tools) = &context.tools {
+        validate_claude_tool_env_entries("VM0_TOOLS", tools)?;
+    }
+
+    Ok(())
 }
 
 /// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
@@ -2175,20 +2196,26 @@ fn serialize_claude_tool_env(env_name: &str, tools: &[String]) -> RunnerResult<O
         return Ok(None);
     }
 
+    validate_claude_tool_env_entries(env_name, tools).map_err(RunnerError::Internal)?;
+
+    Ok(Some(tools.join(",")))
+}
+
+fn validate_claude_tool_env_entries(env_name: &str, tools: &[String]) -> Result<(), String> {
     for (index, tool) in tools.iter().enumerate() {
         if tool.trim().is_empty() {
-            return Err(RunnerError::Internal(format!(
+            return Err(format!(
                 "{env_name} entry at index {index} must not be empty"
-            )));
+            ));
         }
         if tool.contains(',') {
-            return Err(RunnerError::Internal(format!(
+            return Err(format!(
                 "{env_name} entry at index {index} must not contain commas"
-            )));
+            ));
         }
     }
 
-    Ok(Some(tools.join(",")))
+    Ok(())
 }
 
 fn insert_codex_env(
@@ -5325,6 +5352,40 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.tools = Some(vec!["Bash,Read".into()]);
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(error.contains("VM0_TOOLS"));
+        assert!(error.contains("must not contain commas"));
+        assert!(outcome.sandbox.is_none());
+        assert!(
+            overrides.create_configs().is_empty(),
+            "fresh sandbox must not be created after tool validation failure"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Keep-alive VM reuse integration tests
     // -----------------------------------------------------------------------
@@ -5389,6 +5450,34 @@ mod tests {
         assert!(
             overrides.start_process_calls().is_empty(),
             "reused sandbox must not start a process after env validation failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_claude_tool_validation_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let source_ip = sandbox.source_ip().to_string();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+        let mut ctx = minimal_context();
+        ctx.disallowed_tools = Some(vec!["   ".into()]);
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 1);
+        let error = reuse_outcome.error().unwrap();
+        assert!(error.contains("VM0_DISALLOWED_TOOLS"));
+        assert!(error.contains("must not be empty"));
+        assert!(reuse_outcome.sandbox.is_some());
+        assert!(reuse_outcome.network_log_session.is_none());
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "reused sandbox must not start a process after tool validation failure"
         );
     }
 

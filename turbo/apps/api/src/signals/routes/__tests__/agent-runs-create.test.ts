@@ -363,6 +363,7 @@ describe("POST /api/agent/runs", () => {
       { body: { tools: ["   "] }, field: "tools" },
       { body: { tools: ["Bash,Read"] }, field: "tools" },
       { body: { disallowedTools: [""] }, field: "disallowedTools" },
+      { body: { disallowedTools: ["   "] }, field: "disallowedTools" },
       {
         body: { disallowedTools: ["CronCreate,CronDelete"] },
         field: "disallowedTools",
