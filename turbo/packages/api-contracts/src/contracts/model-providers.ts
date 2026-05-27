@@ -649,7 +649,7 @@ export const MODEL_PROVIDER_TYPES = {
           },
         },
       },
-    } as Record<string, AuthMethodConfig>,
+    } satisfies Record<string, AuthMethodConfig>,
     defaultAuthMethod: "auth_json",
     envBindings: {
       CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
@@ -682,7 +682,7 @@ export const MODEL_PROVIDER_TYPES = {
           },
         },
       },
-    } as Record<string, AuthMethodConfig>,
+    } satisfies Record<string, AuthMethodConfig>,
     defaultAuthMethod: "api-key",
     envBindings: {
       CLAUDE_CODE_USE_FOUNDRY: "1",
@@ -745,7 +745,7 @@ export const MODEL_PROVIDER_TYPES = {
           },
         },
       },
-    } as Record<string, AuthMethodConfig>,
+    } satisfies Record<string, AuthMethodConfig>,
     defaultAuthMethod: "api-key",
     envBindings: {
       CLAUDE_CODE_USE_BEDROCK: "1",
