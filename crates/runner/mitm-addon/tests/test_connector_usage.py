@@ -389,8 +389,7 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
-            path="/2/communities/search",
-            query="query=devtools",
+            path="/2/communities/search?query=devtools",
             body=body,
             permission="list.read",
             rule="GET /2/communities/{id}",
