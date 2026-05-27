@@ -61,7 +61,7 @@ interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
   readonly key: string;
 }
 
-const COMPUTER_USE_SCREENSHOT_DIR = "/tmp/vm0/computer-use";
+const COMPUTER_USE_OUTPUT_DIR = "/tmp/vm0/computer-use";
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 const COMPUTER_USE_HELP_TEXT = `
 Workflow:
@@ -72,8 +72,10 @@ Workflow:
   4. Prefer element actions with --snapshot-id and --element-index. Use --x/--y
      only when the target is visible in the returned screenshot but has no useful
      accessibility element.
-  5. Read the JSON result. Screenshot data is saved under /tmp/vm0/computer-use
-     and replaced with a local file path in CLI output.
+  5. Read the JSON result. Screenshot and App State data are saved under
+     /tmp/vm0/computer-use and replaced with local file paths in CLI output.
+     Files are named from app and snapshotId; rerunning the same snapshot
+     overwrites the same files.
 
 Notes:
   Write commands are sent to the connected Desktop host and may wait for local
@@ -237,12 +239,28 @@ async function writeScreenshotDataUrl(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = join(
-    COMPUTER_USE_SCREENSHOT_DIR,
+    COMPUTER_USE_OUTPUT_DIR,
     `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
   );
 
-  await mkdir(COMPUTER_USE_SCREENSHOT_DIR, { recursive: true });
+  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
   await writeFile(outputPath, Buffer.from(base64Data, "base64"));
+  return outputPath;
+}
+
+async function writeAppStateText(
+  result: Record<string, unknown>,
+  appState: string,
+): Promise<string> {
+  const appName = sanitizeFilenamePart(result.app, "app");
+  const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
+  const outputPath = join(
+    COMPUTER_USE_OUTPUT_DIR,
+    `${appName}-${snapshotId}.appState.txt`,
+  );
+
+  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
+  await writeFile(outputPath, appState, "utf8");
   return outputPath;
 }
 
@@ -276,7 +294,7 @@ export async function formatComputerUseResultForConsole(
   }
   const appState = stringField(result, "appState");
   if (appState) {
-    printable.appState = appState;
+    printable.appState = await writeAppStateText(result, appState);
   }
   const screenshot = stringField(result, "screenshot");
   if (screenshot) {

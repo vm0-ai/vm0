@@ -19,6 +19,8 @@ import { registerZeroCommands } from "../../../../zero";
 
 const TEST_SCREENSHOT_PATH =
   "/tmp/vm0/computer-use/Slack-Test-App-desktop_test_snapshot.png";
+const TEST_APP_STATE_PATH =
+  "/tmp/vm0/computer-use/Slack-Test-App-desktop_test_snapshot.appState.txt";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -62,6 +64,7 @@ describe("computer-use command visibility", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     await rm(TEST_SCREENSHOT_PATH, { force: true });
+    await rm(TEST_APP_STATE_PATH, { force: true });
   });
 
   it("should be visible when no ZERO_TOKEN is set", () => {
@@ -170,15 +173,17 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("zero computer-use get-app-state --app <app>");
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
     expect(helpOutput).toContain("/tmp/vm0/computer-use");
+    expect(helpOutput).toContain("overwrites the same files");
   });
 
-  it("should write screenshot data URLs to a local file in command result console output", async () => {
+  it("should write screenshot and app state data to local files in command result console output", async () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
+    const appState = "snapshot_id=snap_1\nw0 AXWindow";
     const text = await formatComputerUseResultForConsole({
       app: "Slack/Test App",
       snapshotId: "desktop_test_snapshot",
-      appState: "snapshot_id=snap_1\nw0 AXWindow",
+      appState,
       screenshot: `data:image/png;base64,${screenshotBase64}`,
       screenshotSource: "window",
     });
@@ -187,21 +192,23 @@ describe("computer-use command visibility", () => {
     expect(parsed.status).toBe("succeeded");
     expect(parsed.snapshotId).toBe("desktop_test_snapshot");
     expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
-    expect(parsed.appState).toBe("snapshot_id=snap_1\nw0 AXWindow");
-    expect(text).toContain("snapshot_id=snap_1");
+    expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
     expect(text).not.toContain("screenshotSource");
     expect(text).not.toContain(screenshotBase64);
+    expect(text).not.toContain("w0 AXWindow");
     await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
       screenshotBytes,
     );
+    await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
   });
 
-  it("should print a screenshot file path for get-app-state", async () => {
+  it("should print screenshot and app state file paths for get-app-state", async () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
+    const appState = "snapshot_id=desktop_test_snapshot\nw0 AXWindow";
     server.use(
       http.post(
         "http://localhost:3000/api/zero/computer-use/commands",
@@ -228,7 +235,7 @@ describe("computer-use command visibility", () => {
             result: {
               app: "Slack/Test App",
               snapshotId: "desktop_test_snapshot",
-              appState: "snapshot_id=desktop_test_snapshot\nw0 AXWindow",
+              appState,
               screenshot: `data:image/png;base64,${screenshotBase64}`,
               screenshotMimeType: "image/png",
               screenshotWidth: 1363,
@@ -258,15 +265,15 @@ describe("computer-use command visibility", () => {
     expect(parsed.status).toBe("succeeded");
     expect(parsed.snapshotId).toBe("desktop_test_snapshot");
     expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
-    expect(parsed.appState).toBe(
-      "snapshot_id=desktop_test_snapshot\nw0 AXWindow",
-    );
+    expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
     expect(parsed.screenshotWidth).toBeUndefined();
     expect(parsed.screenshotHeight).toBeUndefined();
     expect(output).not.toContain(screenshotBase64);
+    expect(output).not.toContain("w0 AXWindow");
     await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
       screenshotBytes,
     );
+    await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
   });
 
   it("should send click snapshot coordinates and mouse options", async () => {
@@ -350,6 +357,9 @@ describe("computer-use command visibility", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
+    const screenshotBytes = Buffer.from("test-png-data");
+    const screenshotBase64 = screenshotBytes.toString("base64");
+    const appState = "snapshot_id=desktop_test_snapshot\n7 button Send";
     server.use(
       http.post(
         "http://localhost:3000/api/zero/computer-use/write-commands",
@@ -386,7 +396,13 @@ describe("computer-use command visibility", () => {
               button: "left",
               clickCount: 1,
             },
-            result: { action: { summary: "Clicked elementIndex=7" } },
+            result: {
+              app: "Slack/Test App",
+              snapshotId: "desktop_test_snapshot",
+              appState,
+              screenshot: `data:image/png;base64,${screenshotBase64}`,
+              action: { summary: "Clicked elementIndex=7" },
+            },
             timeoutMs: 30_000,
             createdAt: "2026-05-21T10:00:00.000Z",
             claimedAt: "2026-05-21T10:00:01.000Z",
@@ -409,7 +425,15 @@ describe("computer-use command visibility", () => {
     ]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
+    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
     expect(output).toContain('"status": "succeeded"');
     expect(output).toContain('"summary": "Clicked elementIndex=7"');
+    expect(output).not.toContain("7 button Send");
+    await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
+    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+      screenshotBytes,
+    );
   });
 });
