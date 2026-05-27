@@ -45,6 +45,12 @@ def _is_usage_quantity(value: object) -> TypeGuard[int]:
 
 
 def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, ...]) -> None:
+    """Store usage quantities using positive-wins, zero-does-not-clobber semantics.
+
+    Some provider update payloads echo fields from earlier events as ``0``.
+    Preserve an already-recorded quantity in that case, while still recording
+    initial zero values when a category has not appeared yet.
+    """
     for raw_field, category in ANTHROPIC_USAGE_FIELD_CATEGORIES.items():
         value = values.get((*prefix, raw_field))
         if _is_usage_quantity(value) and (value > 0 or category not in target):
@@ -153,10 +159,7 @@ class AnthropicMessagesJsonUsageExtractor:
         model = result.values.get(("model",))
         if isinstance(model, str) and model:
             usage["model"] = model
-        for raw_field, category in ANTHROPIC_USAGE_FIELD_CATEGORIES.items():
-            value = result.values.get(("usage", raw_field))
-            if _is_usage_quantity(value) and (value > 0 or category not in usage):
-                usage[category] = value
+        _store_selected_usage_values(result.values, usage, ("usage",))
         if not usage:
             return None, None
         message_id = result.values.get(("id",))

@@ -65,11 +65,15 @@ def _is_usage_quantity(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def _store_quantity(target: dict, category: str, value: object) -> bool:
+def _store_quantity(target: dict, category: str, value: object) -> None:
+    """Store usage quantities using positive-wins, zero-does-not-clobber semantics.
+
+    Later provider update payloads may report ``0`` for a category that an
+    earlier payload reported as non-zero. Preserve the recorded quantity in
+    that case, while still recording initial zero values for missing categories.
+    """
     if _is_usage_quantity(value) and (value > 0 or category not in target):
         target[category] = value
-        return True
-    return False
 
 
 def _has_positive_usage_quantity(values: dict) -> bool:
