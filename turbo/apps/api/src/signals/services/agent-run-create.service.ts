@@ -2869,12 +2869,12 @@ function buildStoredExecutionSecrets(args: {
     args.customConnectorContext.secrets,
     platformSecrets,
   );
+  const firewallConnectorTypes = args.connectorContext.connectorTypes.filter(
+    isFirewallConnectorType,
+  );
   const authValues = mergeRecords(
     secrets,
-    connectorAuthVariableValues(
-      args.connectorContext.connectorTypes,
-      args.bodyVars,
-    ),
+    connectorAuthVariableValues(firewallConnectorTypes, args.bodyVars),
   );
 
   return {

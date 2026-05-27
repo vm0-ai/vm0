@@ -933,6 +933,63 @@ describe("POST /api/agent/runs", () => {
     );
   });
 
+  it("does not store variable-backed auth values for connectors without firewalls", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "CLOUDINARY_CLOUD_NAME",
+      value: "demo-cloud",
+    });
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "CLOUDINARY_TOKEN",
+        encryptedValue: encryptSecretForTests("cloudinary-key"),
+        type: "user",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "CLOUDINARY_API_SECRET",
+        encryptedValue: encryptSecretForTests("cloudinary-secret"),
+        type: "user",
+      },
+    ]);
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use Cloudinary",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly firewalls?: readonly { readonly name: string }[];
+    };
+    expect(executionContext.environment.CLOUDINARY_CLOUD_NAME).toBe(
+      "demo-cloud",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toStrictEqual({
+      CLOUDINARY_API_SECRET: "cloudinary-secret",
+      CLOUDINARY_TOKEN: "cloudinary-key",
+    });
+    expect(executionContext.firewalls).toBeUndefined();
+  });
+
   it("loads an api-token connector secret used only by the firewall, not the compose environment", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
