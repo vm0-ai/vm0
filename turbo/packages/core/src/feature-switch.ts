@@ -266,9 +266,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DocsSite]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Enable the authenticated Strapi-backed docs site routes, navigation entry, and docs pages. Staff-only during rollout; per-user toggle via Lab.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Enable the Strapi-backed public docs site routes, navigation entry, and docs pages.",
+    enabled: true,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",

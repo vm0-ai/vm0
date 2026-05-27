@@ -58,10 +58,12 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should enable docs site for staff orgs", () => {
+  it("should enable docs site globally", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.DocsSite, {})).toBe(true);
+
     expect(
       isFeatureEnabled(FeatureSwitchKey.DocsSite, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+        orgId: "org_nonexistent",
       }),
     ).toBe(true);
   });

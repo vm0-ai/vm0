@@ -22,23 +22,23 @@ describe("docs access", () => {
     loadFeatureSwitchOverridesMock.mockReset();
   });
 
-  it("does not query feature switch overrides for signed-out users", async () => {
+  it("allows signed-out users without querying feature switch overrides", async () => {
     const canViewDocsForUser = createCanViewDocsForUser(
       loadFeatureSwitchOverridesMock,
     );
 
-    await expect(canViewDocsForUser(null, null)).resolves.toBe(false);
+    await expect(canViewDocsForUser(null, null)).resolves.toBe(true);
 
     expect(loadFeatureSwitchOverridesMock).not.toHaveBeenCalled();
   });
 
-  it("does not query feature switch overrides for users without an org", async () => {
+  it("allows users without an org without querying feature switch overrides", async () => {
     const canViewDocsForUser = createCanViewDocsForUser(
       loadFeatureSwitchOverridesMock,
     );
 
     await expect(canViewDocsForUser("user-without-org", null)).resolves.toBe(
-      false,
+      true,
     );
 
     expect(loadFeatureSwitchOverridesMock).not.toHaveBeenCalled();
@@ -70,7 +70,7 @@ describe("docs access", () => {
 
     await expect(
       canViewDocsForUser("user-docs-fallback", "org-docs-fallback"),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
   });
 
   it("evaluates the current Clerk session", async () => {
@@ -79,7 +79,7 @@ describe("docs access", () => {
       orgId: null,
     });
 
-    await expect(canViewDocs()).resolves.toBe(false);
+    await expect(canViewDocs()).resolves.toBe(true);
 
     expect(authMock).toHaveBeenCalledTimes(1);
   });
