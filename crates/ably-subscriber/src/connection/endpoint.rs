@@ -13,9 +13,9 @@ fn is_localhost_url(url: &url::Url) -> bool {
     }
 }
 
-fn parse_endpoint_host(host: &str) -> Result<url::Url, Error> {
+fn parse_endpoint_host(host: &str, scheme: &str) -> Result<url::Url, Error> {
     let url =
-        url::Url::parse(&format!("http://{host}/")).map_err(|_| Error::InvalidEndpointHost)?;
+        url::Url::parse(&format!("{scheme}://{host}/")).map_err(|_| Error::InvalidEndpointHost)?;
 
     if url.host().is_none()
         || !url.username().is_empty()
@@ -35,15 +35,13 @@ fn build_endpoint_base_url(
     localhost_scheme: &str,
     remote_scheme: &str,
 ) -> Result<url::Url, Error> {
-    let mut url = parse_endpoint_host(host)?;
-    let scheme = if is_localhost_url(&url) {
+    let host_url = parse_endpoint_host(host, "http")?;
+    let scheme = if is_localhost_url(&host_url) {
         localhost_scheme
     } else {
         remote_scheme
     };
-    url.set_scheme(scheme)
-        .map_err(|_| Error::InvalidEndpointHost)?;
-    Ok(url)
+    parse_endpoint_host(host, scheme)
 }
 
 /// Derive REST host from realtime host.
@@ -117,6 +115,18 @@ mod tests {
     }
 
     #[test]
+    fn build_ws_url_preserves_explicit_remote_port() {
+        let url = build_ws_url("sandbox-realtime.ably.io:80", "tok", None).unwrap();
+
+        assert_websocket_endpoint(
+            &url,
+            "wss",
+            url::Host::Domain("sandbox-realtime.ably.io"),
+            Some(80),
+        );
+    }
+
+    #[test]
     fn rest_host_default() {
         assert_eq!(rest_host("realtime.ably.io"), "rest.ably.io");
     }
@@ -143,6 +153,16 @@ mod tests {
         assert_eq!(
             url.as_str(),
             "http://127.0.0.1:9000/keys/testKey.testId/requestToken"
+        );
+    }
+
+    #[test]
+    fn build_token_request_url_preserves_explicit_remote_port() {
+        let url = build_token_request_url("rest.ably.io:80", "testKey.testId").unwrap();
+
+        assert_eq!(
+            url.as_str(),
+            "https://rest.ably.io:80/keys/testKey.testId/requestToken"
         );
     }
 
