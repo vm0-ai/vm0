@@ -4,7 +4,7 @@ import {
   getConnectorEnvBindings,
   getConnectorManualGrantFieldNames,
 } from "../connector-utils";
-import { extractFirewallAuthReferences } from "../firewall-types";
+import { extractFirewallTemplateReferences } from "../firewall-types";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
@@ -120,7 +120,7 @@ describe("firewall secret name consistency", () => {
       const { secretBackedKeys, variableBackedKeys } =
         connectorAuthSources(connectorType);
       const firewall = getConnectorFirewall(connectorType);
-      const references = extractFirewallAuthReferences(firewall.apis);
+      const references = extractFirewallTemplateReferences(firewall.apis);
 
       for (const key of references.secrets) {
         expect(

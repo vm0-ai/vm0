@@ -180,7 +180,7 @@ const AUTH_SECRET_PATTERN =
 const AUTH_REFERENCE_PATTERN =
   /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
-export interface FirewallAuthReferences {
+export interface FirewallTemplateReferences {
   readonly secrets: readonly string[];
   readonly vars: readonly string[];
 }
@@ -243,7 +243,7 @@ export function extractSecretNamesFromApis(
   return [...names];
 }
 
-function collectAuthReferencesFromTemplate(
+function collectFirewallTemplateReferencesFromValue(
   template: string,
   references: { secrets: Set<string>; vars: Set<string> },
 ): void {
@@ -270,9 +270,9 @@ function collectAuthReferencesFromTemplate(
   }
 }
 
-export function extractFirewallAuthReferences(
+export function extractFirewallTemplateReferences(
   apis: FirewallConfig["apis"],
-): FirewallAuthReferences {
+): FirewallTemplateReferences {
   const references = {
     secrets: new Set<string>(),
     vars: new Set<string>(),
@@ -280,13 +280,13 @@ export function extractFirewallAuthReferences(
 
   for (const entry of apis) {
     for (const value of Object.values(entry.auth.headers ?? {})) {
-      collectAuthReferencesFromTemplate(value, references);
+      collectFirewallTemplateReferencesFromValue(value, references);
     }
     if (entry.auth.base) {
-      collectAuthReferencesFromTemplate(entry.auth.base, references);
+      collectFirewallTemplateReferencesFromValue(entry.auth.base, references);
     }
     for (const value of Object.values(entry.auth.query ?? {})) {
-      collectAuthReferencesFromTemplate(value, references);
+      collectFirewallTemplateReferencesFromValue(value, references);
     }
   }
 

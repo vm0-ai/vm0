@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  extractFirewallAuthReferences,
+  extractFirewallTemplateReferences,
   extractSecretNamesFromApis,
 } from "../firewall-types";
 
@@ -227,7 +227,7 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
       },
     ];
 
-    expect(extractFirewallAuthReferences(apis)).toStrictEqual({
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
       secrets: ["PASS", "API_KEY", "WEBHOOK", "QUERY_SECRET"],
       vars: ["USER", "API_KEY", "WEBHOOK_HOST", "QUERY_VAR"],
     });
