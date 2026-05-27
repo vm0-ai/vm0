@@ -741,6 +741,8 @@ class TestHandleFirewallRequest:
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_error"] == "invalid_auth_expiry"
+        assert "Authorization" not in flow.request.headers
+        assert cached_headers(("test-run", "https://api.github.com")) is None
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_auth_expiry"
         assert "valid cache expiry" in body["message"]
