@@ -1,7 +1,7 @@
-import { computeTestComposeVersionId } from "../api-test-helpers/compose-content";
-import type { TestAgentComposeContent } from "../api-test-helpers/compose-content";
+import { createHash } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
+import type { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
@@ -17,6 +17,32 @@ import { conversations } from "@vm0/db/schema/conversation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { uniqueId } from "../test-helpers";
+import type { z } from "zod";
+
+type TestAgentComposeContent = z.infer<typeof agentComposeApiContentSchema>;
+
+function sortObjectKeys(value: unknown): unknown {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(sortObjectKeys);
+  }
+
+  const sorted: Record<string, unknown> = {};
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  for (const key of keys) {
+    sorted[key] = sortObjectKeys(record[key]);
+  }
+  return sorted;
+}
+
+function computeTestComposeVersionId(content: TestAgentComposeContent): string {
+  const canonical = JSON.stringify(sortObjectKeys(content));
+  return createHash("sha256").update(canonical).digest("hex");
+}
 
 type TestChatMessageRow = {
   readonly id: string;
@@ -145,7 +171,7 @@ export async function createTestComposeVersion(
 }
 
 // ---------------------------------------------------------------------------
-// Session / conversation seeders (migrated from api-test-helpers/agents.ts)
+// Session / conversation seeders used by migration tests.
 // ---------------------------------------------------------------------------
 
 /**
