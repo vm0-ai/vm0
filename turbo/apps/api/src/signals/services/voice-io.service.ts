@@ -19,7 +19,7 @@ function orgTier(orgId: string): Computed<Promise<OrgTier>> {
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
 
-    return orgTierSchema.parse(row?.tier ?? "free");
+    return orgTierSchema.parse(row?.tier ?? "pro-suspend");
   });
 }
 
@@ -51,15 +51,16 @@ export function audioInputQuota(
 ): Computed<Promise<AudioInputQuotaResponse>> {
   return computed(async (get): Promise<AudioInputQuotaResponse> => {
     const tier = await get(orgTier(orgId));
-    if (tier !== "free") {
+    if (tier === "pro" || tier === "team") {
       return { allowed: true, count: 0, limit: null };
     }
 
     const count = await get(audioInputCount(orgId, userId));
+    const limit = tier === "pro-suspend" ? 0 : AUDIO_INPUT_FREE_QUOTA;
     return {
-      allowed: count < AUDIO_INPUT_FREE_QUOTA,
+      allowed: count < limit,
       count,
-      limit: AUDIO_INPUT_FREE_QUOTA,
+      limit,
     };
   });
 }

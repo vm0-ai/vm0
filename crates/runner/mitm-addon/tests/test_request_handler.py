@@ -1,6 +1,7 @@
 """Tests for the mitm addon request hook."""
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -76,6 +77,17 @@ def _write_github_firewall_registry(
             },
         ),
     )
+
+
+@pytest.fixture
+def usage_pending_path(tmp_path: Path) -> Iterator[Path]:
+    pending_path = tmp_path / "usage-pending"
+    usage.counters.reset_for_tests()
+    usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+    try:
+        yield pending_path
+    finally:
+        usage.counters.reset_for_tests()
 
 
 class TestRequestHandler:
@@ -1179,14 +1191,15 @@ class TestRequestHandler:
         assert flow.request.headers["Authorization"] == "Bearer x"
 
     async def test_billable_flow_is_tracked_before_responseheaders(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+        self,
+        tmp_path,
+        usage_pending_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        headers,
     ):
         """Drain sees billable requests after request() even before responseheaders()."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         reg_path = _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
@@ -1211,37 +1224,26 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
         )
 
-        try:
-            with (
-                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-                fake_firewall_headers(),
-            ):
-                await mitm_addon.request(flow)
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
 
-            assert flow.metadata["_usage_flow_tracked"] is True
-            assert usage.counters._in_flight_flows == 1
-            usage.write_pending_snapshot(flush_request_id="request-1")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="request-1",
-            )
-        finally:
-            if usage.counters._in_flight_flows:
-                usage.decrement_in_flight_flows()
-            usage.set_pending_path("")
+        assert flow.metadata["_usage_flow_tracked"] is True
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_local_firewall_error_does_not_track_usage_flow(
-        self, tmp_path, real_flow, mitm_ctx, headers
+        self, tmp_path, usage_pending_path, real_flow, mitm_ctx, headers
     ):
         """Local auth failures do not enqueue usage and must not leak drain counters."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         reg_path = _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
@@ -1267,28 +1269,26 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
         )
 
-        try:
-            with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-                await mitm_addon.request(flow)
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
 
-            assert flow.response is not None
-            assert flow.response.status_code == 502
-            assert flow.metadata["firewall_error"] == "auth_unavailable"
-            assert "_usage_flow_tracked" not in flow.metadata
-            assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, buffered=0, reports=0)
-        finally:
-            usage.set_pending_path("")
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_error"] == "auth_unavailable"
+        assert "_usage_flow_tracked" not in flow.metadata
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_unexpected_request_exception_releases_tracking(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, usage_pending_path, real_flow, mitm_ctx
     ):
         """Unexpected request-hook failures must not leak start-time or usage counters."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         reg_path = _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
@@ -1313,32 +1313,34 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
         )
 
-        try:
-            with (
-                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-                patch.object(auth, "get_firewall_headers", AsyncMock(return_value={})),
-                pytest.raises(KeyError),
-            ):
-                await mitm_addon.request(flow)
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value={})),
+            pytest.raises(KeyError),
+        ):
+            await mitm_addon.request(flow)
 
-            assert flow.id not in mitm_addon._request_start_times
-            assert "_usage_flow_tracked" not in flow.metadata
-            assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, buffered=0, reports=0)
-        finally:
-            if usage.counters._in_flight_flows:
-                usage.decrement_in_flight_flows()
-            usage.set_pending_path("")
+        assert flow.id not in mitm_addon._request_start_times
+        assert "_usage_flow_tracked" not in flow.metadata
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_non_billable_model_provider_is_not_tracked_before_responseheaders(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+        self,
+        tmp_path,
+        usage_pending_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        headers,
     ):
         """Model-provider usage only reports when the firewall is billable."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         firewall_name = "model-provider:anthropic-api-key"
         reg_path = _write_registry(
             tmp_path,
@@ -1369,31 +1371,29 @@ class TestRequestHandler:
             method="POST",
         )
 
-        try:
-            with (
-                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-                fake_firewall_headers(),
-            ):
-                await mitm_addon.request(flow)
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
 
-            assert flow.metadata["firewall_name"] == firewall_name
-            assert flow.metadata["cli_agent_type"] == "claude-code"
-            assert flow.metadata["firewall_billable"] is False
-            assert "_usage_flow_tracked" not in flow.metadata
-            assert usage.counters._in_flight_flows == 0
-            assert_pending(pending_path, flows=0, buffered=0, reports=0)
-        finally:
-            usage.set_pending_path("")
+        assert flow.metadata["firewall_name"] == firewall_name
+        assert flow.metadata["cli_agent_type"] == "claude-code"
+        assert flow.metadata["firewall_billable"] is False
+        assert "_usage_flow_tracked" not in flow.metadata
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_billable_model_provider_records_model_usage_provider(
-        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+        self, tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
     ):
         """Registry modelUsageProvider is available to model usage reporting."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         firewall_name = "model-provider:anthropic-api-key"
         reg_path = _write_registry(
             tmp_path,
@@ -1429,40 +1429,30 @@ class TestRequestHandler:
             method="POST",
         )
 
-        try:
-            with (
-                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-                fake_firewall_headers(),
-            ):
-                await mitm_addon.request(flow)
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
 
-            assert flow.metadata["firewall_name"] == firewall_name
-            assert flow.metadata["cli_agent_type"] == "codex"
-            assert flow.metadata["firewall_billable"] is True
-            assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
-            assert flow.metadata["_usage_flow_tracked"] is True
-            usage.write_pending_snapshot(flush_request_id="request-1")
-            assert_pending(
-                pending_path,
-                flows=1,
-                buffered=0,
-                reports=0,
-                flush_request_id="request-1",
-            )
-        finally:
-            if usage.counters._in_flight_flows:
-                usage.decrement_in_flight_flows()
-            usage.set_pending_path("")
+        assert flow.metadata["firewall_name"] == firewall_name
+        assert flow.metadata["cli_agent_type"] == "codex"
+        assert flow.metadata["firewall_billable"] is True
+        assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
+        assert flow.metadata["_usage_flow_tracked"] is True
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_billable_auth_url_rewrite_flow_drains_after_response(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, usage_pending_path, real_flow, mitm_ctx
     ):
         """Inline auth.base responses still pair request-time tracking with response()."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         reg_path = _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
@@ -1504,10 +1494,9 @@ class TestRequestHandler:
 
         async def forward_request(*_args):
             assert flow.metadata["_usage_flow_tracked"] is True
-            assert usage.counters._in_flight_flows == 1
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
-                pending_path,
+                usage_pending_path,
                 flows=1,
                 buffered=0,
                 reports=0,
@@ -1515,61 +1504,49 @@ class TestRequestHandler:
             )
             return (200, b'{"delivered":true}', {"Content-Type": "application/json"})
 
-        try:
-            with (
-                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-                patch.object(
-                    auth,
-                    "get_firewall_headers",
-                    AsyncMock(return_value=token_meta),
-                ),
-                patch.object(
-                    auth,
-                    "forward_request",
-                    AsyncMock(side_effect=forward_request),
-                ),
-            ):
-                await mitm_addon.request(flow)
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(return_value=token_meta),
+            ),
+            patch.object(
+                auth,
+                "forward_request",
+                AsyncMock(side_effect=forward_request),
+            ),
+        ):
+            await mitm_addon.request(flow)
 
-                assert flow.response is not None
-                assert flow.metadata["auth_url_rewrite"] is True
-                assert flow.metadata["_usage_flow_tracked"] is True
-                assert usage.counters._in_flight_flows == 1
-                usage.write_pending_snapshot(flush_request_id="request-1")
-                assert_pending(
-                    pending_path,
-                    flows=1,
-                    buffered=0,
-                    reports=0,
-                    flush_request_id="request-1",
-                )
-
-                mitm_addon.response(flow)
-
-            assert "_usage_flow_tracked" not in flow.metadata
-            assert usage.counters._in_flight_flows == 0
+            assert flow.response is not None
+            assert flow.metadata["auth_url_rewrite"] is True
+            assert flow.metadata["_usage_flow_tracked"] is True
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
-                pending_path,
-                flows=0,
+                usage_pending_path,
+                flows=1,
                 buffered=0,
                 reports=0,
                 flush_request_id="request-1",
             )
-        finally:
-            if usage.counters._in_flight_flows:
-                usage.decrement_in_flight_flows()
-            usage.set_pending_path("")
+
+            mitm_addon.response(flow)
+
+        assert "_usage_flow_tracked" not in flow.metadata
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, usage_pending_path, real_flow, mitm_ctx
     ):
         """Failed inline auth.base forwarding is a local response and drains immediately."""
-        pending_path = tmp_path / "usage-pending"
-        usage.counters._in_flight_flows = 0
-        usage.counters._pending_reports = 0
-        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-
         reg_path = _write_registry(
             tmp_path,
             vm_info=_single_firewall_vm(
@@ -1611,10 +1588,9 @@ class TestRequestHandler:
 
         async def fail_forward_request(*_args):
             assert flow.metadata["_usage_flow_tracked"] is True
-            assert usage.counters._in_flight_flows == 1
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
-                pending_path,
+                usage_pending_path,
                 flows=1,
                 buffered=0,
                 reports=0,
@@ -1622,40 +1598,34 @@ class TestRequestHandler:
             )
             raise RuntimeError("upstream unavailable")
 
-        try:
-            with (
-                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-                patch.object(
-                    auth,
-                    "get_firewall_headers",
-                    AsyncMock(return_value=token_meta),
-                ),
-                patch.object(
-                    auth,
-                    "forward_request",
-                    AsyncMock(side_effect=fail_forward_request),
-                ),
-            ):
-                await mitm_addon.request(flow)
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(return_value=token_meta),
+            ),
+            patch.object(
+                auth,
+                "forward_request",
+                AsyncMock(side_effect=fail_forward_request),
+            ),
+        ):
+            await mitm_addon.request(flow)
 
-            assert flow.response is not None
-            assert flow.response.status_code == 502
-            assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
-            assert "auth_url_rewrite" not in flow.metadata
-            assert "_usage_flow_tracked" not in flow.metadata
-            assert usage.counters._in_flight_flows == 0
-            usage.write_pending_snapshot(flush_request_id="request-1")
-            assert_pending(
-                pending_path,
-                flows=0,
-                buffered=0,
-                reports=0,
-                flush_request_id="request-1",
-            )
-        finally:
-            if usage.counters._in_flight_flows:
-                usage.decrement_in_flight_flows()
-            usage.set_pending_path("")
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "auth_url_rewrite" not in flow.metadata
+        assert "_usage_flow_tracked" not in flow.metadata
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     async def test_firewall_no_base_match_passes_through(
         self, tmp_path, real_flow, mitm_ctx, headers

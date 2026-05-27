@@ -14,6 +14,7 @@ import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -88,8 +89,17 @@ describe("onboarding navigation", () => {
     });
   });
 
-  it("should navigate to / after completing admin onboarding via web", async () => {
+  it("should start checkout after completing admin onboarding via web", async () => {
     mockOnboardingNeededAdmin();
+    let checkoutBody: Record<string, unknown> | null = null;
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
+      }),
+    );
 
     detachedSetupPage({ context, path: "/onboarding" });
 
@@ -109,32 +119,18 @@ describe("onboarding navigation", () => {
     });
     click(screen.getByTestId("connector-card-github"));
 
-    // After completing onboarding, the API reports needsOnboarding: false
-    server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-        return respond(200, {
-          needsOnboarding: false,
-          isAdmin: true,
-          hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: MOCK_AGENT_ID,
-          defaultAgentMetadata: null,
-        });
-      }),
-    );
-    // Register the new default agent so the subsequent chat page setup can
-    // find it instead of treating it as missing and looping back.
-    registerAgent(MOCK_AGENT_ID);
-
-    // "Get Started" finishes onboarding (step 2 is the terminal step) and
-    // navigates into the web chat.
     await waitFor(() => {
-      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+      expect(screen.getByText("Next")).toBeInTheDocument();
+    });
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
     });
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(pathname()).not.toBe("/onboarding");
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 

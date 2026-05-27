@@ -94,11 +94,11 @@ export const updateAutoRechargeConfig$ = command(
         .limit(1);
       signal.throwIfAborted();
 
-      const orgTier = row?.tier ?? "free";
-      if (orgTier === "free") {
+      const orgTier = row?.tier ?? "pro-suspend";
+      if (orgTier !== "pro" && orgTier !== "team") {
         return {
           ok: false,
-          error: "Auto-recharge is only available for paid plans (Pro/Max)",
+          error: "Auto-recharge is only available for paid plans (Pro/Team)",
         };
       }
       if (threshold === undefined || amount === undefined) {

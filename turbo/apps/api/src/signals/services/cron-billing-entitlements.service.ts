@@ -117,7 +117,7 @@ async function reconcileBillingCandidate(
     const rows = await db
       .update(orgMetadata)
       .set({
-        tier: "free",
+        tier: "pro-suspend",
         subscriptionStatus: "canceled",
         stripeSubscriptionId: null,
         cancelAtPeriodEnd: false,
@@ -180,7 +180,7 @@ async function reconcileBillingCandidate(
   const rows = await db
     .update(orgMetadata)
     .set({
-      tier: "free",
+      tier: "pro-suspend",
       ...syncedFields,
     })
     .where(currentCandidate)

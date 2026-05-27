@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { createApp } from "../../../app-factory";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -216,7 +217,7 @@ async function deleteSpeechPricing(): Promise<void> {
 async function seedVoiceFixture(options: {
   readonly audioOutputEnabled?: boolean;
   readonly credits?: number;
-  readonly tier?: "free" | "pro" | "team";
+  readonly tier?: OrgTier;
   readonly withPricing?: boolean;
 }): Promise<VoiceFixture> {
   const orgId = `org_${randomUUID()}`;

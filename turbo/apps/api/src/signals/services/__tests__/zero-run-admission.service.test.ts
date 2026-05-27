@@ -29,7 +29,11 @@ async function withCreditFixture<T>(
   const orgId = `${ORG_ID_PREFIX}${randomUUID()}`;
   const db = store.set(writeDb$);
 
-  await db.insert(orgMetadata).values({ orgId, credits: 10_000 });
+  await db.insert(orgMetadata).values({
+    orgId,
+    tier: "free",
+    credits: 10_000,
+  });
 
   return await fn({ orgId });
 }
@@ -48,7 +52,7 @@ describe("resolveOrgCreditAvailability", () => {
 
       await expect(
         resolveOrgCreditAvailability({ db, orgId }),
-      ).resolves.toStrictEqual({ spendableCredits: 7500 });
+      ).resolves.toStrictEqual({ tier: "free", spendableCredits: 7500 });
     });
   });
 });

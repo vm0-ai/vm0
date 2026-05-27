@@ -22,13 +22,14 @@ const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
   Object.freeze({
     free: 1,
+    "pro-suspend": 0,
     pro: 2,
     team: 10,
   });
 
 function tierLimit(tier: OrgTier | null | undefined): number {
   if (!tier) {
-    return TIER_CONCURRENCY_LIMITS.free;
+    return TIER_CONCURRENCY_LIMITS["pro-suspend"];
   }
   return TIER_CONCURRENCY_LIMITS[tier];
 }

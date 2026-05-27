@@ -666,11 +666,13 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
 
     const provider = `test-provider-${randomUUID()}`;
-    await db.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 1000,
-      tier: "free",
-    });
+    await db
+      .update(orgMetadata)
+      .set({
+        credits: 1000,
+        tier: "free",
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     await db.insert(usagePricing).values({
       kind: "model",
       provider,

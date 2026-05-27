@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -10,17 +9,16 @@ import { desc, eq, sql } from "drizzle-orm";
 
 import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 
 export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 export const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
 
-const STARTER_GRANT_AMOUNT = 10_000;
-const STARTER_GRANT_SOURCE = "starter_grant";
 const FAR_FUTURE_CACHE_MS = 365 * 24 * 60 * 60 * 1000;
 const ORG_CACHE_TTL_MS = 60_000;
+const TEST_ORG_CREDITS = 100_000;
 
 interface IssuedCliToken {
   readonly token: string;
@@ -148,46 +146,29 @@ function clerkRoleToCacheRole(role: string): "admin" | "member" {
   return role === "org:admin" ? "admin" : "member";
 }
 
-const ensureStarterCreditGrant$ = command(
-  async ({ set }, orgId: string, _signal: AbortSignal): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ orgId: orgMetadata.orgId })
-        .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, orgId))
-        .limit(1);
-      if (existing) {
-        return;
-      }
-
-      const expiresAt = nowDate();
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-      const inserted = await tx
-        .insert(creditExpiresRecord)
-        .values({
-          orgId,
-          source: STARTER_GRANT_SOURCE,
-          stripeInvoiceId: null,
-          amount: STARTER_GRANT_AMOUNT,
-          remaining: STARTER_GRANT_AMOUNT,
-          expiresAt,
-        })
-        .onConflictDoNothing()
-        .returning({ id: creditExpiresRecord.id });
-      if (inserted.length === 0) {
-        return;
-      }
-
-      await tx.execute(
-        sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-            VALUES (${orgId}, ${STARTER_GRANT_AMOUNT}, now(), now())
-            ON CONFLICT (org_id)
-            DO UPDATE SET credits = org_metadata.credits + ${STARTER_GRANT_AMOUNT}, updated_at = now()`,
-      );
+async function ensureTestOrgBillingRow(
+  writeDb: Db,
+  orgId: string,
+): Promise<void> {
+  await writeDb
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      tier: "pro",
+      credits: TEST_ORG_CREDITS,
+      updatedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        tier: "pro",
+        credits: sql`
+          GREATEST(COALESCE(${orgMetadata.credits}, 0), ${TEST_ORG_CREDITS})
+        `,
+        updatedAt: nowDate(),
+      },
     });
-  },
-);
+}
 
 export const ensureTestOrg$ = command(
   async (
@@ -227,6 +208,9 @@ export const ensureTestOrg$ = command(
       signal.throwIfAborted();
     }
 
+    await ensureTestOrgBillingRow(writeDb, org.id);
+    signal.throwIfAborted();
+
     await writeDb
       .insert(orgMembersCache)
       .values({
@@ -242,9 +226,6 @@ export const ensureTestOrg$ = command(
           cachedAt: new Date(nowDate().getTime() + FAR_FUTURE_CACHE_MS),
         },
       });
-    signal.throwIfAborted();
-
-    await set(ensureStarterCreditGrant$, org.id, signal);
     signal.throwIfAborted();
 
     return { orgId: org.id };

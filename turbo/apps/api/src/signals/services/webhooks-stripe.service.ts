@@ -5,15 +5,15 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
 import { and, eq, gt, lte, sql } from "drizzle-orm";
 
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getCampaign } from "./one-time-products";
+import { tierFromPriceId } from "./zero-billing-checkout.service";
 
 const L = logger("WebhookStripe");
-const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
+const TRIALING_CREDIT_EXPIRY_DAYS = 7;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -79,6 +79,9 @@ function monthlyCreditsForTier(tier: OrgTier): number {
     case "free": {
       return 0;
     }
+    case "pro-suspend": {
+      return 0;
+    }
     case "pro": {
       return 20_000;
     }
@@ -86,6 +89,21 @@ function monthlyCreditsForTier(tier: OrgTier): number {
       return 120_000;
     }
   }
+}
+
+function subscriptionCreditExpiresAt(
+  subscriptionStatus: string,
+  periodEndDate: Date,
+): Date {
+  if (subscriptionStatus === "trialing") {
+    const expiresAt = nowDate();
+    expiresAt.setDate(expiresAt.getDate() + TRIALING_CREDIT_EXPIRY_DAYS);
+    return expiresAt;
+  }
+
+  const expiresAt = new Date(periodEndDate);
+  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  return expiresAt;
 }
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -104,18 +122,6 @@ function creditPurchaseAmount(session: CheckoutSessionInput): number {
 
 function autoRechargeNeverExpiresAt(): Date {
   return new Date("2999-12-31T00:00:00Z");
-}
-
-function tierFromPriceId(priceId: string): OrgTier {
-  const priceMap = env("ZERO_PRICE");
-  if (priceMap) {
-    for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
-      if (priceMap[tier]?.includes(priceId)) {
-        return tier;
-      }
-    }
-  }
-  throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
 
 async function grantOrgCredits(
@@ -433,6 +439,7 @@ async function handleCheckoutCompleted(
       stripeSubscriptionId: subscriptionId,
       subscriptionStatus: subscription.status,
       cancelAtPeriodEnd: false,
+      onboardingPaymentPending: false,
       ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
       updatedAt: nowDate(),
     })
@@ -521,8 +528,10 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     );
   }
   const periodEndDate = new Date(periodEndUnix * 1000);
-  const expiresAt = new Date(periodEndDate);
-  expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const expiresAt = subscriptionCreditExpiresAt(
+    subscriptionRecord.status,
+    periodEndDate,
+  );
 
   await db.transaction(async (tx) => {
     await expireCredits(tx, org.orgId);
@@ -585,7 +594,7 @@ async function handleSubscriptionDeleted(
   await db
     .update(orgMetadata)
     .set({
-      tier: "free",
+      tier: "pro-suspend",
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
       cancelAtPeriodEnd: false,

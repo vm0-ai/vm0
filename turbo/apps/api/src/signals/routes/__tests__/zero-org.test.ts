@@ -4,6 +4,7 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
 } from "@vm0/api-contracts/contracts/zero-org";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -39,7 +40,7 @@ interface SeedOrgArgs {
   readonly role: "admin" | "member";
   readonly slug?: string;
   readonly name?: string;
-  readonly tier?: "free" | "pro" | "team";
+  readonly tier?: OrgTier;
 }
 
 interface ClerkOrgFixture {
@@ -93,10 +94,7 @@ async function seedOrgCacheOnly(
   return { orgId, userId: "" };
 }
 
-async function setOrgTier(
-  orgId: string,
-  tier: "free" | "pro" | "team",
-): Promise<void> {
+async function setOrgTier(orgId: string, tier: OrgTier): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
     .insert(orgMetadata)
@@ -333,7 +331,7 @@ describe("PUT /api/zero/org", () => {
       id: orgId,
       slug,
       name: "Updated Org",
-      tier: "free",
+      tier: "pro-suspend",
     });
     expect(
       context.mocks.clerk.organizations.updateOrganization,
@@ -462,7 +460,7 @@ describe("PUT /api/zero/org", () => {
       id: orgId,
       slug: newSlug,
       name: "Test Org",
-      tier: "free",
+      tier: "pro-suspend",
     });
     expect(
       context.mocks.clerk.organizations.updateOrganization,
@@ -830,7 +828,7 @@ describe("GET /api/zero/org — org resolution", () => {
     expect(response.body.tier).toBe("pro");
   });
 
-  it("returns default free tier for new org", async () => {
+  it("returns default suspended tier for new org", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
@@ -842,7 +840,7 @@ describe("GET /api/zero/org — org resolution", () => {
       [200],
     );
 
-    expect(response.body.tier).toBe("free");
+    expect(response.body.tier).toBe("pro-suspend");
   });
 
   it("reflects updated tier value", async () => {
@@ -857,7 +855,7 @@ describe("GET /api/zero/org — org resolution", () => {
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    expect(first.body.tier).toBe("free");
+    expect(first.body.tier).toBe("pro-suspend");
 
     await setOrgTier(orgId, "team");
 
@@ -868,7 +866,7 @@ describe("GET /api/zero/org — org resolution", () => {
     expect(second.body.tier).toBe("team");
   });
 
-  it("returns free tier for brand-new org without metadata", async () => {
+  it("returns suspended tier for brand-new org without metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFixtures.push(await seedOrgCacheOnly(orgId));
@@ -881,7 +879,7 @@ describe("GET /api/zero/org — org resolution", () => {
     );
 
     expect(response.body.id).toBe(orgId);
-    expect(response.body.tier).toBe("free");
+    expect(response.body.tier).toBe("pro-suspend");
   });
 
   it("refreshes org identity from Clerk when cache row is missing", async () => {
@@ -907,7 +905,7 @@ describe("GET /api/zero/org — org resolution", () => {
       id: orgId,
       slug,
       name: "Clerk Fresh Org",
-      tier: "free",
+      tier: "pro-suspend",
       role: "admin",
       createdBy: userId,
     });

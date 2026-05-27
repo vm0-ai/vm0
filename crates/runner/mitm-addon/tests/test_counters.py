@@ -15,12 +15,48 @@ class TestUsagePendingCounter:
     """Tests for usage pending counters."""
 
     def setup_method(self):
-        usage.counters._in_flight_flows = 0
-        usage.counters._buffered_usage_events = 0
-        usage.counters._pending_reports = 0
-        usage.counters._pending_path = ""
-        usage.counters._usage_state_id = "test-usage-state-id"
-        usage.counters._pending_write_error_logged = False
+        usage.counters.reset_for_tests()
+
+    def test_reset_for_tests_clears_pending_file_binding_and_counts(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="before-reset")
+        usage.increment_in_flight_flows()
+        usage.counters.increment_pending_reports()
+        usage.counters.set_buffered_usage_events(2)
+        usage.write_pending_snapshot(flush_request_id="before-reset")
+        pending_state = assert_pending(
+            pending_path,
+            flows=1,
+            buffered=2,
+            reports=1,
+            flush_request_id="before-reset",
+        )
+
+        usage.counters.reset_for_tests()
+        usage.write_pending_snapshot(flush_request_id="after-reset")
+
+        assert json.loads(pending_path.read_text()) == pending_state
+
+        next_pending_path = tmp_path / "next-usage-pending"
+        usage.set_pending_path(str(next_pending_path))
+        state = assert_pending(next_pending_path, flows=0, buffered=0, reports=0)
+        assert state["usageStateId"] != "before-reset"
+
+    def test_reset_for_tests_reenables_pending_write_failure_warning(self, tmp_path):
+        mock_log = MagicMock()
+        with (
+            patch.object(usage.counters.ctx, "log", mock_log, create=True),
+            patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
+        ):
+            usage.set_pending_path(str(tmp_path / "usage-pending-before-reset"))
+            usage.write_pending_snapshot(flush_request_id="before-reset")
+            usage.write_pending_snapshot(flush_request_id="before-reset")
+
+            usage.counters.reset_for_tests()
+            usage.set_pending_path(str(tmp_path / "usage-pending-after-reset"))
+            usage.write_pending_snapshot(flush_request_id="after-reset")
+
+        assert mock_log.warn.call_count == 2
 
     def test_increment_decrement_in_flight_flows(self, tmp_path):
         pending_path = tmp_path / "usage-pending"

@@ -6,11 +6,13 @@ import type { Db } from "../external/db";
 type CreditDb = Pick<Db, "execute">;
 
 interface CreditCheckRow extends Record<string, unknown> {
+  readonly tier: string | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
 }
 
 interface OrgCreditAvailability {
+  readonly tier: string;
   readonly spendableCredits: number;
 }
 
@@ -20,7 +22,7 @@ export async function resolveOrgCreditAvailability(params: {
 }): Promise<OrgCreditAvailability | null> {
   const { rows } = await params.db.execute<CreditCheckRow>(sql`
     WITH org AS (
-      SELECT credits FROM org_metadata
+      SELECT tier, credits FROM org_metadata
       WHERE org_id = ${params.orgId}
       LIMIT 1
     ),
@@ -32,6 +34,7 @@ export async function resolveOrgCreditAvailability(params: {
         AND remaining > 0
     )
     SELECT
+      (SELECT tier FROM org) AS tier,
       (SELECT credits FROM org) AS credits,
       (SELECT total FROM expired) AS unsettled_expired
   `);
@@ -44,7 +47,10 @@ export async function resolveOrgCreditAvailability(params: {
   const credits = Number(row.credits);
   const unsettledExpired = Number(row.unsettled_expired ?? 0);
   const spendableCredits = credits - unsettledExpired;
-  return spendableCredits > 0 ? { spendableCredits } : null;
+  return {
+    tier: row.tier ?? "pro-suspend",
+    spendableCredits,
+  };
 }
 
 export async function checkOrgCreditsForRunAdmission(params: {
@@ -52,10 +58,17 @@ export async function checkOrgCreditsForRunAdmission(params: {
   readonly orgId: string;
   readonly modelProviderType: string | null | undefined;
 }): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+  const availability = await resolveOrgCreditAvailability(params);
+  if (!availability) {
+    return insufficientCredits();
+  }
+  if (availability.tier === "pro-suspend") {
+    return insufficientCredits();
+  }
+
   if (params.modelProviderType !== "vm0") {
     return undefined;
   }
 
-  const availability = await resolveOrgCreditAvailability(params);
-  return availability ? undefined : insufficientCredits();
+  return availability.spendableCredits > 0 ? undefined : insufficientCredits();
 }

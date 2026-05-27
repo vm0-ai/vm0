@@ -5,6 +5,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import type { ConnectorOAuthClientConfig } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
@@ -160,13 +161,21 @@ async function seedCreditState(
   fixture: FirewallFixture,
   args: {
     readonly credits: number;
+    readonly tier?: OrgTier;
   },
 ): Promise<void> {
   const db = store.set(writeDb$);
-  await db.insert(orgMetadata).values({
-    orgId: fixture.orgId,
-    credits: args.credits,
-  });
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId: fixture.orgId,
+      tier: args.tier ?? "free",
+      credits: args.credits,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { tier: args.tier ?? "free", credits: args.credits },
+    });
   await db.insert(orgMembersMetadata).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
@@ -177,13 +186,21 @@ async function seedOrgCredits(
   fixture: FirewallFixture,
   args: {
     readonly credits: number;
+    readonly tier?: OrgTier;
   },
 ): Promise<void> {
   const db = store.set(writeDb$);
-  await db.insert(orgMetadata).values({
-    orgId: fixture.orgId,
-    credits: args.credits,
-  });
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId: fixture.orgId,
+      tier: args.tier ?? "free",
+      credits: args.credits,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { tier: args.tier ?? "free", credits: args.credits },
+    });
 }
 
 async function readSecret(args: {
@@ -979,8 +996,34 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("denies billable firewall auth for pro-suspend orgs", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, {
+      credits: 10_000,
+      tier: "pro-suspend",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
   it("denies billable firewall auth when credit state is missing", async () => {
     const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
 
     const response = await accept(
       firewallClient().resolve({

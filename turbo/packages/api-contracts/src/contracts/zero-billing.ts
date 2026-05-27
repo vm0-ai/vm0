@@ -56,6 +56,10 @@ const checkoutResponseSchema = z.object({
   url: z.string(),
 });
 
+const checkoutCompleteResponseSchema = z.object({
+  completed: z.boolean(),
+});
+
 const portalResponseSchema = z.object({
   url: z.string(),
 });
@@ -89,6 +93,11 @@ const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
+  trialDays: z.literal(7).optional(),
+});
+
+const checkoutCompleteRequestSchema = z.object({
+  sessionId: z.string().min(1),
 });
 
 const creditCheckoutRequestSchema = z
@@ -191,6 +200,21 @@ export const zeroBillingCheckoutContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Create Stripe checkout session",
+  },
+  complete: {
+    method: "POST",
+    path: "/api/zero/billing/checkout/complete",
+    headers: authHeadersSchema,
+    body: checkoutCompleteRequestSchema,
+    responses: {
+      200: checkoutCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Complete Stripe checkout session",
   },
 });
 
@@ -315,7 +339,7 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 // ---------------------------------------------------------------------------
 
 const downgradeRequestSchema = z.object({
-  targetTier: z.enum(["free", "pro"]),
+  targetTier: z.enum(["pro-suspend", "pro"]),
 });
 
 const downgradeResponseSchema = z.object({

@@ -246,10 +246,15 @@ async function setOrgDefaultAgent(
   const db = store.set(writeDb$);
   await db
     .insert(orgMetadata)
-    .values({ orgId: fixture.orgId, defaultAgentId })
+    .values({
+      orgId: fixture.orgId,
+      defaultAgentId,
+      tier: "free",
+      credits: 10_000,
+    })
     .onConflictDoUpdate({
       target: orgMetadata.orgId,
-      set: { defaultAgentId },
+      set: { defaultAgentId, tier: "free", credits: 10_000 },
     });
 }
 

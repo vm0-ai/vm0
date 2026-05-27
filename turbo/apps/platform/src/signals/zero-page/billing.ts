@@ -16,16 +16,22 @@ import { accept } from "../../lib/accept.ts";
 // Types
 // ---------------------------------------------------------------------------
 
-export type BillingTier = "free" | "pro" | "team";
+export type BillingTier = "free" | "pro-suspend" | "pro" | "team";
+type CompletedBillingCheckoutTier = "pro" | "team";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
 
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
-  if (tier === "free" || tier === "pro" || tier === "team") {
+  if (
+    tier === "free" ||
+    tier === "pro-suspend" ||
+    tier === "pro" ||
+    tier === "team"
+  ) {
     return tier;
   }
-  return "free";
+  return "pro-suspend";
 }
 
 // ---------------------------------------------------------------------------
@@ -34,6 +40,13 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
 
 const internalDialogOpen$ = state(false);
 const billingReload$ = state(0);
+interface CompletedBillingCheckout {
+  readonly tier: CompletedBillingCheckoutTier;
+  readonly sessionId: string | null;
+}
+
+const internalCompletedBillingCheckout$ =
+  state<CompletedBillingCheckout | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
 const internalFormThresholdOverride$ = state<string | null>(null);
@@ -52,9 +65,24 @@ export const downgradeDialogOpen$ = computed((get) => {
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
 });
+export const completedBillingCheckout$ = computed((get) => {
+  return get(internalCompletedBillingCheckout$);
+});
 
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
+});
+export const markCompletedBillingCheckout$ = command(
+  (
+    { set },
+    tier: CompletedBillingCheckoutTier,
+    sessionId: string | null = null,
+  ) => {
+    set(internalCompletedBillingCheckout$, { tier, sessionId });
+  },
+);
+export const clearCompletedBillingCheckout$ = command(({ set }) => {
+  set(internalCompletedBillingCheckout$, null);
 });
 
 /**
@@ -89,6 +117,7 @@ export const startCheckout$ = command(
     { get },
     tier: "pro" | "team",
     newTab: boolean,
+    options: { readonly trialDays?: 7 } | undefined,
     signal: AbortSignal,
   ) => {
     const currentUrl = window.location.href;
@@ -112,6 +141,9 @@ export const startCheckout$ = command(
           tier,
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
+          ...(options?.trialDays === undefined
+            ? {}
+            : { trialDays: options.trialDays }),
         },
         fetchOptions: { signal },
       }),
@@ -124,6 +156,22 @@ export const startCheckout$ = command(
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
     }
+  },
+);
+
+export const completeCheckoutSession$ = command(
+  async ({ get }, sessionId: string, signal: AbortSignal): Promise<boolean> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCheckoutContract);
+    const result = await accept(
+      client.complete({
+        body: { sessionId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body.completed;
   },
 );
 
@@ -200,7 +248,11 @@ export const closeDowngradeDialog$ = command(({ set }) => {
 });
 
 export const confirmDowngrade$ = command(
-  async ({ get, set }, targetTier: "free" | "pro", signal: AbortSignal) => {
+  async (
+    { get, set },
+    targetTier: "pro-suspend" | "pro",
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
     await accept(

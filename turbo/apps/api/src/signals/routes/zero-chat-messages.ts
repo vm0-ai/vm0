@@ -1832,7 +1832,7 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   const appUrl = env("APP_URL").replace(/\/$/, "");
   const usageUrl = `${appUrl}/?settings=usage`;
   const billingUrl = `${appUrl}/?settings=billing`;
-  if (org?.tier === "free" || !org) {
+  if (org?.tier === "free" || org?.tier === "pro-suspend" || !org) {
     return [
       "Insufficient credits. This workspace has no spendable credits right now.",
       "",

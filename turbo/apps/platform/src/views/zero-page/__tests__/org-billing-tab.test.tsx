@@ -56,6 +56,29 @@ describe("org billing tab - plan display", () => {
     });
   });
 
+  it("should show no active plan for pro-suspend tier", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      cancelAtPeriodEnd: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    expect(screen.getByText("No active subscription")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").find((el) => {
+        return /^Upgrade$/i.test(el.textContent?.trim() ?? "");
+      }),
+    ).toBeDefined();
+  });
+
   it("should show Upgrade button for free tier", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
@@ -101,8 +124,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Should show all three plan cards
-    expect(screen.getByText("Free")).toBeInTheDocument();
+    expect(screen.queryByText("Free")).not.toBeInTheDocument();
     expect(screen.getByText("Pro")).toBeInTheDocument();
     expect(screen.getByText("Team")).toBeInTheDocument();
   });
@@ -187,6 +209,24 @@ describe("org billing tab - auto-recharge section", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Auto-recharge")).not.toBeInTheDocument();
+  });
+
+  it("should not show auto-recharge section for pro-suspend plan", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Auto-recharge")).not.toBeInTheDocument();
@@ -685,12 +725,11 @@ describe("org billing tab - plan card details", () => {
       }),
     ).toBeDefined();
 
-    // Current plan card shows "Current plan" label
     expect(
       queryAllByRoleFast("button").find((el) => {
         return /Current plan/i.test(el.textContent ?? "");
       }),
-    ).toBeDefined();
+    ).toBeUndefined();
   });
 
   it("should show Voice input feature in all plan cards on pricing page", async () => {
@@ -708,12 +747,10 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Voice input appears in all three plan feature lists (one per plan: Free, Pro, Team)
-    // Free = "Voice input (10/month)", Pro and Team = "Voice input"
-    expect(screen.getAllByText(/Voice input/)).toHaveLength(3);
+    expect(screen.getAllByText(/Voice input/)).toHaveLength(2);
   });
 
-  it("should show Voice input with limit in Free plan features", async () => {
+  it("should not show legacy Free plan features", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -728,8 +765,9 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Free plan shows "Voice input (10/month)" while Pro/Team show "Voice input"
-    expect(screen.getByText("Voice input (10/month)")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Voice input (10/month)"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -946,9 +984,17 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    // Pro user should see "Downgrade to Free?" confirmation
+    // Pro users cancel into the suspended state at period end.
     expect(
-      screen.getByText("Are you sure you want to downgrade to Free?"),
+      screen.getByText("Are you sure you want to cancel your Pro plan?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Your Pro access remains active until the current billing period ends/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/agents cannot run until you upgrade again/),
     ).toBeInTheDocument();
   });
 
@@ -1014,14 +1060,14 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    const downgradeToFreeBtn = queryAllByRoleFast("button").find((el) => {
-      return /Downgrade to Free/i.test(el.textContent ?? "");
+    const cancelSubscriptionBtn = queryAllByRoleFast("button").find((el) => {
+      return /Cancel subscription/i.test(el.textContent ?? "");
     });
-    expect(downgradeToFreeBtn).toBeDefined();
-    click(downgradeToFreeBtn!);
+    expect(cancelSubscriptionBtn).toBeDefined();
+    click(cancelSubscriptionBtn!);
 
     await waitFor(() => {
-      expect(capturedBody).toStrictEqual({ targetTier: "free" });
+      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
     });
   });
 
@@ -1071,7 +1117,7 @@ describe("org billing tab - downgrade flow", () => {
     expect(apiCalled).toBeFalsy();
   });
 
-  it("should route pricing page downgrade through dialog", async () => {
+  it("should not show legacy Free downgrade action on pricing page", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -1092,18 +1138,10 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Click "Manage subscription" (the downgrade button on pricing page for free tier)
     const manageButtons = queryAllByRoleFast("button").filter((el) => {
       return /Manage subscription/i.test(el.textContent ?? "");
     });
-    expect(manageButtons.length).toBeGreaterThanOrEqual(1);
-
-    click(manageButtons[0]!);
-
-    // Should open downgrade dialog instead of redirecting to Stripe
-    await waitFor(() => {
-      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
-    });
+    expect(manageButtons).toHaveLength(0);
   });
 });
 

@@ -17,6 +17,7 @@ interface DefaultAgentValues {
 
 interface OnboardingSeedValues {
   readonly defaultAgent?: DefaultAgentValues;
+  readonly onboardingPaymentPending?: boolean;
 }
 
 export interface OnboardingStatusFixture {
@@ -59,6 +60,7 @@ export const seedOnboardingStatusOrg$ = command(
     await writeDb.insert(orgMetadata).values({
       orgId,
       defaultAgentId: composeId,
+      onboardingPaymentPending: values.onboardingPaymentPending ?? false,
     });
     signal.throwIfAborted();
 

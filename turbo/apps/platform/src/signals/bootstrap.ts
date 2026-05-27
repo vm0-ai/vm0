@@ -64,7 +64,10 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { googleAdsBillingConversionPayload } from "./bootstrap/billing-conversion.ts";
-import { reloadBillingStatus$ } from "./zero-page/billing.ts";
+import {
+  markCompletedBillingCheckout$,
+  reloadBillingStatus$,
+} from "./zero-page/billing.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -344,6 +347,7 @@ const handleBillingRedirect$ = command(({ set }) => {
     showSuccessToastAfterMount(
       `Upgraded to ${label}! Your credits have been added.`,
     );
+    set(markCompletedBillingCheckout$, billing, transactionId);
     set(reloadBillingStatus$);
   }
 

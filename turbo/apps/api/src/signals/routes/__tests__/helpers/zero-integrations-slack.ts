@@ -108,10 +108,15 @@ export const seedSlackEnvironmentAgent$ = command(
     signal.throwIfAborted();
     await writeDb
       .insert(orgMetadata)
-      .values({ orgId: args.orgId, defaultAgentId: composeId })
+      .values({
+        orgId: args.orgId,
+        defaultAgentId: composeId,
+        tier: "free",
+        credits: 10_000,
+      })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId },
+        set: { defaultAgentId: composeId, tier: "free", credits: 10_000 },
       });
     signal.throwIfAborted();
   },

@@ -141,10 +141,15 @@ export const seedOrgDefaultAgent$ = command(
     signal.throwIfAborted();
     await writeDb
       .insert(orgMetadata)
-      .values({ orgId: values.orgId, defaultAgentId: composeId })
+      .values({
+        orgId: values.orgId,
+        defaultAgentId: composeId,
+        tier: "free",
+        credits: 10_000,
+      })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId },
+        set: { defaultAgentId: composeId, tier: "free", credits: 10_000 },
       });
     signal.throwIfAborted();
 

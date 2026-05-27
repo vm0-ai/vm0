@@ -12,6 +12,11 @@ import {
   zeroNeedsOnboarding$,
   zeroSelectedConnectors$,
 } from "../zero-page/zero-onboarding.ts";
+import { continueOnboardingAfterCheckout$ } from "../zero-page/zero-onboarding-actions.ts";
+import {
+  clearCompletedBillingCheckout$,
+  completedBillingCheckout$,
+} from "../zero-page/billing.ts";
 import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 export const setupOnboardingPage$ = command(
@@ -22,30 +27,6 @@ export const setupOnboardingPage$ = command(
 
     set(resetOnboardingStep$);
     signal.throwIfAborted();
-
-    // Detect use-case deep link early — `?prompt=...` (optionally with
-    // `&connector=...`) lets even already-onboarded users (including
-    // non-admins) land here intentionally to try a suggested task, so we
-    // must NOT auto-redirect them home then.
-    const earlyParams = get(searchParams$);
-    const hasUseCaseLink = (earlyParams.get("prompt")?.length ?? 0) > 0;
-
-    // Onboarding is purely admin workspace setup. If onboarding is not needed
-    // (non-admins, or admins whose workspace is already set up) and there's no
-    // use-case deep link, send the user home — the page has nothing to show.
-    const needsOnboarding = await get(zeroNeedsOnboarding$);
-    signal.throwIfAborted();
-
-    if (!needsOnboarding && !hasUseCaseLink) {
-      set(detachedNavigateTo$, "/", { replace: true });
-      return;
-    }
-
-    // Fire Google Ads conversion event: user arrived at onboarding after signup
-    type GtagFn = (...args: unknown[]) => void;
-    (window as Window & { gtag?: GtagFn }).gtag?.("event", "conversion", {
-      send_to: "AW-18144854014/OlLBCNXGgqwcEP7_kcxD",
-    });
 
     // Consume ?connector= (comma-separated) to pre-select connectors. The
     // param is left on the URL so a refresh during onboarding still pre-fills
@@ -91,5 +72,42 @@ export const setupOnboardingPage$ = command(
     if (promptParam !== null && promptParam.length > 0) {
       set(markUseCaseMode$, promptParam);
     }
+
+    const completedBillingCheckoutState = get(completedBillingCheckout$);
+    if (completedBillingCheckoutState) {
+      const continued = await set(
+        continueOnboardingAfterCheckout$,
+        completedBillingCheckoutState.sessionId,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (continued) {
+        set(clearCompletedBillingCheckout$);
+        return;
+      }
+    }
+
+    // Detect use-case deep link early — `?prompt=...` (optionally with
+    // `&connector=...`) lets even already-onboarded users (including
+    // non-admins) land here intentionally to try a suggested task, so we
+    // must NOT auto-redirect them home then.
+    const hasUseCaseLink = (params.get("prompt")?.length ?? 0) > 0;
+
+    // Onboarding is purely admin workspace setup. If onboarding is not needed
+    // (non-admins, or admins whose workspace is already set up) and there's no
+    // use-case deep link, send the user home — the page has nothing to show.
+    const needsOnboarding = await get(zeroNeedsOnboarding$);
+    signal.throwIfAborted();
+
+    if (!needsOnboarding && !hasUseCaseLink) {
+      set(detachedNavigateTo$, "/", { replace: true });
+      return;
+    }
+
+    // Fire Google Ads conversion event: user arrived at onboarding after signup
+    type GtagFn = (...args: unknown[]) => void;
+    (window as Window & { gtag?: GtagFn }).gtag?.("event", "conversion", {
+      send_to: "AW-18144854014/OlLBCNXGgqwcEP7_kcxD",
+    });
   },
 );

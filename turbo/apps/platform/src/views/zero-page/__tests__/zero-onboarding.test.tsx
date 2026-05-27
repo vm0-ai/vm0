@@ -129,7 +129,7 @@ describe("zero onboarding - step 2: choose tools", () => {
     });
   });
 
-  it("step 2 is the terminal step — its primary button continues into web", async () => {
+  it("step 2 advances into the Pro trial step", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -142,10 +142,58 @@ describe("zero onboarding - step 2: choose tools", () => {
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
     });
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+        "Next",
+      );
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pro trial step (step 4)
+// ---------------------------------------------------------------------------
+
+describe("zero onboarding - Pro trial step", () => {
+  it("appends the trial step after connectors", async () => {
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    // Step 1 -> fill name -> Next
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    click(screen.getByText("Next"));
+
+    // Step 2: connectors. The trial step adds a third progress segment, and
+    // step 2 advances ("Next") into the terminal trial step.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+        "Next",
+      );
+    });
+
+    // Advance into the trial step.
+    click(screen.getByTestId("onboarding-next-button"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
     });
+    // The benefit checklist renders, and the trial step is now terminal.
+    expect(screen.getByTestId("onboarding-trial-benefits")).toBeInTheDocument();
+    expect(
+      screen.getByText("All multimodal models for image, video and voice"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+      "Get Started",
+    );
   });
 });
 
@@ -168,7 +216,7 @@ describe("zero onboarding - does not render when not needed", () => {
 // ---------------------------------------------------------------------------
 
 describe("onboarding step indicator renders (AGENT-D-056)", () => {
-  it("renders a two-segment progress bar for the admin flow", async () => {
+  it("renders a three-segment progress bar for the admin flow", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -178,10 +226,10 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
       ).toBeInTheDocument();
     });
 
-    // The regular admin flow has exactly two steps: name workspace + pick tools.
-    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
+    // Admin flow: name workspace + pick tools + Pro trial.
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
 
-    // Selecting a connector on step 2 doesn't add steps — step 2 is terminal.
+    // Selecting a connector on step 2 doesn't change the step count.
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
     click(screen.getByText("Next"));
@@ -197,7 +245,7 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
     });
-    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
   });
 });
 

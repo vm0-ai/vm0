@@ -7,14 +7,12 @@ import {
   fill,
   click,
 } from "../../../__tests__/page-helper.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -39,7 +37,7 @@ function mockAdminOnboarding() {
   );
 }
 
-/** Walk admin onboarding: step 1 (name) → step 2 (choose tools, pick one). */
+/** Walk admin onboarding: step 1 → step 2 → step 4. */
 async function walkAdminToContinue() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
@@ -55,55 +53,35 @@ async function walkAdminToContinue() {
   click(screen.getByTestId("connector-card-github"));
 
   await waitFor(() => {
-    expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+    expect(screen.getByText("Next")).toBeInTheDocument();
+  });
+  click(screen.getByText("Next"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
   });
 }
 
-describe("onboarding → chat page (no auto-intro)", () => {
-  it("should navigate to /agents/:id/chat after admin completes onboarding", async () => {
+describe("onboarding → Stripe checkout", () => {
+  it("should start Pro trial checkout instead of entering chat directly", async () => {
     mockAdminOnboarding();
-    // Register the admin-created default agent in the team so the chat page
-    // setup can find it instead of treating it as missing and redirecting.
-    setMockTeam([
-      {
-        id: MOCK_AGENT_ID,
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-
-    detachedSetupPage({ context, path: "/onboarding" });
-    await walkAdminToContinue();
-
-    // Switch onboarding status so post-navigate route doesn't redirect back
+    let checkoutBody: Record<string, unknown> | null = null;
     server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          needsOnboarding: false,
-          isAdmin: true,
-          hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: MOCK_AGENT_ID,
-          defaultAgentMetadata: null,
+          url: "https://checkout.stripe.com/test?mode=trial",
         });
       }),
     );
 
+    detachedSetupPage({ context, path: "/onboarding" });
+    await walkAdminToContinue();
+
     click(screen.getByText(/Get Started/));
 
-    // Should navigate directly to the agent chat page
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
-
-    // Chat input should be ready for user to type (no auto-intro sent)
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    expect(textarea).not.toBeDisabled();
   });
 });

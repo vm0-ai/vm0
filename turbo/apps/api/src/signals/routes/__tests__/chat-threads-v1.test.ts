@@ -90,6 +90,11 @@ async function seedPatFixture(): Promise<PatFixture> {
     role: "admin",
     cachedAt: new Date(now()),
   });
+  await writeDb.insert(orgMetadata).values({
+    orgId,
+    tier: "free",
+    credits: 10_000,
+  });
 
   return { token, tokenId, userId, orgId };
 }

@@ -4,9 +4,11 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setupOnboardingPage$ } from "../onboarding-page-setup.ts";
 import { zeroSelectedConnectors$ } from "../../zero-page/zero-onboarding.ts";
+import { markCompletedBillingCheckout$ } from "../../zero-page/billing.ts";
 import { pathname, search } from "../../location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -66,6 +68,48 @@ describe("setupOnboardingPage$ — redirect when onboarding is not needed", () =
     await context.store.set(setupOnboardingPage$, context.signal);
 
     expect(pathname()).toBe("/onboarding");
+  });
+
+  it("continues to the default agent after onboarding billing succeeds", async () => {
+    mockNoOnboardingNeeded();
+    context.store.set(markCompletedBillingCheckout$, "pro");
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      withoutRender: true,
+    });
+
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    expect(pathname()).toBe(
+      "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    );
+  });
+
+  it("reconciles the checkout session before resuming onboarding", async () => {
+    let completedSessionId: string | null = null;
+    mockNoOnboardingNeeded();
+    server.use(
+      mockApi(zeroBillingCheckoutContract.complete, ({ body, respond }) => {
+        completedSessionId = body.sessionId;
+        return respond(200, { completed: true });
+      }),
+    );
+    context.store.set(markCompletedBillingCheckout$, "pro", "cs_test_resume");
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      withoutRender: true,
+    });
+
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    expect(completedSessionId).toBe("cs_test_resume");
+    expect(pathname()).toBe(
+      "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    );
   });
 });
 

@@ -8,7 +8,7 @@ const c = initContract();
 /**
  * Org tier values
  */
-export const orgTierSchema = z.enum(["free", "pro", "team"]);
+export const orgTierSchema = z.enum(["free", "pro-suspend", "pro", "team"]);
 export type OrgTier = z.infer<typeof orgTierSchema>;
 
 /**

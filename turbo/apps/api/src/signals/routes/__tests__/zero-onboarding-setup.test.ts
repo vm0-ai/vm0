@@ -154,6 +154,7 @@ async function readOrgMetadata(orgId: string) {
   const [row] = await db
     .select({
       defaultAgentId: orgMetadata.defaultAgentId,
+      onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
       credits: orgMetadata.credits,
     })
     .from(orgMetadata)
@@ -304,7 +305,7 @@ describe("POST /api/zero/onboarding/setup", () => {
     });
   });
 
-  it("creates the default agent and onboarding state for an admin", async () => {
+  it("creates the default agent and keeps onboarding pending for an admin", async () => {
     const fixture = await track(createFixture());
     mockAdminSession(fixture);
 
@@ -333,7 +334,8 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(readComposeHead(agentId)).resolves.toMatch(/^[a-f0-9]{64}$/);
     await expect(readOrgMetadata(fixture.orgId)).resolves.toMatchObject({
       defaultAgentId: agentId,
-      credits: 10_000,
+      onboardingPaymentPending: true,
+      credits: 0,
     });
     const agents = await accept(
       agentsClient().list({ headers: authHeaders() }),
@@ -367,9 +369,7 @@ describe("POST /api/zero/onboarding/setup", () => {
       secretId: null,
       authMethod: null,
     });
-    await expect(readStarterGrants(fixture.orgId)).resolves.toStrictEqual([
-      { source: "starter_grant", amount: 10_000, remaining: 10_000 },
-    ]);
+    await expect(readStarterGrants(fixture.orgId)).resolves.toStrictEqual([]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
 
     const status = await accept(
@@ -377,7 +377,7 @@ describe("POST /api/zero/onboarding/setup", () => {
       [200],
     );
     expect(status.body).toStrictEqual({
-      needsOnboarding: false,
+      needsOnboarding: true,
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
@@ -511,6 +511,9 @@ describe("POST /api/zero/onboarding/setup", () => {
       "github",
       "slack",
     ]);
+    await expect(readOrgMetadata(fixture.orgId)).resolves.toMatchObject({
+      onboardingPaymentPending: true,
+    });
   });
 
   it("updates Clerk org name and slug for valid Latin workspace names", async () => {

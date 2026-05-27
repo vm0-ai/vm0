@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.386.3](https://github.com/vm0-ai/vm0/compare/app-v0.386.2...app-v0.386.3) (2026-05-27)
+
+
+### Refactoring
+
+* remove stripe cli auth ([#15047](https://github.com/vm0-ai/vm0/issues/15047)) ([3e4a698](https://github.com/vm0-ai/vm0/commit/3e4a69802b2c255e2879305efce1592b08941acf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.5
+    * @vm0/connectors bumped to 1.36.3
+    * @vm0/core bumped to 8.297.3
+
 ## [0.386.2](https://github.com/vm0-ai/vm0/compare/app-v0.386.1...app-v0.386.2) (2026-05-27)
 
 

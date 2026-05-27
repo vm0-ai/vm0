@@ -76,6 +76,8 @@ async function seedSlackFixture(
   await writeDb.insert(orgMetadata).values({
     orgId,
     defaultAgentId: composeId,
+    tier: "free",
+    credits: 10_000,
   });
 
   await writeDb.insert(orgCache).values({

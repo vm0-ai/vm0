@@ -217,6 +217,7 @@ interface StripeBillingRow {
   readonly cancelAtPeriodEnd: boolean;
   readonly lastProcessedInvoiceId: string | null;
   readonly autoRechargePendingAt: Date | null;
+  readonly onboardingPaymentPending: boolean;
 }
 
 interface StripeCreditExpiresRow {
@@ -673,6 +674,7 @@ async function selectStripeBilling(
       cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
       autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
+      onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
     })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, fixture.orgId));
@@ -838,11 +840,13 @@ const seedGitHubWebhookFixture$ = command(
       customSkills: [],
     });
     signal.throwIfAborted();
-    await db.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 100_000,
-      tier: "pro",
-    });
+    await db
+      .update(orgMetadata)
+      .set({
+        credits: 100_000,
+        tier: "pro",
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.insert(vm0ApiKeys).values({
       vendor: "deepseek",
@@ -1216,13 +1220,16 @@ describe("POST /api/webhooks/github", () => {
       installationId: fixture.remoteInstallationId,
     });
 
+    const repo = `vm0-ai/failure-comment-${fixture.composeId.slice(0, 8)}`;
     const capturedComments: CapturedGitHubIssueComment[] = [];
     server.use(
       http.post(
         "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-        async ({ request }) => {
+        async ({ params, request }) => {
           const body = (await request.json()) as { readonly body: string };
-          capturedComments.push({ body: body.body });
+          if (params.owner === "vm0-ai" && params.repo === repo.split("/")[1]) {
+            capturedComments.push({ body: body.body });
+          }
           return HttpResponse.json({ id: 9876 });
         },
       ),
@@ -1239,7 +1246,7 @@ describe("POST /api/webhooks/github", () => {
 
     const response = await postGitHubWebhook({
       event: "issues",
-      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
     await clearAllDetached();
 
@@ -1263,14 +1270,17 @@ describe("POST /api/webhooks/github", () => {
       installationId: fixture.remoteInstallationId,
     });
 
+    const repo = `vm0-ai/callback-failure-${fixture.composeId.slice(0, 8)}`;
     const capturedComments: CapturedGitHubIssueComment[] = [];
     const capturedCallbacks: CapturedRunCallback[] = [];
     server.use(
       http.post(
         "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-        async ({ request }) => {
+        async ({ params, request }) => {
           const body = (await request.json()) as { readonly body: string };
-          capturedComments.push({ body: body.body });
+          if (params.owner === "vm0-ai" && params.repo === repo.split("/")[1]) {
+            capturedComments.push({ body: body.body });
+          }
           return HttpResponse.json({ id: 9876 });
         },
       ),
@@ -1311,7 +1321,7 @@ describe("POST /api/webhooks/github", () => {
 
     const response = await postGitHubWebhook({
       event: "issues",
-      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
     await clearAllDetached();
 
@@ -1845,7 +1855,7 @@ describe("POST /api/webhooks/github", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("acknowledges dispatch failures such as missing installations", async () => {
+  it("ignores label triggers for unbound GitHub installations", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
@@ -1856,6 +1866,28 @@ describe("POST /api/webhooks/github", () => {
       payload: buildGitHubIssuesPayload(fixture, {
         action: "opened",
         installationId: remoteGitHubId(),
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("ignores bot mentions for unbound GitHub installations", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        installationId: remoteGitHubId(),
+        commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
       }),
     });
     await clearAllDetached();
@@ -2073,6 +2105,7 @@ describe("POST /api/webhooks/stripe", () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
+      await updateStripeOrg(fixture, { onboardingPaymentPending: true });
       mockStripeWebhookEnv();
       const subId = stripeId("sub");
       const periodEnd = 1_800_000_000;
@@ -2108,6 +2141,7 @@ describe("POST /api/webhooks/stripe", () => {
         new Date(periodEnd * 1000),
       );
       expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.onboardingPaymentPending).toBeFalsy();
     });
 
     it("is idempotent when subscription is already stored", async () => {
@@ -2260,6 +2294,7 @@ describe("POST /api/webhooks/stripe", () => {
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
         id: subId,
+        status: "active",
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
       });
       const creditsBefore = (await selectStripeBilling(fixture)).credits;
@@ -2645,7 +2680,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("invoice.paid credit expiry", () => {
-    it("creates expires record with correct expiresAt", async () => {
+    it("creates Pro expires record after the subscription period grace", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2656,6 +2691,7 @@ describe("POST /api/webhooks/stripe", () => {
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
         id: subId,
+        status: "active",
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
       });
 
@@ -2673,14 +2709,55 @@ describe("POST /api/webhooks/stripe", () => {
       expect(response.status).toBe(200);
       const records = await selectStripeCreditExpiresRecords(fixture);
       expect(records).toHaveLength(1);
-      const expectedExpiresAt = new Date(periodEnd * 1000);
-      expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 1);
       expect(records[0]).toMatchObject({
         amount: 20_000,
         remaining: 20_000,
         stripeInvoiceId: invId,
       });
-      expect(records[0]?.expiresAt.getTime()).toBe(expectedExpiresAt.getTime());
+      const expectedExpiresAt = new Date(periodEnd * 1000);
+      expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 1);
+      expect(records[0]?.expiresAt).toStrictEqual(expectedExpiresAt);
+    });
+
+    it("creates trialing Pro expires record with seven-day expiresAt", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "trialing",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const lowerBound = nowDate().getTime() + 7 * 86_400 * 1000;
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        amount: 20_000,
+        remaining: 20_000,
+        stripeInvoiceId: invId,
+      });
+      const upperBound = nowDate().getTime() + 7 * 86_400 * 1000;
+      expect(records[0]?.expiresAt.getTime()).toBeGreaterThanOrEqual(
+        lowerBound,
+      );
+      expect(records[0]?.expiresAt.getTime()).toBeLessThanOrEqual(upperBound);
     });
 
     it("expires old credits before granting new ones", async () => {
@@ -2944,7 +3021,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("customer.subscription.deleted", () => {
-    it("downgrades to free and clears subscription", async () => {
+    it("downgrades to pro-suspend and clears subscription", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2964,7 +3041,7 @@ describe("POST /api/webhooks/stripe", () => {
 
       expect(response.status).toBe(200);
       const billing = await selectStripeBilling(fixture);
-      expect(billing.tier).toBe("free");
+      expect(billing.tier).toBe("pro-suspend");
       expect(billing.subscriptionStatus).toBe("canceled");
       expect(billing.stripeSubscriptionId).toBeNull();
       expect(billing.cancelAtPeriodEnd).toBeFalsy();

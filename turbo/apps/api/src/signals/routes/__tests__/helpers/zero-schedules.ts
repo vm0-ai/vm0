@@ -9,6 +9,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -172,6 +173,13 @@ export const seedSchedulesScenario$ = command(
     });
     signal.throwIfAborted();
 
+    await writeDb.insert(orgMetadata).values({
+      orgId,
+      tier: "free",
+      credits: 10_000,
+    });
+    signal.throwIfAborted();
+
     await writeDb.insert(orgMembersMetadata).values({
       userId,
       orgId,
@@ -260,6 +268,10 @@ export const deleteSchedulesScenario$ = command(
       .where(eq(agentComposes.id, fixture.composeId));
     signal.throwIfAborted();
     await writeDb.delete(userCache).where(eq(userCache.userId, fixture.userId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb
       .delete(orgMembersMetadata)

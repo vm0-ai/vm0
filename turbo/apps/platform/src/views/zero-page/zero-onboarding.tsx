@@ -10,6 +10,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
+import upsellCrownSrc from "./assets/upsell-crown.webp";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -51,6 +52,7 @@ import {
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  IconCheck,
   IconCircleCheck,
   IconCircleCheckFilled,
   IconLoader,
@@ -367,6 +369,138 @@ function UseCasePromptComposer() {
         className="w-full resize-none rounded-xl zero-border bg-background px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pro trial step (step 4).
+//
+// The benefit list below is a temporary constant. Once billing/Stripe is
+// wired, the entitlements (and the trial dates) should come from the pricing
+// config rather than being hardcoded here.
+// ---------------------------------------------------------------------------
+
+// Pro features below the hero credit card. Phrased as "what your agent
+// can do", not feature names. Single column, no em-dashes in the copy.
+const PRO_TRIAL_BENEFITS: readonly string[] = [
+  "All flagship models including Claude, GPT and Gemini",
+  "All multimodal models for image, video and voice",
+  "Run 2 tasks at the same time",
+  "Slack-native agent in threads and @mentions",
+  "Telegram and iMessage agents",
+  "200+ integrations with real tool execution",
+  "Scheduled tasks that run on their own",
+  "Artifacts including slide decks, HTML pages, video and audio",
+  "Voice input",
+  "Unlimited workspace members",
+];
+
+/** Step 4: what Pro unlocks + the 7-day trial framing. */
+function TrialStepContent() {
+  const selectedConnectors =
+    useLastResolved(onboardingEffectiveConnectors$) ?? [];
+  const connectorEntries = (useLastResolved(allConnectorTypes$) ?? []).filter(
+    (connector) => {
+      return selectedConnectors.includes(connector.type);
+    },
+  );
+
+  return (
+    <>
+      <h2
+        data-testid="onboarding-step-trial"
+        className="text-2xl font-semibold tracking-tight"
+      >
+        Your 7-day Pro trial is ready
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
+        Here&apos;s what you get the moment you finish setup.
+      </p>
+
+      {connectorEntries.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-5">
+          {connectorEntries.map((connector) => {
+            return (
+              <span
+                key={connector.type}
+                className="zero-border flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs text-foreground"
+              >
+                <ConnectorIcon type={connector.type} size={14} />
+                {connector.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Hero: lead with the dollar value so users see they're getting
+          real spending power, not a token allowance. The $20 is the visual
+          anchor of the entire step. */}
+      <div className="rounded-2xl bg-gray-50 px-6 py-6 mb-6 relative overflow-hidden">
+        <img
+          src={upsellCrownSrc}
+          alt=""
+          role="presentation"
+          className="absolute top-3 right-3 h-14 w-14 object-contain"
+        />
+        <div className="flex items-baseline gap-2">
+          <span className="text-5xl font-semibold text-foreground leading-none tracking-tight">
+            $20
+          </span>
+          <span className="text-base font-medium text-foreground">
+            in credits, on us
+          </span>
+        </div>
+        <p className="text-sm text-foreground mt-3 leading-relaxed">
+          <span className="font-medium">20,000 VM0 credits</span> to spend on
+          Zero. Enough agent runs to draft, build and ship from day one.
+        </p>
+      </div>
+
+      <p className="text-sm font-semibold text-foreground mb-3">
+        Plus, everything your agent can do
+      </p>
+      <ul
+        data-testid="onboarding-trial-benefits"
+        className="w-full flex flex-col gap-y-2.5"
+      >
+        {PRO_TRIAL_BENEFITS.map((benefit) => {
+          return (
+            <li key={benefit} className="flex items-start gap-2.5">
+              <IconCheck
+                size={16}
+                stroke={2.25}
+                className="text-primary shrink-0 mt-0.5"
+              />
+              <span className="text-sm text-foreground leading-snug">
+                {benefit}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** Left-panel illustration for step 4 — Zero avatar + trial framing,
+ *  matching the rest of the onboarding steps. */
+function OnboardingTrialPanel() {
+  return (
+    <>
+      <img
+        src={zeroAnimatedSrc}
+        alt=""
+        role="presentation"
+        className="h-24 w-24 object-contain mb-7"
+      />
+      <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
+        7 days of Pro, on us
+      </h3>
+      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
+        Full access while you explore. This is what your agent will do for you.
+      </p>
+    </>
   );
 }
 
@@ -707,13 +841,14 @@ function OnboardingIllustrationPanel() {
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
+  const showTrial = stepKey === "trial";
 
   return (
     <div
       className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
     >
-      {/* Decorative circles (non-orbit, non-chat steps) */}
-      {!showOrbit && !showChat && (
+      {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
+      {!showOrbit && !showChat && !showTrial && (
         <div className="absolute inset-0 pointer-events-none" aria-hidden>
           <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
           <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
@@ -727,6 +862,8 @@ function OnboardingIllustrationPanel() {
           <ChatPreview />
         ) : showOrbit ? (
           <OnboardingOrbitPanel />
+        ) : showTrial ? (
+          <OnboardingTrialPanel />
         ) : (
           <>
             <img
@@ -898,6 +1035,9 @@ function OnboardingStepContent() {
     }
     case "3": {
       return <ConnectStepContent />;
+    }
+    case "4": {
+      return <TrialStepContent />;
     }
     default: {
       return null;

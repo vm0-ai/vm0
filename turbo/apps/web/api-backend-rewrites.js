@@ -340,6 +340,8 @@ const ZERO_API_KEY_BY_ID_PATH_RE = new RegExp(
 const ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE =
   "/api/zero/billing/auto-recharge";
 const ZERO_BILLING_CHECKOUT_REWRITE_SOURCE = "/api/zero/billing/checkout";
+const ZERO_BILLING_CHECKOUT_COMPLETE_REWRITE_SOURCE =
+  "/api/zero/billing/checkout/complete";
 const ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE =
   "/api/zero/billing/credit-checkout";
 const ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE = "/api/zero/billing/downgrade";
@@ -672,6 +674,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/billing/auto-recharge",
   ],
   [ZERO_BILLING_CHECKOUT_REWRITE_SOURCE, "/api/zero/billing/checkout"],
+  [
+    ZERO_BILLING_CHECKOUT_COMPLETE_REWRITE_SOURCE,
+    "/api/zero/billing/checkout/complete",
+  ],
   [
     ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE,
     "/api/zero/billing/credit-checkout",

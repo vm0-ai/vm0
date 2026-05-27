@@ -142,6 +142,40 @@ describe("zero chat thread page - insufficient credits card", () => {
     });
   });
 
+  it("starts Pro checkout for pro-suspend workspaces even with credits", async () => {
+    let capturedCheckoutBody: unknown;
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 20_000,
+      subscriptionStatus: null,
+      hasSubscription: false,
+    });
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        capturedCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?tier=pro",
+        });
+      }),
+    );
+    seedInsufficientCreditsMessages();
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByText("Upgrade to Pro to run Zero"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Credits available")).not.toBeInTheDocument();
+    const upgradeButton = await findButtonByText("Upgrade to Pro");
+    click(upgradeButton);
+
+    await waitFor(() => {
+      expect(capturedCheckoutBody).toMatchObject({
+        tier: "pro",
+      });
+    });
+  });
+
   it("asks non-admins to have an admin upgrade free-tier workspaces", async () => {
     const createCheckout = vi.fn();
     setMockOrg({ role: "member" });

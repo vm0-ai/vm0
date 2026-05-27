@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createApp } from "../../../app-factory";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { HttpResponse, http } from "msw";
@@ -65,6 +66,11 @@ async function seedPatFixture(): Promise<PatFixture> {
     role: "admin",
     cachedAt: new Date(now()),
   });
+  await writeDb.insert(orgMetadata).values({
+    orgId,
+    tier: "free",
+    credits: 10_000,
+  });
 
   return { token, tokenId, userId, orgId };
 }
@@ -95,6 +101,7 @@ async function deletePatFixture(fixture: PatFixture): Promise<void> {
         eq(orgMembersCache.userId, fixture.userId),
       ),
     );
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await writeDb.delete(cliTokens).where(eq(cliTokens.id, fixture.tokenId));
 }
 

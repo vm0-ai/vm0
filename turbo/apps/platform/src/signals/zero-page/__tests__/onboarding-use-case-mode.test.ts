@@ -20,12 +20,13 @@ import {
   onboardingStepNext$,
   onboardingVisibleSteps$,
 } from "../zero-onboarding-actions.ts";
-import { pathname, search } from "../../location.ts";
+import { pathname } from "../../location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -140,7 +141,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     expect(visible).toStrictEqual(["3"]);
   });
 
-  it("admin visible steps are the regular step 1 + step 2 outside use-case mode", async () => {
+  it("admin visible steps are the regular flow outside use-case mode", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
@@ -152,8 +153,9 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     await context.store.set(setupOnboardingPage$, context.signal);
 
     const visible = await context.store.get(onboardingVisibleSteps$);
-    // No use-case link → regular admin flow: name workspace, then pick tools.
-    expect(visible).toStrictEqual(["1", "2"]);
+    // No use-case link → regular admin flow: name workspace, pick tools,
+    // then start the Pro trial checkout.
+    expect(visible).toStrictEqual(["1", "2", "4"]);
   });
 
   it("button label switches to 'Try It' on step 3 in use-case mode", async () => {
@@ -172,8 +174,9 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     );
   });
 
-  it("eager-init forwards the URL connectors and Try It clears the deep-link params", async () => {
+  it("eager-init forwards URL connectors and Try It starts checkout while payment is pending", async () => {
     let capturedBody: { selectedConnectors?: string[] } | null = null;
+    let checkoutBody: Record<string, unknown> | null = null;
     const agentId = "d0000000-0000-4000-a000-000000000001";
 
     server.use(
@@ -190,6 +193,12 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       mockApi(onboardingSetupContract.setup, ({ body, respond }) => {
         capturedBody = body as { selectedConnectors?: string[] };
         return respond(200, { agentId });
+      }),
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
       }),
     );
 
@@ -211,11 +220,12 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       "3",
     );
 
-    // After eager-init the backend reports the user as onboarded.
+    // After eager-init, the backend has a default agent but keeps onboarding
+    // active until Stripe checkout clears onboardingPaymentPending.
     server.use(
       mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
         return respond(200, {
-          needsOnboarding: false,
+          needsOnboarding: true,
           isAdmin: true,
           hasOrg: true,
           hasDefaultAgent: true,
@@ -229,12 +239,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     context.store.set(setOnboardingPromptDraft$, "edited prompt");
     await context.store.set(onboardingStepNext$, context.signal);
 
-    // The onboarding deep-link params must be cleared before the optimistic
-    // router forwards search params to /chats/:threadId — otherwise the new
-    // chat URL still carries ?prompt= + ?connector=.
-    const remaining = new URLSearchParams(search());
-    expect(remaining.get("prompt")).toBeNull();
-    expect(remaining.get("connector")).toBeNull();
+    expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
   });
 
   it("resolved prompt prefers the edited draft over the URL prompt", async () => {
@@ -418,7 +423,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       );
     });
 
-    it("keeps the dialog visible after the server flips needsOnboarding false", async () => {
+    it("keeps the dialog visible after eager init while checkout remains pending", async () => {
       setupAdminMocks();
 
       detachedSetupPage({
@@ -431,9 +436,9 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       context.store.set(setZeroWorkspaceName$, "Acme");
       await context.store.set(onboardingStepNext$, context.signal);
 
-      // Post-eager-init `zeroNeedsOnboarding$` will reload to false because
-      // the backend now reports the user as onboarded. The dialog must still
-      // be shown so the user can finish the remaining step.
+      // Post-eager-init the backend reports a default agent while payment is
+      // still pending. The dialog must stay visible so the user can start
+      // checkout from the remaining step.
       await expect(
         context.store.get(onboardingShowDialog$),
       ).resolves.toBeTruthy();
@@ -481,8 +486,9 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       ).resolves.toBeFalsy();
     });
 
-    it("try it on step 3 after eager init does not re-call setup", async () => {
-      const { setupCalls, agentId } = setupAdminMocks();
+    it("try it on step 3 after eager init starts checkout and does not re-call setup", async () => {
+      const { setupCalls } = setupAdminMocks();
+      let checkoutBody: Record<string, unknown> | null = null;
       server.use(
         mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
           return respond(200, {
@@ -492,6 +498,12 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
             hasDefaultAgent: false,
             defaultAgentId: null,
             defaultAgentMetadata: null,
+          });
+        }),
+        mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+          checkoutBody = body as Record<string, unknown>;
+          return respond(200, {
+            url: "https://checkout.stripe.com/test?mode=trial",
           });
         }),
       );
@@ -508,26 +520,12 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       await context.store.set(onboardingStepNext$, context.signal);
       expect(setupCalls).toHaveLength(1);
 
-      // After eager-init the backend reports needsOnboarding=false. Override
-      // the mock so continueWeb$ reads the new state when polling status.
-      server.use(
-        mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
-          return respond(200, {
-            needsOnboarding: false,
-            isAdmin: true,
-            hasOrg: true,
-            hasDefaultAgent: true,
-            defaultAgentId: agentId,
-            defaultAgentMetadata: null,
-          });
-        }),
-      );
-
-      // Step 3 (Try It) → must NOT re-call setup.
+      // Step 3 (Try It) starts checkout and must NOT re-call setup.
       context.store.set(setOnboardingPromptDraft$, "hello");
       await context.store.set(onboardingStepNext$, context.signal);
 
       expect(setupCalls).toHaveLength(1);
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 

@@ -4,7 +4,6 @@ import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
 import * as agentComposeSchema from "./schema/agent-compose";
 import * as agentRunSchema from "./schema/agent-run";
-import * as archivedAgentRunEventSchema from "./schema/archived-agent-run-event";
 import * as conversationSchema from "./schema/conversation";
 import * as checkpointSchema from "./schema/checkpoint";
 import * as agentSessionSchema from "./schema/agent-session";
@@ -85,7 +84,6 @@ export const schema = {
   ...desktopAuthHandoffCodeSchema,
   ...agentComposeSchema,
   ...agentRunSchema,
-  ...archivedAgentRunEventSchema,
   ...conversationSchema,
   ...checkpointSchema,
   ...agentSessionSchema,

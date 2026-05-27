@@ -29,20 +29,23 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
 
 /**
  * Whether the current user needs onboarding. Onboarding is purely admin
- * workspace setup — the backend only returns `needsOnboarding: true` for an
- * admin whose org has no default agent yet.
+ * workspace setup — the backend keeps `needsOnboarding: true` for admins
+ * until the default agent exists and the Pro trial checkout has completed.
  */
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   return status.needsOnboarding;
 });
 
-type ZeroOnboardingStep = "1" | "2" | "3" | "done";
+type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 
 const userStep$ = state<ZeroOnboardingStep | null>(null);
 
 const initialOnboardingStep$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
+  if (status.needsOnboarding && status.hasDefaultAgent) {
+    return "4";
+  }
   return status.needsOnboarding ? "1" : "done";
 });
 
@@ -163,8 +166,8 @@ export const resetOnboardingStep$ = command(({ set }) => {
 });
 
 /**
- * Complete onboarding: single server-side API call that creates agent,
- * sets default, updates org, and marks onboarding done.
+ * Provision onboarding state: create the default agent, update org metadata,
+ * and optionally keep onboarding active until Stripe checkout succeeds.
  */
 export const completeZeroOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {

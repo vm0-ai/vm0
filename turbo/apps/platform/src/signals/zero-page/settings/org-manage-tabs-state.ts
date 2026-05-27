@@ -309,15 +309,17 @@ export const setSaveError$ = command(({ set }, value: string | null) => {
 // org-billing-tab: DowngradeConfirmDialog selectedTarget
 // ---------------------------------------------------------------------------
 
-const internalSelectedTarget$ = state<"free" | "pro">("free");
+const internalSelectedTarget$ = state<"pro-suspend" | "pro">("pro-suspend");
 
 export const selectedTarget$ = computed((get) => {
   return get(internalSelectedTarget$);
 });
 
-export const setSelectedTarget$ = command(({ set }, value: "free" | "pro") => {
-  set(internalSelectedTarget$, value);
-});
+export const setSelectedTarget$ = command(
+  ({ set }, value: "pro-suspend" | "pro") => {
+    set(internalSelectedTarget$, value);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // org-members-tab: async commands

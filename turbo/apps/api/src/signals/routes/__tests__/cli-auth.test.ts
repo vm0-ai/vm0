@@ -1485,11 +1485,14 @@ describe("CLI auth routes", () => {
       ).resolves.toHaveLength(1);
       await expect(
         writeDb
-          .select()
+          .select({
+            credits: orgMetadata.credits,
+            tier: orgMetadata.tier,
+          })
           .from(orgMetadata)
           .where(eq(orgMetadata.orgId, orgId))
           .limit(1),
-      ).resolves.toHaveLength(1);
+      ).resolves.toMatchObject([{ credits: 100_000, tier: "pro" }]);
     });
 
     it("returns 500 when the test user cannot be resolved", async () => {

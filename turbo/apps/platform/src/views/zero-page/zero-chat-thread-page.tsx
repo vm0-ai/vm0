@@ -2652,28 +2652,33 @@ function CreditsAvailableMessage() {
 
 function insufficientCreditsCopy(params: {
   readonly isFree: boolean;
+  readonly requiresPro: boolean;
   readonly roleResolved: boolean;
   readonly canManageBilling: boolean;
 }): { readonly headline: string; readonly helper: string } {
-  const headline = params.isFree
-    ? "You've used your free credits"
-    : "You're out of credits";
+  const headline = params.requiresPro
+    ? "Upgrade to Pro to run Zero"
+    : params.isFree
+      ? "You've used your free credits"
+      : "You're out of credits";
   if (!params.roleResolved) {
     return { headline, helper: "Checking billing permissions..." };
   }
   if (!params.canManageBilling) {
     return {
       headline,
-      helper: params.isFree
-        ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
-        : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+      helper:
+        params.requiresPro || params.isFree
+          ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
+          : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
     };
   }
   return {
     headline,
-    helper: params.isFree
-      ? "Upgrade to Pro to keep chatting with Zero."
-      : "Add credits to keep chatting with Zero.",
+    helper:
+      params.requiresPro || params.isFree
+        ? "Upgrade to Pro to keep chatting with Zero."
+        : "Add credits to keep chatting with Zero.",
   };
 }
 
@@ -2771,9 +2776,10 @@ function InsufficientCreditsCard() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
-  const hasAvailableCredits = credits !== null && credits > 0;
+  const requiresPro = tier === "pro-suspend";
+  const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
   const isFree = tier === "free" || tier === null;
-  const shouldStartProCheckout = tier === "free";
+  const shouldStartProCheckout = requiresPro || isFree;
   const redirecting =
     checkoutLoadable.state === "loading" ||
     creditCheckoutLoadable.state === "loading";
@@ -2784,6 +2790,7 @@ function InsufficientCreditsCard() {
 
   const { headline, helper } = insufficientCreditsCopy({
     isFree,
+    requiresPro,
     roleResolved,
     canManageBilling,
   });
@@ -2797,7 +2804,10 @@ function InsufficientCreditsCard() {
   const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     if (shouldStartProCheckout) {
       const newTab = event.metaKey || event.ctrlKey;
-      detach(checkout("pro", newTab, pageSignal), Reason.DomCallback);
+      detach(
+        checkout("pro", newTab, undefined, pageSignal),
+        Reason.DomCallback,
+      );
       return;
     }
     openBilling();
@@ -2815,7 +2825,7 @@ function InsufficientCreditsCard() {
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
       <p className="text-sm font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
-      {!canManageBilling ? null : isFree ? (
+      {!canManageBilling ? null : shouldStartProCheckout ? (
         <button
           type="button"
           onClick={handleUpgradeClick}

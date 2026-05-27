@@ -332,11 +332,13 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const writeDb = store.set(writeDb$);
     const provider = `test-provider-${randomUUID().slice(0, 8)}`;
     // Seed initial credit balance.
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 1000,
-      tier: "free",
-    });
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 1000,
+        tier: "free",
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     // Seed pricing: 1 credit per 1000 input tokens.
     await writeDb.insert(usagePricing).values({
       kind: "model",
@@ -421,11 +423,13 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     );
 
     const writeDb = store.set(writeDb$);
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 1000,
-      tier: "free",
-    });
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 1000,
+        tier: "free",
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     await writeDb.insert(usageEvent).values({
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -554,16 +558,18 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const provider = `test-provider-${randomUUID().slice(0, 8)}`;
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     // Seed paid org with auto-recharge enabled at threshold=500.
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 600,
-      tier: "team",
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: null,
-      autoRechargeEnabled: true,
-      autoRechargeThreshold: 500,
-      autoRechargeAmount: 10_000,
-    });
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 600,
+        tier: "team",
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: null,
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 500,
+        autoRechargeAmount: 10_000,
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     await writeDb.insert(usagePricing).values({
       kind: "model",
       provider,
@@ -675,16 +681,18 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const writeDb = store.set(writeDb$);
     const provider = `test-provider-${randomUUID().slice(0, 8)}`;
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 100_000,
-      tier: "team",
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: null,
-      autoRechargeEnabled: true,
-      autoRechargeThreshold: 500,
-      autoRechargeAmount: 10_000,
-    });
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 100_000,
+        tier: "team",
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: null,
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 500,
+        autoRechargeAmount: 10_000,
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     await writeDb.insert(usagePricing).values({
       kind: "model",
       provider,
@@ -753,17 +761,19 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const writeDb = store.set(writeDb$);
     const provider = `test-provider-${randomUUID().slice(0, 8)}`;
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 400,
-      tier: "free",
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: null,
-      autoRechargeEnabled: true,
-      autoRechargeThreshold: 500,
-      autoRechargeAmount: 10_000,
-      autoRechargePendingAt: null,
-    });
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 400,
+        tier: "free",
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: null,
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 500,
+        autoRechargeAmount: 10_000,
+        autoRechargePendingAt: null,
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     await writeDb.insert(usagePricing).values({
       kind: "model",
       provider,
@@ -839,17 +849,19 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     // pendingAt within the 10-min stale-threshold window → atomic claim
     // refuses (already-pending).
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      credits: 400,
-      tier: "team",
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: null,
-      autoRechargeEnabled: true,
-      autoRechargeThreshold: 500,
-      autoRechargeAmount: 10_000,
-      autoRechargePendingAt: nowDate(),
-    });
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 400,
+        tier: "team",
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: null,
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 500,
+        autoRechargeAmount: 10_000,
+        autoRechargePendingAt: nowDate(),
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
     await writeDb.insert(usagePricing).values({
       kind: "model",
       provider,

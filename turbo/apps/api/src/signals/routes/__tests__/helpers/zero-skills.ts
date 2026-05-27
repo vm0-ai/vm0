@@ -12,6 +12,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -27,11 +28,23 @@ export interface SkillsFixture {
 }
 
 export const seedSkillsFixture$ = command(
-  (_, _input: void, _signal: AbortSignal): Promise<SkillsFixture> => {
-    return Promise.resolve({
+  async (
+    { set },
+    _input: void,
+    signal: AbortSignal,
+  ): Promise<SkillsFixture> => {
+    const db = set(writeDb$);
+    const fixture = {
       orgId: `org_${randomUUID()}`,
       userId: `user_${randomUUID()}`,
+    };
+    await db.insert(orgMetadata).values({
+      orgId: fixture.orgId,
+      tier: "free",
+      credits: 10_000,
     });
+    signal.throwIfAborted();
+    return fixture;
   },
 );
 
@@ -46,6 +59,8 @@ export const deleteSkillsForFixture$ = command(
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.delete(zeroSkills).where(eq(zeroSkills.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
     // agent_composes cascades to zero_agents via FK.
     await db

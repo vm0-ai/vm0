@@ -31,7 +31,7 @@ describe("GET /api/zero/voice-io/quota", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("defaults a missing org metadata row to the free quota", async () => {
+  it("defaults a missing org metadata row to a suspended quota", async () => {
     const fixture = await track(
       store.set(seedVoiceIoQuotaOrg$, {}, context.signal),
     );
@@ -47,9 +47,9 @@ describe("GET /api/zero/voice-io/quota", () => {
     );
 
     expect(response.body).toStrictEqual({
-      allowed: true,
+      allowed: false,
       count: 0,
-      limit: AUDIO_INPUT_FREE_QUOTA,
+      limit: 0,
     });
   });
 
@@ -77,7 +77,11 @@ describe("GET /api/zero/voice-io/quota", () => {
 
   it("allows free tier users with partial lifetime audio input usage", async () => {
     const fixture = await track(
-      store.set(seedVoiceIoQuotaOrg$, { count: 2 }, context.signal),
+      store.set(
+        seedVoiceIoQuotaOrg$,
+        { tier: "free", count: 2 },
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -101,7 +105,7 @@ describe("GET /api/zero/voice-io/quota", () => {
     const fixture = await track(
       store.set(
         seedVoiceIoQuotaOrg$,
-        { count: AUDIO_INPUT_FREE_QUOTA - 1 },
+        { tier: "free", count: AUDIO_INPUT_FREE_QUOTA - 1 },
         context.signal,
       ),
     );
@@ -127,7 +131,7 @@ describe("GET /api/zero/voice-io/quota", () => {
     const fixture = await track(
       store.set(
         seedVoiceIoQuotaOrg$,
-        { count: AUDIO_INPUT_FREE_QUOTA },
+        { tier: "free", count: AUDIO_INPUT_FREE_QUOTA },
         context.signal,
       ),
     );
@@ -153,7 +157,7 @@ describe("GET /api/zero/voice-io/quota", () => {
     const fixture = await track(
       store.set(
         seedVoiceIoQuotaOrg$,
-        { count: AUDIO_INPUT_FREE_QUOTA + 1 },
+        { tier: "free", count: AUDIO_INPUT_FREE_QUOTA + 1 },
         context.signal,
       ),
     );

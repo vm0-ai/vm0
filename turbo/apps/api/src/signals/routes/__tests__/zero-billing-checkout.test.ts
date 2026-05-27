@@ -33,14 +33,21 @@ function setZeroPrice(): void {
   );
 }
 
-async function seedOrgRow(): Promise<{
+async function seedOrgRow(values?: {
+  readonly onboardingPaymentPending?: boolean;
+  readonly stripeCustomerId?: string;
+}): Promise<{
   readonly orgId: string;
   readonly userId: string;
 }> {
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
   const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMetadata).values({ orgId });
+  await writeDb.insert(orgMetadata).values({
+    orgId,
+    onboardingPaymentPending: values?.onboardingPaymentPending ?? false,
+    stripeCustomerId: values?.stripeCustomerId,
+  });
   return { orgId, userId };
 }
 
@@ -67,6 +74,15 @@ describe("POST /api/zero/billing/checkout", () => {
 
   async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
     const fixture = await seedOrgRow();
+    createdOrgIds.push(fixture.orgId);
+    return fixture;
+  }
+
+  async function trackedPendingSeed(): Promise<{
+    orgId: string;
+    userId: string;
+  }> {
+    const fixture = await seedOrgRow({ onboardingPaymentPending: true });
     createdOrgIds.push(fixture.orgId);
     return fixture;
   }
@@ -201,6 +217,102 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
+  it("returns Pro trial checkout URL during onboarding payment", async () => {
+    const fixture = await trackedPendingSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/trial",
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          trialDays: 7,
+          successUrl: `${APP_ORIGIN}/onboarding?billing=pro`,
+          cancelUrl: `${APP_ORIGIN}/onboarding?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/trial",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
+      allow_promotion_codes: true,
+      success_url: `${APP_ORIGIN}/onboarding?billing=pro`,
+      cancel_url: `${APP_ORIGIN}/onboarding?billing=canceled`,
+      subscription_data: {
+        metadata: { orgId: fixture.orgId },
+        trial_period_days: 7,
+      },
+    });
+  });
+
+  it("rejects Pro trial checkout outside onboarding payment", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          trialDays: 7,
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Pro trial checkout is only available during onboarding",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("rejects trial checkout for non-Pro tiers", async () => {
+    const fixture = await trackedPendingSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "team",
+          trialDays: 7,
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Trial checkout is only available for Pro tier",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
   it("returns 400 when successUrl origin does not match APP_URL", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -274,6 +386,158 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(response.body).toStrictEqual({
       error: {
         message: "Price not configured for pro tier",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+});
+
+describe("POST /api/zero/billing/checkout/complete", () => {
+  const createdOrgIds: string[] = [];
+
+  beforeEach(() => {
+    setZeroPrice();
+  });
+
+  afterEach(async () => {
+    while (createdOrgIds.length > 0) {
+      const orgId = createdOrgIds.pop();
+      if (orgId) {
+        await deleteOrgRow(orgId);
+      }
+    }
+  });
+
+  async function trackedSeed(values?: {
+    readonly onboardingPaymentPending?: boolean;
+    readonly stripeCustomerId?: string;
+  }): Promise<{ orgId: string; userId: string }> {
+    const fixture = await seedOrgRow(values);
+    createdOrgIds.push(fixture.orgId);
+    return fixture;
+  }
+
+  it("reconciles a completed subscription checkout for the current org", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      onboardingPaymentPending: true,
+      stripeCustomerId: customerId,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_completed",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: subscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "trialing",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PRO },
+            current_period_end: 1_800_000_000,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: true });
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toMatchObject({
+      tier: "pro",
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "trialing",
+      onboardingPaymentPending: false,
+      currentPeriodEnd: new Date(1_800_000_000 * 1000),
+    });
+  });
+
+  it("returns completed false while Stripe has not completed the session", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      onboardingPaymentPending: true,
+      stripeCustomerId: customerId,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_open",
+      mode: "subscription",
+      status: "open",
+      customer: customerId,
+      subscription: null,
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_open" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: false });
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout sessions from another customer", async () => {
+    const fixture = await trackedSeed({
+      stripeCustomerId: `cus_${randomUUID().slice(0, 8)}`,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_other_customer",
+      mode: "subscription",
+      status: "complete",
+      customer: `cus_${randomUUID().slice(0, 8)}`,
+      subscription: `sub_${randomUUID().slice(0, 8)}`,
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_other_customer" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Checkout session does not belong to current organization",
         code: "BAD_REQUEST",
       },
     });

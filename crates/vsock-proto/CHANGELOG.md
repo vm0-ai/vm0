@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.8](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.7...vsock-proto-v0.18.8) (2026-05-27)
+
+
+### Refactoring
+
+* centralize exec output chunk validation ([#15050](https://github.com/vm0-ai/vm0/issues/15050)) ([171d55d](https://github.com/vm0-ai/vm0/commit/171d55d3cb7752e4ae37f87473e29322acbca78e))
+
 ## [0.18.7](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.6...vsock-proto-v0.18.7) (2026-05-25)
 
 

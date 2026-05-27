@@ -54,11 +54,11 @@ const PLANS = [
     name: "Free",
     price: "$0",
     period: "/month",
-    description: "Get started with your AI teammate for free.",
+    description: "Legacy free access for existing workspaces.",
     cta: "Current plan",
     image: planFreeImg,
     features: [
-      "10,000 starter credits (expire in 1 month)",
+      "Existing free credits only",
       "1 concurrent run",
       "Unlimited total agents",
       "Bring your own LLM keys",
@@ -106,6 +106,10 @@ const PLANS = [
   },
 ] as const;
 
+const COMPARE_PLANS = PLANS.filter((plan) => {
+  return plan.tier !== "free";
+});
+
 function getPlanPrice(tier: string): string {
   const plan = PLANS.find((p) => {
     return p.tier === tier;
@@ -117,7 +121,7 @@ const proPlanPrice = getPlanPrice("pro");
 const freePlanPrice = getPlanPrice("free");
 
 function tierRank(t: BillingTier): number {
-  if (t === "free") {
+  if (t === "free" || t === "pro-suspend") {
     return 0;
   }
   if (t === "pro") {
@@ -126,12 +130,19 @@ function tierRank(t: BillingTier): number {
   return 2;
 }
 
+function isPaidTier(tier: BillingTier): boolean {
+  return tier === "pro" || tier === "team";
+}
+
 function planButtonLabel(
   plan: (typeof PLANS)[number],
   currentTier: BillingTier,
 ): string {
   if (plan.tier === currentTier) {
     return "Current plan";
+  }
+  if (plan.tier === "free" && currentTier === "pro-suspend") {
+    return "Unavailable";
   }
   if (plan.tier === "free") {
     return "Manage subscription";
@@ -155,6 +166,7 @@ function PlanCard({
 }) {
   const isCurrent = plan.tier === currentTier;
   const label = planButtonLabel(plan, currentTier);
+  const unavailable = label === "Unavailable";
 
   return (
     <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
@@ -228,7 +240,7 @@ function PlanCard({
           }
           size="default"
           className="w-full h-11 text-sm font-medium"
-          disabled={loading || isCurrent}
+          disabled={loading || isCurrent || unavailable}
           onClick={(e) => {
             return onAction(plan.tier, e);
           }}
@@ -256,6 +268,9 @@ function PricingPage({
     if (planTier === currentTier) {
       return;
     }
+    if (planTier === "free" && currentTier === "pro-suspend") {
+      return;
+    }
     if (planTier === "free" || tierRank(planTier) < tierRank(currentTier)) {
       openDowngrade();
       return;
@@ -264,7 +279,10 @@ function PricingPage({
       return;
     }
     const newTab = e.metaKey || e.ctrlKey;
-    detach(checkout(planTier, newTab, pageSignal), Reason.DomCallback);
+    detach(
+      checkout(planTier, newTab, undefined, pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -302,8 +320,8 @@ function PricingPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {PLANS.map((plan) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {COMPARE_PLANS.map((plan) => {
           return (
             <PlanCard
               key={plan.tier}
@@ -320,6 +338,9 @@ function PricingPage({
 }
 
 function formatTierLabel(tier: BillingTier): string {
+  if (tier === "pro-suspend") {
+    return "No plan";
+  }
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
@@ -355,9 +376,17 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           <DialogDescription>
             {isTeam
               ? "Choose which plan to downgrade to."
-              : "Are you sure you want to downgrade to Free?"}
+              : "Are you sure you want to cancel your Pro plan?"}
           </DialogDescription>
         </DialogHeader>
+
+        {!isTeam && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+            Your Pro access remains active until the current billing period
+            ends. After that, this workspace moves to No plan and agents cannot
+            run until you upgrade again.
+          </p>
+        )}
 
         {isTeam && (
           <div className="flex flex-col gap-2 mt-2">
@@ -384,17 +413,17 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             <button
               type="button"
               onClick={() => {
-                return setSelectedTarget("free");
+                return setSelectedTarget("pro-suspend");
               }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
-                selectedTarget === "free"
+                selectedTarget === "pro-suspend"
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-border hover:border-muted-foreground/30"
               }`}
             >
               <div>
                 <span className="text-sm font-semibold text-foreground">
-                  Free
+                  No plan
                 </span>
                 <span className="ml-2 text-sm text-muted-foreground">
                   {freePlanPrice}
@@ -423,7 +452,9 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           >
             {loading
               ? "Downgrading..."
-              : `Downgrade to ${formatTierLabel(selectedTarget)}`}
+              : selectedTarget === "pro-suspend"
+                ? "Cancel subscription"
+                : `Downgrade to ${formatTierLabel(selectedTarget)}`}
           </Button>
         </div>
       </DialogContent>
@@ -496,7 +527,7 @@ export function OrgBillingTab() {
   const statusError = statusLoadable.state === "hasError";
 
   const currentTier = apiTierToBillingTier(status?.tier);
-  const isPaid = currentTier !== "free";
+  const isPaid = isPaidTier(currentTier);
   const isCancelling = status?.cancelAtPeriodEnd === true;
   const periodEnd = status?.currentPeriodEnd;
   const periodLabel =
@@ -509,6 +540,10 @@ export function OrgBillingTab() {
   const handleDowngrade = () => {
     openDowngrade();
   };
+  const currentPlanLabel =
+    currentTier === "pro-suspend"
+      ? "No active plan"
+      : `${formatTierLabel(currentTier)} plan`;
 
   if (pricingOpen) {
     return (
@@ -557,7 +592,7 @@ export function OrgBillingTab() {
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    {formatTierLabel(currentTier)} plan
+                    {currentPlanLabel}
                   </p>
                   <p className="text-[13px] text-muted-foreground mt-0.5">
                     {periodLabel ?? "No active subscription"}

@@ -11,6 +11,7 @@ import {
   onboardingPromptDraft$,
   onboardingEagerInitialized$,
   markEagerInitialized$,
+  reloadOnboardingStatus$,
 } from "./zero-onboarding.ts";
 import {
   detachedNavigateTo$,
@@ -18,11 +19,20 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { setLoop } from "../utils.ts";
 
-import { reloadBillingStatus$ } from "./billing.ts";
+import {
+  completeCheckoutSession$,
+  reloadBillingStatus$,
+  startCheckout$,
+} from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
-import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
+import {
+  hideAppSkeleton$,
+  showAppSkeleton$,
+  startSkeletonCycling$,
+} from "../app-skeleton.ts";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -56,10 +66,10 @@ export const onboardingEffectiveConnectors$ = computed((get) => {
 });
 
 /**
- * The resolved step. Onboarding is admin workspace setup (step 1 → step 2).
- * A use-case deep link (`?prompt=`, optionally with `&connector=`) collapses
- * the flow to step 3, where the user reviews connectors + edits the prompt
- * before "Try It".
+ * The resolved step. Onboarding is admin workspace setup
+ * (step 1 → step 2 → step 4). A use-case deep link (`?prompt=`, optionally
+ * with `&connector=`) collapses the flow to step 3, where the user reviews
+ * connectors + edits the prompt before "Try It".
  */
 export const onboardingEffectiveStep$ = computed(async (get) => {
   const step = await get(zeroOnboardingStep$);
@@ -75,8 +85,9 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
 
 /**
  * Steps shown in the progress bar. The regular admin flow is step 1
- * (workspace) + step 2 (connectors). A use-case deep link collapses to step 3
- * (plus step 1 when the admin still has to create the workspace).
+ * (workspace) + step 2 (connectors) + step 4 (Pro features + 7-day trial).
+ * A use-case deep link collapses to step 3 (plus step 1 when the admin still
+ * has to create the workspace).
  */
 export const onboardingVisibleSteps$ = computed(async (get) => {
   const isAdmin = await get(onboardingIsAdmin$);
@@ -84,7 +95,10 @@ export const onboardingVisibleSteps$ = computed(async (get) => {
   if (isUseCase) {
     return (isAdmin ? ["1", "3"] : ["3"]) as readonly string[];
   }
-  return (isAdmin ? ["1", "2"] : []) as readonly string[];
+  if (!isAdmin) {
+    return [] as readonly string[];
+  }
+  return ["1", "2", "4"] as readonly string[];
 });
 
 /** Current step index within visible steps. */
@@ -104,6 +118,9 @@ export const onboardingStepKey$ = computed(async (get) => {
     case "2":
     case "3": {
       return "connectors";
+    }
+    case "4": {
+      return "trial";
     }
     default: {
       return "workspace";
@@ -152,7 +169,8 @@ export const onboardingNextDisabled$ = computed(async (get) => {
 
 /**
  * Label on the primary forward button. "Try It" finishes a use-case flow,
- * "Get Started" finishes the regular admin flow, "Next" advances step 1.
+ * "Get Started" finishes the regular admin flow on the terminal trial step,
+ * "Next" advances earlier steps.
  */
 export const onboardingNextLabel$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
@@ -160,7 +178,7 @@ export const onboardingNextLabel$ = computed(async (get) => {
   if (isUseCase && step === "3") {
     return "Try It";
   }
-  if (step === "2") {
+  if (step === "4") {
     return "Get Started";
   }
   return "Next";
@@ -171,11 +189,13 @@ export const onboardingStepNext$ = command(
     const step = await get(onboardingEffectiveStep$);
     signal.throwIfAborted();
     const isUseCase = get(onboardingIsUseCase$);
+    const isAdmin = await get(onboardingIsAdmin$);
+    signal.throwIfAborted();
     switch (step) {
       case "1": {
         // Eagerly provision the workspace + default agent so onboarding is
-        // effectively done — refreshing or leaving the (skippable) step 2
-        // won't drop the user back into onboarding.
+        // durable before Stripe redirects away. The pending-payment marker
+        // keeps onboarding active until checkout succeeds.
         if (!get(onboardingEagerInitialized$)) {
           await set(completeZeroOnboarding$, signal);
           signal.throwIfAborted();
@@ -188,10 +208,32 @@ export const onboardingStepNext$ = command(
         set(setZeroStep$, isUseCase ? "3" : "2");
         break;
       }
-      case "2":
-      case "3": {
-        // Step 2 (regular admin) and step 3 (use-case "Try It") both finish
-        // onboarding by continuing into the web chat.
+      case "2": {
+        set(setZeroStep$, "4");
+        break;
+      }
+      case "3":
+      case "4": {
+        // Admin use-case step 3 and regular step 4 start the Stripe Pro trial;
+        // onboarding completes only after the subscription checkout webhook
+        // clears the pending-payment marker. Already-onboarded/non-admin
+        // use-case step 3 can continue straight into the prompt flow.
+        if (step === "4") {
+          const selectedConnectors = get(zeroSelectedConnectors$);
+          if (
+            get(onboardingEagerInitialized$) &&
+            selectedConnectors.length > 0
+          ) {
+            await set(authorizeStep2Connectors$, signal);
+            signal.throwIfAborted();
+          }
+          await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
+          break;
+        }
+        if (isUseCase && isAdmin) {
+          await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
+          break;
+        }
         await set(onboardingContinueWeb$, signal);
         break;
       }
@@ -341,5 +383,58 @@ const onboardingContinueWeb$ = command(
         });
       })(),
     ]);
+  },
+);
+
+const MAX_CHECKOUT_STATUS_POLLS = 90;
+
+const waitForCompletedOnboardingCheckout$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
+    let attempts = 0;
+    let resolvedAgentId: string | null = null;
+
+    await setLoop(
+      async () => {
+        set(reloadOnboardingStatus$);
+        const status = await get(zeroOnboardingStatus$);
+        signal.throwIfAborted();
+        if (!status.needsOnboarding && status.defaultAgentId) {
+          resolvedAgentId = status.defaultAgentId;
+          return true;
+        }
+
+        attempts += 1;
+        return attempts >= MAX_CHECKOUT_STATUS_POLLS;
+      },
+      1000,
+      signal,
+    );
+
+    signal.throwIfAborted();
+    return resolvedAgentId;
+  },
+);
+
+export const continueOnboardingAfterCheckout$ = command(
+  async (
+    { set },
+    sessionId: string | null,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    set(showAppSkeleton$);
+    if (sessionId) {
+      await set(completeCheckoutSession$, sessionId, signal);
+      signal.throwIfAborted();
+    }
+
+    const agentId = await set(waitForCompletedOnboardingCheckout$, signal);
+    signal.throwIfAborted();
+    if (!agentId) {
+      await set(hideAppSkeleton$, signal);
+      return false;
+    }
+
+    await set(onboardingContinueWeb$, signal);
+    return true;
   },
 );

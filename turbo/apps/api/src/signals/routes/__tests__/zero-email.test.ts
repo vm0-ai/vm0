@@ -247,6 +247,8 @@ const seedEmailFixture$ = command(
     await db.insert(orgMetadata).values({
       orgId,
       defaultAgentId: agentId,
+      tier: "free",
+      credits: 10_000,
     });
     signal.throwIfAborted();
     return { orgId, orgSlug, userId, userEmail, agentId, agentName, versionId };
