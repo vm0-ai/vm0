@@ -4,7 +4,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { searchConnectors } from "@vm0/connectors/connector-utils";
+import { searchConnectors } from "@vm0/connectors/connector-search";
 import { listZeroConnectors, searchZeroConnectors } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";

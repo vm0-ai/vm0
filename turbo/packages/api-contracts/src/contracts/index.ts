@@ -723,9 +723,6 @@ export {
   type ScopeDiff,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
-  searchConnectors,
-  type ConnectorSearchResult,
-  type ConnectorSearchOutput,
 } from "@vm0/connectors/connector-utils";
 export {
   connectorSessionStatusSchema,

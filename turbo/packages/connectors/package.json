@@ -12,6 +12,10 @@
       "import": "./src/connector-utils.ts",
       "types": "./src/connector-utils.ts"
     },
+    "./connector-search": {
+      "import": "./src/connector-search.ts",
+      "types": "./src/connector-search.ts"
+    },
     "./connectors": {
       "import": "./src/connectors.ts",
       "types": "./src/connectors.ts"
