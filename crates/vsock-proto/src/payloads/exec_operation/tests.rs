@@ -831,6 +831,46 @@ fn exec_start_rejects_zero_stream_chunk_limit() {
 }
 
 #[test]
+fn exec_start_rejects_zero_capture_and_stream_chunk_limit() {
+    let err = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 1,
+            stream_limit_bytes: 1,
+            chunk_limit_bytes: 0,
+        },
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap_err();
+    assert_invalid_payload(err, "exec output chunk limit must be non-zero");
+
+    let mut payload = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 1,
+            stream_limit_bytes: 1,
+            chunk_limit_bytes: 1,
+        },
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    let chunk_limit_offset =
+        ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 2 + 1 + 4 + 4;
+    payload[chunk_limit_offset..chunk_limit_offset + 4].copy_from_slice(&0u32.to_be_bytes());
+
+    let err = decode_exec_start(&payload).unwrap_err();
+    assert_invalid_payload(err, "exec output chunk limit must be non-zero");
+}
+
+#[test]
 fn exec_start_rejects_expected_exit_count_above_limit() {
     let expected_exit_codes = vec![0; MAX_EXEC_EXPECTED_EXIT_CODES + 1];
     let err = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
