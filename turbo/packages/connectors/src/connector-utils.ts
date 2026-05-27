@@ -53,7 +53,7 @@ export function getConfiguredConnectorAuthMethods(
  *   environment can offer as connection candidates.
  * - User connected connector types come from persisted rows or inferred manual
  *   credential state from user secrets and variables.
- * - Runtime injection happens later when a run receives env vars, secrets,
+ * - Runtime injection happens later when a run receives environment entries, secrets,
  *   variables, and firewall context.
  */
 
@@ -642,16 +642,16 @@ export function getEligibleConnectorTypes(): string[] {
 }
 
 /**
- * Get connector label and derived env var names for a connector secret.
+ * Get connector label and derived environment names for a connector secret.
  * Performs a reverse lookup from secret name to the connector type and
  * env bindings that references it.
  *
  * Example: getConnectorDerivedNames("GITHUB_ACCESS_TOKEN")
- * → { connectorLabel: "GitHub", envVarNames: ["GH_TOKEN", "GITHUB_TOKEN"] }
+ * → { connectorLabel: "GitHub", envNames: ["GH_TOKEN", "GITHUB_TOKEN"] }
  */
 export function getConnectorDerivedNames(
   secretName: string,
-): { connectorLabel: string; envVarNames: string[] } | null {
+): { connectorLabel: string; envNames: string[] } | null {
   const allTypes = CONNECTOR_TYPE_KEYS;
 
   for (const type of allTypes) {
@@ -664,18 +664,18 @@ export function getConnectorDerivedNames(
       continue;
     }
 
-    // Find all env var names that reference this secret
+    // Find all environment names that reference this secret.
     const envBindings = getConnectorEnvBindings(type);
-    const envVarNames = Object.entries(envBindings)
+    const envNames = Object.entries(envBindings)
       .filter(([, valueRef]) => {
         return valueRef === `$secrets.${secretName}`;
       })
-      .map(([envVar]) => {
-        return envVar;
+      .map(([envKey]) => {
+        return envKey;
       });
 
-    if (envVarNames.length > 0) {
-      return { connectorLabel: config.label, envVarNames };
+    if (envNames.length > 0) {
+      return { connectorLabel: config.label, envNames };
     }
   }
 
@@ -700,8 +700,8 @@ export function getConnectorProvidedSecretNames(
       continue;
     }
     const envBindings = getConnectorEnvBindings(parsed.data);
-    for (const envVar of Object.keys(envBindings)) {
-      provided.add(envVar);
+    for (const envKey of Object.keys(envBindings)) {
+      provided.add(envKey);
     }
   }
 
@@ -795,10 +795,10 @@ export function getConnectorManagedSecretNames(
         managed.add(name);
       }
     }
-    // Also include envBindings keys (OAuth-derived env vars like GH_TOKEN)
+    // Also include envBindings keys (OAuth-derived environment keys like GH_TOKEN)
     const envBindings = getConnectorEnvBindings(type);
-    for (const envVar of Object.keys(envBindings)) {
-      managed.add(envVar);
+    for (const envKey of Object.keys(envBindings)) {
+      managed.add(envKey);
     }
   }
   return managed;
@@ -931,9 +931,9 @@ function findExactMatch(
   if (type.toLowerCase() === keywordLower) {
     return { score: 100, matchedField: "type" };
   }
-  for (const envVar of Object.keys(getConnectorEnvBindings(type))) {
-    if (envVar.toLowerCase() === keywordLower) {
-      return { score: 90, matchedField: `env:${envVar}` };
+  for (const envKey of Object.keys(getConnectorEnvBindings(type))) {
+    if (envKey.toLowerCase() === keywordLower) {
+      return { score: 90, matchedField: `env:${envKey}` };
     }
   }
   if (config.label.toLowerCase() === keywordLower) {
@@ -959,9 +959,9 @@ function findSubstringMatch(
   if (config.label.toLowerCase().includes(keywordLower)) {
     return { score: 50, matchedField: "label" };
   }
-  for (const envVar of Object.keys(getConnectorEnvBindings(type))) {
-    if (envVar.toLowerCase().includes(keywordLower)) {
-      return { score: 40, matchedField: `env:${envVar}` };
+  for (const envKey of Object.keys(getConnectorEnvBindings(type))) {
+    if (envKey.toLowerCase().includes(keywordLower)) {
+      return { score: 40, matchedField: `env:${envKey}` };
     }
   }
   for (const name of listSecretNames(config)) {
@@ -1042,7 +1042,7 @@ function scoreConnector(
 /**
  * Search the connector catalog by weighted multi-field ranking.
  *
- * Matches the keyword against type keys, labels, env var names, secret names,
+ * Matches the keyword against type keys, labels, environment names, secret names,
  * and `tags`. Score is the max over matched rules (never a sum). Results with
  * score below the minimum threshold are dropped. Sort order: score desc, then
  * type asc.

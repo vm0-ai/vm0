@@ -1369,7 +1369,7 @@ describe("getConnectorManagedSecretNames", () => {
 });
 
 describe("getConnectorEnvBindings", () => {
-  it("returns non-empty envBindings for connector types that surface env vars to the sandbox", () => {
+  it("returns non-empty envBindings for connector types that surface environment entries to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
       const envBindings = getConnectorEnvBindings(type);
       if (type === "local-agent" || type === "local-browser") {
@@ -1826,12 +1826,12 @@ describe("getRuntimeAvailableConnectorTypes", () => {
 });
 
 describe("getConnectorProvidedSecretNames", () => {
-  it("returns env var names for API-token-only connector", () => {
+  it("returns environment names for API-token-only connector", () => {
     const names = getConnectorProvidedSecretNames(["axiom"]);
     expect(names.has("AXIOM_TOKEN")).toBe(true);
   });
 
-  it("returns env var names for OAuth connector", () => {
+  it("returns environment names for OAuth connector", () => {
     const names = getConnectorProvidedSecretNames(["github"]);
     expect(names.has("GH_TOKEN")).toBe(true);
     expect(names.has("GITHUB_TOKEN")).toBe(true);

@@ -34,7 +34,7 @@ export const listCommand = new Command()
           if (derived) {
             typeIndicator = chalk.dim(` [${derived.connectorLabel} connector]`);
             derivedLine = chalk.dim(
-              `Available as: ${derived.envVarNames.join(", ")}`,
+              `Available as: ${derived.envNames.join(", ")}`,
             );
           } else {
             typeIndicator = chalk.dim(" [connector]");
@@ -44,7 +44,7 @@ export const listCommand = new Command()
           if (derived) {
             typeIndicator = chalk.dim(` [${derived.connectorLabel} connector]`);
             derivedLine = chalk.dim(
-              `Available as: ${derived.envVarNames.join(", ")}`,
+              `Available as: ${derived.envNames.join(", ")}`,
             );
           }
         }

@@ -101,7 +101,7 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
 
   if (!bestMatch) return null;
 
-  // Derive the env var name from the connector's env bindings.
+  // Derive the environment key from the connector's env bindings.
   const envBindings = getConnectorEnvBindings(
     bestMatch.connectorType as ConnectorType,
   );
@@ -134,7 +134,7 @@ function checkEnvVariable(ctx: DiagContext): boolean {
     );
   } else {
     console.log(
-      "No value found for this environment variable. Note: credential replacement at the network boundary is independent of this variable — the proxy injects auth headers based on the destination URL, not the presence of this env var.",
+      "No value found for this environment key. Note: credential replacement at the network boundary is independent of this key — the proxy injects auth headers based on the destination URL.",
     );
   }
   console.log("");
@@ -464,7 +464,7 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--url <URL>",
-      "A full URL to diagnose — auto-detects the connector, env var, and permission (e.g. https://api.github.com/repos/owner/repo)",
+      "A full URL to diagnose — auto-detects the connector, environment key, and permission (e.g. https://api.github.com/repos/owner/repo)",
     ),
   )
   .addOption(
@@ -522,7 +522,7 @@ How connectors work:
         );
         console.log(`  Matched base URL: ${urlLookup.matchedBase}`);
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
-        console.log(`  Environment var:  ${envName}`);
+        console.log(`  Environment key:  ${envName}`);
       } else {
         connectorType = getConnectorTypeForSecretName(
           (envName = opts.envName!),
