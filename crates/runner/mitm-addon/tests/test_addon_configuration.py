@@ -1,75 +1,150 @@
 """Tests for mitm addon configuration hooks."""
 
+import uuid
+from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import mitm_addon
 import usage
+import usage.buffer as usage_buffer
+from tests.pending_helpers import assert_pending
+
+
+class _RecordingLoader:
+    def __init__(self) -> None:
+        self.options: list[dict[str, object]] = []
+
+    def add_option(self, **kwargs: object) -> None:
+        self.options.append(kwargs)
+
+
+class _Options:
+    def __init__(
+        self,
+        *,
+        usage_state_id: str = "runner-usage-state-id",
+        flush_interval_seconds: float = usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
+    ) -> None:
+        self.vm0_usage_state_id = usage_state_id
+        self.vm0_usage_flush_interval_seconds = flush_interval_seconds
+
+
+class _FakeTimer:
+    def __init__(self, delay: float, callback: Callable[[], None]) -> None:
+        self.delay = delay
+        self.callback = callback
+        self.daemon = False
+        self.cancelled = False
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+
+def _addon_file_path(tmp_path: Path) -> str:
+    return str(tmp_path / "mitm_addon.py")
+
+
+def _usage_event(source_key: str) -> usage_buffer.UsageEvent:
+    return {
+        "idempotencyKey": source_key,
+        "kind": "model",
+        "provider": "claude-sonnet-4-6",
+        "category": "tokens.input",
+        "quantity": 1,
+    }
 
 
 class TestAddonConfiguration:
-    def test_load_registers_usage_state_id_without_pending_write(self):
-        loader = MagicMock()
+    def test_load_registers_usage_options_and_signal_handler(self):
+        loader = _RecordingLoader()
 
-        with (
-            patch.object(usage, "set_pending_path") as set_pending_path,
-            patch.object(mitm_addon.signal, "signal") as signal_handler,
-        ):
+        # OS signal registration is process-global boundary state. Handler
+        # behavior is covered by test_connection_hooks.py.
+        with patch.object(mitm_addon.signal, "signal") as signal_handler:
             mitm_addon.load(loader)
 
-        option_names = [call.kwargs["name"] for call in loader.add_option.call_args_list]
+        option_names = [option["name"] for option in loader.options]
         assert "vm0_usage_state_id" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
         signal_handler.assert_called_once_with(
             mitm_addon._RUNNER_USAGE_FLUSH_SIGNAL,
             mitm_addon._handle_runner_usage_flush_signal,
         )
-        set_pending_path.assert_not_called()
 
-    def test_configure_initializes_pending_path_with_usage_state_id(self):
-        options = MagicMock(vm0_usage_state_id="runner-usage-state-id")
-        pending_path = str(Path(mitm_addon.__file__).resolve().parent / "usage-pending")
+    def test_configure_writes_pending_state_with_usage_state_id(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
 
         with (
-            patch.object(mitm_addon.ctx, "options", options, create=True),
-            patch.object(usage, "set_pending_path") as set_pending_path,
+            patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(mitm_addon.ctx, "options", _Options(), create=True),
         ):
             mitm_addon.configure({"vm0_usage_state_id"})
 
-        set_pending_path.assert_called_once_with(
-            pending_path, usage_state_id="runner-usage-state-id"
-        )
+        state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        assert state["usageStateId"] == "runner-usage-state-id"
 
-    def test_configure_passes_none_when_usage_state_id_is_empty(self):
-        options = MagicMock(vm0_usage_state_id="")
-        pending_path = str(Path(mitm_addon.__file__).resolve().parent / "usage-pending")
+    def test_configure_writes_fallback_pending_state_id_when_usage_state_id_is_empty(
+        self, tmp_path
+    ):
+        pending_path = tmp_path / "usage-pending"
 
         with (
-            patch.object(mitm_addon.ctx, "options", options, create=True),
-            patch.object(usage, "set_pending_path") as set_pending_path,
+            patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(
+                mitm_addon.ctx,
+                "options",
+                _Options(usage_state_id=""),
+                create=True,
+            ),
         ):
             mitm_addon.configure({"vm0_usage_state_id"})
 
-        set_pending_path.assert_called_once_with(pending_path, usage_state_id=None)
+        state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        uuid.UUID(state["usageStateId"])
 
-    def test_configure_ignores_unrelated_option_updates(self):
-        options = MagicMock(vm0_usage_state_id="runner-usage-state-id")
+    def test_configure_ignores_unrelated_option_updates(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
 
         with (
-            patch.object(mitm_addon.ctx, "options", options, create=True),
-            patch.object(usage, "set_pending_path") as set_pending_path,
+            patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(mitm_addon.ctx, "options", _Options(), create=True),
         ):
             mitm_addon.configure({"vm0_api_url"})
 
-        set_pending_path.assert_not_called()
+        assert not pending_path.exists()
 
-    def test_configure_updates_usage_flush_interval(self):
-        options = MagicMock(vm0_usage_flush_interval_seconds=15.0)
+    def test_configure_updates_usage_flush_interval(self, tmp_path):
+        timers: list[_FakeTimer] = []
 
-        with (
-            patch.object(mitm_addon.ctx, "options", options, create=True),
-            patch.object(usage, "configure_usage_buffer") as configure_usage_buffer,
+        def timer_factory(delay: float, callback: Callable[[], None]) -> _FakeTimer:
+            timer = _FakeTimer(delay, callback)
+            timers.append(timer)
+            return timer
+
+        usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+
+        with patch.object(
+            mitm_addon.ctx,
+            "options",
+            _Options(flush_interval_seconds=15.0),
+            create=True,
         ):
             mitm_addon.configure({"vm0_usage_flush_interval_seconds"})
 
-        configure_usage_buffer.assert_called_once_with(flush_interval_seconds=15.0)
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [_usage_event("source-1")],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        assert len(timers) == 1
+        assert timers[0].started is True
+        assert timers[0].daemon is True
+        assert 12.0 <= timers[0].delay <= 18.0
