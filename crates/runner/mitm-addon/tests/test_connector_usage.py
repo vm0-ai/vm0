@@ -378,6 +378,27 @@ class TestReportConnectorUsage:
         assert p["category"] == "user.read"
         assert p["quantity"] == 2
 
+    def test_community_search_shadowed_by_list_read_rule_bills_community_read(
+        self, tmp_path, real_flow
+    ):
+        """Runtime firewall matching sees `/2/communities/search` through
+        the earlier `/2/communities/{id}` list.read rule.  Billing should
+        still use X's Community: Read bucket.
+        """
+        body = json.dumps({"data": [{"id": "c1"}, {"id": "c2"}]}).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/communities/search",
+            query="query=devtools",
+            body=body,
+            permission="list.read",
+            rule="GET /2/communities/{id}",
+        )
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "community.read"
+        assert p["quantity"] == 2
+
     def test_logs_tweet_counts_total_tweet_count(self, tmp_path, real_flow):
         """GET /2/tweets/counts/recent -> category=tweet.read, quantity=12567."""
         body = json.dumps(
