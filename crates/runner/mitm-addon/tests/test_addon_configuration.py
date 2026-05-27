@@ -1,9 +1,11 @@
 """Tests for mitm addon configuration hooks."""
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from unittest.mock import patch
+
+from mitmproxy.addonmanager import Loader
 
 import mitm_addon
 import usage
@@ -11,12 +13,35 @@ import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
 
 
-class _RecordingLoader:
+class _RecordingOptions:
     def __init__(self) -> None:
-        self.options: list[dict[str, object]] = []
+        self.added: list[dict[str, object]] = []
 
-    def add_option(self, **kwargs: object) -> None:
-        self.options.append(kwargs)
+    def __contains__(self, _name: str) -> bool:
+        return False
+
+    def add_option(
+        self,
+        name: str,
+        typespec: type,
+        default: object,
+        help_text: str,
+        choices: Sequence[str] | None = None,
+    ) -> None:
+        self.added.append(
+            {
+                "name": name,
+                "typespec": typespec,
+                "default": default,
+                "help": help_text,
+                "choices": choices,
+            }
+        )
+
+
+class _RecordingMaster:
+    def __init__(self) -> None:
+        self.options = _RecordingOptions()
 
 
 class _Options:
@@ -61,7 +86,8 @@ def _usage_event(source_key: str) -> usage_buffer.UsageEvent:
 
 class TestAddonConfiguration:
     def test_load_registers_usage_options_and_signal_handler_without_pending_write(self, tmp_path):
-        loader = _RecordingLoader()
+        master = _RecordingMaster()
+        loader = Loader(master)
         pending_path = tmp_path / "usage-pending"
 
         # OS signal registration is process-global boundary state. Handler
@@ -72,7 +98,7 @@ class TestAddonConfiguration:
         ):
             mitm_addon.load(loader)
 
-        option_names = [option["name"] for option in loader.options]
+        option_names = [option["name"] for option in master.options.added]
         assert "vm0_usage_state_id" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()
