@@ -21,6 +21,7 @@ from typing import ClassVar, NamedTuple, NoReturn
 import pytest
 
 import matching
+from usage.providers.connectors import _HANDLERS as CONNECTOR_USAGE_HANDLERS
 from usage.providers.connectors.x_billing import (
     _INCLUDES_TO_BUCKET,
     _PATH_OVERRIDES,
@@ -40,6 +41,8 @@ class _FirewallPermission(NamedTuple):
 
 class _XFirewallExport(NamedTuple):
     name: str
+    registered_name: str
+    billable_connectors: tuple[str, ...]
     permissions: tuple[_FirewallPermission, ...]
 
 
@@ -48,15 +51,25 @@ _TURBO_DIR = _REPO_ROOT / "turbo"
 _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" / "x.generated.ts"
 _X_FIREWALL_EXPORT_SCRIPT = """
 import { collectAndValidatePermissions } from "./packages/connectors/src/firewall-expander.ts";
+import {
+  BILLABLE_CONNECTORS,
+  getConnectorFirewall,
+} from "./packages/connectors/src/firewalls/index.ts";
 import { xFirewall } from "./packages/connectors/src/firewalls/x.generated.ts";
 
 collectAndValidatePermissions(xFirewall);
+const registeredXFirewall = getConnectorFirewall("x");
 
 const permissions = xFirewall.apis.flatMap((api) =>
   (api.permissions ?? []).map((permission) => ({ ...permission, base: api.base }))
 );
 
-console.log(JSON.stringify({ name: xFirewall.name, permissions }));
+console.log(JSON.stringify({
+  name: xFirewall.name,
+  registeredName: registeredXFirewall.name,
+  billableConnectors: BILLABLE_CONNECTORS,
+  permissions,
+}));
 """.strip()
 
 
@@ -118,6 +131,20 @@ def _parse_x_firewall_permissions(raw: object) -> tuple[_FirewallPermission, ...
     return tuple(permissions)
 
 
+def _parse_string_list(raw: object, name: str) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        _fail_x_firewall_load(f"Expected xFirewall export JSON `{name}` to be a list.")
+    values: list[str] = []
+    for index, value in enumerate(raw):
+        if not isinstance(value, str):
+            _fail_x_firewall_load(
+                f"Expected xFirewall export JSON `{name}` entry {index} to be a string, "
+                f"got {type(value).__name__}."
+            )
+        values.append(value)
+    return tuple(values)
+
+
 def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
     if not isinstance(raw, dict):
         _fail_x_firewall_load(
@@ -130,8 +157,21 @@ def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
             f"Expected xFirewall export JSON to have a string `name`, got {type(name).__name__}."
         )
 
+    registered_name = raw.get("registeredName")
+    if not isinstance(registered_name, str):
+        _fail_x_firewall_load(
+            "Expected xFirewall export JSON to have a string "
+            f"`registeredName`, got {type(registered_name).__name__}."
+        )
+
+    billable_connectors = _parse_string_list(raw.get("billableConnectors"), "billableConnectors")
     permissions = _parse_x_firewall_permissions(raw.get("permissions"))
-    return _XFirewallExport(name=name, permissions=permissions)
+    return _XFirewallExport(
+        name=name,
+        registered_name=registered_name,
+        billable_connectors=billable_connectors,
+        permissions=permissions,
+    )
 
 
 @functools.cache
@@ -216,6 +256,21 @@ class TestFirewallConsistency:
             "generated X firewall is renamed, update the billing dispatcher "
             "handler key and billable connector config before trusting these "
             "scope/path drift checks."
+        )
+
+    def test_generated_firewall_name_is_billable_and_dispatchable(self):
+        export = _load_x_firewall_export()
+        assert export.registered_name == export.name, (
+            "The connector firewall registry does not return the generated X "
+            "firewall, so API run contexts may not attach X firewall rules."
+        )
+        assert export.name in CONNECTOR_USAGE_HANDLERS, (
+            "The generated X firewall name is not registered in the mitm-addon "
+            "connector usage dispatcher, so billable X flows would be dropped."
+        )
+        assert export.name in export.billable_connectors, (
+            "The generated X firewall name is not listed in BILLABLE_CONNECTORS, "
+            "so API run contexts would not mark X flows as billable."
         )
 
     def _load_firewall_permissions(self) -> set[str]:
