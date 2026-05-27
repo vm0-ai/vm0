@@ -685,6 +685,19 @@ class TestFirewallConsistency:
 
 
 class TestOverrideClassification:
+    def test_every_path_override_classifies_sample_to_configured_bucket(self):
+        mismatches: list[tuple[str, str, str, str, str, str | None]] = []
+        for scope, method, pattern, bucket in _PATH_OVERRIDES:
+            sample_path = _sample_path_for_pattern(pattern)
+            actual = classify_bucket(scope, method, sample_path)
+            if actual != bucket:
+                mismatches.append((scope, method, pattern, sample_path, bucket, actual))
+
+        assert not mismatches, (
+            "X billing path overrides do not classify representative sample "
+            f"paths to their configured buckets: {mismatches}."
+        )
+
     def test_path_override_order_does_not_shadow_different_bucket_overrides(self):
         compiled_overrides: list[tuple[str, str, str, str, matching.CompiledPathPattern, str]] = []
         for scope, method, pattern, bucket in _PATH_OVERRIDES:
