@@ -23,7 +23,7 @@ export const tldv = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TLDV_TOKEN: "$secrets.TLDV_TOKEN",
           },
         },

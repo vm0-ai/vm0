@@ -40,7 +40,7 @@ export const canva = {
           kind: "refresh-token",
           accessToken: "CANVA_ACCESS_TOKEN",
           refreshToken: "CANVA_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
           },
         },

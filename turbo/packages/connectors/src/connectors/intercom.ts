@@ -22,7 +22,7 @@ export const intercom = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             INTERCOM_TOKEN: "$secrets.INTERCOM_TOKEN",
           },
         },

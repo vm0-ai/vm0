@@ -22,7 +22,7 @@ export const cloudflare = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_TOKEN",
           },
         },

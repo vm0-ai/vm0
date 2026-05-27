@@ -25,7 +25,7 @@ export const gemini = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GEMINI_TOKEN: "$secrets.GEMINI_TOKEN",
           },
         },

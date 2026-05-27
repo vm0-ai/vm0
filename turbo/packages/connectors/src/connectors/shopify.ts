@@ -30,7 +30,7 @@ export const shopify = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SHOPIFY_TOKEN: "$secrets.SHOPIFY_TOKEN",
             SHOPIFY_SHOP: "$vars.SHOPIFY_SHOP",
           },

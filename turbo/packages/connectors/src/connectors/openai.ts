@@ -25,7 +25,7 @@ export const openai = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",
           },
         },

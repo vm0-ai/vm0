@@ -23,7 +23,7 @@ export const browserUse = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BROWSER_USE_TOKEN: "$secrets.BROWSER_USE_TOKEN",
           },
         },

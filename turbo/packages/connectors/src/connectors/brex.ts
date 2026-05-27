@@ -24,7 +24,7 @@ export const brex = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BREX_TOKEN: "$secrets.BREX_TOKEN",
           },
         },

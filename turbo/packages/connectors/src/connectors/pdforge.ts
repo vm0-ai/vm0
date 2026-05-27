@@ -24,7 +24,7 @@ export const pdforge = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PDFORGE_API_KEY: "$secrets.PDFORGE_API_KEY",
           },
         },

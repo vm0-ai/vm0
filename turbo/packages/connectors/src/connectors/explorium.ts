@@ -23,7 +23,7 @@ export const explorium = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             EXPLORIUM_TOKEN: "$secrets.EXPLORIUM_TOKEN",
           },
         },

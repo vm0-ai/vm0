@@ -24,7 +24,7 @@ export const meshy = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MESHY_API_KEY: "$secrets.MESHY_API_KEY",
           },
         },

@@ -23,7 +23,7 @@ export const tavily = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TAVILY_TOKEN: "$secrets.TAVILY_TOKEN",
           },
         },

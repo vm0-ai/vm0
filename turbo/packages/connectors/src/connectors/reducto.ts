@@ -22,7 +22,7 @@ export const reducto = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             REDUCTO_TOKEN: "$secrets.REDUCTO_TOKEN",
           },
         },

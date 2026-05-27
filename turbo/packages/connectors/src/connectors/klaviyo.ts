@@ -23,7 +23,7 @@ export const klaviyo = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             KLAVIYO_TOKEN: "$secrets.KLAVIYO_TOKEN",
           },
         },

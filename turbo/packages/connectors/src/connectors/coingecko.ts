@@ -23,7 +23,7 @@ export const coingecko = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             COINGECKO_TOKEN: "$secrets.COINGECKO_TOKEN",
           },
         },

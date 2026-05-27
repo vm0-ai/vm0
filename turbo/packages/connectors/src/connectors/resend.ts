@@ -23,7 +23,7 @@ export const resend = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             RESEND_TOKEN: "$secrets.RESEND_TOKEN",
           },
         },

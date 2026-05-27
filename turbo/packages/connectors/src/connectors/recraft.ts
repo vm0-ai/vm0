@@ -23,7 +23,7 @@ export const recraft = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             RECRAFT_API_TOKEN: "$secrets.RECRAFT_API_TOKEN",
           },
         },

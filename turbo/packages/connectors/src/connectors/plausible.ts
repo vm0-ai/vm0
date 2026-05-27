@@ -23,7 +23,7 @@ export const plausible = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
           },
         },

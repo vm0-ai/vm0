@@ -24,7 +24,7 @@ export const deepseek = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DEEPSEEK_TOKEN: "$secrets.DEEPSEEK_TOKEN",
           },
         },

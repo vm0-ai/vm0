@@ -23,7 +23,7 @@ export const calendly = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CALENDLY_TOKEN: "$secrets.CALENDLY_TOKEN",
           },
         },

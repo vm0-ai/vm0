@@ -40,7 +40,7 @@ export const supabase = {
           kind: "refresh-token",
           accessToken: "SUPABASE_ACCESS_TOKEN",
           refreshToken: "SUPABASE_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
           },
         },
@@ -62,7 +62,7 @@ export const supabase = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SUPABASE_TOKEN: "$secrets.SUPABASE_TOKEN",
           },
         },

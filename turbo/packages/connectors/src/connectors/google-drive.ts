@@ -27,7 +27,7 @@ export const googleDrive = {
           kind: "refresh-token",
           accessToken: "GOOGLE_DRIVE_ACCESS_TOKEN",
           refreshToken: "GOOGLE_DRIVE_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
           },
         },

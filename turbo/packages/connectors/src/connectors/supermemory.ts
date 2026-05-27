@@ -23,7 +23,7 @@ export const supermemory = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SUPERMEMORY_API_KEY: "$secrets.SUPERMEMORY_API_KEY",
           },
         },

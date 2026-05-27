@@ -23,7 +23,7 @@ export const drive9 = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DRIVE9_TOKEN: "$secrets.DRIVE9_TOKEN",
           },
         },

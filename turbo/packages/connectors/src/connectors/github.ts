@@ -24,7 +24,7 @@ export const github = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
             GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
           },

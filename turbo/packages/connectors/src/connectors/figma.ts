@@ -36,7 +36,7 @@ export const figma = {
           kind: "refresh-token",
           accessToken: "FIGMA_ACCESS_TOKEN",
           refreshToken: "FIGMA_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
           },
         },
@@ -58,7 +58,7 @@ export const figma = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FIGMA_TOKEN: "$secrets.FIGMA_TOKEN",
           },
         },

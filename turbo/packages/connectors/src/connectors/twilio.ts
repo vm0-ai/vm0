@@ -29,7 +29,7 @@ export const twilio = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TWILIO_ACCOUNT_SID: "$secrets.TWILIO_ACCOUNT_SID",
             TWILIO_AUTH_TOKEN: "$secrets.TWILIO_AUTH_TOKEN",
           },

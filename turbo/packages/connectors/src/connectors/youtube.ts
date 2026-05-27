@@ -23,7 +23,7 @@ export const youtube = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             YOUTUBE_TOKEN: "$secrets.YOUTUBE_TOKEN",
           },
         },

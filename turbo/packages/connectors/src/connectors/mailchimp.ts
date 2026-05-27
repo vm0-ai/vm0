@@ -25,7 +25,7 @@ export const mailchimp = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
           },
         },
@@ -47,7 +47,7 @@ export const mailchimp = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_TOKEN",
           },
         },

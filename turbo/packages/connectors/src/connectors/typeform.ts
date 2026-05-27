@@ -23,7 +23,7 @@ export const typeform = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TYPEFORM_TOKEN: "$secrets.TYPEFORM_TOKEN",
           },
         },

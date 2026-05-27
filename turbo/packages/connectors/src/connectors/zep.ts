@@ -23,7 +23,7 @@ export const zep = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ZEP_TOKEN: "$secrets.ZEP_TOKEN",
           },
         },

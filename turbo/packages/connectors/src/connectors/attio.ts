@@ -23,7 +23,7 @@ export const attio = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ATTIO_TOKEN: "$secrets.ATTIO_TOKEN",
           },
         },

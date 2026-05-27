@@ -48,7 +48,7 @@ export const x = {
           kind: "refresh-token",
           accessToken: "X_ACCESS_TOKEN",
           refreshToken: "X_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             X_TOKEN: "$secrets.X_ACCESS_TOKEN",
           },
         },

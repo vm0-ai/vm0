@@ -29,7 +29,7 @@ export const moss = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MOSS_PROJECT_ID: "$secrets.MOSS_PROJECT_ID",
             MOSS_PROJECT_KEY: "$secrets.MOSS_PROJECT_KEY",
           },

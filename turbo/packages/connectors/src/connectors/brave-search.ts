@@ -23,7 +23,7 @@ export const braveSearch = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BRAVE_API_KEY: "$secrets.BRAVE_API_KEY",
           },
         },

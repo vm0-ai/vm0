@@ -23,7 +23,7 @@ export const clearbit = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CLEARBIT_TOKEN: "$secrets.CLEARBIT_TOKEN",
           },
         },

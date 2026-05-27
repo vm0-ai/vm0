@@ -28,7 +28,7 @@ export const htmlcsstoimage = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HCTI_API_KEY: "$secrets.HCTI_API_KEY",
             HCTI_USER_ID: "$vars.HCTI_USER_ID",
           },

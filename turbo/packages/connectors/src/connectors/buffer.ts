@@ -23,7 +23,7 @@ export const buffer = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BUFFER_TOKEN: "$secrets.BUFFER_TOKEN",
           },
         },

@@ -57,7 +57,7 @@ export const slack = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
           },
         },

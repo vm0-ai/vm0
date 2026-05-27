@@ -32,7 +32,7 @@ export const cloudinary = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CLOUDINARY_TOKEN: "$secrets.CLOUDINARY_TOKEN",
             CLOUDINARY_API_SECRET: "$secrets.CLOUDINARY_API_SECRET",
             CLOUDINARY_CLOUD_NAME: "$vars.CLOUDINARY_CLOUD_NAME",

@@ -23,7 +23,7 @@ export const zapier = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
           },
         },

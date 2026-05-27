@@ -22,7 +22,7 @@ export const customerIo = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CUSTOMERIO_APP_TOKEN: "$secrets.CUSTOMERIO_APP_TOKEN",
           },
         },

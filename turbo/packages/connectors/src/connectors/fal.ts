@@ -24,7 +24,7 @@ export const fal = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FAL_TOKEN: "$secrets.FAL_TOKEN",
           },
         },

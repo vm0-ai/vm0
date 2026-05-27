@@ -24,7 +24,7 @@ export const lumaAi = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             LUMA_TOKEN: "$secrets.LUMA_TOKEN",
           },
         },

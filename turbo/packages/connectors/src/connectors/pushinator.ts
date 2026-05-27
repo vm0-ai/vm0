@@ -21,7 +21,7 @@ export const pushinator = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PUSHINATOR_TOKEN: "$secrets.PUSHINATOR_TOKEN",
           },
         },

@@ -23,7 +23,7 @@ export const infisical = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             INFISICAL_TOKEN: "$secrets.INFISICAL_TOKEN",
           },
         },

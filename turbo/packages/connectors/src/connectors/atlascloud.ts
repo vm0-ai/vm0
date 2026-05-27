@@ -25,7 +25,7 @@ export const atlascloud = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ATLASCLOUD_API_KEY: "$secrets.ATLASCLOUD_API_KEY",
           },
         },

@@ -25,7 +25,7 @@ export const base44 = {
           kind: "refresh-token",
           accessToken: "BASE44_ACCESS_TOKEN",
           refreshToken: "BASE44_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
           },
         },

@@ -31,7 +31,7 @@ export const linear = {
           kind: "refresh-token",
           accessToken: "LINEAR_ACCESS_TOKEN",
           refreshToken: "LINEAR_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
           },
         },

@@ -24,7 +24,7 @@ export const novita = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             NOVITA_TOKEN: "$secrets.NOVITA_TOKEN",
           },
         },

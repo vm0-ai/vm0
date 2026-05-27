@@ -22,7 +22,7 @@ export const brightData = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BRIGHTDATA_TOKEN: "$secrets.BRIGHTDATA_TOKEN",
           },
         },

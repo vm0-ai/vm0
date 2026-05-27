@@ -37,7 +37,7 @@ import {
   vercelCategoryOrder,
   vercelFirewall,
 } from "./vercel.generated";
-import { getConnectorEnvironmentMapping } from "../connector-utils";
+import { getConnectorEnvBindings } from "../connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { amadeusFirewall } from "./amadeus.generated";
@@ -548,7 +548,7 @@ const CONNECTOR_FIREWALLS = {
 /**
  * Expand firewall placeholders to cover all secret names related to the
  * connector.  For each existing placeholder key, find related names via
- * environmentMapping (raw OAuth secret names and sibling aliases) and assign
+ * envBindings (raw OAuth secret names and sibling aliases) and assign
  * the same placeholder value.
  */
 function expandPlaceholders(
@@ -557,21 +557,21 @@ function expandPlaceholders(
 ): FirewallConfig {
   if (!firewall.placeholders) return firewall;
 
-  const mapping = getConnectorEnvironmentMapping(connectorType);
-  if (Object.keys(mapping).length === 0) return firewall;
+  const envBindings = getConnectorEnvBindings(connectorType);
+  if (Object.keys(envBindings).length === 0) return firewall;
 
   const expanded: Record<string, string> = { ...firewall.placeholders };
 
   for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
     // key is a mapped env var (e.g. GITHUB_TOKEN)
     // → add the raw secret name and any sibling aliases
-    const valueRef = mapping[key];
+    const valueRef = envBindings[key];
     if (valueRef?.startsWith("$secrets.")) {
       const rawName = valueRef.slice("$secrets.".length);
       if (!expanded[rawName]) {
         expanded[rawName] = placeholderValue;
       }
-      for (const [envVar, ref] of Object.entries(mapping)) {
+      for (const [envVar, ref] of Object.entries(envBindings)) {
         if (ref === valueRef && !expanded[envVar]) {
           expanded[envVar] = placeholderValue;
         }
@@ -580,7 +580,7 @@ function expandPlaceholders(
 
     // key is a raw secret name → add all env vars that reference it
     const rawRef = `$secrets.${key}`;
-    for (const [envVar, ref] of Object.entries(mapping)) {
+    for (const [envVar, ref] of Object.entries(envBindings)) {
       if (ref === rawRef && !expanded[envVar]) {
         expanded[envVar] = placeholderValue;
       }

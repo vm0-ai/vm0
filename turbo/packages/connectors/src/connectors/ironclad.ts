@@ -29,7 +29,7 @@ export const ironclad = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             IRONCLAD_API_KEY: "$secrets.IRONCLAD_API_KEY",
             IRONCLAD_HOST: "$vars.IRONCLAD_HOST",
           },

@@ -23,7 +23,7 @@ export const pinecone = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PINECONE_TOKEN: "$secrets.PINECONE_TOKEN",
           },
         },

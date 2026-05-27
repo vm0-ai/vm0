@@ -38,7 +38,7 @@ export const hubspot = {
           kind: "refresh-token",
           accessToken: "HUBSPOT_ACCESS_TOKEN",
           refreshToken: "HUBSPOT_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
           },
         },

@@ -22,7 +22,7 @@ export const alchemy = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ALCHEMY_API_KEY: "$secrets.ALCHEMY_API_KEY",
           },
         },

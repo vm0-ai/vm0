@@ -23,7 +23,7 @@ export const greenhouse = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GREENHOUSE_TOKEN: "$secrets.GREENHOUSE_TOKEN",
           },
         },

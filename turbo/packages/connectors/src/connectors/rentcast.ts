@@ -23,7 +23,7 @@ export const rentcast = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             RENTCAST_API_KEY: "$secrets.RENTCAST_API_KEY",
           },
         },

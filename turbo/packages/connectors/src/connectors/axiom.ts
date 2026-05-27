@@ -23,7 +23,7 @@ export const axiom = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
           },
         },

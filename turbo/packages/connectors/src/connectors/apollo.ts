@@ -23,7 +23,7 @@ export const apollo = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
           },
         },

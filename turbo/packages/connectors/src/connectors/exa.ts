@@ -23,7 +23,7 @@ export const exa = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             EXA_TOKEN: "$secrets.EXA_TOKEN",
           },
         },

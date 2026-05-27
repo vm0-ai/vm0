@@ -24,7 +24,7 @@ export const replicate = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             REPLICATE_TOKEN: "$secrets.REPLICATE_TOKEN",
           },
         },

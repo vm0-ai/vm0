@@ -26,7 +26,7 @@ export const printful = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PRINTFUL_TOKEN: "$secrets.PRINTFUL_TOKEN",
           },
         },

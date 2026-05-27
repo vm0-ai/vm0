@@ -33,7 +33,7 @@ export const airtable = {
           kind: "refresh-token",
           accessToken: "AIRTABLE_ACCESS_TOKEN",
           refreshToken: "AIRTABLE_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
           },
         },

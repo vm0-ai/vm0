@@ -29,7 +29,7 @@ export const freshdesk = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FRESHDESK_TOKEN: "$secrets.FRESHDESK_TOKEN",
             FRESHDESK_DOMAIN: "$vars.FRESHDESK_DOMAIN",
           },

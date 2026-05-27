@@ -27,7 +27,7 @@ export const close = {
           kind: "refresh-token",
           accessToken: "CLOSE_ACCESS_TOKEN",
           refreshToken: "CLOSE_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
           },
         },

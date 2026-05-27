@@ -27,7 +27,7 @@ export const mercury = {
           kind: "refresh-token",
           accessToken: "MERCURY_ACCESS_TOKEN",
           refreshToken: "MERCURY_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
           },
         },
@@ -49,7 +49,7 @@ export const mercury = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MERCURY_TOKEN: "$secrets.MERCURY_TOKEN",
           },
         },

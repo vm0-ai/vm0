@@ -23,7 +23,7 @@ export const db9 = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DB9_API_KEY: "$secrets.DB9_API_KEY",
           },
         },

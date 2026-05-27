@@ -22,7 +22,7 @@ export const aviationstack = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AVIATIONSTACK_TOKEN: "$secrets.AVIATIONSTACK_TOKEN",
           },
         },

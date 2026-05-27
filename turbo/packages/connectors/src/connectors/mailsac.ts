@@ -23,7 +23,7 @@ export const mailsac = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MAILSAC_TOKEN: "$secrets.MAILSAC_TOKEN",
           },
         },

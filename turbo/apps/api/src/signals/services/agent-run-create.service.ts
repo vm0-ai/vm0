@@ -9,7 +9,7 @@ import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs"
 import {
   getDefaultModel,
   getModelProviderFirewall,
-  getEnvironmentMapping,
+  getModelProviderEnvBindings,
   getFrameworkForType,
   getProviderRuntimeModel,
   getSecretNameForType,
@@ -18,12 +18,13 @@ import {
   getVm0Vendor,
   hasAuthMethods,
   MODEL_PROVIDER_TYPES,
+  type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   deriveConnectedManualGrantMethods,
-  getConnectorEnvironmentMapping,
+  getConnectorEnvBindings,
   getConnectorProvidedSecretNames,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -639,8 +640,8 @@ function connectorEnvironmentTemplates(
 ): Record<string, string> | undefined {
   const environment: Record<string, string> = {};
   for (const connectorType of connectorTypes) {
-    const mapping = getConnectorEnvironmentMapping(connectorType);
-    for (const [envName, valueRef] of Object.entries(mapping)) {
+    const envBindings = getConnectorEnvBindings(connectorType);
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (envName in environment) {
         continue;
       }
@@ -659,8 +660,8 @@ function connectorEnvironmentSecretTemplateNames(
 ): Set<string> {
   const names = new Set<string>();
   for (const connectorType of connectorTypes) {
-    const mapping = getConnectorEnvironmentMapping(connectorType);
-    for (const [envName, valueRef] of Object.entries(mapping)) {
+    const envBindings = getConnectorEnvBindings(connectorType);
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         names.add(envName);
       }
@@ -801,7 +802,7 @@ function isModelProviderType(type: string): type is ModelProviderType {
 interface SingleSecretModelProviderConfig {
   readonly framework: SupportedFramework;
   readonly secretName: string;
-  readonly environmentMapping: Record<string, string>;
+  readonly envBindings: ModelProviderEnvBindings;
   readonly defaultModel?: string;
 }
 
@@ -813,7 +814,7 @@ function isSingleSecretModelProviderConfig(
     value !== null &&
     "framework" in value &&
     "secretName" in value &&
-    "environmentMapping" in value &&
+    "envBindings" in value &&
     typeof (value as { readonly secretName: unknown }).secretName === "string"
   );
 }
@@ -842,7 +843,7 @@ function modelProviderEnvironment(
     secretValue,
   );
   const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(config.environmentMapping)) {
+  for (const [key, value] of Object.entries(config.envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", model);
@@ -863,8 +864,8 @@ function providerEnvironmentFromSecretRefs(
   secretValue: string,
   selectedModel: string | null,
 ): Record<string, string> {
-  const mapping = getEnvironmentMapping(type);
-  if (!mapping) {
+  const envBindings = getModelProviderEnvBindings(type);
+  if (!envBindings) {
     return {
       [secretName]: modelProviderEnvironmentSecretValue(
         type,
@@ -876,7 +877,7 @@ function providerEnvironmentFromSecretRefs(
 
   const model = selectedModel ?? MODEL_PROVIDER_TYPES[type].defaultModel ?? "";
   const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(mapping)) {
+  for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
       environment[key] = modelProviderEnvironmentSecretValue(
         type,
@@ -908,8 +909,8 @@ function providerEnvironmentFromSecretMap(
   providerSecrets: Record<string, string>,
   selectedModel: string | null,
 ): Record<string, string> {
-  const mapping = getEnvironmentMapping(type);
-  if (!mapping) {
+  const envBindings = getModelProviderEnvBindings(type);
+  if (!envBindings) {
     return Object.fromEntries(
       Object.entries(providerSecrets).map(([secretName, secretValue]) => {
         return [
@@ -923,7 +924,7 @@ function providerEnvironmentFromSecretMap(
   const fallbackSecret = Object.entries(providerSecrets)[0];
   const model = selectedModel ?? getDefaultModel(type) ?? "";
   const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(mapping)) {
+  for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
       if (fallbackSecret) {
         const [secretName, secretValue] = fallbackSecret;
@@ -975,8 +976,8 @@ function modelProviderRefreshMaps(
   const secretConnectorMap: Record<string, string> = {
     [accessSecretName]: providerType,
   };
-  const mapping = getEnvironmentMapping(providerType);
-  for (const [envName, valueRef] of Object.entries(mapping ?? {})) {
+  const envBindings = getModelProviderEnvBindings(providerType);
+  for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
     if (valueRef === `$secrets.${accessSecretName}`) {
       secretConnectorMap[envName] = providerType;
     }
@@ -1571,15 +1572,15 @@ async function loadOauthConnectorContext(
     };
   }
 
-  const connectorMappings = allowedConnectorTypes.map((connectorType) => {
+  const connectorEnvBindings = allowedConnectorTypes.map((connectorType) => {
     return {
       connectorType,
-      mapping: getConnectorEnvironmentMapping(connectorType),
+      envBindings: getConnectorEnvBindings(connectorType),
     };
   });
   const requiredSecretNames = new Set<string>();
-  for (const { mapping } of connectorMappings) {
-    for (const valueRef of Object.values(mapping)) {
+  for (const { envBindings } of connectorEnvBindings) {
+    for (const valueRef of Object.values(envBindings)) {
       if (valueRef.startsWith("$secrets.")) {
         requiredSecretNames.add(valueRef.slice("$secrets.".length));
       }
@@ -1613,8 +1614,8 @@ async function loadOauthConnectorContext(
 
   const resolvedSecrets: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
-  for (const { connectorType, mapping } of connectorMappings) {
-    for (const [envName, valueRef] of Object.entries(mapping)) {
+  for (const { connectorType, envBindings } of connectorEnvBindings) {
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef.startsWith("$secrets.")) {
         const secretName = valueRef.slice("$secrets.".length);
         const secretValue = connectorSecrets[secretName];
@@ -1632,7 +1633,7 @@ async function loadOauthConnectorContext(
     }
     const secretName = secretMetadata.accessSecretName;
     secretConnectorMap[secretName] = connectorType;
-    for (const [envName, valueRef] of Object.entries(mapping)) {
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef === `$secrets.${secretName}`) {
         secretConnectorMap[envName] = connectorType;
       }

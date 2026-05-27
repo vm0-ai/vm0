@@ -33,7 +33,7 @@ export const googleMeet = {
           kind: "refresh-token",
           accessToken: "GOOGLE_MEET_ACCESS_TOKEN",
           refreshToken: "GOOGLE_MEET_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GOOGLE_MEET_TOKEN: "$secrets.GOOGLE_MEET_ACCESS_TOKEN",
           },
         },

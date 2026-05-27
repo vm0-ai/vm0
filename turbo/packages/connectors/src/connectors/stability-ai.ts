@@ -24,7 +24,7 @@ export const stabilityAi = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             STABILITY_TOKEN: "$secrets.STABILITY_TOKEN",
           },
         },

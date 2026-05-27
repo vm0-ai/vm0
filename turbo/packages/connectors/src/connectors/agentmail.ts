@@ -23,7 +23,7 @@ export const agentmail = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_TOKEN",
           },
         },

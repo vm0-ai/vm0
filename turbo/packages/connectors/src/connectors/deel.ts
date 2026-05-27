@@ -36,7 +36,7 @@ export const deel = {
           kind: "refresh-token",
           accessToken: "DEEL_ACCESS_TOKEN",
           refreshToken: "DEEL_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
           },
         },
@@ -57,7 +57,7 @@ export const deel = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DEEL_TOKEN: "$secrets.DEEL_TOKEN",
           },
         },

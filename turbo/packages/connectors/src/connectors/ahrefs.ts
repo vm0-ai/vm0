@@ -27,7 +27,7 @@ export const ahrefs = {
           kind: "refresh-token",
           accessToken: "AHREFS_ACCESS_TOKEN",
           refreshToken: "AHREFS_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
           },
         },
@@ -49,7 +49,7 @@ export const ahrefs = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AHREFS_TOKEN: "$secrets.AHREFS_TOKEN",
           },
         },

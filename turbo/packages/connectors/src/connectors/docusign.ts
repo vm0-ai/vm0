@@ -27,7 +27,7 @@ export const docusign = {
           kind: "refresh-token",
           accessToken: "DOCUSIGN_ACCESS_TOKEN",
           refreshToken: "DOCUSIGN_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
           },
         },

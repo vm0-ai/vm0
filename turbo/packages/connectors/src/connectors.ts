@@ -351,16 +351,18 @@ export type ConnectorGrantConfig =
 
 export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
+export type ConnectorEnvBindings = Record<string, string>;
+
 export interface ConnectorStaticAccessConfig {
   readonly kind: "static";
-  readonly outputs: Record<string, string>;
+  readonly envBindings: ConnectorEnvBindings;
 }
 
 export interface ConnectorRefreshTokenAccessConfig {
   readonly kind: "refresh-token";
   readonly accessToken: string;
   readonly refreshToken: string;
-  readonly outputs: Record<string, string>;
+  readonly envBindings: ConnectorEnvBindings;
 }
 
 export interface ConnectorNoAccessConfig {
@@ -546,7 +548,7 @@ export type ConnectorConfig = ConnectorConfigBase & {
 
 /**
  * Connector type configuration
- * Maps type to display info, auth methods, and OAuth environment mapping.
+ * Maps type to display info, auth methods, and runtime env bindings.
  *
  * Each connector's definition lives in its own file under ./connectors/.
  * Spreading here keeps the ConnectorType union literal-keyed so the

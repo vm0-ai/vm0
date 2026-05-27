@@ -22,7 +22,7 @@ export const make = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MAKE_TOKEN: "$secrets.MAKE_TOKEN",
           },
         },

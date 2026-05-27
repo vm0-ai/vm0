@@ -35,7 +35,7 @@ export const servicenow = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SERVICENOW_USERNAME: "$secrets.SERVICENOW_USERNAME",
             SERVICENOW_PASSWORD: "$secrets.SERVICENOW_PASSWORD",
             SERVICENOW_INSTANCE: "$vars.SERVICENOW_INSTANCE",

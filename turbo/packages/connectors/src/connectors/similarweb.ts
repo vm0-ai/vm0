@@ -23,7 +23,7 @@ export const similarweb = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_TOKEN",
           },
         },

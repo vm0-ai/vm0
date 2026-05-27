@@ -29,7 +29,7 @@ export const langfuse = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             LANGFUSE_PUBLIC_KEY: "$secrets.LANGFUSE_PUBLIC_KEY",
             LANGFUSE_SECRET_KEY: "$secrets.LANGFUSE_SECRET_KEY",
           },

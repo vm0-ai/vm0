@@ -29,7 +29,7 @@ export const googleCalendar = {
           kind: "refresh-token",
           accessToken: "GOOGLE_CALENDAR_ACCESS_TOKEN",
           refreshToken: "GOOGLE_CALENDAR_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
           },
         },

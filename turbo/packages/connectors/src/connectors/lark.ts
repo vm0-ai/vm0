@@ -30,7 +30,7 @@ export const lark = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             LARK_TOKEN: "$secrets.LARK_TOKEN",
             LARK_APP_ID: "$vars.LARK_APP_ID",
           },

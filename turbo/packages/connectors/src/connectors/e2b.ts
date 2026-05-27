@@ -23,7 +23,7 @@ export const e2b = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             E2B_TOKEN: "$secrets.E2B_TOKEN",
           },
         },

@@ -27,7 +27,7 @@ export const googleSheets = {
           kind: "refresh-token",
           accessToken: "GOOGLE_SHEETS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_SHEETS_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
           },
         },

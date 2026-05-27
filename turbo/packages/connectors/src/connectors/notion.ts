@@ -25,7 +25,7 @@ export const notion = {
           kind: "refresh-token",
           accessToken: "NOTION_ACCESS_TOKEN",
           refreshToken: "NOTION_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
           },
         },

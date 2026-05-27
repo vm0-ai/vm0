@@ -24,7 +24,7 @@ export const segment = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SEGMENT_TOKEN: "$secrets.SEGMENT_TOKEN",
           },
         },

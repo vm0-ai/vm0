@@ -27,7 +27,7 @@ export const instagram = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             INSTAGRAM_TOKEN: "$secrets.INSTAGRAM_TOKEN",
             INSTAGRAM_BUSINESS_ACCOUNT_ID:
               "$vars.INSTAGRAM_BUSINESS_ACCOUNT_ID",

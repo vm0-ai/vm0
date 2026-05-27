@@ -24,7 +24,7 @@ export const dropboxSign = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DROPBOX_SIGN_TOKEN: "$secrets.DROPBOX_SIGN_TOKEN",
           },
         },

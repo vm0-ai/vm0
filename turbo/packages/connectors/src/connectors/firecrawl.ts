@@ -23,7 +23,7 @@ export const firecrawl = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FIRECRAWL_TOKEN: "$secrets.FIRECRAWL_TOKEN",
           },
         },

@@ -23,7 +23,7 @@ export const todoist = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
           },
         },

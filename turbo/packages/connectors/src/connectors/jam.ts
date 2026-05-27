@@ -23,7 +23,7 @@ export const jam = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             JAM_TOKEN: "$secrets.JAM_TOKEN",
           },
         },

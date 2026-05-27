@@ -25,7 +25,7 @@ export const doubao = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DOUBAO_API_KEY: "$secrets.DOUBAO_API_KEY",
           },
         },

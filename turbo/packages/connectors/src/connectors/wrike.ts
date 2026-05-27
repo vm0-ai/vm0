@@ -22,7 +22,7 @@ export const wrike = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WRIKE_TOKEN: "$secrets.WRIKE_TOKEN",
           },
         },

@@ -25,7 +25,7 @@ export const groq = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GROQ_TOKEN: "$secrets.GROQ_TOKEN",
           },
         },

@@ -24,7 +24,7 @@ export const minimax = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MINIMAX_TOKEN: "$secrets.MINIMAX_TOKEN",
           },
         },

@@ -24,7 +24,7 @@ export const openrouter = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             OPENROUTER_TOKEN: "$secrets.OPENROUTER_TOKEN",
           },
         },

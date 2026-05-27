@@ -23,7 +23,7 @@ export const railwayProject = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             RAILWAY_PROJECT_TOKEN: "$secrets.RAILWAY_PROJECT_TOKEN",
           },
         },

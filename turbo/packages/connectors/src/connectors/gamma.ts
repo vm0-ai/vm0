@@ -24,7 +24,7 @@ export const gamma = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GAMMA_TOKEN: "$secrets.GAMMA_TOKEN",
           },
         },

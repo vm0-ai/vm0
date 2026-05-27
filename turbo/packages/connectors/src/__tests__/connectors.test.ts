@@ -30,7 +30,7 @@ import {
   getConnectorDeviceAuthGrantConfigIfSupported,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
-  getConnectorEnvironmentMapping,
+  getConnectorEnvBindings,
   getConnectorProvidedSecretNames,
   getConnectorOAuthClientConfig,
   getConnectorOAuthClient,
@@ -184,7 +184,7 @@ const manualAuthMethodConfig = {
   },
   access: {
     kind: "static",
-    outputs: {
+    envBindings: {
       API_TOKEN: "$secrets.API_TOKEN",
     },
   },
@@ -1340,9 +1340,9 @@ describe("getEligibleConnectorTypes", () => {
 });
 
 describe("getConnectorManagedSecretNames", () => {
-  it("includes OAuth environmentMapping keys for OAuth connectors", () => {
+  it("includes OAuth envBindings keys for OAuth connectors", () => {
     const managed = getConnectorManagedSecretNames(["github"]);
-    // OAuth env mapping keys
+    // OAuth env bindings keys
     expect(managed.has("GH_TOKEN")).toBe(true);
     expect(managed.has("GITHUB_TOKEN")).toBe(true);
     // OAuth auth method secret
@@ -1368,69 +1368,69 @@ describe("getConnectorManagedSecretNames", () => {
   });
 });
 
-describe("getConnectorEnvironmentMapping", () => {
-  it("returns non-empty mapping for connector types that surface env vars to the sandbox", () => {
+describe("getConnectorEnvBindings", () => {
+  it("returns non-empty envBindings for connector types that surface env vars to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
-      const mapping = getConnectorEnvironmentMapping(type);
+      const envBindings = getConnectorEnvBindings(type);
       if (type === "local-agent" || type === "local-browser") {
-        expect(mapping).toEqual({});
+        expect(envBindings).toEqual({});
         continue;
       }
       expect(
-        Object.keys(mapping).length,
-        `${type} has empty environmentMapping`,
+        Object.keys(envBindings).length,
+        `${type} has empty envBindings`,
       ).toBeGreaterThan(0);
     }
   });
 
-  it("returns correct mapping for API-token-only connector", () => {
-    expect(getConnectorEnvironmentMapping("axiom")).toEqual({
+  it("returns correct envBindings for API-token-only connector", () => {
+    expect(getConnectorEnvBindings("axiom")).toEqual({
       AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
     });
   });
 
-  it("returns correct mapping for apollo connector", () => {
-    expect(getConnectorEnvironmentMapping("apollo")).toEqual({
+  it("returns correct envBindings for apollo connector", () => {
+    expect(getConnectorEnvBindings("apollo")).toEqual({
       APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
     });
   });
 
-  it("returns correct mapping for SproutGigs connector", () => {
-    expect(getConnectorEnvironmentMapping("sproutgigs")).toEqual({
+  it("returns correct envBindings for SproutGigs connector", () => {
+    expect(getConnectorEnvBindings("sproutgigs")).toEqual({
       SPROUTGIGS_USER_ID: "$vars.SPROUTGIGS_USER_ID",
       SPROUTGIGS_API_SECRET: "$secrets.SPROUTGIGS_API_SECRET",
     });
   });
 
-  it("returns correct mapping for API-token connector with variables", () => {
-    expect(getConnectorEnvironmentMapping("jira")).toEqual({
+  it("returns correct envBindings for API-token connector with variables", () => {
+    expect(getConnectorEnvBindings("jira")).toEqual({
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
       JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
       JIRA_EMAIL: "$vars.JIRA_EMAIL",
     });
   });
 
-  it("returns correct mapping for hybrid connector", () => {
-    expect(getConnectorEnvironmentMapping("ahrefs")).toEqual({
+  it("returns correct envBindings for hybrid connector", () => {
+    expect(getConnectorEnvBindings("ahrefs")).toEqual({
       AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
     });
   });
 
-  it("returns correct mapping for OAuth-only connector", () => {
-    expect(getConnectorEnvironmentMapping("github")).toEqual({
+  it("returns correct envBindings for OAuth-only connector", () => {
+    expect(getConnectorEnvBindings("github")).toEqual({
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
     });
   });
 
-  it("returns correct mapping for Base44", () => {
-    expect(getConnectorEnvironmentMapping("base44")).toEqual({
+  it("returns correct envBindings for Base44", () => {
+    expect(getConnectorEnvBindings("base44")).toEqual({
       BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
     });
   });
 
-  it("returns correct mapping for Slock", () => {
-    expect(getConnectorEnvironmentMapping("slock")).toEqual({
+  it("returns correct envBindings for Slock", () => {
+    expect(getConnectorEnvBindings("slock")).toEqual({
       SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
       SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",
     });
@@ -1447,10 +1447,10 @@ describe("getConnectorEnvironmentMapping", () => {
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
   });
 
-  it("OAuth connectors have consistent secrets and environmentMapping naming", () => {
+  it("OAuth connectors have consistent secrets and envBindings naming", () => {
     // All naming derives from a single prefix XXX:
     //   oauth secrets:      XXX_ACCESS_TOKEN (required), XXX_REFRESH_TOKEN (optional)
-    //   environmentMapping: values -> declared OAuth connector secrets
+    //   envBindings: values -> declared OAuth connector secrets
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
       if (!getConnectorOAuthGrantConfigIfSupported(type)) continue;
@@ -1481,18 +1481,18 @@ describe("getConnectorEnvironmentMapping", () => {
         ).toContain(refreshSecretName);
       }
 
-      const mapping = getConnectorEnvironmentMapping(type);
-      const mappedSecretNames = Object.values(mapping).map((valueRef) => {
+      const envBindings = getConnectorEnvBindings(type);
+      const mappedSecretNames = Object.values(envBindings).map((valueRef) => {
         expect(
           valueRef.startsWith("$secrets."),
-          `${type}: OAuth environmentMapping value ${valueRef} must reference a secret`,
+          `${type}: OAuth envBindings value ${valueRef} must reference a secret`,
         ).toBe(true);
         return valueRef.slice("$secrets.".length);
       });
 
       expect(
         mappedSecretNames,
-        `${type}: environmentMapping must expose ${accessSecretName}`,
+        `${type}: envBindings must expose ${accessSecretName}`,
       ).toContain(accessSecretName);
 
       for (const secretName of mappedSecretNames) {
@@ -1511,19 +1511,19 @@ describe("getConnectorEnvironmentMapping", () => {
         }
         expect(
           mappedSecretNames,
-          `${type}: extra OAuth secret ${secretName} must be exposed by environmentMapping`,
+          `${type}: extra OAuth secret ${secretName} must be exposed by envBindings`,
         ).toContain(secretName);
       }
 
       const expectedAccessRef = `$secrets.${accessSecretName}`;
       expect(
-        Object.values(mapping),
-        `${type}: environmentMapping must include ${expectedAccessRef}`,
+        Object.values(envBindings),
+        `${type}: envBindings must include ${expectedAccessRef}`,
       ).toContain(expectedAccessRef);
 
-      if (mapping[`${prefix}_TOKEN`] !== undefined) {
+      if (envBindings[`${prefix}_TOKEN`] !== undefined) {
         expect(
-          mapping[`${prefix}_TOKEN`],
+          envBindings[`${prefix}_TOKEN`],
           `${type}: ${prefix}_TOKEN must reference ${accessSecretName}`,
         ).toBe(expectedAccessRef);
       }
@@ -1547,39 +1547,40 @@ describe("getConnectorEnvironmentMapping", () => {
     }
   });
 
-  it("api-token-only connectors expose all secrets via environmentMapping with same name", () => {
+  it("api-token-only connectors expose all secrets via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
       if (getConnectorOAuthGrantConfigIfSupported(type)) continue;
       const fields = getApiTokenManualGrantFields(type);
       if (!fields) continue;
 
       const fieldNames = Object.keys(fields);
-      const mapping = getConnectorEnvironmentMapping(type);
-      const mapKeys = Object.keys(mapping);
+      const envBindings = getConnectorEnvBindings(type);
+      const envBindingKeys = Object.keys(envBindings);
 
-      // mapping keys must be exactly the same set as secrets
+      // envBindings keys must be exactly the same set as secrets
       expect(
-        mapKeys.sort(),
-        `${type}: environmentMapping keys must match api-token secrets`,
+        envBindingKeys.sort(),
+        `${type}: envBindings keys must match api-token secrets`,
       ).toEqual(fieldNames.sort());
 
-      // each mapping value must be $secrets.KEY or $vars.KEY (same name)
+      // each envBindings value must be $secrets.KEY or $vars.KEY (same name)
       for (const key of fieldNames) {
         expect(
-          mapping[key] === `$secrets.${key}` || mapping[key] === `$vars.${key}`,
-          `${type}: environmentMapping["${key}"] = "${mapping[key]}", expected $secrets.${key} or $vars.${key}`,
+          envBindings[key] === `$secrets.${key}` ||
+            envBindings[key] === `$vars.${key}`,
+          `${type}: envBindings["${key}"] = "${envBindings[key]}", expected $secrets.${key} or $vars.${key}`,
         ).toBe(true);
       }
     }
   });
 
-  it("all mapping values use $secrets. or $vars. prefix", () => {
+  it("all envBindings values use $secrets. or $vars. prefix", () => {
     for (const type of connectorTypeSchema.options) {
-      const mapping = getConnectorEnvironmentMapping(type);
-      for (const [key, value] of Object.entries(mapping)) {
+      const envBindings = getConnectorEnvBindings(type);
+      for (const [key, value] of Object.entries(envBindings)) {
         expect(
           value.startsWith("$secrets.") || value.startsWith("$vars."),
-          `${type}.environmentMapping["${key}"] = "${value}" — must start with $secrets. or $vars.`,
+          `${type}.envBindings["${key}"] = "${value}" — must start with $secrets. or $vars.`,
         ).toBe(true);
       }
     }
@@ -2017,7 +2018,7 @@ describe("connector OAuth device authorization config", () => {
 });
 
 describe("getConnectorTypeForSecretName", () => {
-  it("finds connector type for OAuth env mapping key", () => {
+  it("finds connector type for OAuth env bindings key", () => {
     expect(getConnectorTypeForSecretName("GH_TOKEN")).toBe("github");
     expect(getConnectorTypeForSecretName("GITHUB_TOKEN")).toBe("github");
   });

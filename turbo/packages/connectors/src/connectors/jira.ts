@@ -35,7 +35,7 @@ export const jira = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
             JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
             JIRA_EMAIL: "$vars.JIRA_EMAIL",

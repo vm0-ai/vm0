@@ -23,7 +23,7 @@ export const prismaPostgres = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PRISMA_POSTGRES_TOKEN: "$secrets.PRISMA_POSTGRES_TOKEN",
           },
         },

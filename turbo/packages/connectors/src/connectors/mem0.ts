@@ -23,7 +23,7 @@ export const mem0 = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MEM0_TOKEN: "$secrets.MEM0_TOKEN",
           },
         },

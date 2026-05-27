@@ -28,7 +28,7 @@ export const porkbun = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PORKBUN_API_KEY: "$secrets.PORKBUN_API_KEY",
             PORKBUN_SECRET_API_KEY: "$secrets.PORKBUN_SECRET_API_KEY",
           },

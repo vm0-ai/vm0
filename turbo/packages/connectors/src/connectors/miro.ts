@@ -23,7 +23,7 @@ export const miro = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MIRO_TOKEN: "$secrets.MIRO_TOKEN",
           },
         },

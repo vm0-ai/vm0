@@ -23,7 +23,7 @@ export const revenuecat = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             REVENUECAT_TOKEN: "$secrets.REVENUECAT_TOKEN",
           },
         },

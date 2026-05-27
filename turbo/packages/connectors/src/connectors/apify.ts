@@ -23,7 +23,7 @@ export const apify = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             APIFY_TOKEN: "$secrets.APIFY_TOKEN",
           },
         },

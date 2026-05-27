@@ -23,7 +23,7 @@ export const defillama = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DEFILLAMA_TOKEN: "$secrets.DEFILLAMA_TOKEN",
           },
         },

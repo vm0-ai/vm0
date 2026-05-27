@@ -25,7 +25,7 @@ export const testOauthDevice = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TEST_OAUTH_DEVICE_TOKEN: "$secrets.TEST_OAUTH_DEVICE_ACCESS_TOKEN",
           },
         },

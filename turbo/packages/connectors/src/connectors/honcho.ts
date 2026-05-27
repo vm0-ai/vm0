@@ -23,7 +23,7 @@ export const honcho = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HONCHO_API_KEY: "$secrets.HONCHO_API_KEY",
           },
         },

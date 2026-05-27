@@ -23,7 +23,7 @@ export const shortio = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SHORTIO_TOKEN: "$secrets.SHORTIO_TOKEN",
           },
         },

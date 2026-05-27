@@ -23,7 +23,7 @@ export const googleMaps = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GOOGLE_MAPS_TOKEN: "$secrets.GOOGLE_MAPS_TOKEN",
           },
         },

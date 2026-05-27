@@ -23,7 +23,7 @@ export const onyx = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ONYX_TOKEN: "$secrets.ONYX_TOKEN",
           },
         },

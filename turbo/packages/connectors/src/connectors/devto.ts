@@ -23,7 +23,7 @@ export const devto = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DEVTO_TOKEN: "$secrets.DEVTO_TOKEN",
           },
         },

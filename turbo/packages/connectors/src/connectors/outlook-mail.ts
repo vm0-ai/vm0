@@ -32,7 +32,7 @@ export const outlookMail = {
           kind: "refresh-token",
           accessToken: "OUTLOOK_MAIL_ACCESS_TOKEN",
           refreshToken: "OUTLOOK_MAIL_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
           },
         },

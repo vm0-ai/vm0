@@ -22,7 +22,7 @@ export const slackWebhook = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SLACK_WEBHOOK_URL: "$secrets.SLACK_WEBHOOK_URL",
           },
         },

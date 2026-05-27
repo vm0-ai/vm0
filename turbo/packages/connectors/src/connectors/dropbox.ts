@@ -30,7 +30,7 @@ export const dropbox = {
           kind: "refresh-token",
           accessToken: "DROPBOX_ACCESS_TOKEN",
           refreshToken: "DROPBOX_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
           },
         },
@@ -52,7 +52,7 @@ export const dropbox = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DROPBOX_TOKEN: "$secrets.DROPBOX_TOKEN",
           },
         },

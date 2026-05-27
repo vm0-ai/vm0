@@ -22,7 +22,7 @@ export const imgur = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             IMGUR_CLIENT_ID: "$secrets.IMGUR_CLIENT_ID",
           },
         },

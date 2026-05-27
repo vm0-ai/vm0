@@ -23,7 +23,7 @@ export const loops = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             LOOPS_TOKEN: "$secrets.LOOPS_TOKEN",
           },
         },

@@ -23,7 +23,7 @@ export const chatwoot = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CHATWOOT_TOKEN: "$secrets.CHATWOOT_TOKEN",
           },
         },

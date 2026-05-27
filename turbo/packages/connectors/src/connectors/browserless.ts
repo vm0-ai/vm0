@@ -23,7 +23,7 @@ export const browserless = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BROWSERLESS_TOKEN: "$secrets.BROWSERLESS_TOKEN",
           },
         },

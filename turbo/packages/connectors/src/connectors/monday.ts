@@ -40,7 +40,7 @@ export const monday = {
           kind: "refresh-token",
           accessToken: "MONDAY_ACCESS_TOKEN",
           refreshToken: "MONDAY_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },
         },

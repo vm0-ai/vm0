@@ -25,7 +25,7 @@ export const together = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TOGETHER_TOKEN: "$secrets.TOGETHER_TOKEN",
           },
         },

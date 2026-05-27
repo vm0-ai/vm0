@@ -23,7 +23,7 @@ export const reportei = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             REPORTEI_TOKEN: "$secrets.REPORTEI_TOKEN",
           },
         },

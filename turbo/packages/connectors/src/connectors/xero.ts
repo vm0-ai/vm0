@@ -48,7 +48,7 @@ export const xero = {
           kind: "refresh-token",
           accessToken: "XERO_ACCESS_TOKEN",
           refreshToken: "XERO_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
           },
         },

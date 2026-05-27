@@ -22,7 +22,7 @@ export const etherscan = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ETHERSCAN_API_KEY: "$secrets.ETHERSCAN_API_KEY",
           },
         },

@@ -23,7 +23,7 @@ export const square = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SQUARE_TOKEN: "$secrets.SQUARE_TOKEN",
           },
         },

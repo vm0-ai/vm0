@@ -27,7 +27,7 @@ export const mathpix = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MATHPIX_APP_KEY: "$secrets.MATHPIX_APP_KEY",
             MATHPIX_APP_ID: "$vars.MATHPIX_APP_ID",
           },

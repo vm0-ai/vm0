@@ -40,7 +40,7 @@ export const agora = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AGORA_CUSTOMER_ID: "$secrets.AGORA_CUSTOMER_ID",
             AGORA_CUSTOMER_SECRET: "$secrets.AGORA_CUSTOMER_SECRET",
             AGORA_APP_ID: "$vars.AGORA_APP_ID",

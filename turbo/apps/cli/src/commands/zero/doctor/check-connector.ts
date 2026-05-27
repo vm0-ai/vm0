@@ -5,7 +5,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorEnvironmentMapping,
+  getConnectorEnvBindings,
   getConnectorTypeForSecretName,
 } from "@vm0/connectors/connector-utils";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
@@ -101,11 +101,11 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
 
   if (!bestMatch) return null;
 
-  // Derive the env var name from the connector's environment mapping
-  const mapping = getConnectorEnvironmentMapping(
+  // Derive the env var name from the connector's env bindings.
+  const envBindings = getConnectorEnvBindings(
     bestMatch.connectorType as ConnectorType,
   );
-  const envName = Object.keys(mapping)[0];
+  const envName = Object.keys(envBindings)[0];
   if (!envName) return null;
 
   const relativePath =

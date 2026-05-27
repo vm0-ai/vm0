@@ -32,7 +32,7 @@ export const sentry = {
           kind: "refresh-token",
           accessToken: "SENTRY_ACCESS_TOKEN",
           refreshToken: "SENTRY_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
           },
         },

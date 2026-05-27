@@ -27,7 +27,7 @@ export const reddit = {
           kind: "refresh-token",
           accessToken: "REDDIT_ACCESS_TOKEN",
           refreshToken: "REDDIT_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
           },
         },

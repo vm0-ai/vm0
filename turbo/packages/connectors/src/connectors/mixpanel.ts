@@ -34,7 +34,7 @@ export const mixpanel = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MIXPANEL_SERVICE_ACCOUNT_USERNAME:
               "$secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME",
             MIXPANEL_SERVICE_ACCOUNT_SECRET:

@@ -28,7 +28,7 @@ export const stripe = {
           kind: "refresh-token",
           accessToken: "STRIPE_ACCESS_TOKEN",
           refreshToken: "STRIPE_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
           },
         },
@@ -50,7 +50,7 @@ export const stripe = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
           },
         },

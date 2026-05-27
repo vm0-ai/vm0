@@ -23,7 +23,7 @@ export const manus = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MANUS_TOKEN: "$secrets.MANUS_TOKEN",
           },
         },

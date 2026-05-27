@@ -22,7 +22,7 @@ export const helicone = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HELICONE_TOKEN: "$secrets.HELICONE_TOKEN",
           },
         },

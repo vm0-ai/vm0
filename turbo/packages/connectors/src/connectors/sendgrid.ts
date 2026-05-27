@@ -24,7 +24,7 @@ export const sendgrid = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SENDGRID_TOKEN: "$secrets.SENDGRID_TOKEN",
           },
         },

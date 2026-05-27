@@ -22,7 +22,7 @@ export const sociavault = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SOCIAVAULT_TOKEN: "$secrets.SOCIAVAULT_TOKEN",
           },
         },

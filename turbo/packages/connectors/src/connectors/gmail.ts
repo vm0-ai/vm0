@@ -25,7 +25,7 @@ export const gmail = {
           kind: "refresh-token",
           accessToken: "GMAIL_ACCESS_TOKEN",
           refreshToken: "GMAIL_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
           },
         },

@@ -26,7 +26,7 @@ export const amadeus = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AMADEUS_API_KEY: "$secrets.AMADEUS_API_KEY",
             AMADEUS_API_SECRET: "$secrets.AMADEUS_API_SECRET",
           },

@@ -31,7 +31,7 @@ export const faire = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FAIRE_TOKEN: "$secrets.FAIRE_TOKEN",
           },
         },

@@ -28,7 +28,7 @@ export const outlookCalendar = {
           kind: "refresh-token",
           accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
           refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
           },
         },

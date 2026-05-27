@@ -22,7 +22,7 @@ export const clado = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CLADO_TOKEN: "$secrets.CLADO_TOKEN",
           },
         },

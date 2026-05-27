@@ -26,7 +26,7 @@ export const bitrefill = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BITREFILL_TOKEN: "$secrets.BITREFILL_TOKEN",
           },
         },

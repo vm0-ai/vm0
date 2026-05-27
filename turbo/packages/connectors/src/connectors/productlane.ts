@@ -21,7 +21,7 @@ export const productlane = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PRODUCTLANE_TOKEN: "$secrets.PRODUCTLANE_TOKEN",
           },
         },

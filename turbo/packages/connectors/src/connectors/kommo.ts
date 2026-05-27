@@ -28,7 +28,7 @@ export const kommo = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             KOMMO_API_KEY: "$secrets.KOMMO_API_KEY",
             KOMMO_SUBDOMAIN: "$vars.KOMMO_SUBDOMAIN",
           },

@@ -25,7 +25,7 @@ export const bfl = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BFL_API_KEY: "$secrets.BFL_API_KEY",
           },
         },

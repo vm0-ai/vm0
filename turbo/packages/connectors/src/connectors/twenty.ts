@@ -23,7 +23,7 @@ export const twenty = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TWENTY_TOKEN: "$secrets.TWENTY_TOKEN",
           },
         },

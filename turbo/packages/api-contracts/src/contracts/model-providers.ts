@@ -39,6 +39,8 @@ export interface AuthMethodConfig {
   secrets: Record<string, SecretFieldConfig>;
 }
 
+export type ModelProviderEnvBindings = Record<string, string>;
+
 /**
  * The org slug authorized to use the VM0 managed provider.
  */
@@ -175,7 +177,7 @@ interface Vm0ModelConfig {
   concreteType: string;
   vendor: string;
   // Overrides the display-name when substituting `$model` in the concrete
-  // provider's environment mapping. Needed when the upstream API expects a
+  // provider's env bindings. Needed when the upstream API expects a
   // different identifier than what we show to users (e.g. OpenRouter uses
   // "z-ai/glm-5.1" while our UI shows "glm-5.1").
   apiModel?: string;
@@ -335,7 +337,7 @@ export function getVm0VisibleModels(): string[] {
  * Model Provider type configuration
  * Maps type to framework, secret name, and display info
  *
- * For providers with `environmentMapping`, the secret is mapped to framework variables:
+ * For providers with `envBindings`, the secret is mapped to framework variables:
  * - `$secret` → the stored secret value (legacy single secret)
  * - `$secrets.X` → lookup secret X from the secrets map (multi-secret)
  * - `$model` → the selected model (or default)
@@ -353,10 +355,10 @@ export const MODEL_PROVIDER_TYPES = {
     secretLabel: "OAuth token",
     helpText:
       "To get your OAuth token, run: claude setup-token\n(Requires Claude Pro or Max subscription)",
-    environmentMapping: {
+    envBindings: {
       CLAUDE_CODE_OAUTH_TOKEN: "$secret",
       ANTHROPIC_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "claude-sonnet-4-6",
       "claude-opus-4-6",
@@ -371,10 +373,10 @@ export const MODEL_PROVIDER_TYPES = {
     secretLabel: "API key",
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_API_KEY: "$secret",
       ANTHROPIC_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "claude-sonnet-4-6",
       "claude-opus-4-6",
@@ -388,7 +390,7 @@ export const MODEL_PROVIDER_TYPES = {
     label: "OpenRouter",
     secretLabel: "API key",
     helpText: "Get your API key at: https://openrouter.ai/settings/keys",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
       ANTHROPIC_API_KEY: "",
@@ -397,7 +399,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-4.6",
@@ -421,7 +423,7 @@ export const MODEL_PROVIDER_TYPES = {
     secretLabel: "API key",
     helpText:
       "Get your API key at: https://platform.moonshot.ai/console/api-keys",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.moonshot.ai/anthropic",
       ANTHROPIC_MODEL: "$model",
@@ -429,7 +431,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "kimi-k2.6",
       "kimi-k2.5",
@@ -445,7 +447,7 @@ export const MODEL_PROVIDER_TYPES = {
     secretLabel: "API key",
     helpText:
       "Get your API key at: https://platform.minimax.io/user-center/basic-information/interface-key",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
       ANTHROPIC_MODEL: "$model",
@@ -455,7 +457,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: ["MiniMax-M2.7", "MiniMax-M2.1"] as string[],
     defaultModel: "MiniMax-M2.7",
   },
@@ -465,7 +467,7 @@ export const MODEL_PROVIDER_TYPES = {
     label: "DeepSeek",
     secretLabel: "API key",
     helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
       ANTHROPIC_MODEL: "$model",
@@ -475,7 +477,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "600000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: ["deepseek-v4-pro", "deepseek-v4-flash"] as string[],
     defaultModel: "deepseek-v4-flash",
   },
@@ -485,7 +487,7 @@ export const MODEL_PROVIDER_TYPES = {
     label: "Z.AI (GLM)",
     secretLabel: "API key",
     helpText: "Get your API key at: https://z.ai/model-api",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
       ANTHROPIC_MODEL: "$model",
@@ -494,7 +496,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: ["glm-5.1", "glm-5", "glm-4.7", "glm-4.5-air"] as string[],
     defaultModel: "glm-5.1",
   },
@@ -504,7 +506,7 @@ export const MODEL_PROVIDER_TYPES = {
     label: "Vercel AI Gateway",
     secretLabel: "API key",
     helpText: "Get your API key from the Vercel AI Gateway dashboard",
-    environmentMapping: {
+    envBindings: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
       ANTHROPIC_API_KEY: "",
@@ -513,7 +515,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "anthropic/claude-opus-4.7",
       "anthropic/claude-opus-4.6",
@@ -540,11 +542,11 @@ export const MODEL_PROVIDER_TYPES = {
     label: "OpenRouter (Codex)",
     secretLabel: "API key",
     helpText: "Get your API key at: https://openrouter.ai/settings/keys",
-    environmentMapping: {
+    envBindings: {
       OPENAI_API_KEY: "$secret",
       OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
       OPENAI_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "openai/gpt-5.5",
       "openai/gpt-5.4",
@@ -563,11 +565,11 @@ export const MODEL_PROVIDER_TYPES = {
     label: "Vercel AI Gateway (Codex)",
     secretLabel: "API key",
     helpText: "Get your API key from the Vercel AI Gateway dashboard",
-    environmentMapping: {
+    envBindings: {
       OPENAI_API_KEY: "$secret",
       OPENAI_BASE_URL: "https://ai-gateway.vercel.sh/v1",
       OPENAI_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [
       "openai/gpt-5.5",
       "openai/gpt-5.4",
@@ -581,10 +583,10 @@ export const MODEL_PROVIDER_TYPES = {
     label: "OpenAI",
     secretLabel: "API key",
     helpText: "Get your API key at: https://platform.openai.com/api-keys",
-    environmentMapping: {
+    envBindings: {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
@@ -649,11 +651,11 @@ export const MODEL_PROVIDER_TYPES = {
       },
     } as Record<string, AuthMethodConfig>,
     defaultAuthMethod: "auth_json",
-    environmentMapping: {
+    envBindings: {
       CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
@@ -682,12 +684,12 @@ export const MODEL_PROVIDER_TYPES = {
       },
     } as Record<string, AuthMethodConfig>,
     defaultAuthMethod: "api-key",
-    environmentMapping: {
+    envBindings: {
       CLAUDE_CODE_USE_FOUNDRY: "1",
       ANTHROPIC_FOUNDRY_API_KEY: "$secrets.ANTHROPIC_FOUNDRY_API_KEY",
       ANTHROPIC_FOUNDRY_RESOURCE: "$secrets.ANTHROPIC_FOUNDRY_RESOURCE",
       ANTHROPIC_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [] as string[],
     defaultModel: "",
     allowCustomModel: true,
@@ -745,7 +747,7 @@ export const MODEL_PROVIDER_TYPES = {
       },
     } as Record<string, AuthMethodConfig>,
     defaultAuthMethod: "api-key",
-    environmentMapping: {
+    envBindings: {
       CLAUDE_CODE_USE_BEDROCK: "1",
       AWS_REGION: "$secrets.AWS_REGION",
       AWS_BEARER_TOKEN_BEDROCK: "$secrets.AWS_BEARER_TOKEN_BEDROCK",
@@ -753,7 +755,7 @@ export const MODEL_PROVIDER_TYPES = {
       AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
       AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
       ANTHROPIC_MODEL: "$model",
-    } as Record<string, string>,
+    } as ModelProviderEnvBindings,
     models: [] as string[],
     defaultModel: "",
     allowCustomModel: true,
@@ -1003,14 +1005,14 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
   //      to that base directly so codex can use either path the gateway
   //      supports without re-listing endpoints here.
   if (getFrameworkForType(type) === "codex") {
-    const overrideBase = getEnvironmentMapping(type)?.OPENAI_BASE_URL;
+    const overrideBase = getModelProviderEnvBindings(type)?.OPENAI_BASE_URL;
     if (overrideBase) {
       return overrideBase.replace(/\/+$/, "");
     }
     return "https://api.openai.com/v1/responses";
   }
   const base = (
-    getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE
+    getModelProviderEnvBindings(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE
   ).replace(/\/+$/, "");
   return `${base}/v1/messages`;
 }
@@ -1356,21 +1358,21 @@ export function getSecretNamesForAuthMethod(
 }
 
 /**
- * Get environment mapping for a model provider type
- * Returns undefined for providers without mapping (use secret directly)
+ * Get runtime environment bindings for a model provider type.
+ * Returns undefined for providers without env bindings (use secret directly).
  */
-export function getEnvironmentMapping(
+export function getModelProviderEnvBindings(
   type: ModelProviderType,
-): Record<string, string> | undefined {
+): ModelProviderEnvBindings | undefined {
   const config = MODEL_PROVIDER_TYPES[type];
-  return "environmentMapping" in config ? config.environmentMapping : undefined;
+  return "envBindings" in config ? config.envBindings : undefined;
 }
 
 /**
  * Get the upstream base URL for a model provider type.
  *
  * Returns the framework-appropriate base URL override from
- * environmentMapping — ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL
+ * envBindings — ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL
  * for codex. Returns null when the provider relies on the SDK's default
  * (Anthropic-native providers, OpenAI direct).
  *
@@ -1381,10 +1383,10 @@ export function getEnvironmentMapping(
  */
 export function getProviderBaseUrl(type: ModelProviderType): string | null {
   const config = MODEL_PROVIDER_TYPES[type];
-  if (!("environmentMapping" in config)) return null;
-  const anthropicUrl = config.environmentMapping["ANTHROPIC_BASE_URL"];
+  if (!("envBindings" in config)) return null;
+  const anthropicUrl = config.envBindings["ANTHROPIC_BASE_URL"];
   if (anthropicUrl) return anthropicUrl;
-  const openaiUrl = config.environmentMapping["OPENAI_BASE_URL"];
+  const openaiUrl = config.envBindings["OPENAI_BASE_URL"];
   return openaiUrl ?? null;
 }
 

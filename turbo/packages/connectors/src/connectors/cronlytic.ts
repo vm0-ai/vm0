@@ -27,7 +27,7 @@ export const cronlytic = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CRONLYTIC_API_KEY: "$secrets.CRONLYTIC_API_KEY",
             CRONLYTIC_USER_ID: "$vars.CRONLYTIC_USER_ID",
           },

@@ -30,7 +30,7 @@ export const snowflake = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SNOWFLAKE_PAT: "$secrets.SNOWFLAKE_PAT",
             SNOWFLAKE_ACCOUNT: "$vars.SNOWFLAKE_ACCOUNT",
           },

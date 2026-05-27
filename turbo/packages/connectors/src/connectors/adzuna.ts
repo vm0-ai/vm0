@@ -30,7 +30,7 @@ export const adzuna = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ADZUNA_APP_ID: "$vars.ADZUNA_APP_ID",
             ADZUNA_APP_KEY: "$secrets.ADZUNA_APP_KEY",
           },

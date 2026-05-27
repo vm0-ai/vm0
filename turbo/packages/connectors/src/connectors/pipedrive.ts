@@ -23,7 +23,7 @@ export const pipedrive = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PIPEDRIVE_TOKEN: "$secrets.PIPEDRIVE_TOKEN",
           },
         },

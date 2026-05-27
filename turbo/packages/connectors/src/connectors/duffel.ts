@@ -23,7 +23,7 @@ export const duffel = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DUFFEL_TOKEN: "$secrets.DUFFEL_TOKEN",
           },
         },

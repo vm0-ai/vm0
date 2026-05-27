@@ -22,7 +22,7 @@ export const pdfco = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
           },
         },

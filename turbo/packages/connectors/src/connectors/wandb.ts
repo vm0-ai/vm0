@@ -22,7 +22,7 @@ export const wandb = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WANDB_TOKEN: "$secrets.WANDB_TOKEN",
           },
         },

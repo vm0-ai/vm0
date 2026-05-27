@@ -22,7 +22,7 @@ export const openweather = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             OPENWEATHER_TOKEN: "$secrets.OPENWEATHER_TOKEN",
           },
         },

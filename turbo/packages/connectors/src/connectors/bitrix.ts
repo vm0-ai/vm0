@@ -23,7 +23,7 @@ export const bitrix = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BITRIX_WEBHOOK_URL: "$secrets.BITRIX_WEBHOOK_URL",
           },
         },

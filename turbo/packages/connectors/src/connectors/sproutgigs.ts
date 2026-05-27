@@ -37,7 +37,7 @@ export const sproutgigs = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SPROUTGIGS_USER_ID: "$vars.SPROUTGIGS_USER_ID",
             SPROUTGIGS_API_SECRET: "$secrets.SPROUTGIGS_API_SECRET",
           },

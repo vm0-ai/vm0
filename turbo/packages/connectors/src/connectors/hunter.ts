@@ -22,7 +22,7 @@ export const hunter = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HUNTER_TOKEN: "$secrets.HUNTER_TOKEN",
           },
         },

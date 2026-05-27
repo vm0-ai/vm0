@@ -25,7 +25,7 @@ export const bland = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BLAND_API_KEY: "$secrets.BLAND_API_KEY",
           },
         },

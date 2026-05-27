@@ -35,7 +35,7 @@ export const zendesk = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ZENDESK_API_TOKEN: "$secrets.ZENDESK_API_TOKEN",
             ZENDESK_EMAIL: "$vars.ZENDESK_EMAIL",
             ZENDESK_SUBDOMAIN: "$vars.ZENDESK_SUBDOMAIN",

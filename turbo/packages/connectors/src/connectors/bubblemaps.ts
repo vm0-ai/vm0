@@ -23,7 +23,7 @@ export const bubblemaps = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BUBBLEMAPS_API_KEY: "$secrets.BUBBLEMAPS_API_KEY",
           },
         },

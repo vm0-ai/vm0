@@ -24,7 +24,7 @@ export const v0 = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             V0_TOKEN: "$secrets.V0_TOKEN",
           },
         },

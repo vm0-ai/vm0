@@ -23,7 +23,7 @@ export const msg9 = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MSG9_TOKEN: "$secrets.MSG9_TOKEN",
           },
         },

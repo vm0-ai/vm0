@@ -29,7 +29,7 @@ export const qdrant = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             QDRANT_TOKEN: "$secrets.QDRANT_TOKEN",
             QDRANT_BASE_URL: "$vars.QDRANT_BASE_URL",
           },

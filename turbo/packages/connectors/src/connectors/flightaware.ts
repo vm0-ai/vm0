@@ -22,7 +22,7 @@ export const flightaware = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FLIGHTAWARE_TOKEN: "$secrets.FLIGHTAWARE_TOKEN",
           },
         },

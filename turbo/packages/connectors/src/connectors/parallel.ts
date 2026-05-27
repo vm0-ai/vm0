@@ -23,7 +23,7 @@ export const parallel = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PARALLEL_API_KEY: "$secrets.PARALLEL_API_KEY",
           },
         },

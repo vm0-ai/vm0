@@ -22,7 +22,7 @@ export const crustdata = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CRUSTDATA_TOKEN: "$secrets.CRUSTDATA_TOKEN",
           },
         },

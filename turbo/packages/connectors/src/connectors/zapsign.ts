@@ -23,7 +23,7 @@ export const zapsign = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ZAPSIGN_TOKEN: "$secrets.ZAPSIGN_TOKEN",
           },
         },

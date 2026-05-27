@@ -32,7 +32,7 @@ export const googleAds = {
           kind: "refresh-token",
           accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
           },
         },

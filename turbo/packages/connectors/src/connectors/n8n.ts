@@ -29,7 +29,7 @@ export const n8n = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             N8N_TOKEN: "$secrets.N8N_TOKEN",
             N8N_BASE_URL: "$vars.N8N_BASE_URL",
           },

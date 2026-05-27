@@ -29,7 +29,7 @@ export const browserstack = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BROWSERSTACK_USERNAME: "$secrets.BROWSERSTACK_USERNAME",
             BROWSERSTACK_ACCESS_KEY: "$secrets.BROWSERSTACK_ACCESS_KEY",
           },

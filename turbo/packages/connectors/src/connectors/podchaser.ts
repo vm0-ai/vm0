@@ -23,7 +23,7 @@ export const podchaser = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PODCHASER_TOKEN: "$secrets.PODCHASER_TOKEN",
           },
         },

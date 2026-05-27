@@ -23,7 +23,7 @@ export const hume = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HUME_TOKEN: "$secrets.HUME_TOKEN",
           },
         },

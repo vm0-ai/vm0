@@ -23,7 +23,7 @@ export const ticketmaster = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TICKETMASTER_API_KEY: "$secrets.TICKETMASTER_API_KEY",
           },
         },

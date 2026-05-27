@@ -24,7 +24,7 @@ export const perplexity = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PERPLEXITY_TOKEN: "$secrets.PERPLEXITY_TOKEN",
           },
         },

@@ -23,7 +23,7 @@ export const pandadoc = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PANDADOC_TOKEN: "$secrets.PANDADOC_TOKEN",
           },
         },

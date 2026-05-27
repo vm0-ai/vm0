@@ -23,7 +23,7 @@ export const langsmith = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             LANGSMITH_TOKEN: "$secrets.LANGSMITH_TOKEN",
           },
         },

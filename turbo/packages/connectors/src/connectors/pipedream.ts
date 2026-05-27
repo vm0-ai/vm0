@@ -23,7 +23,7 @@ export const pipedream = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PIPEDREAM_TOKEN: "$secrets.PIPEDREAM_TOKEN",
           },
         },

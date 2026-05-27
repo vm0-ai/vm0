@@ -35,7 +35,7 @@ export const atlassian = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ATLASSIAN_TOKEN: "$secrets.ATLASSIAN_TOKEN",
             ATLASSIAN_EMAIL: "$vars.ATLASSIAN_EMAIL",
             ATLASSIAN_DOMAIN: "$vars.ATLASSIAN_DOMAIN",

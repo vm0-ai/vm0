@@ -22,7 +22,7 @@ export const builtwith = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BUILTWITH_TOKEN: "$secrets.BUILTWITH_TOKEN",
           },
         },

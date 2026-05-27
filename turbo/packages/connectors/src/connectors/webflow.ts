@@ -42,7 +42,7 @@ export const webflow = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
           },
         },
@@ -63,7 +63,7 @@ export const webflow = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WEBFLOW_TOKEN: "$secrets.WEBFLOW_TOKEN",
           },
         },

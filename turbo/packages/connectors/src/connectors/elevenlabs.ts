@@ -24,7 +24,7 @@ export const elevenlabs = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ELEVENLABS_TOKEN: "$secrets.ELEVENLABS_TOKEN",
           },
         },

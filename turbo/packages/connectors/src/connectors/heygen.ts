@@ -24,7 +24,7 @@ export const heygen = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HEYGEN_TOKEN: "$secrets.HEYGEN_TOKEN",
           },
         },

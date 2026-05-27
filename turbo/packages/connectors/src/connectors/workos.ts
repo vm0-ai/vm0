@@ -23,7 +23,7 @@ export const workos = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WORKOS_TOKEN: "$secrets.WORKOS_TOKEN",
           },
         },

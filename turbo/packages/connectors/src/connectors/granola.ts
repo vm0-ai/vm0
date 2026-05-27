@@ -23,7 +23,7 @@ export const granola = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GRANOLA_TOKEN: "$secrets.GRANOLA_TOKEN",
           },
         },

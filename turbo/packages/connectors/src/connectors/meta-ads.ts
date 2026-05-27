@@ -25,7 +25,7 @@ export const metaAds = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
           },
         },

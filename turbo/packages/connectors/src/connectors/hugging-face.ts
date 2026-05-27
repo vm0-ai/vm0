@@ -24,7 +24,7 @@ export const huggingFace = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             HUGGING_FACE_TOKEN: "$secrets.HUGGING_FACE_TOKEN",
           },
         },

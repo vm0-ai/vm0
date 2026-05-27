@@ -28,7 +28,7 @@ export const strapi = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             STRAPI_TOKEN: "$secrets.STRAPI_TOKEN",
             STRAPI_BASE_URL: "$vars.STRAPI_BASE_URL",
           },

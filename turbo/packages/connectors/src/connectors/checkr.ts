@@ -30,7 +30,7 @@ export const checkr = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CHECKR_TOKEN: "$secrets.CHECKR_TOKEN",
           },
         },

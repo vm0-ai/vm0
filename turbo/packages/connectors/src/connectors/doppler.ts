@@ -23,7 +23,7 @@ export const doppler = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DOPPLER_TOKEN: "$secrets.DOPPLER_TOKEN",
           },
         },

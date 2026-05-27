@@ -23,7 +23,7 @@ export const brevo = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BREVO_TOKEN: "$secrets.BREVO_TOKEN",
           },
         },

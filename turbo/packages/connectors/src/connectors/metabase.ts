@@ -28,7 +28,7 @@ export const metabase = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             METABASE_TOKEN: "$secrets.METABASE_TOKEN",
             METABASE_BASE_URL: "$vars.METABASE_BASE_URL",
           },

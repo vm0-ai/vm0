@@ -29,7 +29,7 @@ export const gitlab = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",
             GITLAB_HOST: "$vars.GITLAB_HOST",
           },

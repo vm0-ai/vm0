@@ -23,7 +23,7 @@ export const serpapi = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SERPAPI_TOKEN: "$secrets.SERPAPI_TOKEN",
           },
         },

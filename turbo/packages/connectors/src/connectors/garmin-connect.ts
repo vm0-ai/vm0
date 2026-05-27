@@ -27,7 +27,7 @@ export const garminConnect = {
           kind: "refresh-token",
           accessToken: "GARMIN_CONNECT_ACCESS_TOKEN",
           refreshToken: "GARMIN_CONNECT_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
           },
         },

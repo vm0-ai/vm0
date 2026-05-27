@@ -30,7 +30,7 @@ export const altium365 = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ALTIUM365_TOKEN: "$secrets.ALTIUM365_TOKEN",
             ALTIUM365_WORKSPACE_URL: "$vars.ALTIUM365_WORKSPACE_URL",
           },

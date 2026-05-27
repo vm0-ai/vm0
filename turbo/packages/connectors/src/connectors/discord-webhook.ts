@@ -22,7 +22,7 @@ export const discordWebhook = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DISCORD_WEBHOOK_URL: "$secrets.DISCORD_WEBHOOK_URL",
           },
         },

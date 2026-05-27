@@ -23,7 +23,7 @@ export const peopleDataLabs = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PEOPLE_DATA_LABS_API_KEY: "$secrets.PEOPLE_DATA_LABS_API_KEY",
           },
         },

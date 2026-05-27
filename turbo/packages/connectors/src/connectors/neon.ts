@@ -34,7 +34,7 @@ export const neon = {
           kind: "refresh-token",
           accessToken: "NEON_ACCESS_TOKEN",
           refreshToken: "NEON_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
           },
         },
@@ -56,7 +56,7 @@ export const neon = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             NEON_TOKEN: "$secrets.NEON_TOKEN",
           },
         },

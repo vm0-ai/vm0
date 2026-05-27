@@ -27,7 +27,7 @@ export const salesforce = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SALESFORCE_TOKEN: "$secrets.SALESFORCE_TOKEN",
             SALESFORCE_INSTANCE: "$vars.SALESFORCE_INSTANCE",
           },

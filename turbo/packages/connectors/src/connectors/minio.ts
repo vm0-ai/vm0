@@ -34,7 +34,7 @@ export const minio = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MINIO_TOKEN: "$secrets.MINIO_TOKEN",
             MINIO_SECRET_TOKEN: "$secrets.MINIO_SECRET_TOKEN",
             MINIO_ENDPOINT: "$vars.MINIO_ENDPOINT",

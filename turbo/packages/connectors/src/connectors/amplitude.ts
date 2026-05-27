@@ -29,7 +29,7 @@ export const amplitude = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             AMPLITUDE_API_KEY: "$secrets.AMPLITUDE_API_KEY",
             AMPLITUDE_SECRET_KEY: "$secrets.AMPLITUDE_SECRET_KEY",
           },

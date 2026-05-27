@@ -25,7 +25,7 @@ export const asana = {
           kind: "refresh-token",
           accessToken: "ASANA_ACCESS_TOKEN",
           refreshToken: "ASANA_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
           },
         },

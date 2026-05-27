@@ -23,7 +23,7 @@ export const zeptomail = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ZEPTOMAIL_TOKEN: "$secrets.ZEPTOMAIL_TOKEN",
           },
         },

@@ -24,7 +24,7 @@ export const dify = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DIFY_TOKEN: "$secrets.DIFY_TOKEN",
           },
         },

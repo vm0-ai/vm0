@@ -26,7 +26,7 @@ export const nyne = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             NYNE_API_KEY: "$secrets.NYNE_API_KEY",
             NYNE_API_SECRET: "$secrets.NYNE_API_SECRET",
           },

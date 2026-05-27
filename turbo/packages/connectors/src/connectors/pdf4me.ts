@@ -24,7 +24,7 @@ export const pdf4me = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PDF4ME_TOKEN: "$secrets.PDF4ME_TOKEN",
           },
         },

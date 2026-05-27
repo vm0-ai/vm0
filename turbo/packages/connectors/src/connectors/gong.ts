@@ -33,7 +33,7 @@ export const gong = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GONG_ACCESS_KEY: "$secrets.GONG_ACCESS_KEY",
             GONG_ACCESS_KEY_SECRET: "$secrets.GONG_ACCESS_KEY_SECRET",
             GONG_API_BASE: "$vars.GONG_API_BASE",

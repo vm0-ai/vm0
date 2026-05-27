@@ -23,7 +23,7 @@ export const clickup = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CLICKUP_TOKEN: "$secrets.CLICKUP_TOKEN",
           },
         },

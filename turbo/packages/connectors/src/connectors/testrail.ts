@@ -35,7 +35,7 @@ export const testrail = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             TESTRAIL_EMAIL: "$secrets.TESTRAIL_EMAIL",
             TESTRAIL_TOKEN: "$secrets.TESTRAIL_TOKEN",
             TESTRAIL_INSTANCE: "$vars.TESTRAIL_INSTANCE",

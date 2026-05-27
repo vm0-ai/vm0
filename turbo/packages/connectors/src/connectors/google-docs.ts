@@ -27,7 +27,7 @@ export const googleDocs = {
           kind: "refresh-token",
           accessToken: "GOOGLE_DOCS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_DOCS_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
           },
         },

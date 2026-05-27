@@ -23,7 +23,7 @@ export const plain = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PLAIN_TOKEN: "$secrets.PLAIN_TOKEN",
           },
         },

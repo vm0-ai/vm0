@@ -23,7 +23,7 @@ export const qiita = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             QIITA_TOKEN: "$secrets.QIITA_TOKEN",
           },
         },

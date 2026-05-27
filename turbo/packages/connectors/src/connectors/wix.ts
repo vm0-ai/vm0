@@ -23,7 +23,7 @@ export const wix = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WIX_TOKEN: "$secrets.WIX_TOKEN",
           },
         },

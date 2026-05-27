@@ -23,7 +23,7 @@ export const pika = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             PIKA_TOKEN: "$secrets.PIKA_TOKEN",
           },
         },

@@ -23,7 +23,7 @@ export const whaleAlert = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WHALE_ALERT_API_KEY: "$secrets.WHALE_ALERT_API_KEY",
           },
         },

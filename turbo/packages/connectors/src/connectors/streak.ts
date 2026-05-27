@@ -23,7 +23,7 @@ export const streak = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             STREAK_TOKEN: "$secrets.STREAK_TOKEN",
           },
         },

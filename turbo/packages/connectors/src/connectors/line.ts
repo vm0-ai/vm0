@@ -22,7 +22,7 @@ export const line = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             LINE_TOKEN: "$secrets.LINE_TOKEN",
           },
         },

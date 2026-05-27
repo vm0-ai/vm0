@@ -24,7 +24,7 @@ export const sponge = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SPONGE_MASTER_KEY: "$secrets.SPONGE_MASTER_KEY",
           },
         },

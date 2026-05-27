@@ -23,7 +23,7 @@ export const vercel = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
           },
         },

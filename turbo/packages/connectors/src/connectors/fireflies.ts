@@ -22,7 +22,7 @@ export const fireflies = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             FIREFLIES_TOKEN: "$secrets.FIREFLIES_TOKEN",
           },
         },

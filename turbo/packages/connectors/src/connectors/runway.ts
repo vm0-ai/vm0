@@ -24,7 +24,7 @@ export const runway = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             RUNWAY_TOKEN: "$secrets.RUNWAY_TOKEN",
           },
         },

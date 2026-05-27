@@ -42,7 +42,7 @@ export const zoom = {
           kind: "refresh-token",
           accessToken: "ZOOM_ACCESS_TOKEN",
           refreshToken: "ZOOM_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
           },
         },

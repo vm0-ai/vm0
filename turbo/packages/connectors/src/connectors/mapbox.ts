@@ -23,7 +23,7 @@ export const mapbox = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             MAPBOX_TOKEN: "$secrets.MAPBOX_TOKEN",
           },
         },

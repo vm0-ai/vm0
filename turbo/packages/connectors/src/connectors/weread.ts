@@ -33,7 +33,7 @@ export const weread = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             WEREAD_TOKEN: "$secrets.WEREAD_TOKEN",
           },
         },

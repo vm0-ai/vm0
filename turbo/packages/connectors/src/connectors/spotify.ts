@@ -47,7 +47,7 @@ export const spotify = {
           kind: "refresh-token",
           accessToken: "SPOTIFY_ACCESS_TOKEN",
           refreshToken: "SPOTIFY_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
           },
         },

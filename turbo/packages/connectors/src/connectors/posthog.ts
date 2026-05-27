@@ -52,7 +52,7 @@ export const posthog = {
           kind: "refresh-token",
           accessToken: "POSTHOG_ACCESS_TOKEN",
           refreshToken: "POSTHOG_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
           },
         },
@@ -74,7 +74,7 @@ export const posthog = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             POSTHOG_TOKEN: "$secrets.POSTHOG_TOKEN",
           },
         },

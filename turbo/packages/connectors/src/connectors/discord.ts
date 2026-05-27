@@ -23,7 +23,7 @@ export const discord = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DISCORD_BOT_TOKEN: "$secrets.DISCORD_BOT_TOKEN",
           },
         },

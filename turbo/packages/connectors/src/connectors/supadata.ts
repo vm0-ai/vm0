@@ -23,7 +23,7 @@ export const supadata = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SUPADATA_TOKEN: "$secrets.SUPADATA_TOKEN",
           },
         },

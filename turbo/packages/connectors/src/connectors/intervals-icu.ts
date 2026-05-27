@@ -23,7 +23,7 @@ export const intervalsIcu = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
           },
         },

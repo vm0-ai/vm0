@@ -30,7 +30,7 @@ export const strava = {
           kind: "refresh-token",
           accessToken: "STRAVA_ACCESS_TOKEN",
           refreshToken: "STRAVA_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
           },
         },

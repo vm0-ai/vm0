@@ -23,7 +23,7 @@ export const instantly = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             INSTANTLY_API_KEY: "$secrets.INSTANTLY_API_KEY",
           },
         },

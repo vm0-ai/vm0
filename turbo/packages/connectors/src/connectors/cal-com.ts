@@ -23,7 +23,7 @@ export const calCom = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CALCOM_TOKEN: "$secrets.CALCOM_TOKEN",
           },
         },

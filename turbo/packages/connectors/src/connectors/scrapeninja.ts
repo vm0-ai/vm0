@@ -20,7 +20,7 @@ export const scrapeninja = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             SCRAPENINJA_TOKEN: "$secrets.SCRAPENINJA_TOKEN",
           },
         },

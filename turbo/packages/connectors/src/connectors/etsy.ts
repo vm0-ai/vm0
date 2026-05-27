@@ -26,7 +26,7 @@ export const etsy = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ETSY_TOKEN: "$secrets.ETSY_TOKEN",
           },
         },

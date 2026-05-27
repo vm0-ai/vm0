@@ -23,7 +23,7 @@ export const coda = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CODA_TOKEN: "$secrets.CODA_TOKEN",
           },
         },

@@ -22,7 +22,7 @@ export const diffbot = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             DIFFBOT_TOKEN: "$secrets.DIFFBOT_TOKEN",
           },
         },

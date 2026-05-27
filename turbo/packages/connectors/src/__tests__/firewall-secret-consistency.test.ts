@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { connectorTypeSchema } from "../connectors";
 import {
   getConnectorAuthMethods,
-  getConnectorEnvironmentMapping,
+  getConnectorEnvBindings,
 } from "../connector-utils";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
@@ -16,7 +16,7 @@ const PLATFORM_INJECTED_SECRET_NAMES: Partial<
  * Verify that every builtin firewall's placeholder secret names match
  * the env var names exposed by the connector that references it.
  *
- * OAuth connectors expose env vars via derived environment mapping (e.g. SLACK_TOKEN).
+ * OAuth connectors expose env vars via derived env bindings (e.g. SLACK_TOKEN).
  * API-token connectors expose manual grant fields.
  * The firewall's `placeholders` keys must be a subset of these names,
  * otherwise the proxy won't find the secret to inject.
@@ -29,15 +29,15 @@ describe("firewall secret name consistency", () => {
 
     it(`${connectorType} → firewall placeholder keys match connector secret names`, () => {
       // Collect env var names the connector exposes.
-      // If environmentMapping exists (OAuth), use ONLY those keys because
+      // If envBindings exists (OAuth), use ONLY those keys because
       // internal token storage names are not always firewall placeholders.
       const connectorSecretNames = new Set<string>();
 
-      const mapping = getConnectorEnvironmentMapping(connectorType);
-      const hasMapping = Object.keys(mapping).length > 0;
+      const envBindings = getConnectorEnvBindings(connectorType);
+      const hasEnvBindings = Object.keys(envBindings).length > 0;
 
-      if (hasMapping) {
-        for (const [envVar, valueRef] of Object.entries(mapping)) {
+      if (hasEnvBindings) {
+        for (const [envVar, valueRef] of Object.entries(envBindings)) {
           connectorSecretNames.add(envVar);
           // Also allow the raw secret name (e.g. GITHUB_ACCESS_TOKEN)
           if (valueRef.startsWith("$secrets.")) {

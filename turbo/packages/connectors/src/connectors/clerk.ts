@@ -23,7 +23,7 @@ export const clerk = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CLERK_TOKEN: "$secrets.CLERK_TOKEN",
           },
         },

@@ -37,7 +37,7 @@ export const reap = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             REAP_API_KEY: "$secrets.REAP_API_KEY",
             REAP_API_BASE_URL: "$vars.REAP_API_BASE_URL",
           },

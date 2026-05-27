@@ -27,7 +27,7 @@ export const testOauth = {
           kind: "refresh-token",
           accessToken: "TEST_OAUTH_ACCESS_TOKEN",
           refreshToken: "TEST_OAUTH_REFRESH_TOKEN",
-          outputs: {
+          envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
           },
         },

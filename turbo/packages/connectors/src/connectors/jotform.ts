@@ -22,7 +22,7 @@ export const jotform = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             JOTFORM_TOKEN: "$secrets.JOTFORM_TOKEN",
           },
         },

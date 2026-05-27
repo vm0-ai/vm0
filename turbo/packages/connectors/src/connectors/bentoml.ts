@@ -33,7 +33,7 @@ export const bentoml = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             BENTO_CLOUD_API_KEY: "$secrets.BENTO_CLOUD_API_KEY",
             BENTO_CLOUD_API_ENDPOINT: "$vars.BENTO_CLOUD_API_ENDPOINT",
           },

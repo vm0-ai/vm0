@@ -23,7 +23,7 @@ export const coresignal = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             CORESIGNAL_TOKEN: "$secrets.CORESIGNAL_TOKEN",
           },
         },

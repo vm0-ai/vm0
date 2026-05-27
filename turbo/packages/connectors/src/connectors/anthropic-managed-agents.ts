@@ -23,7 +23,7 @@ export const anthropicManagedAgents = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             ANTHROPIC_MANAGED_AGENTS_TOKEN:
               "$secrets.ANTHROPIC_MANAGED_AGENTS_TOKEN",
           },

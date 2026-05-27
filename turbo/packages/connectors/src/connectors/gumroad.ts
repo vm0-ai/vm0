@@ -30,7 +30,7 @@ export const gumroad = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GUMROAD_TOKEN: "$secrets.GUMROAD_ACCESS_TOKEN",
           },
         },
@@ -52,7 +52,7 @@ export const gumroad = {
         },
         access: {
           kind: "static",
-          outputs: {
+          envBindings: {
             GUMROAD_TOKEN: "$secrets.GUMROAD_TOKEN",
           },
         },
