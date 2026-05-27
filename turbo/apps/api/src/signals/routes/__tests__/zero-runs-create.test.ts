@@ -478,6 +478,7 @@ describe("POST /api/zero/runs", () => {
     for (const toolHint of [
       "zero web download-file -h",
       "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
+      "`agent-browser` for browser automation and inspection",
       "Local dev servers are useful for agent-side verification",
       "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]`",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",

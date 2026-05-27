@@ -222,6 +222,7 @@ function buildAgentToolsPrompt(
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
+    "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
     ...buildIntegrationToolsPrompt(triggerSource),
     ...buildZeroMapsToolsPrompt(args.zeroMapsEnabled),
     "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; run `zero host --help` for details.",
