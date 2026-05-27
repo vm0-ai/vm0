@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.387.1](https://github.com/vm0-ai/vm0/compare/app-v0.387.0...app-v0.387.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* add connector-aware api-token connect ([#15069](https://github.com/vm0-ai/vm0/issues/15069)) ([18fe5e4](https://github.com/vm0-ai/vm0/commit/18fe5e48906d34a331b5e58e3647c046412a1a1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.1
+    * @vm0/connectors bumped to 1.36.5
+    * @vm0/core bumped to 8.298.0
+
 ## [0.387.0](https://github.com/vm0-ai/vm0/compare/app-v0.386.3...app-v0.387.0) (2026-05-27)
 
 

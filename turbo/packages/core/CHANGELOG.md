@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.298.0](https://github.com/vm0-ai/vm0/compare/core-v8.297.4...core-v8.298.0) (2026-05-27)
+
+
+### Features
+
+* enable zero maps ([#15085](https://github.com/vm0-ai/vm0/issues/15085)) ([992069b](https://github.com/vm0-ai/vm0/commit/992069ba162f19702d57d31ee9d20e4967541367))
+
+
+### Bug Fixes
+
+* add connector-aware api-token connect ([#15069](https://github.com/vm0-ai/vm0/issues/15069)) ([18fe5e4](https://github.com/vm0-ai/vm0/commit/18fe5e48906d34a331b5e58e3647c046412a1a1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.1
+    * @vm0/connectors bumped to 1.36.5
+
 ## [8.297.4](https://github.com/vm0-ai/vm0/compare/core-v8.297.3...core-v8.297.4) (2026-05-27)
 
 

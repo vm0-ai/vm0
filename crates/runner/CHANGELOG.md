@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.9...runner-rs-v0.104.10) (2026-05-27)
+
+
+### Bug Fixes
+
+* **mitm-addon:** bound auth base forwarded responses ([#15074](https://github.com/vm0-ai/vm0/issues/15074)) ([a97163e](https://github.com/vm0-ai/vm0/commit/a97163e40262d65820a2183f86fd0aa0e8a5b8ae))
+
 ## [0.104.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.8...runner-rs-v0.104.9) (2026-05-27)
 
 

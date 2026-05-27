@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.169.0](https://github.com/vm0-ai/vm0/compare/cli-v9.168.3...cli-v9.169.0) (2026-05-27)
+
+
+### Features
+
+* **cli:** unify generate command (replace doctor + built-in generate) ([#15071](https://github.com/vm0-ai/vm0/issues/15071)) ([b8f60a6](https://github.com/vm0-ai/vm0/commit/b8f60a6de1eae6ee3d6ce3a65d5cccd6f320136d))
+
+
+### Bug Fixes
+
+* add connector-aware api-token connect ([#15069](https://github.com/vm0-ai/vm0/issues/15069)) ([18fe5e4](https://github.com/vm0-ai/vm0/commit/18fe5e48906d34a331b5e58e3647c046412a1a1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.42.1
+    * @vm0/connectors bumped to 1.36.5
+    * @vm0/core bumped to 8.298.0
+
 ## [9.168.3](https://github.com/vm0-ai/vm0/compare/cli-v9.168.2...cli-v9.168.3) (2026-05-27)
 
 
