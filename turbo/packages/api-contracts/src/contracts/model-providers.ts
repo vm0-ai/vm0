@@ -358,7 +358,7 @@ export const MODEL_PROVIDER_TYPES = {
     envBindings: {
       CLAUDE_CODE_OAUTH_TOKEN: "$secret",
       ANTHROPIC_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "claude-sonnet-4-6",
       "claude-opus-4-6",
@@ -376,7 +376,7 @@ export const MODEL_PROVIDER_TYPES = {
     envBindings: {
       ANTHROPIC_API_KEY: "$secret",
       ANTHROPIC_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "claude-sonnet-4-6",
       "claude-opus-4-6",
@@ -399,7 +399,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-4.6",
@@ -431,7 +431,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "kimi-k2.6",
       "kimi-k2.5",
@@ -457,7 +457,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: ["MiniMax-M2.7", "MiniMax-M2.1"] as string[],
     defaultModel: "MiniMax-M2.7",
   },
@@ -477,7 +477,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "600000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: ["deepseek-v4-pro", "deepseek-v4-flash"] as string[],
     defaultModel: "deepseek-v4-flash",
   },
@@ -496,7 +496,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: ["glm-5.1", "glm-5", "glm-4.7", "glm-4.5-air"] as string[],
     defaultModel: "glm-5.1",
   },
@@ -515,7 +515,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-opus-4.7",
       "anthropic/claude-opus-4.6",
@@ -546,7 +546,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
       OPENAI_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "openai/gpt-5.5",
       "openai/gpt-5.4",
@@ -569,7 +569,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_BASE_URL: "https://ai-gateway.vercel.sh/v1",
       OPENAI_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [
       "openai/gpt-5.5",
       "openai/gpt-5.4",
@@ -586,7 +586,7 @@ export const MODEL_PROVIDER_TYPES = {
     envBindings: {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
@@ -655,7 +655,7 @@ export const MODEL_PROVIDER_TYPES = {
       CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
@@ -689,7 +689,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_FOUNDRY_API_KEY: "$secrets.ANTHROPIC_FOUNDRY_API_KEY",
       ANTHROPIC_FOUNDRY_RESOURCE: "$secrets.ANTHROPIC_FOUNDRY_RESOURCE",
       ANTHROPIC_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [] as string[],
     defaultModel: "",
     allowCustomModel: true,
@@ -755,7 +755,7 @@ export const MODEL_PROVIDER_TYPES = {
       AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
       AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
       ANTHROPIC_MODEL: "$model",
-    } as ModelProviderEnvBindings,
+    } satisfies ModelProviderEnvBindings,
     models: [] as string[],
     defaultModel: "",
     allowCustomModel: true,
@@ -1382,11 +1382,15 @@ export function getModelProviderEnvBindings(
  * potentially different request/response contract.
  */
 export function getProviderBaseUrl(type: ModelProviderType): string | null {
-  const config = MODEL_PROVIDER_TYPES[type];
-  if (!("envBindings" in config)) return null;
-  const anthropicUrl = config.envBindings["ANTHROPIC_BASE_URL"];
-  if (anthropicUrl) return anthropicUrl;
-  const openaiUrl = config.envBindings["OPENAI_BASE_URL"];
+  const envBindings = getModelProviderEnvBindings(type);
+  if (!envBindings) {
+    return null;
+  }
+  const anthropicUrl = envBindings["ANTHROPIC_BASE_URL"];
+  if (anthropicUrl) {
+    return anthropicUrl;
+  }
+  const openaiUrl = envBindings["OPENAI_BASE_URL"];
   return openaiUrl ?? null;
 }
 
