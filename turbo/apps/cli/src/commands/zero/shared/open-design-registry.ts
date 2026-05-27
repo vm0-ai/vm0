@@ -2787,6 +2787,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "illustration-template/notion-illustration" },
   },
   {
+    id: "vm0:image-style:op-ed-cover",
+    kind: "image-style",
+    name: "Op-Ed Cover",
+    description:
+      "Editorial magazine op-ed cover — flat-vector scene with paper grain, elongated ink-line characters, muted retro palette, and a serif headline block in the lower-right.",
+    desc: 'Editorial magazine op-ed cover illustration. Flat-vector + paper-grain scene with expressive elongated ink-line characters, gentle painterly shading, 1950s-60s editorial mood, and a serif headline overlay block in the lower-right corner carrying a witty contrarian or declarative title with two short lines of italic body copy. 5-axis framework: palette (background + accent + ink), complexity (L1 single hero / L2 small ensemble / L3 busy crowd), scene metaphor (specific cultural microcosm), headline voice (declarative / pun / appreciative / contrarian), and headline block style (solid vs. translucent). Trigger when user says /op-ed-cover, asks for an "editorial magazine illustration", an "op-ed cover", a "magazine essay illustration", or a scene with a headline overlay in this style.',
+    source: { path: "illustration-template/op-ed-cover" },
+  },
+  {
     id: "vm0:image-style:vm0-illustration",
     kind: "image-style",
     name: "vm0 Illustration",
