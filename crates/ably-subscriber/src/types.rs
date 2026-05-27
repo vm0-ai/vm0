@@ -319,23 +319,9 @@ pub enum Error {
     #[error("Token fetch failed: {}", redact_access_token(&.0.to_string()))]
     TokenFetch(BoxError),
 
-    /// Invalid realtime or REST endpoint host in the subscription configuration.
-    ///
-    /// The message deliberately omits the raw host input because callers may
-    /// accidentally include credentials in a host-like value.
-    #[error("Invalid Ably endpoint host")]
-    InvalidEndpointHost,
-
-    /// Token request key name cannot be represented safely as an endpoint path
-    /// segment.
-    ///
-    /// The message deliberately omits the raw key name because token request
-    /// fields are authentication material.
-    #[error("Invalid Ably token request key name")]
-    InvalidTokenRequestKeyName,
-
     /// Failure while parsing an endpoint URL built from the subscription
-    /// configuration.
+    /// configuration. The message deliberately omits the raw URL input because
+    /// callers may accidentally include credentials in host-like values.
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
 }

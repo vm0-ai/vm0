@@ -17,13 +17,16 @@ fn contains_url_ignored_ascii_whitespace(value: &str) -> bool {
     value.bytes().any(|b| matches!(b, b'\t' | b'\n' | b'\r'))
 }
 
+fn invalid_url_component() -> Error {
+    Error::Url(url::ParseError::InvalidDomainCharacter)
+}
+
 fn parse_endpoint_host(host: &str, scheme: &str) -> Result<url::Url, Error> {
     if contains_url_ignored_ascii_whitespace(host) {
-        return Err(Error::InvalidEndpointHost);
+        return Err(invalid_url_component());
     }
 
-    let url =
-        url::Url::parse(&format!("{scheme}://{host}/")).map_err(|_| Error::InvalidEndpointHost)?;
+    let url = url::Url::parse(&format!("{scheme}://{host}/"))?;
 
     if url.host().is_none()
         || !url.username().is_empty()
@@ -32,7 +35,7 @@ fn parse_endpoint_host(host: &str, scheme: &str) -> Result<url::Url, Error> {
         || url.query().is_some()
         || url.fragment().is_some()
     {
-        return Err(Error::InvalidEndpointHost);
+        return Err(invalid_url_component());
     }
 
     Ok(url)
@@ -80,12 +83,12 @@ pub(super) fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Res
 
 pub(super) fn build_token_request_url(host: &str, key_name: &str) -> Result<url::Url, Error> {
     if matches!(key_name, "." | "..") || contains_url_ignored_ascii_whitespace(key_name) {
-        return Err(Error::InvalidTokenRequestKeyName);
+        return Err(invalid_url_component());
     }
 
     let mut url = build_endpoint_base_url(host, "http", "https")?;
     url.path_segments_mut()
-        .map_err(|_| Error::InvalidEndpointHost)?
+        .map_err(|_| invalid_url_component())?
         .push("keys")
         .push(key_name)
         .push("requestToken");
@@ -229,7 +232,7 @@ mod tests {
         for key_name in [".", ".."] {
             assert!(matches!(
                 build_token_request_url("rest.ably.io", key_name),
-                Err(Error::InvalidTokenRequestKeyName)
+                Err(Error::Url(url::ParseError::InvalidDomainCharacter))
             ));
         }
     }
@@ -239,7 +242,7 @@ mod tests {
         for key_name in ["a\tb", "a\nb", "a\rb", ".\n", "..\r"] {
             assert!(matches!(
                 build_token_request_url("rest.ably.io", key_name),
-                Err(Error::InvalidTokenRequestKeyName)
+                Err(Error::Url(url::ParseError::InvalidDomainCharacter))
             ));
         }
     }
@@ -323,21 +326,21 @@ mod tests {
         for host in cases {
             assert!(matches!(
                 build_ws_url(host, "tok", None),
-                Err(Error::InvalidEndpointHost)
+                Err(Error::Url(_))
             ));
             assert!(matches!(
                 build_token_request_url(host, "testKey.testId"),
-                Err(Error::InvalidEndpointHost)
+                Err(Error::Url(_))
             ));
         }
     }
 
     #[test]
-    fn invalid_endpoint_host_error_does_not_include_raw_host() {
+    fn invalid_endpoint_host_url_error_does_not_include_raw_host() {
         let err = build_ws_url("user:secret@example.com", "tok", None).unwrap_err();
         let message = err.to_string();
 
-        assert_eq!(message, "Invalid Ably endpoint host");
+        assert_eq!(message, "URL parse error: invalid domain character");
         assert!(!message.contains("user"));
         assert!(!message.contains("secret"));
         assert!(!message.contains("example.com"));

@@ -743,8 +743,8 @@ async fn token_exchange_invalid_rest_host_fails_before_request() {
 
     let result = subscribe(config).await;
     match result {
-        Err(ably_subscriber::Error::InvalidEndpointHost) => {}
-        Err(other) => panic!("expected InvalidEndpointHost error, got {other:?}"),
+        Err(ably_subscriber::Error::Url(_)) => {}
+        Err(other) => panic!("expected Url error, got {other:?}"),
         Ok(_) => panic!("expected error, got Ok"),
     }
     assert_eq!(token_mock.calls(), 0);
@@ -766,8 +766,8 @@ async fn token_exchange_dot_segment_key_name_fails_before_request() {
 
     let result = subscribe(test_config_with_key_name(19999, http.port(), "ch", ".")).await;
     match result {
-        Err(ably_subscriber::Error::InvalidTokenRequestKeyName) => {}
-        Err(other) => panic!("expected InvalidTokenRequestKeyName error, got {other:?}"),
+        Err(ably_subscriber::Error::Url(_)) => {}
+        Err(other) => panic!("expected Url error, got {other:?}"),
         Ok(_) => panic!("expected error, got Ok"),
     }
     assert_eq!(token_mock.calls(), 0);
