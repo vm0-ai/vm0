@@ -337,6 +337,24 @@ interface ConnectorRuntimeContext {
   readonly connectorTypes: readonly ConnectorType[];
 }
 
+interface PersistedRunEnvironmentSecret {
+  readonly name: string;
+  readonly encryptedValue: string;
+  readonly userId: string;
+}
+
+interface PersistedRunEnvironmentVariable {
+  readonly name: string;
+  readonly value: string;
+  readonly userId: string;
+}
+
+interface PersistedRunEnvironmentSnapshot {
+  readonly secrets: readonly PersistedRunEnvironmentSecret[];
+  readonly variables: readonly PersistedRunEnvironmentVariable[];
+  readonly manualGrantConnectorTypes: readonly ConnectorType[];
+}
+
 interface CreditCheckRow extends Record<string, unknown> {
   readonly tier: string | null;
   readonly credits: string | null;
@@ -1282,34 +1300,120 @@ async function resolveModelProviderEnvironment(
   return null;
 }
 
-async function loadMergedVariables(
+async function loadPersistedRunEnvironmentSnapshot(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly runVars: Record<string, string> | undefined;
+    readonly content: AgentComposeContent;
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
   },
-): Promise<Record<string, string> | undefined> {
-  const rows = await db
-    .select({
-      name: variables.name,
-      value: variables.value,
-      userId: variables.userId,
-    })
-    .from(variables)
-    .where(
-      and(
-        eq(variables.orgId, args.orgId),
-        or(
-          eq(variables.userId, ORG_SENTINEL_USER_ID),
-          eq(variables.userId, args.userId),
+): Promise<PersistedRunEnvironmentSnapshot> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
+    );
+    const secretNameRows = await tx
+      .select({
+        name: secretsTable.name,
+        userId: secretsTable.userId,
+      })
+      .from(secretsTable)
+      .where(
+        and(
+          eq(secretsTable.orgId, args.orgId),
+          eq(secretsTable.type, "user"),
+          or(
+            eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
+            eq(secretsTable.userId, args.userId),
+          ),
         ),
-      ),
+      );
+    const variableRows = await tx
+      .select({
+        name: variables.name,
+        value: variables.value,
+        userId: variables.userId,
+      })
+      .from(variables)
+      .where(
+        and(
+          eq(variables.orgId, args.orgId),
+          or(
+            eq(variables.userId, ORG_SENTINEL_USER_ID),
+            eq(variables.userId, args.userId),
+          ),
+        ),
+      );
+
+    const userSecretNames = new Set(
+      secretNameRows.flatMap((row) => {
+        return row.userId === args.userId ? [row.name] : [];
+      }),
+    );
+    const userVariableNames = new Set(
+      variableRows.flatMap((row) => {
+        return row.userId === args.userId ? [row.name] : [];
+      }),
     );
 
+    const snapshotWithoutSecrets = {
+      variables: variableRows,
+      manualGrantConnectorTypes: deriveConnectedManualGrantMethods(
+        userSecretNames,
+        userVariableNames,
+      ).map((method) => {
+        return method.type;
+      }),
+    };
+    const dynamicConnectorSecretNames = connectorEnvironmentSecretTemplateNames(
+      allowedManualGrantConnectorTypes({
+        manualGrantTypes: snapshotWithoutSecrets.manualGrantConnectorTypes,
+        allowedConnectorTypes: args.allowedConnectorTypes,
+      }),
+    );
+    const environment = firstAgent(args.content)?.environment;
+    const referencedSecretNames = environment
+      ? extractAndGroupVariables(environment).secrets.map((ref) => {
+          return ref.name;
+        })
+      : [];
+    const secretNamesToLoad = [
+      ...new Set([...referencedSecretNames, ...dynamicConnectorSecretNames]),
+    ];
+    const secretRows =
+      secretNamesToLoad.length > 0
+        ? await tx
+            .select({
+              name: secretsTable.name,
+              encryptedValue: secretsTable.encryptedValue,
+              userId: secretsTable.userId,
+            })
+            .from(secretsTable)
+            .where(
+              and(
+                eq(secretsTable.orgId, args.orgId),
+                eq(secretsTable.type, "user"),
+                or(
+                  eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
+                  eq(secretsTable.userId, args.userId),
+                ),
+                inArray(secretsTable.name, secretNamesToLoad),
+              ),
+            )
+        : [];
+
+    return { ...snapshotWithoutSecrets, secrets: secretRows };
+  });
+}
+
+function buildMergedVariables(args: {
+  readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
+  readonly runVars: Record<string, string> | undefined;
+}): Record<string, string> | undefined {
   const orgVars: Record<string, string> = {};
   const userVars: Record<string, string> = {};
-  for (const row of rows) {
+  for (const row of args.persistedEnvironment.variables) {
     if (row.userId === ORG_SENTINEL_USER_ID) {
       orgVars[row.name] = row.value;
     } else {
@@ -1321,27 +1425,20 @@ async function loadMergedVariables(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-async function loadReferencedSecrets(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly content: AgentComposeContent;
-    readonly runSecrets: Record<string, string> | undefined;
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Promise<Record<string, string> | undefined> {
+async function buildReferencedSecrets(args: {
+  readonly content: AgentComposeContent;
+  readonly runSecrets: Record<string, string> | undefined;
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<Record<string, string> | undefined> {
   const environment = firstAgent(args.content)?.environment;
   const referencedNames = environment
     ? extractAndGroupVariables(environment).secrets.map((ref) => {
         return ref.name;
       })
     : [];
-  const manualGrantTypes = await loadManualGrantConnectorTypes(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-  });
+  const manualGrantTypes = args.persistedEnvironment.manualGrantConnectorTypes;
   const dynamicConnectorSecretNames = connectorEnvironmentSecretTemplateNames(
     allowedManualGrantConnectorTypes({
       manualGrantTypes,
@@ -1352,31 +1449,12 @@ async function loadReferencedSecrets(
     return args.runSecrets;
   }
 
-  // Load all user secrets, not only those named in the compose environment:
-  // Manual grant secrets are consumed by firewall auth templates,
-  // which the compose environment never references. Connector-owned secrets
-  // are still scoped by filterDbSecretsByConnectorPermissions below.
-  const rows = await db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
-      userId: secretsTable.userId,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.type, "user"),
-        or(
-          eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
-          eq(secretsTable.userId, args.userId),
-        ),
-      ),
-    );
-
+  // Manual grant secrets can be consumed by firewall auth templates even when
+  // the compose environment never references them. Connector-owned secrets are
+  // still scoped by filterDbSecretsByConnectorPermissions below.
   const orgSecrets: Record<string, string> = {};
   const userSecrets: Record<string, string> = {};
-  for (const row of rows) {
+  for (const row of args.persistedEnvironment.secrets) {
     const target =
       row.userId === ORG_SENTINEL_USER_ID ? orgSecrets : userSecrets;
     target[row.name] = await decryptStoredSecretValue(
@@ -1396,48 +1474,6 @@ async function loadReferencedSecrets(
       : filteredSecrets;
   const merged = { ...connectorSecrets, ...args.runSecrets };
   return Object.keys(merged).length > 0 ? merged : undefined;
-}
-
-async function loadManualGrantConnectorTypes(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-  },
-): Promise<readonly ConnectorType[]> {
-  const [secretRows, variableRows] = await Promise.all([
-    db
-      .select({ name: secretsTable.name })
-      .from(secretsTable)
-      .where(
-        and(
-          eq(secretsTable.orgId, args.orgId),
-          eq(secretsTable.userId, args.userId),
-          eq(secretsTable.type, "user"),
-        ),
-      ),
-    db
-      .select({ name: variables.name })
-      .from(variables)
-      .where(
-        and(eq(variables.orgId, args.orgId), eq(variables.userId, args.userId)),
-      ),
-  ]);
-
-  return deriveConnectedManualGrantMethods(
-    new Set(
-      secretRows.map((row) => {
-        return row.name;
-      }),
-    ),
-    new Set(
-      variableRows.map((row) => {
-        return row.name;
-      }),
-    ),
-  ).map((method) => {
-    return method.type;
-  });
 }
 
 function filterDbSecretsByConnectorPermissions(args: {
@@ -3194,6 +3230,7 @@ async function loadRunConnectorContexts(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly manualGrantConnectorTypes: readonly ConnectorType[];
     readonly allowedConnectorTypes?: readonly ConnectorType[];
     readonly allowedCustomConnectorIds?: readonly string[];
   },
@@ -3202,20 +3239,12 @@ async function loadRunConnectorContexts(
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
 }> {
-  const [
-    oauthConnectorContext,
-    manualGrantConnectorTypes,
-    customConnectorContext,
-  ] = await Promise.all([
+  const [oauthConnectorContext, customConnectorContext] = await Promise.all([
     loadOauthConnectorContext(db, {
       orgId: args.orgId,
       userId: args.userId,
       allowedConnectorTypes: args.allowedConnectorTypes,
       featureSwitchContext,
-    }),
-    loadManualGrantConnectorTypes(db, {
-      orgId: args.orgId,
-      userId: args.userId,
     }),
     loadCustomConnectorContext(db, {
       orgId: args.orgId,
@@ -3225,10 +3254,10 @@ async function loadRunConnectorContexts(
     }),
   ]);
   const allowedManualGrantTypes = args.allowedConnectorTypes
-    ? manualGrantConnectorTypes.filter((type) => {
+    ? args.manualGrantConnectorTypes.filter((type) => {
         return args.allowedConnectorTypes?.includes(type);
       })
-    : manualGrantConnectorTypes;
+    : args.manualGrantConnectorTypes;
   return {
     connectorContext: {
       ...oauthConnectorContext,
@@ -3244,10 +3273,10 @@ async function loadRunConnectorContexts(
 }
 
 async function buildResolvedRunBody(args: {
-  readonly db: Db;
   readonly runArgs: CreateAgentRunArgs;
   readonly initialBody: CreateRunBody;
   readonly resolved: ResolvedCompose;
+  readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<CreateRunBody> {
@@ -3255,9 +3284,8 @@ async function buildResolvedRunBody(args: {
     args.initialBody.vars !== undefined
       ? args.initialBody.vars
       : args.resolved.vars;
-  const mergedVars = await loadMergedVariables(args.db, {
-    orgId: args.runArgs.orgId,
-    userId: args.runArgs.userId,
+  const mergedVars = buildMergedVariables({
+    persistedEnvironment: args.persistedEnvironment,
     runVars,
   });
   args.signal.throwIfAborted();
@@ -3270,12 +3298,11 @@ async function buildResolvedRunBody(args: {
         ? args.initialBody.volumeVersions
         : args.resolved.volumeVersions,
   };
-  const mergedSecrets = await loadReferencedSecrets(args.db, {
-    orgId: args.runArgs.orgId,
-    userId: args.runArgs.userId,
+  const mergedSecrets = await buildReferencedSecrets({
     content: args.resolved.content,
     runSecrets: body.secrets,
     allowedConnectorTypes: args.runArgs.allowedConnectorTypes,
+    persistedEnvironment: args.persistedEnvironment,
     featureSwitchContext: args.featureSwitchContext,
   });
   args.signal.throwIfAborted();
@@ -3364,11 +3391,19 @@ async function prepareRunContext(
     return notFound("Resource not found");
   }
 
+  const persistedEnvironment = await loadPersistedRunEnvironmentSnapshot(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    content: resolved.content,
+    allowedConnectorTypes: args.allowedConnectorTypes,
+  });
+  signal.throwIfAborted();
+
   const body = await buildResolvedRunBody({
-    db,
     runArgs: args,
     initialBody,
     resolved,
+    persistedEnvironment,
     featureSwitchContext,
     signal,
   });
@@ -3404,7 +3439,15 @@ async function prepareRunContext(
     : requestedFramework;
 
   const { connectorContext, customConnectorContext } =
-    await loadRunConnectorContexts(db, args, featureSwitchContext);
+    await loadRunConnectorContexts(
+      db,
+      {
+        ...args,
+        manualGrantConnectorTypes:
+          persistedEnvironment.manualGrantConnectorTypes,
+      },
+      featureSwitchContext,
+    );
   signal.throwIfAborted();
 
   const validation = validateRunEnvironmentReferences({
