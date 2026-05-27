@@ -3,6 +3,7 @@ import { locales, defaultLocale } from "../i18n";
 import { isBlogEnabled } from "../src/env";
 import { getPosts, getPostAvailableLocales } from "./lib/blog/data-source";
 import { getBlogBaseUrl } from "./lib/blog/config";
+import { getDocsAvailableLocales, getDocsPages } from "./lib/docs";
 import { USE_CASES } from "./[locale]/use-cases/data";
 import { MODEL_SLUGS } from "./[locale]/models/data";
 
@@ -33,10 +34,17 @@ async function getDefaultPosts() {
   });
 }
 
+async function getDefaultDocsPages() {
+  return getDocsPages(defaultLocale).catch(() => {
+    return [];
+  });
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Pre-fetch blog posts once so we can both emit post URLs and derive a
   // realistic lastmod for the /blog index from the most recent post.
   const defaultPosts = await getDefaultPosts();
+  const defaultDocsPages = await getDefaultDocsPages();
 
   const latestPostDate = defaultPosts.reduce<Date>((latest, post) => {
     const postDate = new Date(post.publishedAt);
@@ -86,6 +94,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       path: "/rankings",
       priority: 0.8,
       changeFrequency: "daily" as const,
+      lastModified: BUILD_DATE,
+    },
+    {
+      path: "/docs",
+      priority: 0.7,
+      changeFrequency: "weekly" as const,
       lastModified: BUILD_DATE,
     },
   ];
@@ -159,6 +173,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: `${baseUrl}/${locale}/models/${slug}`,
         lastModified: BUILD_DATE,
         changeFrequency: "monthly",
+        priority: 0.6,
+        alternates: { languages: alternates },
+      });
+    }
+  }
+
+  // Docs sub-pages — one entry per locale with hreflang alternates
+  for (const page of defaultDocsPages) {
+    if (!page.path) continue;
+
+    const available = await getDocsAvailableLocales(page.path, locales);
+    if (available.length === 0) continue;
+
+    const alternates = buildAlternates(`/docs/${page.path}`, available);
+
+    for (const locale of available) {
+      urls.push({
+        url: `${baseUrl}/${locale}/docs/${page.path}`,
+        lastModified: BUILD_DATE,
+        changeFrequency: "weekly",
         priority: 0.6,
         alternates: { languages: alternates },
       });

@@ -13,10 +13,12 @@ type ClerkHandler = (
 ) => Promise<NextResponse | undefined>;
 
 function routePatternToRegex(pattern: string): RegExp {
+  const WILDCARD_PLACEHOLDER = "\x00WILDCARD\x00";
   const escaped = pattern
+    .replaceAll("(.*)", WILDCARD_PLACEHOLDER)
     .replace(/[.+?^${}[\]|\\]/g, "\\$&")
     .replace(/\/:[^/]+/g, "/[^/]+")
-    .replace(/\\\(\\.\\\*\\\)/g, ".*");
+    .replaceAll(WILDCARD_PLACEHOLDER, ".*");
 
   return new RegExp(`^${escaped}$`);
 }
@@ -91,6 +93,24 @@ describe("proxy middleware: public routes", () => {
 
   it("keeps locale-prefixed showcase public", async () => {
     const request = new NextRequest("https://www.vm0.ai/en/showcase");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-prefixed docs index public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/docs");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-prefixed docs sub-pages public", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/en/docs/getting-started/install",
+    );
 
     await middleware(request, createMockEvent());
 
