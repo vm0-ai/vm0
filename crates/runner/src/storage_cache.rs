@@ -1704,6 +1704,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn probe_wildcard_content_range_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/wildcard.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", "bytes 0-0/*")
+                    .body(b"x");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/wildcard.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let original = server.url("/wildcard.tar.gz");
+        let name = "wildcard";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(0).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed"),
+            "expected storage_cache_skipped_head_failed in {ops:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn probe_malformed_content_range_is_passthrough() {
         // 206 with a Content-Range value that can't be parsed into a total
         // must fall back to passthrough, not silently treat the archive as
