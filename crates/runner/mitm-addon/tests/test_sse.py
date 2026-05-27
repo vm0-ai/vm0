@@ -74,6 +74,38 @@ def test_callable_scanner_feeds_chunks_and_finish_flushes() -> None:
     assert handler.events == [("target", b"ok")]
 
 
+def test_ignores_comment_only_frame() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b": heartbeat\n\n")
+
+    assert handler.started == []
+    assert handler.events == []
+    assert handler.discarded == []
+
+
+def test_comment_does_not_break_event_stream() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"event: target\n: keepalive\ndata: ok\n\n")
+
+    assert handler.events == [("target", b"ok")]
+    assert handler.discarded == []
+
+
+def test_bare_data_field_without_colon_emits_empty_data() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"event: target\ndata\n\n")
+
+    assert handler.started == ["target"]
+    assert handler.events == [("target", b"")]
+    assert handler.discarded == []
+
+
 def test_supports_no_optional_space_and_split_crlf() -> None:
     handler = _CaptureHandler({"target"})
     scanner = SseUsageScanner(handler)
