@@ -322,6 +322,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatArtifactSidebar]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the inline attachment text editor and modal lightbox with a single page-level artifact sidebar (50/50 with the chat thread area, URL-routed via ?artifact=, fullscreen-capable). When on, inline text/markdown attachments render as anchor chips, all preview chips route to the sidebar, and the artifacts drawer is hidden.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   HostedSites = "hostedSites",
   SandboxIoLimiters = "sandboxIoLimiters",
   ZeroMaps = "zeroMaps",
+  ChatArtifactSidebar = "chatArtifactSidebar",
 }

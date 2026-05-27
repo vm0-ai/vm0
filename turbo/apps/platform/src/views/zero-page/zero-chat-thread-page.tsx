@@ -90,6 +90,7 @@ import {
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
+import { ArtifactSidebarSlot } from "./zero-artifact-sidebar.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -107,12 +108,14 @@ import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  lightboxUrl$ as attachmentLightboxUrl$,
-  openDocumentLightbox$ as openAttachmentDocumentLightbox$,
-  openImageLightbox$ as openAttachmentImageLightbox$,
-  openVideoLightbox$ as openAttachmentVideoLightbox$,
-} from "../../signals/zero-page/zero-attachment-chips.ts";
+  chatArtifactSidebarEnabled$,
+  currentArtifactRef$,
+  openDocumentLightboxOrArtifact$ as openAttachmentDocumentLightbox$,
+  openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
+  openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
+} from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
   writeToClipboard,
   type ChatClipboardAttachment,
@@ -1667,6 +1670,9 @@ export function ZeroChatThreadPage() {
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
+  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
+  const artifactRef = useGet(currentArtifactRef$);
+  const artifactSidebarOpen = sidebarEnabled && artifactRef !== null;
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
   // snapshot survives keyed ChatThread remounts during thread navigation.
   // Otherwise a second mod+shift+arrow press lands on a freshly mounted
@@ -1674,32 +1680,49 @@ export function ZeroChatThreadPage() {
   // empty threads list and a silently dropped keypress.
   const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
 
+  const threadArea = (
+    <div
+      ref={setKeyboardScrollRoot}
+      className="flex flex-1 min-h-0 bg-transparent"
+    >
+      {leftThread && (
+        <ChatThread
+          key={leftThread.threadId}
+          thread={leftThread}
+          onKeyDown={makeChatThreadKeyDown(leftThread)}
+        />
+      )}
+      {rightThread && (
+        <>
+          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+          <ChatThread
+            key={rightThread.threadId}
+            thread={rightThread}
+            onKeyDown={makeChatThreadKeyDown(rightThread)}
+          />
+        </>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <div
-        ref={setKeyboardScrollRoot}
-        className="flex flex-1 min-h-0 bg-transparent"
-      >
-        {leftThread && (
-          <ChatThread
-            key={leftThread.threadId}
-            thread={leftThread}
-            onKeyDown={makeChatThreadKeyDown(leftThread)}
-          />
-        )}
-        {rightThread && (
-          <>
-            <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-            <ChatThread
-              key={rightThread.threadId}
-              thread={rightThread}
-              onKeyDown={makeChatThreadKeyDown(rightThread)}
-            />
-          </>
-        )}
-      </div>
-      {leftThread && <ChatArtifactsDrawer thread={leftThread} />}
-      {rightThread && (
+      {artifactSidebarOpen ? (
+        <div className="flex flex-1 min-h-0 bg-transparent">
+          <div className="flex flex-1 basis-0 min-w-0 min-h-0">
+            {threadArea}
+          </div>
+          <div className="flex flex-1 basis-0 min-w-0 min-h-0">
+            <ArtifactSidebarSlot />
+          </div>
+        </div>
+      ) : (
+        threadArea
+      )}
+      {!sidebarEnabled && leftThread && (
+        <ChatArtifactsDrawer thread={leftThread} />
+      )}
+      {!sidebarEnabled && rightThread && (
         <ChatArtifactsDrawer key={rightThread.threadId} thread={rightThread} />
       )}
       {lightboxUrl && <AttachmentLightbox />}

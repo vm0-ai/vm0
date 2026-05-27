@@ -17,11 +17,13 @@ import {
   textPreviewCollapsedByKey$,
   toggleTextPreviewCollapsed$,
 } from "../../signals/view-component-state.ts";
+import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  lightboxUrl$,
-  openDocumentLightbox$,
-  openVideoLightbox$,
-} from "../../signals/zero-page/zero-attachment-chips.ts";
+  chatArtifactSidebarEnabled$,
+  openArtifact$,
+  openDocumentLightboxOrArtifact$,
+  openVideoLightboxOrArtifact$,
+} from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
   classifyChatAttachment,
   EMPTY_TEXT$,
@@ -100,7 +102,60 @@ type TextPreviewProps = {
   text$?: Computed<Promise<string>>;
 };
 
-function TextPreview({ filename, url, kind, text$ }: TextPreviewProps) {
+function TextPreview(props: TextPreviewProps) {
+  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
+  if (sidebarEnabled) {
+    return (
+      <AttachmentAnchorChip
+        filename={props.filename}
+        url={props.url}
+        kind={props.kind}
+      />
+    );
+  }
+  return <TextPreviewInline {...props} />;
+}
+
+function AttachmentAnchorChip({
+  filename,
+  url,
+  kind,
+}: {
+  filename: string;
+  url: string;
+  kind: "text" | "json" | "markdown";
+}) {
+  const publicUrl = publicAttachmentUrl(url);
+  const openArtifact = useSet(openArtifact$);
+
+  return (
+    <a
+      href={publicUrl}
+      data-testid={`attachment-preview-${kind}`}
+      onClick={(event) => {
+        if (shouldUseNativeAnchorNavigation(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.currentTarget.blur();
+        openArtifact({ url, kind, filename });
+      }}
+      aria-label={`Open ${kind} preview for ${filename}`}
+      title={filename}
+      className="group/anchor-chip inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
+    >
+      <span
+        data-testid={`attachment-preview-${kind}-icon`}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-muted/40 text-muted-foreground transition-colors group-hover/anchor-chip:border-foreground/15 group-hover/anchor-chip:bg-muted/60 group-hover/anchor-chip:text-foreground"
+      >
+        <IconExternalLink size={13} stroke={1.8} />
+      </span>
+      <span className="min-w-0 truncate font-medium">{filename}</span>
+    </a>
+  );
+}
+
+function TextPreviewInline({ filename, url, kind, text$ }: TextPreviewProps) {
   const textPreviewCollapsedByKey = useGet(textPreviewCollapsedByKey$);
   const toggleTextPreviewCollapsed = useSet(toggleTextPreviewCollapsed$);
   const collapsedKey = `attachment-preview:${kind}:${filename}:${url}`;
@@ -190,9 +245,16 @@ function DocumentThumbnailPreview({
   url: string;
   kind: "markdown" | "csv" | "pdf" | "html";
 }) {
-  const openDocumentLightbox = useSet(openDocumentLightbox$);
+  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
+  const openDocumentLightbox = useSet(openDocumentLightboxOrArtifact$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const publicUrl = publicAttachmentUrl(url);
+
+  if (sidebarEnabled && kind === "markdown") {
+    return (
+      <AttachmentAnchorChip filename={filename} url={url} kind="markdown" />
+    );
+  }
 
   if (kind === "html") {
     return (
@@ -379,7 +441,7 @@ function VideoThumbnailPreview({
   filename: string;
   url: string;
 }) {
-  const openVideoLightbox = useSet(openVideoLightbox$);
+  const openVideoLightbox = useSet(openVideoLightboxOrArtifact$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const videoUrl = publicAttachmentUrl(url);
 

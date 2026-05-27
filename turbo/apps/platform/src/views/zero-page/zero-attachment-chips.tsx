@@ -394,7 +394,9 @@ export async function downloadAttachmentUrl(
   }
 }
 
-async function copyAttachmentLinkToClipboard(url: string): Promise<void> {
+export async function copyAttachmentLinkToClipboard(
+  url: string,
+): Promise<void> {
   const copied = await writeToClipboard(publicAttachmentUrl(url));
   if (copied) {
     toast.success("Link copied");
