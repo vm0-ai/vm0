@@ -214,7 +214,14 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["tokens.output"] == 11
 
     def test_malformed_usage_event_recovers_for_next_event(self):
-        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            on_parse_error=record_parse_error
+        )
         parse(
             b"event: response.completed\n"
             b"data: {invalid json}\n\n"
@@ -222,6 +229,10 @@ class TestOpenAIResponsesSseUsageExtractor:
             b'data: {"response":{"model":"gpt-5.4",'
             b'"usage":{"input_tokens":13,"output_tokens":8}}}\n\n'
         )
+        assert len(parse_errors) == 1
+        event, error = parse_errors[0]
+        assert event == "response.completed"
+        assert error
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.input"] == 13
         assert usage["tokens.output"] == 8
