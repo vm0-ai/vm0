@@ -559,7 +559,7 @@ describe("POST /api/runners/*", () => {
     );
     const queued = await seedQueuedRun({
       fixture,
-      contextOverrides: { tools: ["Bash,Read"] },
+      contextOverrides: { apiStartTime: 1 },
     });
 
     const response = await claimRunnerJob({

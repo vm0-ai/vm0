@@ -353,13 +353,13 @@ describe("POST /api/agent/runs", () => {
 
   it("rejects ambiguous Claude tool list entries", async () => {
     await fixture();
-    const cases: Array<{
+    const cases: {
       readonly body: {
         readonly disallowedTools?: string[];
         readonly tools?: string[];
       };
       readonly field: string;
-    }> = [
+    }[] = [
       { body: { tools: [""] }, field: "tools" },
       { body: { tools: ["   "] }, field: "tools" },
       { body: { tools: ["Bash,Read"] }, field: "tools" },

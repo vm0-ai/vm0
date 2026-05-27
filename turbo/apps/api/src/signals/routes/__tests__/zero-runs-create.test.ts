@@ -393,9 +393,9 @@ describe("POST /api/zero/runs", () => {
 
   it("rejects ambiguous Claude tool list entries", async () => {
     await fixture();
-    const cases: Array<{
+    const cases: {
       readonly tools: string[];
-    }> = [{ tools: [""] }, { tools: ["   "] }, { tools: ["Bash,Read"] }];
+    }[] = [{ tools: [""] }, { tools: ["   "] }, { tools: ["Bash,Read"] }];
 
     for (const testCase of cases) {
       const response = await accept(
