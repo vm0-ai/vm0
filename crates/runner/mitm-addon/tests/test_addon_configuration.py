@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,12 +14,22 @@ import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
 
 
+@dataclass(frozen=True)
+class _RecordedOption:
+    name: str
+    typespec: type
+    default: object
+    help: str
+    choices: Sequence[str] | None
+
+
 class _RecordingOptions:
     def __init__(self) -> None:
-        self.added: list[dict[str, object]] = []
+        self.added: list[_RecordedOption] = []
+        self._options: dict[str, _RecordedOption] = {}
 
-    def __contains__(self, _name: str) -> bool:
-        return False
+    def __contains__(self, name: str) -> bool:
+        return name in self._options
 
     def add_option(
         self,
@@ -28,15 +39,9 @@ class _RecordingOptions:
         help_text: str,
         choices: Sequence[str] | None = None,
     ) -> None:
-        self.added.append(
-            {
-                "name": name,
-                "typespec": typespec,
-                "default": default,
-                "help": help_text,
-                "choices": choices,
-            }
-        )
+        option = _RecordedOption(name, typespec, default, help_text, choices)
+        self.added.append(option)
+        self._options[name] = option
 
 
 class _RecordingMaster:
@@ -98,7 +103,7 @@ class TestAddonConfiguration:
         ):
             mitm_addon.load(loader)
 
-        option_names = [option["name"] for option in master.options.added]
+        option_names = [option.name for option in master.options.added]
         assert "vm0_usage_state_id" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()
