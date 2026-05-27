@@ -14,12 +14,14 @@ async fn test_write_file() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"hello from vsock-test";
 
-    h.write_file(&file_path_str, content, false)
+    h.host()
+        .write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
     // Verify by reading the file back via exec
     let result = h
+        .host()
         .exec(&format!("cat '{file_path_str}'"), 5000, &[], false)
         .await
         .expect("exec cat failed");
@@ -37,7 +39,8 @@ async fn test_write_file_special_characters() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"Line1\nLine2\tTabbed\n\"Quoted\"";
 
-    h.write_file(&file_path_str, content, false)
+    h.host()
+        .write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
@@ -54,7 +57,8 @@ async fn test_write_file_path_with_shell_metacharacters() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"path should be passed as an argv value";
 
-    h.write_file(&file_path_str, content, false)
+    h.host()
+        .write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
@@ -71,7 +75,8 @@ async fn test_write_file_creates_parent_dirs() {
     let file_path_str = file_path.to_string_lossy().to_string();
     let content = b"nested content";
 
-    h.write_file(&file_path_str, content, false)
+    h.host()
+        .write_file(&file_path_str, content, false)
         .await
         .expect("write_file failed");
 
@@ -87,7 +92,8 @@ async fn test_write_file_sudo_create_does_not_create_parent_dirs() {
     let file_path = h.dir.join("sudo/missing/parent.txt");
     let file_path_str = file_path.to_string_lossy().to_string();
 
-    h.write_file(&file_path_str, b"content", true)
+    h.host()
+        .write_file(&file_path_str, b"content", true)
         .await
         .expect_err("sudo write_file should fail when parent is missing");
 
@@ -100,7 +106,8 @@ async fn test_write_file_unwritable_path_fails() {
     let h = Harness::new().await;
 
     let path = format!("/proc/vm0-write-file-denied-{}", std::process::id());
-    h.write_file(&path, b"content", false)
+    h.host()
+        .write_file(&path, b"content", false)
         .await
         .expect_err("write_file should fail under /proc");
 
@@ -117,7 +124,8 @@ async fn test_write_file_large() {
     // 100KB content
     let content = vec![b'x'; 100_000];
 
-    h.write_file(&file_path_str, &content, false)
+    h.host()
+        .write_file(&file_path_str, &content, false)
         .await
         .expect("write_file failed");
 
@@ -139,7 +147,8 @@ async fn test_write_file_chunked() {
     // shell rename path. The quote in the file name covers shell escaping.
     let content = vec![0xABu8; 16 * 1024 * 1024];
 
-    h.write_file(&file_path_str, &content, false)
+    h.host()
+        .write_file(&file_path_str, &content, false)
         .await
         .expect("chunked write_file failed");
 
@@ -166,7 +175,8 @@ async fn bench_write_file_many_small_files() {
     for i in 0..100 {
         let file_path = h.dir.join(format!("bench/{i}.txt"));
         let file_path_str = file_path.to_string_lossy().to_string();
-        h.write_file(&file_path_str, b"small content", false)
+        h.host()
+            .write_file(&file_path_str, b"small content", false)
             .await
             .expect("write_file failed");
     }

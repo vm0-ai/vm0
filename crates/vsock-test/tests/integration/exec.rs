@@ -11,6 +11,7 @@ async fn test_exec() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("echo hello", 5000, &[], false)
         .await
         .expect("exec failed");
@@ -26,6 +27,7 @@ async fn test_exec_stderr() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("echo error >&2 && exit 1", 5000, &[], false)
         .await
         .expect("exec failed");
@@ -40,6 +42,7 @@ async fn test_exec_multiline() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("printf 'line1\\nline2\\nline3\\n'", 5000, &[], false)
         .await
         .expect("exec failed");
@@ -54,6 +57,7 @@ async fn test_exec_pipe_chain() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("echo 'hello world' | tr 'a-z' 'A-Z'", 5000, &[], false)
         .await
         .expect("exec failed");
@@ -68,6 +72,7 @@ async fn test_exec_env_vars() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("export TEST_VAR=hello; echo $TEST_VAR", 5000, &[], false)
         .await
         .expect("exec failed");
@@ -82,6 +87,7 @@ async fn test_exec_timeout() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("sleep 10", 100, &[], false)
         .await
         .expect("exec failed");
@@ -97,6 +103,7 @@ async fn test_exec_sequential() {
 
     for i in 0..5 {
         let result = h
+            .host()
             .exec(&format!("echo {i}"), 5000, &[], false)
             .await
             .expect("exec failed");
@@ -116,6 +123,7 @@ async fn test_exec_sudo() {
     // a result). In release/production the process runs as root so sudo=true
     // just uses `sh -c` directly.
     let result = h
+        .host()
         .exec("whoami", 5000, &[], true)
         .await
         .expect("exec sudo failed");
@@ -136,6 +144,7 @@ async fn test_exec_while_waiting_for_exit() {
     // Start a long-running supervised process. Use `exec` to replace the shell
     // so the PID we get is the actual sleep process.
     let handle = h
+        .host()
         .start_supervised_exec(SupervisedExecRequest {
             timeout: ExecTimeoutPolicy::None,
             command: "exec sleep 60",
@@ -161,7 +170,7 @@ async fn test_exec_while_waiting_for_exit() {
         // This exec must NOT block on the pending supervised wait.
         let result = tokio::time::timeout(
             Duration::from_secs(5),
-            h.exec("echo alive", 5000, &[], false),
+            h.host().exec("echo alive", 5000, &[], false),
         )
         .await
         .expect("exec timed out — supervised wait is blocking")
@@ -170,14 +179,15 @@ async fn test_exec_while_waiting_for_exit() {
         assert_eq!(result.stdout, b"alive\n");
 
         // Kill the process group so supervised wait resolves.
-        h.exec(
-            &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
-            5000,
-            &[],
-            false,
-        )
-        .await
-        .expect("kill failed");
+        h.host()
+            .exec(
+                &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
+                5000,
+                &[],
+                false,
+            )
+            .await
+            .expect("kill failed");
     });
 
     let event = wait_result.expect("supervised wait failed");
@@ -201,15 +211,17 @@ async fn test_concurrent_exec_not_blocked() {
 
     // Launch a slow exec and wait until its guest-side shell has started
     // before submitting the fast exec.
-    let slow = h.exec(&slow_command, 10000, &[], false);
+    let slow = h.host().exec(&slow_command, 10000, &[], false);
     let (fast_done_tx, fast_done_rx) = tokio::sync::oneshot::channel();
     let fast = async {
         wait_for_path(&ready_marker, Duration::from_secs(3)).await;
-        let result =
-            tokio::time::timeout(Duration::from_secs(3), h.exec("echo ok", 5000, &[], false))
-                .await
-                .expect("fast exec timed out — slow exec is blocking the event loop")
-                .expect("fast exec failed");
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            h.host().exec("echo ok", 5000, &[], false),
+        )
+        .await
+        .expect("fast exec timed out — slow exec is blocking the event loop")
+        .expect("fast exec failed");
         let _ = fast_done_tx.send(());
         result
     };
@@ -239,6 +251,7 @@ async fn test_exec_with_env() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("echo $MY_VAR", 5000, &[("MY_VAR", "hello_env")], false)
         .await
         .expect("exec failed");
@@ -253,6 +266,7 @@ async fn test_exec_with_multiple_env() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec(
             "echo $A $B",
             5000,
@@ -272,6 +286,7 @@ async fn test_exec_with_env_special_chars() {
     let h = Harness::new().await;
 
     let result = h
+        .host()
         .exec("echo $VAL", 5000, &[("VAL", "it's a \"test\"")], false)
         .await
         .expect("exec failed");

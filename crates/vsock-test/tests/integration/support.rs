@@ -1,5 +1,4 @@
 use std::io;
-use std::ops::Deref;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::Path;
 use std::sync::Arc;
@@ -109,6 +108,12 @@ impl Harness {
         }
     }
 
+    pub(crate) fn host(&self) -> &VsockHost {
+        self.host
+            .as_ref()
+            .expect("Harness host should be available before finish/drop")
+    }
+
     pub(crate) fn finish(mut self) {
         drop(self.host.take());
         if let Some(g) = self.guest.take() {
@@ -180,13 +185,6 @@ fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
         if result <= 0 {
             break;
         }
-    }
-}
-
-impl Deref for Harness {
-    type Target = VsockHost;
-    fn deref(&self) -> &VsockHost {
-        self.host.as_ref().unwrap()
     }
 }
 
