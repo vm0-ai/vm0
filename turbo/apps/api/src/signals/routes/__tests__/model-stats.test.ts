@@ -225,6 +225,7 @@ describe("GET /api/public/model-rankings", () => {
     const db = store.set(writeDb$);
     const model = "claude-sonnet-4-6";
     const modelAlias = "anthropic/claude-sonnet-4.6";
+    const unsupportedModel = `unsupported-model-${randomUUID()}`;
     const daySeed = Number.parseInt(randomUUID().slice(0, 8), 16);
     const windowStart = new Date(Date.UTC(2200, 0, 1 + (daySeed % 90), 0));
     const windowEnd = new Date(windowStart.getTime() + 12 * HOUR_MS);
@@ -246,6 +247,12 @@ describe("GET /api/public/model-rankings", () => {
         hourStart: previousHour,
         model,
         totalTokens: 80,
+      },
+      {
+        hourStart: currentHour,
+        model: unsupportedModel,
+        inputTokens: 9999,
+        totalTokens: 9999,
       },
     ]);
 

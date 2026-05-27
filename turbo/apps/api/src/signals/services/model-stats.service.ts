@@ -265,6 +265,8 @@ async function selectModelRankings(
   const previousEnd = window.start;
   const previousStart = new Date(previousEnd.getTime() - duration);
   const modelExpr = modelStatModelExpression();
+  const currentModelStatsModelIdSql = getModelStatsModelIdSql();
+  const previousModelStatsModelIdSql = getModelStatsModelIdSql();
 
   const result = await db.execute<RawModelRankingRow>(sql`
     WITH current_period AS (
@@ -276,6 +278,7 @@ async function selectModelRankings(
       FROM ${modelStat}
       WHERE ${modelStat.hourStart} >= ${window.start}
         AND ${modelStat.hourStart} < ${window.end}
+        AND ${modelStat.model} IN (${currentModelStatsModelIdSql})
       GROUP BY 1
     ),
     previous_period AS (
@@ -285,6 +288,7 @@ async function selectModelRankings(
       FROM ${modelStat}
       WHERE ${modelStat.hourStart} >= ${previousStart}
         AND ${modelStat.hourStart} < ${previousEnd}
+        AND ${modelStat.model} IN (${previousModelStatsModelIdSql})
       GROUP BY 1
     )
     SELECT
