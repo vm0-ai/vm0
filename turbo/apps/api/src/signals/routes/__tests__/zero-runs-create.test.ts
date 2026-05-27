@@ -395,7 +395,7 @@ describe("POST /api/zero/runs", () => {
     await fixture();
     const cases: Array<{
       readonly tools: string[];
-    }> = [{ tools: ["   "] }, { tools: ["Bash,Read"] }];
+    }> = [{ tools: [""] }, { tools: ["   "] }, { tools: ["Bash,Read"] }];
 
     for (const testCase of cases) {
       const response = await accept(

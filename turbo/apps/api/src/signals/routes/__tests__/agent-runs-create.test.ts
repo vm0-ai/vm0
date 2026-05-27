@@ -360,6 +360,7 @@ describe("POST /api/agent/runs", () => {
       };
       readonly field: string;
     }> = [
+      { body: { tools: [""] }, field: "tools" },
       { body: { tools: ["   "] }, field: "tools" },
       { body: { tools: ["Bash,Read"] }, field: "tools" },
       { body: { disallowedTools: [""] }, field: "disallowedTools" },

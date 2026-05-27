@@ -553,6 +553,46 @@ describe("POST /api/runners/*", () => {
     });
   });
 
+  it("rejects invalid stored execution context without claiming the job", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({
+      fixture,
+      contextOverrides: { tools: ["Bash,Read"] },
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 400,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Job missing execution context",
+        code: "BAD_REQUEST",
+      },
+    });
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ claimedAt: runnerJobQueue.claimedAt })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, queued.runId));
+    expect(job?.claimedAt).toBeNull();
+
+    const [run] = await db
+      .select({
+        status: agentRuns.status,
+        startedAt: agentRuns.startedAt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queued.runId));
+    expect(run?.status).toBe("pending");
+    expect(run?.startedAt).toBeNull();
+  });
+
   it("prevents official runners from claiming non-vm0 runner groups", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
