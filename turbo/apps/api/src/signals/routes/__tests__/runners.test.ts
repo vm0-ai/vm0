@@ -11,6 +11,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -1007,16 +1008,19 @@ describe("POST /api/runners/*", () => {
     patFixtures.push(pat);
     const queued = await seedQueuedRun({
       fixture,
-      vars: { ZENDESK_SUBDOMAIN: "acme" },
+      vars: { API_KEY: "same-value", ZENDESK_SUBDOMAIN: "acme" },
       contextOverrides: {
         encryptedSecrets: encryptedSecretsMap({
           ZENDESK_API_TOKEN: "real-token",
           ZENDESK_SUBDOMAIN: "acme",
+          API_KEY: "same-value",
         }),
         environment: {
           ZENDESK_API_TOKEN: "real-token",
           ZENDESK_SUBDOMAIN: "acme",
+          API_KEY: "same-value",
         },
+        firewalls: [getConnectorFirewall("zendesk")],
       },
     });
 
@@ -1027,8 +1031,8 @@ describe("POST /api/runners/*", () => {
     });
 
     expect(response.body).toMatchObject({
-      secretValues: ["real-token"],
-      vars: { ZENDESK_SUBDOMAIN: "acme" },
+      secretValues: ["real-token", "same-value"],
+      vars: { API_KEY: "same-value", ZENDESK_SUBDOMAIN: "acme" },
     });
   });
 

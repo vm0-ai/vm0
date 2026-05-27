@@ -8,6 +8,8 @@ import {
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import { getConnectorEnvBindings } from "@vm0/connectors/connector-utils";
+import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -39,6 +41,7 @@ const L = logger("Runners");
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
+const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
 const unauthorizedNotAuthenticated = Object.freeze({
   status: 401 as const,
@@ -417,7 +420,6 @@ async function failPoisonQueuedJob(
 async function secretValuesForRunner(
   storedContext: StoredExecutionContext,
   featureSwitchContext: FeatureSwitchContext,
-  vars: Record<string, string> | null,
 ): Promise<string[] | null> {
   const authValues = await decryptPersistentSecretsMap(
     storedContext.encryptedSecrets,
@@ -430,28 +432,33 @@ async function secretValuesForRunner(
   const envValues = storedContext.environment
     ? new Set(Object.values(storedContext.environment))
     : new Set<string>();
+  const variableAuthNames = variableBackedFirewallAuthNames(storedContext);
   return Object.entries(authValues)
     .filter(([name, value]) => {
-      return envValues.has(value) && vars?.[name] !== value;
+      return envValues.has(value) && !variableAuthNames.has(name);
     })
     .map(([, value]) => {
       return value;
     });
 }
 
-function stringRecord(value: unknown): Record<string, string> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const record: Record<string, string> = {};
-  for (const [entryKey, entryValue] of Object.entries(value)) {
-    if (typeof entryValue !== "string") {
-      return null;
+function variableBackedFirewallAuthNames(
+  storedContext: StoredExecutionContext,
+): Set<string> {
+  const names = new Set<string>();
+  for (const firewall of storedContext.firewalls ?? []) {
+    if (!isFirewallConnectorType(firewall.name)) {
+      continue;
     }
-    record[entryKey] = entryValue;
+    for (const [envName, valueRef] of Object.entries(
+      getConnectorEnvBindings(firewall.name),
+    )) {
+      if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+        names.add(envName);
+      }
+    }
   }
-  return record;
+  return names;
 }
 
 function scheduleClaimSucceededSideEffects(args: {
@@ -597,11 +604,9 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     run.userId,
   );
   signal.throwIfAborted();
-  const runVars = stringRecord(run.vars);
   const secretValues = await secretValuesForRunner(
     storedContext,
     featureSwitchContext,
-    runVars,
   );
   signal.throwIfAborted();
   const sandboxToken = generateSandboxToken(run.userId, run.id, run.orgId);
@@ -615,7 +620,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     prompt: run.prompt,
     appendSystemPrompt: run.appendSystemPrompt,
     agentComposeVersionId: run.agentComposeVersionId,
-    vars: runVars,
+    vars: (run.vars as Record<string, string>) ?? null,
     checkpointId: run.resumedFromCheckpointId ?? null,
     sandboxToken,
     secretValues,
