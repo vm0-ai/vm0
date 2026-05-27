@@ -399,15 +399,11 @@ const PRO_TRIAL_BENEFITS: readonly string[] = [
 function TrialStepContent() {
   const selectedConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
-
-  const connectorEntries = (
-    Object.entries(CONNECTOR_TYPES) as [
-      ConnectorType,
-      (typeof CONNECTOR_TYPES)[ConnectorType],
-    ][]
-  ).filter(([type]) => {
-    return selectedConnectors.includes(type);
-  });
+  const connectorEntries = (useLastResolved(allConnectorTypes$) ?? []).filter(
+    (connector) => {
+      return selectedConnectors.includes(connector.type);
+    },
+  );
 
   return (
     <>
@@ -423,14 +419,14 @@ function TrialStepContent() {
 
       {connectorEntries.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-5">
-          {connectorEntries.map(([type, config]) => {
+          {connectorEntries.map((connector) => {
             return (
               <span
-                key={type}
+                key={connector.type}
                 className="zero-border flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs text-foreground"
               >
-                <ConnectorIcon type={type} size={14} />
-                {config.label}
+                <ConnectorIcon type={connector.type} size={14} />
+                {connector.label}
               </span>
             );
           })}

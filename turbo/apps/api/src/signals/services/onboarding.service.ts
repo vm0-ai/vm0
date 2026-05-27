@@ -350,6 +350,47 @@ async function replaceSelectedConnectors(
   });
 }
 
+async function updateOnboardingPaymentPending(
+  db: Db,
+  orgId: string,
+  onboardingPaymentPending: boolean,
+): Promise<void> {
+  await db
+    .update(orgMetadata)
+    .set({
+      onboardingPaymentPending,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+async function completeExistingDefaultAgentSetup(
+  db: Db,
+  args: OnboardingSetupArgs,
+  selectedConnectors: readonly ConnectorType[],
+  agentId: string,
+  signal: AbortSignal,
+): Promise<OnboardingSetupResponse> {
+  await replaceSelectedConnectors(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    agentId,
+    selectedConnectors,
+  });
+  signal.throwIfAborted();
+
+  if (args.onboardingPaymentPending !== undefined) {
+    await updateOnboardingPaymentPending(
+      db,
+      args.orgId,
+      args.onboardingPaymentPending,
+    );
+    signal.throwIfAborted();
+  }
+
+  return { status: 200 as const, body: { agentId } };
+}
+
 function defaultAgentId(orgId: string): Computed<Promise<string | null>> {
   return computed(async (get): Promise<string | null> => {
     const db = get(db$);
@@ -483,24 +524,13 @@ export const setupOnboarding$ = command(
     if (existingAgentId) {
       // Default agent already exists — onboarding step 1 is done. Still
       // authorize any connectors the user picked in the (skippable) step 2.
-      await replaceSelectedConnectors(writeDb, {
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: existingAgentId,
+      return completeExistingDefaultAgentSetup(
+        writeDb,
+        args,
         selectedConnectors,
-      });
-      signal.throwIfAborted();
-      if (args.onboardingPaymentPending !== undefined) {
-        await writeDb
-          .update(orgMetadata)
-          .set({
-            onboardingPaymentPending: args.onboardingPaymentPending,
-            updatedAt: nowDate(),
-          })
-          .where(eq(orgMetadata.orgId, args.orgId));
-        signal.throwIfAborted();
-      }
-      return { status: 200 as const, body: { agentId: existingAgentId } };
+        existingAgentId,
+        signal,
+      );
     }
 
     await set(
