@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
   ComputerUseSnapshotStore,
+  type ComputerUseActionVisualizer,
   type ComputerUseCoordinateBounds,
   collectAccessibilityVisibleElements,
   executeComputerUseCommand,
@@ -1517,6 +1518,330 @@ describe("computer use desktop runtime", () => {
       windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
       button: "right",
       clickCount: 2,
+    });
+  });
+
+  it("shows the visual pointer before coordinate clicks", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    snapshotStore.set({
+      app: "Safari",
+      snapshotId: "snap_1",
+      screenshotWidth: 800,
+      screenshotHeight: 600,
+      screenshotSource: "window",
+      screenshotSourceName: "Example",
+      sourceBounds: {
+        x: 100,
+        y: 200,
+        width: 1600,
+        height: 1200,
+      },
+    });
+
+    const order: string[] = [];
+    const visualizer: ComputerUseActionVisualizer = {
+      showPointer: vi.fn(async (event) => {
+        order.push(`pointer:${event.phase}`);
+      }),
+    };
+    const clickPoint = vi.fn<ComputerUseNativeBackend["clickPoint"]>(
+      async () => {
+        order.push("clickPoint");
+        return {
+          ...nativeDispatchResult(
+            "background_mouse_event",
+            "app_process",
+            "background_app_pointer",
+          ),
+          screenX: 900,
+          screenY: 800,
+        };
+      },
+    );
+    const nativeBackend = createNativeBackend({
+      clickPoint,
+      getAppState: async (app, snapshotId) => {
+        return nativeAppStateWithScreenshot(app, snapshotId);
+      },
+    });
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          x: 400,
+          y: 300,
+        },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+        visualizer,
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(order).toStrictEqual([
+      "pointer:target",
+      "clickPoint",
+      "pointer:click",
+    ]);
+    expect(visualizer.showPointer).toHaveBeenNthCalledWith(1, {
+      commandId: "cmd_1",
+      action: "element.click",
+      phase: "target",
+      source: "coordinate",
+      screenX: 900,
+      screenY: 800,
+    });
+    expect(visualizer.showPointer).toHaveBeenNthCalledWith(2, {
+      commandId: "cmd_1",
+      action: "element.click",
+      phase: "click",
+      source: "coordinate",
+      screenX: 900,
+      screenY: 800,
+    });
+  });
+
+  it("shows the visual pointer for indexed element clicks with bounds", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const order: string[] = [];
+    const visualizer: ComputerUseActionVisualizer = {
+      showPointer: vi.fn(async (event) => {
+        order.push(`pointer:${event.phase}`);
+      }),
+    };
+    const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>(
+      async () => {
+        order.push("clickElement");
+        return nativeDispatchResult(
+          "accessibility_action",
+          "element",
+          "targeted_app_action",
+        );
+      },
+    );
+    const nativeBackend = createNativeBackend({
+      clickElement,
+      getAppState: async (app, snapshotId) => {
+        return {
+          ...nativeAppStateWithScreenshot(app, snapshotId),
+          elements: [
+            {
+              id: "button_1",
+              role: "AXButton",
+              name: "Save",
+              bounds: { x: 20, y: 30, width: 120, height: 40 },
+            },
+          ],
+        };
+      },
+    });
+
+    const state = await executeComputerUseCommand(
+      { id: "cmd_state", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+      },
+    );
+    expect(state.status).toBe("succeeded");
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_click",
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          elementIndex: 0,
+        },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+        visualizer,
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(order).toStrictEqual([
+      "pointer:target",
+      "clickElement",
+      "pointer:click",
+    ]);
+    expect(visualizer.showPointer).toHaveBeenNthCalledWith(1, {
+      commandId: "cmd_click",
+      action: "element.click",
+      phase: "target",
+      source: "element",
+      screenX: 80,
+      screenY: 50,
+    });
+    expect(visualizer.showPointer).toHaveBeenNthCalledWith(2, {
+      commandId: "cmd_click",
+      action: "element.click",
+      phase: "click",
+      source: "element",
+      screenX: 80,
+      screenY: 50,
+    });
+  });
+
+  it("uses descendant bounds for visual pointer targets without direct bounds", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const visualizer: ComputerUseActionVisualizer = {
+      showPointer: vi.fn(),
+    };
+    const nativeBackend = createNativeBackend({
+      getAppState: async (app, snapshotId) => {
+        return {
+          ...nativeAppStateWithScreenshot(app, snapshotId),
+          elements: [
+            {
+              id: "row_1",
+              role: "AXRow",
+              name: "Inbox",
+              children: [
+                {
+                  id: "row_1_label",
+                  role: "AXStaticText",
+                  value: "Inbox",
+                  bounds: { x: 40, y: 80, width: 160, height: 28 },
+                },
+              ],
+            },
+          ],
+        };
+      },
+    });
+
+    const state = await executeComputerUseCommand(
+      { id: "cmd_state", kind: "app.state", payload: { app: "Things" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+      },
+    );
+    expect(state.status).toBe("succeeded");
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_click",
+        kind: "element.click",
+        payload: {
+          app: "Things",
+          elementIndex: 0,
+        },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+        visualizer,
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(visualizer.showPointer).toHaveBeenNthCalledWith(1, {
+      commandId: "cmd_click",
+      action: "element.click",
+      phase: "target",
+      source: "element",
+      screenX: 120,
+      screenY: 94,
+    });
+  });
+
+  it("shows the visual pointer before non-click element actions", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const order: string[] = [];
+    const visualizer: ComputerUseActionVisualizer = {
+      showPointer: vi.fn(async (event) => {
+        order.push(`pointer:${event.action}`);
+      }),
+    };
+    const performElementAction = vi.fn<
+      ComputerUseNativeBackend["performElementAction"]
+    >(async () => {
+      order.push("performElementAction");
+      return nativeDispatchResult(
+        "accessibility_action",
+        "element",
+        "targeted_app_action",
+      );
+    });
+    const nativeBackend = createNativeBackend({
+      performElementAction,
+      getAppState: async (app, snapshotId) => {
+        return {
+          ...nativeAppStateWithScreenshot(app, snapshotId),
+          elements: [
+            {
+              id: "button_1",
+              role: "AXButton",
+              name: "Open",
+              bounds: { x: 300, y: 400, width: 80, height: 32 },
+            },
+          ],
+        };
+      },
+    });
+
+    const state = await executeComputerUseCommand(
+      { id: "cmd_state", kind: "app.state", payload: { app: "Things" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+      },
+    );
+    expect(state.status).toBe("succeeded");
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_action",
+        kind: "element.perform_action",
+        payload: {
+          app: "Things",
+          elementIndex: 0,
+          action: "AXPress",
+        },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        nativeBackend,
+        visualizer,
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(order).toStrictEqual([
+      "pointer:element.perform_action",
+      "performElementAction",
+    ]);
+    expect(visualizer.showPointer).toHaveBeenCalledWith({
+      commandId: "cmd_action",
+      action: "element.perform_action",
+      phase: "target",
+      source: "element",
+      screenX: 340,
+      screenY: 416,
     });
   });
 
