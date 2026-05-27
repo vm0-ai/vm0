@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, OPTIONS } from "../route";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
+import * as s3Client from "../../../../../../src/lib/infra/s3/s3-client";
 
-const context = testContext();
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function mockS3() {
+  return {
+    generatePresignedUrl: vi
+      .spyOn(s3Client, "generatePresignedUrl")
+      .mockResolvedValue("https://mock-presigned-url"),
+    s3ObjectExists: vi
+      .spyOn(s3Client, "s3ObjectExists")
+      .mockResolvedValue(true),
+  };
+}
+
+let s3Mocks: ReturnType<typeof mockS3>;
 
 async function invoke(
   userId: string,
@@ -21,8 +33,8 @@ async function invoke(
 }
 
 describe("GET /f/[userId]/[id]/[filename]", () => {
-  beforeEach(async () => {
-    context.setupMocks();
+  beforeEach(() => {
+    s3Mocks = mockS3();
   });
 
   it("302-redirects legacy /f links to the public artifact CDN when the migrated object exists", async () => {
@@ -33,11 +45,11 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
       "https://cdn.vm7.io/artifacts/user_alice/file-id/doc.pdf",
     );
     expect(res.headers.get("Cache-Control")).toContain("public");
-    expect(context.mocks.s3.s3ObjectExists).toHaveBeenCalledWith(
+    expect(s3Mocks.s3ObjectExists).toHaveBeenCalledWith(
       "test-artifacts-bucket",
       "artifacts/user_alice/file-id/doc.pdf",
     );
-    expect(context.mocks.s3.generatePresignedUrl).not.toHaveBeenCalled();
+    expect(s3Mocks.generatePresignedUrl).not.toHaveBeenCalled();
   });
 
   it("maps prefixless public user IDs back to Clerk user IDs", async () => {
@@ -45,7 +57,7 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
 
     expect(res.status).toBe(302);
 
-    expect(context.mocks.s3.s3ObjectExists).toHaveBeenCalledWith(
+    expect(s3Mocks.s3ObjectExists).toHaveBeenCalledWith(
       "test-artifacts-bucket",
       "artifacts/user_alice/file-id/doc.pdf",
     );
@@ -54,15 +66,15 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
   it("keeps non-Clerk user-like URL segments unchanged", async () => {
     await invoke("user-1", "file-id", "doc.pdf");
 
-    expect(context.mocks.s3.s3ObjectExists).toHaveBeenCalledWith(
+    expect(s3Mocks.s3ObjectExists).toHaveBeenCalledWith(
       "test-artifacts-bucket",
       "artifacts/user-1/file-id/doc.pdf",
     );
   });
 
   it("falls back to old user-storage presigned URLs when the artifact object is absent", async () => {
-    context.mocks.s3.s3ObjectExists.mockResolvedValueOnce(false);
-    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+    s3Mocks.s3ObjectExists.mockResolvedValueOnce(false);
+    s3Mocks.generatePresignedUrl.mockResolvedValue(
       "https://signed.example.com/doc.pdf?sig=abc",
     );
 
@@ -73,7 +85,7 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
       "https://signed.example.com/doc.pdf?sig=abc",
     );
     expect(res.headers.get("Cache-Control")).toContain("private");
-    expect(context.mocks.s3.generatePresignedUrl).toHaveBeenCalledWith(
+    expect(s3Mocks.generatePresignedUrl).toHaveBeenCalledWith(
       "test-bucket",
       "uploads/user_alice/file-id/doc.pdf",
       300,

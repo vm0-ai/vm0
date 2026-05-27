@@ -22,10 +22,6 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
-function isMigrationTestFile(filename: string): boolean {
-  return filename.replace(/\\/g, "/").includes("/src/__tests__/migrations/");
-}
-
 export default createRule({
   name: "no-direct-db-in-tests",
   defaultOptions: [],
@@ -43,7 +39,7 @@ export default createRule({
       noInitServices:
         "Do not call initServices() in test files. Route handlers call it internally. See docs/testing/web-testing.md#no-initservices-in-route-tests",
       noDbSchemaImport:
-        "Do not import from db/schema/* in test files. Use db-test-seeders or db-test-assertions instead.",
+        "Do not import from db/schema/* in web test files. Test through route handlers, or move DB-owned tests to @vm0/db.",
       noServiceImport:
         "Do not import service functions directly in test files. Test through route handlers instead. See docs/testing/web-testing.md#acceptable-service-level-test-exceptions",
     },
@@ -58,10 +54,7 @@ export default createRule({
         }
 
         // Check db/schema imports
-        if (
-          /\/db\/schema\//.test(source) &&
-          !isMigrationTestFile(context.filename)
-        ) {
+        if (/\/db\/schema\//.test(source)) {
           context.report({
             node,
             messageId: "noDbSchemaImport",

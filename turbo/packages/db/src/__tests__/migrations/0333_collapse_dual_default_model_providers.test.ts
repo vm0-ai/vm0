@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { testContext, uniqueId } from "../test-helpers";
-import { initServices } from "../../lib/init-services";
+import { db, uniqueId } from "../test-db";
 
 /**
  * Integration test for migration 0333 body.
@@ -15,8 +14,6 @@ import { initServices } from "../../lib/init-services";
  * state, runs the cleanup, asserts, and restores the index in `finally`.
  */
 
-const context = testContext();
-
 const DROP_INDEX_SQL = sql`DROP INDEX IF EXISTS idx_model_providers_one_default_per_user`;
 const RECREATE_INDEX_SQL = sql`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_model_providers_one_default_per_user
@@ -24,8 +21,7 @@ const RECREATE_INDEX_SQL = sql`
 `;
 
 async function runCollapse(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: executes the migration body verbatim
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     UPDATE model_providers
     SET is_default = false, updated_at = NOW()
     WHERE is_default = true
@@ -39,21 +35,12 @@ async function runCollapse(): Promise<void> {
 }
 
 describe("migration 0333 collapse dual-default model providers", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised to run raw SQL
-    initServices();
-  });
-
   it("keeps the earliest-created default and clears the rest per (org_id, user_id)", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");
-
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: drop unique index so dual-default seed succeeds
-    await globalThis.services.db.execute(DROP_INDEX_SQL);
+    await db.execute(DROP_INDEX_SQL);
     try {
-      // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw seed
-      const [first] = await globalThis.services.db
+      const [first] = await db
         .insert(modelProviders)
         .values({
           orgId,
@@ -63,9 +50,7 @@ describe("migration 0333 collapse dual-default model providers", () => {
           createdAt: new Date(2025, 0, 1),
         })
         .returning({ id: modelProviders.id });
-
-      // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw seed
-      const [second] = await globalThis.services.db
+      const [second] = await db
         .insert(modelProviders)
         .values({
           orgId,
@@ -77,9 +62,7 @@ describe("migration 0333 collapse dual-default model providers", () => {
         .returning({ id: modelProviders.id });
 
       await runCollapse();
-
-      // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
-      const rows = await globalThis.services.db
+      const rows = await db
         .select({
           id: modelProviders.id,
           isDefault: modelProviders.isDefault,
@@ -102,17 +85,14 @@ describe("migration 0333 collapse dual-default model providers", () => {
       expect(firstRow?.isDefault).toBe(true);
       expect(secondRow?.isDefault).toBe(false);
     } finally {
-      // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: restore unique index for other suites sharing this DB
-      await globalThis.services.db.execute(RECREATE_INDEX_SQL);
+      await db.execute(RECREATE_INDEX_SQL);
     }
   });
 
   it("does not touch single-default rows for unrelated (org_id, user_id)", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");
-
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw seed (single default — index not violated)
-    const [only] = await globalThis.services.db
+    const [only] = await db
       .insert(modelProviders)
       .values({
         orgId,
@@ -123,9 +103,7 @@ describe("migration 0333 collapse dual-default model providers", () => {
       .returning({ id: modelProviders.id });
 
     await runCollapse();
-
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
-    const [row] = await globalThis.services.db
+    const [row] = await db
       .select({ isDefault: modelProviders.isDefault })
       .from(modelProviders)
       .where(eq(modelProviders.id, only!.id))

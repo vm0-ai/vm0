@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { testContext, uniqueId } from "../test-helpers";
-import { initServices } from "../../lib/init-services";
+import { db, uniqueId } from "../test-db";
 
 /**
  * Integration test for migration 0341 body.
@@ -13,11 +12,8 @@ import { initServices } from "../../lib/init-services";
  * the shared user_feature_switches table.
  */
 
-const context = testContext();
-
 async function runRename(orgId: string, userId: string): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: executes the migration body verbatim, scoped
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     UPDATE user_feature_switches
     SET switches = (switches - 'chatgptOauthProvider')
                 || jsonb_build_object('codexOauthProvider', switches->'chatgptOauthProvider'),
@@ -32,8 +28,7 @@ async function readSwitches(
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean> | undefined> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
-  const [row] = await globalThis.services.db
+  const [row] = await db
     .select({ switches: userFeatureSwitches.switches })
     .from(userFeatureSwitches)
     .where(
@@ -51,19 +46,10 @@ async function seed(
   userId: string,
   switches: Record<string, boolean>,
 ): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw row seeding
-  await globalThis.services.db
-    .insert(userFeatureSwitches)
-    .values({ orgId, userId, switches });
+  await db.insert(userFeatureSwitches).values({ orgId, userId, switches });
 }
 
 describe("migration 0341 backfill codex oauth provider feature switch", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised to run raw SQL
-    initServices();
-  });
-
   it("renames chatgptOauthProvider key to codexOauthProvider preserving the value", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");

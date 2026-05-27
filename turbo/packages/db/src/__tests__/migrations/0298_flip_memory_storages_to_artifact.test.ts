@@ -1,9 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages } from "@vm0/db/schema/storage";
-import { testContext, uniqueId } from "../test-helpers";
-import { initServices } from "../../lib/init-services";
+import { db, uniqueId } from "../test-db";
 
 /**
  * Integration test for migration 0296 body.
@@ -24,7 +22,7 @@ import { initServices } from "../../lib/init-services";
  *   production SQL verbatim.
  */
 
-const context = testContext();
+const VOLUME_ORG_USER_ID = "__org__";
 
 async function insertStorage(row: {
   orgId: string;
@@ -32,8 +30,7 @@ async function insertStorage(row: {
   name: string;
   type: "memory" | "artifact" | "volume";
 }): Promise<string> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw row seeding
-  const [storage] = await globalThis.services.db
+  const [storage] = await db
     .insert(storages)
     .values({
       orgId: row.orgId,
@@ -49,8 +46,7 @@ async function insertStorage(row: {
 }
 
 async function runGuardCheck(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: executes verbatim guard statement
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     DO $$
     BEGIN
       IF EXISTS (
@@ -72,15 +68,13 @@ async function runGuardCheck(): Promise<void> {
 }
 
 async function runUpdateScoped(orgId: string): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: scoped UPDATE (see file-level note)
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     UPDATE storages SET type = 'artifact' WHERE type = 'memory' AND org_id = ${orgId}
   `);
 }
 
 async function readType(id: string): Promise<string | undefined> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
-  const [row] = await globalThis.services.db
+  const [row] = await db
     .select({ type: storages.type })
     .from(storages)
     .where(eq(storages.id, id))
@@ -89,8 +83,7 @@ async function readType(id: string): Promise<string | undefined> {
 }
 
 async function readS3Prefix(id: string): Promise<string | undefined> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
-  const [row] = await globalThis.services.db
+  const [row] = await db
     .select({ s3Prefix: storages.s3Prefix })
     .from(storages)
     .where(eq(storages.id, id))
@@ -99,12 +92,6 @@ async function readS3Prefix(id: string): Promise<string | undefined> {
 }
 
 describe("migration 0296 flip memory storages to artifact", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised to run raw SQL
-    initServices();
-  });
-
   it("flips type='memory' rows to type='artifact'", async () => {
     const orgId = uniqueId("org");
     const memoryId = await insertStorage({

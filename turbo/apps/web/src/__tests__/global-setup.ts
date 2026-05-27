@@ -18,8 +18,27 @@ import { schema } from "@vm0/db";
 import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { getSeedSkillNames } from "@vm0/core/zero-seed-skills";
-import { buildSeedSkillValues } from "./db-test-seeders/seed-skill-values";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+import { resolveSkillRef } from "@vm0/core/github-url";
+
+function buildSeedSkillValues(
+  names: readonly string[],
+): (typeof skills.$inferInsert)[] {
+  return names.map((name) => {
+    const url = resolveSkillRef(name);
+    const fullPath = url.replace("https://github.com/", "");
+    return {
+      url,
+      name,
+      fullPath,
+      versionHash: null,
+      frontmatter: {
+        name,
+        description: `${name} skill`,
+      },
+    };
+  });
+}
 
 export async function setup() {
   console.log("[globalSetup] Seeding skill data…");

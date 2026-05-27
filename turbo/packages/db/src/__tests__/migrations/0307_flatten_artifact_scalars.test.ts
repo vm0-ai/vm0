@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { testContext } from "../test-helpers";
-import { initServices } from "../../lib/init-services";
+import { db } from "../test-db";
 
 /**
  * Integration test for migration 0307 body.
@@ -15,11 +14,8 @@ import { initServices } from "../../lib/init-services";
  * the real `agent_sessions` table via `information_schema.columns`.
  */
 
-const context = testContext();
-
 async function createShadowTable(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: shadow table mirrors pre-migration shape
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS agent_sessions_0307_shadow (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       artifact_name varchar(255),
@@ -29,8 +25,7 @@ async function createShadowTable(): Promise<void> {
 }
 
 async function dropShadowTable(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: cleanup shadow table
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     DROP TABLE IF EXISTS agent_sessions_0307_shadow
   `);
 }
@@ -39,8 +34,7 @@ async function seedShadowRow(row: {
   artifactName: string | null;
 }): Promise<string> {
   const id = randomUUID();
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: seeds shadow table
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     INSERT INTO agent_sessions_0307_shadow (id, artifact_name)
     VALUES (
       ${id}::uuid,
@@ -51,8 +45,7 @@ async function seedShadowRow(row: {
 }
 
 async function runBackfillOnShadow(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: executes the verbatim backfill body
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     UPDATE agent_sessions_0307_shadow
     SET artifact_names = CASE
       WHEN artifact_name IS NOT NULL THEN jsonb_build_array(artifact_name)
@@ -62,8 +55,7 @@ async function runBackfillOnShadow(): Promise<void> {
 }
 
 async function readArtifactNames(id: string): Promise<string[] | null> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion on shadow table
-  const result = await globalThis.services.db.execute<{
+  const result = await db.execute<{
     artifact_names: string[] | null;
   }>(sql`
     SELECT artifact_names FROM agent_sessions_0307_shadow WHERE id = ${id}::uuid
@@ -72,8 +64,7 @@ async function readArtifactNames(id: string): Promise<string[] | null> {
 }
 
 async function columnExists(column: string): Promise<boolean> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: information_schema check
-  const result = await globalThis.services.db.execute<{ exists: boolean }>(sql`
+  const result = await db.execute<{ exists: boolean }>(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.columns
       WHERE table_schema = 'public'
@@ -85,8 +76,7 @@ async function columnExists(column: string): Promise<boolean> {
 }
 
 async function indexExists(index: string): Promise<boolean> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: pg_indexes check
-  const result = await globalThis.services.db.execute<{ exists: boolean }>(sql`
+  const result = await db.execute<{ exists: boolean }>(sql`
     SELECT EXISTS (
       SELECT 1 FROM pg_indexes
       WHERE schemaname = 'public'
@@ -99,14 +89,8 @@ async function indexExists(index: string): Promise<boolean> {
 
 describe("migration 0307 flatten artifact scalars", () => {
   beforeEach(async () => {
-    context.setupMocks();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised to run raw SQL
-    initServices();
     await createShadowTable();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: reset shadow table between cases
-    await globalThis.services.db.execute(
-      sql`TRUNCATE agent_sessions_0307_shadow`,
-    );
+    await db.execute(sql`TRUNCATE agent_sessions_0307_shadow`);
   });
 
   afterAll(async () => {

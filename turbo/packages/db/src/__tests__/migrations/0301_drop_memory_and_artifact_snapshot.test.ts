@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { testContext } from "../test-helpers";
-import { initServices } from "../../lib/init-services";
+import { db } from "../test-db";
 
 /**
  * Integration test for migration 0301 body.
@@ -19,11 +18,8 @@ import { initServices } from "../../lib/init-services";
  * `information_schema.columns`.
  */
 
-const context = testContext();
-
 async function createShadowTable(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: shadow table mirrors pre-migration shape
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS checkpoints_0301_shadow (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       artifact_snapshot jsonb,
@@ -34,8 +30,7 @@ async function createShadowTable(): Promise<void> {
 }
 
 async function dropShadowTable(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: cleanup shadow table
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     DROP TABLE IF EXISTS checkpoints_0301_shadow
   `);
 }
@@ -46,8 +41,7 @@ async function seedShadowRow(row: {
   memorySnapshot: Record<string, unknown> | null;
 }): Promise<string> {
   const id = randomUUID();
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: seeds shadow temp table
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     INSERT INTO checkpoints_0301_shadow (id, artifact_snapshot, artifact_snapshots, memory_snapshot)
     VALUES (
       ${id}::uuid,
@@ -60,8 +54,7 @@ async function seedShadowRow(row: {
 }
 
 async function runBackfillOnShadow(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: executes the verbatim backfill body
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     UPDATE checkpoints_0301_shadow
     SET artifact_snapshots = jsonb_build_object(
       artifact_snapshot->>'artifactName',
@@ -75,8 +68,7 @@ async function runBackfillOnShadow(): Promise<void> {
 async function readArtifactSnapshots(
   id: string,
 ): Promise<Record<string, string> | null> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion on shadow table
-  const result = await globalThis.services.db.execute<{
+  const result = await db.execute<{
     artifact_snapshots: Record<string, string> | null;
   }>(sql`
     SELECT artifact_snapshots FROM checkpoints_0301_shadow WHERE id = ${id}::uuid
@@ -85,8 +77,7 @@ async function readArtifactSnapshots(
 }
 
 async function columnExists(column: string): Promise<boolean> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: information_schema check
-  const result = await globalThis.services.db.execute<{ exists: boolean }>(sql`
+  const result = await db.execute<{ exists: boolean }>(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.columns
       WHERE table_schema = 'public'
@@ -99,12 +90,8 @@ async function columnExists(column: string): Promise<boolean> {
 
 describe("migration 0301 drop memory and artifact snapshot", () => {
   beforeEach(async () => {
-    context.setupMocks();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised to run raw SQL
-    initServices();
     await createShadowTable();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: reset shadow table between cases
-    await globalThis.services.db.execute(sql`TRUNCATE checkpoints_0301_shadow`);
+    await db.execute(sql`TRUNCATE checkpoints_0301_shadow`);
   });
 
   afterAll(async () => {

@@ -1,11 +1,8 @@
-/* eslint-disable web/no-direct-db-in-tests -- migration tests exercise pre-migration SQL before API exists */
-
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { testContext, uniqueId } from "../test-helpers";
-import { initServices } from "../../lib/init-services";
+import { db, uniqueId } from "../test-db";
 
 /**
  * Integration test for the migration 0284 backfill body.
@@ -16,14 +13,12 @@ import { initServices } from "../../lib/init-services";
  * backfill's INSERT…SELECT body verbatim, and assert the filter semantics.
  */
 
-const context = testContext();
-
 async function seedOrg(
   orgId: string,
   tier: "free" | "pro",
   credits: number,
 ): Promise<void> {
-  await globalThis.services.db
+  await db
     .insert(orgMetadata)
     .values({ orgId, tier, credits })
     .onConflictDoUpdate({
@@ -33,7 +28,7 @@ async function seedOrg(
 }
 
 async function clearStarterGrants(orgId: string): Promise<void> {
-  await globalThis.services.db
+  await db
     .delete(creditExpiresRecord)
     .where(
       and(
@@ -44,7 +39,7 @@ async function clearStarterGrants(orgId: string): Promise<void> {
 }
 
 async function readStarterGrants(orgId: string) {
-  return globalThis.services.db
+  return db
     .select()
     .from(creditExpiresRecord)
     .where(
@@ -56,7 +51,7 @@ async function readStarterGrants(orgId: string) {
 }
 
 async function runBackfill(): Promise<void> {
-  await globalThis.services.db.execute(sql`
+  await db.execute(sql`
     INSERT INTO "credit_expires_record" (
       id, org_id, source, stripe_invoice_id, amount, remaining, expires_at, created_at
     )
@@ -81,11 +76,6 @@ async function runBackfill(): Promise<void> {
 }
 
 describe("migration 0284 backfill body", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    initServices();
-  });
-
   it("backfills a free-tier org with partial balance (< 100k)", async () => {
     const orgId = uniqueId("org-backfill-50k");
     await seedOrg(orgId, "free", 50_000);

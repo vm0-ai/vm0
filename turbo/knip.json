@@ -12,9 +12,6 @@
         "navigation.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "**/*.{test,spec}.{ts,tsx}",
-        "src/__tests__/db-test-assertions/**/*.ts",
-        "src/__tests__/db-test-seeders/**/*.ts",
-        "src/__tests__/test-constants/**/*.ts",
         "src/__tests__/webhook-simulators/index.ts"
       ],
       "project": [

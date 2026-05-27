@@ -24,10 +24,6 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       code: "const x = services.db;",
     },
     {
-      // Importing from db-test-seeders is fine
-      code: 'import { insertTestUser } from "../db-test-seeders/users";',
-    },
-    {
       // Importing from non-schema paths is fine
       code: 'import { foo } from "../../lib/services";',
     },
@@ -44,17 +40,8 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       code: 'import { WebClient } from "@slack/web-api";',
     },
     {
-      // Test infrastructure import is fine
-      code: 'import { createTestRun } from "../__tests__/db-test-seeders/runs";',
-    },
-    {
       // Non-service relative import is fine
       code: 'import { formatPath } from "../path-utils";',
-    },
-    {
-      code: 'import { agentRuns } from "@vm0/db/schema/agent-run";',
-      filename:
-        "/workspaces/vm01/turbo/apps/web/src/__tests__/migrations/0292_agent_runs_session_id_not_null_fk.test.ts",
     },
   ],
   invalid: [
