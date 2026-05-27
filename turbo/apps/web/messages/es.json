@@ -106,21 +106,9 @@
   },
   "pricing": {
     "title": "Elige Tu Plan",
-    "subtitle": "Comienza gratis y escala según crezcas. Sin tarjeta de crédito.",
+    "subtitle": "Elige el plan que se adapta a tu equipo. Escala en cualquier momento.",
     "heroTitle": "Paga por lo que usas, nada más",
-    "heroDescription": "Comienza gratis con tu compañero de IA. Escala cuando estés listo, sin tarjeta de crédito.",
-    "free": {
-      "description": "Comienza gratis con tu compañero de IA.",
-      "features": {
-        "starterCredits": "10.000 créditos iniciales",
-        "concurrentRun": "1 ejecución simultánea",
-        "unlimitedAgents": "Agentes totales ilimitados",
-        "bringOwnLLM": "Usa tus propias claves de LLM",
-        "voiceInput": "Entrada por voz (10/mes)",
-        "communitySupport": "Soporte de la comunidad"
-      },
-      "buttonText": "Comenzar"
-    },
+    "heroDescription": "Elige el plan que se adapta a tu equipo. Escala en cualquier momento.",
     "pro": {
       "description": "Más potencia y colaboración fluida para tu equipo.",
       "features": {
@@ -196,13 +184,11 @@
       "prioritySupportDesc": "Soporte dedicado con tiempos de respuesta más rápidos"
     },
     "tableValues": {
-      "starter": "10.000 iniciales",
       "20k": "20.000",
       "120k": "120.000",
       "unlimited": "Ilimitado",
       "oneMonth": "1 mes",
-      "allConnectors": "Todos los conectores",
-      "tenPerMonth": "10/mes"
+      "allConnectors": "Todos los conectores"
     },
     "faq": {
       "title": "Preguntas frecuentes",
@@ -213,7 +199,7 @@
       "runOutOfCredits": "¿Qué pasa cuando se me acaban los créditos?",
       "runOutOfCreditsAnswer": "Cuando tus créditos se agoten, tus agentes dejarán de funcionar. Puedes comprar créditos adicionales mediante recarga automática o actualizar a un plan superior para más créditos mensuales.",
       "doCreditsRollOver": "¿Se acumulan los créditos no utilizados?",
-      "doCreditsRollOverAnswer": "Los créditos iniciales del plan Free (10.000) caducan 1 mes después del registro y no se reponen. Los créditos mensuales de Pro y Team caducan al final del ciclo de facturación en el que se otorgaron. Cada asignación es utilizable durante el ciclo de facturación actual. Los créditos de recarga automática y de compra puntual nunca caducan. Siempre se consumen primero los créditos que caducan antes.",
+      "doCreditsRollOverAnswer": "Los créditos mensuales de Pro y Team caducan al final del ciclo de facturación en el que se otorgaron. Cada asignación es utilizable durante el ciclo de facturación actual. Los créditos de recarga automática y de compra puntual nunca caducan. Siempre se consumen primero los créditos que caducan antes.",
       "bringOwnModel": "¿Puedo usar mi propio proveedor de modelos?",
       "bringOwnModelAnswer": "¡Sí! Todos los planes permiten usar tus propias claves API de LLM (Anthropic, etc.). Al usar tus propias claves, no se consumen créditos de VM0 para el uso de modelos.",
       "howSecure": "¿Qué tan seguro es VM0?",
@@ -225,9 +211,9 @@
     },
     "perMonth": "/mes",
     "pageTitle": "Pricing",
-    "pageDescription": "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+    "pageDescription": "VM0 pricing. Pay only for what you use — Pro at $20/month or Team at $200/month. Top up anytime at $1 per 1,000 credits.",
     "ogTitle": "VM0 Pricing — Pay for What You Use",
-    "ogDescription": "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+    "ogDescription": "VM0 pricing. Pay only for what you use — Pro at $20/month or Team at $200/month. Top up anytime at $1 per 1,000 credits.",
     "breadcrumbHome": "Home",
     "breadcrumbPricing": "Pricing"
   },

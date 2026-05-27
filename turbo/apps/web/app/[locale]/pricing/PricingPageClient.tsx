@@ -167,25 +167,6 @@ export function PricingPageClient() {
         <div className="container">
           <div style={{ marginBottom: "60px" }}>
             <div className="pricing-cards-grid">
-              {/* Free Plan */}
-              <PricingCard
-                title="Free"
-                price="$0"
-                period={t("perMonth")}
-                description={t("free.description")}
-                features={[
-                  t("free.features.starterCredits"),
-                  t("free.features.concurrentRun"),
-                  t("free.features.unlimitedAgents"),
-                  t("free.features.bringOwnLLM"),
-                  t("free.features.voiceInput"),
-                  t("free.features.communitySupport"),
-                ]}
-                buttonText={t("free.buttonText")}
-                buttonHref="/sign-up"
-                buttonClassName="btn-secondary-large"
-              />
-
               {/* Pro Plan */}
               <PricingCard
                 title="Pro"
@@ -329,19 +310,6 @@ export function PricingPageClient() {
                         borderBottom: "1px solid var(--border-light)",
                       }}
                     >
-                      Free
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "center",
-                        padding: "24px 20px",
-                        background: "transparent",
-                        color: "var(--text-primary)",
-                        fontSize: "16px",
-                        fontWeight: 600,
-                        borderBottom: "1px solid var(--border-light)",
-                      }}
-                    >
                       Pro
                     </th>
                     <th
@@ -364,35 +332,30 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.creditsPerMonth")}
                     description={t("tableFeatures.creditsPerMonthDesc")}
-                    free={t("tableValues.starter")}
                     pro={t("tableValues.20k")}
                     team={t("tableValues.120k")}
                   />
                   <TableRow
                     feature={t("tableFeatures.concurrentRuns")}
                     description={t("tableFeatures.concurrentRunsDesc")}
-                    free="1"
                     pro="2"
                     team="10"
                   />
                   <TableRow
                     feature={t("tableFeatures.totalAgents")}
                     description={t("tableFeatures.totalAgentsDesc")}
-                    free={t("tableValues.unlimited")}
                     pro={t("tableValues.unlimited")}
                     team={t("tableValues.unlimited")}
                   />
                   <TableRow
                     feature={t("tableFeatures.creditTopUp")}
                     description={t("tableFeatures.creditTopUpDesc")}
-                    free={false}
                     pro={true}
                     team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.autoRecharge")}
                     description={t("tableFeatures.autoRechargeDesc")}
-                    free={false}
                     pro={true}
                     team={true}
                   />
@@ -403,21 +366,18 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.connectors")}
                     description={t("tableFeatures.connectorsDesc")}
-                    free={t("tableValues.allConnectors")}
                     pro={t("tableValues.allConnectors")}
                     team={t("tableValues.allConnectors")}
                   />
                   <TableRow
                     feature={t("tableFeatures.bringOwnLLM")}
                     description={t("tableFeatures.bringOwnLLMDesc")}
-                    free={true}
                     pro={true}
                     team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.voiceInput")}
                     description={t("tableFeatures.voiceInputDesc")}
-                    free={t("tableValues.tenPerMonth")}
                     pro={true}
                     team={true}
                   />
@@ -426,21 +386,18 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.sandboxedExecution")}
                     description={t("tableFeatures.sandboxedExecutionDesc")}
-                    free={true}
                     pro={true}
                     team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.fullAuditTrail")}
                     description={t("tableFeatures.fullAuditTrailDesc")}
-                    free={true}
                     pro={true}
                     team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.noCredentialExposure")}
                     description={t("tableFeatures.noCredentialExposureDesc")}
-                    free={true}
                     pro={true}
                     team={true}
                   />
@@ -449,14 +406,12 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.teamMembers")}
                     description={t("tableFeatures.teamMembersDesc")}
-                    free={t("tableValues.unlimited")}
                     pro={t("tableValues.unlimited")}
                     team={t("tableValues.unlimited")}
                   />
                   <TableRow
                     feature={t("tableFeatures.autoRecharge")}
                     description={t("tableFeatures.autoRechargeDesc")}
-                    free={false}
                     pro={true}
                     team={true}
                   />
@@ -465,21 +420,18 @@ export function PricingPageClient() {
                   <TableRow
                     feature={t("tableFeatures.communitySupport")}
                     description={t("tableFeatures.communitySupportDesc")}
-                    free={true}
                     pro={true}
                     team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.emailSupport")}
                     description={t("tableFeatures.emailSupportDesc")}
-                    free={false}
                     pro={true}
                     team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.prioritySupport")}
                     description={t("tableFeatures.prioritySupportDesc")}
-                    free={false}
                     pro={false}
                     team={true}
                   />
@@ -548,7 +500,7 @@ function TableSection({ title }: { title: string }) {
   return (
     <tr>
       <td
-        colSpan={4}
+        colSpan={3}
         style={{
           padding: "32px 20px 16px 20px",
           fontSize: "15px",
@@ -567,13 +519,11 @@ function TableSection({ title }: { title: string }) {
 function TableRow({
   feature,
   description,
-  free,
   pro,
   team,
 }: {
   feature: string;
   description?: string;
-  free: string | boolean;
   pro: string | boolean;
   team: string | boolean;
 }) {
@@ -621,16 +571,6 @@ function TableRow({
             {description}
           </div>
         )}
-      </td>
-      <td
-        style={{
-          padding: "16px 20px",
-          textAlign: "center",
-          color: "var(--text-secondary)",
-          borderBottom: "1px solid var(--border-light)",
-        }}
-      >
-        {renderCell(free)}
       </td>
       <td
         style={{

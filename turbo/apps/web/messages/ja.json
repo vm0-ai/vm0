@@ -106,21 +106,9 @@
   },
   "pricing": {
     "title": "プランを選択",
-    "subtitle": "無料から始めて、必要に応じて拡張。クレジットカード不要。",
+    "subtitle": "チームに合ったプランを選択。いつでもスケールアップ可能。",
     "heroTitle": "使った分だけ支払い、それ以上はなし",
-    "heroDescription": "AIチームメイトと無料で始めましょう。準備ができたらスケールアップ。クレジットカード不要。",
-    "free": {
-      "description": "AIチームメイトと無料で始めましょう。",
-      "features": {
-        "starterCredits": "10,000スタータークレジット",
-        "concurrentRun": "1同時実行",
-        "unlimitedAgents": "エージェント数無制限",
-        "bringOwnLLM": "自分のLLMキーを使用",
-        "voiceInput": "音声入力（10回/月）",
-        "communitySupport": "コミュニティサポート"
-      },
-      "buttonText": "始める"
-    },
+    "heroDescription": "チームに合ったプランを選択。いつでもスケールアップ可能。",
     "pro": {
       "description": "チームのためのより強力でシームレスなコラボレーション。",
       "features": {
@@ -196,13 +184,11 @@
       "prioritySupportDesc": "より速い応答時間の専用サポート"
     },
     "tableValues": {
-      "starter": "10,000スターター",
       "20k": "20,000",
       "120k": "120,000",
       "unlimited": "無制限",
       "oneMonth": "1ヶ月",
-      "allConnectors": "すべてのコネクター",
-      "tenPerMonth": "10回/月"
+      "allConnectors": "すべてのコネクター"
     },
     "faq": {
       "title": "よくある質問",
@@ -213,7 +199,7 @@
       "runOutOfCredits": "クレジットがなくなったらどうなりますか？",
       "runOutOfCreditsAnswer": "クレジットが枯渇すると、エージェントは実行を停止します。自動チャージで追加クレジットを購入するか、より上位のプランにアップグレードして月間クレジットを増やすことができます。",
       "doCreditsRollOver": "未使用のクレジットは繰り越されますか？",
-      "doCreditsRollOverAnswer": "Freeプランのスタータークレジット（10,000）は登録から1ヶ月で期限切れとなり、補充されません。ProおよびTeamの月間クレジットは、付与された請求サイクルの終了後に期限切れとなります。各付与分は当該請求サイクル内でのみ利用可能です。自動チャージおよびトップアップで購入したクレジットは期限切れになりません。期限が近いクレジットから優先的に消費されます。",
+      "doCreditsRollOverAnswer": "ProおよびTeamの月間クレジットは、付与された請求サイクルの終了後に期限切れとなります。各付与分は当該請求サイクル内でのみ利用可能です。自動チャージおよびトップアップで購入したクレジットは期限切れになりません。期限が近いクレジットから優先的に消費されます。",
       "bringOwnModel": "自分のモデルプロバイダーを使えますか？",
       "bringOwnModelAnswer": "はい！すべてのプランで独自のLLM APIキー（Anthropicなど）の使用をサポートしています。独自のキーを使用する場合、モデル使用にVM0クレジットは消費されません。",
       "howSecure": "VM0はどれくらい安全ですか？",
@@ -225,9 +211,9 @@
     },
     "perMonth": "/月",
     "pageTitle": "Pricing",
-    "pageDescription": "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+    "pageDescription": "VM0 pricing. Pay only for what you use — Pro at $20/month or Team at $200/month. Top up anytime at $1 per 1,000 credits.",
     "ogTitle": "VM0 Pricing — Pay for What You Use",
-    "ogDescription": "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+    "ogDescription": "VM0 pricing. Pay only for what you use — Pro at $20/month or Team at $200/month. Top up anytime at $1 per 1,000 credits.",
     "breadcrumbHome": "Home",
     "breadcrumbPricing": "Pricing"
   },
