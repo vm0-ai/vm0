@@ -215,11 +215,10 @@ fn guest_write_file_path() -> PathBuf {
 }
 
 #[cfg(any(debug_assertions, feature = "test-support"))]
-pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathBuf> {
+pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) {
     *DEBUG_GUEST_WRITE_FILE_PATH
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = Some(path);
-    Ok(())
 }
 
 pub(crate) fn decode_write_file_message(

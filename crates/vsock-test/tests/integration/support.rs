@@ -17,8 +17,7 @@ const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-he
 
 fn install_write_file_helper() {
     WRITE_FILE_HELPER.call_once(|| {
-        vsock_guest::set_debug_guest_write_file_path_for_tests(WRITE_FILE_HELPER_BIN.into())
-            .expect("set guest-write-file test helper path");
+        vsock_guest::set_debug_guest_write_file_path_for_tests(WRITE_FILE_HELPER_BIN.into());
     });
 }
 
