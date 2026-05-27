@@ -13,13 +13,12 @@ async function openBillingSettings(page: Page): Promise<void> {
 test("billing settings reflects the onboarding Pro trial", async ({ page }) => {
   await openBillingSettings(page);
 
-  await expect(page.getByText(/You are on the Pro plan/)).toBeVisible({
+  await expect(page.getByText(/^Pro plan$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole("button", { name: "Pro" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByText(/^Renews /)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Downgrade" })).toBeVisible();
+  await expect(page.getByText("No active subscription")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Upgrade to Pro" }),
   ).toHaveCount(0);
