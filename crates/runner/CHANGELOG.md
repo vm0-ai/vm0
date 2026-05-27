@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.7...runner-rs-v0.104.8) (2026-05-27)
+
+
+### Documentation
+
+* **mitm-addon:** document model provider usage gates ([#15054](https://github.com/vm0-ai/vm0/issues/15054)) ([aebc623](https://github.com/vm0-ai/vm0/commit/aebc62312ce714c5923515697e63af66ceb57c89))
+
 ## [0.104.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.6...runner-rs-v0.104.7) (2026-05-26)
 
 

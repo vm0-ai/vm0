@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.389.10](https://github.com/vm0-ai/vm0/compare/web-v12.389.9...web-v12.389.10) (2026-05-27)
+
+
+### Refactoring
+
+* remove stripe cli auth ([#15047](https://github.com/vm0-ai/vm0/issues/15047)) ([3e4a698](https://github.com/vm0-ai/vm0/commit/3e4a69802b2c255e2879305efce1592b08941acf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.5
+    * @vm0/core bumped to 8.297.3
+    * @vm0/db bumped to 1.18.22
+  * devDependencies
+    * @vm0/connectors bumped to 1.36.3
+
 ## [12.389.9](https://github.com/vm0-ai/vm0/compare/web-v12.389.8...web-v12.389.9) (2026-05-27)
 
 

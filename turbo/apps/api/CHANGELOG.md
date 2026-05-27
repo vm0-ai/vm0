@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.76.3](https://github.com/vm0-ai/vm0/compare/api-v1.76.2...api-v1.76.3) (2026-05-27)
+
+
+### Bug Fixes
+
+* ignore unbound github app webhooks ([#15048](https://github.com/vm0-ai/vm0/issues/15048)) ([d30579e](https://github.com/vm0-ai/vm0/commit/d30579e752c23f5740c884ea0c762c3e106ea15f))
+
+
+### Refactoring
+
+* remove stripe cli auth ([#15047](https://github.com/vm0-ai/vm0/issues/15047)) ([3e4a698](https://github.com/vm0-ai/vm0/commit/3e4a69802b2c255e2879305efce1592b08941acf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.41.5
+    * @vm0/connectors bumped to 1.36.3
+    * @vm0/core bumped to 8.297.3
+    * @vm0/db bumped to 1.18.22
+
 ## [1.76.2](https://github.com/vm0-ai/vm0/compare/api-v1.76.1...api-v1.76.2) (2026-05-27)
 
 

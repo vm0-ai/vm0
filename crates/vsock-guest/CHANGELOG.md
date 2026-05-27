@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.14](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.13...vsock-guest-v0.18.14) (2026-05-27)
+
+
+### Refactoring
+
+* simplify vsock guest test helper setter ([#15053](https://github.com/vm0-ai/vm0/issues/15053)) ([5afcc22](https://github.com/vm0-ai/vm0/commit/5afcc2257b6570f8bba5ae419e4190231a7025dc))
+
 ## [0.18.13](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.12...vsock-guest-v0.18.13) (2026-05-25)
 
 ## [0.18.12](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.11...vsock-guest-v0.18.12) (2026-05-25)
