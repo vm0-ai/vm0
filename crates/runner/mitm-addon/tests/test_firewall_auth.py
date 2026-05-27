@@ -225,7 +225,7 @@ class TestGetFirewallHeaders:
             expires_at=None,
         )
         fresh_headers = {"Authorization": "Bearer fresh-token"}
-        expires_at = time.time() + 30
+        expires_at = int(time.time()) + 30
         mock_fetch = AsyncMock(
             return_value={
                 "headers": fresh_headers,
