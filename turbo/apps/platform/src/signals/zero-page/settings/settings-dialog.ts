@@ -2,7 +2,10 @@ import { command, computed, state } from "ccstate";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
-import { initProfileName$ } from "./org-manage-tabs-state.ts";
+import {
+  initProfileName$,
+  setBillingSubPage$,
+} from "./org-manage-tabs-state.ts";
 
 export const SETTINGS_SECTIONS = [
   "preference",
@@ -114,24 +117,33 @@ export const checkUnifiedSettingsParam$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(searchParams$);
     const value = params.get("settings");
+    const billingView = params.get("billingView");
     if (!value) {
       return;
     }
     if (isSettingsSection(value)) {
       const section = value;
+      const opensBillingPlans =
+        section === "billing" && billingView === "plans";
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
-      const resolved =
-        !isAdmin && isAdminOnlySettingsSection(section)
-          ? "preference"
-          : section;
-      set(internalActiveSection$, resolved);
-      await set(setSettingsDialogOpen$, true, signal);
+      if (!isAdmin && opensBillingPlans) {
+        set(setBillingSubPage$, false);
+      } else {
+        const resolved =
+          !isAdmin && isAdminOnlySettingsSection(section)
+            ? "preference"
+            : section;
+        set(internalActiveSection$, resolved);
+        set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
+        await set(setSettingsDialogOpen$, true, signal);
+      }
     }
 
     // Strip the param so a reload doesn't re-pin the dialog on this section
     const next = new URLSearchParams(get(searchParams$));
     next.delete("settings");
+    next.delete("billingView");
     set(updateSearchParams$, next);
   },
 );

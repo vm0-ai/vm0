@@ -7,7 +7,6 @@ import {
 import { gzipSync } from "node:zlib";
 
 import { command, type Getter, type Setter } from "ccstate";
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
@@ -41,6 +40,7 @@ import {
 } from "../external/agentphone-client";
 import { safeUrlParse, settle } from "../utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
+import { formatIntegrationRunError } from "./integration-run-errors.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -1915,9 +1915,13 @@ async function runAgentForAgentPhone(
 
   return {
     status: "failed",
-    response: formatRunErrorForExternalSurface({
+    response: await formatIntegrationRunError({
+      set,
+      orgId: args.auth.orgId,
+      userId: args.auth.userId,
       code: result.body.error.code,
       message: result.body.error.message,
+      signal,
     }),
   };
 }

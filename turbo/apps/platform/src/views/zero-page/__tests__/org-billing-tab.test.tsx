@@ -109,6 +109,22 @@ describe("org billing tab - plan display", () => {
 });
 
 describe("org billing tab - pricing sub-page navigation", () => {
+  it("opens pricing sub-page directly from URL", async () => {
+    setMockBillingStatus({ tier: "free", credits: 0 });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing&billingView=plans",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Free")).not.toBeInTheDocument();
+    expect(screen.getByText("Pro")).toBeInTheDocument();
+    expect(screen.getByText("Team")).toBeInTheDocument();
+  });
+
   it("should navigate to pricing page when clicking Compare all plans", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 

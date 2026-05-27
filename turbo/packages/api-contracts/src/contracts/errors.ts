@@ -119,6 +119,9 @@ export const RUN_ERROR_GUIDANCE: Record<
 export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
   "Oops, something went wrong. Please try again later.";
 
+export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
+  "Ask a workspace admin to add credits or upgrade the workspace plan.";
+
 export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   ...Object.values(RUN_ERROR_GUIDANCE).flatMap((guidance) => {
     return [guidance.title, guidance.guidance];
@@ -155,12 +158,26 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 export function formatRunErrorForExternalSurface(params: {
   readonly code: string;
   readonly message: string;
+  readonly insufficientCredits?: {
+    readonly canManageBilling: boolean;
+    readonly comparePlansUrl: string;
+  };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
   const chatgptCodexUsageLimitMessage =
     formatChatgptCodexUsageLimitError(errorMessage);
   if (chatgptCodexUsageLimitMessage) {
     return chatgptCodexUsageLimitMessage;
+  }
+
+  if (
+    params.code === "INSUFFICIENT_CREDITS" &&
+    params.insufficientCredits !== undefined
+  ) {
+    if (!params.insufficientCredits.canManageBilling) {
+      return INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE;
+    }
+    return `${errorMessage}\n\nCompare plans: ${params.insufficientCredits.comparePlansUrl}`;
   }
 
   return isGenericRunErrorForDisplay(errorMessage)

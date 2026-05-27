@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   githubIssuesCallbackPayloadSchema,
   type GitHubIssuesCallbackPayload,
@@ -32,6 +31,7 @@ import {
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { signGithubConnectParams } from "./github-oauth.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
+import { formatIntegrationRunError } from "./integration-run-errors.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -752,7 +752,14 @@ async function resolveExistingSession(args: {
   };
 }
 
-function routeErrorMessage(body: unknown): string | undefined {
+function routeErrorMessage(args: {
+  readonly body: unknown;
+  readonly set: Setter;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): string | Promise<string> | undefined {
+  const { body } = args;
   if (typeof body !== "object" || body === null || !("error" in body)) {
     return undefined;
   }
@@ -768,7 +775,14 @@ function routeErrorMessage(body: unknown): string | undefined {
     "code" in error && typeof error.code === "string"
       ? error.code
       : "INTERNAL_SERVER_ERROR";
-  return formatRunErrorForExternalSurface({ code, message });
+  return formatIntegrationRunError({
+    set: args.set,
+    orgId: args.orgId,
+    userId: args.userId,
+    code,
+    message,
+    signal: args.signal,
+  });
 }
 
 function stringField(body: unknown, key: string): string | undefined {
@@ -1062,7 +1076,14 @@ async function runAgentForGitHub(args: {
   if (result.status !== 201) {
     return {
       status: "failed",
-      response: routeErrorMessage(result.body) ?? RUN_START_FALLBACK_MESSAGE,
+      response:
+        (await routeErrorMessage({
+          body: result.body,
+          set: args.set,
+          orgId: args.orgId,
+          userId: args.userId,
+          signal: args.signal,
+        })) ?? RUN_START_FALLBACK_MESSAGE,
     };
   }
 
