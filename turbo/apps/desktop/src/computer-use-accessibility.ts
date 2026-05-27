@@ -20,11 +20,7 @@ export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
 export type ComputerUseCommandKind =
   (typeof SUPPORTED_COMPUTER_USE_CAPABILITIES)[number];
 
-export type AccessibilityElementClickableKind =
-  | "mouse"
-  | "pick"
-  | "press"
-  | "select";
+type AccessibilityElementClickableKind = "mouse" | "pick" | "press" | "select";
 
 export interface ComputerUseCommand {
   readonly id: string;
