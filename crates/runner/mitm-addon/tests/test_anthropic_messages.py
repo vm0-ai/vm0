@@ -83,6 +83,7 @@ class TestAnthropicSseUsageExtractor:
             b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":21,"output_tokens":1}}}\n\n'
         )
+        assert len(parse_errors) == 1
         assert usage["model"] == "claude-sonnet-4-6"
         assert usage["tokens.input"] == 21
         assert usage["tokens.output"] == 1
