@@ -13,7 +13,15 @@ fn is_localhost_url(url: &url::Url) -> bool {
     }
 }
 
+fn contains_url_ignored_ascii_whitespace(value: &str) -> bool {
+    value.bytes().any(|b| matches!(b, b'\t' | b'\n' | b'\r'))
+}
+
 fn parse_endpoint_host(host: &str, scheme: &str) -> Result<url::Url, Error> {
+    if contains_url_ignored_ascii_whitespace(host) {
+        return Err(Error::InvalidEndpointHost);
+    }
+
     let url =
         url::Url::parse(&format!("{scheme}://{host}/")).map_err(|_| Error::InvalidEndpointHost)?;
 
@@ -71,7 +79,7 @@ pub(super) fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Res
 }
 
 pub(super) fn build_token_request_url(host: &str, key_name: &str) -> Result<url::Url, Error> {
-    if matches!(key_name, "." | "..") {
+    if matches!(key_name, "." | "..") || contains_url_ignored_ascii_whitespace(key_name) {
         return Err(Error::InvalidTokenRequestKeyName);
     }
 
@@ -226,6 +234,16 @@ mod tests {
         }
     }
 
+    #[test]
+    fn build_token_request_url_rejects_key_names_with_url_ignored_whitespace() {
+        for key_name in ["a\tb", "a\nb", "a\rb", ".\n", "..\r"] {
+            assert!(matches!(
+                build_token_request_url("rest.ably.io", key_name),
+                Err(Error::InvalidTokenRequestKeyName)
+            ));
+        }
+    }
+
     fn assert_websocket_endpoint(
         url: &str,
         scheme: &str,
@@ -295,6 +313,9 @@ mod tests {
             "example.com/",
             "example.com?x=1",
             "example.com#frag",
+            "rest\t.ably.io",
+            "rest.\nably.io",
+            "rest.ably.io\r",
             "user@example.com",
             "user:pass@example.com",
         ];
