@@ -13,10 +13,10 @@ cd crates/runner/mitm-addon
 pytest tests/
 
 # Specific file
-pytest tests/test_request_handler.py
+pytest tests/test_request_handler_passthrough.py
 
 # Specific test
-pytest tests/test_request_handler.py::TestRequestHandler::test_allowed_domain_passes_through
+pytest tests/test_request_handler_passthrough.py::test_allowed_domain_passes_through
 
 # Verbose
 pytest -v tests/
@@ -29,7 +29,10 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | File | Tests |
 |------|-------|
 | `test_addon_configuration.py` | Addon option registration and configuration updates |
-| `test_request_handler.py` | Request routing, service auth, firewall decisions |
+| `test_request_handler_passthrough.py` | Request pass-through and auto-allow decisions |
+| `test_request_handler_authority_validation.py` | HTTPS authority validation before firewall auth |
+| `test_request_handler_firewall_dispatch.py` | Firewall dispatch and network policy decisions |
+| `test_request_handler_usage_tracking.py` | Request-hook billable usage tracking lifecycle |
 | `test_response_headers_handler.py` | Response-header hook stream setup |
 | `test_response_handler.py` | Response hook logging, cleanup, and cache invalidation |
 | `test_error_handler.py` | Error hook logging and usage cleanup |
@@ -103,15 +106,15 @@ def _make_http_flow(client_ip="10.200.0.1", host="example.com", port=443, path="
 The addon uses module-level caches. Reset between tests:
 
 ```python
+import pytest
+import mitm_addon
 import registry
 
-def _reset():
+@pytest.fixture(autouse=True)
+def _reset_module_state():
     mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
-
-class TestRequestHandler:
-    def setup_method(self):
-        _reset()
+    yield
 ```
 
 ### Mocking with patch
@@ -121,7 +124,7 @@ Use `unittest.mock.patch` for module-level functions:
 ```python
 from unittest.mock import MagicMock, patch
 
-def test_service_match_calls_handler(self, registry_file):
+def test_service_match_calls_handler(registry_file):
     flow = _make_http_flow(host="api.github.com", path="/repos")
 
     with (

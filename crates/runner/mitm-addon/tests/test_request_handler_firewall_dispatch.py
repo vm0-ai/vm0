@@ -1,0 +1,378 @@
+"""Firewall dispatch and network policy tests for the request hook."""
+
+import json
+
+import mitm_addon
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _write_github_firewall_registry,
+    _write_registry,
+)
+
+
+async def test_firewall_match_calls_handler(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """When URL matches a firewall rule, handle_firewall_request is called."""
+    reg_path = _write_github_firewall_registry(tmp_path)
+
+    flow = real_flow(
+        with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/repos"
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    # Dispatcher routed to the real handle_firewall_request, which writes
+    # firewall allow metadata into flow.metadata up front.
+    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata["firewall_name"] == "github"
+    assert flow.metadata["firewall_permission"] == "full-access"
+
+
+async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ctx, headers):
+    """Firewall with permissions but no matching rule returns 403."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    # Dispatcher's FirewallBlock branch short-circuits with a 403 before
+    # handle_firewall_request is reached.
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["method"] == "GET"
+    assert body["path"] == "/orgs"
+    assert body["name"] == "github"
+    assert body["permissions"] == []
+    assert body["reason"] == "unknown_endpoint"
+    assert body["base"] == "https://api.github.com"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["name"] == "github"
+    assert proxy_log_entry["reason"] == "unknown_endpoint"
+
+
+async def test_firewall_malformed_config_block_reports_reason(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    """Malformed firewall config blocks fail closed with an explicit reason."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{a}literal{b}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["permissions"] == []
+    assert body["reason"] == "malformed_firewall_config"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["reason"] == "malformed_firewall_config"
+
+
+async def test_firewall_malformed_network_policy_block_reports_reason(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    """Malformed network policy blocks fail closed instead of raising."""
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            "permissions": [
+                {
+                    "name": "read-repos",
+                    "rules": ["GET /repos/{owner}/{repo}"],
+                },
+            ],
+        },
+        network_policy={
+            "allow": ["read-repos"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    vm_info["networkPolicies"] = {"github": "denied"}
+    reg_path = _write_registry(tmp_path, vm_info=vm_info)
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata["firewall_action"] == "DENY"
+    body = json.loads(flow.response.content)
+    assert body["permissions"] == []
+    assert body["message"] == "Request blocked: malformed network policy"
+    assert body["reason"] == "malformed_network_policy"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["reason"] == "malformed_network_policy"
+    assert "networkPolicies" not in proxy_log_entry
+
+
+async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    """Top-level malformed network policy blocks fail closed after base match."""
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            "permissions": [
+                {
+                    "name": "read-repos",
+                    "rules": ["GET /repos/{owner}/{repo}"],
+                },
+            ],
+        },
+        network_policy={
+            "allow": ["read-repos"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    vm_info["networkPolicies"] = "denied"
+    reg_path = _write_registry(tmp_path, vm_info=vm_info)
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata["firewall_action"] == "DENY"
+    body = json.loads(flow.response.content)
+    assert body["permissions"] == []
+    assert body["message"] == "Request blocked: malformed network policy"
+    assert body["reason"] == "malformed_network_policy"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["reason"] == "malformed_network_policy"
+    assert "networkPolicies" not in proxy_log_entry
+
+
+async def test_firewall_permission_denied_block_reports_reason(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    """Denied permission blocks include the explicit runtime reason."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["read-repos"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["permissions"] == ["read-repos"]
+    assert body["reason"] == "permission_denied"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["reason"] == "permission_denied"
+
+
+async def test_firewall_permission_allows_matched(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Firewall with permissions and matching rule calls handler with allow result."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/octocat/hello",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    # Dispatcher routed to the real handle_firewall_request, which writes
+    # firewall allow metadata into flow.metadata up front.
+    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata["firewall_name"] == "github"
+    assert flow.metadata["firewall_permission"] == "read-repos"
+    assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
+    assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+
+
+async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Unknown-endpoint allow keeps legacy empty permission metadata."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://api-{region}.example.com/v1",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-items",
+                        "rules": ["GET /items/{id}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-items"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api-us.example.com",
+        path="/v1/users/octocat",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata["firewall_base"] == "https://api-{region}.example.com/v1"
+    assert flow.metadata["firewall_name"] == "example"
+    assert flow.metadata["firewall_permission"] == ""
+    assert flow.metadata["firewall_rule_match"] == ""
+    assert flow.metadata["firewall_params"] == {"region": "us"}
+    assert flow.request.headers["Authorization"] == "Bearer x"
