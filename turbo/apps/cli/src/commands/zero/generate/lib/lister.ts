@@ -371,7 +371,7 @@ function getGenerationContext(
   return GENERATION_CONTEXT[generationType] ?? null;
 }
 
-export function getAvailableGenerationTypes(): GenerationType[] {
+function getAvailableGenerationTypes(): GenerationType[] {
   const available = new Set<ConnectorGenerationType>();
   for (const type of CONNECTOR_TYPE_KEYS) {
     for (const generationType of getConnectorGenerationTypes(type)) {
@@ -740,13 +740,3 @@ export async function runLister(
   }
 }
 
-export function parseGenerationType(value: string): GenerationType {
-  const availableTypes = getAvailableGenerationTypes();
-  if (availableTypes.includes(value as GenerationType)) {
-    return value as GenerationType;
-  }
-
-  throw new Error(`Unknown generation type: ${value}`, {
-    cause: new Error(`Available types: ${availableTypes.join(", ")}`),
-  });
-}
