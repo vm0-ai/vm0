@@ -165,6 +165,7 @@ async function seedQueuedRun(args: {
   readonly sessionId?: string | null;
   readonly secretValue?: string;
   readonly appendSystemPrompt?: string;
+  readonly vars?: Record<string, string>;
   readonly contextOverrides?: Partial<StoredExecutionContext>;
 }): Promise<{ readonly runId: string; readonly composeVersionId: string }> {
   const { composeId } = await store.set(
@@ -184,10 +185,15 @@ async function seedQueuedRun(args: {
     context.signal,
   );
   const db = store.set(writeDb$);
-  if (args.appendSystemPrompt !== undefined) {
+  if (args.appendSystemPrompt !== undefined || args.vars !== undefined) {
     await db
       .update(agentRuns)
-      .set({ appendSystemPrompt: args.appendSystemPrompt })
+      .set({
+        ...(args.appendSystemPrompt !== undefined
+          ? { appendSystemPrompt: args.appendSystemPrompt }
+          : {}),
+        ...(args.vars !== undefined ? { vars: args.vars } : {}),
+      })
       .where(eq(agentRuns.id, runId));
   }
   const [run] = await db
@@ -988,6 +994,42 @@ describe("POST /api/runners/*", () => {
     });
 
     expect(response.body).toMatchObject({ secretValues: [] });
+  });
+
+  it("does not return variable-backed firewall auth values as secretValues", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const queued = await seedQueuedRun({
+      fixture,
+      vars: { ZENDESK_SUBDOMAIN: "acme" },
+      contextOverrides: {
+        encryptedSecrets: encryptedSecretsMap({
+          ZENDESK_API_TOKEN: "real-token",
+          ZENDESK_SUBDOMAIN: "acme",
+        }),
+        environment: {
+          ZENDESK_API_TOKEN: "real-token",
+          ZENDESK_SUBDOMAIN: "acme",
+        },
+      },
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 200,
+    });
+
+    expect(response.body).toMatchObject({
+      secretValues: ["real-token"],
+      vars: { ZENDESK_SUBDOMAIN: "acme" },
+    });
   });
 
   it("does not return model provider secretValues when environment contains placeholders", async () => {

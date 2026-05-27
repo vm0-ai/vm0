@@ -417,21 +417,41 @@ async function failPoisonQueuedJob(
 async function secretValuesForRunner(
   storedContext: StoredExecutionContext,
   featureSwitchContext: FeatureSwitchContext,
+  vars: Record<string, string> | null,
 ): Promise<string[] | null> {
-  const secretsMap = await decryptPersistentSecretsMap(
+  const authValues = await decryptPersistentSecretsMap(
     storedContext.encryptedSecrets,
     featureSwitchContext,
   );
-  if (!secretsMap) {
+  if (!authValues) {
     return null;
   }
 
   const envValues = storedContext.environment
     ? new Set(Object.values(storedContext.environment))
     : new Set<string>();
-  return Object.values(secretsMap).filter((value) => {
-    return envValues.has(value);
-  });
+  return Object.entries(authValues)
+    .filter(([name, value]) => {
+      return envValues.has(value) && vars?.[name] !== value;
+    })
+    .map(([, value]) => {
+      return value;
+    });
+}
+
+function stringRecord(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record: Record<string, string> = {};
+  for (const [entryKey, entryValue] of Object.entries(value)) {
+    if (typeof entryValue !== "string") {
+      return null;
+    }
+    record[entryKey] = entryValue;
+  }
+  return record;
 }
 
 function scheduleClaimSucceededSideEffects(args: {
@@ -577,9 +597,11 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     run.userId,
   );
   signal.throwIfAborted();
+  const runVars = stringRecord(run.vars);
   const secretValues = await secretValuesForRunner(
     storedContext,
     featureSwitchContext,
+    runVars,
   );
   signal.throwIfAborted();
   const sandboxToken = generateSandboxToken(run.userId, run.id, run.orgId);
@@ -593,7 +615,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     prompt: run.prompt,
     appendSystemPrompt: run.appendSystemPrompt,
     agentComposeVersionId: run.agentComposeVersionId,
-    vars: (run.vars as Record<string, string>) ?? null,
+    vars: runVars,
     checkpointId: run.resumedFromCheckpointId ?? null,
     sandboxToken,
     secretValues,
