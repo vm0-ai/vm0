@@ -565,6 +565,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test:migration-consistency
+      - name: Run Database Migrations for Integration Suite
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm -F @vm0/db db:migrate
       - name: Test Migration Integration Suite
         working-directory: turbo
         env:
