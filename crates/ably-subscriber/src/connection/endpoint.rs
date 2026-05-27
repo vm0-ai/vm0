@@ -158,6 +158,18 @@ mod tests {
             url.as_str(),
             "http://127.0.0.1:9000/keys/testKey.testId/requestToken"
         );
+
+        let url = build_token_request_url("localhost:9000", "testKey.testId").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "http://localhost:9000/keys/testKey.testId/requestToken"
+        );
+
+        let url = build_token_request_url("[::1]:9000", "testKey.testId").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "http://[::1]:9000/keys/testKey.testId/requestToken"
+        );
     }
 
     #[test]
@@ -185,6 +197,23 @@ mod tests {
         let url = build_token_request_url("rest.ably.io", "%2F").unwrap();
 
         assert_eq!(url.as_str(), "https://rest.ably.io/keys/%252F/requestToken");
+    }
+
+    #[test]
+    fn build_token_request_url_encodes_backslash_as_key_name_text() {
+        let url = build_token_request_url("rest.ably.io", r"a\b").unwrap();
+
+        assert_eq!(url.as_str(), "https://rest.ably.io/keys/a%5Cb/requestToken");
+    }
+
+    #[test]
+    fn build_token_request_url_preserves_preencoded_dot_segments_as_raw_text() {
+        let url = build_token_request_url("rest.ably.io", "%2E%2E").unwrap();
+
+        assert_eq!(
+            url.as_str(),
+            "https://rest.ably.io/keys/%252E%252E/requestToken"
+        );
     }
 
     #[test]
@@ -260,7 +289,10 @@ mod tests {
     #[test]
     fn endpoint_builders_reject_base_url_inputs() {
         let cases = [
+            "",
+            "https://example.com",
             "example.com/path",
+            "example.com/",
             "example.com?x=1",
             "example.com#frag",
             "user@example.com",
