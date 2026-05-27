@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.104.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.14...runner-rs-v0.104.15) (2026-05-27)
+
+
+### Refactoring
+
+* centralize mitm flow metadata keys ([#15171](https://github.com/vm0-ai/vm0/issues/15171)) ([b378ac8](https://github.com/vm0-ai/vm0/commit/b378ac800ecd70a09fc7d8d27cd2b0c1fee1cc6f))
+* unify mitm network log target handling ([#15174](https://github.com/vm0-ai/vm0/issues/15174)) ([2316d5d](https://github.com/vm0-ai/vm0/commit/2316d5ddbb4ec46e8fbd07df85e3b472266c416e))
+
 ## [0.104.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.13...runner-rs-v0.104.14) (2026-05-27)
 
 ## [0.104.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.12...runner-rs-v0.104.13) (2026-05-27)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.80.1](https://github.com/vm0-ai/vm0/compare/api-v1.80.0...api-v1.80.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* use consistent manual connector snapshot for runs ([#15102](https://github.com/vm0-ai/vm0/issues/15102)) ([5e27a91](https://github.com/vm0-ai/vm0/commit/5e27a9187aec003b49faad79c0a5de4f57a30893))
+
 ## [1.80.0](https://github.com/vm0-ai/vm0/compare/api-v1.79.1...api-v1.80.0) (2026-05-27)
 
 

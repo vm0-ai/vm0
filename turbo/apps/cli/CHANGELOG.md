@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.172.0](https://github.com/vm0-ai/vm0/compare/cli-v9.171.0...cli-v9.172.0) (2026-05-27)
+
+
+### Features
+
+* store computer use app state output as file ([#15181](https://github.com/vm0-ai/vm0/issues/15181)) ([887aaf1](https://github.com/vm0-ai/vm0/commit/887aaf1c6a074885928bbd201573a0d6fe11b67d))
+
 ## [9.171.0](https://github.com/vm0-ai/vm0/compare/cli-v9.170.1...cli-v9.171.0) (2026-05-27)
 
 

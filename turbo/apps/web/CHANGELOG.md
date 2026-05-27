@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.395.0](https://github.com/vm0-ai/vm0/compare/web-v12.394.1...web-v12.395.0) (2026-05-27)
+
+
+### Features
+
+* **web:** pass 1 — 43 web-design gallery cards covering open-design design systems ([#15130](https://github.com/vm0-ai/vm0/issues/15130)) ([5740e50](https://github.com/vm0-ai/vm0/commit/5740e50f4ee4126afe1816cbac88a0508d0ea45b))
+
 ## [12.394.1](https://github.com/vm0-ai/vm0/compare/web-v12.394.0...web-v12.394.1) (2026-05-27)
 
 
