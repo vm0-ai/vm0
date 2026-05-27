@@ -98,15 +98,7 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const candidateSlice = selectOpenDesignCandidates({
-    target: options.kind,
-    prompt: [
-      options.prompt,
-      options.slugSource ?? "",
-      ...options.details,
-      ...options.artifactRules,
-    ].join("\n"),
-  });
+  const candidateSlice = selectOpenDesignCandidates();
   const selectionSchema = {
     skills: "string[]",
     template: "string",
@@ -171,6 +163,10 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
+    "Sources:",
+    ...candidateSlice.sources.map((src) => {
+      return `- \`${src.repo}@${src.commit}\``;
+    }),
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),

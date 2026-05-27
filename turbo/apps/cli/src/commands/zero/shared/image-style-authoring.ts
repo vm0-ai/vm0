@@ -56,10 +56,7 @@ const artifactRules = [
 export function createStyledImageAuthoringPacket(
   options: StyledImageAuthoringOptions,
 ): StyledImageAuthoringPacket {
-  const baseSlice = selectOpenDesignCandidates({
-    target: "image",
-    prompt: [options.prompt, ...options.details, ...artifactRules].join("\n"),
-  });
+  const baseSlice = selectOpenDesignCandidates();
   const candidateSlice: OpenDesignCandidateSlice = {
     ...baseSlice,
     candidates: {
@@ -112,6 +109,10 @@ export function createStyledImageAuthoringPacket(
     "",
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
+    "Sources:",
+    ...candidateSlice.sources.map((src) => {
+      return `- \`${src.repo}@${src.commit}\``;
+    }),
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),

@@ -318,8 +318,6 @@ describe("zero built-in generate image command", () => {
       expect.objectContaining({
         id: "vm0:image-style:notion-illustration",
         source: expect.objectContaining({
-          repo: "vm0-ai/vm0-skills",
-          commit: "main",
           path: "illustration-template/notion-illustration",
         }),
       }),
@@ -352,8 +350,6 @@ describe("zero built-in generate image command", () => {
       expect.objectContaining({
         id: "vm0:image-style:vm0-illustration",
         source: expect.objectContaining({
-          repo: "vm0-ai/vm0-skills",
-          commit: "main",
           path: "illustration-template/vm0-illustration",
         }),
       }),

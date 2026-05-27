@@ -122,11 +122,8 @@ describe("zero built-in generate Open Design artifact commands", () => {
     });
   });
 
-  it("selects registered experimental style skills by slug", () => {
-    const selection = selectOpenDesignCandidates({
-      target: "website",
-      prompt: "Use theme-factory styling for a launch page",
-    });
+  it("returns every registered skill grouped by kind", () => {
+    const selection = selectOpenDesignCandidates();
 
     expect(selection.candidates.skills).toEqual(
       expect.arrayContaining([
@@ -143,11 +140,8 @@ describe("zero built-in generate Open Design artifact commands", () => {
     );
   });
 
-  it("selects registered templates and design systems by slug", () => {
-    const selection = selectOpenDesignCandidates({
-      target: "website",
-      prompt: "Create a saas-landing page in a shopify style",
-    });
+  it("returns every registered template and design system", () => {
+    const selection = selectOpenDesignCandidates();
 
     expect(selection.candidates.templates).toEqual(
       expect.arrayContaining([
