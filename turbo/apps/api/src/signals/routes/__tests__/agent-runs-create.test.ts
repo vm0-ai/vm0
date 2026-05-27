@@ -927,6 +927,60 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("loads a firewall-only api-token connector secret without compose secret refs", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "WEREAD_TOKEN",
+        encryptedValue: encryptSecretForTests("weread-real-token"),
+        type: "user",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "UNREFERENCED_SECRET",
+        encryptedValue: encryptSecretForTests("should-not-load"),
+        type: "user",
+      },
+    ]);
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Read my books",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly firewalls: readonly { readonly name: string }[];
+    };
+    expect(executionContext.environment.WEREAD_TOKEN).toBe(
+      "wrk-CoffeeSafeLocalCoffeeSafeLocalCoffee",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toStrictEqual({
+      WEREAD_TOKEN: "weread-real-token",
+    });
+    expect(
+      executionContext.firewalls.some((firewall) => {
+        return firewall.name === "weread";
+      }),
+    ).toBeTruthy();
+  });
+
   it("accepts OAuth connector-provided env secrets during compose validation", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
