@@ -347,7 +347,7 @@ const handleBillingRedirect$ = command(({ set }) => {
     showSuccessToastAfterMount(
       `Upgraded to ${label}! Your credits have been added.`,
     );
-    set(markCompletedBillingCheckout$, billing);
+    set(markCompletedBillingCheckout$, billing, transactionId);
     set(reloadBillingStatus$);
   }
 

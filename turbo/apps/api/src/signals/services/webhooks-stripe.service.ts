@@ -5,15 +5,14 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
 import { and, eq, gt, lte, sql } from "drizzle-orm";
 
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getCampaign } from "./one-time-products";
+import { tierFromPriceId } from "./zero-billing-checkout.service";
 
 const L = logger("WebhookStripe");
-const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 const TRIALING_CREDIT_EXPIRY_DAYS = 7;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -123,18 +122,6 @@ function creditPurchaseAmount(session: CheckoutSessionInput): number {
 
 function autoRechargeNeverExpiresAt(): Date {
   return new Date("2999-12-31T00:00:00Z");
-}
-
-function tierFromPriceId(priceId: string): OrgTier {
-  const priceMap = env("ZERO_PRICE");
-  if (priceMap) {
-    for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
-      if (priceMap[tier]?.includes(priceId)) {
-        return tier;
-      }
-    }
-  }
-  throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
 
 async function grantOrgCredits(

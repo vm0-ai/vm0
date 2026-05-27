@@ -15,7 +15,7 @@ import {
 import { continueOnboardingAfterCheckout$ } from "../zero-page/zero-onboarding-actions.ts";
 import {
   clearCompletedBillingCheckout$,
-  completedBillingCheckoutTier$,
+  completedBillingCheckout$,
 } from "../zero-page/billing.ts";
 import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -73,9 +73,13 @@ export const setupOnboardingPage$ = command(
       set(markUseCaseMode$, promptParam);
     }
 
-    const completedBillingCheckoutTier = get(completedBillingCheckoutTier$);
-    if (completedBillingCheckoutTier) {
-      const continued = await set(continueOnboardingAfterCheckout$, signal);
+    const completedBillingCheckoutState = get(completedBillingCheckout$);
+    if (completedBillingCheckoutState) {
+      const continued = await set(
+        continueOnboardingAfterCheckout$,
+        completedBillingCheckoutState.sessionId,
+        signal,
+      );
       signal.throwIfAborted();
       if (continued) {
         set(clearCompletedBillingCheckout$);

@@ -11,6 +11,7 @@ import { bodyResultOf } from "../context/request";
 import { db$ } from "../external/db";
 import {
   activePriceId,
+  completeCheckoutSession$,
   createCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
 import type { RouteEntry } from "../route";
@@ -99,9 +100,63 @@ const checkout$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
+const checkoutCompleteAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingCheckoutContract.complete),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      completeCheckoutSession$,
+      { orgId: auth.orgId, sessionId: bodyResult.data.sessionId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "customer_mismatch") {
+      return badRequestMessage(
+        "Checkout session does not belong to current organization",
+      );
+    }
+
+    return {
+      status: 200 as const,
+      body: { completed: result.status === "completed" },
+    };
+  },
+);
+
+const checkoutComplete$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      checkoutCompleteAuthed$,
+    ),
+    signal,
+  );
+});
+
 export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingCheckoutContract.create,
     handler: checkout$,
+  },
+  {
+    route: zeroBillingCheckoutContract.complete,
+    handler: checkoutComplete$,
   },
 ];

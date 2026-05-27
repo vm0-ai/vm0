@@ -40,8 +40,13 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
 
 const internalDialogOpen$ = state(false);
 const billingReload$ = state(0);
-const internalCompletedBillingCheckoutTier$ =
-  state<CompletedBillingCheckoutTier | null>(null);
+interface CompletedBillingCheckout {
+  readonly tier: CompletedBillingCheckoutTier;
+  readonly sessionId: string | null;
+}
+
+const internalCompletedBillingCheckout$ =
+  state<CompletedBillingCheckout | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
 const internalFormThresholdOverride$ = state<string | null>(null);
@@ -60,20 +65,24 @@ export const downgradeDialogOpen$ = computed((get) => {
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
 });
-export const completedBillingCheckoutTier$ = computed((get) => {
-  return get(internalCompletedBillingCheckoutTier$);
+export const completedBillingCheckout$ = computed((get) => {
+  return get(internalCompletedBillingCheckout$);
 });
 
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
 });
 export const markCompletedBillingCheckout$ = command(
-  ({ set }, tier: CompletedBillingCheckoutTier) => {
-    set(internalCompletedBillingCheckoutTier$, tier);
+  (
+    { set },
+    tier: CompletedBillingCheckoutTier,
+    sessionId: string | null = null,
+  ) => {
+    set(internalCompletedBillingCheckout$, { tier, sessionId });
   },
 );
 export const clearCompletedBillingCheckout$ = command(({ set }) => {
-  set(internalCompletedBillingCheckoutTier$, null);
+  set(internalCompletedBillingCheckout$, null);
 });
 
 /**
@@ -147,6 +156,22 @@ export const startCheckout$ = command(
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
     }
+  },
+);
+
+export const completeCheckoutSession$ = command(
+  async ({ get }, sessionId: string, signal: AbortSignal): Promise<boolean> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCheckoutContract);
+    const result = await accept(
+      client.complete({
+        body: { sessionId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body.completed;
   },
 );
 

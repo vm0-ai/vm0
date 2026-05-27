@@ -21,7 +21,11 @@ import {
 import { rootSignal$ } from "../root-signal.ts";
 import { setLoop } from "../utils.ts";
 
-import { reloadBillingStatus$, startCheckout$ } from "./billing.ts";
+import {
+  completeCheckoutSession$,
+  reloadBillingStatus$,
+  startCheckout$,
+} from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
 import {
@@ -412,8 +416,17 @@ const waitForCompletedOnboardingCheckout$ = command(
 );
 
 export const continueOnboardingAfterCheckout$ = command(
-  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+  async (
+    { set },
+    sessionId: string | null,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
     set(showAppSkeleton$);
+    if (sessionId) {
+      await set(completeCheckoutSession$, sessionId, signal);
+      signal.throwIfAborted();
+    }
+
     const agentId = await set(waitForCompletedOnboardingCheckout$, signal);
     signal.throwIfAborted();
     if (!agentId) {
