@@ -33,12 +33,83 @@
 use serde_json::{Value, json};
 use std::io::Write;
 use std::process::{Command, ExitCode, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 
 /// Parsed command-line arguments.
 struct ParsedArgs {
     output_format: String,
     prompt: String,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum MockScenario<'a> {
+    FailNoNewline(&'a str),
+    FailInvalidUtf8,
+    FailInvalidUtf8Long,
+    Fail(&'a str),
+    StuckTool { deaf: bool, close_stdout: bool },
+    OrphanPipe,
+    HangAfterResult { deaf: bool },
+    ExitAfterResult,
+    Shell,
+}
+
+impl<'a> MockScenario<'a> {
+    fn from_prompt(prompt: &'a str) -> Self {
+        if let Some(msg) = prompt.strip_prefix("@fail-no-newline:") {
+            return Self::FailNoNewline(msg);
+        }
+        if prompt == "@fail-invalid-utf8" {
+            return Self::FailInvalidUtf8;
+        }
+        if prompt == "@fail-invalid-utf8-long" {
+            return Self::FailInvalidUtf8Long;
+        }
+        if let Some(msg) = prompt.strip_prefix("@fail:") {
+            return Self::Fail(msg);
+        }
+        if prompt.starts_with("@stuck-tool-closed-stdout-deaf") {
+            return Self::StuckTool {
+                deaf: true,
+                close_stdout: true,
+            };
+        }
+        if prompt.starts_with("@stuck-tool-deaf") {
+            return Self::StuckTool {
+                deaf: true,
+                close_stdout: false,
+            };
+        }
+        if prompt.starts_with("@stuck-tool") {
+            return Self::StuckTool {
+                deaf: false,
+                close_stdout: false,
+            };
+        }
+        if prompt.starts_with("@orphan-pipe") {
+            return Self::OrphanPipe;
+        }
+        if prompt.starts_with("@hang-after-result-deaf") {
+            return Self::HangAfterResult { deaf: true };
+        }
+        if prompt.starts_with("@exit-after-result") {
+            return Self::ExitAfterResult;
+        }
+        if prompt.starts_with("@hang-after-result") {
+            return Self::HangAfterResult { deaf: false };
+        }
+        Self::Shell
+    }
+}
+
+fn skip_flag_value(args: &[String], i: &mut usize) {
+    if args.get(*i + 1).is_some() {
+        *i += 2;
+    } else {
+        *i += 1;
+    }
 }
 
 /// Parse command-line arguments (matching the real Claude CLI interface).
@@ -61,11 +132,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
             }
             "--resume" | "--append-system-prompt" => {
                 // Parsed for CLI compat but not used by mock-claude
-                if args.get(i + 1).is_some() {
-                    i += 2;
-                } else {
-                    i += 1;
-                }
+                skip_flag_value(args, &mut i);
             }
             "--disallowed-tools" | "--tools" => {
                 // Variadic: consume all following non-option args until "--"
@@ -81,11 +148,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
             }
             "--settings" => {
                 // Skip the flag and its single JSON value argument
-                if args.get(i + 1).is_some() {
-                    i += 2;
-                } else {
-                    i += 1;
-                }
+                skip_flag_value(args, &mut i);
             }
             "--print" | "--verbose" | "--dangerously-skip-permissions" => {
                 i += 1;
@@ -185,6 +248,102 @@ fn emit_post_result_pair() {
     }
 
     let _ = std::io::stdout().flush();
+}
+
+fn emit_stuck_tool_events() {
+    let session_id = generate_session_id();
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "/".to_string());
+
+    // Init event
+    println!(
+        "{}",
+        json!({
+            "type": "system",
+            "subtype": "init",
+            "cwd": cwd,
+            "session_id": session_id,
+            "tools": ["WebFetch"],
+            "model": "mock-claude"
+        })
+    );
+
+    // Tool use event — WebFetch that never completes
+    println!(
+        "{}",
+        json!({
+            "type": "assistant",
+            "session_id": session_id,
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_stuck_001",
+                    "name": "WebFetch",
+                    "input": {"url": "https://example.com/hang"}
+                }]
+            }
+        })
+    );
+
+    // Flush stdout so guest-agent receives the events before we hang.
+    // When piped, stdout is fully buffered and println! may not flush.
+    let _ = std::io::stdout().flush();
+}
+
+fn ignore_sigterm() {
+    // SAFETY: signal(SIGTERM, SIG_IGN) is async-signal-safe and these mock
+    // scenarios do not share signal handler state after installing it.
+    unsafe {
+        libc::signal(libc::SIGTERM, libc::SIG_IGN);
+    }
+}
+
+fn hang_until_reaped() {
+    std::thread::sleep(REAPABLE_HANG_DURATION);
+}
+
+fn run_stuck_tool_scenario(output_format: &str, deaf: bool, close_stdout: bool) -> ExitCode {
+    if output_format == "stream-json" {
+        emit_stuck_tool_events();
+
+        if deaf {
+            ignore_sigterm();
+            if let Ok(home) = std::env::var("HOME") {
+                let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
+            }
+        }
+
+        if close_stdout {
+            // SAFETY: this mock process has finished writing all test events
+            // and is about to park forever. Closing fd 1 simulates a CLI that
+            // no longer has stdout open while the process is still alive.
+            unsafe {
+                libc::close(libc::STDOUT_FILENO);
+            }
+        }
+
+        // Hang forever — simulates a stuck WebFetch
+        hang_until_reaped();
+    }
+    ExitCode::from(1)
+}
+
+fn run_hang_after_result_scenario(output_format: &str, deaf: bool) -> ExitCode {
+    if output_format == "stream-json" {
+        emit_post_result_pair();
+        if deaf {
+            // Ignore SIGTERM so only SIGKILL can terminate this process.
+            // Exercises the SigtermPending → SigkillPending → Done escalation
+            // branch of the reap FSM.
+            ignore_sigterm();
+        }
+        // Hang this process forever. guest-agent's post-result reap SIGTERMs
+        // it within POST_RESULT_SIGTERM_GRACE_SECS unless SIGTERM is ignored.
+        hang_until_reaped();
+    }
+    ExitCode::SUCCESS
 }
 
 /// Execute prompt in text mode: inherited stdio, propagate exit code.
@@ -320,169 +479,64 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let parsed = parse_args(&args);
 
-    // Special test prefix: @fail-no-newline:<message>
-    if let Some(msg) = parsed.prompt.strip_prefix("@fail-no-newline:") {
-        eprint!("{msg}");
-        let _ = std::io::stderr().flush();
-        return ExitCode::from(1);
-    }
+    match MockScenario::from_prompt(&parsed.prompt) {
+        MockScenario::FailNoNewline(msg) => {
+            eprint!("{msg}");
+            let _ = std::io::stderr().flush();
+            ExitCode::from(1)
+        }
+        MockScenario::FailInvalidUtf8 => {
+            let _ = std::io::stderr().write_all(b"invalid-\xff-stderr\n");
+            let _ = std::io::stderr().flush();
+            ExitCode::from(1)
+        }
+        MockScenario::FailInvalidUtf8Long => {
+            let invalid = vec![0xff; 16 * 1024];
+            let _ = std::io::stderr().write_all(&invalid);
+            let _ = std::io::stderr().write_all(b"\n");
+            let _ = std::io::stderr().flush();
+            ExitCode::from(1)
+        }
+        MockScenario::Fail(msg) => {
+            eprintln!("{msg}");
+            ExitCode::from(1)
+        }
+        MockScenario::StuckTool { deaf, close_stdout } => {
+            run_stuck_tool_scenario(&parsed.output_format, deaf, close_stdout)
+        }
+        MockScenario::OrphanPipe => {
+            if parsed.output_format == "stream-json" {
+                emit_post_result_pair();
 
-    // Special test prefix: @fail-invalid-utf8
-    if parsed.prompt == "@fail-invalid-utf8" {
-        let _ = std::io::stderr().write_all(b"invalid-\xff-stderr\n");
-        let _ = std::io::stderr().flush();
-        return ExitCode::from(1);
-    }
-
-    // Special test prefix: @fail-invalid-utf8-long
-    if parsed.prompt == "@fail-invalid-utf8-long" {
-        let invalid = vec![0xff; 16 * 1024];
-        let _ = std::io::stderr().write_all(&invalid);
-        let _ = std::io::stderr().write_all(b"\n");
-        let _ = std::io::stderr().flush();
-        return ExitCode::from(1);
-    }
-
-    // Special test prefix: @fail:<message>
-    if let Some(msg) = parsed.prompt.strip_prefix("@fail:") {
-        eprintln!("{msg}");
-        return ExitCode::from(1);
-    }
-
-    // Special test prefix: @stuck-tool — emit tool_use for WebFetch then hang
-    if parsed.prompt.starts_with("@stuck-tool") {
-        if parsed.output_format == "stream-json" {
+                // Spawn a child after flushing the completed stream. It inherits
+                // stdout and keeps the pipe open after this process exits.
+                let _ = Command::new("sleep")
+                    .arg(REAPABLE_HANG_DURATION.as_secs().to_string())
+                    .spawn();
+            }
+            ExitCode::SUCCESS
+        }
+        MockScenario::HangAfterResult { deaf } => {
+            run_hang_after_result_scenario(&parsed.output_format, deaf)
+        }
+        MockScenario::ExitAfterResult => {
+            if parsed.output_format == "stream-json" {
+                emit_post_result_pair();
+                // Exit immediately. Exercises the happy path: guest-agent's
+                // reap gets armed but `child.wait()` fires before any grace
+                // window elapses, so no signal is ever sent.
+            }
+            ExitCode::SUCCESS
+        }
+        MockScenario::Shell => {
             let session_id = generate_session_id();
-            let cwd = std::env::current_dir()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| "/".to_string());
 
-            // Init event
-            println!(
-                "{}",
-                json!({
-                    "type": "system",
-                    "subtype": "init",
-                    "cwd": cwd,
-                    "session_id": session_id,
-                    "tools": ["WebFetch"],
-                    "model": "mock-claude"
-                })
-            );
-
-            // Tool use event — WebFetch that never completes
-            println!(
-                "{}",
-                json!({
-                    "type": "assistant",
-                    "session_id": session_id,
-                    "message": {
-                        "role": "assistant",
-                        "content": [{
-                            "type": "tool_use",
-                            "id": "toolu_stuck_001",
-                            "name": "WebFetch",
-                            "input": {"url": "https://example.com/hang"}
-                        }]
-                    }
-                })
-            );
-
-            // Flush stdout so guest-agent receives the events before we hang.
-            // When piped, stdout is fully buffered and println! may not flush.
-            let _ = std::io::stdout().flush();
-
-            let close_stdout_before_hang =
-                parsed.prompt.starts_with("@stuck-tool-closed-stdout-deaf");
-            if parsed.prompt.starts_with("@stuck-tool-deaf") || close_stdout_before_hang {
-                // SAFETY: signal(SIGTERM, SIG_IGN) is async-signal-safe and
-                // has no data-race concerns before the mock parks forever.
-                unsafe {
-                    libc::signal(libc::SIGTERM, libc::SIG_IGN);
-                }
-                if let Ok(home) = std::env::var("HOME") {
-                    let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
-                }
+            if parsed.output_format == "stream-json" {
+                run_stream_json_mode(&parsed.prompt, &session_id)
+            } else {
+                run_text_mode(&parsed.prompt)
             }
-
-            if close_stdout_before_hang {
-                // SAFETY: this mock process has finished writing all test
-                // events and is about to park forever. Closing fd 1 simulates
-                // a CLI that no longer has stdout open while the process is
-                // still alive.
-                unsafe {
-                    libc::close(libc::STDOUT_FILENO);
-                }
-            }
-
-            // Hang forever — simulates a stuck WebFetch
-            std::thread::sleep(std::time::Duration::from_secs(3600));
         }
-        return ExitCode::from(1);
-    }
-
-    // Special test prefix: @orphan-pipe — emit events, spawn child that holds
-    // stdout open, then exit.  Simulates orphaned child processes that prevent
-    // guest-agent from seeing EOF on the CLI's stdout pipe.
-    if parsed.prompt.starts_with("@orphan-pipe") {
-        if parsed.output_format == "stream-json" {
-            emit_post_result_pair();
-
-            // Spawn a child after flushing the completed stream. It inherits
-            // stdout and keeps the pipe open after this process exits.
-            let _ = Command::new("sleep").arg("3600").spawn();
-        }
-        return ExitCode::SUCCESS;
-    }
-
-    // The three `*-after-result` prefixes all emit the same init+result
-    // pair; only what happens *after* differs. Dispatch by order: the
-    // more-specific `-deaf` / `@exit-` must match before the generic
-    // `@hang-after-result`.
-    //
-    // See: https://github.com/vm0-ai/vm0/issues/10879
-    if parsed.prompt.starts_with("@hang-after-result-deaf") {
-        if parsed.output_format == "stream-json" {
-            emit_post_result_pair();
-            // Ignore SIGTERM so only SIGKILL can terminate this process.
-            // Exercises the SigtermPending → SigkillPending → Done
-            // escalation branch of the reap FSM.
-            // SAFETY: signal(SIGTERM, SIG_IGN) is async-signal-safe and
-            // has no data-race concerns at program start.
-            unsafe {
-                libc::signal(libc::SIGTERM, libc::SIG_IGN);
-            }
-            std::thread::sleep(std::time::Duration::from_secs(3600));
-        }
-        return ExitCode::SUCCESS;
-    }
-    if parsed.prompt.starts_with("@exit-after-result") {
-        if parsed.output_format == "stream-json" {
-            emit_post_result_pair();
-            // Exit immediately. Exercises the happy path: guest-agent's
-            // reap gets armed but `child.wait()` fires before any grace
-            // window elapses, so no signal is ever sent.
-        }
-        return ExitCode::SUCCESS;
-    }
-    if parsed.prompt.starts_with("@hang-after-result") {
-        if parsed.output_format == "stream-json" {
-            emit_post_result_pair();
-            // Hang this process forever. guest-agent's post-result reap
-            // SIGTERMs it within POST_RESULT_SIGTERM_GRACE_SECS; the
-            // default SIGTERM handler then exits with 143. Exercises
-            // the SigtermPending → Done path.
-            std::thread::sleep(std::time::Duration::from_secs(3600));
-        }
-        return ExitCode::SUCCESS;
-    }
-
-    let session_id = generate_session_id();
-
-    if parsed.output_format == "stream-json" {
-        run_stream_json_mode(&parsed.prompt, &session_id)
-    } else {
-        run_text_mode(&parsed.prompt)
     }
 }
 
@@ -576,6 +630,26 @@ mod tests {
     #[test]
     fn parse_args_append_system_prompt_skipped() {
         let args: Vec<String> = vec!["--append-system-prompt", "Your name is Aria.", "echo hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hi");
+    }
+
+    #[test]
+    fn parse_args_settings_skipped() {
+        let args: Vec<String> = vec!["--settings", r#"{"permissions":{}}"#, "echo hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hi");
+    }
+
+    #[test]
+    fn parse_args_value_flag_consumes_flag_like_value() {
+        let args: Vec<String> = vec!["--settings", "--print", "echo hi"]
             .into_iter()
             .map(String::from)
             .collect();
@@ -717,5 +791,33 @@ mod tests {
         let result = parse_args(&args);
         assert_eq!(result.output_format, "stream-json");
         assert_eq!(result.prompt, "echo hello");
+    }
+
+    #[test]
+    fn classifies_hang_after_result_variants() {
+        assert_eq!(
+            MockScenario::from_prompt("@hang-after-result-deaf"),
+            MockScenario::HangAfterResult { deaf: true }
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@hang-after-result"),
+            MockScenario::HangAfterResult { deaf: false }
+        );
+    }
+
+    #[test]
+    fn classifies_stuck_tool_closed_stdout_deaf() {
+        assert_eq!(
+            MockScenario::from_prompt("@stuck-tool-closed-stdout-deaf"),
+            MockScenario::StuckTool {
+                deaf: true,
+                close_stdout: true
+            }
+        );
+    }
+
+    #[test]
+    fn classifies_ordinary_prompt_as_shell() {
+        assert_eq!(MockScenario::from_prompt("echo hello"), MockScenario::Shell);
     }
 }
