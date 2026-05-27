@@ -758,6 +758,64 @@ describe("computer use desktop runtime", () => {
     );
   });
 
+  it("renders click capability annotations for model target selection", () => {
+    const snapshot = {
+      app: "Things",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Things",
+          children: [
+            {
+              id: "w0.r0",
+              role: "AXRow",
+              description: "Inbox",
+              selected: false,
+              selectable: true,
+              mouseClickable: true,
+              clickableKind: "select",
+            },
+            {
+              id: "w0.r1",
+              role: "AXRow",
+              description: "Today",
+              selected: true,
+              selectable: true,
+              mouseClickable: true,
+              clickableKind: "select",
+            },
+            {
+              id: "w0.g0",
+              role: "AXGroup",
+              name: "Reveal details",
+              actions: ["AXPress"],
+              pressable: true,
+              clickableKind: "press",
+            },
+            {
+              id: "w0.m0",
+              role: "AXMenuItem",
+              name: "Choose workspace",
+              actions: ["AXPick"],
+              pickable: true,
+              clickableKind: "pick",
+            },
+          ],
+        },
+      ],
+    } as const;
+
+    const text = renderAccessibilityTree(snapshot);
+
+    expect(text).toContain("\t1 row (selectable) Inbox");
+    expect(text).toContain("\t2 row (selected) Today");
+    expect(text).toContain("\t3 container (pressable) Reveal details");
+    expect(text).toContain("\t4 menu item (pickable) Choose workspace");
+    expect(text).not.toContain("Secondary Actions: Pick");
+  });
+
   it("builds an AX-derived visible element summary", () => {
     const snapshot = normalizeAccessibilitySnapshot({
       app: "Things",
@@ -774,12 +832,18 @@ describe("computer use desktop runtime", () => {
               role: "AXRow",
               description: "Hello Computer Use",
               selected: true,
+              selectable: true,
+              mouseClickable: true,
+              clickableKind: "select",
               bounds: { x: 24, y: 120, width: 360, height: 24 },
             },
             {
               id: "w0.a1",
               role: "AXRow",
               help: "Can you see this?",
+              selectable: true,
+              mouseClickable: true,
+              clickableKind: "select",
               bounds: { x: 24, y: 152, width: 360, height: 24 },
             },
             {
@@ -824,6 +888,9 @@ describe("computer use desktop runtime", () => {
         sourceAttributes: ["AXDescription"],
         bounds: { x: 24, y: 120, width: 360, height: 24 },
         selected: true,
+        selectable: true,
+        mouseClickable: true,
+        clickableKind: "select",
       },
       {
         elementId: "w0.a1",
@@ -832,6 +899,9 @@ describe("computer use desktop runtime", () => {
         source: "accessibility",
         sourceAttributes: ["AXHelp"],
         bounds: { x: 24, y: 152, width: 360, height: 24 },
+        selectable: true,
+        mouseClickable: true,
+        clickableKind: "select",
       },
     ]);
   });
