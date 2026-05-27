@@ -135,7 +135,7 @@ export function buildZeroHelpText(
   payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
 ): string {
   const examples = [
-    "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
+    "  Check a connector?     zero doctor check-connector --env-key <ENV_KEY>",
     "  Check credits?         zero doctor credit",
     "  Buy credits?           zero credit 20000",
     "  Send a Slack message?  zero slack message send --help",

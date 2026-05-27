@@ -356,7 +356,7 @@ describe("connect modal - content by auth method", () => {
           return respond(200, {
             connectors: [],
             configuredTypes: [],
-            connectorProvidedSecretNames: [],
+            connectorProvidedEnvKeys: [],
           });
         }
         return never();
@@ -427,7 +427,7 @@ describe("connect modal - loading states", () => {
           return respond(200, {
             connectors: [],
             configuredTypes: [],
-            connectorProvidedSecretNames: [],
+            connectorProvidedEnvKeys: [],
           });
         }
         return never();

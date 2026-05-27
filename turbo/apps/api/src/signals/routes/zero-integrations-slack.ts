@@ -9,7 +9,7 @@ import {
 import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
-import { getConnectorProvidedSecretNames } from "@vm0/connectors/connector-utils";
+import { getConnectorProvidedEnvKeys } from "@vm0/connectors/connector-utils";
 import {
   agentComposes,
   agentComposeVersions,
@@ -133,7 +133,7 @@ const getSlackEnvironment$ = computed(
       get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
     ]);
 
-    const connectorProvided = getConnectorProvidedSecretNames(
+    const connectorProvidedEnvKeys = getConnectorProvidedEnvKeys(
       userConnectors.connectors.map((c) => {
         return c.type;
       }),
@@ -142,7 +142,7 @@ const getSlackEnvironment$ = computed(
       ...userSecretList.secrets.map((s) => {
         return s.name;
       }),
-      ...connectorProvided,
+      ...connectorProvidedEnvKeys,
     ]);
     const existingVarNames = new Set(
       userVarList.variables.map((v) => {

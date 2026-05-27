@@ -329,7 +329,7 @@ describe("zero chat composer - connectors popover", () => {
             },
           ],
           configuredTypes: [],
-          connectorProvidedSecretNames: [],
+          connectorProvidedEnvKeys: [],
         });
       }),
       mockApi(zeroUserConnectorsContract.get, ({ respond }) => {

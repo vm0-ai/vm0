@@ -123,8 +123,8 @@ describe("zero doctor check-connector command", () => {
     return mockConsoleLog.mock.calls.flat().join("\n");
   }
 
-  describe("step 1: sandbox environment variable check", () => {
-    it("should report env var present when it exists", async () => {
+  describe("step 1: sandbox environment key check", () => {
+    it("should report environment key present when it exists", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -148,7 +148,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -157,7 +157,7 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("placeholder value");
     });
 
-    it("should report env var not present when it is missing", async () => {
+    it("should report environment key not present when it is missing", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -183,7 +183,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -220,7 +220,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -261,7 +261,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -302,7 +302,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -343,7 +343,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -378,7 +378,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -412,7 +412,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -446,7 +446,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -481,7 +481,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -514,7 +514,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
         "--check-permission",
         "contents:read",
@@ -548,7 +548,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
         "--check-permission",
         "admin",
@@ -581,7 +581,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
         "--check-permission",
         "some-unknown-perm",
@@ -622,7 +622,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
@@ -633,21 +633,19 @@ describe("zero doctor check-connector command", () => {
     });
   });
 
-  describe("unknown env var", () => {
-    it("should exit with error for unrecognized env var", async () => {
+  describe("unknown environment key", () => {
+    it("should exit with error for unrecognized environment key", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
           "node",
           "cli",
-          "--env-name",
+          "--env-key",
           "UNKNOWN_FOO_TOKEN",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Unknown environment variable: UNKNOWN_FOO_TOKEN",
-        ),
+        expect.stringContaining("Unknown environment key: UNKNOWN_FOO_TOKEN"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -677,13 +675,13 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
       ]);
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN",
+        "zero doctor check-connector --env-key GH_TOKEN",
       );
     });
 
@@ -710,7 +708,7 @@ describe("zero doctor check-connector command", () => {
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
-        "--env-name",
+        "--env-key",
         "GH_TOKEN",
         "--check-permission",
         "contents:read",
@@ -718,7 +716,7 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --env-name GH_TOKEN --check-permission contents:read",
+        "zero doctor check-connector --env-key GH_TOKEN --check-permission contents:read",
       );
     });
   });
@@ -755,7 +753,7 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("matches the GitHub connector");
       expect(output).toContain("Matched base URL: https://api.github.com");
       expect(output).toContain("Relative path:    /repos/owner/repo");
-      expect(output).toContain("Step 1: Sandbox environment variable");
+      expect(output).toContain("Step 1: Sandbox environment key");
       expect(output).toContain("Step 2: Connector configuration");
       expect(output).toContain(
         "Step 3: Permission policy check (auto-detected from URL)",

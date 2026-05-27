@@ -36,7 +36,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
       configuredTypes: connectors.map((c) => {
         return c.type as string;
       }),
-      connectorProvidedSecretNames: [],
+      connectorProvidedEnvKeys: [],
     });
   });
 }
@@ -142,7 +142,7 @@ describe("zero connector search command", () => {
       expect(dataRows[0]).toMatch(/^github\s/);
     });
 
-    it("returns github for an env var exact match (GH_TOKEN)", async () => {
+    it("returns github for an environment key exact match (GH_TOKEN)", async () => {
       await searchCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];

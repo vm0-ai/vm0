@@ -31,7 +31,7 @@ import {
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
-  getConnectorProvidedSecretNames,
+  getConnectorProvidedEnvKeys,
   getConnectorOAuthClientConfig,
   getConnectorOAuthClient,
   getConnectorOAuthGrantConfigIfSupported,
@@ -1825,14 +1825,14 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 });
 
-describe("getConnectorProvidedSecretNames", () => {
-  it("returns environment names for API-token-only connector", () => {
-    const names = getConnectorProvidedSecretNames(["axiom"]);
+describe("getConnectorProvidedEnvKeys", () => {
+  it("returns environment keys for API-token-only connector", () => {
+    const names = getConnectorProvidedEnvKeys(["axiom"]);
     expect(names.has("AXIOM_TOKEN")).toBe(true);
   });
 
-  it("returns environment names for OAuth connector", () => {
-    const names = getConnectorProvidedSecretNames(["github"]);
+  it("returns environment keys for OAuth connector", () => {
+    const names = getConnectorProvidedEnvKeys(["github"]);
     expect(names.has("GH_TOKEN")).toBe(true);
     expect(names.has("GITHUB_TOKEN")).toBe(true);
   });

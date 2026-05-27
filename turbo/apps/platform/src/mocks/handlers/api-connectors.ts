@@ -119,7 +119,7 @@ export const apiConnectorsHandlers = [
     return respond(200, {
       connectors: mockConnectors,
       configuredTypes: [...CONNECTOR_TYPE_KEYS],
-      connectorProvidedSecretNames: [],
+      connectorProvidedEnvKeys: [],
     });
   }),
 

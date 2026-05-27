@@ -1409,7 +1409,7 @@ agents:
           return HttpResponse.json({
             connectors: [],
             configuredTypes: [],
-            connectorProvidedSecretNames: [],
+            connectorProvidedEnvKeys: [],
           });
         }),
       );

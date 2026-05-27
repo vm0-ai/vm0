@@ -35,7 +35,7 @@ function makeEmptyConnectorResponse(): ConnectorListResponse {
   return {
     connectors: [],
     configuredTypes: [],
-    connectorProvidedSecretNames: [],
+    connectorProvidedEnvKeys: [],
   };
 }
 
@@ -56,7 +56,7 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
       },
     ],
     configuredTypes: ["github"],
-    connectorProvidedSecretNames: [],
+    connectorProvidedEnvKeys: [],
   };
 }
 

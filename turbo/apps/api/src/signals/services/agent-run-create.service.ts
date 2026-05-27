@@ -25,7 +25,7 @@ import {
 import {
   deriveConnectedManualGrantMethods,
   getConnectorEnvBindings,
-  getConnectorProvidedSecretNames,
+  getConnectorProvidedEnvKeys,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -1452,22 +1452,19 @@ function filterDbSecretsByConnectorPermissions(args: {
     return args.dbSecrets;
   }
 
-  const allConnectorSecretNames = getConnectorProvidedSecretNames([
+  const allConnectorEnvKeys = getConnectorProvidedEnvKeys([
     ...args.allManualGrantTypes,
   ]);
   const allowedManualGrantTypes = args.allManualGrantTypes.filter((type) => {
     return args.allowedConnectorTypes?.includes(type);
   });
-  const allowedConnectorSecretNames = getConnectorProvidedSecretNames(
+  const allowedConnectorEnvKeys = getConnectorProvidedEnvKeys(
     allowedManualGrantTypes,
   );
   const filtered: Record<string, string> = {};
 
   for (const [name, value] of Object.entries(args.dbSecrets)) {
-    if (
-      allConnectorSecretNames.has(name) &&
-      !allowedConnectorSecretNames.has(name)
-    ) {
+    if (allConnectorEnvKeys.has(name) && !allowedConnectorEnvKeys.has(name)) {
       continue;
     }
     filtered[name] = value;
