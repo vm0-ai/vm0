@@ -2795,6 +2795,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
     source: { path: "illustration-template/vm0-illustration" },
   },
+  {
+    id: "vm0:image-style:ink-mascot",
+    kind: "image-style",
+    name: "Ink Mascot",
+    description:
+      "Vintage editorial marketing card. Bold serif headline and short serif descriptor over a hand-drawn black-ink anthropomorphic mascot (stick limbs, chunky white sneakers) on a single solid saturated flat color background.",
+    desc: 'Generate a 3:5 portrait editorial marketing card in a locked vintage-textbook style. Bold serif headline plus an optional short serif descriptor sit on a single solid saturated flat color background (no gradient, no divider, no ground line). A hand-drawn black-ink anthropomorphic hero object — paint bucket, magnifying glass, envelope, notebook, funnel, megaphone, rocket, seedling, gift box, compass, etc. — stands with two thin stick arms, two stick legs, and chunky white sneakers with black laces (the signature detail). Crosshatch and stipple shading on rounded surfaces; floating ink doodles (sparkles, arrows, hearts, percent or dollar signs, motion lines) at the requested density. Dialable along six axes: concept, palette, hero object, action, doodle density (L1 minimal, L2 balanced, L3 packed), and type layout (A title-top, B headline-bottom, C headline-only, D big-word + tiny-descriptor). Trigger when user says /ink-mascot, asks for a "marketing card illustration", a "retro editorial mascot poster", or briefs with a marketing concept plus palette plus character.',
+    source: { path: "illustration-template/ink-mascot" },
+  },
 ];
 
 function filterByKind(
