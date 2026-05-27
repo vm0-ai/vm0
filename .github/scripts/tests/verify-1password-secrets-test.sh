@@ -73,6 +73,9 @@ exit 1
 BASH
 chmod +x "${TMPDIR}/bin/op"
 
+mkdir -p "${TMPDIR}/no-op-bin"
+ln -s "$(command -v bash)" "${TMPDIR}/no-op-bin/bash"
+
 run_verifier() {
   env -i \
     PATH="${TMPDIR}/bin:${PATH}" \
@@ -87,6 +90,34 @@ run_verifier() {
     SLACK_CLIENT_SECRET="${SLACK_CLIENT_SECRET:-}" \
     "$VERIFY"
 }
+
+status=0
+missing_op_output="$(
+  env -i \
+    PATH="${TMPDIR}/no-op-bin" \
+    OP_SERVICE_ACCOUNT_TOKEN=test-token \
+    VAULT_NAME=Development \
+    EXPECTED_KEYS=GOOGLE_OAUTH_CLIENT_SECRET \
+    "$VERIFY" 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing op case to fail"
+fi
+assert_contains "$missing_op_output" "1Password CLI (op) is not installed"
+
+status=0
+missing_jq_output="$(
+  env -i \
+    PATH="${TMPDIR}/bin:${TMPDIR}/no-op-bin" \
+    OP_SERVICE_ACCOUNT_TOKEN=test-token \
+    VAULT_NAME=Development \
+    EXPECTED_KEYS=GOOGLE_OAUTH_CLIENT_SECRET \
+    "$VERIFY" 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing jq case to fail"
+fi
+assert_contains "$missing_jq_output" "jq is not installed"
 
 success_output="$(
   EXPECTED_KEYS=$'GOOGLE_OAUTH_CLIENT_SECRET\nSLACK_CLIENT_SECRET' \
