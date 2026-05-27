@@ -39,10 +39,16 @@ class _FirewallPermission(NamedTuple):
     rules: tuple[str, ...]
 
 
+class _FirewallApiEntry(NamedTuple):
+    base: str
+    permission_count: int
+
+
 class _XFirewallExport(NamedTuple):
     name: str
     registered_name: str
     billable_connectors: tuple[str, ...]
+    api_entries: tuple[_FirewallApiEntry, ...]
     registered_permissions: tuple[_FirewallPermission, ...]
     permissions: tuple[_FirewallPermission, ...]
 
@@ -70,6 +76,10 @@ console.log(JSON.stringify({
   name: xFirewall.name,
   registeredName: registeredXFirewall.name,
   billableConnectors: BILLABLE_CONNECTORS,
+  apiEntries: xFirewall.apis.map((api) => ({
+    base: api.base,
+    permissionCount: api.permissions?.length ?? 0,
+  })),
   registeredPermissions: flattenPermissions(registeredXFirewall),
   permissions: flattenPermissions(xFirewall),
 }));
@@ -134,6 +144,39 @@ def _parse_x_firewall_permissions(raw: object) -> tuple[_FirewallPermission, ...
     return tuple(permissions)
 
 
+def _parse_x_firewall_api_entries(raw: object) -> tuple[_FirewallApiEntry, ...]:
+    if not isinstance(raw, list):
+        _fail_x_firewall_load(
+            f"Expected xFirewall API entry JSON to be a list, got {type(raw).__name__}."
+        )
+
+    api_entries: list[_FirewallApiEntry] = []
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            _fail_x_firewall_load(
+                "Expected each xFirewall API entry to be an object, "
+                f"but entry {index} is {type(entry).__name__}."
+            )
+
+        base = entry.get("base")
+        if not isinstance(base, str):
+            _fail_x_firewall_load(
+                "Expected each xFirewall API entry to have a string "
+                f"`base`, but entry {index} has {type(base).__name__}."
+            )
+
+        permission_count = entry.get("permissionCount")
+        if not isinstance(permission_count, int):
+            _fail_x_firewall_load(
+                "Expected each xFirewall API entry to have an integer "
+                f"`permissionCount`, but entry {index} has {type(permission_count).__name__}."
+            )
+
+        api_entries.append(_FirewallApiEntry(base=base, permission_count=permission_count))
+
+    return tuple(api_entries)
+
+
 def _parse_string_list(raw: object, name: str) -> tuple[str, ...]:
     if not isinstance(raw, list):
         _fail_x_firewall_load(f"Expected xFirewall export JSON `{name}` to be a list.")
@@ -168,12 +211,14 @@ def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
         )
 
     billable_connectors = _parse_string_list(raw.get("billableConnectors"), "billableConnectors")
+    api_entries = _parse_x_firewall_api_entries(raw.get("apiEntries"))
     registered_permissions = _parse_x_firewall_permissions(raw.get("registeredPermissions"))
     permissions = _parse_x_firewall_permissions(raw.get("permissions"))
     return _XFirewallExport(
         name=name,
         registered_name=registered_name,
         billable_connectors=billable_connectors,
+        api_entries=api_entries,
         registered_permissions=registered_permissions,
         permissions=permissions,
     )
@@ -314,13 +359,26 @@ class TestFirewallConsistency:
             result.setdefault(permission.name, set()).update(rules)
         return result
 
-    def test_generated_firewall_permissions_use_supported_base(self):
-        bases = {permission.base for permission in _load_x_firewall_permissions()}
+    def test_generated_firewall_api_entries_use_supported_base(self):
+        bases = {entry.base for entry in _load_x_firewall_export().api_entries}
         assert bases == {"https://api.x.com"}, (
             "X billing classification currently keys by permission, method, and "
-            f"path only.  Generated xFirewall permissions now use bases {sorted(bases)}; "
+            f"path only.  Generated xFirewall API entries now use bases {sorted(bases)}; "
             "review whether billing classification needs to include API base before "
             "trusting path-level drift checks."
+        )
+
+    def test_generated_firewall_api_entries_have_permissions(self):
+        empty_entries = [
+            entry.base
+            for entry in _load_x_firewall_export().api_entries
+            if entry.permission_count == 0
+        ]
+        assert not empty_entries, (
+            "Generated xFirewall has API entries without permissions: "
+            f"{empty_entries}. X billing is keyed by matched permission, so "
+            "permissionless entries would be treated as unknown endpoints and "
+            "skip usage_event emission."
         )
 
     def test_generated_firewall_payload_has_expected_stable_scopes(self):
