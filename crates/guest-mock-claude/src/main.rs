@@ -648,6 +648,13 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_settings_missing_value() {
+        let args: Vec<String> = vec!["--settings".to_string()];
+        let result = parse_args(&args);
+        assert!(result.prompt.is_empty());
+    }
+
+    #[test]
     fn parse_args_value_flag_consumes_flag_like_value() {
         let args: Vec<String> = vec!["--settings", "--print", "echo hi"]
             .into_iter()
@@ -806,7 +813,21 @@ mod tests {
     }
 
     #[test]
-    fn classifies_stuck_tool_closed_stdout_deaf() {
+    fn classifies_stuck_tool_variants() {
+        assert_eq!(
+            MockScenario::from_prompt("@stuck-tool"),
+            MockScenario::StuckTool {
+                deaf: false,
+                close_stdout: false
+            }
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@stuck-tool-deaf"),
+            MockScenario::StuckTool {
+                deaf: true,
+                close_stdout: false
+            }
+        );
         assert_eq!(
             MockScenario::from_prompt("@stuck-tool-closed-stdout-deaf"),
             MockScenario::StuckTool {
