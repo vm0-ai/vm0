@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.81.0](https://github.com/vm0-ai/vm0/compare/api-v1.80.1...api-v1.81.0) (2026-05-27)
+
+
+### Features
+
+* mention agent-browser in zero system prompt ([#15191](https://github.com/vm0-ai/vm0/issues/15191)) ([e9fe46e](https://github.com/vm0-ai/vm0/commit/e9fe46e75ee802c18ae5c3a66b5511220c9f5a8e))
+
+
+### Bug Fixes
+
+* harden runner job expiry claims ([#15189](https://github.com/vm0-ai/vm0/issues/15189)) ([6caac75](https://github.com/vm0-ai/vm0/commit/6caac75d4f464d71fbb2e93b49b3f5a532bd1ead))
+
+
+### Refactoring
+
+* add connector variable ownership foundation ([#15187](https://github.com/vm0-ai/vm0/issues/15187)) ([53aec3b](https://github.com/vm0-ai/vm0/commit/53aec3b3499e80ec114d0bebba482e3f3ca9f867))
+* rename model provider auth sessions ([#15186](https://github.com/vm0-ai/vm0/issues/15186)) ([643ad27](https://github.com/vm0-ai/vm0/commit/643ad2720215d7bd32bba6580ee4bab832b16201))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.43.1
+    * @vm0/connectors bumped to 1.37.3
+    * @vm0/core bumped to 8.300.3
+    * @vm0/db bumped to 1.20.3
+
 ## [1.80.1](https://github.com/vm0-ai/vm0/compare/api-v1.80.0...api-v1.80.1) (2026-05-27)
 
 
