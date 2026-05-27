@@ -156,6 +156,8 @@ class TestAddonConfiguration:
 
     def test_configure_updates_usage_flush_interval(self, tmp_path):
         timers: list[_FakeTimer] = []
+        flush_interval_seconds = 15.0
+        jitter_seconds = flush_interval_seconds * usage_buffer.DEFAULT_FLUSH_JITTER_RATIO
 
         def timer_factory(delay: float, callback: Callable[[], None]) -> _FakeTimer:
             timer = _FakeTimer(delay, callback)
@@ -167,7 +169,7 @@ class TestAddonConfiguration:
         with patch.object(
             mitm_addon.ctx,
             "options",
-            _Options(flush_interval_seconds=15.0),
+            _Options(flush_interval_seconds=flush_interval_seconds),
             create=True,
         ):
             mitm_addon.configure({"vm0_usage_flush_interval_seconds"})
@@ -182,4 +184,5 @@ class TestAddonConfiguration:
 
         assert len(timers) == 1
         assert timers[0].started is True
-        assert 12.0 <= timers[0].delay <= 18.0
+        assert max(0.001, flush_interval_seconds - jitter_seconds) <= timers[0].delay
+        assert timers[0].delay <= flush_interval_seconds + jitter_seconds
