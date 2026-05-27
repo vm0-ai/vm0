@@ -102,7 +102,7 @@ describe("zero generate presentation command", () => {
         "zero host ./opendesign/mockups/api-migration-plan --site api-migration-plan",
     });
     expect(parsed.registryVersion).toEqual(
-      expect.stringContaining("vm0-ai/open-design@"),
+      expect.stringContaining("nexu-io/open-design@"),
     );
     expect(parsed.selection).toEqual(
       expect.objectContaining({
