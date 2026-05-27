@@ -278,7 +278,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `claude` and template `saas-landing`, create a launch site for an AI research assistant platform built on Claude. Cover the core capability, prompt examples, safety principles, integration paths, and a clear call to start a workspace. Make it feel warm, considered, premium, calm.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/069ff406-bb06-481d-98b7-a76ca11237ee/image-069ff406.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claude-ai-platform-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-claude-ai-platform-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -299,7 +301,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `openai` and template `pricing-page`, create a model API pricing page that compares reasoning, multimodal, and fast tiers. Show per-token costs, included quotas, rate limits, batch discounts, enterprise add-ons, and a side-by-side feature matrix. Make it feel precise, confident, monochrome, trustworthy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/29f96f0d-1985-4324-b36e-65046f2bc0af/image-29f96f0d.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/openai-api-pricing-tiers.png",
+    artifactUrl:
+      "https://web-design-pass1-openai-api-pricing-tiers-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:paywall-upgrade-cro",
@@ -320,7 +324,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `linear-app` and template `pm-spec`, create a product spec for shipping a new triage view in a project tracker. Cover problem, user, success metrics, scope, out-of-scope, IA, key states, rollout, and open questions. Make it feel precise, dense, keyboard-first, calm grayscale.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d7c4d5f2-e729-4baf-b0ca-d9308df01563/image-d7c4d5f2.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/linear-product-spec.png",
+    artifactUrl:
+      "https://web-design-pass1-linear-product-spec-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -341,7 +347,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `vercel` and template `saas-landing`, create a landing site for a frontend deployment and edge runtime platform. Hero with framework grid, preview deploys, edge functions, analytics, pricing teaser, and developer testimonials. Make it feel sharp typography, mono accents, generous whitespace.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/dd5bbfa4-6174-4300-b86a-19e93a1d1b82/image-dd5bbfa4.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/vercel-platform-landing.png",
+    artifactUrl:
+      "https://web-design-pass1-vercel-platform-landing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:web-design-guidelines",
@@ -362,7 +370,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `cursor` and template `saas-landing`, create a launch site for an AI-native code editor. Show inline-chat workflow, tab-tab completion, codebase indexing, model picker, keyboard shortcuts, and a download CTA. Make it feel dark editor aesthetic, vivid syntax highlights, fast and minimal.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/feb26d47-e97c-492b-a0d6-c79928ec1d48/image-feb26d47.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/cursor-ide-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-cursor-ide-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -383,7 +393,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `github` and template `github-dashboard`, create a repository insights dashboard with PRs, issues, releases, and contributors. Include activity sparkline, open PR queue, stale issues, top contributors this month, release cadence, and a health summary. Make it feel GitHub octicon language, dense rows, restrained color.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/eef8bd49-837e-4aa1-9f96-b9224ec144b0/image-eef8bd49.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/github-repo-dashboard.png",
+    artifactUrl:
+      "https://web-design-pass1-github-repo-dashboard-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -404,7 +416,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `supabase` and template `docs-page`, create a docs page for the auth + row-level-security primitives. Include a left nav, body with code blocks (SQL + JS), inline warning callouts, table of contents, and a previous/next footer. Make it feel readable serif headers, green accents, code-forward.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f98bfcc1-f61f-43b3-a903-2a5aef3631a3/image-f98bfcc1.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/supabase-developer-docs.png",
+    artifactUrl:
+      "https://web-design-pass1-supabase-developer-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -425,7 +439,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mintlify` and template `docs-page`, create an API reference page for a transcription endpoint. Include endpoint signature, request/response schemas, code samples in cURL/Python/JS, error table, and a try-it panel. Make it feel airy, gradient accents, friendly developer feel.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/455afbb6-d802-43af-8039-b650531caccc/image-455afbb6.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/mintlify-api-reference.png",
+    artifactUrl:
+      "https://web-design-pass1-mintlify-api-reference-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -446,7 +462,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `raycast` and template `saas-landing`, create a launch page for a Raycast extensions marketplace category. Hero command palette mockup, featured extensions, install flow, developer kit teaser, and a closing CTA. Make it feel punchy red accent, dark UI, hotkey-driven.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8e84efc4-b039-4799-8099-0f237e4298e8/image-8e84efc4.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/raycast-extensions-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-raycast-extensions-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -467,7 +485,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `posthog` and template `dashboard`, create a product analytics dashboard for activation, retention, and feature usage. Show DAU/WAU, feature adoption funnel, retention heatmap, session replay teaser, and a top-events table. Make it feel playful but data-dense, hedgehog energy without being cute.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bee450be-dc54-4532-b94e-845f42940ab9/image-bee450be.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/posthog-product-analytics.png",
+    artifactUrl:
+      "https://web-design-pass1-posthog-product-analytics-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -488,7 +508,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `notion` and template `blog-post`, create a team wiki entry that documents an engineering on-call rotation. Include intro callout, escalation policy, runbook links, schedule embed, and recent incident retros. Make it feel clean serif, generous spacing, page emoji headers.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/230ecd35-18c8-4b22-8842-f02563645d1d/image-230ecd35.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/notion-team-wiki.png",
+    artifactUrl:
+      "https://web-design-pass1-notion-team-wiki-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -509,7 +531,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `stripe` and template `pricing-page`, create a Stripe-style payments pricing page with per-transaction fees and add-ons. Cover standard, custom, and platform tiers, plus an interactive fee calculator section, FAQs, and enterprise contact CTA. Make it feel iconic gradient hero, crisp typography, trustworthy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b1c2bfe7-f06a-43ff-a104-51c68e74932b/image-b1c2bfe7.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/stripe-payments-pricing.png",
+    artifactUrl:
+      "https://web-design-pass1-stripe-payments-pricing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:paywall-upgrade-cro",
@@ -530,7 +554,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `figma` and template `saas-landing`, create a launch page for a new Figma plugin that turns frames into production React. Show install flow, before/after demo, supported components, team plan pricing teaser, and partner logos. Make it feel bright multi-color brand, layered shapes, clear hierarchy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3fe838f0-b266-4a14-bc83-2901bd7e99f9/image-3fe838f0.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/figma-design-tool-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-figma-design-tool-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -551,7 +577,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `airbnb` and template `saas-landing`, create a curated landing for a long-term-stay travel marketplace. Include hero search, featured cities, host stories, trust badges, and a closing CTA to list a home. Make it feel rounded, photographic, warm coral accent.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/be6ce1ff-11c1-4481-83fd-897f45a8887b/image-be6ce1ff.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/airbnb-stays-marketplace.png",
+    artifactUrl:
+      "https://web-design-pass1-airbnb-stays-marketplace-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -572,7 +600,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `slack` and template `saas-landing`, create a launch site for a new huddles + workflows release. Show channel mockups, workflow builder preview, huddles use cases, enterprise security, and team pricing. Make it feel playful aubergine palette, friendly bubbles, work-first.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a7a8d171-eb36-4d22-910e-041d45178ad7/image-a7a8d171.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/slack-team-comms-landing.png",
+    artifactUrl:
+      "https://web-design-pass1-slack-team-comms-landing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -593,7 +623,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `framer` and template `saas-landing`, create a marketing site for a no-code website builder aimed at design teams. Hero animation, template gallery, animation toolkit, CMS, publishing flow, and pricing. Make it feel motion-rich, bold gradient hero, designer-coded feel.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ca2ef6f8-da81-4b2b-9451-6a5ae9870595/image-ca2ef6f8.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/framer-website-builder.png",
+    artifactUrl:
+      "https://web-design-pass1-framer-website-builder-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -614,7 +646,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `canva` and template `saas-landing`, create a launch site for a team brand-kit feature inside a creative platform. Show kit setup, asset library, AI generator, team approvals, and pricing tiers. Make it feel vivid purple gradient, playful illustration, friendly.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/88cc3dda-a7f8-41ea-a263-7a16e90d95a2/image-88cc3dda.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/canva-brand-kit-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-canva-brand-kit-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -635,7 +669,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `intercom` and template `saas-landing`, create a launch site for an AI customer support agent built on top of Intercom. Cover deflection rate, handoff to human, sources/citations, supported channels, and a self-serve setup CTA. Make it feel blue/black brand, conversational mockups, calm and capable.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/2f40e785-d180-481f-818b-60096c56eeb5/image-2f40e785.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/intercom-support-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-intercom-support-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -656,7 +692,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `apple` and template `saas-landing`, create a launch site for a new wearable health device. Hero with floating product render, capability sections, sensor breakdown, sustainability note, and a configurator CTA. Make it feel cinematic, monochrome, generous whitespace, premium.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/2441d192-69ab-47c2-ae0c-c2ab1f6137ac/image-2441d192.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/apple-product-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-apple-product-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:apple-hig",
@@ -677,7 +715,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `tesla` and template `saas-landing`, create a launch site for a home energy storage product. Hero with product silhouette, daily energy savings chart, install timeline, app integration, and reserve CTA. Make it feel black/white, sharp typography, futuristic minimalism.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/dea402f2-c5d1-442f-8029-98a83b2edf3c/image-dea402f2.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/tesla-energy-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-tesla-energy-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -698,7 +738,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `nike` and template `saas-landing`, create a launch site for a flagship running shoe with adaptive cushioning. Hero with editorial photography, athlete story, tech breakdown, color picker, and pre-order CTA. Make it feel bold all-caps, high-contrast, athletic energy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/03784e1b-202c-40cb-bd4f-027c5694e10e/image-03784e1b.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/nike-running-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-nike-running-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -719,7 +761,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `spotify` and template `saas-landing`, create a landing page for a curated genre takeover. Editorial hero, artist spotlight, playlist embeds, behind-the-scenes story, and a listen CTA. Make it feel black + vivid green, glossy album art tiles, energetic.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fafdc173-ad64-442a-9ac4-7ab23de01284/image-fafdc173.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/spotify-music-landing.png",
+    artifactUrl:
+      "https://web-design-pass1-spotify-music-landing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -740,7 +784,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `discord` and template `saas-landing`, create a landing for a verified community server template for indie game devs. Hero with channel mockup, role system, voice stages, moderation tools, and a join CTA. Make it feel blurple gradient, playful illustration, gamer-friendly.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/82046f9d-de09-4def-8d44-bb8250b8b16f/image-82046f9d.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/discord-community-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-discord-community-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -761,7 +807,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `meta` and template `saas-landing`, create a quarterly product update site for an open social graph platform. Hero with release highlights, three feature deep-dives, developer changelog, and roadmap teaser. Make it feel modernist blue, large typography, photo-led.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5a0cbc2a-317e-4bf1-95f5-70e013309e65/image-5a0cbc2a.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/meta-platform-update.png",
+    artifactUrl:
+      "https://web-design-pass1-meta-platform-update-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -782,7 +830,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `coinbase` and template `dashboard`, create a personal crypto portfolio dashboard with P&L, holdings, and recent activity. Show total value, 24h change, top movers, allocation chart, recent transactions, and watchlist. Make it feel cobalt blue, calm trust signals, clean rows.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ddca4802-6044-47be-b2a5-f47c85b92891/image-ddca4802.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/coinbase-portfolio-dashboard.png",
+    artifactUrl:
+      "https://web-design-pass1-coinbase-portfolio-dashboard-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -803,7 +853,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `binance` and template `trading-analysis-dashboard-template`, create a dense trading terminal for a major exchange. Order book, depth chart, candlestick chart, open positions, recent fills, and watchlist sidebar. Make it feel dark, amber accent, ticker-dense, high-information.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/881d8e24-0896-469e-86ba-4af0bfe141c6/image-881d8e24.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/binance-trading-terminal.png",
+    artifactUrl:
+      "https://web-design-pass1-binance-trading-terminal-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -824,7 +876,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `revolut` and template `saas-landing`, create a launch site for a premium metal travel card. Hero with card render, FX savings calculator, lounge perks, security, and order CTA. Make it feel dark luxe, neon accents, fintech polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4c4fa9cf-2a9f-413b-ba3d-3e417f973eb3/image-4c4fa9cf.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/revolut-card-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-revolut-card-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -845,7 +899,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `glassmorphism` and template `saas-landing`, create a launch site for a creator cloud storage product. Frosted hero panels, floating cards over a vivid gradient, pricing trio, and integrations grid. Make it feel vibrant gradient backdrop, blurred glass surfaces, light and airy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/380b7030-3593-492a-a0db-48062e96f4f3/image-380b7030.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/glassmorphism-saas-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-glassmorphism-saas-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -866,7 +922,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `neobrutalism` and template `web-prototype-taste-brutalist`, create a marketing site for an opinionated to-do app. Loud headline, sticker-like cards with hard shadows, screenshot strip, and a punchy pricing block. Make it feel thick borders, hard offset shadows, primary colors, playful.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4728815e-7a8e-4c1c-a8b3-acdc3c7868c9/image-4728815e.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/neobrutalism-todo-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-neobrutalism-todo-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -887,7 +945,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `neumorphism` and template `saas-landing`, create a landing for a tactile music control app for hi-fi setups. Hero device mockup, soft button gallery, preset library, room calibration, and download CTA. Make it feel soft inset/outset shadows, monochrome, calm and tactile.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d7776afd-d6dd-4501-8bf9-ff602658cb21/image-d7776afd.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/neumorphism-music-controls.png",
+    artifactUrl:
+      "https://web-design-pass1-neumorphism-music-controls-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -908,7 +968,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `brutalism` and template `web-prototype-taste-brutalist`, create a launch site for a quarterly independent design zine. Raw issue grid, contributor list, subscribe block, and a manifesto strip. Make it feel raw type, monospace, no-frills, system fonts allowed.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cbb8a6d1-6c44-4e53-aded-7feb5350cd14/image-cbb8a6d1.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/brutalism-zine-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-brutalism-zine-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -929,7 +991,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `claymorphism` and template `saas-landing`, create a landing for a learning app for kids. Bouncy 3D characters, big play buttons, parent-approval section, pricing, and family plan. Make it feel rounded clay shapes, soft shadows, playful pastels.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a444260d-d33a-4322-a782-4ce530d4c180/image-a444260d.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claymorphism-kids-app.png",
+    artifactUrl:
+      "https://web-design-pass1-claymorphism-kids-app-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -950,7 +1014,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `editorial` and template `blog-post`, create a long-form magazine feature on contemporary type design. Hero spread, body with pull quotes, image-led sections, footnotes, and related reading. Make it feel strong serif headlines, premium magazine grid, calm.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/638a0516-1dff-42a7-ac6c-3f8c74e95871/image-638a0516.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/editorial-design-magazine.png",
+    artifactUrl:
+      "https://web-design-pass1-editorial-design-magazine-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -971,7 +1037,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `warm-editorial` and template `blog-post`, create a warm essay on slow cooking traditions across three cities. Hero photo, intro, three city sections with field notes, pull quotes, and a recipe footer. Make it feel paper background, warm serif, intimate and inviting.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a74b06e8-d6e0-474a-b28f-79c48336c1c2/image-a74b06e8.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/warm-editorial-essay.png",
+    artifactUrl:
+      "https://web-design-pass1-warm-editorial-essay-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -992,7 +1060,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mono` and template `docs-page`, create a documentation page for a Unix-style log CLI. Left nav, body with man-page-style code blocks, examples, exit codes, and a 'see also' footer. Make it feel monochrome, monospace, terminal aesthetic, calm.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c8afb461-2267-4055-86b4-20d14c502fe2/image-c8afb461.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/mono-developer-docs.png",
+    artifactUrl:
+      "https://web-design-pass1-mono-developer-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1013,7 +1083,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `bento` and template `saas-landing`, create a landing page for a productivity bundle with a bento-style feature grid. Hero, asymmetric bento grid of 7-9 features with mini mockups, testimonials, and pricing. Make it feel Apple-style rounded tiles, layered depth, light theme.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a5f60d50-4d07-41eb-9a02-142aac0428bc/image-a5f60d50.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/bento-feature-grid.png",
+    artifactUrl:
+      "https://web-design-pass1-bento-feature-grid-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1034,7 +1106,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `futuristic` and template `saas-landing`, create a launch site for a next-gen on-device AI runtime. Hero with animated grid, capability triad, model card, benchmarks, and an early-access form. Make it feel dark neon, holographic accents, sci-fi polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/03e6d98b-8dea-45e2-bf83-58727f407ff9/image-03e6d98b.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/futuristic-ai-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-futuristic-ai-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1055,7 +1129,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `xiaohongshu` and template `social-media-dashboard`, create a creator-facing lifestyle content dashboard with a Xiaohongshu vibe. Top stats, recent posts grid, trending tags, follower chart, and a draft composer card. Make it feel soft pinks, rounded cards, photogenic, friendly.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/15ef342b-c294-4043-a9fe-bc67b4731f44/image-15ef342b.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/xiaohongshu-lifestyle-feed.png",
+    artifactUrl:
+      "https://web-design-pass1-xiaohongshu-lifestyle-feed-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:card-xiaohongshu",
@@ -1076,7 +1152,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `wechat` and template `saas-landing`, create a launch page for a mini-program that helps small shops accept orders. Hero with QR mockup, three core flows, merchant testimonials, and a setup CTA. Make it feel green brand, clean cards, super-app polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/92389da2-ea7c-4457-9ea8-c2a677623b19/image-92389da2.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/wechat-mini-program-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-wechat-mini-program-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1097,7 +1175,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `theverge` and template `blog-post`, create a long-form review of a new pair of AR glasses. Hero with bold typography, scored breakdown, photo essay, hands-on notes, and a verdict block. Make it feel bright magenta accents, energetic type, modern tech magazine.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/638a0516-1dff-42a7-ac6c-3f8c74e95871/image-638a0516.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/theverge-tech-feature.png",
+    artifactUrl:
+      "https://web-design-pass1-theverge-tech-feature-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -1118,7 +1198,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `retro` and template `saas-landing`, create a launch page for a music-production sample pack inspired by the 80s. Hero with neon grid, pack contents, audio waveforms, license tiers, and download CTA. Make it feel magenta + cyan, sun-grid horizons, VHS feel.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/03e6d98b-8dea-45e2-bf83-58727f407ff9/image-03e6d98b.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/retro-synthwave-product.png",
+    artifactUrl:
+      "https://web-design-pass1-retro-synthwave-product-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1139,7 +1221,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `playstation` and template `saas-landing`, create a launch site for a flagship action-adventure game. Cinematic hero, story trailer placeholder, gameplay pillars, edition picker, and pre-order CTA. Make it feel dark blue, blade-runner gradient, console-quality polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/82046f9d-de09-4def-8d44-bb8250b8b16f/image-82046f9d.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/playstation-game-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-playstation-game-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1160,7 +1244,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `pacman` and template `gamified-app`, create a landing page for a browser-based remake of a classic arcade game. Hero with maze illustration, play-now CTA, leaderboard, character roster, and history note. Make it feel 8-bit pixel grid, primary colors, joyful.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4728815e-7a8e-4c1c-a8b3-acdc3c7868c9/image-4728815e.png",
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/pacman-arcade-landing.png",
+    artifactUrl:
+      "https://web-design-pass1-pacman-arcade-landing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
