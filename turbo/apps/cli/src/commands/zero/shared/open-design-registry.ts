@@ -2930,6 +2930,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
     source: { path: "illustration-template/mellow-pop" },
   },
+  {
+    id: "vm0:image-style:grain-poster",
+    kind: "image-style",
+    name: "Grain Poster",
+    description:
+      "Flat-vector editorial poster of a serene full-body figure with one hero prop — riso grain on a single textile, closed-eye smile + red cheek blush, muted limited palette.",
+    desc: 'Grain Poster — flat-vector editorial illustration of a serene full-body figure interacting with one hero prop (bicycle, bouquet, cat, book, skateboard, sun hat, guitar, dog leash). Closed-eye smile + single round red cheek blush + dark nose mark + solid black hair, silhouette-first (no inked outlines). Riso/halftone grain confined to exactly ONE textile element (skirt or trousers); every other surface is flat color. Muted single-hue background, generous negative space, no headlines or wordmarks. Six tunable dials: palette (cool-dawn · sunset-coral · twilight · forest-green · custom), mood, scene, cast, complexity (L1/L2/L3), framing. Strongest at L1 + side-profile + solo. Trigger when user says /grain-poster, asks for a "flat-vector editorial poster", "riso-grain figure poster", "grainy editorial illustration", or briefs with a scene + palette + cast in this house style.',
+    source: { path: "illustration-template/grain-poster" },
+  },
 ];
 
 function filterByKind(
