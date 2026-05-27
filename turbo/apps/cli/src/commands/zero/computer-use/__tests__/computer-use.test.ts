@@ -178,15 +178,18 @@ describe("computer-use command visibility", () => {
     const text = await formatComputerUseResultForConsole({
       app: "Slack/Test App",
       snapshotId: "desktop_test_snapshot",
-      text: "snapshot_id=snap_1\nw0 AXWindow",
+      appState: "snapshot_id=snap_1\nw0 AXWindow",
       screenshot: `data:image/png;base64,${screenshotBase64}`,
       screenshotSource: "window",
     });
 
     const parsed = JSON.parse(text) as Record<string, unknown>;
+    expect(parsed.status).toBe("succeeded");
+    expect(parsed.snapshotId).toBe("desktop_test_snapshot");
     expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
+    expect(parsed.appState).toBe("snapshot_id=snap_1\nw0 AXWindow");
     expect(text).toContain("snapshot_id=snap_1");
-    expect(text).toContain("screenshotSource");
+    expect(text).not.toContain("screenshotSource");
     expect(text).not.toContain(screenshotBase64);
     await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
       screenshotBytes,
@@ -225,7 +228,7 @@ describe("computer-use command visibility", () => {
             result: {
               app: "Slack/Test App",
               snapshotId: "desktop_test_snapshot",
-              text: "snapshot_id=desktop_test_snapshot\nw0 AXWindow",
+              appState: "snapshot_id=desktop_test_snapshot\nw0 AXWindow",
               screenshot: `data:image/png;base64,${screenshotBase64}`,
               screenshotMimeType: "image/png",
               screenshotWidth: 1363,
@@ -252,10 +255,14 @@ describe("computer-use command visibility", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(output) as Record<string, unknown>;
+    expect(parsed.status).toBe("succeeded");
+    expect(parsed.snapshotId).toBe("desktop_test_snapshot");
     expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
-    expect(parsed.text).toBe("snapshot_id=desktop_test_snapshot\nw0 AXWindow");
-    expect(parsed.screenshotWidth).toBe(1363);
-    expect(parsed.screenshotHeight).toBe(1200);
+    expect(parsed.appState).toBe(
+      "snapshot_id=desktop_test_snapshot\nw0 AXWindow",
+    );
+    expect(parsed.screenshotWidth).toBeUndefined();
+    expect(parsed.screenshotHeight).toBeUndefined();
     expect(output).not.toContain(screenshotBase64);
     await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
       screenshotBytes,
@@ -304,7 +311,7 @@ describe("computer-use command visibility", () => {
               button: "right",
               clickCount: 2,
             },
-            result: { text: "clicked" },
+            result: { action: { summary: "Clicked 680,600" } },
             timeoutMs: 10_000,
             createdAt: "2026-05-21T10:00:00.000Z",
             claimedAt: "2026-05-21T10:00:01.000Z",
@@ -335,7 +342,8 @@ describe("computer-use command visibility", () => {
     ]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain('"text": "clicked"');
+    expect(output).toContain('"status": "succeeded"');
+    expect(output).toContain('"summary": "Clicked 680,600"');
   });
 
   it("should send click element indexes", async () => {
@@ -378,7 +386,7 @@ describe("computer-use command visibility", () => {
               button: "left",
               clickCount: 1,
             },
-            result: { text: "clicked" },
+            result: { action: { summary: "Clicked elementIndex=7" } },
             timeoutMs: 30_000,
             createdAt: "2026-05-21T10:00:00.000Z",
             claimedAt: "2026-05-21T10:00:01.000Z",
@@ -401,6 +409,7 @@ describe("computer-use command visibility", () => {
     ]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain('"text": "clicked"');
+    expect(output).toContain('"status": "succeeded"');
+    expect(output).toContain('"summary": "Clicked elementIndex=7"');
   });
 });

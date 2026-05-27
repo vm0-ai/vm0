@@ -551,6 +551,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/storages/list", "/api/storages/list"],
   ["/api/storages/prepare", "/api/storages/prepare"],
   ["/api/usage", "/api/usage"],
+  ["/api/public/model-rankings", "/api/public/model-rankings"],
   [
     BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
     "/api/webhooks/built-in-generations/fal/:generationId",

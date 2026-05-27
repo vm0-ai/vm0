@@ -920,10 +920,10 @@ describe("hasConnectorOAuthProvider", () => {
         "https://api.slock.ai/api/auth/device/token",
         async ({ request }) => {
           const body = await request.json();
-          expect(body).toHaveProperty("deviceCode");
           const deviceCode = z
             .object({ deviceCode: z.string() })
             .parse(body).deviceCode;
+          expect(body).toStrictEqual({ deviceCode });
           if (deviceCode === "pending") {
             return HttpResponse.json(
               {
@@ -1804,9 +1804,8 @@ describe("connector OAuth lifecycle grant helpers", () => {
       deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
       tokenUrl: "https://api.slock.ai/api/auth/device/token",
       client: {
-        clientRegistration: "static",
+        clientRegistration: "dynamic",
         clientType: "public",
-        clientId: "vm0",
       },
       scopes: [],
     });
@@ -1895,9 +1894,8 @@ describe("connector OAuth device authorization config", () => {
       deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
       tokenUrl: "https://api.slock.ai/api/auth/device/token",
       client: {
-        clientRegistration: "static",
+        clientRegistration: "dynamic",
         clientType: "public",
-        clientId: "vm0",
       },
       scopes: [],
     });

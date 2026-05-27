@@ -111,7 +111,7 @@ export function createStyledImageAuthoringPacket(
     `Registry: \`${candidateSlice.registryVersion}\``,
     "Sources:",
     ...candidateSlice.sources.map((src) => {
-      return `- \`${src.repo}@${src.commit}\``;
+      return `- \`${src.repo}@${src.ref}\``;
     }),
     "",
     "```json",
@@ -120,7 +120,7 @@ export function createStyledImageAuthoringPacket(
     "",
     "## Stage 2: Resolve Selected Resources",
     "- Fetch or read the selected resource source before generation.",
-    "- Source refs are pinned as `repo@commit:path`; use the commit in the packet for reproducibility.",
+    "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, references, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",

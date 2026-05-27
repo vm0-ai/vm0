@@ -165,7 +165,7 @@ export function createHtmlArtifactAuthoringPacket(
     `Registry: \`${candidateSlice.registryVersion}\``,
     "Sources:",
     ...candidateSlice.sources.map((src) => {
-      return `- \`${src.repo}@${src.commit}\``;
+      return `- \`${src.repo}@${src.ref}\``;
     }),
     "",
     "```json",
@@ -174,7 +174,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Stage 2: Resolve Selected Resources",
     "- For every selected resource, fetch or read the referenced source before authoring.",
-    "- Source refs are pinned as `repo@commit:path`; use the commit in the packet for reproducibility.",
+    "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",

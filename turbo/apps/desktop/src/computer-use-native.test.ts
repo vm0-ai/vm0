@@ -13,6 +13,7 @@ const desktopRoot = path.resolve(
   "..",
 );
 const cliPath = path.join(desktopRoot, "dist", "vm0-computer.js");
+const screenshotBytes = Buffer.from("abc123", "base64");
 
 async function createHelper(
   response: unknown,
@@ -114,6 +115,15 @@ function responseFor(request) {
       }
     };
   }
+  if (request.kind === "keyboard.press_key") {
+    return {
+      id: request.id,
+      status: "succeeded",
+      result: {
+        normalizedKey: request.payload.key
+      }
+    };
+  }
   return { id: request.id, status: "succeeded", result: {} };
 }
 
@@ -138,6 +148,36 @@ process.stdin.on("data", (chunk) => {
   );
   await chmod(helperPath, 0o755);
   return { dir, helperPath, requestLogPath };
+}
+
+async function createDaemonDir(): Promise<string> {
+  return await mkdtemp(path.join(tmpdir(), "vm0-computer-daemon-"));
+}
+
+function daemonEnv(daemonDir: string): NodeJS.ProcessEnv {
+  return { ...process.env, VM0_COMPUTER_DAEMON_DIR: daemonDir };
+}
+
+async function startDaemon(
+  helperPath: string,
+  daemonDir: string,
+): Promise<void> {
+  await execFileAsync(
+    process.execPath,
+    [cliPath, "daemon", "start", "--helper-path", helperPath],
+    { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+  );
+}
+
+async function stopDaemon(daemonDir: string): Promise<void> {
+  try {
+    await execFileAsync(process.execPath, [cliPath, "daemon", "stop"], {
+      cwd: desktopRoot,
+      env: daemonEnv(daemonDir),
+    });
+  } catch {
+    // Test cleanup should not mask the original assertion failure.
+  }
 }
 
 describe("computer use native backend", () => {
@@ -427,103 +467,103 @@ describe("computer use native backend", () => {
     }
   });
 
-  it("returns post-action app state from the vm0-computer CLI", async () => {
+  it("prints Zero-compatible app state from the vm0-computer CLI", async () => {
     const helper = await createSessionHelper();
-    const commandInput = [
-      { kind: "app.state", payload: { app: "Safari" } },
-      {
-        kind: "element.click",
-        payload: {
+    const daemonDir = await createDaemonDir();
+
+    try {
+      await startDaemon(helper.helperPath, daemonDir);
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [cliPath, "get-app-state", "--app", "Safari"],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      const output = JSON.parse(stdout) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        status: "succeeded",
+        snapshotId: expect.stringMatching(/^desktop_/),
+        appState: expect.stringContaining("<app_state>"),
+        screenshot: expect.stringMatching(
+          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
+        ),
+      });
+      expect(output.result).toBeUndefined();
+      expect(output.elements).toBeUndefined();
+      expect(output.elementIdsByIndex).toBeUndefined();
+      expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
+      expect(await readFile(String(output.screenshot))).toStrictEqual(
+        screenshotBytes,
+      );
+    } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("prints Zero-compatible action output from the vm0-computer CLI", async () => {
+    const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
+
+    try {
+      await startDaemon(helper.helperPath, daemonDir);
+      await execFileAsync(
+        process.execPath,
+        [cliPath, "get-app-state", "--app", "Safari"],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          cliPath,
+          "click",
+          "--app",
+          "Safari",
+          "--element-index",
+          "1",
+          "--timeout",
+          "10",
+        ],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      const output = JSON.parse(stdout) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        status: "succeeded",
+        snapshotId: expect.stringMatching(/^desktop_/),
+        appState: expect.stringContaining("<app_state>"),
+        screenshot: expect.stringMatching(
+          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
+        ),
+        action: {
           app: "Safari",
           elementIndex: 1,
           button: "left",
           clickCount: 1,
-        },
-      },
-    ];
-
-    try {
-      const { stdout } = await execFileAsync(
-        process.execPath,
-        [
-          cliPath,
-          "run",
-          JSON.stringify(commandInput),
-          "--helper-path",
-          helper.helperPath,
-        ],
-        { cwd: desktopRoot },
-      );
-      const responses = JSON.parse(stdout) as readonly Record<
-        string,
-        unknown
-      >[];
-      expect(responses).toHaveLength(2);
-      expect(responses[0]).toMatchObject({
-        status: "succeeded",
-        result: {
-          app: "Safari",
-          elementIdsByIndex: ["w0", "w0.e0"],
-          screenshot: "data:image/png;base64,abc123",
-          text: expect.stringContaining("<app_state>"),
+          summary: "Clicked elementIndex=1",
         },
       });
-      expect(responses[1]).toMatchObject({
-        status: "succeeded",
-        result: {
-          app: "Safari",
-          screenshot: "data:image/png;base64,abc123",
-          text: expect.stringContaining("<app_state>"),
-          action: {
-            app: "Safari",
-            elementIndex: 1,
-            button: "left",
-            clickCount: 1,
-          },
-        },
-      });
+      expect(output.result).toBeUndefined();
+      expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
     } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
 
-  it("preserves vm0-computer run array output for single-command arrays", async () => {
-    const helper = await createSessionHelper();
-    const commandInput = [{ kind: "app.state", payload: { app: "Safari" } }];
-
-    try {
-      const { stdout } = await execFileAsync(
-        process.execPath,
-        [
-          cliPath,
-          "run",
-          JSON.stringify(commandInput),
-          "--helper-path",
-          helper.helperPath,
-        ],
-        { cwd: desktopRoot },
-      );
-      const responses = JSON.parse(stdout) as readonly Record<
-        string,
-        unknown
-      >[];
-      expect(responses).toHaveLength(1);
-      expect(responses[0]).toMatchObject({
-        status: "succeeded",
-        result: {
-          app: "Safari",
-          elementIdsByIndex: ["w0", "w0.e0"],
-          screenshot: "data:image/png;base64,abc123",
-          text: expect.stringContaining("<app_state>"),
-        },
-      });
-    } finally {
-      await rm(helper.dir, { recursive: true, force: true });
-    }
+  it("does not expose vm0-computer run JSON", async () => {
+    await expect(
+      execFileAsync(process.execPath, [cliPath, "run", "[]"], {
+        cwd: desktopRoot,
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("Unknown vm0-computer command"),
+    });
   });
 
   it("maps Zero CLI command names through vm0-computer", async () => {
     const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
     const commandArgs = [
       ["list-apps"],
       ["get-app-state", "--app", "Safari"],
@@ -563,12 +603,12 @@ describe("computer use native backend", () => {
     ];
 
     try {
+      await startDaemon(helper.helperPath, daemonDir);
       for (const args of commandArgs) {
-        await execFileAsync(
-          process.execPath,
-          [cliPath, ...args, "--helper-path", helper.helperPath],
-          { cwd: desktopRoot },
-        );
+        await execFileAsync(process.execPath, [cliPath, ...args], {
+          cwd: desktopRoot,
+          env: daemonEnv(daemonDir),
+        });
       }
 
       const requests = (await readFile(helper.requestLogPath, "utf8"))
@@ -621,7 +661,26 @@ describe("computer use native backend", () => {
         key: "Escape",
       });
     } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
       await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires a manually started vm0-computer daemon", async () => {
+    const daemonDir = await createDaemonDir();
+
+    try {
+      await expect(
+        execFileAsync(process.execPath, [cliPath, "list-apps"], {
+          cwd: desktopRoot,
+          env: daemonEnv(daemonDir),
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("vm0-computer daemon is not running"),
+      });
+    } finally {
+      await rm(daemonDir, { recursive: true, force: true });
     }
   });
 

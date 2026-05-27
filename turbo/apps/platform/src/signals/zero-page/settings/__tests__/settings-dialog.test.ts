@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { mockLocation } from "../../../location.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../../__tests__/page-helper.ts";
@@ -10,10 +10,18 @@ import {
   settingsActiveSection$,
   settingsDialogOpen$,
 } from "../settings-dialog.ts";
+import { billingSubPage$ } from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
-import { setMockOrg } from "../../../../mocks/handlers/api-org.ts";
+import {
+  resetMockOrg,
+  setMockOrg,
+} from "../../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
+
+afterEach(() => {
+  resetMockOrg();
+});
 
 function setupAuth(signal: AbortSignal) {
   mockUser(
@@ -37,6 +45,42 @@ describe("checkUnifiedSettingsParam$", () => {
     expect(store.get(settingsDialogOpen$)).toBeTruthy();
     expect(store.get(settingsActiveSection$)).toBe("billing");
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
+  });
+
+  it("opens billing on Compare plans when ?settings=billing&billingView=plans", async () => {
+    const { store, signal } = context;
+    setupAuth(signal);
+    createPushStateMock(signal);
+    mockLocation(
+      { pathname: "/", search: "?settings=billing&billingView=plans" },
+      signal,
+    );
+
+    await store.set(checkUnifiedSettingsParam$, signal);
+
+    expect(store.get(settingsDialogOpen$)).toBeTruthy();
+    expect(store.get(settingsActiveSection$)).toBe("billing");
+    expect(store.get(billingSubPage$)).toBeTruthy();
+    expect(store.get(searchParams$).has("settings")).toBeFalsy();
+    expect(store.get(searchParams$).has("billingView")).toBeFalsy();
+  });
+
+  it("keeps non-admins on the home page when opening Compare plans link", async () => {
+    const { store, signal } = context;
+    setupAuth(signal);
+    setMockOrg({ role: "member" });
+    createPushStateMock(signal);
+    mockLocation(
+      { pathname: "/", search: "?settings=billing&billingView=plans" },
+      signal,
+    );
+
+    await store.set(checkUnifiedSettingsParam$, signal);
+
+    expect(store.get(settingsDialogOpen$)).toBeFalsy();
+    expect(store.get(billingSubPage$)).toBeFalsy();
+    expect(store.get(searchParams$).has("settings")).toBeFalsy();
+    expect(store.get(searchParams$).has("billingView")).toBeFalsy();
   });
 
   it("falls back to preference for non-admin on admin-only section", async () => {

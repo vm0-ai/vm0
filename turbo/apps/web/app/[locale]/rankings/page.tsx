@@ -1,21 +1,17 @@
 import type { Metadata } from "next";
-import { sql } from "drizzle-orm";
 import { getTranslations } from "next-intl/server";
-import { modelStat } from "@vm0/db/schema/model-stat";
-import {
-  VM0_MODEL_ALIAS_TO_MODEL,
-  normalizeVm0ModelId,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { z } from "zod";
+import { normalizeVm0ModelId } from "@vm0/api-contracts/contracts/model-providers";
 
 import { type Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
-import { initServices } from "../../../src/lib/init-services";
+import { env } from "../../../src/env";
 import { MODELS, vendorIconPath, type ModelEntry } from "../models/data";
 
 const BASE_URL = "https://www.vm0.ai";
-const HOUR_MS = 60 * 60_000;
+const MODEL_RANKINGS_API_PATH = "/api/public/model-rankings";
 
 type PeriodKey = "today" | "week" | "month";
 
@@ -37,15 +33,25 @@ interface RankingRow {
   readonly share: number;
 }
 
-interface RawRankingRow {
-  readonly model: unknown;
-  readonly input_tokens: unknown;
-  readonly output_tokens: unknown;
-  readonly total_tokens: unknown;
-  readonly previous_total_tokens: unknown;
-}
-
 export const dynamic = "force-dynamic";
+
+const modelRankingApiRowSchema = z.object({
+  model: z.string(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  totalTokens: z.number(),
+  previousTotalTokens: z.number(),
+});
+
+const modelRankingsApiResponseSchema = z.object({
+  period: z.enum(["today", "week", "month"]),
+  totalTokens: z.number(),
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  rows: z.array(modelRankingApiRowSchema),
+});
+
+type ModelRankingApiRow = z.infer<typeof modelRankingApiRowSchema>;
 
 const MODELS_BY_ID = new Map(
   MODELS.flatMap((model) => {
@@ -55,10 +61,6 @@ const MODELS_BY_ID = new Map(
     ] as const;
   }),
 );
-
-function getModelAliasEntries() {
-  return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
-}
 
 export async function generateMetadata({
   params,
@@ -100,55 +102,6 @@ function parsePeriod(value: string | string[] | undefined): PeriodKey {
   const raw = Array.isArray(value) ? value[0] : value;
   if (raw === "today" || raw === "week" || raw === "month") return raw;
   return "week";
-}
-
-function startOfUtcDay(date: Date): Date {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
-}
-
-function startOfUtcWeek(date: Date): Date {
-  const day = startOfUtcDay(date);
-  const dayOfWeek = day.getUTCDay();
-  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  return new Date(day.getTime() - daysSinceMonday * 24 * HOUR_MS);
-}
-
-function startOfUtcMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function currentUtcHour(date: Date): Date {
-  return new Date(
-    Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate(),
-      date.getUTCHours(),
-    ),
-  );
-}
-
-function currentWindow(
-  period: PeriodKey,
-  now: Date,
-): { start: Date; end: Date } {
-  const end = currentUtcHour(now);
-  if (period === "today") {
-    return { start: startOfUtcDay(now), end };
-  }
-  if (period === "month") {
-    return { start: startOfUtcMonth(now), end };
-  }
-  return { start: startOfUtcWeek(now), end };
-}
-
-function toNumber(value: unknown): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "bigint") return Number(value);
-  if (typeof value === "string") return Number(value);
-  return 0;
 }
 
 function formatTokens(value: number): string {
@@ -210,14 +163,30 @@ function resolveModel(modelId: string): ModelEntry | undefined {
   return MODELS_BY_ID.get(suffix.toLowerCase());
 }
 
-function modelStatModelExpression() {
-  const modelColumn = sql.raw('"model_stat"."model"');
-  return sql<string>`CASE ${sql.join(
-    getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
-    }),
-    sql` `,
-  )} ELSE ${modelColumn} END`;
+function modelRankingsApiUrl(period: PeriodKey): string {
+  const { VM0_API_BACKEND_URL, VM0_API_URL } = env();
+  const baseUrl = VM0_API_BACKEND_URL ?? VM0_API_URL;
+  if (!baseUrl) {
+    throw new Error("VM0_API_BACKEND_URL or VM0_API_URL is required");
+  }
+
+  const url = new URL(MODEL_RANKINGS_API_PATH, baseUrl);
+  url.searchParams.set("period", period);
+  return url.toString();
+}
+
+async function fetchModelRankings(period: PeriodKey) {
+  const response = await fetch(modelRankingsApiUrl(period), {
+    headers: { accept: "application/json" },
+    next: { revalidate: 300 },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch model rankings: ${response.status}`);
+  }
+
+  const body: unknown = await response.json();
+  return modelRankingsApiResponseSchema.parse(body);
 }
 
 async function getRankings(period: PeriodKey): Promise<{
@@ -226,65 +195,23 @@ async function getRankings(period: PeriodKey): Promise<{
   windowStart: Date;
   windowEnd: Date;
 }> {
-  initServices();
-
-  const window = currentWindow(period, new Date());
-  const duration = Math.max(window.end.getTime() - window.start.getTime(), 0);
-  const previousEnd = window.start;
-  const previousStart = new Date(previousEnd.getTime() - duration);
-  const modelExpr = modelStatModelExpression();
-
-  const result = await globalThis.services.db.execute(sql`
-    WITH current_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
-        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
-      FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${window.start}
-        AND ${modelStat.hourStart} < ${window.end}
-      GROUP BY 1
-    ),
-    previous_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
-      FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${previousStart}
-        AND ${modelStat.hourStart} < ${previousEnd}
-      GROUP BY 1
-    )
-    SELECT
-      current_period.model,
-      current_period.input_tokens,
-      current_period.output_tokens,
-      current_period.total_tokens,
-      COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
-    FROM current_period
-    LEFT JOIN previous_period ON previous_period.model = current_period.model
-    WHERE current_period.total_tokens > 0
-    ORDER BY current_period.total_tokens DESC
-    LIMIT 50
-  `);
-
-  const rawRows = result.rows as unknown as RawRankingRow[];
+  const result = await fetchModelRankings(period);
   const knownRows: {
-    readonly row: RawRankingRow;
+    readonly row: ModelRankingApiRow;
     readonly model: string;
     readonly modelEntry: ModelEntry;
     readonly totalTokens: number;
   }[] = [];
 
-  for (const row of rawRows) {
-    const model = String(row.model);
+  for (const row of result.rows) {
+    const model = row.model;
     const modelEntry = resolveModel(model);
     if (!modelEntry) continue;
     knownRows.push({
       row,
       model,
       modelEntry,
-      totalTokens: toNumber(row.total_tokens),
+      totalTokens: row.totalTokens,
     });
   }
 
@@ -294,8 +221,8 @@ async function getRankings(period: PeriodKey): Promise<{
 
   return {
     totalTokens,
-    windowStart: window.start,
-    windowEnd: window.end,
+    windowStart: new Date(result.windowStart),
+    windowEnd: new Date(result.windowEnd),
     rows: knownRows.map((item, index) => {
       return {
         rank: index + 1,
@@ -303,10 +230,10 @@ async function getRankings(period: PeriodKey): Promise<{
         name: item.modelEntry.name,
         vendor: item.modelEntry.vendor,
         iconPath: vendorIconPath(item.modelEntry.vendor),
-        inputTokens: toNumber(item.row.input_tokens),
-        outputTokens: toNumber(item.row.output_tokens),
+        inputTokens: item.row.inputTokens,
+        outputTokens: item.row.outputTokens,
         totalTokens: item.totalTokens,
-        previousTotalTokens: toNumber(item.row.previous_total_tokens),
+        previousTotalTokens: item.row.previousTotalTokens,
         share: totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0,
       };
     }),

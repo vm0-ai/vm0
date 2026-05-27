@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.300.2](https://github.com/vm0-ai/vm0/compare/core-v8.300.1...core-v8.300.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* **zero:** gate local-agent skill and token access ([#15149](https://github.com/vm0-ai/vm0/issues/15149)) ([f388ae2](https://github.com/vm0-ai/vm0/commit/f388ae2b1ab2cf012fc4d4795596b443b6db6481))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.43.0
+    * @vm0/connectors bumped to 1.37.2
+
+## [8.300.1](https://github.com/vm0-ai/vm0/compare/core-v8.300.0...core-v8.300.1) (2026-05-27)
+
+
+### Refactoring
+
+* prune connector utility exports ([#15132](https://github.com/vm0-ai/vm0/issues/15132)) ([4df6f99](https://github.com/vm0-ai/vm0/commit/4df6f99f69e9cbea9f15dd4cb3add8eb52f20cab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.5
+    * @vm0/connectors bumped to 1.37.1
+
 ## [8.300.0](https://github.com/vm0-ai/vm0/compare/core-v8.299.1...core-v8.300.0) (2026-05-27)
 
 

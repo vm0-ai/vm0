@@ -1,5 +1,7 @@
 """Tests for OpenAI Responses SSE usage extraction."""
 
+import pytest
+
 from usage import (
     create_openai_responses_sse_usage_extractor,
 )
@@ -213,8 +215,19 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["model"] == "gpt-5.2"
         assert usage["tokens.output"] == 11
 
-    def test_malformed_usage_event_recovers_for_next_event(self):
-        parse, usage = create_openai_responses_sse_usage_extractor()
+    @pytest.mark.parametrize("with_parse_error_callback", [False, True])
+    def test_malformed_usage_event_recovers_for_next_event(self, with_parse_error_callback):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        if with_parse_error_callback:
+            parse, usage = create_openai_responses_sse_usage_extractor(
+                on_parse_error=record_parse_error
+            )
+        else:
+            parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b"event: response.completed\n"
             b"data: {invalid json}\n\n"
@@ -222,6 +235,14 @@ class TestOpenAIResponsesSseUsageExtractor:
             b'data: {"response":{"model":"gpt-5.4",'
             b'"usage":{"input_tokens":13,"output_tokens":8}}}\n\n'
         )
+        if with_parse_error_callback:
+            assert len(parse_errors) == 1
+            event, error = parse_errors[0]
+            assert event == "response.completed"
+            assert isinstance(error, str)
+            assert error
+        else:
+            assert parse_errors == []
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.input"] == 13
         assert usage["tokens.output"] == 8

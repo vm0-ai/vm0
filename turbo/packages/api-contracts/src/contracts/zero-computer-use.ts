@@ -42,6 +42,7 @@ export const computerUseCommandErrorCodeSchema = z.enum([
   "screen_recording_unavailable",
   "app_not_found",
   "app_open_failed",
+  "element_action_unsupported",
   "unsupported_command",
   "timeout",
 ]);

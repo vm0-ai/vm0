@@ -6,7 +6,10 @@ import {
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
-import { classifyChatAttachment } from "../chat-page/parse-body-blocks.ts";
+import {
+  classifyChatAttachment,
+  previewAttachmentFromUrl,
+} from "../chat-page/parse-body-blocks.ts";
 import {
   openDocumentLightbox$ as openDocumentLightboxModal$,
   openImageLightbox$ as openImageLightboxModal$,
@@ -64,8 +67,11 @@ export const chatArtifactSidebarEnabled$ = computed((get) => {
 });
 
 // The URL alone is the source of truth: kind + filename are derived from
-// the URL itself via classifyChatAttachment, so deep-linking or refreshing
+// the URL itself via previewAttachmentFromUrl, so deep-linking or refreshing
 // the page re-renders the right body without any in-memory metadata cache.
+// Reusing previewAttachmentFromUrl keeps hosted-site URLs (e.g.
+// *.sites.vm0.io) classified as html, matching how the chat body renders
+// them.
 export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   const params = get(searchParams$);
   const raw = params.get(ARTIFACT_QUERY_PARAM);
@@ -75,16 +81,10 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   if (raw.startsWith(IMAGE_ID_PREFIX)) {
     return decodeArtifactParam(raw);
   }
-  const filename = filenameFromUrl(raw);
-  const kind = classifyChatAttachment({ filename, url: raw });
-  return { source: "url", url: raw, kind, filename };
+  const attachment = previewAttachmentFromUrl(raw);
+  const kind = classifyChatAttachment(attachment);
+  return { source: "url", url: raw, kind, filename: attachment.filename };
 });
-
-function filenameFromUrl(url: string): string {
-  const cleaned = url.split("?")[0].split("#")[0];
-  const last = cleaned.split("/").pop();
-  return last && last.length > 0 ? last : "file";
-}
 
 const openArtifact$ = command(({ get, set }, url: string) => {
   const params = new URLSearchParams(get(searchParams$));

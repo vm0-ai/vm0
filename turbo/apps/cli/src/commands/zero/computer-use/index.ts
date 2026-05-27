@@ -207,6 +207,18 @@ function extensionForMimeType(mimeType: string): string {
   return sanitizeFilenamePart(suffix, "bin").toLowerCase();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringField(
+  value: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const field = value[key];
+  return typeof field === "string" ? field : undefined;
+}
+
 async function writeScreenshotDataUrl(
   result: Record<string, unknown>,
   dataUrl: string,
@@ -234,23 +246,51 @@ async function writeScreenshotDataUrl(
   return outputPath;
 }
 
+function compactActionResult(
+  action: Record<string, unknown>,
+): Record<string, unknown> {
+  const compact: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(action)) {
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      compact[key] = value;
+    }
+  }
+  return compact;
+}
+
 export async function formatComputerUseResultForConsole(
   result: Record<string, unknown>,
 ): Promise<string> {
-  const printable: Record<string, unknown> = { ...result };
-  if (typeof printable.screenshot === "string") {
-    const screenshotPath = await writeScreenshotDataUrl(
-      printable,
-      printable.screenshot,
-    );
-    if (screenshotPath) {
-      printable.screenshot = screenshotPath;
-    }
+  const printable: Record<string, unknown> = { status: "succeeded" };
+  const apps = result.apps;
+  if (Array.isArray(apps)) {
+    printable.apps = apps;
+  }
+  const snapshotId = stringField(result, "snapshotId");
+  if (snapshotId) {
+    printable.snapshotId = snapshotId;
+  }
+  const appState = stringField(result, "appState");
+  if (appState) {
+    printable.appState = appState;
+  }
+  const screenshot = stringField(result, "screenshot");
+  if (screenshot) {
+    const screenshotPath = await writeScreenshotDataUrl(result, screenshot);
+    printable.screenshot = screenshotPath ?? screenshot;
+  }
+  const action = result.action;
+  if (isRecord(action)) {
+    printable.action = compactActionResult(action);
   }
   return JSON.stringify(printable, null, 2);
 }
 
-async function resultText(
+async function commandOutputText(
   command: ComputerUseCommandResponse,
 ): Promise<string> {
   if (!command.result) {
@@ -290,7 +330,7 @@ async function waitForCommand(
       );
     }
 
-    const text = await resultText(command);
+    const text = await commandOutputText(command);
     if (text) {
       console.log(text);
     }

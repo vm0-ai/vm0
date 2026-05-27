@@ -433,7 +433,7 @@ describe("desktop computer-use runtime", () => {
         body: {
           status: "succeeded",
           result: {
-            text: "snapshot_id=snap_1\n1 button Open",
+            appState: "snapshot_id=snap_1\n1 button Open",
             snapshotId: "snap_1",
           },
         },
@@ -523,7 +523,7 @@ describe("desktop computer-use runtime", () => {
         body: {
           status: "succeeded",
           result: {
-            text: "clicked",
+            summary: "Clicked elementIndex=7",
             elementIndex: 7,
             dispatchMode: "accessibility_action",
             dispatchTarget: "element",
@@ -552,7 +552,7 @@ describe("desktop computer-use runtime", () => {
       dispatchTarget: "element",
       elementIndex: 7,
       inputRisk: "targeted_app_action",
-      textLength: 7,
+      summary: "Clicked elementIndex=7",
     });
   });
 });

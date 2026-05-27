@@ -834,6 +834,12 @@ const STORAGES_PREPARE_NEXT_NEGATIVE_PATHS = [
 const USAGE_REWRITE_SOURCE = "/api/usage";
 const USAGE_PATH = "/api/usage";
 const USAGE_NEXT_NEGATIVE_PATHS = ["/api/usage/extra", "/api/usages"] as const;
+const PUBLIC_MODEL_RANKINGS_REWRITE_SOURCE = "/api/public/model-rankings";
+const PUBLIC_MODEL_RANKINGS_PATH = "/api/public/model-rankings";
+const PUBLIC_MODEL_RANKINGS_NEXT_NEGATIVE_PATHS = [
+  "/api/public/model-rankings/extra",
+  "/api/public/models-rankings",
+] as const;
 const TEST_SLACK_DISPATCH_PROBE_REWRITE_SOURCE =
   "/api/test/slack-dispatch-probe";
 const TEST_SLACK_DISPATCH_PROBE_PATH = "/api/test/slack-dispatch-probe";
@@ -2285,6 +2291,10 @@ describe("API backend rewrites", () => {
         {
           source: USAGE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/usage",
+        },
+        {
+          source: PUBLIC_MODEL_RANKINGS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/public/model-rankings",
         },
         {
           source: TEST_SLACK_DISPATCH_PROBE_REWRITE_SOURCE,
@@ -5351,6 +5361,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(USAGE_PATH)).toStrictEqual({});
     for (const pathname of USAGE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact public model rankings rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === PUBLIC_MODEL_RANKINGS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: PUBLIC_MODEL_RANKINGS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/public/model-rankings",
+    });
+
+    const matcher = getPathMatch(PUBLIC_MODEL_RANKINGS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(PUBLIC_MODEL_RANKINGS_PATH)).toStrictEqual({});
+    for (const pathname of PUBLIC_MODEL_RANKINGS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

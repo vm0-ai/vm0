@@ -250,14 +250,14 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(0);
   });
 
-  it("dual-writes persistent secrets and reads KMS material when KMS env is set", async () => {
+  it("writes persistent secrets as KMS-only when KMS env is set", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = await encryptPersistentSecretValue("bot-token", {});
 
     expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "dual",
-      hasLegacy: true,
+      format: "kms",
+      hasLegacy: false,
       hasKms: true,
     });
     await expect(decryptPersistentSecretValue(encrypted, {})).resolves.toBe(
@@ -286,7 +286,7 @@ describe("stored secret encryption", () => {
     ).resolves.toBe("callback-secret");
   });
 
-  it("dual-writes persistent secret maps when KMS env is set", async () => {
+  it("writes persistent secret maps as KMS-only when KMS env is set", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = await encryptPersistentSecretsMap(
@@ -299,7 +299,7 @@ describe("stored secret encryption", () => {
       throw new Error("Expected encrypted persistent secrets map");
     }
     expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
-      format: "dual",
+      format: "kms",
     });
   });
 });

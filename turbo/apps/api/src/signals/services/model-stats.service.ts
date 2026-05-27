@@ -13,11 +13,38 @@ import { nowDate } from "../external/time";
 const HOUR_MS = 60 * 60_000;
 export const DEFAULT_MODEL_STATS_REPROCESS_HOURS = 24;
 export const MAX_MODEL_STATS_REPROCESS_HOURS = 24 * 32;
+export const MODEL_RANKING_PERIODS = ["today", "week", "month"] as const;
 const MODEL_USAGE_KIND = "model";
 const TOKEN_CATEGORY_INPUT = "tokens.input";
 const TOKEN_CATEGORY_OUTPUT = "tokens.output";
 const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
 const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
+
+type ModelRankingPeriod = (typeof MODEL_RANKING_PERIODS)[number];
+
+interface ModelRankingRow {
+  readonly model: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly totalTokens: number;
+  readonly previousTotalTokens: number;
+}
+
+interface ModelRankingResult {
+  readonly period: ModelRankingPeriod;
+  readonly totalTokens: number;
+  readonly windowStart: Date;
+  readonly windowEnd: Date;
+  readonly rows: readonly ModelRankingRow[];
+}
+
+interface RawModelRankingRow extends Record<string, unknown> {
+  readonly model: string;
+  readonly input_tokens: string | number | bigint;
+  readonly output_tokens: string | number | bigint;
+  readonly total_tokens: string | number | bigint;
+  readonly previous_total_tokens: string | number | bigint;
+}
 
 function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
@@ -52,6 +79,56 @@ function utcHourStart(date: Date): Date {
   );
 }
 
+function startOfUtcDay(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+}
+
+function startOfUtcWeek(date: Date): Date {
+  const day = startOfUtcDay(date);
+  const dayOfWeek = day.getUTCDay();
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  return new Date(day.getTime() - daysSinceMonday * 24 * HOUR_MS);
+}
+
+function startOfUtcMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function currentWindow(
+  period: ModelRankingPeriod,
+  now: Date,
+): { start: Date; end: Date } {
+  const end = utcHourStart(now);
+  if (period === "today") {
+    return { start: startOfUtcDay(now), end };
+  }
+  if (period === "month") {
+    return { start: startOfUtcMonth(now), end };
+  }
+  return { start: startOfUtcWeek(now), end };
+}
+
+function toNumber(value: string | number | bigint): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+  return Number(value);
+}
+
+function parseModelRankingPeriod(
+  value: string | undefined,
+): ModelRankingPeriod {
+  if (value === "today" || value === "week" || value === "month") {
+    return value;
+  }
+  return "week";
+}
+
 function usageEventModelExpression() {
   const providerColumn = sql.raw('"usage_event"."provider"');
   return sql<string>`CASE ${sql.join(
@@ -60,6 +137,16 @@ function usageEventModelExpression() {
     }),
     sql` `,
   )} ELSE ${providerColumn} END`;
+}
+
+function modelStatModelExpression() {
+  const modelColumn = sql.raw('"model_stat"."model"');
+  return sql<string>`CASE ${sql.join(
+    getModelAliasEntries().map(([alias, model]) => {
+      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
+    }),
+    sql` `,
+  )} ELSE ${modelColumn} END`;
 }
 
 async function replaceModelStats(
@@ -169,6 +256,75 @@ async function replaceModelStats(
   return result.rowCount ?? 0;
 }
 
+async function selectModelRankings(
+  db: Db,
+  period: ModelRankingPeriod,
+): Promise<ModelRankingResult> {
+  const window = currentWindow(period, nowDate());
+  const duration = Math.max(window.end.getTime() - window.start.getTime(), 0);
+  const previousEnd = window.start;
+  const previousStart = new Date(previousEnd.getTime() - duration);
+  const modelExpr = modelStatModelExpression();
+  const currentModelStatsModelIdSql = getModelStatsModelIdSql();
+  const previousModelStatsModelIdSql = getModelStatsModelIdSql();
+
+  const result = await db.execute<RawModelRankingRow>(sql`
+    WITH current_period AS (
+      SELECT
+        ${modelExpr} AS model,
+        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
+        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
+        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
+      FROM ${modelStat}
+      WHERE ${modelStat.hourStart} >= ${window.start}
+        AND ${modelStat.hourStart} < ${window.end}
+        AND ${modelStat.model} IN (${currentModelStatsModelIdSql})
+      GROUP BY 1
+    ),
+    previous_period AS (
+      SELECT
+        ${modelExpr} AS model,
+        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
+      FROM ${modelStat}
+      WHERE ${modelStat.hourStart} >= ${previousStart}
+        AND ${modelStat.hourStart} < ${previousEnd}
+        AND ${modelStat.model} IN (${previousModelStatsModelIdSql})
+      GROUP BY 1
+    )
+    SELECT
+      current_period.model,
+      current_period.input_tokens,
+      current_period.output_tokens,
+      current_period.total_tokens,
+      COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
+    FROM current_period
+    LEFT JOIN previous_period ON previous_period.model = current_period.model
+    WHERE current_period.total_tokens > 0
+    ORDER BY current_period.total_tokens DESC
+    LIMIT 50
+  `);
+
+  const rows = result.rows.map((row) => {
+    return {
+      model: row.model,
+      inputTokens: toNumber(row.input_tokens),
+      outputTokens: toNumber(row.output_tokens),
+      totalTokens: toNumber(row.total_tokens),
+      previousTotalTokens: toNumber(row.previous_total_tokens),
+    };
+  });
+
+  return {
+    period,
+    totalTokens: rows.reduce((sum, row) => {
+      return sum + row.totalTokens;
+    }, 0),
+    windowStart: window.start,
+    windowEnd: window.end,
+    rows,
+  };
+}
+
 export const aggregateModelStats$ = command(
   async (
     { set },
@@ -188,5 +344,22 @@ export const aggregateModelStats$ = command(
       windowEnd,
       aggregated,
     };
+  },
+);
+
+export const readPublicModelRankings$ = command(
+  async (
+    { set },
+    periodValue: string | undefined,
+    signal: AbortSignal,
+  ): Promise<ModelRankingResult> => {
+    const db = set(writeDb$);
+    const period = parseModelRankingPeriod(periodValue);
+
+    signal.throwIfAborted();
+    const result = await selectModelRankings(db, period);
+    signal.throwIfAborted();
+
+    return result;
   },
 );

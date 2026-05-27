@@ -219,3 +219,76 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     expect(unknownModelRow).toBeUndefined();
   });
 });
+
+describe("GET /api/public/model-rankings", () => {
+  it("returns canonicalized public rankings without auth", async () => {
+    const db = store.set(writeDb$);
+    const model = "claude-sonnet-4-6";
+    const modelAlias = "anthropic/claude-sonnet-4.6";
+    const unsupportedModel = `unsupported-model-${randomUUID()}`;
+    const daySeed = Number.parseInt(randomUUID().slice(0, 8), 16);
+    const windowStart = new Date(Date.UTC(2200, 0, 1 + (daySeed % 90), 0));
+    const windowEnd = new Date(windowStart.getTime() + 12 * HOUR_MS);
+    const currentHour = new Date(windowEnd.getTime() - HOUR_MS);
+    const previousHour = new Date(windowStart.getTime() - HOUR_MS);
+    mockNow(new Date(windowEnd.getTime() + 30 * 60_000));
+
+    await db.insert(modelStat).values([
+      {
+        hourStart: currentHour,
+        model: modelAlias,
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadInputTokens: 40,
+        cacheCreationInputTokens: 10,
+        totalTokens: 200,
+      },
+      {
+        hourStart: previousHour,
+        model,
+        totalTokens: 80,
+      },
+      {
+        hourStart: currentHour,
+        model: unsupportedModel,
+        inputTokens: 9999,
+        totalTokens: 9999,
+      },
+    ]);
+
+    const response = await accept(
+      client().rankings({ query: { period: "today" } }),
+      [200],
+    );
+
+    expect(response.headers.get("cache-control")).toBe(
+      "public, s-maxage=300, stale-while-revalidate=600",
+    );
+    expect(response.body).toStrictEqual({
+      period: "today",
+      totalTokens: 200,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+      rows: [
+        {
+          model,
+          inputTokens: 150,
+          outputTokens: 50,
+          totalTokens: 200,
+          previousTotalTokens: 80,
+        },
+      ],
+    });
+  });
+
+  it("defaults unsupported periods to week", async () => {
+    mockNow(new Date("2300-01-08T15:30:00.000Z"));
+
+    const response = await accept(
+      client().rankings({ query: { period: "unsupported" } }),
+      [200],
+    );
+
+    expect(response.body.period).toBe("week");
+  });
+});

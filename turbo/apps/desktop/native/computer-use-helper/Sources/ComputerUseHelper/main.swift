@@ -60,7 +60,7 @@ func snapshotStorageKey(appName: String, snapshotId: String) -> String {
     return "\(appSnapshotKey(appName))\u{0}\(snapshotId)"
 }
 
-final class ComputerUseRuntimeSession {
+final class ComputerUseRuntimeSession: @unchecked Sendable {
     private var snapshots: [String: [String: Any]] = [:]
     private var snapshotOrder: [String] = []
     private var latestByApp: [String: String] = [:]
@@ -377,6 +377,14 @@ final class LaunchResultBox: @unchecked Sendable {
     var error: Error?
 }
 
+final class RunLoopReference: @unchecked Sendable {
+    let runLoop: CFRunLoop
+
+    init(_ runLoop: CFRunLoop) {
+        self.runLoop = runLoop
+    }
+}
+
 enum BackgroundWindowLocalEvent {
     private typealias SetWindowLocationFn = @convention(c) (CGEvent, CGPoint) -> Void
 
@@ -427,6 +435,411 @@ final class HelperRunLoopThread: @unchecked Sendable {
     func addSource(_ source: CFRunLoopSource, mode: CFRunLoopMode = .commonModes) {
         CFRunLoopAddSource(runLoop, source, mode)
         CFRunLoopWakeUp(runLoop)
+    }
+}
+
+final class ComputerUseVisualPointerView: NSView {
+    var rotationDegrees: CGFloat = 0 {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    private let targetAnchor = CGPoint(x: 8, y: 6)
+
+    override var isFlipped: Bool {
+        true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        NSGraphicsContext.saveGraphicsState()
+        let transform = NSAffineTransform()
+        transform.translateX(by: targetAnchor.x, yBy: targetAnchor.y)
+        transform.rotate(byDegrees: rotationDegrees)
+        transform.translateX(by: -targetAnchor.x, yBy: -targetAnchor.y)
+        transform.concat()
+
+        let path = NSBezierPath()
+        path.move(to: CGPoint(x: 8, y: 6))
+        path.line(to: CGPoint(x: 20.5, y: 16))
+        path.line(to: CGPoint(x: 13, y: 15.5))
+        path.line(to: CGPoint(x: 8, y: 22))
+        path.close()
+
+        let bottomShadow = NSShadow()
+        bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.48)
+        bottomShadow.shadowBlurRadius = 3.4
+        bottomShadow.shadowOffset = NSSize(width: 0.9, height: 2.1)
+        bottomShadow.set()
+
+        NSColor(calibratedRed: 0.34, green: 0.37, blue: 0.40, alpha: 1).setFill()
+        path.fill()
+
+        NSGraphicsContext.current?.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+        NSColor(calibratedWhite: 1, alpha: 0.9).setStroke()
+        path.lineWidth = 1.1
+        path.lineJoinStyle = .round
+        path.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+
+final class ComputerUseVisualPointer: @unchecked Sendable {
+    static let shared = ComputerUseVisualPointer()
+
+    private let pointerSize = CGSize(width: 30, height: 30)
+    private let targetAnchor = CGPoint(x: 8, y: 6)
+    private let idleHideDelay: TimeInterval = 60
+    private var window: NSPanel?
+    private var baseFrame: CGRect?
+    private var hideTimer: Timer?
+    private var moveTimer: Timer?
+    private var swayTimer: Timer?
+    private var swayStartedAt: TimeInterval?
+
+    private init() {}
+
+    func show(at screenPoint: CGPoint) {
+        guard screenPoint.x.isFinite, screenPoint.y.isFinite else {
+            return
+        }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                showOnMain(at: screenPoint)
+            }
+            return
+        }
+        DispatchQueue.main.sync {
+            MainActor.assumeIsolated {
+                showOnMain(at: screenPoint)
+            }
+        }
+    }
+
+    func hide() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                hideOnMain()
+            }
+            return
+        }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                self.hideOnMain()
+            }
+        }
+    }
+
+    @MainActor
+    private func showOnMain(at screenPoint: CGPoint) {
+        let window = ensureWindow()
+        let frame = windowFrame(for: screenPoint)
+        hideTimer?.invalidate()
+        window.orderFrontRegardless()
+
+        if window.alphaValue == 0 || !window.isVisible {
+            moveTimer?.invalidate()
+            moveTimer = nil
+            baseFrame = frame
+            applyVisualFrame()
+            startSwayAnimation()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                window.animator().alphaValue = 0.96
+            }
+        } else {
+            startSwayAnimation()
+            moveWindowAlongArc(window, to: frame)
+            window.alphaValue = 0.96
+        }
+
+        hideTimer = Timer.scheduledTimer(withTimeInterval: idleHideDelay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.hideOnMain()
+            }
+        }
+        if let hideTimer {
+            RunLoop.main.add(hideTimer, forMode: .common)
+        }
+    }
+
+    @MainActor
+    private func hideOnMain() {
+        hideTimer?.invalidate()
+        hideTimer = nil
+        moveTimer?.invalidate()
+        moveTimer = nil
+        stopSwayAnimation()
+        baseFrame = nil
+        guard let window, window.isVisible else {
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            window.animator().alphaValue = 0
+        } completionHandler: {
+            MainActor.assumeIsolated {
+                window.orderOut(nil)
+            }
+        }
+    }
+
+    @MainActor
+    private func startSwayAnimation() {
+        if swayTimer != nil {
+            return
+        }
+        swayStartedAt = Date.timeIntervalSinceReferenceDate
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateSway()
+            }
+        }
+        swayTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @MainActor
+    private func stopSwayAnimation() {
+        swayTimer?.invalidate()
+        swayTimer = nil
+        swayStartedAt = nil
+        pointerView()?.rotationDegrees = 0
+        applyVisualFrame()
+    }
+
+    @MainActor
+    private func updateSway() {
+        guard let swayStartedAt else {
+            return
+        }
+        let elapsed = Date.timeIntervalSinceReferenceDate - swayStartedAt
+        let phase = elapsed * Double.pi * 2 / 3.8
+        pointerView()?.rotationDegrees = CGFloat(sin(phase) * 5)
+        window?.alphaValue = 0.94 + CGFloat((sin(phase - Double.pi / 2) + 1) * 0.025)
+    }
+
+    @MainActor
+    private func pointerView() -> ComputerUseVisualPointerView? {
+        window?.contentView as? ComputerUseVisualPointerView
+    }
+
+    @MainActor
+    private func applyVisualFrame() {
+        guard let window, let baseFrame else {
+            return
+        }
+        window.setFrame(baseFrame, display: true)
+    }
+
+    @MainActor
+    private func moveWindowAlongArc(_ window: NSPanel, to targetFrame: CGRect) {
+        moveTimer?.invalidate()
+        let startFrame = baseFrame ?? window.frame
+        let start = CGPoint(x: startFrame.minX, y: startFrame.minY)
+        let end = CGPoint(x: targetFrame.minX, y: targetFrame.minY)
+        let delta = CGPoint(x: end.x - start.x, y: end.y - start.y)
+        let distance = hypot(Double(delta.x), Double(delta.y))
+        guard distance > 1 else {
+            window.setFrame(targetFrame, display: true)
+            return
+        }
+
+        let duration = min(0.52, max(0.26, distance / 700))
+        let curve = CGFloat(min(110, max(14, distance * 0.28)))
+        let sign: CGFloat = delta.x >= 0 ? 1 : -1
+        let normalizedDistance = CGFloat(distance)
+        let overshootDistance = CGFloat(min(26, max(4, distance * 0.07)))
+        let overshoot = CGPoint(
+            x: end.x + (delta.x / normalizedDistance) * overshootDistance,
+            y: end.y + (delta.y / normalizedDistance) * overshootDistance
+        )
+        let control = CGPoint(
+            x: (start.x + end.x) / 2 - (delta.y / normalizedDistance) * curve * sign,
+            y: (start.y + end.y) / 2 + (delta.x / normalizedDistance) * curve * sign
+        )
+        let startedAt = Date.timeIntervalSinceReferenceDate
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak window] _ in
+            MainActor.assumeIsolated {
+                guard window != nil else {
+                    self?.moveTimer?.invalidate()
+                    self?.moveTimer = nil
+                    return
+                }
+                let elapsed = Date.timeIntervalSinceReferenceDate - startedAt
+                let progress = min(1, elapsed / duration)
+                let origin: CGPoint
+                if progress < 0.82 {
+                    let legProgress = Self.easeInOut(progress / 0.82)
+                    origin = Self.quadraticBezierPoint(
+                        from: start,
+                        control: control,
+                        to: overshoot,
+                        progress: legProgress
+                    )
+                } else {
+                    let legProgress = Self.easeOut((progress - 0.82) / 0.18)
+                    origin = Self.linearPoint(from: overshoot, to: end, progress: legProgress)
+                }
+                self?.baseFrame = CGRect(origin: origin, size: targetFrame.size)
+                self?.applyVisualFrame()
+                if progress >= 1 {
+                    self?.moveTimer?.invalidate()
+                    self?.moveTimer = nil
+                    self?.baseFrame = targetFrame
+                    self?.applyVisualFrame()
+                }
+            }
+        }
+        moveTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private static func easeInOut(_ progress: TimeInterval) -> TimeInterval {
+        if progress < 0.5 {
+            return 4 * progress * progress * progress
+        }
+        let adjusted = -2 * progress + 2
+        return 1 - adjusted * adjusted * adjusted / 2
+    }
+
+    private static func easeOut(_ progress: TimeInterval) -> TimeInterval {
+        let inverse = 1 - progress
+        return 1 - inverse * inverse * inverse
+    }
+
+    private static func linearPoint(from start: CGPoint, to end: CGPoint, progress: TimeInterval) -> CGPoint {
+        let t = CGFloat(progress)
+        return CGPoint(
+            x: start.x + (end.x - start.x) * t,
+            y: start.y + (end.y - start.y) * t
+        )
+    }
+
+    private static func quadraticBezierPoint(
+        from start: CGPoint,
+        control: CGPoint,
+        to end: CGPoint,
+        progress: TimeInterval
+    ) -> CGPoint {
+        let t = CGFloat(progress)
+        let inverse = 1 - t
+        return CGPoint(
+            x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+            y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y
+        )
+    }
+
+    @MainActor
+    private func ensureWindow() -> NSPanel {
+        if let window {
+            return window
+        }
+
+        NSApplication.shared.setActivationPolicy(.accessory)
+        let window = NSPanel(
+            contentRect: CGRect(origin: .zero, size: pointerSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.ignoresMouseEvents = true
+        window.level = .screenSaver
+        window.alphaValue = 0
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle,
+        ]
+        window.contentView = ComputerUseVisualPointerView(frame: CGRect(origin: .zero, size: pointerSize))
+        self.window = window
+        return window
+    }
+
+    @MainActor
+    private func windowFrame(for screenPoint: CGPoint) -> CGRect {
+        let topLeftQuartzPoint = CGPoint(
+            x: screenPoint.x - targetAnchor.x,
+            y: screenPoint.y - targetAnchor.y
+        )
+        let topLeftAppKitPoint = appKitTopLeftPoint(fromQuartzTopLeftPoint: topLeftQuartzPoint)
+        return CGRect(
+            x: topLeftAppKitPoint.x,
+            y: topLeftAppKitPoint.y - pointerSize.height,
+            width: pointerSize.width,
+            height: pointerSize.height
+        )
+    }
+
+    @MainActor
+    private func appKitTopLeftPoint(fromQuartzTopLeftPoint point: CGPoint) -> CGPoint {
+        let match = displayMatch(forQuartzPoint: point)
+        return CGPoint(
+            x: match.screenFrame.minX + point.x - match.displayBounds.minX,
+            y: match.screenFrame.maxY - (point.y - match.displayBounds.minY)
+        )
+    }
+
+    @MainActor
+    private func displayMatch(forQuartzPoint point: CGPoint) -> (displayBounds: CGRect, screenFrame: CGRect) {
+        let displays = activeDisplays()
+        if let containing = displays.first(where: { display in
+            display.displayBounds.contains(point)
+        }) {
+            return containing
+        }
+        if let nearest = displays.min(by: { left, right in
+            distance(point, to: left.displayBounds) < distance(point, to: right.displayBounds)
+        }) {
+            return nearest
+        }
+        let screenFrame = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 0, height: 0)
+        return (CGRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height), screenFrame)
+    }
+
+    @MainActor
+    private func activeDisplays() -> [(displayBounds: CGRect, screenFrame: CGRect)] {
+        var displayCount: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &displayCount) == .success, displayCount > 0 else {
+            return []
+        }
+        var displayIds = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+        guard CGGetActiveDisplayList(displayCount, &displayIds, &displayCount) == .success else {
+            return []
+        }
+        return displayIds.prefix(Int(displayCount)).compactMap { displayId in
+            guard let screen = screen(for: displayId) else {
+                return nil
+            }
+            return (CGDisplayBounds(displayId), screen.frame)
+        }
+    }
+
+    @MainActor
+    private func screen(for displayId: CGDirectDisplayID) -> NSScreen? {
+        let screenNumberKey = NSDeviceDescriptionKey("NSScreenNumber")
+        return NSScreen.screens.first { screen in
+            guard let number = screen.deviceDescription[screenNumberKey] as? NSNumber else {
+                return false
+            }
+            return number.uint32Value == displayId
+        }
+    }
+
+    @MainActor
+    private func distance(_ point: CGPoint, to rect: CGRect) -> CGFloat {
+        if rect.contains(point) {
+            return 0
+        }
+        let x = min(max(point.x, rect.minX), rect.maxX)
+        let y = min(max(point.y, rect.minY), rect.maxY)
+        return hypot(point.x - x, point.y - y)
     }
 }
 
@@ -2429,6 +2842,7 @@ func performBackgroundMouseClick(
     config: (down: CGEventType, up: CGEventType, button: CGMouseButton),
     clickCount: Int
 ) throws -> [String: Any] {
+    ComputerUseVisualPointer.shared.show(at: point)
     let activation = BackgroundActivationSession.start(target: target)
     defer { activation.finish() }
 
@@ -2593,6 +3007,9 @@ func performElementAccessibilityClick(
         dispatchTarget: "element",
         inputRisk: "targeted_app_action"
     ) {
+        if let frame = clickTarget.capabilities.frame {
+            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+        }
         for index in 0..<clickCount {
             let error = AXUIElementPerformAction(clickTarget.element, actionName as CFString)
             if error != .success {
@@ -2769,6 +3186,9 @@ func handleElementSetValue(_ request: [String: Any], session: ComputerUseRuntime
         inputRisk: "targeted_app_text"
     ) {
         let element = try resolveElement(appName: appName, elementId: elementId)
+        if let frame = clickableFrame(element) {
+            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+        }
         try setAttribute(element, kAXValueAttribute as CFString, value as CFString)
         return (targetPID: app.processIdentifier, result: [:])
     }
@@ -2785,6 +3205,9 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
         inputRisk: "targeted_app_action"
     ) {
         let element = try resolveElement(appName: appName, elementId: elementId)
+        if let frame = clickableFrame(element) {
+            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+        }
         let error = AXUIElementPerformAction(element, action as CFString)
         if error != .success {
             throw HelperFailure(
@@ -2883,6 +3306,9 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
         inputRisk: "targeted_app_action"
     ) {
         let element = try resolveElement(appName: appName, elementId: elementId)
+        if let frame = clickableFrame(element) {
+            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+        }
         guard let scrollBar = attributeArray(element, kAXChildrenAttribute as CFString).first(where: { child in
             role(child) == axis
         }) else {
@@ -3026,32 +3452,38 @@ func runOneShot() {
 
 func runStdioSession() {
     let session = ComputerUseRuntimeSession()
-    while let line = readLine(strippingNewline: true) {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            continue
+    let mainRunLoop = RunLoopReference(CFRunLoopGetCurrent())
+    DispatchQueue.global(qos: .userInitiated).async {
+        while let line = readLine(strippingNewline: true) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                continue
+            }
+            do {
+                let request = try parseRequestData(Data(trimmed.utf8))
+                try writeJSONObject(responseObject(for: request, session: session))
+            } catch let failure as HelperFailure {
+                try? writeJSONObject([
+                    "status": "failed",
+                    "error": [
+                        "code": failure.code,
+                        "message": failure.message,
+                    ],
+                ])
+            } catch {
+                try? writeJSONObject([
+                    "status": "failed",
+                    "error": [
+                        "code": "accessibility_unavailable",
+                        "message": String(describing: error),
+                    ],
+                ])
+            }
         }
-        do {
-            let request = try parseRequestData(Data(trimmed.utf8))
-            try writeJSONObject(responseObject(for: request, session: session))
-        } catch let failure as HelperFailure {
-            try? writeJSONObject([
-                "status": "failed",
-                "error": [
-                    "code": failure.code,
-                    "message": failure.message,
-                ],
-            ])
-        } catch {
-            try? writeJSONObject([
-                "status": "failed",
-                "error": [
-                    "code": "accessibility_unavailable",
-                    "message": String(describing: error),
-                ],
-            ])
-        }
+        ComputerUseVisualPointer.shared.hide()
+        CFRunLoopStop(mainRunLoop.runLoop)
     }
+    CFRunLoopRun()
 }
 
 func run() {

@@ -313,6 +313,10 @@ export type DynamicPublicConnectorOAuthClientConfig = Extract<
   }
 >;
 
+export type PublicConnectorOAuthClientConfig =
+  | StaticPublicConnectorOAuthClientConfig
+  | DynamicPublicConnectorOAuthClientConfig;
+
 export type ConnectorGrantKind =
   | "manual"
   | "auth-code"
@@ -335,7 +339,7 @@ export interface ConnectorDeviceAuthGrantConfig {
   readonly kind: "device-auth";
   readonly deviceAuthUrl: string;
   readonly tokenUrl: string;
-  readonly client: StaticPublicConnectorOAuthClientConfig;
+  readonly client: PublicConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 

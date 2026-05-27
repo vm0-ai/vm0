@@ -1058,7 +1058,7 @@ describe("computer use desktop runtime", () => {
         screenshotSourceBounds: { x: 100, y: 200, width: 800, height: 600 },
       },
     });
-    expect(result.result.text).toContain("0 standard window Example");
+    expect(result.result.appState).toContain("0 standard window Example");
     expect(result.result.elements).toStrictEqual([
       {
         index: 0,
@@ -1145,9 +1145,11 @@ describe("computer use desktop runtime", () => {
       app: "Slack",
       snapshotId: expect.stringMatching(/^desktop_/),
     });
-    expect(result.result.text).toContain("Release notes posted");
-    expect(result.result.text).toContain("text entry area Message composer");
-    expect(result.result.text).toContain("Secondary Actions: Confirm");
+    expect(result.result.appState).toContain("Release notes posted");
+    expect(result.result.appState).toContain(
+      "text entry area Message composer",
+    );
+    expect(result.result.appState).toContain("Secondary Actions: Confirm");
     expect(result.result.visibleText).toContain(
       "AXStaticText [AXValue] Release notes posted",
     );
@@ -1279,10 +1281,10 @@ describe("computer use desktop runtime", () => {
         app: "Things",
         elementId: "sidebar.inbox",
         dispatchMode: "accessibility_action",
-        text: "Clicked sidebar.inbox",
+        summary: "Clicked sidebar.inbox",
       },
     });
-    expect(result.result.text).toContain("Can you see this?");
+    expect(result.result.appState).toContain("Can you see this?");
     expect(result.result.visibleText).toContain("Can you see this?");
   });
 

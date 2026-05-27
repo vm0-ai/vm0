@@ -13,7 +13,6 @@ import {
   type ModelProviderCredentialScope,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { slackOrgCallbackPayloadSchema } from "@vm0/api-contracts/contracts/internal-callbacks-slack-org";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -74,6 +73,7 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
+import { formatIntegrationRunError } from "./integration-run-errors.service";
 import { zeroComposeList } from "./zero-compose-data.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
@@ -1082,9 +1082,13 @@ async function runAgentForSlackOrg(
 
   return {
     status: "failed",
-    response: formatRunErrorForExternalSurface({
+    response: await formatIntegrationRunError({
+      set,
+      orgId: params.orgId,
+      userId: params.userId,
       code: result.body.error.code,
       message: result.body.error.message,
+      signal,
     }),
   };
 }

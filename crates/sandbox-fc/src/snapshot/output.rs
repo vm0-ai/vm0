@@ -95,7 +95,10 @@ pub(super) fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(
 pub(super) fn publish_snapshot_complete_marker(
     output: &SnapshotOutputPaths,
 ) -> Result<(), SnapshotError> {
-    fn write_and_sync(output: &SnapshotOutputPaths) -> std::io::Result<()> {
+    let marker = output.complete_marker();
+    let mut marker_created = false;
+
+    let result = (|| -> std::io::Result<()> {
         for artifact in [
             output.snapshot(),
             output.memory(),
@@ -105,24 +108,26 @@ pub(super) fn publish_snapshot_complete_marker(
             std::fs::metadata(artifact)?;
         }
 
-        let marker = output.complete_marker();
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&marker)?;
+        marker_created = true;
         file.write_all(SNAPSHOT_COMPLETE_MARKER_CONTENT)?;
         file.sync_all()?;
         drop(file);
 
         std::fs::File::open(output.dir())?.sync_all()?;
         Ok(())
-    }
+    })();
 
-    if let Err(e) = write_and_sync(output) {
-        // If marker publication fails after creating the file, remove it so
-        // future readers do not treat an uncommitted publish as complete.
-        let _ = std::fs::remove_file(output.complete_marker());
-        let _ = std::fs::File::open(output.dir()).and_then(|dir| dir.sync_all());
+    if let Err(e) = result {
+        if marker_created {
+            // If marker publication fails after creating the file, remove it so
+            // future readers do not treat an uncommitted publish as complete.
+            let _ = std::fs::remove_file(&marker);
+            let _ = std::fs::File::open(output.dir()).and_then(|dir| dir.sync_all());
+        }
         return Err(SnapshotError::Io(e));
     }
 
@@ -144,6 +149,22 @@ mod tests {
     use crate::paths::SnapshotOutputPaths;
 
     use super::*;
+
+    async fn write_required_snapshot_artifacts(output: &SnapshotOutputPaths) {
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        for artifact in [
+            output.snapshot(),
+            output.memory(),
+            output.cow(),
+            output.cow_bitmap(),
+        ] {
+            tokio::fs::write(&artifact, b"snapshot artifact")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+    }
 
     #[tokio::test]
     async fn prepare_snapshot_output_removes_snapshot_artifacts_only() {
@@ -203,5 +224,135 @@ mod tests {
             tokio::fs::try_exists(unrelated).await.unwrap(),
             "non-snapshot output-dir contents should be preserved"
         );
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_writes_expected_content() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+
+        publish_snapshot_complete_marker(&output).expect("publish complete marker");
+
+        let marker = tokio::fs::read(output.complete_marker())
+            .await
+            .expect("read complete marker");
+        assert_eq!(marker, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_rejects_missing_artifact_without_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        for artifact in [output.snapshot(), output.memory(), output.cow()] {
+            tokio::fs::write(&artifact, b"snapshot artifact")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+
+        let err = publish_snapshot_complete_marker(&output)
+            .expect_err("publish should fail before marker");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "missing artifact must not publish complete marker"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_preserves_existing_marker_on_validation_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        for artifact in [output.snapshot(), output.memory(), output.cow()] {
+            tokio::fs::write(&artifact, b"snapshot artifact")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+        tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write existing marker");
+
+        let err = publish_snapshot_complete_marker(&output)
+            .expect_err("publish should fail before marker creation");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        let marker = tokio::fs::read(output.complete_marker())
+            .await
+            .expect("read existing marker");
+        assert_eq!(marker, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_preserves_existing_marker_on_create_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write existing marker");
+
+        let err =
+            publish_snapshot_complete_marker(&output).expect_err("publish should fail on marker");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        let marker = tokio::fs::read(output.complete_marker())
+            .await
+            .expect("read existing marker");
+        assert_eq!(marker, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn snapshot_complete_marker_present_checks_exact_marker_content() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+
+        assert!(
+            !snapshot_complete_marker_present(&output)
+                .await
+                .expect("check missing marker")
+        );
+
+        tokio::fs::write(output.complete_marker(), b"wrong marker")
+            .await
+            .expect("write malformed marker");
+        assert!(
+            !snapshot_complete_marker_present(&output)
+                .await
+                .expect("check malformed marker")
+        );
+
+        tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write valid marker");
+        assert!(
+            snapshot_complete_marker_present(&output)
+                .await
+                .expect("check valid marker")
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_complete_marker_present_propagates_read_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.complete_marker())
+            .await
+            .expect("create marker directory");
+
+        let _err = snapshot_complete_marker_present(&output)
+            .await
+            .expect_err("marker directory should fail to read as marker content");
     }
 }

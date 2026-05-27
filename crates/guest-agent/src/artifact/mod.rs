@@ -19,8 +19,12 @@ use serde_json::json;
 mod api;
 mod archive;
 
-use api::{CommitSnapshotRequest, PrepareSnapshotRequest, commit_snapshot, prepare_snapshot};
+use api::{
+    CommitSnapshotRequest, PrepareSnapshotRequest, PreparedSnapshot, PreparedUploads,
+    commit_snapshot, prepare_snapshot,
+};
 use archive::{collect_file_metadata, create_archive, validate_archive_inputs};
+use std::path::PathBuf;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -68,37 +72,64 @@ pub(crate) async fn create_snapshot(
     http: &HttpClient,
     request: CreateSnapshotRequest<'_>,
 ) -> Result<SnapshotResult, AgentError> {
-    let CreateSnapshotRequest {
-        mount_path,
-        files,
-        storage_name,
-        storage_type,
-        run_id,
-        message,
-        parent_version_id,
-    } = request;
-
     log_info!(
         LOG_TAG,
-        "Creating direct upload snapshot for '{storage_name}'"
+        "Creating direct upload snapshot for '{}'",
+        request.storage_name
     );
 
-    // Step 1: Prepare
+    let prep = prepare_snapshot_step(http, &request).await?;
+    let version_id = prep.version_id;
+
+    if prep.existing {
+        log_info!(
+            LOG_TAG,
+            "Version already exists (deduplicated), updating HEAD"
+        );
+        validate_dedup_snapshot(request.mount_path, &request.files).await?;
+        commit_existing_snapshot(http, &request, &version_id).await?;
+        return Ok(SnapshotResult { version_id });
+    }
+
+    let uploads = extract_uploads(prep.uploads)?;
+    let archive = create_archive_bundle(request.mount_path, &request.files).await?;
+    upload_archive_bundle(http, &uploads, &archive).await?;
+    commit_uploaded_snapshot(http, &request, &version_id).await?;
+
+    let short_id = version_id.get(..8).unwrap_or(&version_id);
+    log_info!(LOG_TAG, "Direct upload snapshot created: {short_id}");
+
+    Ok(SnapshotResult { version_id })
+}
+
+struct ArchiveBundle {
+    _temp_dir: tempfile::TempDir,
+    archive_path: PathBuf,
+    manifest_path: PathBuf,
+}
+
+async fn prepare_snapshot_step(
+    http: &HttpClient,
+    request: &CreateSnapshotRequest<'_>,
+) -> Result<PreparedSnapshot, AgentError> {
     log_info!(LOG_TAG, "Calling prepare endpoint...");
     let prep_start = std::time::Instant::now();
-    let prep = match prepare_snapshot(
+    match prepare_snapshot(
         http,
         PrepareSnapshotRequest {
-            run_id,
-            storage_name,
-            storage_type,
-            files: &files,
-            parent_version_id,
+            run_id: request.run_id,
+            storage_name: request.storage_name,
+            storage_type: request.storage_type,
+            files: &request.files,
+            parent_version_id: request.parent_version_id,
         },
     )
     .await
     {
-        Ok(prep) => prep,
+        Ok(prep) => {
+            record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), true, None);
+            Ok(prep)
+        }
         Err(error) => {
             let (error, telemetry_error) = error.into_parts();
             record_sandbox_op(
@@ -107,102 +138,102 @@ pub(crate) async fn create_snapshot(
                 false,
                 telemetry_error.as_deref(),
             );
-            return Err(error);
+            Err(error)
         }
-    };
+    }
+}
 
-    let version_id = prep.version_id;
-    record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), true, None);
-
-    // Step 2: Deduplication check
-    if prep.existing {
-        log_info!(
-            LOG_TAG,
-            "Version already exists (deduplicated), updating HEAD"
-        );
-        log_info!(LOG_TAG, "Validating deduplicated artifact inputs...");
-        let validate_start = std::time::Instant::now();
-        let validate_mount = mount_path.to_string();
-        let validate_files = files.clone();
-        let validate_result = match tokio::task::spawn_blocking(move || {
-            validate_archive_inputs(&validate_mount, &validate_files)
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(e) => {
-                record_sandbox_op(
-                    "artifact_archive_validate",
-                    validate_start.elapsed(),
-                    false,
-                    None,
-                );
-                return Err(AgentError::Execution(format!(
-                    "archive validation task panicked: {e}"
-                )));
-            }
-        };
-        if let Err(e) = validate_result {
-            log_error!(LOG_TAG, "Failed to validate deduplicated archive: {e}");
+async fn validate_dedup_snapshot(mount_path: &str, files: &[FileEntry]) -> Result<(), AgentError> {
+    log_info!(LOG_TAG, "Validating deduplicated artifact inputs...");
+    let validate_start = std::time::Instant::now();
+    let validate_mount = mount_path.to_string();
+    let validate_files = files.to_vec();
+    let validate_result = match tokio::task::spawn_blocking(move || {
+        validate_archive_inputs(&validate_mount, &validate_files)
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
             record_sandbox_op(
                 "artifact_archive_validate",
                 validate_start.elapsed(),
                 false,
                 None,
             );
-            return Err(AgentError::Checkpoint(
-                "Failed to validate archive inputs".into(),
-            ));
+            return Err(AgentError::Execution(format!(
+                "archive validation task panicked: {e}"
+            )));
         }
+    };
+    if let Err(e) = validate_result {
+        log_error!(LOG_TAG, "Failed to validate deduplicated archive: {e}");
         record_sandbox_op(
             "artifact_archive_validate",
             validate_start.elapsed(),
-            true,
+            false,
             None,
         );
-
-        let commit_success = commit_snapshot(
-            http,
-            CommitSnapshotRequest {
-                run_id,
-                storage_name,
-                storage_type,
-                version_id: &version_id,
-                parent_version_id,
-                files: &files,
-                message: None,
-            },
-            "Failed to parse dedup commit response",
-        )
-        .await?;
-        if !commit_success {
-            return Err(AgentError::Checkpoint("Failed to update HEAD".into()));
-        }
-        return Ok(SnapshotResult { version_id });
+        return Err(AgentError::Checkpoint(
+            "Failed to validate archive inputs".into(),
+        ));
     }
+    record_sandbox_op(
+        "artifact_archive_validate",
+        validate_start.elapsed(),
+        true,
+        None,
+    );
+    Ok(())
+}
 
-    // Step 3: Get presigned URLs
-    let uploads = prep
-        .uploads
-        .ok_or_else(|| AgentError::Checkpoint("No upload URLs in prepare response".into()))?;
-    let archive_url = uploads.archive_url;
-    let manifest_url = uploads.manifest_url;
+async fn commit_existing_snapshot(
+    http: &HttpClient,
+    request: &CreateSnapshotRequest<'_>,
+    version_id: &str,
+) -> Result<(), AgentError> {
+    let commit_success = commit_snapshot(
+        http,
+        CommitSnapshotRequest {
+            run_id: request.run_id,
+            storage_name: request.storage_name,
+            storage_type: request.storage_type,
+            version_id,
+            parent_version_id: request.parent_version_id,
+            files: &request.files,
+            message: None,
+        },
+        "Failed to parse dedup commit response",
+    )
+    .await?;
+    if !commit_success {
+        return Err(AgentError::Checkpoint("Failed to update HEAD".into()));
+    }
+    Ok(())
+}
 
-    // Step 4: Create archive + manifest in temp dir
+fn extract_uploads(uploads: Option<PreparedUploads>) -> Result<PreparedUploads, AgentError> {
+    uploads.ok_or_else(|| AgentError::Checkpoint("No upload URLs in prepare response".into()))
+}
+
+async fn create_archive_bundle(
+    mount_path: &str,
+    files: &[FileEntry],
+) -> Result<ArchiveBundle, AgentError> {
     let temp_dir = tempfile::tempdir().map_err(AgentError::Io)?;
     let archive_path = temp_dir.path().join("archive.tar.gz");
     let manifest_path = temp_dir.path().join("manifest.json");
 
-    // Create archive (blocking)
     log_info!(LOG_TAG, "Creating archive...");
     let arc_start = std::time::Instant::now();
-    let mp = mount_path.to_string();
-    let ap = archive_path.clone();
-    let archive_files = files.clone();
-    let archive_result =
-        tokio::task::spawn_blocking(move || create_archive(&mp, &ap, &archive_files))
-            .await
-            .map_err(|e| AgentError::Execution(format!("archive task panicked: {e}")))?;
+    let archive_mount = mount_path.to_string();
+    let archive_path_for_task = archive_path.clone();
+    let archive_files = files.to_vec();
+    let archive_result = tokio::task::spawn_blocking(move || {
+        create_archive(&archive_mount, &archive_path_for_task, &archive_files)
+    })
+    .await
+    .map_err(|e| AgentError::Execution(format!("archive task panicked: {e}")))?;
     if let Err(e) = archive_result {
         log_error!(LOG_TAG, "Failed to create archive: {e}");
         record_sandbox_op("artifact_archive_create", arc_start.elapsed(), false, None);
@@ -210,7 +241,6 @@ pub(crate) async fn create_snapshot(
     }
     record_sandbox_op("artifact_archive_create", arc_start.elapsed(), true, None);
 
-    // Create manifest
     let manifest = json!({
         "version": 1,
         "files": files,
@@ -223,11 +253,26 @@ pub(crate) async fn create_snapshot(
     )
     .map_err(|e| AgentError::Checkpoint(format!("Failed to write manifest: {e}")))?;
 
-    // Step 5: Upload to S3
+    Ok(ArchiveBundle {
+        _temp_dir: temp_dir,
+        archive_path,
+        manifest_path,
+    })
+}
+
+async fn upload_archive_bundle(
+    http: &HttpClient,
+    uploads: &PreparedUploads,
+    archive: &ArchiveBundle,
+) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Uploading archive to S3...");
     let s3_start = std::time::Instant::now();
     if let Err(e) = http
-        .put_presigned_file(&archive_url, &archive_path, "application/gzip")
+        .put_presigned_file(
+            &uploads.archive_url,
+            &archive.archive_path,
+            "application/gzip",
+        )
         .await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
@@ -235,29 +280,39 @@ pub(crate) async fn create_snapshot(
     }
 
     log_info!(LOG_TAG, "Uploading manifest to S3...");
-    let manifest_data = tokio::fs::read(&manifest_path).await?;
+    let manifest_data = tokio::fs::read(&archive.manifest_path).await?;
     if let Err(e) = http
-        .put_presigned(&manifest_url, manifest_data.into(), "application/json")
+        .put_presigned(
+            &uploads.manifest_url,
+            manifest_data.into(),
+            "application/json",
+        )
         .await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
         return Err(e);
     }
     record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), true, None);
+    Ok(())
+}
 
-    // Step 6: Commit
+async fn commit_uploaded_snapshot(
+    http: &HttpClient,
+    request: &CreateSnapshotRequest<'_>,
+    version_id: &str,
+) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Calling commit endpoint...");
     let commit_start = std::time::Instant::now();
     let commit_success = match commit_snapshot(
         http,
         CommitSnapshotRequest {
-            run_id,
-            storage_name,
-            storage_type,
-            version_id: &version_id,
-            parent_version_id,
-            files: &files,
-            message: Some(message),
+            run_id: request.run_id,
+            storage_name: request.storage_name,
+            storage_type: request.storage_type,
+            version_id,
+            parent_version_id: request.parent_version_id,
+            files: &request.files,
+            message: Some(request.message),
         },
         "Failed to parse commit response",
     )
@@ -276,15 +331,13 @@ pub(crate) async fn create_snapshot(
     }
 
     record_sandbox_op("artifact_commit_api", commit_start.elapsed(), true, None);
-    let short_id = version_id.get(..8).unwrap_or(&version_id);
-    log_info!(LOG_TAG, "Direct upload snapshot created: {short_id}");
-
-    Ok(SnapshotResult { version_id })
+    Ok(())
 }
 
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use httpmock::prelude::*;
     use std::sync::LazyLock;
     use std::time::Duration;
 
@@ -299,6 +352,51 @@ mod tests {
         HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
     }
 
+    fn file_json_values(files: &[FileEntry]) -> Vec<serde_json::Value> {
+        files
+            .iter()
+            .map(|file| {
+                serde_json::json!({
+                    "path": file.path,
+                    "hash": file.hash,
+                    "size": file.size,
+                })
+            })
+            .collect()
+    }
+
+    fn http_status(status: u16) -> HttpMockResponse {
+        HttpMockResponse::builder().status(status).build()
+    }
+
+    fn request_header_eq(req: &HttpMockRequest, name: &str, expected: &str) -> bool {
+        req.headers_vec()
+            .iter()
+            .any(|(key, value)| key.eq_ignore_ascii_case(name) && value == expected)
+    }
+
+    fn manifest_upload_response(
+        req: &HttpMockRequest,
+        expected_files: &[serde_json::Value],
+    ) -> HttpMockResponse {
+        let Ok(body) = serde_json::from_slice::<serde_json::Value>(req.body_ref()) else {
+            return http_status(400);
+        };
+        let expected_files = serde_json::Value::Array(expected_files.to_vec());
+        if request_header_eq(req, "content-type", "application/json")
+            && body.get("version") == Some(&serde_json::json!(1))
+            && body.get("files") == Some(&expected_files)
+            && body
+                .get("createdAt")
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+        {
+            http_status(200)
+        } else {
+            http_status(400)
+        }
+    }
+
     #[tokio::test]
     async fn dedup_snapshot_posts_file_payloads_before_validation_failure_blocks_commit()
     -> Result<(), AgentError> {
@@ -311,16 +409,7 @@ mod tests {
         std::fs::write(root.join("target.txt"), "content").unwrap();
         let mut files = archive::collect_file_metadata(root.to_str().unwrap());
         files.sort_by(|left, right| left.path.cmp(&right.path));
-        let expected_files: Vec<serde_json::Value> = files
-            .iter()
-            .map(|file| {
-                serde_json::json!({
-                    "path": file.path,
-                    "hash": file.hash,
-                    "size": file.size,
-                })
-            })
-            .collect();
+        let expected_files = file_json_values(&files);
         let total_size: u64 = files.iter().map(|file| file.size).sum();
 
         let prepare = server.mock(|when, then| {
@@ -423,6 +512,167 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Failed to validate archive inputs")
+        );
+        prepare.assert_calls(1);
+        commit.assert_calls(0);
+        prepare.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn snapshot_uploads_archive_manifest_and_commits_new_version() -> Result<(), AgentError> {
+        disable_system_log();
+        let server = MockServer::start();
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+        let archive_url = format!("{}/test/artifact-archive-upload", server.base_url());
+        let manifest_url = format!("{}/test/artifact-manifest-upload", server.base_url());
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-upload",
+                    "storageName": "storage-upload",
+                    "storageType": "artifact",
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-uploaded",
+                "existing": false,
+                "uploads": {
+                    "archive": {
+                        "key": "archive-key",
+                        "presignedUrl": archive_url,
+                    },
+                    "manifest": {
+                        "key": "manifest-key",
+                        "presignedUrl": manifest_url,
+                    },
+                },
+            }));
+        });
+        let archive_upload = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/artifact-archive-upload")
+                .header("Content-Type", "application/gzip");
+            then.status(200);
+        });
+        let manifest_files = expected_files.clone();
+        let manifest_upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/artifact-manifest-upload");
+            then.respond_with(move |req| manifest_upload_response(req, &manifest_files));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit")
+                .json_body(serde_json::json!({
+                    "runId": "run-upload",
+                    "storageName": "storage-upload",
+                    "storageType": "artifact",
+                    "versionId": "v-uploaded",
+                    "parentVersionId": "parent-v1",
+                    "files": expected_files,
+                    "message": "snapshot message",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "success": true,
+                "versionId": "v-uploaded",
+                "storageName": "storage-upload",
+                "size": 5,
+                "fileCount": 1,
+            }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_name: "storage-upload",
+                storage_type: "artifact",
+                run_id: "run-upload",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await?;
+
+        assert_eq!(result.version_id, "v-uploaded");
+        prepare.assert_calls(1);
+        archive_upload.assert_calls(1);
+        manifest_upload.assert_calls(1);
+        commit.assert_calls(1);
+        prepare.delete_async().await;
+        archive_upload.delete_async().await;
+        manifest_upload.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn snapshot_requires_upload_urls_for_new_version() -> Result<(), AgentError> {
+        disable_system_log();
+        let server = MockServer::start();
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-missing-uploads",
+                    "storageName": "storage-missing-uploads",
+                    "storageType": "artifact",
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-missing-uploads",
+                "existing": false,
+            }));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_name: "storage-missing-uploads",
+                storage_type: "artifact",
+                run_id: "run-missing-uploads",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(err) = result else {
+            panic!("create_snapshot unexpectedly succeeded");
+        };
+        assert!(
+            err.to_string()
+                .contains("No upload URLs in prepare response")
         );
         prepare.assert_calls(1);
         commit.assert_calls(0);

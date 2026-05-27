@@ -259,10 +259,10 @@ function mockSlockOAuthProvider(): { readonly accessToken: string } {
     }),
     http.post(SLOCK_TOKEN_URL, async ({ request }) => {
       const body = await request.json();
-      expect(body).toHaveProperty("deviceCode");
       const deviceCode = z
         .object({ deviceCode: z.string() })
         .parse(body).deviceCode;
+      expect(body).toStrictEqual({ deviceCode });
       if (deviceCode === "userinfo-error") {
         return HttpResponse.json({
           accessToken: "slock-access-userinfo-error",
@@ -463,8 +463,8 @@ describe("OAuth device authorization connector routes", () => {
     expect(
       inspectPersistentSecretCiphertext(session.encryptedProviderState),
     ).toStrictEqual({
-      format: "dual",
-      hasLegacy: true,
+      format: "kms",
+      hasLegacy: false,
       hasKms: true,
     });
     const decryptedProviderState = await decryptPersistentSecretValue(

@@ -133,4 +133,32 @@ describe("auth tokens", () => {
     );
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain("maps:read");
   });
+
+  it("gates local-agent capabilities on the Local Agent connector feature switch", () => {
+    const disabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.LocalAgentConnector]: false },
+    );
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.LocalAgentConnector]: true },
+    );
+
+    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
+      "local-agent:read",
+    );
+    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
+      "local-agent:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "local-agent:read",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "local-agent:write",
+    );
+  });
 });

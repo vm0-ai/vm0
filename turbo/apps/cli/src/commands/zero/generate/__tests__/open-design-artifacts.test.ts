@@ -158,4 +158,17 @@ describe("zero generate Open Design artifact commands", () => {
       ]),
     );
   });
+
+  it("attributes every vm0 image style to the vm0-skills repo", () => {
+    const selection = selectOpenDesignCandidates();
+    const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
+      return entry.id.startsWith("vm0:image-style:");
+    });
+
+    expect(vm0ImageStyles.length).toBeGreaterThan(0);
+    for (const entry of vm0ImageStyles) {
+      expect(entry.source.repo).toBe("vm0-ai/vm0-skills");
+      expect(entry.source.ref).toBe("main");
+    }
+  });
 });

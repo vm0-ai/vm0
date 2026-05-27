@@ -187,8 +187,8 @@ describe("Claude Code device auth routes", () => {
     expect(
       inspectPersistentSecretCiphertext(session!.encryptedProviderState!),
     ).toStrictEqual({
-      format: "dual",
-      hasLegacy: true,
+      format: "kms",
+      hasLegacy: false,
       hasKms: true,
     });
     expect(kms.calls).toHaveLength(1);

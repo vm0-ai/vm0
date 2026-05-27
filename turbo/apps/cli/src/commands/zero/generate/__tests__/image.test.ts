@@ -371,9 +371,11 @@ describe("zero generate image command", () => {
     expect(selection.candidates.imageStyles[0]).toEqual(
       expect.objectContaining({
         id: "vm0:image-style:notion-illustration",
-        source: expect.objectContaining({
+        source: {
+          repo: "vm0-ai/vm0-skills",
+          ref: "main",
           path: "illustration-template/notion-illustration",
-        }),
+        },
       }),
     );
     expect(parsed.instructions).toEqual(
@@ -402,9 +404,11 @@ describe("zero generate image command", () => {
     expect(selection.candidates.imageStyles[0]).toEqual(
       expect.objectContaining({
         id: "vm0:image-style:vm0-illustration",
-        source: expect.objectContaining({
+        source: {
+          repo: "vm0-ai/vm0-skills",
+          ref: "main",
           path: "illustration-template/vm0-illustration",
-        }),
+        },
       }),
     );
   });

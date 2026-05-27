@@ -50,9 +50,12 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_anthropic_messages.py` | Anthropic Messages usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
 | `test_response_streaming.py` | Response streaming parser setup |
-| `test_usage_reporting.py` | Response usage extraction and reporting pipeline |
+| `test_model_provider_response_usage.py` | Model provider JSON response usage pipeline |
+| `test_model_provider_stream_usage.py` | Model provider SSE and WebSocket usage pipeline |
 | `test_model_provider_usage.py` | Model provider usage reporter |
 | `test_connector_usage.py` | Connector usage reporter and stream-path detection |
+| `test_usage_idempotency.py` | Usage event idempotency key helpers |
+| `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
 | `test_webhook.py` | Usage webhook delivery |
 | `test_counters.py` | Usage pending counters |
 | `test_utils.py` | Utility functions |

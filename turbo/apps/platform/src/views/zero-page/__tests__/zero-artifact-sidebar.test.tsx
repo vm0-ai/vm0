@@ -134,6 +134,26 @@ describe("chatArtifactSidebar: inline anchor chip behavior", () => {
   });
 });
 
+describe("chatArtifactSidebar: hosted-site URL classification", () => {
+  it("classifies hosted-site URLs without a path as html", () => {
+    // Regression: previously the sidebar built its own
+    // filenameFromUrl + classifyChatAttachment pair without contentType,
+    // so *.sites.<host>.io URLs (no path, no extension) fell through to
+    // "file" and rendered the generic "No inline preview" placeholder
+    // instead of the iframe HTML body.
+    const url = "https://demo-site-a1b2c3d4.sites.vm7.io";
+    setup(`/chats/thread-1?artifact=${encodeURIComponent(url)}`);
+
+    const ref = context.store.get(currentArtifactRef$);
+    expect(ref).toStrictEqual({
+      source: "url",
+      url,
+      kind: "html",
+      filename: url,
+    });
+  });
+});
+
 describe("chatArtifactSidebar: sidebar slot rendering", () => {
   it("does not render the sidebar when the switch is off", () => {
     detachedSetupPage({

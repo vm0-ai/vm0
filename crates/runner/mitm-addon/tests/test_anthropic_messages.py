@@ -1,5 +1,7 @@
 """Tests for Anthropic Messages usage extraction."""
 
+import pytest
+
 from usage import (
     create_anthropic_messages_sse_usage_extractor,
 )
@@ -61,10 +63,44 @@ class TestAnthropicSseUsageExtractor:
         )
         assert usage == {}
 
-    def test_resilient_to_malformed_json(self):
-        parse, usage = create_anthropic_messages_sse_usage_extractor()
+    @pytest.mark.parametrize("with_parse_error_callback", [False, True])
+    def test_malformed_usage_event_recovers_with_optional_parse_error_callback(
+        self, with_parse_error_callback
+    ):
+        parse_errors: list[tuple[str, str]] = []
+
+        def record_parse_error(event: str, error: str) -> None:
+            parse_errors.append((event, error))
+
+        if with_parse_error_callback:
+            parse, usage = create_anthropic_messages_sse_usage_extractor(
+                on_parse_error=record_parse_error
+            )
+        else:
+            parse, usage = create_anthropic_messages_sse_usage_extractor()
         parse(b"event: message_start\ndata: {invalid json}\n\n")
-        assert usage == {}  # no crash, no data
+        if with_parse_error_callback:
+            assert len(parse_errors) == 1
+            event, error = parse_errors[0]
+            assert event == "message_start"
+            assert isinstance(error, str)
+            assert error
+        else:
+            assert parse_errors == []
+        assert usage == {}
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":21,"output_tokens":1}}}\n\n'
+        )
+        if with_parse_error_callback:
+            assert len(parse_errors) == 1
+        else:
+            assert parse_errors == []
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 21
+        assert usage["tokens.output"] == 1
 
     def test_finish_flushes_message_start_without_blank_line(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()
