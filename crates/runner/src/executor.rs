@@ -865,7 +865,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     }
 
     // 5. Build env vars (passed directly via vsock protocol)
-    let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result);
+    let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -1920,7 +1920,7 @@ fn build_env_json(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-) -> HashMap<String, String> {
+) -> RunnerResult<HashMap<String, String>> {
     let host_env = HostEnv::from_process();
     build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, &host_env)
 }
@@ -1931,7 +1931,7 @@ fn build_env_json_with_host_env(
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
-) -> HashMap<String, String> {
+) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
 
     // --- User-provided environment ---
@@ -2051,7 +2051,7 @@ fn build_env_json_with_host_env(
     }
 
     match effective_cli_framework(&context.cli_agent_type) {
-        EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
+        EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env)?,
         EffectiveCliFramework::Codex => insert_codex_env(&mut env, context, host_env),
     }
 
@@ -2063,7 +2063,7 @@ fn build_env_json_with_host_env(
         env.insert("VM0_FEATURE_FLAGS".into(), json);
     }
 
-    env
+    Ok(env)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -2139,7 +2139,7 @@ fn insert_claude_code_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
     host_env: &HostEnv,
-) {
+) -> RunnerResult<()> {
     // Pass USE_MOCK_CLAUDE from host environment for testing
     // (skip if debugNoMockClaude is set in execution context)
     if let Some(val) = &host_env.use_mock_claude
@@ -2148,18 +2148,16 @@ fn insert_claude_code_env(
         env.insert("USE_MOCK_CLAUDE".into(), val.clone());
     }
 
-    // Disallowed tools (comma-separated for guest-agent)
     if let Some(tools) = &context.disallowed_tools
-        && !tools.is_empty()
+        && let Some(serialized) = serialize_claude_tool_env("VM0_DISALLOWED_TOOLS", tools)?
     {
-        env.insert("VM0_DISALLOWED_TOOLS".into(), tools.join(","));
+        env.insert("VM0_DISALLOWED_TOOLS".into(), serialized);
     }
 
-    // Tools to make available (comma-separated for guest-agent)
     if let Some(tools) = &context.tools
-        && !tools.is_empty()
+        && let Some(serialized) = serialize_claude_tool_env("VM0_TOOLS", tools)?
     {
-        env.insert("VM0_TOOLS".into(), tools.join(","));
+        env.insert("VM0_TOOLS".into(), serialized);
     }
 
     // Settings JSON (passed directly as single string)
@@ -2168,6 +2166,29 @@ fn insert_claude_code_env(
     {
         env.insert("VM0_SETTINGS".into(), settings.clone());
     }
+
+    Ok(())
+}
+
+fn serialize_claude_tool_env(env_name: &str, tools: &[String]) -> RunnerResult<Option<String>> {
+    if tools.is_empty() {
+        return Ok(None);
+    }
+
+    for (index, tool) in tools.iter().enumerate() {
+        if tool.trim().is_empty() {
+            return Err(RunnerError::Internal(format!(
+                "{env_name} entry at index {index} must not be empty"
+            )));
+        }
+        if tool.contains(',') {
+            return Err(RunnerError::Internal(format!(
+                "{env_name} entry at index {index} must not contain commas"
+            )));
+        }
+    }
+
+    Ok(Some(tools.join(",")))
 }
 
 fn insert_codex_env(
@@ -2329,7 +2350,14 @@ mod tests {
     }
 
     fn build_env_for_test(ctx: &ExecutionContext, api_url: &str) -> HashMap<String, String> {
-        build_env_for_test_with_host_env(ctx, api_url, &HostEnv::default())
+        build_env_for_test_result(ctx, api_url).expect("test env should build")
+    }
+
+    fn build_env_for_test_result(
+        ctx: &ExecutionContext,
+        api_url: &str,
+    ) -> RunnerResult<HashMap<String, String>> {
+        build_env_for_test_with_host_env_result(ctx, api_url, &HostEnv::default())
     }
 
     fn build_env_for_test_with_host_env(
@@ -2337,6 +2365,15 @@ mod tests {
         api_url: &str,
         host_env: &HostEnv,
     ) -> HashMap<String, String> {
+        build_env_for_test_with_host_env_result(ctx, api_url, host_env)
+            .expect("test env should build")
+    }
+
+    fn build_env_for_test_with_host_env_result(
+        ctx: &ExecutionContext,
+        api_url: &str,
+        host_env: &HostEnv,
+    ) -> RunnerResult<HashMap<String, String>> {
         let sid = SandboxId::new_v4().to_string();
         build_env_json_with_host_env(ctx, api_url, &sid, SandboxReuseResult::Reused, host_env)
     }
@@ -2569,7 +2606,8 @@ mod tests {
                 &sid,
                 variant,
                 &HostEnv::default(),
-            );
+            )
+            .expect("test env should build");
             assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), expected);
         }
     }
@@ -3291,6 +3329,58 @@ mod tests {
     fn build_env_json_no_tools() {
         let ctx = minimal_context();
         let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_TOOLS"));
+    }
+
+    fn assert_tool_env_error(
+        result: RunnerResult<HashMap<String, String>>,
+        env_name: &str,
+        expected: &str,
+    ) {
+        let message = match result {
+            Err(RunnerError::Internal(message)) => message,
+            other => panic!("expected internal error, got {other:?}"),
+        };
+        assert!(message.contains(env_name), "message: {message}");
+        assert!(message.contains(expected), "message: {message}");
+    }
+
+    #[test]
+    fn build_env_json_rejects_invalid_disallowed_tools_entries() {
+        for (tool, expected) in [
+            ("", "must not be empty"),
+            ("   ", "must not be empty"),
+            ("CronCreate,CronDelete", "must not contain commas"),
+        ] {
+            let mut ctx = minimal_context();
+            ctx.disallowed_tools = Some(vec![tool.into()]);
+            let result = build_env_for_test_result(&ctx, "http://localhost");
+            assert_tool_env_error(result, "VM0_DISALLOWED_TOOLS", expected);
+        }
+    }
+
+    #[test]
+    fn build_env_json_rejects_invalid_tools_entries() {
+        for (tool, expected) in [
+            ("", "must not be empty"),
+            ("   ", "must not be empty"),
+            ("Bash,Read", "must not contain commas"),
+        ] {
+            let mut ctx = minimal_context();
+            ctx.tools = Some(vec![tool.into()]);
+            let result = build_env_for_test_result(&ctx, "http://localhost");
+            assert_tool_env_error(result, "VM0_TOOLS", expected);
+        }
+    }
+
+    #[test]
+    fn build_env_json_codex_ignores_claude_tool_lists() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.disallowed_tools = Some(vec!["".into()]);
+        ctx.tools = Some(vec!["Bash,Read".into()]);
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
         assert!(!env.contains_key("VM0_TOOLS"));
     }
 

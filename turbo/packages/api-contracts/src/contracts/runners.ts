@@ -5,6 +5,7 @@ import {
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
+import { claudeToolEntrySchema } from "./runs";
 
 const c = initContract();
 
@@ -168,9 +169,9 @@ export const storedExecutionContextSchema = z.object({
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
-  disallowedTools: z.array(z.string()).optional(),
+  disallowedTools: z.array(claudeToolEntrySchema).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
-  tools: z.array(z.string()).optional(),
+  tools: z.array(claudeToolEntrySchema).optional(),
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings: z.string().optional(),
   // VM profile for resource allocation (e.g., "vm0/default")
@@ -224,9 +225,9 @@ export const executionContextSchema = z.object({
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
-  disallowedTools: z.array(z.string()).optional(),
+  disallowedTools: z.array(claudeToolEntrySchema).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
-  tools: z.array(z.string()).optional(),
+  tools: z.array(claudeToolEntrySchema).optional(),
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings: z.string().optional(),
   // VM profile for resource allocation (e.g., "vm0/default")

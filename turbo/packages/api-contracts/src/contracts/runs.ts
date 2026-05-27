@@ -19,6 +19,15 @@ const directRunModelProviderTypeSchema = modelProviderTypeSchema.refine(
   { message: "vm0 model provider is only supported by zero runs" },
 );
 
+export const claudeToolEntrySchema = z
+  .string()
+  .refine((tool) => tool.trim().length > 0, {
+    message: "Claude tool name must not be empty",
+  })
+  .refine((tool) => !tool.includes(","), {
+    message: "Claude tool name must not contain commas",
+  });
+
 // Stored in Postgres `integer` columns. Keep request validation aligned with
 // the DB range so malformed sandbox payloads fail as 400s instead of DB errors.
 export const MAX_EVENT_SEQUENCE_NUMBER = 2_147_483_647;
@@ -110,10 +119,10 @@ const unifiedRunRequestSchema = z
     appendSystemPrompt: z.string().optional(),
 
     // Optional list of tools to disable in Claude CLI (passed as --disallowed-tools)
-    disallowedTools: z.array(z.string()).optional(),
+    disallowedTools: z.array(claudeToolEntrySchema).optional(),
 
     // Optional list of tools to make available in Claude CLI (passed as --tools)
-    tools: z.array(z.string()).optional(),
+    tools: z.array(claudeToolEntrySchema).optional(),
 
     // Settings JSON to pass to Claude CLI (passed as --settings)
     settings: z.string().optional(),

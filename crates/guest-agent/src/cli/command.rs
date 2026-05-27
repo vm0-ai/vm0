@@ -24,6 +24,22 @@ pub(super) fn build_cli_command_for_framework(
     }
 }
 
+fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: &str) {
+    let mut has_values = false;
+
+    for value in values
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !has_values {
+            args.push(flag.to_string());
+            has_values = true;
+        }
+        args.push(value.to_string());
+    }
+}
+
 /// Build the argument list from explicit parameters (testable).
 fn build_claude_args(
     resume_id: &str,
@@ -54,25 +70,8 @@ fn build_claude_args(
         args.push(append_system_prompt.to_string());
     }
 
-    if !disallowed_tools.is_empty() {
-        args.push("--disallowed-tools".to_string());
-        for tool in disallowed_tools.split(',') {
-            let tool = tool.trim();
-            if !tool.is_empty() {
-                args.push(tool.to_string());
-            }
-        }
-    }
-
-    if !tools.is_empty() {
-        args.push("--tools".to_string());
-        for tool in tools.split(',') {
-            let tool = tool.trim();
-            if !tool.is_empty() {
-                args.push(tool.to_string());
-            }
-        }
-    }
+    push_comma_separated_flag_values(&mut args, "--disallowed-tools", disallowed_tools);
+    push_comma_separated_flag_values(&mut args, "--tools", tools);
 
     if !settings.is_empty() {
         args.push("--settings".to_string());
@@ -602,6 +601,26 @@ mod tests {
             .map(|s| s.as_str())
             .collect();
         assert_eq!(tool_args, vec!["CronCreate", "CronDelete"]);
+    }
+
+    #[test]
+    fn build_claude_args_tools_empty_items_skipped() {
+        let args = build_claude_args_for_test("", "", "", "Bash,,Read,", "", "test");
+        let t_idx = args.iter().position(|a| a == "--tools").unwrap();
+        let tool_args: Vec<&str> = args[t_idx + 1..]
+            .iter()
+            .take_while(|a| a.as_str() != "--" && !a.starts_with("--"))
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(tool_args, vec!["Bash", "Read"]);
+    }
+
+    #[test]
+    fn build_claude_args_comma_only_tool_values_omitted() {
+        let args = build_claude_args_for_test("", "", " , ,, ", ",,,", "", "test");
+        assert!(!args.contains(&"--disallowed-tools".to_string()));
+        assert!(!args.contains(&"--tools".to_string()));
+        assert_prompt_with_separator(&args, "test");
     }
 
     #[test]

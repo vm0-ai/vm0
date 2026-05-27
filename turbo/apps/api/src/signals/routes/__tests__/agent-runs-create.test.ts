@@ -351,6 +351,43 @@ describe("POST /api/agent/runs", () => {
     expect(response.body.error.message).toContain("prompt");
   });
 
+  it("rejects ambiguous Claude tool list entries", async () => {
+    await fixture();
+    const cases: Array<{
+      readonly body: {
+        readonly disallowedTools?: string[];
+        readonly tools?: string[];
+      };
+      readonly field: string;
+    }> = [
+      { body: { tools: ["   "] }, field: "tools" },
+      { body: { tools: ["Bash,Read"] }, field: "tools" },
+      { body: { disallowedTools: [""] }, field: "disallowedTools" },
+      {
+        body: { disallowedTools: ["CronCreate,CronDelete"] },
+        field: "disallowedTools",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const response = await accept(
+        runsClient().create({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            agentComposeId: randomUUID(),
+            prompt: "test",
+            ...testCase.body,
+          },
+        }),
+        [400],
+      );
+
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+      expect(response.body.error.message).toContain(testCase.field);
+      expect(response.body.error.message).toContain("Claude tool name");
+    }
+  });
+
   it("rejects vm0 provider pinning on direct runs", async () => {
     await fixture();
     const response = await accept(

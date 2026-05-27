@@ -391,6 +391,31 @@ describe("POST /api/zero/runs", () => {
     expect(response.body.error.message).toBe("agentId is required");
   });
 
+  it("rejects ambiguous Claude tool list entries", async () => {
+    await fixture();
+    const cases: Array<{
+      readonly tools: string[];
+    }> = [{ tools: ["   "] }, { tools: ["Bash,Read"] }];
+
+    for (const testCase of cases) {
+      const response = await accept(
+        zeroRunsClient().create({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            prompt: "hello",
+            agentId: randomUUID(),
+            tools: testCase.tools,
+          },
+        }),
+        [400],
+      );
+
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+      expect(response.body.error.message).toContain("tools");
+      expect(response.body.error.message).toContain("Claude tool name");
+    }
+  });
+
   it("returns 404 when session inference cannot find a session", async () => {
     await fixture();
 
