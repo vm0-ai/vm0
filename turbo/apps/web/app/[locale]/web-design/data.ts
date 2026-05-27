@@ -1418,6 +1418,1156 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:design-system:zapier",
     ],
   },
+  {
+    slug: "voltagent-agent-runtime",
+    category: "website",
+    title: "VoltAgent Agent Runtime",
+    description:
+      "An agent runtime launch with observability, tool calling, workflow state, and deployment controls.",
+    prompt:
+      "Using `zero generate website` with design system `voltagent` and template `saas-landing`, create a launch site for a production agent runtime. Show agent traces, tool registry, workflow state, deployments, and evaluation gates. Make it feel electric amber, agent-native, technical.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/aec6e934-18f0-4aca-b6bd-502f83272b4a/voltagent-agent-runtime.png",
+    artifactUrl:
+      "https://web-design-pass3-voltagent-agent-runtime-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:voltagent",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:voltagent",
+    ],
+  },
+  {
+    slug: "composio-tool-catalog",
+    category: "website",
+    title: "Composio Tool Catalog",
+    description:
+      "A tool integration catalog docs page with auth scopes, actions, trigger recipes, and examples.",
+    prompt:
+      "Using `zero generate website` with design system `composio` and template `docs-page`, create a docs page for an agent tool integration catalog. Left nav, connector grid, auth scopes, action examples, trigger recipes, and SDK code. Make it feel developer catalog, crisp blue accents, integration-dense.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c6ea7dbd-a4c6-4464-8942-e08adf0ce472/composio-tool-catalog.png",
+    artifactUrl:
+      "https://web-design-pass3-composio-tool-catalog-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:docs-page",
+    designSystemId: "od:design-system:composio",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:docs-page",
+      "od:design-system:composio",
+    ],
+  },
+  {
+    slug: "warp-terminal-workflows",
+    category: "website",
+    title: "Warp Terminal Workflows",
+    description:
+      "A modern terminal workflow launch with command blocks, team notebooks, AI fixups, and sharing.",
+    prompt:
+      "Using `zero generate website` with design system `warp` and template `saas-landing`, create a landing page for a collaborative terminal workflow product. Hero with terminal command blocks, team notebooks, AI fixups, sharing, and install CTA. Make it feel dark terminal polish, neon highlights, fast.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a53c4044-acef-4f4e-89ec-468be7b836ed/warp-terminal-workflows.png",
+    artifactUrl:
+      "https://web-design-pass3-warp-terminal-workflows-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:warp",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:warp",
+    ],
+  },
+  {
+    slug: "expo-router-launch",
+    category: "website",
+    title: "Expo Router Launch",
+    description:
+      "A mobile app routing docs page with file-based routes, tabs, native previews, and deployment notes.",
+    prompt:
+      "Using `zero generate website` with design system `expo` and template `docs-page`, create a docs page for a cross-platform mobile app router. Install, file routes, tabs, native preview, deep links, and deploy notes. Make it feel friendly developer docs, light, mobile-first.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4176a316-a45f-46dc-9d67-e107e2d2c524/expo-router-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-expo-router-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:docs-page",
+    designSystemId: "od:design-system:expo",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:docs-page",
+      "od:design-system:expo",
+    ],
+  },
+  {
+    slug: "clickhouse-observability-dashboard",
+    category: "website",
+    title: "ClickHouse Observability Dashboard",
+    description:
+      "A high-throughput observability dashboard with query latency, ingest volume, traces, and alerts.",
+    prompt:
+      "Using `zero generate website` with design system `clickhouse` and template `dashboard`, create an observability dashboard for high-volume analytics. Top KPIs, latency histogram, ingest chart, trace explorer, and alert queue. Make it feel black and yellow, dense analytics, fast scanning.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d8b506a0-c658-4a64-ab9b-fe1de49dbc79/clickhouse-observability-dashboard.png",
+    artifactUrl:
+      "https://web-design-pass3-clickhouse-observability-dashboard-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:clickhouse",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:clickhouse",
+    ],
+  },
+  {
+    slug: "mintlify-docs-redesign",
+    category: "website",
+    title: "Mintlify Docs Redesign",
+    description:
+      "A polished API docs redesign with quickstart, SDK tabs, endpoint references, and changelog links.",
+    prompt:
+      "Using `zero generate website` with design system `mintlify` and template `docs-page`, create a docs page for an API platform. Quickstart, SDK tabs, endpoint reference, guides, search, and changelog links. Make it feel mint green, calm documentation, polished.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f842e2d2-9acc-4ce2-9370-2bc59c4f4c18/mintlify-docs-redesign.png",
+    artifactUrl:
+      "https://web-design-pass3-mintlify-docs-redesign-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:docs-page",
+    designSystemId: "od:design-system:mintlify",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:docs-page",
+      "od:design-system:mintlify",
+    ],
+  },
+  {
+    slug: "pinterest-trend-board",
+    category: "website",
+    title: "Pinterest Trend Board",
+    description:
+      "A visual trend dashboard with pins, audience signals, seasonal boards, and campaign ideas.",
+    prompt:
+      "Using `zero generate website` with design system `pinterest` and template `dashboard`, create a trend research dashboard for visual campaigns. Masonry board, audience signals, seasonal boards, campaign ideas, and save actions. Make it feel red accent, image-led, editorial.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/25c4e588-a363-42dc-ae01-f23a114ec5f8/pinterest-trend-board.png",
+    artifactUrl:
+      "https://web-design-pass3-pinterest-trend-board-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:pinterest",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:pinterest",
+    ],
+  },
+  {
+    slug: "shopify-storefront-launch",
+    category: "website",
+    title: "Shopify Storefront Launch",
+    description:
+      "A storefront launch page with product merchandising, checkout trust, analytics, and fulfillment.",
+    prompt:
+      "Using `zero generate website` with design system `shopify` and template `saas-landing`, create a landing page for a commerce storefront launch. Product hero, checkout trust, analytics, fulfillment, app ecosystem, and start trial CTA. Make it feel commerce green, practical, merchant-first.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e2697e2c-b043-4a0d-86cd-5764765cc13e/shopify-storefront-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-shopify-storefront-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:shopify",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:shopify",
+    ],
+  },
+  {
+    slug: "kami-classroom-feedback",
+    category: "website",
+    title: "Kami Classroom Feedback",
+    description:
+      "A classroom feedback tool launch with annotated assignments, rubric panels, voice notes, and exports.",
+    prompt:
+      "Using `zero generate website` with design system `kami` and template `saas-landing`, create a landing page for a classroom feedback product. Annotated assignment mockup, rubric panel, voice notes, class insights, and export CTA. Make it feel friendly education, bright but organized, teacher-focused.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/47a1d32f-8219-4257-a5f6-7f83870a5521/kami-classroom-feedback.png",
+    artifactUrl:
+      "https://web-design-pass3-kami-classroom-feedback-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:kami",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:kami",
+    ],
+  },
+  {
+    slug: "lingo-brand-system",
+    category: "website",
+    title: "Lingo Brand System",
+    description:
+      "A brand system docs page with tokens, assets, usage rules, components, and approval workflows.",
+    prompt:
+      "Using `zero generate website` with design system `lingo` and template `docs-page`, create a docs page for a brand asset system. Token overview, asset library, usage rules, components, approvals, and examples. Make it feel brand governance, clean, precise.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/7793f2ce-4aeb-4d75-be17-f401202fbf50/lingo-brand-system.png",
+    artifactUrl:
+      "https://web-design-pass3-lingo-brand-system-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:platform-design",
+    templateId: "od:template:docs-page",
+    designSystemId: "od:design-system:lingo",
+    resourceHints: [
+      "od:skill:platform-design",
+      "od:template:docs-page",
+      "od:design-system:lingo",
+    ],
+  },
+  {
+    slug: "cisco-network-dashboard",
+    category: "website",
+    title: "Cisco Network Dashboard",
+    description:
+      "A network operations dashboard with topology, device health, incident queue, and policy status.",
+    prompt:
+      "Using `zero generate website` with design system `cisco` and template `dashboard`, create a network operations dashboard. Topology map, device health, incident queue, policy status, and bandwidth charts. Make it feel enterprise blue, dependable, ops-dense.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8b5419b7-c795-450f-80ca-ca9a01f94cdf/cisco-network-dashboard.png",
+    artifactUrl:
+      "https://web-design-pass3-cisco-network-dashboard-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:cisco",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:cisco",
+    ],
+  },
+  {
+    slug: "ant-design-finance-console",
+    category: "website",
+    title: "Ant Design Finance Console",
+    description:
+      "A finance admin console with settlement status, reconciliation tables, approvals, and alerts.",
+    prompt:
+      "Using `zero generate website` with design system `ant` and template `dashboard`, create a finance operations admin console. Settlement KPIs, reconciliation table, approvals, alerts, and audit trail. Make it feel Ant-style, structured, enterprise.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/927e3715-08ed-4a7f-835e-0d019980ca4b/ant-design-finance-console.png",
+    artifactUrl:
+      "https://web-design-pass3-ant-design-finance-console-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:ant",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:ant",
+    ],
+  },
+  {
+    slug: "vodafone-5g-launch",
+    category: "website",
+    title: "Vodafone 5G Launch",
+    description:
+      "A 5G business connectivity launch with coverage map, plans, device bundles, and support.",
+    prompt:
+      "Using `zero generate website` with design system `vodafone` and template `saas-landing`, create a landing page for a 5G business connectivity offer. Coverage map, plan cards, device bundles, reliability proof, and contact sales CTA. Make it feel bold red, telecom clarity, commercial.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/953e4101-6842-4945-872c-e71eb9d58c67/vodafone-5g-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-vodafone-5g-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:vodafone",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:vodafone",
+    ],
+  },
+  {
+    slug: "starbucks-rewards-launch",
+    category: "website",
+    title: "Starbucks Rewards Launch",
+    description:
+      "A rewards program launch with drink builder, points, member offers, and mobile ordering.",
+    prompt:
+      "Using `zero generate website` with design system `starbucks` and template `saas-landing`, create a landing page for a rewards program refresh. Drink builder, points explainer, member offers, mobile ordering, and join CTA. Make it feel warm green, cafe retail, approachable.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/89c435e1-7907-4f9f-8f85-657c199e4ad2/starbucks-rewards-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-starbucks-rewards-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:starbucks",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:starbucks",
+    ],
+  },
+  {
+    slug: "webex-meeting-hub",
+    category: "website",
+    title: "Webex Meeting Hub",
+    description:
+      "A meeting hub dashboard with upcoming rooms, transcript tasks, recordings, and participant insights.",
+    prompt:
+      "Using `zero generate website` with design system `webex` and template `dashboard`, create a meeting collaboration dashboard. Upcoming rooms, transcript tasks, recordings, participant insights, and admin controls. Make it feel collaboration blue-green, calm, productive.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1d555ec0-d827-484e-a55b-e8522fbcbf6c/webex-meeting-hub.png",
+    artifactUrl:
+      "https://web-design-pass3-webex-meeting-hub-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:webex",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:webex",
+    ],
+  },
+  {
+    slug: "bmw-m-track-experience",
+    category: "website",
+    title: "BMW M Track Experience",
+    description:
+      "A premium performance driving experience page with schedule, telemetry, instructors, and booking.",
+    prompt:
+      "Using `zero generate website` with design system `bmw-m` and template `saas-landing`, create a launch page for a premium track driving experience. Hero, telemetry cards, instructor lineup, schedule, packages, and booking CTA. Make it feel motorsport blue-red, precise, premium.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/59514fb0-739c-4239-88c0-1d1d415471ad/bmw-m-track-experience.png",
+    artifactUrl:
+      "https://web-design-pass3-bmw-m-track-experience-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:bmw-m",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:bmw-m",
+    ],
+  },
+  {
+    slug: "agentic-ops-command",
+    category: "website",
+    title: "Agentic Ops Command",
+    description:
+      "An operations console for autonomous agents with run status, approvals, spend, and safeguards.",
+    prompt:
+      "Using `zero generate website` with design system `agentic` and template `dashboard`, create an operations dashboard for agent fleets. Agent status, approvals, spend, safeguards, incident log, and evaluation metrics. Make it feel AI operations, dark, controlled.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5c9c38c9-6e90-4870-a292-e192198663f2/agentic-ops-command.png",
+    artifactUrl:
+      "https://web-design-pass3-agentic-ops-command-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:agentic",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:agentic",
+    ],
+  },
+  {
+    slug: "application-admin-console",
+    category: "website",
+    title: "Application Admin Console",
+    description:
+      "A general application admin console with users, roles, audits, billing, and feature flags.",
+    prompt:
+      "Using `zero generate website` with design system `application` and template `dashboard`, create an application admin console. User table, role controls, audit log, billing status, and feature flags. Make it feel neutral app UI, efficient, familiar.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8043713f-c67d-4b59-981a-72ae4175a4b0/application-admin-console.png",
+    artifactUrl:
+      "https://web-design-pass3-application-admin-console-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:application",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:application",
+    ],
+  },
+  {
+    slug: "artistic-portfolio-showcase",
+    category: "website",
+    title: "Artistic Portfolio Showcase",
+    description:
+      "An artist portfolio feature with exhibition notes, process images, collector details, and press.",
+    prompt:
+      "Using `zero generate website` with design system `artistic` and template `blog-post`, create a portfolio feature page for a contemporary artist. Hero artwork, exhibition notes, process sections, collector details, and press quotes. Make it feel expressive, gallery-like, visual.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f10875c6-634a-4982-ad75-b59e5e1f0172/artistic-portfolio-showcase.png",
+    artifactUrl:
+      "https://web-design-pass3-artistic-portfolio-showcase-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:artistic",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:artistic",
+    ],
+  },
+  {
+    slug: "atelier-zero-brand-book",
+    category: "website",
+    title: "Atelier Zero Brand Book",
+    description:
+      "A studio brand book with typography, palette, layout rules, motion notes, and asset downloads.",
+    prompt:
+      "Using `zero generate website` with design system `atelier-zero` and template `docs-page`, create a brand book page for a design atelier. Typography, palette, layout rules, motion notes, components, and downloads. Make it feel editorial black-white, exacting, refined.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b3cb7bbc-c2f9-4c05-b215-6f9eda6da2a7/atelier-zero-brand-book.png",
+    artifactUrl:
+      "https://web-design-pass3-atelier-zero-brand-book-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:platform-design",
+    templateId: "od:template:docs-page",
+    designSystemId: "od:design-system:atelier-zero",
+    resourceHints: [
+      "od:skill:platform-design",
+      "od:template:docs-page",
+      "od:design-system:atelier-zero",
+    ],
+  },
+  {
+    slug: "bold-campaign-launch",
+    category: "website",
+    title: "Bold Campaign Launch",
+    description:
+      "A high-impact campaign page with punchy message hierarchy, proof blocks, offers, and signup.",
+    prompt:
+      "Using `zero generate website` with design system `bold` and template `saas-landing`, create a landing page for a high-impact marketing campaign. Huge hero, proof blocks, offer stack, testimonials, and signup CTA. Make it feel loud, confident, direct.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/056762c2-2168-4f2e-9c16-8120f3647589/bold-campaign-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-bold-campaign-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:bold",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:bold",
+    ],
+  },
+  {
+    slug: "cafe-menu-story",
+    category: "website",
+    title: "Cafe Menu Story",
+    description:
+      "A cafe menu story page with seasonal drinks, roaster notes, food pairings, and location details.",
+    prompt:
+      "Using `zero generate website` with design system `cafe` and template `blog-post`, create a menu and story page for a neighborhood cafe. Seasonal drinks, roaster notes, food pairings, location details, and order CTA. Make it feel warm cafe, tactile, inviting.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bb9ad0a5-01d6-446e-974f-375e72d0aaa6/cafe-menu-story.png",
+    artifactUrl:
+      "https://web-design-pass3-cafe-menu-story-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:cafe",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:cafe",
+    ],
+  },
+  {
+    slug: "clay-product-tour",
+    category: "website",
+    title: "Clay Product Tour",
+    description:
+      "A product tour landing for a data enrichment workflow with tables, formulas, AI research, and CRM sync.",
+    prompt:
+      "Using `zero generate website` with design system `clay` and template `saas-landing`, create a landing page for a data enrichment product tour. Table mockup, formulas, AI research, CRM sync, templates, and demo CTA. Make it feel soft clay surfaces, modern GTM, crafted.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0d21a3f2-32a7-41de-957e-5509443d3e31/clay-product-tour.png",
+    artifactUrl:
+      "https://web-design-pass3-clay-product-tour-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:clay",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:clay",
+    ],
+  },
+  {
+    slug: "colorful-event-agenda",
+    category: "website",
+    title: "Colorful Event Agenda",
+    description:
+      "A conference agenda page with tracks, speakers, venue zones, sponsor moments, and live updates.",
+    prompt:
+      "Using `zero generate website` with design system `colorful` and template `saas-landing`, create a colorful event agenda website. Track filters, speaker cards, venue zones, sponsor moments, and live update strip. Make it feel bright multi-color, energetic, organized.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d9c220b0-b2d9-43a3-a329-d4922795c833/colorful-event-agenda.png",
+    artifactUrl:
+      "https://web-design-pass3-colorful-event-agenda-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:colorful",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:colorful",
+    ],
+  },
+  {
+    slug: "contemporary-architecture-feature",
+    category: "website",
+    title: "Contemporary Architecture Feature",
+    description:
+      "An architecture feature with project photography, plans, material notes, and critic commentary.",
+    prompt:
+      "Using `zero generate website` with design system `contemporary` and template `blog-post`, create an editorial architecture feature. Hero project, plans, material notes, spatial sections, and critic commentary. Make it feel modern editorial, restrained, image-forward.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/152df6d5-30df-4b18-9152-0e5d83c3d397/contemporary-architecture-feature.png",
+    artifactUrl:
+      "https://web-design-pass3-contemporary-architecture-feature-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:contemporary",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:contemporary",
+    ],
+  },
+  {
+    slug: "corporate-annual-report",
+    category: "website",
+    title: "Corporate Annual Report",
+    description:
+      "A corporate annual report page with CEO letter, metrics, business segments, ESG, and governance.",
+    prompt:
+      "Using `zero generate website` with design system `corporate` and template `blog-post`, create a corporate annual report website. CEO letter, financial metrics, segments, ESG cards, governance, and downloads. Make it feel formal, trustworthy, board-ready.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e168f5d6-68c0-4c28-b245-b89e6096a12c/corporate-annual-report.png",
+    artifactUrl:
+      "https://web-design-pass3-corporate-annual-report-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:corporate",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:corporate",
+    ],
+  },
+  {
+    slug: "creative-studio-home",
+    category: "website",
+    title: "Creative Studio Home",
+    description:
+      "A creative studio homepage with case studies, services, process, team, and inquiry CTA.",
+    prompt:
+      "Using `zero generate website` with design system `creative` and template `saas-landing`, create a homepage for a creative studio. Case-study hero, service grid, process timeline, team highlights, and inquiry CTA. Make it feel inventive, polished, portfolio-first.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/00a73dea-1ea5-436c-8412-ebd7191a8a79/creative-studio-home.png",
+    artifactUrl:
+      "https://web-design-pass3-creative-studio-home-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:creative",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:creative",
+    ],
+  },
+  {
+    slug: "dramatic-film-premiere",
+    category: "website",
+    title: "Dramatic Film Premiere",
+    description:
+      "A film premiere page with trailer surface, cast, showtimes, reviews, and ticket CTA.",
+    prompt:
+      "Using `zero generate website` with design system `dramatic` and template `saas-landing`, create a dramatic film premiere website. Trailer hero, cast cards, showtimes, critic quotes, gallery, and tickets. Make it feel cinematic, high contrast, theatrical.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/61dee99c-3846-464f-934b-27277fd2fa4e/dramatic-film-premiere.png",
+    artifactUrl:
+      "https://web-design-pass3-dramatic-film-premiere-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:dramatic",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:dramatic",
+    ],
+  },
+  {
+    slug: "elegant-jewelry-launch",
+    category: "website",
+    title: "Elegant Jewelry Launch",
+    description:
+      "A jewelry collection launch with product detail, materials, campaign photography, and appointments.",
+    prompt:
+      "Using `zero generate website` with design system `elegant` and template `saas-landing`, create a luxury jewelry collection launch page. Collection hero, material notes, product grid, campaign story, and appointment CTA. Make it feel elegant, quiet luxury, precise.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/05c0298f-f633-4136-b83b-56306af1e73d/elegant-jewelry-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-elegant-jewelry-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:elegant",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:elegant",
+    ],
+  },
+  {
+    slug: "energetic-sports-app",
+    category: "website",
+    title: "Energetic Sports App",
+    description:
+      "A sports training app launch with workout streaks, coach plans, live challenges, and teams.",
+    prompt:
+      "Using `zero generate website` with design system `energetic` and template `saas-landing`, create a landing page for a sports training app. Workout streaks, coach plans, live challenges, team leaderboard, and start CTA. Make it feel athletic, high energy, mobile.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ca8f6f82-7e90-4d11-9ab9-0e71662887c1/energetic-sports-app.png",
+    artifactUrl:
+      "https://web-design-pass3-energetic-sports-app-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:energetic",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:energetic",
+    ],
+  },
+  {
+    slug: "enterprise-admin-portal",
+    category: "website",
+    title: "Enterprise Admin Portal",
+    description:
+      "An enterprise admin portal with org hierarchy, SSO, compliance tasks, device posture, and logs.",
+    prompt:
+      "Using `zero generate website` with design system `enterprise` and template `dashboard`, create an enterprise administration portal. Org hierarchy, SSO controls, compliance tasks, device posture, logs, and support cases. Make it feel serious enterprise, clear, secure.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4d4e295a-89b7-4cc7-b0cb-657e7678b048/enterprise-admin-portal.png",
+    artifactUrl:
+      "https://web-design-pass3-enterprise-admin-portal-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:enterprise",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:enterprise",
+    ],
+  },
+  {
+    slug: "expressive-music-festival",
+    category: "website",
+    title: "Expressive Music Festival",
+    description:
+      "A music festival page with lineup, stages, passes, artist stories, and schedule builder.",
+    prompt:
+      "Using `zero generate website` with design system `expressive` and template `saas-landing`, create a music festival website. Lineup, stages, passes, artist stories, schedule builder, and buy CTA. Make it feel expressive, rhythmic, colorful.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/dc04f0e4-3b48-4b6a-b28b-0a948cd1d700/expressive-music-festival.png",
+    artifactUrl:
+      "https://web-design-pass3-expressive-music-festival-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:expressive",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:expressive",
+    ],
+  },
+  {
+    slug: "fantasy-game-codex",
+    category: "website",
+    title: "Fantasy Game Codex",
+    description:
+      "A fantasy game companion with character classes, map lore, quest log, and preorder.",
+    prompt:
+      "Using `zero generate website` with design system `fantasy` and template `gamified-app`, create a game companion website for a fantasy RPG. Character classes, map lore, quest log, gear cards, and preorder CTA. Make it feel fantasy UI, immersive, ornate.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a1a79dd8-0a01-4ae6-882a-52e6e715f109/fantasy-game-codex.png",
+    artifactUrl:
+      "https://web-design-pass3-fantasy-game-codex-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:gamified-app",
+    designSystemId: "od:design-system:fantasy",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:gamified-app",
+      "od:design-system:fantasy",
+    ],
+  },
+  {
+    slug: "flat-saas-dashboard",
+    category: "website",
+    title: "Flat SaaS Dashboard",
+    description:
+      "A flat-style SaaS dashboard with pipeline, usage, support, conversion, and revenue widgets.",
+    prompt:
+      "Using `zero generate website` with design system `flat` and template `dashboard`, create a flat visual style SaaS dashboard. Pipeline, usage, support, conversion, revenue widgets, and filters. Make it feel flat color, clean, lightweight.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/648fb99c-7727-4741-81b6-a4f9475a46ad/flat-saas-dashboard.png",
+    artifactUrl:
+      "https://web-design-pass3-flat-saas-dashboard-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:flat",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:flat",
+    ],
+  },
+  {
+    slug: "friendly-onboarding-flow",
+    category: "website",
+    title: "Friendly Onboarding Flow",
+    description:
+      "A product onboarding page with checklist, templates, team invites, empty states, and tips.",
+    prompt:
+      "Using `zero generate website` with design system `friendly` and template `saas-landing`, create a friendly product onboarding website. Checklist, template picker, team invites, empty states, and tips. Make it feel friendly, soft, clear.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/265a7736-2ede-4470-af64-4ecd4a2d9a7e/friendly-onboarding-flow.png",
+    artifactUrl:
+      "https://web-design-pass3-friendly-onboarding-flow-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:friendly",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:friendly",
+    ],
+  },
+  {
+    slug: "hud-flight-control",
+    category: "website",
+    title: "HUD Flight Control",
+    description:
+      "A flight control HUD dashboard with telemetry, route, weather, warnings, and handoff status.",
+    prompt:
+      "Using `zero generate website` with design system `hud` and template `dashboard`, create a futuristic flight control HUD. Telemetry, route, weather, warnings, handoff status, and mission controls. Make it feel glass HUD, high contrast, technical.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/73d21c43-148b-41e3-ae0d-5816b1de6628/hud-flight-control.png",
+    artifactUrl:
+      "https://web-design-pass3-hud-flight-control-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:hud",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:hud",
+    ],
+  },
+  {
+    slug: "levels-learning-path",
+    category: "website",
+    title: "Levels Learning Path",
+    description:
+      "A gamified learning path with modules, progress, badges, quizzes, and cohort leaderboard.",
+    prompt:
+      "Using `zero generate website` with design system `levels` and template `gamified-app`, create a gamified learning website. Module map, progress, badges, quiz cards, cohort leaderboard, and continue CTA. Make it feel leveled progression, playful, structured.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/24ae59fa-2ce9-4443-8094-56f3fd1c2128/levels-learning-path.png",
+    artifactUrl:
+      "https://web-design-pass3-levels-learning-path-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:gamified-app",
+    designSystemId: "od:design-system:levels",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:gamified-app",
+      "od:design-system:levels",
+    ],
+  },
+  {
+    slug: "luxury-hotel-launch",
+    category: "website",
+    title: "Luxury Hotel Launch",
+    description:
+      "A hotel launch page with suites, dining, spa, experiences, availability, and concierge CTA.",
+    prompt:
+      "Using `zero generate website` with design system `luxury` and template `saas-landing`, create a luxury hotel website. Suites, dining, spa, experiences, availability, and concierge CTA. Make it feel luxury hospitality, spacious, refined.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d061c92f-4208-4cd8-8aaa-0d38a1cc237c/luxury-hotel-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-luxury-hotel-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:luxury",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:luxury",
+    ],
+  },
+  {
+    slug: "mission-control-space-ops",
+    category: "website",
+    title: "Mission Control Space Ops",
+    description:
+      "A mission control dashboard with orbital timeline, subsystem status, comms, and anomaly handling.",
+    prompt:
+      "Using `zero generate website` with design system `mission-control` and template `dashboard`, create a space mission control dashboard. Orbital timeline, subsystem status, communications, anomaly queue, and telemetry. Make it feel mission control, dark, precise.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d0b6ef8f-85bb-4aa8-a82b-e8e176d388c1/mission-control-space-ops.png",
+    artifactUrl:
+      "https://web-design-pass3-mission-control-space-ops-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:mission-control",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:mission-control",
+    ],
+  },
+  {
+    slug: "perspective-product-story",
+    category: "website",
+    title: "Perspective Product Story",
+    description:
+      "A product story page with layered feature perspectives, proof, customer paths, and conversion CTA.",
+    prompt:
+      "Using `zero generate website` with design system `perspective` and template `saas-landing`, create a perspective-driven product story page. Layered feature panels, proof blocks, customer paths, and CTA. Make it feel dimensional, narrative, polished.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a00072c0-1e45-4d44-acce-b7445b1be574/perspective-product-story.png",
+    artifactUrl:
+      "https://web-design-pass3-perspective-product-story-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:perspective",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:perspective",
+    ],
+  },
+  {
+    slug: "premium-membership-launch",
+    category: "website",
+    title: "Premium Membership Launch",
+    description:
+      "A membership pricing page with benefits, annual savings, comparison, social proof, and FAQ.",
+    prompt:
+      "Using `zero generate website` with design system `premium` and template `pricing-page`, create a premium membership pricing page. Benefit tiers, annual savings, comparison matrix, social proof, and FAQ. Make it feel premium, confident, conversion-focused.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f279b287-34b5-4708-b356-de068b9063c2/premium-membership-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-premium-membership-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:paywall-upgrade-cro",
+    templateId: "od:template:pricing-page",
+    designSystemId: "od:design-system:premium",
+    resourceHints: [
+      "od:skill:paywall-upgrade-cro",
+      "od:template:pricing-page",
+      "od:design-system:premium",
+    ],
+  },
+  {
+    slug: "professional-services-home",
+    category: "website",
+    title: "Professional Services Home",
+    description:
+      "A professional services homepage with capabilities, industries, partner proof, insights, and contact.",
+    prompt:
+      "Using `zero generate website` with design system `professional` and template `saas-landing`, create a professional services website. Capabilities, industries, partner proof, insights, and contact CTA. Make it feel professional, restrained, credible.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bf0bf037-cb44-4551-8bc7-ac5d6ef3482b/professional-services-home.png",
+    artifactUrl:
+      "https://web-design-pass3-professional-services-home-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:professional",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:professional",
+    ],
+  },
+  {
+    slug: "publication-news-feature",
+    category: "website",
+    title: "Publication News Feature",
+    description:
+      "A news publication feature with headline package, timeline, data points, interviews, and related stories.",
+    prompt:
+      "Using `zero generate website` with design system `publication` and template `blog-post`, create a news publication feature article. Headline package, timeline, data cards, interviews, and related stories. Make it feel publication-grade, editorial, readable.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f3a436f7-bca8-4d9e-862b-9d6b9fc48cf0/publication-news-feature.png",
+    artifactUrl:
+      "https://web-design-pass3-publication-news-feature-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:publication",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:publication",
+    ],
+  },
+  {
+    slug: "refined-interior-design",
+    category: "website",
+    title: "Refined Interior Design",
+    description:
+      "An interior design project feature with room tours, materials, floor plan, sourcing, and designer notes.",
+    prompt:
+      "Using `zero generate website` with design system `refined` and template `blog-post`, create an interior design editorial page. Room tours, materials, floor plan, sourcing, and designer notes. Make it feel refined interiors, calm, textural.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fe46be5b-90f2-471e-afcf-5f7898cc45cc/refined-interior-design.png",
+    artifactUrl:
+      "https://web-design-pass3-refined-interior-design-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:refined",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:refined",
+    ],
+  },
+  {
+    slug: "sleek-device-launch",
+    category: "website",
+    title: "Sleek Device Launch",
+    description:
+      "A device launch page with product render, specs, ecosystem, preorder, and comparison.",
+    prompt:
+      "Using `zero generate website` with design system `sleek` and template `saas-landing`, create a sleek hardware device launch page. Product render, specs, ecosystem, comparison, preorder, and support. Make it feel sleek, minimal hardware, high polish.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fd470f7d-9655-452c-aa2e-a71f9f4d6d9c/sleek-device-launch.png",
+    artifactUrl:
+      "https://web-design-pass3-sleek-device-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:sleek",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:sleek",
+    ],
+  },
+  {
+    slug: "spacex-mission-brief",
+    category: "website",
+    title: "SpaceX Mission Brief",
+    description:
+      "A mission brief page with launch window, payload, trajectory, vehicle stats, and live webcast.",
+    prompt:
+      "Using `zero generate website` with design system `spacex` and template `saas-landing`, create a space launch mission brief website. Launch window, payload, trajectory, vehicle stats, webcast, and press kit. Make it feel aerospace black-white, technical, bold.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6d4f7f8e-6636-454f-8a54-8a110b908cc4/spacex-mission-brief.png",
+    artifactUrl:
+      "https://web-design-pass3-spacex-mission-brief-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:spacex",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:spacex",
+    ],
+  },
+  {
+    slug: "spacious-wellness-retreat",
+    category: "website",
+    title: "Spacious Wellness Retreat",
+    description:
+      "A wellness retreat page with schedule, rooms, treatments, landscape, and booking.",
+    prompt:
+      "Using `zero generate website` with design system `spacious` and template `saas-landing`, create a spacious wellness retreat website. Retreat schedule, rooms, treatments, landscape, pricing, and booking CTA. Make it feel spacious, serene, airy.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3fe24acf-0c3f-41df-8e07-af9e674fdd76/spacious-wellness-retreat.png",
+    artifactUrl:
+      "https://web-design-pass3-spacious-wellness-retreat-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:spacious",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:spacious",
+    ],
+  },
+  {
+    slug: "storytelling-nonprofit-campaign",
+    category: "website",
+    title: "Storytelling Nonprofit Campaign",
+    description:
+      "A nonprofit campaign story with beneficiary journeys, impact numbers, donation tiers, and updates.",
+    prompt:
+      "Using `zero generate website` with design system `storytelling` and template `blog-post`, create a story-led nonprofit campaign website. Beneficiary journeys, impact numbers, donation tiers, updates, and donate CTA. Make it feel story-led, empathetic, credible.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d2046995-1469-4d5a-8f18-8ca4c616d4de/storytelling-nonprofit-campaign.png",
+    artifactUrl:
+      "https://web-design-pass3-storytelling-nonprofit-campaign-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:storytelling",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:storytelling",
+    ],
+  },
+  {
+    slug: "totality-festival-guide",
+    category: "website",
+    title: "Totality Festival Guide",
+    description:
+      "A festival guide for an eclipse event with schedule, viewing zones, safety, lodging, and tickets.",
+    prompt:
+      "Using `zero generate website` with design system `totality-festival` and template `saas-landing`, create an eclipse festival guide website. Schedule, viewing zones, safety tips, lodging, lineup, and tickets. Make it feel cosmic festival, informative, memorable.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c68f8b6f-b735-422c-abc4-3ee2b7e8d86a/totality-festival-guide.png",
+    artifactUrl:
+      "https://web-design-pass3-totality-festival-guide-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:totality-festival",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:totality-festival",
+    ],
+  },
+  {
+    slug: "vibrant-food-market",
+    category: "website",
+    title: "Vibrant Food Market",
+    description:
+      "A food market page with vendors, tasting map, weekend events, membership, and ordering.",
+    prompt:
+      "Using `zero generate website` with design system `vibrant` and template `saas-landing`, create a vibrant food market website. Vendor grid, tasting map, weekend events, membership, ordering, and visit CTA. Make it feel vibrant, delicious, community.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/34953b82-c50e-42d4-9873-ec7242ddce2f/vibrant-food-market.png",
+    artifactUrl:
+      "https://web-design-pass3-vibrant-food-market-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:vibrant",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:vibrant",
+    ],
+  },
 ];
 
 export function buildGalleryPromptHref(
