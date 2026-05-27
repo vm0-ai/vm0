@@ -49,6 +49,8 @@ from url_utils import AuthorityValidationError, get_trusted_authority
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
+_HTTP_DEFAULT_PORT = 80
+_HTTPS_DEFAULT_PORT = 443
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
@@ -169,9 +171,70 @@ def get_registry_path() -> str:
 _request_start_times: dict = {}
 
 
+def _set_network_log_target(flow: http.HTTPFlow, *, url: str, host: str, port: int) -> None:
+    flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+        "url": url,
+        "host": host,
+        "port": port,
+    }
+
+
+def _fallback_network_log_host_port(flow: http.HTTPFlow, original_url: str) -> tuple[str, int]:
+    try:
+        parsed_url = urllib.parse.urlparse(original_url)
+        host = parsed_url.hostname or flow.request.pretty_host
+        port = parsed_url.port or (
+            _HTTPS_DEFAULT_PORT if parsed_url.scheme == "https" else _HTTP_DEFAULT_PORT
+        )
+    except ValueError:
+        host = flow.request.pretty_host
+        port = flow.request.port
+    return host, port
+
+
+def _set_network_log_target_from_url(flow: http.HTTPFlow, url: str) -> None:
+    host, port = _fallback_network_log_host_port(flow, url)
+    _set_network_log_target(flow, url=url, host=host, port=port)
+
+
+def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
+    target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
+    if target is not None:
+        return target["url"], target["host"], target["port"]
+
+    host, port = _fallback_network_log_host_port(flow, original_url)
+    return original_url, host, port
+
+
+def _http_network_log_entry(
+    flow: http.HTTPFlow,
+    *,
+    action: str,
+    original_url: str,
+    status_code: int,
+    latency_ms: int,
+    request_size: int,
+    response_size: int,
+) -> dict:
+    url, host, port = _network_log_target(flow, original_url)
+    return {
+        "type": "http",
+        "action": action,
+        "host": host,
+        "port": port,
+        "method": flow.request.method,
+        "url": url,
+        "status": status_code,
+        "latency_ms": latency_ms,
+        "request_size": request_size,
+        "response_size": response_size,
+    }
+
+
 def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     flow.metadata[metadata_keys.ORIGINAL_URL] = error.fallback_url
+    _set_network_log_target_from_url(flow, error.fallback_url)
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
     flow.metadata[metadata_keys.FIREWALL_ERROR] = error.reason
 
@@ -281,6 +344,12 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
         flow.metadata["trusted_authority_port"] = trusted_authority.port
+        _set_network_log_target(
+            flow,
+            url=original_url,
+            host=trusted_authority.host,
+            port=trusted_authority.port,
+        )
 
         hostname = trusted_authority.host.lower()
 
@@ -491,33 +560,21 @@ def response(flow: http.HTTPFlow) -> None:
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
 
-    # Parse URL for host
-    try:
-        parsed_url = urllib.parse.urlparse(original_url)
-        host = parsed_url.hostname or flow.request.pretty_host
-        port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
-    except ValueError:
-        host = flow.request.pretty_host
-        port = flow.request.port
-
     # Log HTTP network entry for this run. DNS/kmsg rows are produced by the
     # Rust runner; api-contracts is the shared network-log schema boundary.
     # [NETWORK_LOG_FIELDS]
     network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if network_log_path:
-        log_entry = {
-            "type": "http",
-            "action": firewall_action,
-            "host": host,
-            "port": port,
-            "method": flow.request.method,
-            "url": original_url,
-            "status": status_code,
-            "latency_ms": latency_ms,
-            "request_size": request_size,
-            "response_size": response_size,
-        }
+        log_entry = _http_network_log_entry(
+            flow,
+            action=firewall_action,
+            original_url=original_url,
+            status_code=status_code,
+            latency_ms=latency_ms,
+            request_size=request_size,
+            response_size=response_size,
+        )
 
         # Add firewall match info if this was a firewall request
         firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
@@ -621,31 +678,20 @@ def error(flow: http.HTTPFlow) -> None:
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
-    try:
-        parsed_url = urllib.parse.urlparse(original_url)
-        host = parsed_url.hostname or flow.request.pretty_host
-        port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
-    except ValueError:
-        host = flow.request.pretty_host
-        port = flow.request.port
-
     request_size = len(flow.request.raw_content or b"")
     error_msg = flow.error.msg if flow.error else "unknown error"
 
     # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
-    log_entry: dict = {
-        "type": "http",
-        "action": firewall_action,
-        "host": host,
-        "port": port,
-        "method": flow.request.method,
-        "url": original_url,
-        "status": 0,
-        "latency_ms": latency_ms,
-        "request_size": request_size,
-        "response_size": 0,
-        "error": error_msg,
-    }
+    log_entry = _http_network_log_entry(
+        flow,
+        action=firewall_action,
+        original_url=original_url,
+        status_code=0,
+        latency_ms=latency_ms,
+        request_size=request_size,
+        response_size=0,
+    )
+    log_entry["error"] = error_msg
 
     # Add firewall context if available
     firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)

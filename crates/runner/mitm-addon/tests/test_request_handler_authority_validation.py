@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.request_handler_helpers import _write_github_firewall_registry
 
@@ -48,6 +49,11 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     assert flow.metadata["firewall_action"] == "DENY"
     assert flow.metadata["firewall_error"] == "authority_mismatch"
     assert flow.metadata["original_url"] == expected_original_url
+    assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET] == {
+        "url": expected_original_url,
+        "host": "attacker.example.com",
+        "port": request_port,
+    }
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -77,6 +83,11 @@ async def test_matching_sni_and_host_allows_firewall_auth(
     assert flow.metadata["firewall_permission"] == "full-access"
     assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.metadata["original_url"] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET] == {
+        "url": "https://api.github.com/repos",
+        "host": "api.github.com",
+        "port": 443,
+    }
 
 
 @pytest.mark.parametrize("http_version", ["HTTP/2.0", "HTTP/3"])

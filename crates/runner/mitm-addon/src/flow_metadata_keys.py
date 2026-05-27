@@ -8,6 +8,7 @@ VM_NETWORK_LOG_PATH: Final = "vm_network_log_path"
 VM_PROXY_LOG_PATH: Final = "vm_proxy_log_path"
 VM_SANDBOX_AUTH_KEY: Final = "vm_sandbox_token"
 ORIGINAL_URL: Final = "original_url"
+NETWORK_LOG_TARGET: Final = "network_log_target"
 CAPTURE_BODY: Final = "capture_body"
 CLI_AGENT_TYPE: Final = "cli_agent_type"
 

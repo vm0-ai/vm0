@@ -157,6 +157,26 @@ class TestErrorHandler:
         assert entry["latency_ms"] > 0
         assert_utc_millisecond_timestamp(entry["timestamp"])
 
+    def test_error_logs_legacy_target_when_original_url_port_is_invalid(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://invalid.example.com:bad/path"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.error = Error("connection reset by peer")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["host"] == "fallback.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == "https://invalid.example.com:bad/path"
+        assert entry["error"] == "connection reset by peer"
+
     def test_error_includes_firewall_context(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="slack.com")
         log_path = str(tmp_path / "network.jsonl")

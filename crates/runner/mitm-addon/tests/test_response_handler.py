@@ -9,6 +9,7 @@ from mitmproxy.test import tutils
 
 import auth
 import body_utils
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.auth_state_helpers import (
     cached_headers,
@@ -67,6 +68,49 @@ class TestResponseHandler:
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
         assert_utc_millisecond_timestamp(entry["timestamp"])
+
+    def test_logs_request_time_network_log_target(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="request.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://original.example.com/"
+        flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+            "url": "https://target.example.com:9443/path",
+            "host": "target.example.com",
+            "port": 9443,
+        }
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["host"] == "target.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == "https://target.example.com:9443/path"
+
+    def test_logs_legacy_target_when_original_url_port_is_invalid(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://invalid.example.com:bad/path"
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["host"] == "fallback.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == "https://invalid.example.com:bad/path"
 
     def test_response_size_tracks_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
         """response_size should use cumulative streamed bytes."""
