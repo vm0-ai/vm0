@@ -393,7 +393,7 @@ function isPreviewableChatUrl(url: string): boolean {
   return isPlatformFileUrl(url) || isHostedSiteUrl(url);
 }
 
-function previewAttachmentFromUrl(
+export function previewAttachmentFromUrl(
   url: string,
   title?: string,
 ): ChatAttachmentDescriptor {
