@@ -190,7 +190,7 @@ class TestFirewallConsistency:
         for permission in _load_x_firewall_permissions():
             rules: set[tuple[str, str]] = set()
             for rule in permission.rules:
-                parts = rule.split(maxsplit=1)
+                parts = rule.split(" ", 1)
                 if len(parts) != 2:
                     pytest.fail(
                         "Expected xFirewall rule to be shaped like "
