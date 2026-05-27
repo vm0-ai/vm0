@@ -3557,6 +3557,144 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:design-system:vibrant",
     ],
   },
+  {
+    slug: "clean-operations-dashboard",
+    category: "website",
+    title: "Clean Operations Dashboard",
+    description:
+      "A clean operations dashboard with task queues, SLA health, team capacity, and weekly trends.",
+    prompt:
+      "Using `zero generate website` with design system `clean` and template `dashboard`, create a clean operations dashboard for service teams. Task queues, SLA health, team capacity, weekly trends, and handoff notes. Make it feel clean, restrained, practical.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/395f5976-2d38-4db2-93bd-2fd540ec82cc/clean-operations-dashboard.png",
+    artifactUrl:
+      "https://web-design-final-clean-operations-dashboard-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-design",
+    templateId: "od:template:dashboard",
+    designSystemId: "od:design-system:clean",
+    resourceHints: [
+      "od:skill:frontend-design",
+      "od:template:dashboard",
+      "od:design-system:clean",
+    ],
+  },
+  {
+    slug: "default-saas-home",
+    category: "website",
+    title: "Default SaaS Home",
+    description:
+      "A baseline SaaS homepage with product value, feature cards, customer proof, pricing, and signup.",
+    prompt:
+      "Using `zero generate website` with design system `default` and template `saas-landing`, create a default SaaS homepage that works as a neutral baseline. Hero value proposition, feature cards, customer proof, pricing teaser, and signup CTA. Make it feel neutral, dependable, broadly usable.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6509945c-edf9-4392-935f-1360ad6f6c9f/default-saas-home.png",
+    artifactUrl:
+      "https://web-design-final-default-saas-home-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:default",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:default",
+    ],
+  },
+  {
+    slug: "minimal-portfolio-index",
+    category: "website",
+    title: "Minimal Portfolio Index",
+    description:
+      "A minimal portfolio index with selected work, concise case notes, studio bio, and contact.",
+    prompt:
+      "Using `zero generate website` with design system `minimal` and template `blog-post`, create a minimal portfolio index for a design studio. Selected work, concise case notes, studio bio, process notes, and contact CTA. Make it feel minimal, quiet, precise.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/67f94b59-bda2-456a-980d-739d25aa73f3/minimal-portfolio-index.png",
+    artifactUrl:
+      "https://web-design-final-minimal-portfolio-index-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:minimal",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:minimal",
+    ],
+  },
+  {
+    slug: "modern-product-launch",
+    category: "website",
+    title: "Modern Product Launch",
+    description:
+      "A modern product launch page with a device mockup, feature narrative, integrations, testimonials, and trial CTA.",
+    prompt:
+      "Using `zero generate website` with design system `modern` and template `saas-landing`, create a modern product launch website. Device mockup, feature narrative, integrations, testimonials, and trial CTA. Make it feel modern, polished, conversion-focused.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9e856021-bb13-48a1-aab7-ac2ed35c000c/modern-product-launch.png",
+    artifactUrl:
+      "https://web-design-final-modern-product-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:modern",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:modern",
+    ],
+  },
+  {
+    slug: "simple-notes-app",
+    category: "website",
+    title: "Simple Notes App",
+    description:
+      "A simple notes app landing page with capture, organization, sharing, sync, and export.",
+    prompt:
+      "Using `zero generate website` with design system `simple` and template `saas-landing`, create a simple notes app website. Capture flow, organization, sharing, sync, export, and download CTA. Make it feel simple, direct, friendly.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e9171292-32cb-44bb-afe5-87c1c4aadce2/simple-notes-app.png",
+    artifactUrl:
+      "https://web-design-final-simple-notes-app-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:simple",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:simple",
+    ],
+  },
+  {
+    slug: "wired-tech-feature",
+    category: "website",
+    title: "WIRED Tech Feature",
+    description:
+      "A WIRED-style technology feature with a bold headline package, timeline, expert quotes, and related reading.",
+    prompt:
+      "Using `zero generate website` with design system `wired` and template `blog-post`, create a technology magazine feature article. Bold headline package, timeline, expert quotes, data callouts, and related reading. Make it feel WIRED-inspired, editorial, sharp.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/aec45e26-f8db-42b6-a39e-583662108eb5/wired-tech-feature.png",
+    artifactUrl:
+      "https://web-design-final-wired-tech-feature-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:wired",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:wired",
+    ],
+  },
 ];
 
 export function buildGalleryPromptHref(
