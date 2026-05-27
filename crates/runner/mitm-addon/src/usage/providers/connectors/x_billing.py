@@ -124,11 +124,6 @@ _PATH_OVERRIDES: list[tuple[str, str, str, str]] = [
     ("tweet.read", "GET", "/2/media/{media_key}", "media.read"),
     ("tweet.read", "GET", "/2/notes/search/notes_written", "note.read"),
     ("tweet.read", "GET", "/2/notes/search/posts_eligible_for_notes", "note.read"),
-    # Runtime firewall matching sees this literal endpoint through the
-    # earlier list.read `/2/communities/{id}` rule before it reaches the
-    # generated users.read literal.  Keep the runtime permission override
-    # here so billing still uses X's Community: Read bucket.
-    ("list.read", "GET", "/2/communities/search", "community.read"),
     # users.read: paths returning tweets are Posts: Read.
     ("users.read", "GET", "/2/users/{id}/mentions", "posts.read"),
     ("users.read", "GET", "/2/users/{id}/timelines/reverse_chronological", "posts.read"),
