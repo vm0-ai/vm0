@@ -24,6 +24,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   deriveConnectedManualGrantMethods,
+  getConnectorAuthMethod,
   getConnectorAuthMethodEnvBindings,
   getConnectorEnvBindings,
   getConnectorProvidedEnvNames,
@@ -1750,6 +1751,12 @@ function connectorEnvBindingSets(
   rows: readonly StoredConnectorRuntimeRow[],
 ): readonly ConnectorEnvBindingSet[] {
   return rows.map((row) => {
+    const method = getConnectorAuthMethod(row.connectorType, row.authMethod);
+    if (!method) {
+      throw new Error(
+        `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
+      );
+    }
     return {
       connectorType: row.connectorType,
       envBindings: getConnectorAuthMethodEnvBindings(

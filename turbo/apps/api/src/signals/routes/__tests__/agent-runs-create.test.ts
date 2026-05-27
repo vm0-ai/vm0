@@ -1014,6 +1014,33 @@ describe("POST /api/agent/runs", () => {
     expect(response.status).toBe(500);
   });
 
+  it("returns 500 when a stored connector has an invalid auth method", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "github",
+      authMethod: "missing-method",
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/agent/runs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        agentComposeId: compose.composeId,
+        prompt: "Use stored github",
+      }),
+    });
+
+    expect(response.status).toBe(500);
+  });
+
   it("loads an api-token connector secret used only by the firewall, not the compose environment", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
