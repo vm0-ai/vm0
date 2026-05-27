@@ -370,7 +370,7 @@ export function Navbar({
         label: t("docs"),
         description: t("docsDesc"),
         href: "/docs",
-        icon: "/assets/nav/docs.svg",
+        icon: "/assets/nav/docs.png",
       }
     : null;
 
