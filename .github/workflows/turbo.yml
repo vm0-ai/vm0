@@ -811,33 +811,75 @@ jobs:
           # --- Start Neon branch creation in background ---
           (
             set -e
+            NEON_STARTED_AT=$(date +%s)
+
+            log_neon() {
+              local now
+              now=$(date +%s)
+              printf '[neon %s +%ss] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$((now - NEON_STARTED_AT))" "$*"
+            }
+
+            run_timed() {
+              local label="$1"
+              shift
+              local started_at finished_at status
+              started_at=$(date +%s)
+              log_neon "$label started"
+              set +e
+              "$@"
+              status=$?
+              set -e
+              finished_at=$(date +%s)
+              if [ "$status" -eq 0 ]; then
+                log_neon "$label completed in $((finished_at - started_at))s"
+              else
+                log_neon "$label failed after $((finished_at - started_at))s with exit code $status"
+              fi
+              return "$status"
+            }
+
             if ! command -v neonctl &> /dev/null; then
-              npm install -g neonctl@2.15.0
+              run_timed "install neonctl" npm install -g neonctl@2.15.0
+            else
+              log_neon "neonctl already installed"
             fi
 
             BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
 
+            log_neon "checking branch $BRANCH_NAME"
+            BRANCH_LOOKUP_STARTED_AT=$(date +%s)
             if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
-              echo "Branch $BRANCH_NAME already exists, resetting..."
-              neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
+              log_neon "branch lookup completed in $(($(date +%s) - BRANCH_LOOKUP_STARTED_AT))s; branch exists"
+              run_timed "reset branch $BRANCH_NAME" neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
 
+              BRANCH_READY_STARTED_AT=$(date +%s)
+              log_neon "waiting for branch $BRANCH_NAME to become ready"
               for i in {1..30}; do
                 CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
                 if [ "$CURRENT_STATE" = "ready" ]; then
-                  echo "Branch reset complete"
+                  log_neon "branch ready after $(( $(date +%s) - BRANCH_READY_STARTED_AT ))s"
                   break
                 fi
-                echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+                log_neon "branch state: $CURRENT_STATE (attempt $i/30)"
                 sleep 2
               done
+              if [ "${CURRENT_STATE:-}" != "ready" ]; then
+                log_neon "branch wait ended after $(( $(date +%s) - BRANCH_READY_STARTED_AT ))s with state ${CURRENT_STATE:-unknown}"
+              fi
             else
-              echo "Creating branch $BRANCH_NAME"
-              neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+              log_neon "branch lookup completed in $(($(date +%s) - BRANCH_LOOKUP_STARTED_AT))s; branch missing"
+              run_timed "create branch $BRANCH_NAME" neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
             fi
 
+            CONNECTION_STRING_STARTED_AT=$(date +%s)
+            log_neon "fetching pooled connection string"
             DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+            log_neon "pooled connection string fetched in $(($(date +%s) - CONNECTION_STRING_STARTED_AT))s"
             if [ -z "$DATABASE_URL" ]; then
+              CONNECTION_STRING_STARTED_AT=$(date +%s)
+              log_neon "pooled connection string empty; fetching direct connection string"
               DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+              log_neon "direct connection string fetched in $(($(date +%s) - CONNECTION_STRING_STARTED_AT))s"
             fi
             echo "$DATABASE_URL" > /tmp/neon-database-url
 
@@ -847,9 +889,9 @@ jobs:
             fi
 
             cd turbo
-            DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
-            ENV=preview VM0_WEB_URL="$API_SEED_WEB_URL" DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
-            echo "Neon branch ready"
+            run_timed "run database migrations" env DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
+            run_timed "run API dev seed" env ENV=preview VM0_WEB_URL="$API_SEED_WEB_URL" DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
+            log_neon "Neon branch ready"
           ) > /tmp/neon-log 2>&1 &
           NEON_PID=$!
 
