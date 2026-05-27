@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.78.1](https://github.com/vm0-ai/vm0/compare/api-v1.78.0...api-v1.78.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* harden runner claim lifecycle ([#15091](https://github.com/vm0-ai/vm0/issues/15091)) ([6de4d34](https://github.com/vm0-ai/vm0/commit/6de4d340fd951702c7e4dc2b8149f61c66ad27a6))
+
+
+### Refactoring
+
+* rename runtime env bindings ([#15089](https://github.com/vm0-ai/vm0/issues/15089)) ([60f703a](https://github.com/vm0-ai/vm0/commit/60f703a79f621c8d583e106c395a62adea9f6676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.2
+    * @vm0/connectors bumped to 1.36.6
+    * @vm0/core bumped to 8.299.0
+    * @vm0/db bumped to 1.19.2
+
 ## [1.78.0](https://github.com/vm0-ai/vm0/compare/api-v1.77.0...api-v1.78.0) (2026-05-27)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.392.0](https://github.com/vm0-ai/vm0/compare/web-v12.391.0...web-v12.392.0) (2026-05-27)
+
+
+### Features
+
+* enable public docs site ([#15097](https://github.com/vm0-ai/vm0/issues/15097)) ([2f377c3](https://github.com/vm0-ai/vm0/commit/2f377c39186c26533920382d92d2d16e0283dcde))
+
+
+### Refactoring
+
+* rename runtime env bindings ([#15089](https://github.com/vm0-ai/vm0/issues/15089)) ([60f703a](https://github.com/vm0-ai/vm0/commit/60f703a79f621c8d583e106c395a62adea9f6676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.2
+    * @vm0/core bumped to 8.299.0
+    * @vm0/db bumped to 1.19.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.36.6
+
 ## [12.391.0](https://github.com/vm0-ai/vm0/compare/web-v12.390.0...web-v12.391.0) (2026-05-27)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.169.1](https://github.com/vm0-ai/vm0/compare/cli-v9.169.0...cli-v9.169.1) (2026-05-27)
+
+
+### Refactoring
+
+* rename runtime env bindings ([#15089](https://github.com/vm0-ai/vm0/issues/15089)) ([60f703a](https://github.com/vm0-ai/vm0/commit/60f703a79f621c8d583e106c395a62adea9f6676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.42.2
+    * @vm0/connectors bumped to 1.36.6
+    * @vm0/core bumped to 8.299.0
+
 ## [9.169.0](https://github.com/vm0-ai/vm0/compare/cli-v9.168.3...cli-v9.169.0) (2026-05-27)
 
 

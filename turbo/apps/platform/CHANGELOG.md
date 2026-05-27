@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.387.2](https://github.com/vm0-ai/vm0/compare/app-v0.387.1...app-v0.387.2) (2026-05-27)
+
+
+### Refactoring
+
+* rename runtime env bindings ([#15089](https://github.com/vm0-ai/vm0/issues/15089)) ([60f703a](https://github.com/vm0-ai/vm0/commit/60f703a79f621c8d583e106c395a62adea9f6676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.2
+    * @vm0/connectors bumped to 1.36.6
+    * @vm0/core bumped to 8.299.0
+
 ## [0.387.1](https://github.com/vm0-ai/vm0/compare/app-v0.387.0...app-v0.387.1) (2026-05-27)
 
 

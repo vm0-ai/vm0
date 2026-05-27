@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.104.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.10...runner-rs-v0.104.11) (2026-05-27)
+
+
+### Bug Fixes
+
+* classify invalid billable auth expiry ([#15088](https://github.com/vm0-ai/vm0/issues/15088)) ([f08b100](https://github.com/vm0-ai/vm0/commit/f08b100859047b8cb5670fd97e12924fd9c42302))
+* harden runner claim lifecycle ([#15091](https://github.com/vm0-ai/vm0/issues/15091)) ([6de4d34](https://github.com/vm0-ai/vm0/commit/6de4d340fd951702c7e4dc2b8149f61c66ad27a6))
+
 ## [0.104.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.9...runner-rs-v0.104.10) (2026-05-27)
 
 
