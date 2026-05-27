@@ -942,9 +942,6 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
               />
               <AddToSlackButton />
             </div>
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {t("hero.ctaSubtext")}
-            </p>
           </div>
         </section>
 

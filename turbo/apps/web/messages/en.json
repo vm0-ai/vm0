@@ -3697,7 +3697,6 @@
       "subtitle": "Zero connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
       "ctaGetStarted": "Get started",
       "ctaOpenApp": "Open app",
-      "ctaSubtext": "Free to start. Redeem up to $100 in bonus credits.",
       "seedBanner": "Check out our $14M seed round fundraising blog."
     },
     "worksForYou": {
@@ -3806,7 +3805,7 @@
     },
     "cta": {
       "title": "You decide what matters. Zero handles the rest.",
-      "subtitle": "Start free with credits. Redeem up to $100 more. No credit card required."
+      "subtitle": "Start free with credits. No credit card required."
     }
   },
   "securityPage": {
