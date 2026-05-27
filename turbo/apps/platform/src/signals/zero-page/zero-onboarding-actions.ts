@@ -11,6 +11,7 @@ import {
   onboardingPromptDraft$,
   onboardingEagerInitialized$,
   markEagerInitialized$,
+  reloadOnboardingStatus$,
 } from "./zero-onboarding.ts";
 import {
   detachedNavigateTo$,
@@ -18,11 +19,16 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { setLoop } from "../utils.ts";
 
 import { reloadBillingStatus$, startCheckout$ } from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
-import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
+import {
+  hideAppSkeleton$,
+  showAppSkeleton$,
+  startSkeletonCycling$,
+} from "../app-skeleton.ts";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -373,5 +379,49 @@ const onboardingContinueWeb$ = command(
         });
       })(),
     ]);
+  },
+);
+
+const MAX_CHECKOUT_STATUS_POLLS = 90;
+
+const waitForCompletedOnboardingCheckout$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
+    let attempts = 0;
+    let resolvedAgentId: string | null = null;
+
+    await setLoop(
+      async () => {
+        set(reloadOnboardingStatus$);
+        const status = await get(zeroOnboardingStatus$);
+        signal.throwIfAborted();
+        if (!status.needsOnboarding && status.defaultAgentId) {
+          resolvedAgentId = status.defaultAgentId;
+          return true;
+        }
+
+        attempts += 1;
+        return attempts >= MAX_CHECKOUT_STATUS_POLLS;
+      },
+      1000,
+      signal,
+    );
+
+    signal.throwIfAborted();
+    return resolvedAgentId;
+  },
+);
+
+export const continueOnboardingAfterCheckout$ = command(
+  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    set(showAppSkeleton$);
+    const agentId = await set(waitForCompletedOnboardingCheckout$, signal);
+    signal.throwIfAborted();
+    if (!agentId) {
+      await set(hideAppSkeleton$, signal);
+      return false;
+    }
+
+    await set(onboardingContinueWeb$, signal);
+    return true;
   },
 );

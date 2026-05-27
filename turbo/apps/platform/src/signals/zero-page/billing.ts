@@ -17,6 +17,7 @@ import { accept } from "../../lib/accept.ts";
 // ---------------------------------------------------------------------------
 
 export type BillingTier = "free" | "pro-suspend" | "pro" | "team";
+type CompletedBillingCheckoutTier = "pro" | "team";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
@@ -39,6 +40,8 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
 
 const internalDialogOpen$ = state(false);
 const billingReload$ = state(0);
+const internalCompletedBillingCheckoutTier$ =
+  state<CompletedBillingCheckoutTier | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
 const internalFormThresholdOverride$ = state<string | null>(null);
@@ -57,9 +60,20 @@ export const downgradeDialogOpen$ = computed((get) => {
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
 });
+export const completedBillingCheckoutTier$ = computed((get) => {
+  return get(internalCompletedBillingCheckoutTier$);
+});
 
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
+});
+export const markCompletedBillingCheckout$ = command(
+  ({ set }, tier: CompletedBillingCheckoutTier) => {
+    set(internalCompletedBillingCheckoutTier$, tier);
+  },
+);
+export const clearCompletedBillingCheckout$ = command(({ set }) => {
+  set(internalCompletedBillingCheckoutTier$, null);
 });
 
 /**

@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command, computed, type Computed } from "ccstate";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 
@@ -17,6 +18,7 @@ export const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
 
 const FAR_FUTURE_CACHE_MS = 365 * 24 * 60 * 60 * 1000;
 const ORG_CACHE_TTL_MS = 60_000;
+const TEST_ORG_CREDITS = 100_000;
 
 interface IssuedCliToken {
   readonly token: string;
@@ -144,6 +146,30 @@ function clerkRoleToCacheRole(role: string): "admin" | "member" {
   return role === "org:admin" ? "admin" : "member";
 }
 
+async function ensureTestOrgBillingRow(
+  writeDb: Db,
+  orgId: string,
+): Promise<void> {
+  await writeDb
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      tier: "pro",
+      credits: TEST_ORG_CREDITS,
+      updatedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        tier: "pro",
+        credits: sql`
+          GREATEST(COALESCE(${orgMetadata.credits}, 0), ${TEST_ORG_CREDITS})
+        `,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
 export const ensureTestOrg$ = command(
   async (
     { get, set },
@@ -181,6 +207,9 @@ export const ensureTestOrg$ = command(
       });
       signal.throwIfAborted();
     }
+
+    await ensureTestOrgBillingRow(writeDb, org.id);
+    signal.throwIfAborted();
 
     await writeDb
       .insert(orgMembersCache)
