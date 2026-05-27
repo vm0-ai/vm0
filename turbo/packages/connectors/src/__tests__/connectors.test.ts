@@ -39,6 +39,7 @@ import {
   getConnectorManualGrantFieldNames,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
+  getConnectorVariableNames,
   hasConnectorOAuthGrant,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
@@ -1315,6 +1316,18 @@ describe("getConnectorAuthMethodEnvBindings", () => {
 
   it("returns empty env bindings for an unknown auth method", () => {
     expect(getConnectorAuthMethodEnvBindings("ahrefs", "missing")).toEqual({});
+  });
+});
+
+describe("getConnectorVariableNames", () => {
+  it("returns manual grant variable fields for the exact auth method", () => {
+    expect(new Set(getConnectorVariableNames("zendesk", "api-token"))).toEqual(
+      new Set(["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"]),
+    );
+  });
+
+  it("returns no variables for an auth method without variable fields", () => {
+    expect(getConnectorVariableNames("ahrefs", "oauth")).toEqual([]);
   });
 });
 

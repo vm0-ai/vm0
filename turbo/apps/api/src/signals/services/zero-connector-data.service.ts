@@ -15,6 +15,7 @@ import {
   getConnectorOAuthClient,
   getConnectorProvidedEnvNames,
   getConnectorSecretNames,
+  getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
   getScopeDiff,
   isConnectorAuthMethodAvailable,
@@ -747,24 +748,18 @@ export const deleteZeroConnectorLocalState$ = command(
       signal.throwIfAborted();
       deleted = true;
 
-      const secretNames = getConnectorSecretNames(
-        args.type,
-        existing.authMethod,
-      );
-
-      for (const name of secretNames) {
-        await writeDb
-          .delete(secrets)
-          .where(
-            and(
-              eq(secrets.orgId, args.orgId),
-              eq(secrets.userId, args.userId),
-              eq(secrets.name, name),
-              eq(secrets.type, "connector"),
-            ),
-          );
-        signal.throwIfAborted();
-      }
+      await deleteConnectorScopedSecretNames(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+        names: getConnectorSecretNames(args.type, existing.authMethod),
+        signal,
+      });
+      await deleteConnectorScopedVariableNames(writeDb, {
+        orgId: args.orgId,
+        userId: args.userId,
+        names: getConnectorVariableNames(args.type, existing.authMethod),
+        signal,
+      });
     }
 
     deleted =
@@ -905,19 +900,104 @@ async function deleteConnectorScopedSecretNames(
     readonly signal: AbortSignal;
   },
 ): Promise<void> {
-  for (const name of args.names) {
-    await db
-      .delete(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, args.orgId),
-          eq(secrets.userId, args.userId),
-          eq(secrets.name, name),
-          eq(secrets.type, "connector"),
-        ),
-      );
-    args.signal.throwIfAborted();
+  if (args.names.length === 0) {
+    return;
   }
+  await db
+    .delete(secrets)
+    .where(
+      and(
+        eq(secrets.orgId, args.orgId),
+        eq(secrets.userId, args.userId),
+        eq(secrets.type, "connector"),
+        inArray(secrets.name, [...args.names]),
+      ),
+    );
+  args.signal.throwIfAborted();
+}
+
+async function deleteConnectorScopedVariableNames(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: readonly string[];
+    readonly signal: AbortSignal;
+  },
+): Promise<void> {
+  if (args.names.length === 0) {
+    return;
+  }
+  await db
+    .delete(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.type, "connector"),
+        inArray(variables.name, [...args.names]),
+      ),
+    );
+  args.signal.throwIfAborted();
+}
+
+async function deleteExistingStoredConnectorForApiTokenConnect(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ConnectorType;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly signal: AbortSignal;
+  },
+): Promise<PendingOAuthRevoke | null> {
+  const [existing] = await db
+    .select({ id: connectors.id, authMethod: connectors.authMethod })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.type, args.type),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!existing) {
+    return null;
+  }
+
+  const pendingOAuthRevoke = connectorAuthMethodHasOAuthGrant(
+    args.type,
+    existing.authMethod,
+  )
+    ? await loadPendingOAuthRevoke({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        featureSwitchContext: args.featureSwitchContext,
+        signal: args.signal,
+      })
+    : null;
+
+  await db.delete(connectors).where(eq(connectors.id, existing.id));
+  args.signal.throwIfAborted();
+  await deleteConnectorScopedSecretNames(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    names: getConnectorSecretNames(args.type, existing.authMethod),
+    signal: args.signal,
+  });
+  await deleteConnectorScopedVariableNames(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    names: getConnectorVariableNames(args.type, existing.authMethod),
+    signal: args.signal,
+  });
+
+  return pendingOAuthRevoke;
 }
 
 export const connectApiTokenConnector$ = command(
@@ -976,42 +1056,14 @@ export const connectApiTokenConnector$ = command(
     let pendingOAuthRevoke: PendingOAuthRevoke | null = null;
 
     await writeDb.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ id: connectors.id, authMethod: connectors.authMethod })
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, args.orgId),
-            eq(connectors.userId, args.userId),
-            eq(connectors.type, args.type),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (existing) {
-        if (connectorAuthMethodHasOAuthGrant(args.type, existing.authMethod)) {
-          pendingOAuthRevoke = await loadPendingOAuthRevoke({
-            db: tx,
-            orgId: args.orgId,
-            userId: args.userId,
-            type: args.type,
-            featureSwitchContext,
-            signal,
-          });
-        }
-
-        await tx.delete(connectors).where(eq(connectors.id, existing.id));
-        signal.throwIfAborted();
-
-        await deleteConnectorScopedSecretNames(tx, {
+      pendingOAuthRevoke =
+        await deleteExistingStoredConnectorForApiTokenConnect(tx, {
           orgId: args.orgId,
           userId: args.userId,
-          names: getConnectorSecretNames(args.type, existing.authMethod),
+          type: args.type,
+          featureSwitchContext,
           signal,
         });
-      }
 
       await deleteUserSecretNames(tx, {
         orgId: args.orgId,

@@ -589,6 +589,16 @@ export function getConnectorSecretNames(
   return connectorMethodSecretNames(getConnectorAuthMethod(type, authMethod));
 }
 
+/**
+ * Get variable names for a specific auth method
+ */
+export function getConnectorVariableNames(
+  type: ConnectorType,
+  authMethod: string,
+): string[] {
+  return connectorMethodVariableNames(getConnectorAuthMethod(type, authMethod));
+}
+
 function connectorMethodSecretNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
@@ -615,6 +625,32 @@ function connectorMethodSecretNames(
   if (method.access.kind === "refresh-token") {
     names.add(method.access.accessToken);
     names.add(method.access.refreshToken);
+  }
+
+  return [...names];
+}
+
+function connectorMethodVariableNames(
+  method: ConnectorAuthMethodConfig | undefined,
+): string[] {
+  if (!method) {
+    return [];
+  }
+
+  const names = new Set<string>();
+  const fields = getManualGrantFields(method);
+  for (const [name, field] of Object.entries(fields ?? {})) {
+    if (field.storage === "variable") {
+      names.add(name);
+    }
+  }
+
+  for (const valueRef of Object.values(
+    connectorAccessEnvBindings(method.access),
+  )) {
+    if (valueRef.startsWith("$vars.")) {
+      names.add(valueRef.slice("$vars.".length));
+    }
   }
 
   return [...names];
