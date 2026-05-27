@@ -19,15 +19,12 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorApiTokenContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 import { resetSignal } from "../../../utils.ts";
 
@@ -778,31 +775,22 @@ describe("submitManualCredentials$", () => {
   it("strips whitespace from connector API token values before upload", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const submitted: Record<string, string> = {};
+    let submitted: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submitted[body.name] = body.value;
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }),
-      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
-        submitted[body.name] = body.value;
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          value: body.value,
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
+      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+        submitted = body.values;
+        return respond(200, {
+          id: null,
+          type: "strapi",
+          authMethod: "api-token",
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          needsReconnect: false,
+          createdAt: "1970-01-01T00:00:00.000Z",
+          updatedAt: "1970-01-01T00:00:00.000Z",
         });
       }),
     );

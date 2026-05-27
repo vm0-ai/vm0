@@ -124,6 +124,7 @@ export {
   listZeroConnectors,
   getZeroConnector,
   searchZeroConnectors,
+  connectZeroConnectorApiToken,
 } from "./domains/zero-connectors";
 
 // Domain modules - Integrations Slack

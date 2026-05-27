@@ -271,6 +271,10 @@ const ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE =
   "/api/zero/connectors/:type((?!search$)[^/]+)";
 const ZERO_CONNECTORS_BY_TYPE_PATH_RE =
   /^\/api\/zero\/connectors\/(?!search$)[^/]+$/;
+const ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/api-token";
+const ZERO_CONNECTORS_API_TOKEN_PATH_RE =
+  /^\/api\/zero\/connectors\/[^/]+\/api-token$/;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
   "/api/zero/connectors/:type/scope-diff";
 const ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE =
@@ -699,6 +703,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE,
     "/api/zero/connectors/:type",
     ZERO_CONNECTORS_BY_TYPE_PATH_RE,
+  ],
+  [
+    ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+    "/api/zero/connectors/:type/api-token",
+    ZERO_CONNECTORS_API_TOKEN_PATH_RE,
   ],
   [
     ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE,

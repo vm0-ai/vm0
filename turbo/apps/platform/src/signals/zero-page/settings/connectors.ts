@@ -35,14 +35,11 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
+  zeroConnectorApiTokenContract,
   zeroLocalBrowserConnectorContract,
   zeroConnectorsMainContract,
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
@@ -646,25 +643,6 @@ const finishConnectorConnection$ = command(
   },
 );
 
-function getManualCredentialFieldStorageType(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-  name: string,
-): "secret" | "variable" {
-  const method = getConnectorAuthMethod(type, authMethod);
-  switch (method?.grant.kind) {
-    case "manual": {
-      return method.grant.fields[name]?.storage ?? "secret";
-    }
-    case "auth-code":
-    case "device-auth":
-    case "managed":
-    case undefined: {
-      throw new Error(`${type} ${authMethod} does not use manual credentials`);
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Submit manual connector credentials command
 // ---------------------------------------------------------------------------
@@ -687,35 +665,18 @@ export const submitManualCredentials$ = command(
     return await withCleanup(
       (async () => {
         const createClient = get(zeroClient$);
-        const secretsClient = createClient(zeroSecretsContract);
-        const variablesClient = createClient(zeroVariablesContract);
-        const secrets = sanitizeTokenInputRecord(inputSecrets);
-        for (const [name, value] of Object.entries(secrets)) {
-          if (!value) {
-            continue;
-          }
-          const isVariable =
-            getManualCredentialFieldStorageType(type, authMethod, name) ===
-            "variable";
-          if (isVariable) {
-            await accept(
-              variablesClient.set({
-                body: { name, value },
-                fetchOptions: { signal },
-              }),
-              [200, 201],
-            );
-          } else {
-            await accept(
-              secretsClient.set({
-                body: { name, value },
-                fetchOptions: { signal },
-              }),
-              [200, 201],
-            );
-          }
-          signal.throwIfAborted();
+        if (authMethod !== "api-token") {
+          throw new Error(`${type} ${authMethod} does not use API-token auth`);
         }
+        const connectorClient = createClient(zeroConnectorApiTokenContract);
+        await accept(
+          connectorClient.connect({
+            params: { type },
+            body: { values: sanitizeTokenInputRecord(inputSecrets) },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
         signal.throwIfAborted();
         set(finishConnectorConnection$, type, {
           ...options,

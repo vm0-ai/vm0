@@ -754,6 +754,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
   });
 
+  it("matches the zero connector API-token rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/api-token"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/connectors/github/api-token/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connector/github/api-token"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/api"),
+    ).toBe(false);
+  });
+
   it("matches the zero connectors scope diff rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/scope-diff"),

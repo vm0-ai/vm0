@@ -4,6 +4,7 @@ import { command, computed } from "ccstate";
 import type { AppRoute } from "@ts-rest/core";
 import {
   zeroConnectorAuthorizeContract,
+  zeroConnectorApiTokenContract,
   zeroConnectorOauthStartContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
@@ -27,12 +28,14 @@ import {
 } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
-import { pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
+  connectApiTokenConnector$,
+  connectorSupportsApiTokenAuth,
   deleteZeroConnectorLocalState$,
   zeroConnectorByType,
   zeroConnectorList,
@@ -345,6 +348,52 @@ const connectLocalBrowserConnectorInner$ = command(
   },
 );
 
+const connectApiTokenConnectorInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroConnectorApiTokenContract.connect));
+    const bodyResult = await get(
+      bodyResultOf(zeroConnectorApiTokenContract.connect),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    if (!connectorSupportsApiTokenAuth(params.type)) {
+      return badRequestMessage(
+        `${params.type} connector does not support API-token auth`,
+      );
+    }
+
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (!availability.isAuthMethodAvailable(params.type, "api-token")) {
+      return connectorUnavailable(params.type);
+    }
+
+    const result = await set(
+      connectApiTokenConnector$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type: params.type,
+        values: bodyResult.data.values,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "invalid") {
+      return badRequestMessage(result.message);
+    }
+
+    return { status: 200 as const, body: result.connector };
+  },
+);
+
 export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParamsOf(route));
@@ -640,6 +689,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroLocalBrowserConnectorContract.create,
     handler: authRoute(connectorWriteAuth, connectLocalBrowserConnectorInner$),
+  },
+  {
+    route: zeroConnectorApiTokenContract.connect,
+    handler: authRoute(connectorWriteAuth, connectApiTokenConnectorInner$),
   },
   {
     route: zeroConnectorsSearchContract.search,

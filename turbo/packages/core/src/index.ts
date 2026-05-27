@@ -318,6 +318,7 @@ export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
+  zeroConnectorApiTokenContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,

@@ -3,7 +3,7 @@
 # Test firewall dynamic base URL resolution for connectors with subdomain-based APIs.
 #
 # Verifies the full flow for zendesk (api-token connector with ${{ vars.X }} base URL):
-# 1. Set up connector via real CLI (secret set + variable set)
+# 1. Set up connector via one connector-aware CLI call
 # 2. Compose agent with zendesk skill + environment referencing connector secrets/vars
 # 3. System auto-detects zendesk as connected, adds firewall with resolved base URL
 # 4. Placeholder env var injected in sandbox
@@ -12,8 +12,6 @@
 load '../../helpers/setup'
 
 setup_file() {
-    skip "Temporarily disabled pending firewall dynamic base URL E2E stabilization"
-
     if [[ -z "$VM0_API_URL" ]]; then
         echo "VM0_API_URL not set" >&2
         return 1
@@ -26,10 +24,10 @@ setup_file() {
     export TEST_SUBDOMAIN="e2etest${RANDOM}"
 
     # Set up zendesk connector via real CLI — same as user doing it in web UI.
-    # api-token connectors are inferred from matching secrets + variables.
-    $ZERO_CLI secret set ZENDESK_API_TOKEN --body "fake-zendesk-token-for-e2e"
-    $ZERO_CLI variable set ZENDESK_SUBDOMAIN "$TEST_SUBDOMAIN"
-    $ZERO_CLI variable set ZENDESK_EMAIL "e2e@test.vm0.ai"
+    $ZERO_CLI connector connect zendesk \
+        --value ZENDESK_API_TOKEN=fake-zendesk-token-for-e2e \
+        --value ZENDESK_SUBDOMAIN="$TEST_SUBDOMAIN" \
+        --value ZENDESK_EMAIL=e2e@test.vm0.ai
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"

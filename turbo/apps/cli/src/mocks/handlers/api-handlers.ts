@@ -23,6 +23,21 @@ function defaultAvailableConnectors() {
     });
 }
 
+function connectorApiTokenResponse(type: string) {
+  return {
+    id: null,
+    type,
+    authMethod: "api-token",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
+}
+
 export const apiHandlers = [
   // GET /api/agent/composes - getComposeByName
   http.get("http://localhost:3000/api/agent/composes", () => {
@@ -88,6 +103,24 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
+  http.post(
+    "http://localhost:3000/api/zero/connectors/:type/api-token",
+    ({ params }) => {
+      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+    },
+  ),
+  http.post(
+    "https://app.vm0.ai/api/zero/connectors/:type/api-token",
+    ({ params }) => {
+      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+    },
+  ),
+  http.post(
+    "https://www.vm0.ai/api/zero/connectors/:type/api-token",
+    ({ params }) => {
+      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+    },
+  ),
 
   // GET /api/zero/connectors/search - searchZeroConnectors
   http.get("http://localhost:3000/api/zero/connectors/search", () => {

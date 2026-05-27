@@ -128,6 +128,27 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
+export const zeroConnectorApiTokenContract = c.router({
+  connect: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/api-token",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: z.object({
+      values: z.record(z.string(), z.string()),
+    }),
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Connect a connector with API-token credentials",
+  },
+});
+
 export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   create: {
     method: "POST",
@@ -298,6 +319,8 @@ export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorAuthorizeContract =
   typeof zeroConnectorAuthorizeContract;
+export type ZeroConnectorApiTokenContract =
+  typeof zeroConnectorApiTokenContract;
 export type ZeroConnectorOauthDeviceAuthSessionContract =
   typeof zeroConnectorOauthDeviceAuthSessionContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;

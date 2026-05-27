@@ -8,6 +8,7 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorApiTokenContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
@@ -60,6 +61,21 @@ function defaultOauthDeviceAuthSessionStartResponse(
     verificationUriComplete: `https://oauth.test/${type}/device?user_code=VM0-DEVICE`,
     expiresIn: 300,
     interval: 1,
+  };
+}
+
+function createMockApiTokenConnector(type: ConnectorType): ConnectorResponse {
+  return {
+    id: null,
+    type,
+    authMethod: "api-token",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
   };
 }
 
@@ -123,6 +139,12 @@ export const apiConnectorsHandlers = [
       return c.type !== type;
     });
     return respond(204);
+  }),
+
+  mockApi(zeroConnectorApiTokenContract.connect, ({ params, respond }) => {
+    const connector = createMockApiTokenConnector(params.type);
+    upsertMockConnector(connector);
+    return respond(200, connector);
   }),
 
   mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {

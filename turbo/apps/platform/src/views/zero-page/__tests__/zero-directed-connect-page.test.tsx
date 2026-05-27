@@ -22,11 +22,10 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
+  zeroConnectorApiTokenContract,
+  zeroConnectorOauthStartContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   setMockConnectors,
@@ -58,6 +57,21 @@ function mockConnectors(
       };
     }),
   );
+}
+
+function apiTokenConnectorResponse(type: ConnectorType) {
+  return {
+    id: null,
+    type,
+    authMethod: "api-token" as const,
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
 }
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
@@ -301,33 +315,12 @@ describe("directed connect page", () => {
 
   it("opens manual credential dialog by manual grant shape", async () => {
     const user = userEvent.setup();
-    let submittedSecret: { name: string; value: string } | undefined;
-    const submittedVariables: { name: string; value: string }[] = [];
+    let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submittedSecret = { name: body.name, value: body.value };
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }),
-      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
-        submittedVariables.push({ name: body.name, value: body.value });
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          value: body.value,
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+        submittedValues = body.values;
+        return respond(200, apiTokenConnectorResponse("zendesk"));
       }),
     );
 
@@ -365,15 +358,10 @@ describe("directed connect page", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(submittedVariables).toStrictEqual(
-        expect.arrayContaining([
-          { name: "ZENDESK_EMAIL", value: "support@example.com" },
-          { name: "ZENDESK_SUBDOMAIN", value: "example-subdomain" },
-        ]),
-      );
-      expect(submittedSecret).toStrictEqual({
-        name: "ZENDESK_API_TOKEN",
-        value: "zendesk-token",
+      expect(submittedValues).toStrictEqual({
+        ZENDESK_API_TOKEN: "zendesk-token",
+        ZENDESK_EMAIL: "support@example.com",
+        ZENDESK_SUBDOMAIN: "example-subdomain",
       });
     });
   });
@@ -395,7 +383,7 @@ describe("directed connect page", () => {
     const user = userEvent.setup();
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ respond }) => {
+      mockApi(zeroConnectorApiTokenContract.connect, ({ respond }) => {
         return respond(401, {
           error: { message: "Invalid API token", code: "UNAUTHORIZED" },
         });
@@ -513,20 +501,12 @@ describe("directed connect page", () => {
 
   it("save button submits the api token to the server (CONN-I-049)", async () => {
     const user = userEvent.setup();
-    let capturedBody: { name: string; value: string } | undefined;
+    let capturedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        capturedBody = { name: body.name, value: body.value };
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+        capturedValues = body.values;
+        return respond(200, apiTokenConnectorResponse("axiom"));
       }),
     );
 
@@ -561,9 +541,9 @@ describe("directed connect page", () => {
     click(saveBtn2!);
 
     await waitFor(() => {
-      expect(capturedBody).toBeDefined();
-      expect(capturedBody?.name).toBe("AXIOM_TOKEN");
-      expect(capturedBody?.value).toBe("test-token-value");
+      expect(capturedValues).toStrictEqual({
+        AXIOM_TOKEN: "test-token-value",
+      });
     });
   });
 
@@ -573,16 +553,8 @@ describe("directed connect page", () => {
 
     let authorizeCalled = false;
     server.use(
-      mockApi(zeroSecretsContract.set, ({ respond }) => {
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: "AXIOM_TOKEN",
-          type: "user",
-          description: null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ respond }) => {
+        return respond(200, apiTokenConnectorResponse("axiom"));
       }),
       mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;
@@ -745,16 +717,8 @@ describe("directed connect page", () => {
 
     let authorizeCalled = false;
     server.use(
-      mockApi(zeroSecretsContract.set, ({ respond }) => {
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: "AXIOM_TOKEN",
-          type: "user",
-          description: null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ respond }) => {
+        return respond(200, apiTokenConnectorResponse("axiom"));
       }),
       mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;

@@ -13,13 +13,10 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  zeroConnectorApiTokenContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -83,6 +80,21 @@ function mockConnectorOauthStart() {
       });
     }),
   );
+}
+
+function apiTokenConnectorResponse(type: ConnectorType) {
+  return {
+    id: null,
+    type,
+    authMethod: "api-token" as const,
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
 }
 
 function createMockAuthWindow(closed: boolean) {
@@ -465,22 +477,14 @@ describe("connect modal - interactions", () => {
     });
   });
 
-  it("save button submits API token secrets (CONN-I-023)", async () => {
+  it("save button submits API token connector values (CONN-I-023)", async () => {
     const user = userEvent.setup();
-    let submittedSecret: { name: string; value: string } | undefined;
+    let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submittedSecret = { name: body.name, value: body.value };
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+        submittedValues = body.values;
+        return respond(200, apiTokenConnectorResponse("axiom"));
       }),
     );
 
@@ -497,41 +501,20 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(submittedSecret).toBeDefined();
-      expect(submittedSecret?.name).toBe("AXIOM_TOKEN");
-      expect(submittedSecret?.value).toBe("test-token-value");
+      expect(submittedValues).toStrictEqual({
+        AXIOM_TOKEN: "test-token-value",
+      });
     });
   });
 
-  it("stores manual credential fields by selected method metadata", async () => {
+  it("submits all manual credential fields in one connector request", async () => {
     const user = userEvent.setup();
-    let submittedSecret: { name: string; value: string } | undefined;
-    const submittedVariables: { name: string; value: string }[] = [];
+    let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submittedSecret = { name: body.name, value: body.value };
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }),
-      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
-        submittedVariables.push({ name: body.name, value: body.value });
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          value: body.value,
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+        submittedValues = body.values;
+        return respond(200, apiTokenConnectorResponse("zendesk"));
       }),
     );
 
@@ -558,35 +541,22 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(submittedVariables).toStrictEqual(
-        expect.arrayContaining([
-          { name: "ZENDESK_EMAIL", value: "support@example.com" },
-          { name: "ZENDESK_SUBDOMAIN", value: "example-subdomain" },
-        ]),
-      );
-      expect(submittedSecret).toStrictEqual({
-        name: "ZENDESK_API_TOKEN",
-        value: "zendesk-token",
+      expect(submittedValues).toStrictEqual({
+        ZENDESK_API_TOKEN: "zendesk-token",
+        ZENDESK_EMAIL: "support@example.com",
+        ZENDESK_SUBDOMAIN: "example-subdomain",
       });
     });
   });
 
   it("keeps manual Stripe API key save available", async () => {
     const user = userEvent.setup();
-    let submittedSecret: { name: string; value: string } | undefined;
+    let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submittedSecret = { name: body.name, value: body.value };
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+        submittedValues = body.values;
+        return respond(200, apiTokenConnectorResponse("stripe"));
       }),
     );
 
@@ -600,9 +570,8 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(submittedSecret).toStrictEqual({
-        name: "STRIPE_TOKEN",
-        value: "sk_test_key",
+      expect(submittedValues).toStrictEqual({
+        STRIPE_TOKEN: "sk_test_key",
       });
     });
   });
