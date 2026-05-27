@@ -427,6 +427,16 @@ mod tests {
     }
 
     #[test]
+    fn reconnect_spacing_delay_elapsed_exceeds_min_interval_returns_zero() {
+        let long_ago = Instant::now() - Duration::from_secs(60);
+
+        assert_eq!(
+            reconnect_spacing_delay(Some(long_ago), Duration::from_secs(5)),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
     fn conn_state_uses_default_idle_interval_without_connection_details() {
         let timing = TimingConfig::default();
         let token = TokenDetails {
