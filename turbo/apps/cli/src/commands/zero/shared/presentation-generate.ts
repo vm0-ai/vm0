@@ -1,12 +1,14 @@
-import { readFileSync } from "fs";
 import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
+import { dispatchGenerate } from "../generate/lib/dispatch";
+import type { GenerationType } from "../generate/lib/lister";
 
 const PRESENTATION_MAX_IMAGES = 8;
 
 interface PresentationOptions {
   prompt?: string;
+  provider?: string;
   style: string;
   slides: number;
   images: number;
@@ -14,11 +16,13 @@ interface PresentationOptions {
   theme?: string;
   audience?: string;
   title?: string;
+  all?: boolean;
   json?: boolean;
 }
 
 interface PresentationGenerateCommandConfig {
   name: string;
+  generationType: GenerationType;
   usageCommand: string;
   examples: string;
 }
@@ -48,28 +52,6 @@ function parseImageCount(value: string): number {
   return imageCount;
 }
 
-function readPrompt(
-  options: PresentationOptions,
-  usageCommand: string,
-): string {
-  if (options.prompt?.trim()) {
-    return options.prompt.trim();
-  }
-
-  if (process.stdin.isTTY === false) {
-    const prompt = readFileSync("/dev/stdin", "utf8").trim();
-    if (prompt.length > 0) {
-      return prompt;
-    }
-  }
-
-  throw new Error("--prompt is required", {
-    cause: new Error(
-      `Usage: ${usageCommand} --prompt "A product roadmap deck"`,
-    ),
-  });
-}
-
 export function createPresentationGenerateCommand(
   config: PresentationGenerateCommandConfig,
 ): Command {
@@ -79,6 +61,14 @@ export function createPresentationGenerateCommand(
     .option(
       "--prompt <text>",
       "Presentation prompt; can also be piped via stdin",
+    )
+    .option(
+      "--provider <name>",
+      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+    )
+    .option(
+      "--all",
+      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
     .option("--style <style>", "Style: editorial or swiss", "editorial")
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
@@ -114,7 +104,16 @@ Notes:
     )
     .action(
       withErrorHandler(async (options: PresentationOptions) => {
-        const prompt = readPrompt(options, config.usageCommand);
+        const dispatch = await dispatchGenerate({
+          generationType: config.generationType,
+          provider: options.provider,
+          prompt: options.prompt,
+          all: options.all,
+          json: options.json,
+        });
+        if (dispatch.outcome === "handled") return;
+        const prompt = dispatch.prompt;
+
         const packet = createHtmlArtifactAuthoringPacket({
           kind: "presentation",
           prompt,

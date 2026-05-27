@@ -36,7 +36,7 @@ describe("zero CLI program", () => {
       "whoami",
       "developer-support",
       "computer-use",
-      "built-in",
+      "generate",
       "web",
       "host",
       "maps",

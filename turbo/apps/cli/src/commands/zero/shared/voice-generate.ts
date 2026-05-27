@@ -1,37 +1,25 @@
-import { readFileSync } from "fs";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import { generateWebVoice } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { dispatchGenerate } from "../generate/lib/dispatch";
+import type { GenerationType } from "../generate/lib/lister";
 
 interface VoiceOptions {
+  prompt?: string;
   text?: string;
+  provider?: string;
   voice: string;
   instructions?: string;
+  all?: boolean;
   json?: boolean;
 }
 
 interface VoiceGenerateCommandConfig {
   name: string;
+  generationType: GenerationType;
   usageCommand: string;
   examples: string;
-}
-
-function readText(options: VoiceOptions, usageCommand: string): string {
-  if (options.text?.trim()) {
-    return options.text.trim();
-  }
-
-  if (process.stdin.isTTY === false) {
-    const text = readFileSync("/dev/stdin", "utf8").trim();
-    if (text.length > 0) {
-      return text;
-    }
-  }
-
-  throw new Error("--text is required", {
-    cause: new Error(`Usage: ${usageCommand} --text "Hello"`),
-  });
 }
 
 export function createVoiceGenerateCommand(
@@ -40,7 +28,16 @@ export function createVoiceGenerateCommand(
   return new Command()
     .name(config.name)
     .description("Generate a billed speech audio file from text")
-    .option("--text <text>", "Text to speak; can also be piped via stdin")
+    .option("--prompt <text>", "Text to speak; can also be piped via stdin")
+    .addOption(new Option("--text <text>", "Alias for --prompt").hideHelp())
+    .option(
+      "--provider <name>",
+      "Provider: 'built-in' to run vm0's pipeline, or a connector name (heygen, elevenlabs, ...) to get its skill-invocation guidance",
+    )
+    .option(
+      "--all",
+      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
+    )
     .option("--voice <voice>", "OpenAI voice to use", "marin")
     .option("--instructions <text>", "Voice style instructions")
     .option("--json", "Print metadata as JSON")
@@ -51,7 +48,8 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ audio file URL and metadata
+  Prints the generated /f/ audio file URL and metadata. With no --prompt
+  and no piped input, prints the provider menu instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -60,7 +58,16 @@ Notes:
     )
     .action(
       withErrorHandler(async (options: VoiceOptions) => {
-        const text = readText(options, config.usageCommand);
+        const dispatch = await dispatchGenerate({
+          generationType: config.generationType,
+          provider: options.provider,
+          prompt: options.prompt ?? options.text,
+          all: options.all,
+          json: options.json,
+        });
+        if (dispatch.outcome === "handled") return;
+        const text = dispatch.prompt;
+
         const result = await generateWebVoice({
           text,
           voice: options.voice,

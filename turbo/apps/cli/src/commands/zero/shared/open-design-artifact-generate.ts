@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import {
@@ -6,43 +5,28 @@ import {
   toOpenDesignTarget,
 } from "./open-design-registry";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
+import { dispatchGenerate } from "../generate/lib/dispatch";
+import type { GenerationType } from "../generate/lib/lister";
 
 interface OpenDesignArtifactOptions {
   prompt?: string;
+  provider?: string;
   site?: string;
   title?: string;
   audience?: string;
+  all?: boolean;
   json?: boolean;
 }
 
 interface OpenDesignArtifactCommandConfig {
   name: string;
+  generationType: GenerationType;
   target: OpenDesignTarget;
   description: string;
   usageCommand: string;
   examples: string;
   details: (options: OpenDesignArtifactOptions) => readonly string[];
   artifactRules: readonly string[];
-}
-
-function readPrompt(
-  options: OpenDesignArtifactOptions,
-  usageCommand: string,
-): string {
-  if (options.prompt?.trim()) {
-    return options.prompt.trim();
-  }
-
-  if (process.stdin.isTTY === false) {
-    const prompt = readFileSync("/dev/stdin", "utf8").trim();
-    if (prompt.length > 0) {
-      return prompt;
-    }
-  }
-
-  throw new Error("--prompt is required", {
-    cause: new Error(`Usage: ${usageCommand} --prompt "A product report"`),
-  });
 }
 
 export function createOpenDesignArtifactGenerateCommand(
@@ -52,6 +36,14 @@ export function createOpenDesignArtifactGenerateCommand(
     .name(config.name)
     .description(config.description)
     .option("--prompt <text>", "Artifact prompt; can also be piped via stdin")
+    .option(
+      "--provider <name>",
+      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+    )
+    .option(
+      "--all",
+      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
+    )
     .option("--site <slug>", "Hosted site slug; defaults to generated name")
     .option("--title <text>", "Requested artifact title or name")
     .option("--audience <text>", "Audience context")
@@ -64,14 +56,24 @@ ${config.examples}
 
 Output:
   Prints an Open Design resource-selection packet for the current agent. The
-  agent authors a static HTML artifact and hosts it with zero host.
+  agent authors a static HTML artifact and hosts it with zero host. With no
+  --prompt and no piped input, prints the provider menu instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN`,
     )
     .action(
       withErrorHandler(async (options: OpenDesignArtifactOptions) => {
-        const prompt = readPrompt(options, config.usageCommand);
+        const dispatch = await dispatchGenerate({
+          generationType: config.generationType,
+          provider: options.provider,
+          prompt: options.prompt,
+          all: options.all,
+          json: options.json,
+        });
+        if (dispatch.outcome === "handled") return;
+        const prompt = dispatch.prompt;
+
         const packet = createHtmlArtifactAuthoringPacket({
           kind: toOpenDesignTarget(config.target),
           prompt,

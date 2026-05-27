@@ -25,7 +25,7 @@ import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
-import { zeroBuiltInCommand } from "./commands/zero/built-in";
+import { generateCommand } from "./commands/zero/generate";
 import { zeroWebCommand } from "./commands/zero/web";
 import { zeroLocalAgentCommand } from "./commands/zero/local-agent";
 import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
@@ -69,7 +69,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
-  "built-in": "file:write",
+  generate: "file:write",
   web: null,
   host: "host:write",
   maps: "maps:read",
@@ -101,7 +101,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSkillCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
-  zeroBuiltInCommand,
+  generateCommand,
   zeroWebCommand,
   zeroHostCommand,
   zeroMapsCommand,
@@ -114,7 +114,7 @@ function shouldHideCommand(
   payload: ZeroTokenPayload | undefined,
 ): boolean {
   if (!payload) return false;
-  if (name === "built-in") {
+  if (name === "generate") {
     return (
       !payload.capabilities.includes("file:write") &&
       !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites, payload)
@@ -153,11 +153,12 @@ export function buildZeroHelpText(
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
     "  Manage custom skills?  zero skill --help",
-    "  Generate image?        zero built-in generate image --help",
+    "  List generators?       zero generate --help",
+    '  Generate image?        zero generate image --prompt "..."',
     ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites, payload)
-      ? ["  Generate website?      zero built-in generate website --help"]
+      ? ['  Generate website?      zero generate website --prompt "..."']
       : []),
-    "  Generate voice?        zero built-in generate voice --help",
+    '  Generate voice?        zero generate voice --prompt "..."',
     ...(shouldHideCommand("local-browser", payload)
       ? []
       : ["  Read browser context?  zero local-browser --help"]),

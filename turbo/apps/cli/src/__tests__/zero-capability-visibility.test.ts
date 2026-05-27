@@ -30,7 +30,7 @@ function buildCommands(): Command[] {
     new Command("phone"),
     new Command("variable"),
     new Command("whoami"),
-    new Command("built-in"),
+    new Command("generate"),
     new Command("web"),
     new Command("host"),
     new Command("maps"),
@@ -162,7 +162,7 @@ describe("registerZeroCommands", () => {
       "telegram",
       "phone",
       "variable",
-      "built-in",
+      "generate",
       "host",
       "maps",
       "local-agent",
@@ -337,7 +337,7 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("phone");
   });
 
-  it("should show built-in when file:write capability is present", () => {
+  it("should show generate when file:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["file:write"],
@@ -346,7 +346,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("built-in");
+    expect(visibleCommandNames(prog)).toContain("generate");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
@@ -363,7 +363,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide built-in when only host:write is present and hostedSites is disabled", () => {
+  it("should hide generate when only host:write is present and hostedSites is disabled", () => {
     const token = buildZeroToken({
       userId: "user-non-staff",
       orgId: "org-non-staff",
@@ -375,10 +375,10 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toContain("built-in");
+    expect(hiddenCommandNames(prog)).toContain("generate");
   });
 
-  it("should show built-in when hostedSites is enabled", () => {
+  it("should show generate when hostedSites is enabled", () => {
     const token = buildZeroToken({
       userId: "user-enabled",
       orgId: "org-non-staff",
@@ -390,7 +390,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("built-in");
+    expect(visibleCommandNames(prog)).toContain("generate");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
@@ -701,7 +701,7 @@ describe("registerZeroCommands", () => {
   });
 });
 
-describe("built-in generate feature switch visibility", () => {
+describe("zero generate feature switch visibility", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -710,8 +710,7 @@ describe("built-in generate feature switch visibility", () => {
   async function importGenerateCommand(token: string) {
     vi.resetModules();
     vi.stubEnv("ZERO_TOKEN", token);
-    const { generateCommand } =
-      await import("../commands/zero/built-in/generate");
+    const { generateCommand } = await import("../commands/zero/generate");
     return generateCommand as Command;
   }
 

@@ -1,4 +1,4 @@
-import { createOpenDesignArtifactGenerateCommand } from "../../shared/open-design-artifact-generate";
+import { createOpenDesignArtifactGenerateCommand } from "../shared/open-design-artifact-generate";
 
 function standardDetails(kind: string) {
   return (options: { title?: string; audience?: string }) => {
@@ -12,11 +12,13 @@ function standardDetails(kind: string) {
 
 export const reportCommand = createOpenDesignArtifactGenerateCommand({
   name: "report",
+  generationType: "report",
   target: "report",
   description: "Generate an Open Design HTML report from a prompt",
-  usageCommand: "zero built-in generate report",
-  examples: `  Generate report:      zero built-in generate report --prompt "A Q2 usage report for the API team"
-  Stable hosted slug:    zero built-in generate report --site api-usage-q2 --prompt "A Q2 usage report"`,
+  usageCommand: "zero generate report",
+  examples: `  Generate report:      zero generate report --prompt "A Q2 usage report for the API team"
+  Stable hosted slug:    zero generate report --site api-usage-q2 --prompt "A Q2 usage report"
+  List providers:        zero generate report`,
   details: standardDetails("report"),
   artifactRules: [
     "Produce an analytical report, not a marketing page.",
@@ -28,11 +30,13 @@ export const reportCommand = createOpenDesignArtifactGenerateCommand({
 
 export const docsDesignCommand = createOpenDesignArtifactGenerateCommand({
   name: "docs-design",
+  generationType: "docs-design",
   target: "docs-design",
   description: "Generate an Open Design documentation design from a prompt",
-  usageCommand: "zero built-in generate docs-design",
-  examples: `  Generate docs design: zero built-in generate docs-design --prompt "Docs for adding OpenDesign artifact targets"
-  Stable hosted slug:    zero built-in generate docs-design --site opendesign-target-docs --prompt "OpenDesign target docs"`,
+  usageCommand: "zero generate docs-design",
+  examples: `  Generate docs design: zero generate docs-design --prompt "Docs for adding OpenDesign artifact targets"
+  Stable hosted slug:    zero generate docs-design --site opendesign-target-docs --prompt "OpenDesign target docs"
+  List providers:        zero generate docs-design`,
   details: standardDetails("docs-design"),
   artifactRules: [
     "Produce a documentation design mockup, not a production documentation system.",
@@ -44,11 +48,13 @@ export const docsDesignCommand = createOpenDesignArtifactGenerateCommand({
 
 export const posterCommand = createOpenDesignArtifactGenerateCommand({
   name: "poster",
+  generationType: "poster",
   target: "poster",
   description: "Generate an Open Design HTML poster from a prompt",
-  usageCommand: "zero built-in generate poster",
-  examples: `  Generate poster:      zero built-in generate poster --prompt "A launch poster for OpenDesign artifact targets"
-  Stable hosted slug:    zero built-in generate poster --site opendesign-poster --prompt "A launch poster"`,
+  usageCommand: "zero generate poster",
+  examples: `  Generate poster:      zero generate poster --prompt "A launch poster for OpenDesign artifact targets"
+  Stable hosted slug:    zero generate poster --site opendesign-poster --prompt "A launch poster"
+  List providers:        zero generate poster`,
   details: standardDetails("poster"),
   artifactRules: [
     "Produce a poster-style HTML artifact with strong hierarchy and composition.",
@@ -60,11 +66,13 @@ export const posterCommand = createOpenDesignArtifactGenerateCommand({
 
 export const dashboardDesignCommand = createOpenDesignArtifactGenerateCommand({
   name: "dashboard-design",
+  generationType: "dashboard-design",
   target: "dashboard-design",
   description: "Generate an Open Design dashboard design from a prompt",
-  usageCommand: "zero built-in generate dashboard-design",
-  examples: `  Generate dash design: zero built-in generate dashboard-design --prompt "An ops dashboard for generation runs"
-  Stable hosted slug:    zero built-in generate dashboard-design --site generation-ops --prompt "A generation ops dashboard"`,
+  usageCommand: "zero generate dashboard-design",
+  examples: `  Generate dash design: zero generate dashboard-design --prompt "An ops dashboard for generation runs"
+  Stable hosted slug:    zero generate dashboard-design --site generation-ops --prompt "A generation ops dashboard"
+  List providers:        zero generate dashboard-design`,
   details: standardDetails("dashboard-design"),
   artifactRules: [
     "Produce a dashboard design mockup, not a live operational dashboard.",
@@ -76,12 +84,14 @@ export const dashboardDesignCommand = createOpenDesignArtifactGenerateCommand({
 
 export const mobileAppDesignCommand = createOpenDesignArtifactGenerateCommand({
   name: "mobile-app-design",
+  generationType: "mobile-app-design",
   target: "mobile-app-design",
   description:
     "Generate an Open Design mobile app design prototype from a prompt",
-  usageCommand: "zero built-in generate mobile-app-design",
-  examples: `  Generate mobile UI:   zero built-in generate mobile-app-design --prompt "A mobile review screen for generation artifacts"
-  Stable hosted slug:    zero built-in generate mobile-app-design --site generation-mobile-review --prompt "A mobile review screen"`,
+  usageCommand: "zero generate mobile-app-design",
+  examples: `  Generate mobile UI:   zero generate mobile-app-design --prompt "A mobile review screen for generation artifacts"
+  Stable hosted slug:    zero generate mobile-app-design --site generation-mobile-review --prompt "A mobile review screen"
+  List providers:        zero generate mobile-app-design`,
   details: standardDetails("mobile-app-design"),
   artifactRules: [
     "Produce a design prototype, not a runnable or installable mobile app.",

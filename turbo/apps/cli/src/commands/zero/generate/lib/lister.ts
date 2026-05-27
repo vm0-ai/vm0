@@ -1,4 +1,3 @@
-import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPE_KEYS,
@@ -9,13 +8,12 @@ import {
 } from "@vm0/connectors/connectors";
 import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
+import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
 import {
   listZeroConnectors,
   searchZeroConnectors,
-} from "../../../lib/api/domains/zero-connectors";
-import { withErrorHandler } from "../../../lib/command";
-import { getPlatformOrigin } from "./platform-url";
+} from "../../../../lib/api/domains/zero-connectors";
+import { getPlatformOrigin } from "../../doctor/platform-url";
 
 type BuiltInGenerationType =
   | "dashboard-design"
@@ -28,7 +26,7 @@ type BuiltInGenerationType =
   | "video"
   | "voice"
   | "website";
-type DoctorGenerationType = ConnectorGenerationType | BuiltInGenerationType;
+export type GenerationType = ConnectorGenerationType | BuiltInGenerationType;
 
 interface BuiltInGenerationProvider {
   label: string;
@@ -48,55 +46,59 @@ interface GenerationContext {
 }
 
 const BUILT_IN_GENERATION_PROVIDERS: Partial<
-  Record<DoctorGenerationType, readonly BuiltInGenerationProvider[]>
+  Record<GenerationType, readonly BuiltInGenerationProvider[]>
 > = {
   image: [
     {
       label: "Built-in fal.ai",
       model: "gpt-image-1",
-      command: "zero built-in generate image --model gpt-image-1 -h",
+      command: "zero generate image --provider built-in --model gpt-image-1 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "gpt-image-2",
-      command: "zero built-in generate image --model gpt-image-2 -h",
+      command: "zero generate image --provider built-in --model gpt-image-2 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "gpt-image-1.5",
-      command: "zero built-in generate image --model gpt-image-1.5 -h",
+      command:
+        "zero generate image --provider built-in --model gpt-image-1.5 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "gpt-image-1-mini",
-      command: "zero built-in generate image --model gpt-image-1-mini -h",
+      command:
+        "zero generate image --provider built-in --model gpt-image-1-mini -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/flux-pro/v1.1",
-      command: "zero built-in generate image --model flux-pro-1.1 -h",
+      command:
+        "zero generate image --provider built-in --model flux-pro-1.1 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/flux-pro/v1.1-ultra",
-      command: "zero built-in generate image --model flux-pro-1.1-ultra -h",
+      command:
+        "zero generate image --provider built-in --model flux-pro-1.1-ultra -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/qwen-image",
-      command: "zero built-in generate image --model qwen-image -h",
+      command: "zero generate image --provider built-in --model qwen-image -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/bytedance/seedream/v4/text-to-image",
-      command: "zero built-in generate image --model seedream4 -h",
+      command: "zero generate image --provider built-in --model seedream4 -h",
       reason: "available without connector setup",
     },
   ],
@@ -104,7 +106,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate presentation -h",
+      command: "zero generate presentation --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -112,7 +114,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate report -h",
+      command: "zero generate report --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -120,7 +122,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate docs-design -h",
+      command: "zero generate docs-design --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -128,7 +130,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate poster -h",
+      command: "zero generate poster --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -136,7 +138,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate dashboard-design -h",
+      command: "zero generate dashboard-design --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -144,7 +146,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate mobile-app-design -h",
+      command: "zero generate mobile-app-design --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -152,7 +154,7 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-5.5",
-      command: "zero built-in generate website -h",
+      command: "zero generate website --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
@@ -160,32 +162,34 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "dreamina-seedance-2-0-260128",
-      command: "zero built-in generate video --model dreamina-seedance-2.0 -h",
+      command:
+        "zero generate video --provider built-in --model dreamina-seedance-2.0 -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in",
       model: "dreamina-seedance-2-0-fast-260128",
       command:
-        "zero built-in generate video --model dreamina-seedance-2.0-fast -h",
+        "zero generate video --provider built-in --model dreamina-seedance-2.0-fast -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in",
       model: "seedance-1-5-pro-251215",
-      command: "zero built-in generate video --model seedance-1.5-pro -h",
+      command:
+        "zero generate video --provider built-in --model seedance-1.5-pro -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/veo3.1/fast",
-      command: "zero built-in generate video --model veo3.1-fast -h",
+      command: "zero generate video --provider built-in --model veo3.1-fast -h",
       reason: "available without connector setup",
     },
     {
       label: "Built-in fal.ai",
       model: "fal-ai/kling-video/v3/4k/text-to-video",
-      command: "zero built-in generate video --model kling-v3-4k -h",
+      command: "zero generate video --provider built-in --model kling-v3-4k -h",
       reason: "available without connector setup",
     },
   ],
@@ -193,72 +197,70 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     {
       label: "Built-in",
       model: "gpt-4o-mini-tts",
-      command: "zero built-in generate voice -h",
+      command: "zero generate voice --provider built-in -h",
       reason: "available without connector setup",
     },
   ],
 };
 
 const BUILT_IN_GENERATION_COMMANDS: Partial<
-  Record<DoctorGenerationType, BuiltInGenerationCommand>
+  Record<GenerationType, BuiltInGenerationCommand>
 > = {
   image: {
     label: "Built-in image generation",
-    command: "zero built-in generate image -h",
+    command: "zero generate image --provider built-in -h",
     models:
       "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
   },
   video: {
     label: "Built-in video generation",
-    command: "zero built-in generate video -h",
+    command: "zero generate video --provider built-in -h",
     models:
       "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
   },
   presentation: {
     label: "Built-in presentation generation",
-    command: "zero built-in generate presentation -h",
+    command: "zero generate presentation --provider built-in -h",
     models: "gpt-5.5",
   },
   report: {
     label: "Built-in report generation",
-    command: "zero built-in generate report -h",
+    command: "zero generate report --provider built-in -h",
     models: "gpt-5.5",
   },
   "docs-design": {
     label: "Built-in docs design generation",
-    command: "zero built-in generate docs-design -h",
+    command: "zero generate docs-design --provider built-in -h",
     models: "gpt-5.5",
   },
   poster: {
     label: "Built-in poster generation",
-    command: "zero built-in generate poster -h",
+    command: "zero generate poster --provider built-in -h",
     models: "gpt-5.5",
   },
   "dashboard-design": {
     label: "Built-in dashboard design generation",
-    command: "zero built-in generate dashboard-design -h",
+    command: "zero generate dashboard-design --provider built-in -h",
     models: "gpt-5.5",
   },
   "mobile-app-design": {
     label: "Built-in mobile app design generation",
-    command: "zero built-in generate mobile-app-design -h",
+    command: "zero generate mobile-app-design --provider built-in -h",
     models: "gpt-5.5",
   },
   website: {
     label: "Built-in website generation",
-    command: "zero built-in generate website -h",
+    command: "zero generate website --provider built-in -h",
     models: "gpt-5.5",
   },
   voice: {
     label: "Built-in voice generation",
-    command: "zero built-in generate voice -h",
+    command: "zero generate voice --provider built-in -h",
     models: "gpt-4o-mini-tts",
   },
 };
 
-const GENERATION_CONTEXT: Partial<
-  Record<DoctorGenerationType, GenerationContext>
-> = {
+const GENERATION_CONTEXT: Partial<Record<GenerationType, GenerationContext>> = {
   website: {
     lines: [
       "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
@@ -268,7 +270,7 @@ const GENERATION_CONTEXT: Partial<
   },
 };
 
-const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
+const GENERATION_TYPE_ORDER: readonly GenerationType[] = [
   "image",
   "video",
   "audio",
@@ -285,7 +287,7 @@ const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
   "mobile-app-design",
 ];
 
-const GENERATION_TYPE_LABELS: Record<DoctorGenerationType, string> = {
+const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   audio: "Audio",
   code: "Code",
   "dashboard-design": "Dashboard design",
@@ -311,7 +313,7 @@ type CandidateStatus =
   | "not-connected"
   | "not-available";
 
-interface GenerateOptions {
+export interface ListerOptions {
   all?: boolean;
   json?: boolean;
 }
@@ -328,7 +330,7 @@ interface GenerationCandidate {
 }
 
 function getConnectorGenerationType(
-  generationType: DoctorGenerationType,
+  generationType: GenerationType,
 ): ConnectorGenerationType | null {
   switch (generationType) {
     case "voice":
@@ -352,24 +354,24 @@ function getConnectorGenerationType(
 }
 
 function getBuiltInProviders(
-  generationType: DoctorGenerationType,
+  generationType: GenerationType,
 ): readonly BuiltInGenerationProvider[] {
   return BUILT_IN_GENERATION_PROVIDERS[generationType] ?? [];
 }
 
 function getBuiltInCommand(
-  generationType: DoctorGenerationType,
+  generationType: GenerationType,
 ): BuiltInGenerationCommand | null {
   return BUILT_IN_GENERATION_COMMANDS[generationType] ?? null;
 }
 
 function getGenerationContext(
-  generationType: DoctorGenerationType,
+  generationType: GenerationType,
 ): GenerationContext | null {
   return GENERATION_CONTEXT[generationType] ?? null;
 }
 
-function getAvailableGenerationTypes(): DoctorGenerationType[] {
+export function getAvailableGenerationTypes(): GenerationType[] {
   const available = new Set<ConnectorGenerationType>();
   for (const type of CONNECTOR_TYPE_KEYS) {
     for (const generationType of getConnectorGenerationTypes(type)) {
@@ -384,17 +386,6 @@ function getAvailableGenerationTypes(): DoctorGenerationType[] {
       (connectorGenerationType !== null &&
         available.has(connectorGenerationType))
     );
-  });
-}
-
-function parseGenerationType(value: string): DoctorGenerationType {
-  const availableTypes = getAvailableGenerationTypes();
-  if (availableTypes.includes(value as DoctorGenerationType)) {
-    return value as DoctorGenerationType;
-  }
-
-  throw new Error(`Unknown generation type: ${value}`, {
-    cause: new Error(`Available types: ${availableTypes.join(", ")}`),
   });
 }
 
@@ -575,7 +566,7 @@ function renderActions(candidates: GenerationCandidate[]): void {
   }
 }
 
-function renderBuiltInProvider(generationType: DoctorGenerationType): void {
+function renderBuiltInProvider(generationType: GenerationType): void {
   const command = getBuiltInCommand(generationType);
   if (command) {
     console.log("");
@@ -599,7 +590,7 @@ function renderBuiltInProvider(generationType: DoctorGenerationType): void {
   }
 }
 
-function renderGenerationContext(generationType: DoctorGenerationType): void {
+function renderGenerationContext(generationType: GenerationType): void {
   const context = getGenerationContext(generationType);
   if (!context) return;
 
@@ -611,7 +602,7 @@ function renderGenerationContext(generationType: DoctorGenerationType): void {
 }
 
 function renderText(params: {
-  generationType: DoctorGenerationType;
+  generationType: GenerationType;
   agentId: string | undefined;
   ready: GenerationCandidate[];
   other: GenerationCandidate[];
@@ -661,100 +652,101 @@ function renderText(params: {
   }
 }
 
-export const generateCommand = new Command()
-  .name("generate")
-  .description("Show generation connector choices for the current agent")
-  .argument(
-    "<type>",
-    `Generation type (${getAvailableGenerationTypes().join(", ")})`,
-  )
-  .option("--all", "Also show unavailable or not-yet-authorized connectors")
-  .option("--json", "Output machine-readable JSON")
-  .action(
-    withErrorHandler(async (type: string, options: GenerateOptions) => {
-      const generationType = parseGenerationType(type);
-      const connectorGenerationType =
-        getConnectorGenerationType(generationType);
-      const agentId = process.env.ZERO_AGENT_ID;
-      const [connectorList, availableTypes, enabledTypes, platformOrigin] =
-        await Promise.all([
-          listZeroConnectors(),
-          getFeatureAvailableConnectorTypes(),
-          agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
-          getPlatformOrigin(),
-        ]);
-      const connectedMap = new Map(
-        connectorList.connectors.map((connector) => {
-          return [connector.type, connector];
-        }),
-      );
-      const configuredTypes = new Set(connectorList.configuredTypes);
-      const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
-      const candidates = connectorGenerationType
-        ? getGenerationConnectors(connectorGenerationType).map(
-            ([connectorType, config]) => {
-              return toCandidate({
-                type: connectorType,
-                config,
-                connector: connectedMap.get(connectorType),
-                configuredTypes,
-                availableTypes,
-                authorizedTypes,
-                agentId,
-                platformOrigin,
-              });
-            },
-          )
-        : [];
-      const ready = candidates.filter((candidate) => {
-        return candidate.status === "ready";
-      });
-      const other = candidates.filter((candidate) => {
-        return candidate.status !== "ready";
-      });
-      const builtInProviders = getBuiltInProviders(generationType);
-
-      if (options.json) {
-        console.log(
-          JSON.stringify(
-            {
-              generationType,
-              connectorGenerationType,
-              availableTypes: getAvailableGenerationTypes(),
-              agentId: agentId ?? null,
-              choices: ready,
-              otherCandidates: other,
-              builtInCommand: getBuiltInCommand(generationType),
-              generationContext: getGenerationContext(generationType),
-              builtInProvider: builtInProviders[0] ?? null,
-              builtInProviders,
-            },
-            null,
-            2,
-          ),
-        );
-        return;
-      }
-
-      renderText({
-        generationType,
-        agentId,
-        ready,
-        other,
-        showAll: options.all === true,
-      });
-
-      const shouldShowOtherHint =
-        !options.all &&
-        other.length > 0 &&
-        (ready.length > 0 || getBuiltInCommand(generationType) === null);
-      if (shouldShowOtherHint) {
-        console.log("");
-        console.log(
-          chalk.dim(
-            `Use --all to see every ${generationType} generation candidate.`,
-          ),
-        );
-      }
+export async function runLister(
+  generationType: GenerationType,
+  options: ListerOptions = {},
+): Promise<void> {
+  const connectorGenerationType = getConnectorGenerationType(generationType);
+  const agentId = process.env.ZERO_AGENT_ID;
+  const [connectorList, availableTypes, enabledTypes, platformOrigin] =
+    await Promise.all([
+      listZeroConnectors(),
+      getFeatureAvailableConnectorTypes(),
+      agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+      getPlatformOrigin(),
+    ]);
+  const connectedMap = new Map(
+    connectorList.connectors.map((connector) => {
+      return [connector.type, connector];
     }),
   );
+  const configuredTypes = new Set(connectorList.configuredTypes);
+  const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
+  const candidates = connectorGenerationType
+    ? getGenerationConnectors(connectorGenerationType).map(
+        ([connectorType, config]) => {
+          return toCandidate({
+            type: connectorType,
+            config,
+            connector: connectedMap.get(connectorType),
+            configuredTypes,
+            availableTypes,
+            authorizedTypes,
+            agentId,
+            platformOrigin,
+          });
+        },
+      )
+    : [];
+  const ready = candidates.filter((candidate) => {
+    return candidate.status === "ready";
+  });
+  const other = candidates.filter((candidate) => {
+    return candidate.status !== "ready";
+  });
+  const builtInProviders = getBuiltInProviders(generationType);
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          generationType,
+          connectorGenerationType,
+          availableTypes: getAvailableGenerationTypes(),
+          agentId: agentId ?? null,
+          choices: ready,
+          otherCandidates: other,
+          builtInCommand: getBuiltInCommand(generationType),
+          generationContext: getGenerationContext(generationType),
+          builtInProvider: builtInProviders[0] ?? null,
+          builtInProviders,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  renderText({
+    generationType,
+    agentId,
+    ready,
+    other,
+    showAll: options.all === true,
+  });
+
+  const shouldShowOtherHint =
+    !options.all &&
+    other.length > 0 &&
+    (ready.length > 0 || getBuiltInCommand(generationType) === null);
+  if (shouldShowOtherHint) {
+    console.log("");
+    console.log(
+      chalk.dim(
+        `Use --all to see every ${generationType} generation candidate.`,
+      ),
+    );
+  }
+}
+
+export function parseGenerationType(value: string): GenerationType {
+  const availableTypes = getAvailableGenerationTypes();
+  if (availableTypes.includes(value as GenerationType)) {
+    return value as GenerationType;
+  }
+
+  throw new Error(`Unknown generation type: ${value}`, {
+    cause: new Error(`Available types: ${availableTypes.join(", ")}`),
+  });
+}

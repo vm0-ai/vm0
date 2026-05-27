@@ -141,7 +141,7 @@ export function createHtmlArtifactAuthoringPacket(
     outputDir,
   } as const;
   const instructions = [
-    `# Zero built-in generate ${options.kind}`,
+    `# Zero generate ${options.kind}`,
     "",
     "This is a federated generation resource-selection packet for the current agent.",
     `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,

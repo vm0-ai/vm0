@@ -1,5 +1,5 @@
 /**
- * Tests for zero built-in generate presentation command
+ * Tests for zero generate presentation command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -9,10 +9,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
-import { zeroBuiltInCommand } from "../../index";
+import { generateCommand } from "../index";
 import { presentationCommand } from "../presentation";
 
-describe("zero built-in generate presentation command", () => {
+describe("zero generate presentation command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -35,10 +35,9 @@ describe("zero built-in generate presentation command", () => {
   });
 
   it("should print Open Design resource selection instructions for presentation", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "presentation",
       "--prompt",
       "API migration plan",
@@ -59,7 +58,7 @@ describe("zero built-in generate presentation command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero built-in generate presentation");
+    expect(stdout).toContain("# Zero generate presentation");
     expect(stdout).toContain("federated generation resource-selection packet");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
@@ -80,10 +79,9 @@ describe("zero built-in generate presentation command", () => {
   });
 
   it("should print JSON resource selection metadata when --json is provided", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "presentation",
       "--prompt",
       "JSON please",
@@ -134,20 +132,5 @@ describe("zero built-in generate presentation command", () => {
 
     expect(helpOutput).toContain("Image model for generated visuals (default:");
     expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
-  });
-
-  it("should require a prompt", async () => {
-    await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
-        "node",
-        "cli",
-        "generate",
-        "presentation",
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("--prompt is required"),
-    );
   });
 });

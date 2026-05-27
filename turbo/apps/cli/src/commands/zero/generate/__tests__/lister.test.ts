@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../mocks/server";
-import { generateCommand } from "../generate";
+import { generateCommand } from "../index";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -72,7 +72,7 @@ function stubAvailableConnectors(types: string[]) {
   });
 }
 
-describe("zero doctor generate command", () => {
+describe("zero generate lister", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -97,10 +97,6 @@ describe("zero doctor generate command", () => {
 
   function output(): string {
     return mockConsoleLog.mock.calls.flat().join("\n");
-  }
-
-  function errors(): string {
-    return mockConsoleError.mock.calls.flat().join("\n");
   }
 
   it("lists ready image generation connectors for the current agent", async () => {
@@ -131,8 +127,10 @@ describe("zero doctor generate command", () => {
     expect(text).toContain(
       "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
     );
-    expect(text).toContain("Use: zero built-in generate image -h");
-    expect(text).not.toContain("Use: zero built-in generate image --model");
+    expect(text).toContain("Use: zero generate image --provider built-in -h");
+    expect(text).not.toContain(
+      "Use: zero generate image --provider built-in --model",
+    );
     expect(text).not.toContain("Model: gpt-image-1.5");
     expect(text).not.toContain("Model: fal-ai/flux-pro/v1.1");
     expect(text).not.toContain("Fallback option:");
@@ -208,7 +206,8 @@ describe("zero doctor generate command", () => {
       builtInProvider: {
         label: "Built-in fal.ai",
         model: "gpt-image-1",
-        command: "zero built-in generate image --model gpt-image-1 -h",
+        command:
+          "zero generate image --provider built-in --model gpt-image-1 -h",
       },
     });
     expect(json).toMatchObject({
@@ -268,8 +267,10 @@ describe("zero doctor generate command", () => {
     expect(text).toContain(
       "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
     );
-    expect(text).toContain("Use: zero built-in generate video -h");
-    expect(text).not.toContain("Use: zero built-in generate video --model");
+    expect(text).toContain("Use: zero generate video --provider built-in -h");
+    expect(text).not.toContain(
+      "Use: zero generate video --provider built-in --model",
+    );
     expect(text).not.toContain("Model: dreamina-seedance-2-0-260128");
     expect(text).not.toContain("Model: seedance-1-5-pro-251215");
     expect(text).not.toContain("Model: seedance-1-0-pro-250528");
@@ -298,7 +299,9 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in presentation generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero built-in generate presentation -h");
+    expect(text).toContain(
+      "Use: zero generate presentation --provider built-in -h",
+    );
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
@@ -319,7 +322,7 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero built-in generate website -h");
+    expect(text).toContain("Use: zero generate website --provider built-in -h");
     expect(text).toContain("Context:");
     expect(text).toContain(
       "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
@@ -348,7 +351,7 @@ describe("zero doctor generate command", () => {
       generationContext: { lines: string[] } | null;
     };
     expect(json.builtInCommand).toMatchObject({
-      command: "zero built-in generate website -h",
+      command: "zero generate website --provider built-in -h",
     });
     expect(json.generationContext?.lines).toEqual(
       expect.arrayContaining([
@@ -386,7 +389,7 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain(commandLabel);
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(`Use: zero built-in generate ${type} -h`);
+    expect(text).toContain(`Use: zero generate ${type} --provider built-in -h`);
   });
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
@@ -407,12 +410,14 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
-    expect(text).toContain("Use: zero built-in generate voice -h");
+    expect(text).toContain("Use: zero generate voice --provider built-in -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
-    expect(text).not.toContain('zero built-in generate voice --text "Hello"');
+    expect(text).not.toContain(
+      'zero generate voice --provider built-in --text "Hello"',
+    );
   });
 
   it("also shows the built-in voice provider when a voice connector is ready", async () => {
@@ -434,18 +439,13 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
-    expect(text).toContain("Use: zero built-in generate voice -h");
+    expect(text).toContain("Use: zero generate voice --provider built-in -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
   });
 
-  it("rejects unknown generation types with available type guidance", async () => {
+  it("rejects unknown generation types via Commander", async () => {
     await expect(
       generateCommand.parseAsync(["node", "cli", "spaceship"]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(errors()).toContain("Unknown generation type: spaceship");
-    expect(errors()).toContain("Available types:");
-    expect(errors()).toContain("image");
-    expect(errors()).toContain("video");
+    ).rejects.toThrow();
   });
 });

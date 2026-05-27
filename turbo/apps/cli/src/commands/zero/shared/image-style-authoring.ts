@@ -86,7 +86,7 @@ export function createStyledImageAuthoringPacket(
     outputDir,
   } as const;
   const instructions = [
-    `# Zero built-in generate image --style ${options.style.id}`,
+    `# Zero generate image --style ${options.style.id}`,
     "",
     "This is a federated generation resource-selection packet for the current agent.",
     "Zero is not generating this image on the server yet. The image style has already been selected by the caller — resolve it and generate the styled image.",

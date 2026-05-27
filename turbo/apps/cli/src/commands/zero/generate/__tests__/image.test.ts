@@ -1,5 +1,5 @@
 /**
- * Tests for zero built-in generate image command
+ * Tests for zero generate image command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../../mocks/server";
-import { zeroBuiltInCommand } from "../../index";
+import { server } from "../../../../mocks/server";
+import { generateCommand } from "../index";
 import { imageCommand } from "../image";
 
 const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
@@ -33,7 +33,7 @@ const IMAGE_RESULT = {
   moderation: "auto",
 };
 
-describe("zero built-in generate image command", () => {
+describe("zero generate image command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -75,10 +75,9 @@ describe("zero built-in generate image command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--skip-style",
       "--prompt",
@@ -138,10 +137,9 @@ describe("zero built-in generate image command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--skip-style",
       "--model",
@@ -193,10 +191,9 @@ describe("zero built-in generate image command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--skip-style",
       "--model",
@@ -235,10 +232,9 @@ describe("zero built-in generate image command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--skip-style",
       "--prompt",
@@ -265,10 +261,9 @@ describe("zero built-in generate image command", () => {
   });
 
   it("should print styled image resource selection instructions with --style", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--style",
       "vm0:image-style:notion-illustration",
@@ -278,7 +273,7 @@ describe("zero built-in generate image command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero built-in generate image --style vm0:image-style:notion-illustration",
+      "# Zero generate image --style vm0:image-style:notion-illustration",
     );
     expect(stdout).toContain("federated generation resource-selection packet");
     expect(stdout).toContain("## Selected Image Style");
@@ -290,10 +285,9 @@ describe("zero built-in generate image command", () => {
   });
 
   it("should lock the selected style in the JSON packet candidate slice", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--style",
       "vm0:image-style:notion-illustration",
@@ -328,10 +322,9 @@ describe("zero built-in generate image command", () => {
   });
 
   it("should lock vm0 illustration when selected via --style", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--style",
       "vm0:image-style:vm0-illustration",
@@ -358,10 +351,9 @@ describe("zero built-in generate image command", () => {
 
   it("should fail with style listing when neither --style nor --skip-style is provided", async () => {
     await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         "image",
         "--prompt",
         "Anything",
@@ -376,10 +368,9 @@ describe("zero built-in generate image command", () => {
 
   it("should fail with style listing when --style id is unknown", async () => {
     await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         "image",
         "--style",
         "vm0:image-style:does-not-exist",
@@ -397,10 +388,9 @@ describe("zero built-in generate image command", () => {
 
   it("should reject combining --style with --skip-style", async () => {
     await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         "image",
         "--style",
         "vm0:image-style:notion-illustration",
@@ -454,10 +444,9 @@ describe("zero built-in generate image command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "image",
       "--skip-style",
       "--prompt",
@@ -525,10 +514,9 @@ describe("zero built-in generate image command", () => {
     );
 
     await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         "image",
         "--skip-style",
         "--prompt",

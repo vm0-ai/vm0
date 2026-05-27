@@ -1,4 +1,3 @@
-import { readFileSync } from "fs";
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
@@ -9,9 +8,12 @@ import {
   listImageStyles,
   type OpenDesignRegistryEntry,
 } from "./open-design-registry";
+import { dispatchGenerate } from "../generate/lib/dispatch";
+import type { GenerationType } from "../generate/lib/lister";
 
 interface ImageOptions {
   prompt?: string;
+  provider?: string;
   model: string;
   size: string;
   quality: string;
@@ -28,11 +30,13 @@ interface ImageOptions {
   imagePromptStrength?: string;
   style?: string;
   skipStyle?: boolean;
+  all?: boolean;
   json?: boolean;
 }
 
 interface ImageGenerateCommandConfig {
   name: string;
+  generationType: GenerationType;
   usageCommand: string;
   examples: string;
 }
@@ -78,23 +82,6 @@ function unknownStyleError(id: string, usageCommand: string): Error {
     `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
   ].join("\n");
   return new Error(message);
-}
-
-function readPrompt(options: ImageOptions, usageCommand: string): string {
-  if (options.prompt?.trim()) {
-    return options.prompt.trim();
-  }
-
-  if (process.stdin.isTTY === false) {
-    const prompt = readFileSync("/dev/stdin", "utf8").trim();
-    if (prompt.length > 0) {
-      return prompt;
-    }
-  }
-
-  throw new Error("--prompt is required", {
-    cause: new Error(`Usage: ${usageCommand} --prompt "A watercolor fox"`),
-  });
 }
 
 function parseCompression(value: string | undefined): number | undefined {
@@ -152,6 +139,14 @@ export function createImageGenerateCommand(
     .name(config.name)
     .description("Generate a billed image file from a prompt")
     .option("--prompt <text>", "Image prompt; can also be piped via stdin")
+    .option(
+      "--provider <name>",
+      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+    )
+    .option(
+      "--all",
+      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
+    )
     .option(
       "--model <model>",
       "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
@@ -262,14 +257,22 @@ ${formatStyleListing(styles)}`;
     })
     .action(
       withErrorHandler(async (options: ImageOptions, command: Command) => {
+        const dispatch = await dispatchGenerate({
+          generationType: config.generationType,
+          provider: options.provider,
+          prompt: options.prompt,
+          all: options.all,
+          json: options.json,
+        });
+        if (dispatch.outcome === "handled") return;
+        const prompt = dispatch.prompt;
+
         if (options.style && options.skipStyle) {
           throw new Error("--style and --skip-style cannot be combined");
         }
         if (!options.style && !options.skipStyle) {
           throw requireStyleError(config.usageCommand);
         }
-
-        const prompt = readPrompt(options, config.usageCommand);
         if (options.style) {
           const style = findImageStyle(options.style);
           if (!style) {

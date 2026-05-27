@@ -1,11 +1,13 @@
-import { readFileSync } from "fs";
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebVideo } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { dispatchGenerate } from "../generate/lib/dispatch";
+import type { GenerationType } from "../generate/lib/lister";
 
 interface VideoOptions {
   prompt?: string;
+  provider?: string;
   model: string;
   aspectRatio: string;
   duration: string;
@@ -20,11 +22,13 @@ interface VideoOptions {
   audioUrl?: string[];
   firstFrameImageUrl?: string;
   lastFrameImageUrl?: string;
+  all?: boolean;
   json?: boolean;
 }
 
 interface VideoGenerateCommandConfig {
   name: string;
+  generationType: GenerationType;
   usageCommand: string;
   examples: string;
 }
@@ -295,23 +299,6 @@ async function validateVideoOptions(options: VideoOptions): Promise<void> {
   ]);
 }
 
-function readPrompt(options: VideoOptions, usageCommand: string): string {
-  if (options.prompt?.trim()) {
-    return options.prompt.trim();
-  }
-
-  if (process.stdin.isTTY === false) {
-    const prompt = readFileSync("/dev/stdin", "utf8").trim();
-    if (prompt.length > 0) {
-      return prompt;
-    }
-  }
-
-  throw new Error("--prompt is required", {
-    cause: new Error(`Usage: ${usageCommand} --prompt "A cinematic city shot"`),
-  });
-}
-
 export function createVideoGenerateCommand(
   config: VideoGenerateCommandConfig,
 ): Command {
@@ -319,6 +306,14 @@ export function createVideoGenerateCommand(
     .name(config.name)
     .description("Generate a billed video file from a prompt")
     .option("--prompt <text>", "Video prompt; can also be piped via stdin")
+    .option(
+      "--provider <name>",
+      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+    )
+    .option(
+      "--all",
+      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
+    )
     .option(
       "--model <model>",
       "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, or kling-v3-4k",
@@ -390,7 +385,16 @@ Models:
     )
     .action(
       withErrorHandler(async (options: VideoOptions) => {
-        const prompt = readPrompt(options, config.usageCommand);
+        const dispatch = await dispatchGenerate({
+          generationType: config.generationType,
+          provider: options.provider,
+          prompt: options.prompt,
+          all: options.all,
+          json: options.json,
+        });
+        if (dispatch.outcome === "handled") return;
+        const prompt = dispatch.prompt;
+
         await validateVideoOptions(options);
         const result = await generateWebVideo({
           prompt,

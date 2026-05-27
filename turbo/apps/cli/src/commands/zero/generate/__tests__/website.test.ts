@@ -1,5 +1,5 @@
 /**
- * Tests for zero built-in generate website command
+ * Tests for zero generate website command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -9,9 +9,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
-import { zeroBuiltInCommand } from "../../index";
+import { generateCommand } from "../index";
 
-describe("zero built-in generate website command", () => {
+describe("zero generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -34,10 +34,9 @@ describe("zero built-in generate website command", () => {
   });
 
   it("should print Open Design resource selection instructions for website", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "website",
       "--prompt",
       "observability launch site",
@@ -52,7 +51,7 @@ describe("zero built-in generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero built-in generate website");
+    expect(stdout).toContain("# Zero generate website");
     expect(stdout).toContain("federated generation resource-selection packet");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
@@ -69,10 +68,9 @@ describe("zero built-in generate website command", () => {
   });
 
   it("should print JSON resource selection metadata when --json is provided", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "website",
       "--prompt",
       "observability launch site",
@@ -107,21 +105,6 @@ describe("zero built-in generate website command", () => {
     );
     expect(parsed.instructions).toEqual(
       expect.stringContaining("## Stage 3: Author Artifact"),
-    );
-  });
-
-  it("should require a prompt", async () => {
-    await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
-        "node",
-        "cli",
-        "generate",
-        "website",
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("--prompt is required"),
     );
   });
 });

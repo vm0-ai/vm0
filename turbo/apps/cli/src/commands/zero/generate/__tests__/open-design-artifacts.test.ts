@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
-import { zeroBuiltInCommand } from "../../index";
-import { selectOpenDesignCandidates } from "../../../shared/open-design-registry";
+import { generateCommand } from "../index";
+import { selectOpenDesignCandidates } from "../../shared/open-design-registry";
 
-describe("zero built-in generate Open Design artifact commands", () => {
+describe("zero generate Open Design artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -56,10 +56,9 @@ describe("zero built-in generate Open Design artifact commands", () => {
   ])(
     "prints an Open Design resource selection packet for $command",
     async ({ command, prompt, template }) => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         command,
         "--prompt",
         prompt,
@@ -72,7 +71,7 @@ describe("zero built-in generate Open Design artifact commands", () => {
       ]);
 
       const stdout = output();
-      expect(stdout).toContain(`# Zero built-in generate ${command}`);
+      expect(stdout).toContain(`# Zero generate ${command}`);
       expect(stdout).toContain(
         "federated generation resource-selection packet",
       );
@@ -93,10 +92,9 @@ describe("zero built-in generate Open Design artifact commands", () => {
   );
 
   it("prints JSON metadata for mobile-app-design", async () => {
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "mobile-app-design",
       "--prompt",
       "A mobile review screen",

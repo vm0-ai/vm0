@@ -1,5 +1,5 @@
 /**
- * Tests for zero built-in generate video command
+ * Tests for zero generate video command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../../mocks/server";
-import { zeroBuiltInCommand } from "../../index";
+import { server } from "../../../../mocks/server";
+import { generateCommand } from "../index";
 import { videoCommand } from "../video";
 
 const VIDEO_URL = "http://localhost:3000/api/zero/video-io/generate";
@@ -50,7 +50,7 @@ function imageResponse(width: number, height: number) {
   });
 }
 
-describe("zero built-in generate video command", () => {
+describe("zero generate video command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -103,10 +103,9 @@ describe("zero built-in generate video command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "video",
       "--prompt",
       "A neon market tracking shot",
@@ -159,10 +158,9 @@ describe("zero built-in generate video command", () => {
     );
 
     await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         "video",
         "--prompt",
         "Animate this frame",
@@ -188,10 +186,9 @@ describe("zero built-in generate video command", () => {
       }),
     );
 
-    await zeroBuiltInCommand.parseAsync([
+    await generateCommand.parseAsync([
       "node",
       "cli",
-      "generate",
       "video",
       "--prompt",
       "JSON please",
@@ -255,10 +252,9 @@ describe("zero built-in generate video command", () => {
     );
 
     await expect(async () => {
-      await zeroBuiltInCommand.parseAsync([
+      await generateCommand.parseAsync([
         "node",
         "cli",
-        "generate",
         "video",
         "--prompt",
         "hello",

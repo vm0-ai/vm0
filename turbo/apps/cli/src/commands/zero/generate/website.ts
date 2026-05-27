@@ -1,20 +1,21 @@
-import { readFileSync } from "node:fs";
-
 import { Command, InvalidArgumentError } from "commander";
-import { withErrorHandler } from "../../../../lib/command";
-import { createHtmlArtifactAuthoringPacket } from "../../shared/html-artifact-authoring";
+import { withErrorHandler } from "../../../lib/command";
+import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
+import { dispatchGenerate } from "./lib/dispatch";
 
 const WEBSITE_TEMPLATES = ["auto", "launch", "profile"] as const;
 const WEBSITE_MAX_IMAGES = 3;
 
 interface WebsiteOptions {
   readonly prompt?: string;
+  readonly provider?: string;
   readonly template: string;
   readonly images: number;
   readonly imageModel?: string;
   readonly site?: string;
   readonly title?: string;
   readonly audience?: string;
+  readonly all?: boolean;
   readonly json?: boolean;
 }
 
@@ -46,29 +47,18 @@ function parseImageCount(value: string): number {
   return imageCount;
 }
 
-function readPrompt(options: WebsiteOptions): string {
-  if (options.prompt?.trim()) {
-    return options.prompt.trim();
-  }
-
-  if (process.stdin.isTTY === false) {
-    const prompt = readFileSync("/dev/stdin", "utf8").trim();
-    if (prompt.length > 0) {
-      return prompt;
-    }
-  }
-
-  throw new Error("--prompt is required", {
-    cause: new Error(
-      'Usage: zero built-in generate website --prompt "A launch site for a developer tool"',
-    ),
-  });
-}
-
 export const websiteCommand = new Command()
   .name("website")
   .description("Prepare website authoring instructions from a prompt")
   .option("--prompt <text>", "Website prompt; can also be piped via stdin")
+  .option(
+    "--provider <name>",
+    "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
+  )
+  .option(
+    "--all",
+    "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
+  )
   .option(
     "--template <template>",
     "Template: auto, launch, or profile",
@@ -93,13 +83,15 @@ export const websiteCommand = new Command()
     "after",
     `
 Examples:
-  Generate site:         zero built-in generate website --prompt "A launch site for a developer observability tool"
-  Pick template:         zero built-in generate website --template profile --images 2 --image-model gpt-image-1.5 --prompt "Portfolio for a robotics photographer"
-  Stable hosted slug:    zero built-in generate website --site api-migration-demo --prompt "An internal migration microsite"
-  Pipe prompt:           cat brief.txt | zero built-in generate website
+  Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
+  Pick template:         zero generate website --template profile --images 2 --image-model gpt-image-1.5 --prompt "Portfolio for a robotics photographer"
+  Stable hosted slug:    zero generate website --site api-migration-demo --prompt "An internal migration microsite"
+  Pipe prompt:           cat brief.txt | zero generate website
+  List providers:        zero generate website
 
 Output:
   Prints an Open Design registry-selection packet for the current agent.
+  With no --prompt and no piped input, prints the provider menu instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN
@@ -107,7 +99,16 @@ Notes:
   )
   .action(
     withErrorHandler(async (options: WebsiteOptions) => {
-      const prompt = readPrompt(options);
+      const dispatch = await dispatchGenerate({
+        generationType: "website",
+        provider: options.provider,
+        prompt: options.prompt,
+        all: options.all,
+        json: options.json,
+      });
+      if (dispatch.outcome === "handled") return;
+      const prompt = dispatch.prompt;
+
       const packet = createHtmlArtifactAuthoringPacket({
         kind: "website",
         prompt,

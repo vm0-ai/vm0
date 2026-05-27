@@ -445,7 +445,7 @@ describe("POST /api/zero/runs", () => {
       "zero host --help",
       "zero connector status <type>",
       "zero doctor check-connector --help",
-      "zero doctor generate -h",
+      "zero generate -h",
       "zero doctor credit",
       "zero credit <credits>",
       "zero doctor permission-deny --help",
