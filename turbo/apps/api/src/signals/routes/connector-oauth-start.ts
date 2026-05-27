@@ -1,9 +1,9 @@
 import {
   getConnectorOAuthGrantConfigIfSupported,
-  getConnectorOAuthCredentials,
+  getConnectorOAuthClient,
   isOAuthAuthCodeConnectorType,
   type ConnectorEnvReader,
-  type ConnectorOAuthCredentials,
+  type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorType,
@@ -17,17 +17,12 @@ import {
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 
-type ConfiguredConnectorOAuthCredentials = Extract<
-  ConnectorOAuthCredentials,
-  { readonly configured: true }
->;
-
 type PrepareResolvedConnectorOAuthStartResult =
   | {
       readonly ok: true;
       readonly state: string;
       readonly redirectUri: string;
-      readonly credentials: ConfiguredConnectorOAuthCredentials;
+      readonly oauthClient: ConnectorOAuthClient;
     }
   | {
       readonly ok: false;
@@ -76,8 +71,8 @@ export function prepareResolvedConnectorOAuthStart(args: {
 }): PrepareResolvedConnectorOAuthStartResult {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
-  const credentials = getConnectorOAuthCredentials(args.type, args.readEnv);
-  if (!credentials?.configured) {
+  const oauthClient = getConnectorOAuthClient(args.type, args.readEnv);
+  if (!oauthClient) {
     return { ok: false, reason: "oauth_not_configured" };
   }
 
@@ -85,20 +80,20 @@ export function prepareResolvedConnectorOAuthStart(args: {
     ok: true,
     state,
     redirectUri,
-    credentials,
+    oauthClient,
   };
 }
 
 export async function buildResolvedConnectorOAuthAuthResult(args: {
   readonly type: OAuthAuthCodeConnectorType;
-  readonly credentials: ConfiguredConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<AuthUrlResult> {
   return normalizeAuthUrlResult(
     await buildConnectorOAuthAuthUrl({
       type: args.type,
-      credentials: args.credentials,
+      oauthClient: args.oauthClient,
       redirectUri: args.redirectUri,
       state: args.state,
     }),

@@ -11,7 +11,7 @@ import {
   deriveConnectedManualGrantMethods,
   getAvailableConnectorAuthMethods,
   getConnectorManualGrantFieldNames,
-  getConnectorOAuthCredentials,
+  getConnectorOAuthClient,
   getConnectorProvidedSecretNames,
   getConnectorSecretNames,
   getRuntimeAvailableConnectorTypes,
@@ -403,8 +403,8 @@ async function revokeExistingConnectorToken(args: {
     return;
   }
 
-  const credentials = getConnectorOAuthCredentials(connectorType, optionalEnv);
-  if (!credentials) {
+  const oauthClient = getConnectorOAuthClient(connectorType, optionalEnv);
+  if (!oauthClient) {
     return;
   }
 
@@ -412,7 +412,7 @@ async function revokeExistingConnectorToken(args: {
   await bestEffort(
     revokeConnectorOAuthToken({
       type: connectorType,
-      credentials,
+      oauthClient,
       loadAccessToken: () => {
         return decryptStoredSecretValue(
           accessTokenSecret.encryptedValue,

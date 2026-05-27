@@ -427,7 +427,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
     const authResult = await buildResolvedConnectorOAuthAuthResult({
       type: startType.type,
-      credentials: prepared.credentials,
+      oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
     });
@@ -497,7 +497,7 @@ const startConnectorOauthInner$ = command(
     }
     const authResult = await buildResolvedConnectorOAuthAuthResult({
       type: startType.type,
-      credentials: prepared.credentials,
+      oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
     });

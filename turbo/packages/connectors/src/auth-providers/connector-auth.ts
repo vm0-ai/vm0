@@ -7,9 +7,9 @@ import type {
 import {
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   isOAuthAuthCodeConnectorType,
-  isStaticConfidentialConnectorOAuthCredentials,
-  isStaticConnectorOAuthCredentials,
-  type ConnectorOAuthCredentials,
+  isStaticConfidentialConnectorOAuthClient,
+  isStaticConnectorOAuthClient,
+  type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   getAuthProviderSecretMetadata,
@@ -107,8 +107,7 @@ export { providerEnvFromObject };
 
 export type ConnectorOAuthRevokeResult =
   | { readonly status: "revoked" }
-  | { readonly status: "unsupported" }
-  | { readonly status: "unconfigured" };
+  | { readonly status: "unsupported" };
 
 type AuthCodeConnectorOAuthProviderMap = {
   readonly [Type in OAuthAuthCodeConnectorType]: AuthCodeConnectorAuthProvider<Type>;
@@ -150,28 +149,19 @@ function connectorRevokeProviderFor<T extends OAuthConnectorType>(
     .revoke as OAuthConnectorRevokeProvider<T>;
 }
 
-function connectorCredentialArgs(
-  credentials: ConnectorOAuthCredentials,
+function connectorOAuthClientArgs(
+  oauthClient: ConnectorOAuthClient,
 ): Pick<OAuthExchangeArgs, "clientId" | "clientSecret"> {
-  if (!isStaticConnectorOAuthCredentials(credentials)) {
+  if (!isStaticConnectorOAuthClient(oauthClient)) {
     return {};
   }
-  if (isStaticConfidentialConnectorOAuthCredentials(credentials)) {
+  if (isStaticConfidentialConnectorOAuthClient(oauthClient)) {
     return {
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
+      clientId: oauthClient.clientId,
+      clientSecret: oauthClient.clientSecret,
     };
   }
-  return { clientId: credentials.clientId };
-}
-
-function assertConfiguredConnectorOAuthCredentials(
-  type: OAuthConnectorType,
-  credentials: ConnectorOAuthCredentials,
-): void {
-  if (!credentials.configured) {
-    throw new Error(`${type} OAuth not configured`);
-  }
+  return { clientId: oauthClient.clientId };
 }
 
 const AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS: AuthCodeConnectorOAuthProviderMap = {
@@ -266,15 +256,14 @@ export async function buildConnectorOAuthAuthUrl<
   T extends OAuthAuthCodeConnectorType,
 >(args: {
   readonly type: T;
-  readonly credentials: ConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<string | AuthUrlResult> {
-  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.buildAuthUrl({
-    ...connectorCredentialArgs(args.credentials),
+    ...connectorOAuthClientArgs(args.oauthClient),
     redirectUri: args.redirectUri,
     state: args.state,
   } as ConnectorOAuthAuthorizeArgs<T>);
@@ -284,18 +273,17 @@ export async function exchangeConnectorOAuthCode<
   T extends OAuthAuthCodeConnectorType,
 >(args: {
   readonly type: T;
-  readonly credentials: ConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.exchangeCode({
-    ...connectorCredentialArgs(args.credentials),
+    ...connectorOAuthClientArgs(args.oauthClient),
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -308,14 +296,13 @@ export async function startConnectorOAuthDeviceAuth<
   T extends OAuthDeviceAuthConnectorType,
 >(args: {
   readonly type: T;
-  readonly credentials: ConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
 }): Promise<OAuthDeviceAuthStartResult> {
-  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   const grant = getDeviceAuthGrantConfig(args.type);
   return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.startDeviceAuth({
-    ...connectorCredentialArgs(args.credentials),
+    ...connectorOAuthClientArgs(args.oauthClient),
     scopes: grant.scopes,
   } as ConnectorOAuthDeviceAuthStartArgs<T>);
 }
@@ -324,14 +311,13 @@ export async function pollConnectorOAuthDeviceAuth<
   T extends OAuthDeviceAuthConnectorType,
 >(args: {
   readonly type: T;
-  readonly credentials: ConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.pollDeviceAuth({
-    ...connectorCredentialArgs(args.credentials),
+    ...connectorOAuthClientArgs(args.oauthClient),
     deviceCode: args.deviceCode,
   } as ConnectorOAuthDeviceAuthPollArgs<T>);
 }
@@ -340,10 +326,9 @@ export async function refreshConnectorOAuthToken<
   T extends OAuthConnectorType,
 >(args: {
   readonly type: T;
-  readonly credentials: ConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
   const access = connectorAccessProviderFor(args.type);
 
   switch (access.kind) {
@@ -352,7 +337,7 @@ export async function refreshConnectorOAuthToken<
 
     case "refresh-token":
       return await access.refreshToken({
-        ...connectorCredentialArgs(args.credentials),
+        ...connectorOAuthClientArgs(args.oauthClient),
         refreshToken: args.refreshToken,
       } as ConnectorOAuthRefreshArgs<T>);
   }
@@ -362,13 +347,9 @@ export async function revokeConnectorOAuthToken<
   T extends OAuthConnectorType,
 >(args: {
   readonly type: T;
-  readonly credentials: ConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorOAuthRevokeResult> {
-  if (!args.credentials.configured) {
-    return { status: "unconfigured" };
-  }
-
   const revoke = connectorRevokeProviderFor(args.type);
 
   switch (revoke.kind) {
@@ -377,7 +358,7 @@ export async function revokeConnectorOAuthToken<
 
     case "token-revoke":
       await revoke.revokeToken({
-        ...connectorCredentialArgs(args.credentials),
+        ...connectorOAuthClientArgs(args.oauthClient),
         accessToken: await args.loadAccessToken(),
       } as ConnectorOAuthRevokeArgs<T>);
       return { status: "revoked" };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorOAuthCredentials } from "../../../../connector-utils";
+import { getConnectorOAuthClient } from "../../../../connector-utils";
 import { isOAuthConnectorType } from "../../../connector-auth";
 import { googleAdsProvider } from "../google-ads-provider";
 import { server } from "./test-server";
@@ -41,18 +41,17 @@ describe("connector/providers/google-ads", () => {
       );
     });
 
-    it("resolves OAuth client credentials from Google env keys", () => {
+    it("resolves the OAuth client from Google env keys", () => {
       const env: Record<string, string> = {
         GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
         GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
       };
 
       expect(
-        getConnectorOAuthCredentials("google-ads", (name) => {
+        getConnectorOAuthClient("google-ads", (name) => {
           return env[name];
         }),
       ).toMatchObject({
-        configured: true,
         clientId: "test-client-id",
         clientSecret: "test-client-secret",
       });

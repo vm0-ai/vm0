@@ -2,8 +2,8 @@ import { Buffer } from "node:buffer";
 
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
-  getConnectorOAuthCredentials,
-  type ConnectorOAuthCredentials,
+  getConnectorOAuthClient,
+  type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type { OAuthConnectorType } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
@@ -169,7 +169,7 @@ type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
       readonly connectorType: OAuthConnectorType;
-      readonly credentials: ConnectorOAuthCredentials;
+      readonly oauthClient: ConnectorOAuthClient;
       readonly context: RefreshTokenContext;
     }
   | {
@@ -640,15 +640,12 @@ function prepareRefreshTokenContext(
   if (!secretMetadata.isRefreshable) {
     return null;
   }
-  const credentials = getConnectorOAuthCredentials(
-    args.connectorType,
-    (name) => {
-      return optionalEnv(name);
-    },
-  );
-  if (!credentials?.configured) {
+  const oauthClient = getConnectorOAuthClient(args.connectorType, (name) => {
+    return optionalEnv(name);
+  });
+  if (!oauthClient) {
     L.debug(
-      `${args.connectorType} OAuth credentials not configured, skipping token refresh`,
+      `${args.connectorType} OAuth client not configured, skipping token refresh`,
     );
     return null;
   }
@@ -674,7 +671,7 @@ function prepareRefreshTokenContext(
   return {
     sourceType: "connector",
     connectorType: args.connectorType,
-    credentials,
+    oauthClient,
     context,
   };
 }
@@ -795,7 +792,7 @@ async function refreshConnectorAccessToken(
     prepared.sourceType === "connector"
       ? refreshConnectorOAuthToken({
           type: prepared.connectorType,
-          credentials: prepared.credentials,
+          oauthClient: prepared.oauthClient,
           refreshToken: prepared.context.currentRefreshToken,
         })
       : refreshModelProviderOAuthToken({

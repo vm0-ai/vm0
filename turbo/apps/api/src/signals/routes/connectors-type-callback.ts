@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
   isOAuthAuthCodeConnectorType,
-  getConnectorOAuthCredentials,
+  getConnectorOAuthClient,
   getConnectorOAuthScopes,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -178,17 +178,14 @@ async function exchangeTokenForConnector(args: {
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  const credentials = getConnectorOAuthCredentials(
-    args.connectorType,
-    optionalEnv,
-  );
-  if (!credentials?.configured) {
+  const oauthClient = getConnectorOAuthClient(args.connectorType, optionalEnv);
+  if (!oauthClient) {
     throw new Error(`${args.connectorType} OAuth not configured`);
   }
 
   return await exchangeConnectorOAuthCode({
     type: args.connectorType,
-    credentials,
+    oauthClient,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,

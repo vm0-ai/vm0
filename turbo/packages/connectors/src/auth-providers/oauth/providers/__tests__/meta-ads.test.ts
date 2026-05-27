@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorOAuthCredentials } from "../../../../connector-utils";
+import { getConnectorOAuthClient } from "../../../../connector-utils";
 import { isOAuthConnectorType } from "../../../connector-auth";
 import {
   buildMetaAdsAuthorizationUrl,
@@ -153,18 +153,17 @@ describe("connector/providers/meta-ads", () => {
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
     });
 
-    it("resolves OAuth client credentials from Meta Ads env keys", () => {
+    it("resolves the OAuth client from Meta Ads env keys", () => {
       const env: Record<string, string> = {
         META_ADS_OAUTH_CLIENT_ID: "test-client-id",
         META_ADS_OAUTH_CLIENT_SECRET: "test-client-secret",
       };
 
       expect(
-        getConnectorOAuthCredentials("meta-ads", (name) => {
+        getConnectorOAuthClient("meta-ads", (name) => {
           return env[name];
         }),
       ).toMatchObject({
-        configured: true,
         clientId: "test-client-id",
         clientSecret: "test-client-secret",
       });

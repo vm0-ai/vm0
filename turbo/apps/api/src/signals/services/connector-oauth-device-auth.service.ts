@@ -11,8 +11,9 @@ import type {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorOAuthGrantConfigIfSupported,
-  getConnectorOAuthCredentials,
+  getConnectorOAuthClient,
   isOAuthDeviceAuthConnectorType,
+  type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
@@ -55,11 +56,6 @@ const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
 const SUPERSEDED_SESSION_ERROR_MESSAGE =
   "OAuth device authorization session was superseded";
 
-type ConfiguredConnectorOAuthCredentials = Extract<
-  NonNullable<ReturnType<typeof getConnectorOAuthCredentials>>,
-  { readonly configured: true }
->;
-
 type DeviceAuthSessionRow =
   typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
 
@@ -90,7 +86,7 @@ type PollClaimedSessionArgs = {
   readonly orgId: string;
   readonly userId: string;
   readonly type: OAuthDeviceAuthConnectorType;
-  readonly credentials: ConfiguredConnectorOAuthCredentials;
+  readonly oauthClient: ConnectorOAuthClient;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly signal: AbortSignal;
@@ -200,16 +196,14 @@ function resolveDeviceAuthType(
   return type;
 }
 
-function resolveConfiguredCredentials(
+function resolveRequiredOAuthClient(
   type: OAuthDeviceAuthConnectorType,
-):
-  | ConfiguredConnectorOAuthCredentials
-  | ReturnType<typeof internalServerError> {
-  const credentials = getConnectorOAuthCredentials(type, optionalEnv);
-  if (!credentials?.configured) {
+): ConnectorOAuthClient | ReturnType<typeof internalServerError> {
+  const oauthClient = getConnectorOAuthClient(type, optionalEnv);
+  if (!oauthClient) {
     return internalServerError(`${type} OAuth is not configured`);
   }
-  return credentials;
+  return oauthClient;
 }
 
 async function lockDeviceAuthSessionOwner(args: {
@@ -597,7 +591,7 @@ async function runClaimedSession(
   });
   const pollResult = await pollConnectorOAuthDeviceAuth({
     type: args.type,
-    credentials: args.credentials,
+    oauthClient: args.oauthClient,
     deviceCode: providerState.deviceCode,
   });
   args.signal.throwIfAborted();
@@ -699,14 +693,14 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const credentials = resolveConfiguredCredentials(resolvedType);
-    if ("status" in credentials) {
-      return credentials;
+    const oauthClient = resolveRequiredOAuthClient(resolvedType);
+    if ("status" in oauthClient) {
+      return oauthClient;
     }
 
     const startResult = await startConnectorOAuthDeviceAuth({
       type: resolvedType,
-      credentials,
+      oauthClient,
     });
     signal.throwIfAborted();
 
@@ -809,9 +803,9 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const credentials = resolveConfiguredCredentials(resolvedType);
-    if ("status" in credentials) {
-      return credentials;
+    const oauthClient = resolveRequiredOAuthClient(resolvedType);
+    if ("status" in oauthClient) {
+      return oauthClient;
     }
 
     const writeDb = set(writeDb$);
@@ -881,7 +875,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       orgId: args.orgId,
       userId: args.userId,
       type: resolvedType,
-      credentials,
+      oauthClient,
       session: claimedSession,
       claimStartedAt,
       signal,

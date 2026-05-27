@@ -33,7 +33,7 @@ import {
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
   getConnectorOAuthClientConfig,
-  getConnectorOAuthCredentials,
+  getConnectorOAuthClient,
   getConnectorOAuthGrantConfigIfSupported,
   getConnectorOAuthScopes,
   getConnectorManualGrantFieldNames,
@@ -44,10 +44,10 @@ import {
   getConnectorSecretNames,
   isOAuthAuthCodeConnectorType,
   isOAuthDeviceAuthConnectorType,
-  isStaticConfidentialConnectorOAuthCredentials,
-  isStaticConnectorOAuthCredentials,
+  isStaticConfidentialConnectorOAuthClient,
+  isStaticConnectorOAuthClient,
   isGoogleOAuthConnector,
-  resolveConnectorOAuthClientCredentials,
+  resolveConnectorOAuthClient,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
@@ -392,28 +392,28 @@ describe("isOAuthConnectorType", () => {
   });
 
   it("rejects refresh for OAuth connectors without refresh-token access", async () => {
-    const credentials = getConnectorOAuthCredentials("github", (name) => {
+    const oauthClient = getConnectorOAuthClient("github", (name) => {
       return name === "GITHUB_CLIENT_ID"
         ? "test-github-client"
         : "test-github-secret";
     });
-    expect(credentials?.configured).toBe(true);
+    expect(oauthClient).toBeDefined();
 
-    if (!credentials?.configured) {
-      throw new Error("Expected github OAuth credentials");
+    if (!oauthClient) {
+      throw new Error("Expected github OAuth client");
     }
 
     await expect(
       refreshConnectorOAuthToken({
         type: "github",
-        credentials,
+        oauthClient,
         refreshToken: "refresh-token",
       }),
     ).rejects.toThrow("github OAuth provider does not support refresh");
   });
 
   it("revokes OAuth tokens through the provider registry", async () => {
-    const credentials = getConnectorOAuthCredentials("github", (name) => {
+    const oauthClient = getConnectorOAuthClient("github", (name) => {
       if (name === "GH_OAUTH_CLIENT_ID") {
         return "test-github-client";
       }
@@ -422,10 +422,10 @@ describe("isOAuthConnectorType", () => {
       }
       return undefined;
     });
-    expect(credentials?.configured).toBe(true);
+    expect(oauthClient).toBeDefined();
 
-    if (!credentials?.configured) {
-      throw new Error("Expected github OAuth credentials");
+    if (!oauthClient) {
+      throw new Error("Expected github OAuth client");
     }
 
     let authorization: string | null = null;
@@ -444,7 +444,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       revokeConnectorOAuthToken({
         type: "github",
-        credentials,
+        oauthClient,
         loadAccessToken: () => {
           return "gh-access-token";
         },
@@ -457,7 +457,7 @@ describe("isOAuthConnectorType", () => {
   });
 
   it("returns unsupported for OAuth connectors without revoke support", async () => {
-    const credentials = getConnectorOAuthCredentials("notion", (name) => {
+    const oauthClient = getConnectorOAuthClient("notion", (name) => {
       if (name === "NOTION_OAUTH_CLIENT_ID") {
         return "test-notion-client";
       }
@@ -466,10 +466,10 @@ describe("isOAuthConnectorType", () => {
       }
       return undefined;
     });
-    expect(credentials?.configured).toBe(true);
+    expect(oauthClient).toBeDefined();
 
-    if (!credentials?.configured) {
-      throw new Error("Expected notion OAuth credentials");
+    if (!oauthClient) {
+      throw new Error("Expected notion OAuth client");
     }
 
     let loadedAccessToken = false;
@@ -477,38 +477,13 @@ describe("isOAuthConnectorType", () => {
     await expect(
       revokeConnectorOAuthToken({
         type: "notion",
-        credentials,
+        oauthClient,
         loadAccessToken: () => {
           loadedAccessToken = true;
           return "notion-access-token";
         },
       }),
     ).resolves.toStrictEqual({ status: "unsupported" });
-    expect(loadedAccessToken).toBe(false);
-  });
-
-  it("returns unconfigured when OAuth credentials are unavailable for revoke", async () => {
-    const credentials = getConnectorOAuthCredentials("github", () => {
-      return undefined;
-    });
-    expect(credentials?.configured).toBe(false);
-
-    if (!credentials) {
-      throw new Error("Expected github OAuth credentials shape");
-    }
-
-    let loadedAccessToken = false;
-
-    await expect(
-      revokeConnectorOAuthToken({
-        type: "github",
-        credentials,
-        loadAccessToken: () => {
-          loadedAccessToken = true;
-          return "gh-access-token";
-        },
-      }),
-    ).resolves.toStrictEqual({ status: "unconfigured" });
     expect(loadedAccessToken).toBe(false);
   });
 
@@ -532,15 +507,16 @@ describe("isOAuthConnectorType", () => {
         if (!client) {
           throw new Error(`${type} OAuth client config not found`);
         }
-        const credentials = resolveConnectorOAuthClientCredentials(
-          client,
-          () => {
-            return "test-client-credential";
-          },
-        );
+        const oauthClient = resolveConnectorOAuthClient(client, () => {
+          return "test-client-credential";
+        });
+        expect(oauthClient, `${type}: OAuth client`).toBeDefined();
+        if (!oauthClient) {
+          throw new Error(`${type} OAuth client not found`);
+        }
         const authResult = await buildConnectorOAuthAuthUrl({
           type,
-          credentials,
+          oauthClient,
           redirectUri: "https://app.test/callback",
           state: "state-123",
         });
@@ -631,21 +607,18 @@ describe("isOAuthConnectorType", () => {
       }),
     );
 
-    const credentials = getConnectorOAuthCredentials(
-      "test-oauth-device",
-      () => {
-        return undefined;
-      },
-    );
-    expect(credentials?.configured).toBe(true);
+    const oauthClient = getConnectorOAuthClient("test-oauth-device", () => {
+      return undefined;
+    });
+    expect(oauthClient).toBeDefined();
 
-    if (!credentials?.configured) {
-      throw new Error("Expected test-oauth-device OAuth credentials");
+    if (!oauthClient) {
+      throw new Error("Expected test-oauth-device OAuth client");
     }
 
     const startResult = await startConnectorOAuthDeviceAuth({
       type: "test-oauth-device",
-      credentials,
+      oauthClient,
     });
     expect(startResult).toStrictEqual({
       deviceCode: "test-device:test-oauth-device-client:read",
@@ -660,21 +633,21 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: "slow-down",
       }),
     ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: "denied",
       }),
     ).resolves.toStrictEqual({
@@ -685,7 +658,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: "expired",
       }),
     ).resolves.toStrictEqual({
@@ -696,7 +669,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: "error",
       }),
     ).resolves.toStrictEqual({
@@ -707,7 +680,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: "invalid-grant",
       }),
     ).resolves.toStrictEqual({
@@ -718,7 +691,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        credentials,
+        oauthClient,
         deviceCode: startResult.deviceCode,
       }),
     ).resolves.toStrictEqual({
@@ -837,19 +810,19 @@ describe("isOAuthConnectorType", () => {
       }),
     );
 
-    const credentials = getConnectorOAuthCredentials("base44", () => {
+    const oauthClient = getConnectorOAuthClient("base44", () => {
       return undefined;
     });
-    expect(credentials?.configured).toBe(true);
+    expect(oauthClient).toBeDefined();
 
-    if (!credentials?.configured) {
-      throw new Error("Expected base44 OAuth credentials");
+    if (!oauthClient) {
+      throw new Error("Expected base44 OAuth client");
     }
 
     await expect(
       startConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
       }),
     ).resolves.toStrictEqual({
       deviceCode: "base44-device-code",
@@ -864,21 +837,21 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
         deviceCode: "slow-down",
       }),
     ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
         deviceCode: "denied",
       }),
     ).resolves.toStrictEqual({
@@ -889,7 +862,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
         deviceCode: "expired",
       }),
     ).resolves.toStrictEqual({
@@ -900,7 +873,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
         deviceCode: "temporarily-unavailable",
       }),
     ).resolves.toStrictEqual({
@@ -911,7 +884,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        credentials,
+        oauthClient,
         deviceCode: "base44-device-code",
       }),
     ).resolves.toStrictEqual({
@@ -932,7 +905,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       refreshConnectorOAuthToken({
         type: "base44",
-        credentials,
+        oauthClient,
         refreshToken: "base44-refresh-rotation",
       }),
     ).resolves.toStrictEqual({
@@ -943,7 +916,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       refreshConnectorOAuthToken({
         type: "base44",
-        credentials,
+        oauthClient,
         refreshToken: "base44-refresh-without-rotation",
       }),
     ).resolves.toStrictEqual({
@@ -1117,19 +1090,19 @@ describe("isOAuthConnectorType", () => {
       ),
     );
 
-    const credentials = getConnectorOAuthCredentials("slock", () => {
+    const oauthClient = getConnectorOAuthClient("slock", () => {
       return undefined;
     });
-    expect(credentials?.configured).toBe(true);
+    expect(oauthClient).toBeDefined();
 
-    if (!credentials?.configured) {
-      throw new Error("Expected slock OAuth credentials");
+    if (!oauthClient) {
+      throw new Error("Expected slock OAuth client");
     }
 
     await expect(
       startConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
       }),
     ).resolves.toStrictEqual({
       deviceCode: "slock-device-code",
@@ -1143,14 +1116,14 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "denied",
       }),
     ).resolves.toStrictEqual({
@@ -1161,7 +1134,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "expired",
       }),
     ).resolves.toStrictEqual({
@@ -1172,7 +1145,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "no-servers",
       }),
     ).resolves.toStrictEqual({
@@ -1183,7 +1156,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "missing-refresh",
       }),
     ).resolves.toMatchObject({
@@ -1193,7 +1166,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "server-error",
       }),
     ).resolves.toStrictEqual({
@@ -1205,7 +1178,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        credentials,
+        oauthClient,
         deviceCode: "userinfo-error",
       }),
     ).resolves.toStrictEqual({
@@ -1216,7 +1189,7 @@ describe("isOAuthConnectorType", () => {
     });
     const completeResult = await pollConnectorOAuthDeviceAuth({
       type: "slock",
-      credentials,
+      oauthClient,
       deviceCode: "slock-device-code",
     });
     expect(completeResult).toMatchObject({
@@ -1250,7 +1223,7 @@ describe("isOAuthConnectorType", () => {
 
     const malformedCompleteResult = await pollConnectorOAuthDeviceAuth({
       type: "slock",
-      credentials,
+      oauthClient,
       deviceCode: "malformed-token",
     });
     expect(malformedCompleteResult).toMatchObject({
@@ -1264,7 +1237,7 @@ describe("isOAuthConnectorType", () => {
 
     const refreshResult = await refreshConnectorOAuthToken({
       type: "slock",
-      credentials,
+      oauthClient,
       refreshToken: "slock-refresh-token",
     });
     expect(refreshResult).toStrictEqual({
@@ -1283,7 +1256,7 @@ describe("isOAuthConnectorType", () => {
     await expect(
       refreshConnectorOAuthToken({
         type: "slock",
-        credentials,
+        oauthClient,
         refreshToken: "slock-refresh-malformed",
       }),
     ).resolves.toStrictEqual({
@@ -1614,7 +1587,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     return undefined;
   };
 
-  it("includes manual-grant connectors without environment credentials or feature switches", () => {
+  it("includes manual-grant connectors without runtime OAuth client env or feature switches", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(runtimeAvailableTypes).toContain("amplitude");
@@ -1622,7 +1595,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toContain("openai");
   });
 
-  it("includes static OAuth test connectors without runtime environment credentials", () => {
+  it("includes static OAuth test connectors without runtime OAuth client env", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(runtimeAvailableTypes).toContain("test-oauth");
@@ -1660,8 +1633,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).not.toContain("sentry");
   });
 
-  it("derives static confidential OAuth credentials from connector config", () => {
-    const credentials = getConnectorOAuthCredentials("github", (name) => {
+  it("derives static confidential OAuth client from connector config", () => {
+    const oauthClient = getConnectorOAuthClient("github", (name) => {
       return (
         {
           GH_OAUTH_CLIENT_ID: "github-client-id",
@@ -1670,8 +1643,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       )[name];
     });
 
-    expect(credentials).toStrictEqual({
-      configured: true,
+    expect(oauthClient).toStrictEqual({
       client: getConnectorOAuthClientConfig("github"),
       clientId: "github-client-id",
       clientSecret: "github-client-secret",
@@ -1679,21 +1651,17 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("does not configure static confidential OAuth when the secret is missing", () => {
-    const credentials = getConnectorOAuthCredentials("github", (name) => {
+    const oauthClient = getConnectorOAuthClient("github", (name) => {
       return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
     });
 
-    expect(credentials).toStrictEqual({
-      configured: false,
-      client: getConnectorOAuthClientConfig("github"),
-    });
+    expect(oauthClient).toBeUndefined();
   });
 
-  it("supports literal static OAuth clients without environment credentials", () => {
-    const credentials = getConnectorOAuthCredentials("test-oauth", emptyEnv);
+  it("supports literal static OAuth clients without runtime OAuth client env", () => {
+    const oauthClient = getConnectorOAuthClient("test-oauth", emptyEnv);
 
-    expect(credentials).toStrictEqual({
-      configured: true,
+    expect(oauthClient).toStrictEqual({
       client: getConnectorOAuthClientConfig("test-oauth"),
       clientId: "test-oauth-client",
       clientSecret: "test-oauth-secret",
@@ -1701,7 +1669,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("supports static public OAuth clients with only a client id", () => {
-    const credentials = resolveConnectorOAuthClientCredentials(
+    const oauthClient = resolveConnectorOAuthClient(
       {
         clientRegistration: "static",
         clientType: "public",
@@ -1714,8 +1682,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       },
     );
 
-    expect(credentials).toStrictEqual({
-      configured: true,
+    expect(oauthClient).toStrictEqual({
       client: {
         clientRegistration: "static",
         clientType: "public",
@@ -1725,22 +1692,19 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     });
   });
 
-  it("supports dynamic public OAuth clients without environment credentials", () => {
+  it("supports dynamic public OAuth clients without runtime OAuth client env", () => {
     const client = {
       clientRegistration: "dynamic",
       clientType: "public",
     } as const;
 
-    expect(
-      resolveConnectorOAuthClientCredentials(client, emptyEnv),
-    ).toStrictEqual({
-      configured: true,
+    expect(resolveConnectorOAuthClient(client, emptyEnv)).toStrictEqual({
       client,
     });
   });
 
-  it("identifies static OAuth credential variants", () => {
-    const staticCredentials = getConnectorOAuthCredentials("github", (name) => {
+  it("identifies static OAuth client variants", () => {
+    const staticOAuthClient = getConnectorOAuthClient("github", (name) => {
       return (
         {
           GH_OAUTH_CLIENT_ID: "github-client-id",
@@ -1748,19 +1712,19 @@ describe("getRuntimeAvailableConnectorTypes", () => {
         } as Record<string, string>
       )[name];
     });
-    if (!staticCredentials) {
-      throw new Error("Expected GitHub OAuth credentials");
+    if (!staticOAuthClient) {
+      throw new Error("Expected GitHub OAuth client");
     }
-    expect(isStaticConnectorOAuthCredentials(staticCredentials)).toBeTruthy();
+    expect(isStaticConnectorOAuthClient(staticOAuthClient)).toBeTruthy();
     expect(
-      isStaticConfidentialConnectorOAuthCredentials(staticCredentials),
+      isStaticConfidentialConnectorOAuthClient(staticOAuthClient),
     ).toBeTruthy();
-    if (isStaticConfidentialConnectorOAuthCredentials(staticCredentials)) {
-      const clientSecret: string = staticCredentials.clientSecret;
+    if (isStaticConfidentialConnectorOAuthClient(staticOAuthClient)) {
+      const clientSecret: string = staticOAuthClient.clientSecret;
       expect(clientSecret).toBe("github-client-secret");
     }
 
-    const publicCredentials = resolveConnectorOAuthClientCredentials(
+    const publicOAuthClient = resolveConnectorOAuthClient(
       {
         clientRegistration: "static",
         clientType: "public",
@@ -1768,12 +1732,15 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       },
       emptyEnv,
     );
-    expect(isStaticConnectorOAuthCredentials(publicCredentials)).toBeTruthy();
+    if (!publicOAuthClient) {
+      throw new Error("Expected public OAuth client");
+    }
+    expect(isStaticConnectorOAuthClient(publicOAuthClient)).toBeTruthy();
     expect(
-      isStaticConfidentialConnectorOAuthCredentials(publicCredentials),
+      isStaticConfidentialConnectorOAuthClient(publicOAuthClient),
     ).toBeFalsy();
-    if (isStaticConnectorOAuthCredentials(publicCredentials)) {
-      const clientId: string = publicCredentials.clientId;
+    if (isStaticConnectorOAuthClient(publicOAuthClient)) {
+      const clientId: string = publicOAuthClient.clientId;
       expect(clientId).toBe("public-client-id");
     }
 
@@ -1781,13 +1748,16 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       clientRegistration: "dynamic",
       clientType: "public",
     } as const;
-    const dynamicCredentials = resolveConnectorOAuthClientCredentials(
+    const dynamicOAuthClient = resolveConnectorOAuthClient(
       dynamicClient,
       emptyEnv,
     );
-    expect(isStaticConnectorOAuthCredentials(dynamicCredentials)).toBeFalsy();
+    if (!dynamicOAuthClient) {
+      throw new Error("Expected dynamic OAuth client");
+    }
+    expect(isStaticConnectorOAuthClient(dynamicOAuthClient)).toBeFalsy();
     expect(
-      isStaticConfidentialConnectorOAuthCredentials(dynamicCredentials),
+      isStaticConfidentialConnectorOAuthClient(dynamicOAuthClient),
     ).toBeFalsy();
   });
 

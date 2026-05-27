@@ -5,10 +5,10 @@ import {
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { OAuthAuthCodeConnectorType } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthCredentials,
+  getConnectorOAuthClient,
   getConnectorOAuthScopes,
-  isStaticConfidentialConnectorOAuthCredentials,
-  type StaticConfidentialConnectorOAuthCredentials,
+  isStaticConfidentialConnectorOAuthClient,
+  type StaticConfidentialConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import { exchangeConnectorOAuthCode } from "@vm0/connectors/auth-providers";
 import {
@@ -85,17 +85,17 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
   return `${origin}${GITHUB_APP_SETUP_CALLBACK_PATH}`;
 }
 
-function githubUserOauthCredentials():
-  | StaticConfidentialConnectorOAuthCredentials
+function githubUserOauthClient():
+  | StaticConfidentialConnectorOAuthClient
   | undefined {
-  const credentials = getConnectorOAuthCredentials("github", optionalEnv);
-  if (!credentials?.configured) {
+  const oauthClient = getConnectorOAuthClient("github", optionalEnv);
+  if (!oauthClient) {
     return undefined;
   }
-  if (!isStaticConfidentialConnectorOAuthCredentials(credentials)) {
+  if (!isStaticConfidentialConnectorOAuthClient(oauthClient)) {
     return undefined;
   }
-  return credentials;
+  return oauthClient;
 }
 
 function githubAppUserOauthCredentials():
@@ -726,8 +726,8 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    const credentials = githubUserOauthCredentials();
-    if (!credentials) {
+    const oauthClient = githubUserOauthClient();
+    if (!oauthClient) {
       return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
@@ -735,7 +735,7 @@ const callbackGithubUserOauth$ = command(
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorOAuthCode({
       type: "github",
-      credentials,
+      oauthClient,
       code: query.code,
       redirectUri,
       state: query.state,
