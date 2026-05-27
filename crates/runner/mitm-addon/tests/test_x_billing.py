@@ -38,15 +38,22 @@ class _FirewallPermission(NamedTuple):
     rules: tuple[str, ...]
 
 
+class _XFirewallExport(NamedTuple):
+    name: str
+    permissions: tuple[_FirewallPermission, ...]
+
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
 _TURBO_DIR = _REPO_ROOT / "turbo"
 _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" / "x.generated.ts"
 _X_FIREWALL_EXPORT_SCRIPT = """
 import { xFirewall } from "./packages/connectors/src/firewalls/x.generated.ts";
 
-console.log(JSON.stringify(xFirewall.apis.flatMap((api) =>
+const permissions = xFirewall.apis.flatMap((api) =>
   (api.permissions ?? []).map((permission) => ({ ...permission, base: api.base }))
-)));
+);
+
+console.log(JSON.stringify({ name: xFirewall.name, permissions }));
 """.strip()
 
 
@@ -108,8 +115,24 @@ def _parse_x_firewall_permissions(raw: object) -> tuple[_FirewallPermission, ...
     return tuple(permissions)
 
 
+def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
+    if not isinstance(raw, dict):
+        _fail_x_firewall_load(
+            f"Expected xFirewall export JSON to be an object, got {type(raw).__name__}."
+        )
+
+    name = raw.get("name")
+    if not isinstance(name, str):
+        _fail_x_firewall_load(
+            f"Expected xFirewall export JSON to have a string `name`, got {type(name).__name__}."
+        )
+
+    permissions = _parse_x_firewall_permissions(raw.get("permissions"))
+    return _XFirewallExport(name=name, permissions=permissions)
+
+
 @functools.cache
-def _load_x_firewall_permissions() -> tuple[_FirewallPermission, ...]:
+def _load_x_firewall_export() -> _XFirewallExport:
     if not _X_FIREWALL_PATH.exists():
         pytest.fail(
             f"x.generated.ts not found at {_X_FIREWALL_PATH}.\n"
@@ -146,7 +169,11 @@ def _load_x_firewall_permissions() -> tuple[_FirewallPermission, ...]:
             stderr=completed.stderr,
         )
 
-    return _parse_x_firewall_permissions(raw)
+    return _parse_x_firewall_export(raw)
+
+
+def _load_x_firewall_permissions() -> tuple[_FirewallPermission, ...]:
+    return _load_x_firewall_export().permissions
 
 
 class TestTldSnapshot:
@@ -179,6 +206,14 @@ class TestFirewallConsistency:
     # Permission names that the classifier deliberately skips.  Requests
     # matching these scopes do not emit ``usage_event`` rows.
     _INTENTIONALLY_UNMAPPED: frozenset[str] = frozenset({"app-only"})
+
+    def test_generated_firewall_name_matches_billing_handler(self):
+        assert _load_x_firewall_export().name == "x", (
+            "Connector usage dispatch is keyed by firewall_name.  If the "
+            "generated X firewall is renamed, update the billing dispatcher "
+            "handler key and billable connector config before trusting these "
+            "scope/path drift checks."
+        )
 
     def _load_firewall_permissions(self) -> set[str]:
         return {permission.name for permission in _load_x_firewall_permissions()}
