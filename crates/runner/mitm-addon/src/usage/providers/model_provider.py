@@ -3,6 +3,13 @@
 Buffers token counts already normalized by an addon-side provider extractor
 (stored in ``flow.metadata["model_provider_usage"]``) for aggregate upload to
 the platform ``/api/webhooks/agent/usage-event`` endpoint.
+
+Model-provider usage is intentionally reported only for platform-billable
+flows. ``flow.metadata["firewall_billable"]`` comes from the web layer's
+``billableFirewalls`` list; when it is false, the run is using BYO provider
+credentials or another non-platform-billable path and must not charge platform
+credits. The same flag gates incremental usage extraction before this reporter
+runs.
 """
 
 import uuid
@@ -23,7 +30,21 @@ MODEL_USAGE_KIND = "model"
 def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     """Buffer extracted token usage for model-provider responses if available.
 
-    Returns whether usage was accepted into the reporting path.
+    Accepted reporting requires all universal gates to pass:
+
+    - ``firewall_name`` starts with ``model-provider:``.
+    - ``run_id`` is non-empty.
+    - ``firewall_billable`` is truthy; false is the BYO-key /
+      non-platform-billable path.
+    - ``model_provider_usage`` is a non-empty dict.
+    - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
+      quantity.
+    - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
+
+    Returns whether usage was accepted into the reporting path. All failed
+    gates are silent by design except missing sandbox token or API URL, which
+    writes a proxy warning because that indicates an environment/reporting setup
+    problem.
     """
     firewall_name = flow.metadata.get("firewall_name", "")
     if not (firewall_name.startswith("model-provider:") and run_id):
