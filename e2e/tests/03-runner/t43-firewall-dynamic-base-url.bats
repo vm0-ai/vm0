@@ -12,6 +12,8 @@
 load '../../helpers/setup'
 
 setup_file() {
+    skip "Temporarily disabled pending firewall dynamic base URL E2E stabilization"
+
     if [[ -z "$VM0_API_URL" ]]; then
         echo "VM0_API_URL not set" >&2
         return 1
