@@ -96,7 +96,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         warn!(
             run_id = %run_id,
             context_run_id = %claimed.context().run_id,
-            "claimed job run_id mismatch, skipping"
+            "provider returned claimed job with mismatched run_id"
         );
         ctx.cancel_tokens.lock().await.remove(&run_id);
         drop(job_lease);

@@ -21,6 +21,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
+use tracing::warn;
 
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::ids::RunId;
@@ -270,12 +271,23 @@ impl JobProvider for MockJobProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        self.claim_results
+        let context = self
+            .claim_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&run_id)
-            .flatten()
-            .map(ClaimedJob::local)
+            .flatten()?;
+        match ClaimedJob::local(run_id, context) {
+            Ok(claimed) => Some(claimed),
+            Err(err) => {
+                warn!(
+                    run_id = %err.expected_run_id,
+                    context_run_id = %err.context_run_id,
+                    "mock: claimed job run_id mismatch"
+                );
+                None
+            }
+        }
     }
 
     async fn complete(
@@ -316,5 +328,79 @@ impl JobProvider for MockJobProvider {
     /// The main loop must `drop(discover_fut)` before calling this.
     async fn shutdown(&self) {
         let _lock = self.discovery.lock().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_context(run_id: RunId) -> ExecutionContext {
+        ExecutionContext {
+            run_id,
+            prompt: "test".into(),
+            append_system_prompt: None,
+            _agent_compose_version_id: None,
+            vars: None,
+            checkpoint_id: None,
+            sandbox_token: "tok".into(),
+            working_dir: "/workspace".into(),
+            storage_manifest: None,
+            environment: None,
+            resume_session: None,
+            secret_values: None,
+            encrypted_secrets: None,
+            secret_connector_map: None,
+            secret_connector_metadata_map: None,
+            cli_agent_type: String::new(),
+            debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
+            api_start_time: None,
+            user_timezone: None,
+            capture_network_bodies: None,
+            firewalls: None,
+            network_policies: None,
+            disallowed_tools: None,
+            tools: None,
+            settings: None,
+            experimental_profile: None,
+            feature_flags: None,
+            billable_firewalls: vec![],
+            model_usage_provider: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn claim_rejects_mismatched_context() {
+        let candidate_run_id = RunId::nil();
+        let context_run_id = RunId::new_v4();
+        let (provider, _handle) = MockJobProvider::new(CancellationToken::new());
+        provider.set_claim_result(candidate_run_id, Some(minimal_context(context_run_id)));
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                candidate_run_id,
+                crate::profile::DEFAULT_PROFILE.to_owned(),
+            ))
+            .await;
+
+        assert!(claimed.is_none());
+    }
+
+    #[tokio::test]
+    async fn claim_accepts_matching_context() {
+        let run_id = RunId::nil();
+        let (provider, _handle) = MockJobProvider::new(CancellationToken::new());
+        provider.set_claim_result(run_id, Some(minimal_context(run_id)));
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_owned(),
+            ))
+            .await
+            .expect("matching context should be claimed");
+
+        assert_eq!(claimed.context().run_id, run_id);
     }
 }

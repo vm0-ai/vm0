@@ -671,9 +671,7 @@ impl JobProvider for LocalProvider {
             return None;
         }
 
-        self.cancel_scanner.mark_owned_claim(run_id).await;
-        info!(run_id = %run_id, "local: job claimed");
-        Some(ClaimedJob::local(ExecutionContext {
+        let context = ExecutionContext {
             run_id,
             prompt: req.prompt,
             append_system_prompt: None,
@@ -707,7 +705,24 @@ impl JobProvider for LocalProvider {
             feature_flags: req.feature_flags,
             billable_firewalls: vec![],
             model_usage_provider: None,
-        }))
+        };
+        match ClaimedJob::local(run_id, context) {
+            Ok(claimed) => {
+                self.cancel_scanner.mark_owned_claim(run_id).await;
+                info!(run_id = %run_id, "local: job claimed");
+                Some(claimed)
+            }
+            Err(err) => {
+                let error = format!(
+                    "claimed job run_id mismatch: expected={}, context={}",
+                    err.expected_run_id, err.context_run_id
+                );
+                warn!(run_id = %run_id, error = %error, "local: claimed job invariant violation");
+                self.fail_claimed_job(run_id, &claim_file, &job_file, error)
+                    .await;
+                None
+            }
+        }
     }
 
     async fn complete(

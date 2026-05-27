@@ -157,16 +157,19 @@ impl JobProvider for ApiProvider {
         let run_id = candidate.run_id();
         match self.api.claim(run_id).await {
             Ok(ctx) => {
-                if ctx.run_id != run_id {
-                    error!(
-                        run_id = %run_id,
-                        context_run_id = %ctx.run_id,
-                        "claim response run_id mismatch"
-                    );
-                    return None;
-                }
+                let claimed = match ClaimedJob::api(run_id, ctx) {
+                    Ok(claimed) => claimed,
+                    Err(err) => {
+                        error!(
+                            run_id = %err.expected_run_id,
+                            context_run_id = %err.context_run_id,
+                            "claim response run_id mismatch"
+                        );
+                        return None;
+                    }
+                };
                 info!(run_id = %run_id, "job claimed");
-                Some(ClaimedJob::api(ctx))
+                Some(claimed)
             }
             Err(RunnerError::AlreadyClaimed) => {
                 info!(run_id = %run_id, "already claimed, skipping");

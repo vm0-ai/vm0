@@ -645,6 +645,114 @@ describe("POST /api/runners/*", () => {
     );
   });
 
+  it("returns not found after a successful claim dequeues the job", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({ fixture });
+
+    const firstResponse = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 200,
+    });
+    expect(firstResponse.body).toMatchObject({ runId: queued.runId });
+
+    const secondResponse = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 404,
+    });
+
+    expect(secondResponse.body).toStrictEqual({
+      error: { message: "Job not found in queue", code: "NOT_FOUND" },
+    });
+  });
+
+  it("removes a stale queued job when the run is no longer pending", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({ fixture });
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({
+        status: "failed",
+        completedAt: new Date(now()),
+        error: "already failed",
+      })
+      .where(eq(agentRuns.id, queued.runId));
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 404,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Run not found", code: "NOT_FOUND" },
+    });
+    const remainingJobs = await db
+      .select({ runId: runnerJobQueue.runId })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, queued.runId));
+    expect(remainingJobs).toHaveLength(0);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `run:changed:${queued.runId}`,
+      { status: "running" },
+    );
+  });
+
+  it("fails and dequeues a job with invalid stored execution context", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({ fixture });
+    const db = store.set(writeDb$);
+    await db
+      .update(runnerJobQueue)
+      .set({ executionContext: { workingDir: "/workspace" } })
+      .where(eq(runnerJobQueue.runId, queued.runId));
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 400,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Job missing execution context", code: "BAD_REQUEST" },
+    });
+    const [run] = await db
+      .select({
+        status: agentRuns.status,
+        error: agentRuns.error,
+        completedAt: agentRuns.completedAt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queued.runId));
+    expect(run).toMatchObject({
+      status: "failed",
+      error: "Runner job missing valid execution context",
+    });
+    expect(run?.completedAt).toBeInstanceOf(Date);
+
+    const remainingJobs = await db
+      .select({ runId: runnerJobQueue.runId })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, queued.runId));
+    expect(remainingJobs).toHaveLength(0);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${queued.runId}`,
+      { status: "failed" },
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `run:changed:${queued.runId}`,
+      { status: "running" },
+    );
+  });
+
   it("returns appendSystemPrompt in claim responses", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),

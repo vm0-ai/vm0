@@ -65,22 +65,49 @@ pub struct ClaimedJob {
     completion_auth: CompletionAuth,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ClaimedJobRunIdMismatch {
+    pub(crate) expected_run_id: RunId,
+    pub(crate) context_run_id: RunId,
+}
+
 impl ClaimedJob {
-    fn new(context: ExecutionContext, completion_auth: CompletionAuth) -> Self {
-        Self {
-            context,
-            completion_auth,
+    fn validate_run_id(
+        expected_run_id: RunId,
+        context: &ExecutionContext,
+    ) -> Result<(), ClaimedJobRunIdMismatch> {
+        if context.run_id == expected_run_id {
+            Ok(())
+        } else {
+            Err(ClaimedJobRunIdMismatch {
+                expected_run_id,
+                context_run_id: context.run_id,
+            })
         }
     }
 
-    pub(crate) fn api(context: ExecutionContext) -> Self {
+    pub(crate) fn api(
+        expected_run_id: RunId,
+        context: ExecutionContext,
+    ) -> Result<Self, ClaimedJobRunIdMismatch> {
+        Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
             CompletionAuth::sandbox_token(context.run_id, context.sandbox_token.clone());
-        Self::new(context, completion_auth)
+        Ok(Self {
+            context,
+            completion_auth,
+        })
     }
 
-    pub(crate) fn local(context: ExecutionContext) -> Self {
-        Self::new(context, CompletionAuth::local())
+    pub(crate) fn local(
+        expected_run_id: RunId,
+        context: ExecutionContext,
+    ) -> Result<Self, ClaimedJobRunIdMismatch> {
+        Self::validate_run_id(expected_run_id, &context)?;
+        Ok(Self {
+            context,
+            completion_auth: CompletionAuth::local(),
+        })
     }
 
     pub(crate) fn into_parts(self) -> (ExecutionContext, CompletionAuth) {
@@ -211,4 +238,74 @@ pub trait JobProvider: Send + Sync {
     /// Called once after `discover()` returns `None` and before draining
     /// in-flight jobs. `complete()` calls may still arrive after this.
     async fn shutdown(&self);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_context(run_id: RunId) -> ExecutionContext {
+        ExecutionContext {
+            run_id,
+            prompt: "test".into(),
+            append_system_prompt: None,
+            _agent_compose_version_id: None,
+            vars: None,
+            checkpoint_id: None,
+            sandbox_token: "sandbox-token".into(),
+            working_dir: "/workspace".into(),
+            storage_manifest: None,
+            environment: None,
+            resume_session: None,
+            secret_values: None,
+            encrypted_secrets: None,
+            secret_connector_map: None,
+            secret_connector_metadata_map: None,
+            cli_agent_type: String::new(),
+            debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
+            api_start_time: None,
+            user_timezone: None,
+            capture_network_bodies: None,
+            firewalls: None,
+            network_policies: None,
+            disallowed_tools: None,
+            tools: None,
+            settings: None,
+            experimental_profile: None,
+            feature_flags: None,
+            billable_firewalls: vec![],
+            model_usage_provider: None,
+        }
+    }
+
+    #[test]
+    fn claimed_job_rejects_mismatched_api_context() {
+        let expected_run_id = RunId::nil();
+        let context_run_id = RunId::new_v4();
+
+        let Err(err) = ClaimedJob::api(expected_run_id, minimal_context(context_run_id)) else {
+            panic!("mismatched context must be rejected");
+        };
+
+        assert_eq!(
+            err,
+            ClaimedJobRunIdMismatch {
+                expected_run_id,
+                context_run_id,
+            }
+        );
+    }
+
+    #[test]
+    fn claimed_job_accepts_matching_api_context() {
+        let run_id = RunId::nil();
+
+        let claimed =
+            ClaimedJob::api(run_id, minimal_context(run_id)).expect("matching context is valid");
+        let (context, completion_auth) = claimed.into_parts();
+
+        assert_eq!(context.run_id, run_id);
+        assert!(completion_auth.matches_sandbox_token_for_test(run_id, "sandbox-token"));
+    }
 }
