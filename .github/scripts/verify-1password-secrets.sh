@@ -27,7 +27,7 @@ if [[ -n "${EXPECTED_FORBIDDEN_VAULT:-}" ]] && grep -qx "$EXPECTED_FORBIDDEN_VAU
 fi
 
 if ! grep -qx "$VAULT_NAME" <<< "$visible_vaults"; then
-  visible_vault_count="$(grep -c . <<< "$visible_vaults")"
+  visible_vault_count="$(awk 'NF { count++ } END { print count + 0 }' <<< "$visible_vaults")"
   echo "::error::1Password token cannot access ${VAULT_NAME} vault; visible vault count: ${visible_vault_count}"
   exit 1
 fi
