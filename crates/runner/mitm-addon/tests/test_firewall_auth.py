@@ -182,9 +182,20 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
-    @pytest.mark.parametrize("expiry", [None, True, "123", float("inf"), float("nan")])
-    def test_expiry_validation_rejects_invalid_values(self, expiry):
-        assert auth._has_valid_expiry(expiry, now=time.time()) is False
+    @pytest.mark.parametrize(
+        ("expiry", "now"),
+        [
+            pytest.param(None, 100.0, id="none"),
+            pytest.param(True, 0.0, id="bool-true"),
+            pytest.param(False, -1.0, id="bool-false"),
+            pytest.param("123", 100.0, id="string"),
+            pytest.param(float("inf"), 100.0, id="infinity"),
+            pytest.param(float("nan"), 100.0, id="nan"),
+            pytest.param(100.0, 100.0, id="exact-now"),
+        ],
+    )
+    def test_expiry_validation_rejects_invalid_values(self, expiry, now):
+        assert auth._has_valid_expiry(expiry, now=now) is False
 
     @pytest.mark.parametrize("expiry", [True, "123", float("inf"), float("nan")])
     async def test_cache_with_invalid_expiry_refetches(self, headers, expiry):
