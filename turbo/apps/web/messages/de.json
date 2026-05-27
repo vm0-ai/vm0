@@ -201,7 +201,7 @@
       "whatAreCredits": "Was sind Credits?",
       "whatAreCreditsAnswer": "Credits werden verbraucht, wenn Ihre Agenten KI-Modelle nutzen. Verschiedene Modelle verbrauchen Credits mit unterschiedlichen Raten. Zum Beispiel verbraucht eine einfache Aufgabe wenige Credits, während ein komplexer mehrstufiger Workflow mehr benötigt.",
       "freeTrial": "Gibt es eine kostenlose Testversion?",
-      "freeTrialAnswer": "VM0 bietet keine kostenlose Testversion an. Der niedrigschwelligste Weg, VM0 auszuprobieren, ist ein Pro-Abo für 20 $/Monat – jederzeit kündbar, Stripe rechnet anteilig ab, und nicht genutzte Credits aus Ihrem Abrechnungszeitraum bleiben bis zu dessen Ende verfügbar.",
+      "freeTrialAnswer": "Ja – Pro beinhaltet eine 7-tägige kostenlose Testphase. Sie hinterlegen beim Start über Stripe Checkout eine Zahlungsmethode, werden während der Testphase aber nicht belastet. Wenn Sie vor Ablauf des 7. Tages kündigen, entstehen keine Kosten; andernfalls läuft das Abo zu 20 $/Monat weiter.",
       "changePlans": "Kann ich den Plan jederzeit wechseln?",
       "changePlansAnswer": "Ja! Sie können Ihren Plan jederzeit upgraden oder downgraden. Änderungen werden sofort wirksam, und wir berechnen die Kosten anteilig.",
       "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",

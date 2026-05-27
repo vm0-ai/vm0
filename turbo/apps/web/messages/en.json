@@ -201,7 +201,7 @@
       "whatAreCredits": "What are credits?",
       "whatAreCreditsAnswer": "Credits are consumed when your agents use AI models. Different models consume credits at different rates. For example, a simple task might use a few credits, while a complex multi-step workflow uses more.",
       "freeTrial": "Is there a free trial?",
-      "freeTrialAnswer": "VM0 doesn't offer a free trial. The lowest-commitment way to try VM0 is to subscribe to Pro at $20/month — you can cancel any time, Stripe prorates the charge, and any unused credits from your billing cycle stay usable through its end.",
+      "freeTrialAnswer": "Yes — Pro includes a 7-day free trial. You'll add a payment method through Stripe Checkout to start, but you won't be charged during the trial. Cancel before day 7 and you won't be billed; otherwise the subscription continues at $20/month.",
       "changePlans": "Can I change plans at any time?",
       "changePlansAnswer": "Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate charges accordingly.",
       "runOutOfCredits": "What happens when I run out of credits?",

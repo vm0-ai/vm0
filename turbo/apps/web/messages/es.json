@@ -201,7 +201,7 @@
       "whatAreCredits": "¿Qué son los créditos?",
       "whatAreCreditsAnswer": "Los créditos se consumen cuando tus agentes usan modelos de IA. Diferentes modelos consumen créditos a diferentes tasas. Por ejemplo, una tarea simple puede usar pocos créditos, mientras que un flujo de trabajo complejo de varios pasos usa más.",
       "freeTrial": "¿Hay una prueba gratuita?",
-      "freeTrialAnswer": "VM0 no ofrece prueba gratuita. La forma de menor compromiso para probar VM0 es suscribirte a Pro por $20/mes — puedes cancelar en cualquier momento, Stripe prorratea el cargo y los créditos no usados de tu ciclo de facturación siguen disponibles hasta el final de ese ciclo.",
+      "freeTrialAnswer": "Sí — Pro incluye una prueba gratuita de 7 días. Al iniciarla agregarás un método de pago a través de Stripe Checkout, pero no se te cobrará durante la prueba. Si cancelas antes del día 7 no se te facturará; de lo contrario, la suscripción continúa a $20/mes.",
       "changePlans": "¿Puedo cambiar de plan en cualquier momento?",
       "changePlansAnswer": "¡Sí! Puedes actualizar o reducir tu plan en cualquier momento. Los cambios surten efecto inmediatamente y prorrateamos los cargos en consecuencia.",
       "runOutOfCredits": "¿Qué pasa cuando se me acaban los créditos?",
