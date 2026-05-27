@@ -282,7 +282,7 @@ function isConnectorOAuthGrantConfig(
   }
 }
 
-export function getConnectorOAuthGrantConfigIfSupported(
+export function getConnectorOAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined {
   for (const method of connectorAuthMethodValues(type)) {
@@ -309,10 +309,10 @@ export function connectorAuthMethodHasOAuthGrant(
   }
 }
 
-export function getConnectorAuthCodeGrantConfigIfSupported(
+export function getConnectorAuthCodeGrantConfig(
   type: ConnectorType,
 ): ConnectorAuthCodeGrantConfig | undefined {
-  const grant = getConnectorOAuthGrantConfigIfSupported(type);
+  const grant = getConnectorOAuthGrantConfig(type);
   switch (grant?.kind) {
     case "auth-code":
       return grant;
@@ -322,10 +322,10 @@ export function getConnectorAuthCodeGrantConfigIfSupported(
   }
 }
 
-export function getConnectorDeviceAuthGrantConfigIfSupported(
+export function getConnectorDeviceAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorDeviceAuthGrantConfig | undefined {
-  const grant = getConnectorOAuthGrantConfigIfSupported(type);
+  const grant = getConnectorOAuthGrantConfig(type);
   switch (grant?.kind) {
     case "device-auth":
       return grant;
@@ -336,7 +336,7 @@ export function getConnectorDeviceAuthGrantConfigIfSupported(
 }
 
 export function getConnectorOAuthScopes(type: ConnectorType): string[] {
-  return [...(getConnectorOAuthGrantConfigIfSupported(type)?.scopes ?? [])];
+  return [...(getConnectorOAuthGrantConfig(type)?.scopes ?? [])];
 }
 
 export function getConnectorGenerationTypes(
@@ -477,7 +477,7 @@ export function isStaticConfidentialConnectorOAuthClient(
 export function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
-  return getConnectorOAuthGrantConfigIfSupported(type)?.client;
+  return getConnectorOAuthGrantConfig(type)?.client;
 }
 
 export function resolveConnectorOAuthClient(
@@ -711,13 +711,13 @@ export function getConnectorProvidedEnvNames(
 export function isOAuthAuthCodeConnectorType(
   type: ConnectorType,
 ): type is OAuthAuthCodeConnectorType {
-  return getConnectorOAuthGrantConfigIfSupported(type)?.kind === "auth-code";
+  return getConnectorOAuthGrantConfig(type)?.kind === "auth-code";
 }
 
 export function isOAuthDeviceAuthConnectorType(
   type: ConnectorType,
 ): type is OAuthDeviceAuthConnectorType {
-  return getConnectorOAuthGrantConfigIfSupported(type)?.kind === "device-auth";
+  return getConnectorOAuthGrantConfig(type)?.kind === "device-auth";
 }
 
 /**
@@ -729,7 +729,7 @@ export function hasRequiredScopes(
   connectorType: ConnectorType,
   storedScopes: string[] | null,
 ): boolean {
-  const scopes = getConnectorOAuthGrantConfigIfSupported(connectorType)?.scopes;
+  const scopes = getConnectorOAuthGrantConfig(connectorType)?.scopes;
   if (!scopes) return true;
   if (scopes.length === 0) return true;
   if (!storedScopes) return false;
@@ -754,7 +754,7 @@ export function getScopeDiff(
   storedScopes: string[] | null,
 ): ScopeDiff {
   const currentScopes = [
-    ...(getConnectorOAuthGrantConfigIfSupported(connectorType)?.scopes ?? []),
+    ...(getConnectorOAuthGrantConfig(connectorType)?.scopes ?? []),
   ];
   const stored = storedScopes ?? [];
   const storedSet = new Set(stored);

@@ -10,7 +10,7 @@ import type {
   OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthGrantConfigIfSupported,
+  getConnectorOAuthGrantConfig,
   getConnectorOAuthClient,
   isOAuthDeviceAuthConnectorType,
   type ConnectorOAuthClient,
@@ -182,7 +182,7 @@ function resolveDeviceAuthType(
   | OAuthDeviceAuthConnectorType
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof internalServerError> {
-  if (!getConnectorOAuthGrantConfigIfSupported(type)) {
+  if (!getConnectorOAuthGrantConfig(type)) {
     return badRequestMessage(`${type} connector does not use OAuth`);
   }
   if (!isOAuthConnectorType(type)) {

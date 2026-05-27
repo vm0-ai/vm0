@@ -25,16 +25,16 @@ import {
   getConfiguredConnectorAuthMethods,
   deriveConnectedManualGrantMethods,
   hasRequiredScopes,
-  getConnectorAuthCodeGrantConfigIfSupported,
+  getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethod,
-  getConnectorDeviceAuthGrantConfigIfSupported,
+  getConnectorDeviceAuthGrantConfig,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
   getConnectorProvidedEnvNames,
   getConnectorOAuthClientConfig,
   getConnectorOAuthClient,
-  getConnectorOAuthGrantConfigIfSupported,
+  getConnectorOAuthGrantConfig,
   getConnectorOAuthScopes,
   getConnectorManualGrantFieldNames,
   getApiTokenFieldStorageType,
@@ -367,7 +367,7 @@ describe("isOAuthConnectorType", () => {
   it("matches exactly the connector types that declare OAuth grants", () => {
     const oauthConnectorTypes = connectorTypeSchema.options
       .filter((type) => {
-        return getConnectorOAuthGrantConfigIfSupported(type) !== undefined;
+        return getConnectorOAuthGrantConfig(type) !== undefined;
       })
       .sort();
 
@@ -1453,7 +1453,7 @@ describe("getConnectorEnvBindings", () => {
     //   envBindings: values -> declared OAuth connector secrets
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
-      if (!getConnectorOAuthGrantConfigIfSupported(type)) continue;
+      if (!getConnectorOAuthGrantConfig(type)) continue;
 
       const oauthSecrets = getConnectorSecretNames(type, "oauth");
       const prefix = oauthSecrets
@@ -1549,7 +1549,7 @@ describe("getConnectorEnvBindings", () => {
 
   it("api-token-only connectors expose all secrets via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
-      if (getConnectorOAuthGrantConfigIfSupported(type)) continue;
+      if (getConnectorOAuthGrantConfig(type)) continue;
       const fields = getApiTokenManualGrantFields(type);
       if (!fields) continue;
 
@@ -1790,7 +1790,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
-      return getConnectorOAuthGrantConfigIfSupported(type);
+      return getConnectorOAuthGrantConfig(type);
     });
 
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
@@ -1840,7 +1840,7 @@ describe("getConnectorProvidedEnvNames", () => {
 
 describe("getConnectorOAuthScopes - google-meet scopes", () => {
   it("uses meetings.space.readonly for google meet oauth scopes", () => {
-    const grant = getConnectorAuthCodeGrantConfigIfSupported("google-meet");
+    const grant = getConnectorAuthCodeGrantConfig("google-meet");
     const scopes = getConnectorOAuthScopes("google-meet");
     expect(scopes).toStrictEqual(grant?.scopes);
     expect(scopes).toContain(
@@ -1861,10 +1861,8 @@ describe("connector OAuth lifecycle grant helpers", () => {
   it("returns auth-code grant config for GitHub", () => {
     const method = getConnectorAuthMethod("github", "oauth");
 
-    expect(getConnectorOAuthGrantConfigIfSupported("github")).toStrictEqual(
-      method?.grant,
-    );
-    expect(getConnectorAuthCodeGrantConfigIfSupported("github")).toMatchObject({
+    expect(getConnectorOAuthGrantConfig("github")).toStrictEqual(method?.grant);
+    expect(getConnectorAuthCodeGrantConfig("github")).toMatchObject({
       kind: "auth-code",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project", "workflow"],
@@ -1879,7 +1877,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
 
   it("returns device-auth grant config for device OAuth connectors", () => {
     expect(
-      getConnectorDeviceAuthGrantConfigIfSupported("test-oauth-device"),
+      getConnectorDeviceAuthGrantConfig("test-oauth-device"),
     ).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "/api/test/oauth-provider/device/code",
@@ -1891,9 +1889,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
       },
       scopes: ["read"],
     });
-    expect(
-      getConnectorDeviceAuthGrantConfigIfSupported("base44"),
-    ).toMatchObject({
+    expect(getConnectorDeviceAuthGrantConfig("base44")).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
       tokenUrl: "https://app.base44.com/oauth/token",
@@ -1904,30 +1900,24 @@ describe("connector OAuth lifecycle grant helpers", () => {
       },
       scopes: ["apps:read", "apps:write", "offline"],
     });
-    expect(getConnectorDeviceAuthGrantConfigIfSupported("slock")).toMatchObject(
-      {
-        kind: "device-auth",
-        deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
-        tokenUrl: "https://api.slock.ai/api/auth/device/token",
-        client: {
-          clientRegistration: "static",
-          clientType: "public",
-          clientId: "vm0",
-        },
-        scopes: [],
+    expect(getConnectorDeviceAuthGrantConfig("slock")).toMatchObject({
+      kind: "device-auth",
+      deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
+      tokenUrl: "https://api.slock.ai/api/auth/device/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: "vm0",
       },
-    );
+      scopes: [],
+    });
   });
 
   it("returns undefined for connectors without OAuth grants", () => {
-    expect(getConnectorOAuthGrantConfigIfSupported("axiom")).toBeUndefined();
+    expect(getConnectorOAuthGrantConfig("axiom")).toBeUndefined();
     expect(getConnectorOAuthScopes("axiom")).toStrictEqual([]);
-    expect(
-      getConnectorAuthCodeGrantConfigIfSupported("base44"),
-    ).toBeUndefined();
-    expect(
-      getConnectorDeviceAuthGrantConfigIfSupported("github"),
-    ).toBeUndefined();
+    expect(getConnectorAuthCodeGrantConfig("base44")).toBeUndefined();
+    expect(getConnectorDeviceAuthGrantConfig("github")).toBeUndefined();
   });
 });
 
@@ -1939,7 +1929,7 @@ describe("connector OAuth authorization-code config", () => {
       }
 
       expect(
-        getConnectorAuthCodeGrantConfigIfSupported(type)?.kind,
+        getConnectorAuthCodeGrantConfig(type)?.kind,
         `${type}: OAuth grant kind`,
       ).toBe("auth-code");
     }
@@ -1947,7 +1937,7 @@ describe("connector OAuth authorization-code config", () => {
 
   it("keeps provider authorization URLs out of connector OAuth grants", () => {
     for (const type of connectorTypeSchema.options) {
-      const grant = getConnectorOAuthGrantConfigIfSupported(type);
+      const grant = getConnectorOAuthGrantConfig(type);
       if (!grant) {
         continue;
       }
@@ -1968,7 +1958,7 @@ describe("connector OAuth device authorization config", () => {
   it("declares the test OAuth device connector as a device authorization flow", () => {
     expect(isOAuthDeviceAuthConnectorType("test-oauth-device")).toBe(true);
     expect(
-      getConnectorDeviceAuthGrantConfigIfSupported("test-oauth-device"),
+      getConnectorDeviceAuthGrantConfig("test-oauth-device"),
     ).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "/api/test/oauth-provider/device/code",
@@ -1984,9 +1974,7 @@ describe("connector OAuth device authorization config", () => {
 
   it("declares the Base44 connector as a device authorization flow", () => {
     expect(isOAuthDeviceAuthConnectorType("base44")).toBe(true);
-    expect(
-      getConnectorDeviceAuthGrantConfigIfSupported("base44"),
-    ).toMatchObject({
+    expect(getConnectorDeviceAuthGrantConfig("base44")).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
       tokenUrl: "https://app.base44.com/oauth/token",
@@ -2001,19 +1989,17 @@ describe("connector OAuth device authorization config", () => {
 
   it("declares the Slock connector as a device authorization flow", () => {
     expect(isOAuthDeviceAuthConnectorType("slock")).toBe(true);
-    expect(getConnectorDeviceAuthGrantConfigIfSupported("slock")).toMatchObject(
-      {
-        kind: "device-auth",
-        deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
-        tokenUrl: "https://api.slock.ai/api/auth/device/token",
-        client: {
-          clientRegistration: "static",
-          clientType: "public",
-          clientId: "vm0",
-        },
-        scopes: [],
+    expect(getConnectorDeviceAuthGrantConfig("slock")).toMatchObject({
+      kind: "device-auth",
+      deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
+      tokenUrl: "https://api.slock.ai/api/auth/device/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: "vm0",
       },
-    );
+      scopes: [],
+    });
   });
 });
 

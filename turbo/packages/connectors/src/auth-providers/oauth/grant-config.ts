@@ -5,14 +5,14 @@ import type {
   OAuthDeviceAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorAuthCodeGrantConfigIfSupported,
-  getConnectorDeviceAuthGrantConfigIfSupported,
+  getConnectorAuthCodeGrantConfig,
+  getConnectorDeviceAuthGrantConfig,
 } from "@vm0/connectors/connector-utils";
 
 export function getAuthCodeGrantConfig(
   type: OAuthAuthCodeConnectorType,
 ): ConnectorAuthCodeGrantConfig {
-  const grant = getConnectorAuthCodeGrantConfigIfSupported(type);
+  const grant = getConnectorAuthCodeGrantConfig(type);
   if (!grant) {
     throw new Error(`${type} auth-code grant config not found`);
   }
@@ -22,7 +22,7 @@ export function getAuthCodeGrantConfig(
 export function getDeviceAuthGrantConfig(
   type: OAuthDeviceAuthConnectorType,
 ): ConnectorDeviceAuthGrantConfig {
-  const grant = getConnectorDeviceAuthGrantConfigIfSupported(type);
+  const grant = getConnectorDeviceAuthGrantConfig(type);
   if (!grant) {
     throw new Error(`${type} device-auth grant config not found`);
   }
