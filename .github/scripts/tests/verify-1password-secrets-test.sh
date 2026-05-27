@@ -74,10 +74,17 @@ BASH
 chmod +x "${TMPDIR}/bin/op"
 
 run_verifier() {
-  PATH="${TMPDIR}/bin:${PATH}" \
+  env -i \
+    PATH="${TMPDIR}/bin:${PATH}" \
+    GITHUB_ACTIONS="${GITHUB_ACTIONS:-}" \
+    OP_STUB_VAULTS="${OP_STUB_VAULTS:-}" \
     OP_SERVICE_ACCOUNT_TOKEN=test-token \
     VAULT_NAME=Development \
     EXPECTED_FORBIDDEN_VAULT=Production \
+    EXPECTED_KEYS="${EXPECTED_KEYS:-}" \
+    GH_OAUTH_CLIENT_SECRET="${GH_OAUTH_CLIENT_SECRET:-}" \
+    GOOGLE_OAUTH_CLIENT_SECRET="${GOOGLE_OAUTH_CLIENT_SECRET:-}" \
+    SLACK_CLIENT_SECRET="${SLACK_CLIENT_SECRET:-}" \
     "$VERIFY"
 }
 
