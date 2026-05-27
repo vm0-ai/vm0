@@ -163,6 +163,7 @@ async function seedQueuedRun(args: {
   readonly runnerGroup?: string;
   readonly profile?: string;
   readonly sessionId?: string | null;
+  readonly expiresAt?: Date;
   readonly secretValue?: string;
   readonly appendSystemPrompt?: string;
   readonly contextOverrides?: Partial<StoredExecutionContext>;
@@ -204,7 +205,7 @@ async function seedQueuedRun(args: {
       secretValue: args.secretValue,
       overrides: args.contextOverrides,
     }),
-    expiresAt: new Date(now() + 60_000),
+    expiresAt: args.expiresAt ?? new Date(now() + 60_000),
   });
 
   return { runId, composeVersionId: run?.agentComposeVersionId ?? "" };
@@ -475,6 +476,29 @@ describe("POST /api/runners/*", () => {
     expect(response.body).toStrictEqual({ job: null });
   });
 
+  it("does not return expired jobs to runner polls", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const runnerGroup = `vm0/poll-${randomUUID()}`;
+    await seedQueuedRun({
+      fixture,
+      runnerGroup,
+      expiresAt: new Date(now() - 60_000),
+    });
+
+    const client = setupApp({ context })(runnersPollContract);
+    const response = await accept(
+      client.poll({
+        body: { group: runnerGroup },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ job: null });
+  });
+
   it.each([
     ["missing authorization", undefined],
     ["non-Bearer authorization", "Basic sometoken"],
@@ -551,6 +575,33 @@ describe("POST /api/runners/*", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Job already claimed", code: "CONFLICT" },
     });
+  });
+
+  it("returns not found when claiming an expired job", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({
+      fixture,
+      expiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 404,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Job not found in queue", code: "NOT_FOUND" },
+    });
+
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queued.runId));
+    expect(run?.status).toBe("pending");
   });
 
   it("fails invalid stored execution context and dequeues the job", async () => {
@@ -883,6 +934,56 @@ describe("POST /api/runners/*", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, queued.runId));
     expect(remainingJobs).toHaveLength(0);
+  });
+
+  it("fails invalid stored execution context once under concurrent claims", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({ fixture });
+    const db = store.set(writeDb$);
+    await db
+      .update(runnerJobQueue)
+      .set({ executionContext: { workingDir: "/workspace" } })
+      .where(eq(runnerJobQueue.runId, queued.runId));
+    const client = setupApp({ context })(runnersJobClaimContract);
+
+    const responses = await Promise.all(
+      [0, 1].map(() => {
+        return accept(
+          client.claim({
+            params: { id: queued.runId },
+            body: {},
+            headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+          }),
+          [400, 404, 409],
+        );
+      }),
+    );
+
+    expect(
+      responses.filter((response) => {
+        return response.status === 400;
+      }),
+    ).toHaveLength(1);
+    const [run] = await db
+      .select({ status: agentRuns.status, error: agentRuns.error })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queued.runId));
+    expect(run).toMatchObject({
+      status: "failed",
+      error: "Runner job missing valid execution context",
+    });
+    const failedEvents = context.mocks.ably.publish.mock.calls.filter(
+      ([channel, payload]) => {
+        const status =
+          payload && typeof payload === "object" && "status" in payload
+            ? payload.status
+            : undefined;
+        return channel === `run:changed:${queued.runId}` && status === "failed";
+      },
+    );
+    expect(failedEvents).toHaveLength(1);
   });
 
   it("returns appendSystemPrompt in claim responses", async () => {

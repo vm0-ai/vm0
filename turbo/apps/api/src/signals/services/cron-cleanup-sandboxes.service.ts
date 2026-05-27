@@ -5,7 +5,8 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { exportJobs } from "@vm0/db/schema/export-job";
-import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -53,27 +54,30 @@ interface StaleRun {
   readonly composeName: string | null;
 }
 
+interface CleanupCutoffs {
+  readonly running: Date;
+  readonly debug: Date;
+  readonly pending: Date;
+}
+
 type ComputedGetter = <T>(source: Computed<T>) => T;
 type CommandSetter = <T, TArgs extends unknown[]>(
   command: Command<T, TArgs>,
   ...args: TArgs
 ) => T;
 
-function isExpiredRun(
-  run: StaleRun,
-  cutoffs: {
-    readonly running: Date;
-    readonly debug: Date;
-    readonly pending: Date;
-  },
-): boolean {
-  const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
+function staleRunCutoff(run: StaleRun, cutoffs: CleanupCutoffs): Date {
   if (run.status === "pending") {
-    return referenceTime < cutoffs.pending;
+    return cutoffs.pending;
   }
 
   const isDebug = run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
-  return referenceTime < (isDebug ? cutoffs.debug : cutoffs.running);
+  return isDebug ? cutoffs.debug : cutoffs.running;
+}
+
+function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
+  const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
+  return referenceTime < staleRunCutoff(run, cutoffs);
 }
 
 async function cleanupExportJobs(
@@ -168,27 +172,53 @@ async function cleanupSingleRun(
   set: CommandSetter,
   db: Db,
   run: StaleRun,
+  cutoffs: CleanupCutoffs,
   signal: AbortSignal,
 ): Promise<CleanupResult | undefined> {
   const timeoutReason =
     run.status === "pending"
       ? "Run timed out while pending (never started)"
       : "Run timed out (no heartbeat)";
+  const cutoff = staleRunCutoff(run, cutoffs);
 
-  const [updated] = await db
-    .update(agentRuns)
-    .set({
-      status: "timeout",
-      completedAt: nowDate(),
-      error: timeoutReason,
-    })
-    .where(
-      and(
-        eq(agentRuns.id, run.id),
-        inArray(agentRuns.status, ["pending", "running"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
+  const updated = await db.transaction(async (tx) => {
+    await tx
+      .select({ runId: runnerJobQueue.runId })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, run.id))
+      .for("update")
+      .limit(1);
+    signal.throwIfAborted();
+
+    const [updatedRun] = await tx
+      .update(agentRuns)
+      .set({
+        status: "timeout",
+        completedAt: nowDate(),
+        error: timeoutReason,
+      })
+      .where(
+        and(
+          eq(agentRuns.id, run.id),
+          eq(agentRuns.status, run.status),
+          sql`COALESCE(${agentRuns.lastHeartbeatAt}, ${agentRuns.createdAt}) < ${sql.param(
+            cutoff,
+            agentRuns.createdAt,
+          )}`,
+        ),
+      )
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+
+    if (!updatedRun) {
+      return undefined;
+    }
+
+    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
+    signal.throwIfAborted();
+
+    return updatedRun;
+  });
   signal.throwIfAborted();
 
   if (!updated) {
@@ -225,6 +255,25 @@ async function cleanupSingleRun(
     status: "cleaned",
     reason: timeoutReason,
   };
+}
+
+async function cleanupExpiredRunnerJobs(
+  db: Db,
+  signal: AbortSignal,
+): Promise<number> {
+  const result = await db.execute(sql`
+    DELETE FROM ${runnerJobQueue}
+    WHERE ${runnerJobQueue.expiresAt} <= now()
+  `);
+  signal.throwIfAborted();
+
+  const deletedCount = Number(result.rowCount ?? 0);
+  if (deletedCount > 0) {
+    L.debug("Cleaned up expired runner job queue entries", {
+      count: deletedCount,
+    });
+  }
+  return deletedCount;
 }
 
 export const cleanupSandboxes$ = command(
@@ -274,11 +323,18 @@ export const cleanupSandboxes$ = command(
 
     const expiredQueueCount = await set(cleanupExpiredQueueEntries$, signal);
     signal.throwIfAborted();
+    const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
+    signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
-    if (expiredQueueCount > 0 || drainedCount > 0) {
+    if (
+      expiredQueueCount > 0 ||
+      expiredRunnerJobCount > 0 ||
+      drainedCount > 0
+    ) {
       L.debug("Queue maintenance completed", {
         expired: expiredQueueCount,
+        expiredRunnerJobs: expiredRunnerJobCount,
         drained: drainedCount,
       });
     }
@@ -294,7 +350,7 @@ export const cleanupSandboxes$ = command(
 
     for (const run of expiredRuns) {
       const cleanupResult = await settle(
-        cleanupSingleRun(set, db, run, signal),
+        cleanupSingleRun(set, db, run, cutoffs, signal),
       );
       signal.throwIfAborted();
 

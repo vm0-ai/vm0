@@ -12,7 +12,7 @@ import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -24,7 +24,7 @@ import {
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
@@ -162,6 +162,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
+    gt(runnerJobQueue.expiresAt, sql`now()`),
     eq(agentRuns.status, "pending"),
   ];
 
@@ -280,7 +281,11 @@ async function getClaimableJob(
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(
-      and(eq(runnerJobQueue.runId, runId), isNull(runnerJobQueue.claimedAt)),
+      and(
+        eq(runnerJobQueue.runId, runId),
+        isNull(runnerJobQueue.claimedAt),
+        gt(runnerJobQueue.expiresAt, sql`now()`),
+      ),
     )
     .limit(1);
   signal.throwIfAborted();
@@ -290,15 +295,19 @@ async function getClaimableJob(
   }
 
   const [existingJob] = await db
-    .select({ runId: runnerJobQueue.runId })
+    .select({
+      runId: runnerJobQueue.runId,
+      isExpired: sql<boolean>`${runnerJobQueue.expiresAt} <= now()`,
+    })
     .from(runnerJobQueue)
     .where(eq(runnerJobQueue.runId, runId))
     .limit(1);
   signal.throwIfAborted();
 
-  return existingJob
-    ? conflict("Job already claimed")
-    : notFound("Job not found in queue");
+  if (!existingJob || existingJob.isExpired) {
+    return notFound("Job not found in queue");
+  }
+  return conflict("Job already claimed");
 }
 
 function claimAuthorizationError(
@@ -320,35 +329,70 @@ function claimAuthorizationError(
 }
 
 type ClaimTransitionResult =
-  | { readonly status: "claimed" }
+  | { readonly status: "claimed"; readonly claimedAt: Date }
   | { readonly status: "conflict" }
-  | { readonly status: "not-found" };
+  | { readonly status: "job-not-found" }
+  | { readonly status: "run-not-found" };
+
+type ClaimMissResult =
+  | { readonly status: "conflict" }
+  | { readonly status: "job-not-found" };
+
+async function classifyClaimMiss(
+  db: Pick<Db, "select">,
+  runId: string,
+  signal: AbortSignal,
+): Promise<ClaimMissResult> {
+  const [existingJob] = await db
+    .select({
+      runId: runnerJobQueue.runId,
+      isExpired: sql<boolean>`${runnerJobQueue.expiresAt} <= now()`,
+    })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!existingJob || existingJob.isExpired) {
+    return { status: "job-not-found" };
+  }
+  return { status: "conflict" };
+}
 
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
-  claimedAt: Date,
   signal: AbortSignal,
 ): Promise<ClaimTransitionResult> {
   return await db.transaction(async (tx) => {
     const [claimedJob] = await tx
       .update(runnerJobQueue)
-      .set({ claimedAt })
+      .set({ claimedAt: sql`now()` })
       .where(
-        and(eq(runnerJobQueue.runId, runId), isNull(runnerJobQueue.claimedAt)),
+        and(
+          eq(runnerJobQueue.runId, runId),
+          isNull(runnerJobQueue.claimedAt),
+          gt(runnerJobQueue.expiresAt, sql`now()`),
+        ),
       )
-      .returning({ runId: runnerJobQueue.runId });
+      .returning({
+        runId: runnerJobQueue.runId,
+        claimedAt: runnerJobQueue.claimedAt,
+      });
     signal.throwIfAborted();
     if (!claimedJob) {
-      return { status: "conflict" as const };
+      return await classifyClaimMiss(tx, runId, signal);
+    }
+    if (!claimedJob.claimedAt) {
+      throw new Error("Runner job claim timestamp missing");
     }
 
     const [run] = await tx
       .update(agentRuns)
       .set({
         status: "running",
-        startedAt: claimedAt,
-        lastHeartbeatAt: claimedAt,
+        startedAt: claimedJob.claimedAt,
+        lastHeartbeatAt: claimedJob.claimedAt,
       })
       .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
       .returning({ id: agentRuns.id });
@@ -356,46 +400,56 @@ async function transitionClaimedJobToRunning(
     if (!run) {
       await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
       signal.throwIfAborted();
-      return { status: "not-found" };
+      return { status: "run-not-found" };
     }
 
     await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
     signal.throwIfAborted();
 
-    return { status: "claimed" as const };
+    return { status: "claimed" as const, claimedAt: claimedJob.claimedAt };
   });
 }
 
 type PoisonJobResult =
   | { readonly status: "failed" }
   | { readonly status: "conflict" }
-  | { readonly status: "not-found" };
+  | { readonly status: "job-not-found" }
+  | { readonly status: "run-not-found" };
 
 async function failPoisonQueuedJob(
   db: Db,
   runId: string,
-  claimedAt: Date,
   errorMessage: string,
   signal: AbortSignal,
 ): Promise<PoisonJobResult> {
   return await db.transaction(async (tx) => {
     const [claimedJob] = await tx
       .update(runnerJobQueue)
-      .set({ claimedAt })
+      .set({ claimedAt: sql`now()` })
       .where(
-        and(eq(runnerJobQueue.runId, runId), isNull(runnerJobQueue.claimedAt)),
+        and(
+          eq(runnerJobQueue.runId, runId),
+          isNull(runnerJobQueue.claimedAt),
+          gt(runnerJobQueue.expiresAt, sql`now()`),
+        ),
       )
-      .returning({ runId: runnerJobQueue.runId });
+      .returning({
+        runId: runnerJobQueue.runId,
+        claimedAt: runnerJobQueue.claimedAt,
+      });
     signal.throwIfAborted();
     if (!claimedJob) {
-      return { status: "conflict" as const };
+      return await classifyClaimMiss(tx, runId, signal);
+    }
+    if (!claimedJob.claimedAt) {
+      throw new Error("Runner job claim timestamp missing");
     }
 
     const [run] = await tx
       .update(agentRuns)
       .set({
         status: "failed",
-        completedAt: nowDate(),
+        completedAt: claimedJob.claimedAt,
         error: errorMessage,
       })
       .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
@@ -404,7 +458,7 @@ async function failPoisonQueuedJob(
     if (!run) {
       await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
       signal.throwIfAborted();
-      return { status: "not-found" };
+      return { status: "run-not-found" };
     }
 
     await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
@@ -537,8 +591,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return authError;
   }
 
-  const currentTime = now();
-  const claimedAt = new Date(currentTime);
   const run = jobWithRun.run;
 
   const storedContextResult = storedExecutionContextSchema.safeParse(
@@ -549,14 +601,16 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     const poisonResult = await failPoisonQueuedJob(
       db,
       runId,
-      claimedAt,
       INVALID_EXECUTION_CONTEXT_ERROR,
       signal,
     );
     if (poisonResult.status === "conflict") {
       return conflict("Job was claimed by another runner");
     }
-    if (poisonResult.status === "not-found") {
+    if (poisonResult.status === "job-not-found") {
+      return notFound("Job not found in queue");
+    }
+    if (poisonResult.status === "run-not-found") {
       return notFound("Run not found");
     }
 
@@ -583,10 +637,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
   const sandboxToken = generateSandboxToken(run.userId, run.id, run.orgId);
-  const apiToClaimMs = elapsedSinceApiStartMs(
-    storedContext.apiStartTime,
-    currentTime,
-  );
   const responseBody = {
     ...storedContext,
     runId: run.id,
@@ -599,23 +649,24 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     secretValues,
   };
 
-  const claimResult = await transitionClaimedJobToRunning(
-    db,
-    runId,
-    claimedAt,
-    signal,
-  );
+  const claimResult = await transitionClaimedJobToRunning(db, runId, signal);
   if (claimResult.status === "conflict") {
     return conflict("Job was claimed by another runner");
   }
-  if (claimResult.status === "not-found") {
+  if (claimResult.status === "job-not-found") {
+    return notFound("Job not found in queue");
+  }
+  if (claimResult.status === "run-not-found") {
     return notFound("Run not found");
   }
 
   scheduleClaimSucceededSideEffects({
     runId,
     userId: run.userId,
-    apiToClaimMs,
+    apiToClaimMs: elapsedSinceApiStartMs(
+      storedContext.apiStartTime,
+      claimResult.claimedAt.getTime(),
+    ),
   });
 
   return {

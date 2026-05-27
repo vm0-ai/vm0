@@ -10,6 +10,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,9 +66,16 @@ function minutesAgo(minutes: number): Date {
   return new Date(FIXED_NOW_MS - minutes * 60 * 1000);
 }
 
+function farFuture(): Date {
+  return new Date("2999-01-01T00:00:00.000Z");
+}
+
 async function cleanupRunFixture(fixture: RunFixture): Promise<void> {
   const db = store.set(writeDb$);
   await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, fixture.runId));
+  await db
+    .delete(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, fixture.runId));
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await db.delete(agentRuns).where(eq(agentRuns.id, fixture.runId));
   await db.delete(agentSessions).where(eq(agentSessions.id, fixture.sessionId));
@@ -187,6 +195,28 @@ async function insertQueueEntry(
   });
 }
 
+async function insertRunnerJobEntry(
+  fixture: RunFixture,
+  expiresAt: Date,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(runnerJobQueue).values({
+    runId: fixture.runId,
+    runnerGroup: "vm0/test",
+    profile: "vm0/default",
+    executionContext: {
+      workingDir: "/workspace",
+      storageManifest: null,
+      environment: null,
+      resumeSession: null,
+      encryptedSecrets: null,
+      cliAgentType: "claude-code",
+      apiStartTime: FIXED_NOW_MS,
+    },
+    expiresAt,
+  });
+}
+
 async function insertExportJob(args: {
   readonly status: string;
   readonly createdAt?: Date;
@@ -220,6 +250,18 @@ async function findRun(runId: string): Promise<{
     .select({ status: agentRuns.status, error: agentRuns.error })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return row ?? null;
+}
+
+async function findRunnerJob(runId: string): Promise<{
+  readonly runId: string;
+} | null> {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ runId: runnerJobQueue.runId })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
     .limit(1);
   return row ?? null;
 }
@@ -295,6 +337,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(1) }),
     );
+    await insertRunnerJobEntry(fixture, farFuture());
 
     const response = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
@@ -305,6 +348,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "pending",
       error: null,
+    });
+    await expect(findRunnerJob(fixture.runId)).resolves.toStrictEqual({
+      runId: fixture.runId,
     });
   });
 
@@ -333,6 +379,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
     );
+    await insertRunnerJobEntry(fixture, farFuture());
 
     const response = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
@@ -350,6 +397,29 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Run timed out while pending (never started)",
+    });
+    await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("deletes expired runner job queue entries", async () => {
+    const expired = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    const unexpired = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    await insertRunnerJobEntry(expired, minutesAgo(1));
+    await insertRunnerJobEntry(unexpired, farFuture());
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(0);
+    await expect(findRunnerJob(expired.runId)).resolves.toBeNull();
+    await expect(findRunnerJob(unexpired.runId)).resolves.toStrictEqual({
+      runId: unexpired.runId,
     });
   });
 
