@@ -777,7 +777,7 @@ class TestSeedConsistency:
     charge $0 for legitimate requests.
     """
 
-    def _load_seed_categories(self) -> set[str]:
+    def _load_seed_category_entries(self) -> tuple[str, ...]:
         seed_path = (
             pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
             / "turbo"
@@ -811,7 +811,10 @@ class TestSeedConsistency:
         block = text[start:end]
         # Entries are tuples: `["<category>", usd(<price>), <quantity>]`. The
         # category is the first string in each tuple.
-        return set(re.findall(r'\[\s*"([^"]+)"\s*,', block))
+        return tuple(re.findall(r'\[\s*"([^"]+)"\s*,', block))
+
+    def _load_seed_categories(self) -> set[str]:
+        return set(self._load_seed_category_entries())
 
     def _emitted_buckets(self) -> set[str]:
         emitted = set(_PERMISSION_TO_BUCKET.values())
@@ -838,6 +841,20 @@ class TestSeedConsistency:
         emitted = self._emitted_buckets()
         missing = emitted - seed
         assert not missing, f"classifier emits buckets not present in dev-seed: {sorted(missing)}"
+
+    def test_seed_categories_are_unique(self):
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for category in self._load_seed_category_entries():
+            if category in seen:
+                duplicates.append(category)
+            seen.add(category)
+
+        assert not duplicates, (
+            "dev-seed.ts has duplicate X connector usage categories: "
+            f"{duplicates}. usage_pricing is keyed by kind/provider/category, "
+            "so duplicate seed rows make the intended price ambiguous."
+        )
 
     def test_fallback_row_is_seeded(self):
         """Unknown ``includes.<key>`` categories rely on the
