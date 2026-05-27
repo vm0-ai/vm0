@@ -19,8 +19,15 @@
   align-self: start;
   max-height: calc(100vh - var(--total-header-height) - 48px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   padding-right: 20px;
   border-right: 1px solid var(--border-light);
+}
+
+.docs-sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .docs-main {

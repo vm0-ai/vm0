@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "../../../navigation";
 import type { DocsNavigationSection } from "../../lib/docs";
+import { DocsSidebarScrollSync } from "./DocsSidebarScrollSync";
 
 interface DocsShellProps {
   navigation: DocsNavigationSection[];
@@ -24,6 +25,7 @@ export function DocsShell({
   return (
     <div className="docs-shell">
       <aside className="docs-sidebar" aria-label="Documentation navigation">
+        <DocsSidebarScrollSync activePath={activePath} />
         <Link
           href={withDraft("/docs", draft)}
           className={`docs-nav-home${activePath ? "" : " active"}`}
