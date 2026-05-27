@@ -6,7 +6,11 @@ import {
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type { OAuthGrantConnectorType } from "@vm0/connectors/connectors";
-import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
+import {
+  parseBasicAuthTemplates,
+  replaceBasicAuthTemplates,
+  type BasicAuthTemplateArg,
+} from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorOAuthSecretMetadata,
@@ -218,10 +222,7 @@ interface RefreshBatchContext {
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
-interface BasicArgContext {
-  readonly namespace?: string;
-  readonly key?: string;
-  readonly literal?: string;
+interface BasicArgContext extends BasicAuthTemplateArg {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly resolvedKeys: Set<string>;
@@ -1213,12 +1214,12 @@ function collectReferencedKeys(
         addKey(match[1], match[2]);
       }
     }
-    for (const match of template.matchAll(basicAuthTemplateRe())) {
-      if (match[1] && match[2]) {
-        addKey(match[1], match[2]);
+    for (const match of parseBasicAuthTemplates(template)) {
+      if (match.first.namespace && match.first.key) {
+        addKey(match.first.namespace, match.first.key);
       }
-      if (match[4] && match[5]) {
-        addKey(match[4], match[5]);
+      if (match.second.namespace && match.second.key) {
+        addKey(match.second.namespace, match.second.key);
       }
     }
   }
@@ -1242,10 +1243,6 @@ function collectReferencedKeys(
   }
 
   return { secrets: secretKeys, vars: varKeys };
-}
-
-function stringMatchGroup(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function resolveBasicArg(context: BasicArgContext): string {
@@ -1291,28 +1288,21 @@ function resolveTemplates(
 
   const headers: Record<string, string> = {};
   for (const [name, template] of Object.entries(authHeaders)) {
-    let resolved = template.replace(
-      basicAuthTemplateRe(),
-      (...matches: readonly unknown[]) => {
-        const user = resolveBasicArg({
-          namespace: stringMatchGroup(matches[1]),
-          key: stringMatchGroup(matches[2]),
-          literal: stringMatchGroup(matches[3]),
-          secrets,
-          vars,
-          resolvedKeys,
-        });
-        const pass = resolveBasicArg({
-          namespace: stringMatchGroup(matches[4]),
-          key: stringMatchGroup(matches[5]),
-          literal: stringMatchGroup(matches[6]),
-          secrets,
-          vars,
-          resolvedKeys,
-        });
-        return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
-      },
-    );
+    let resolved = replaceBasicAuthTemplates(template, (match) => {
+      const user = resolveBasicArg({
+        ...match.first,
+        secrets,
+        vars,
+        resolvedKeys,
+      });
+      const pass = resolveBasicArg({
+        ...match.second,
+        secrets,
+        vars,
+        resolvedKeys,
+      });
+      return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
+    });
     resolved = resolveSimple(resolved);
     headers[name] = resolved;
   }

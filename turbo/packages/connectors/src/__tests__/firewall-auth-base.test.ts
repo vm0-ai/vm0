@@ -207,6 +207,25 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     expect(extractSecretNamesFromApis(apis)).toEqual(["REAL"]);
   });
 
+  it("ignores malformed basic templates with long whitespace runs", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: "${{ basic(" + "\t".repeat(20_000),
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual([]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: [],
+      vars: [],
+    });
+  });
+
   it("extracts source-aware auth references by namespace", () => {
     const apis = [
       {

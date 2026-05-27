@@ -180,25 +180,226 @@ const AUTH_SECRET_PATTERN =
 const AUTH_REFERENCE_PATTERN =
   /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
+export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
+
 export interface FirewallTemplateReferences {
   readonly secrets: readonly string[];
   readonly vars: readonly string[];
 }
 
+export interface BasicAuthTemplateArg {
+  readonly namespace?: FirewallTemplateReferenceNamespace;
+  readonly key?: string;
+  readonly literal?: string;
+}
+
+export interface BasicAuthTemplateMatch {
+  readonly start: number;
+  readonly end: number;
+  readonly first: BasicAuthTemplateArg;
+  readonly second: BasicAuthTemplateArg;
+}
+
+interface ParsedBasicArg {
+  readonly arg: BasicAuthTemplateArg;
+  readonly index: number;
+}
+
+function isTemplateWhitespace(char: string): boolean {
+  return (
+    char === " " ||
+    char === "\t" ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\f" ||
+    char === "\v"
+  );
+}
+
+function skipTemplateWhitespace(template: string, index: number): number {
+  let nextIndex = index;
+  while (
+    nextIndex < template.length &&
+    isTemplateWhitespace(template[nextIndex]!)
+  ) {
+    nextIndex += 1;
+  }
+  return nextIndex;
+}
+
+function isIdentifierStart(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (
+    char === "_" || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+  );
+}
+
+function isIdentifierPart(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return isIdentifierStart(char) || (code >= 48 && code <= 57);
+}
+
+function parseTemplateIdentifier(
+  template: string,
+  index: number,
+): { readonly value: string; readonly index: number } | null {
+  if (index >= template.length || !isIdentifierStart(template[index]!)) {
+    return null;
+  }
+
+  let nextIndex = index + 1;
+  while (
+    nextIndex < template.length &&
+    isIdentifierPart(template[nextIndex]!)
+  ) {
+    nextIndex += 1;
+  }
+  return {
+    value: template.slice(index, nextIndex),
+    index: nextIndex,
+  };
+}
+
+function parseBasicAuthTemplateArg(
+  template: string,
+  index: number,
+): ParsedBasicArg | null {
+  let nextIndex = skipTemplateWhitespace(template, index);
+  const char = template[nextIndex];
+  if (char === "," || char === ")") {
+    return { arg: {}, index: nextIndex };
+  }
+
+  if (char === '"') {
+    const literalStart = nextIndex + 1;
+    nextIndex = literalStart;
+    while (nextIndex < template.length) {
+      const literalChar = template[nextIndex]!;
+      if (literalChar === "\\") {
+        return null;
+      }
+      if (literalChar === '"') {
+        return {
+          arg: { literal: template.slice(literalStart, nextIndex) },
+          index: nextIndex + 1,
+        };
+      }
+      nextIndex += 1;
+    }
+    return null;
+  }
+
+  let namespace: FirewallTemplateReferenceNamespace;
+  if (template.startsWith("secrets.", nextIndex)) {
+    namespace = "secrets";
+    nextIndex += "secrets.".length;
+  } else if (template.startsWith("vars.", nextIndex)) {
+    namespace = "vars";
+    nextIndex += "vars.".length;
+  } else {
+    return null;
+  }
+
+  const key = parseTemplateIdentifier(template, nextIndex);
+  if (!key) {
+    return null;
+  }
+  return {
+    arg: { namespace, key: key.value },
+    index: key.index,
+  };
+}
+
+function parseBasicAuthTemplateAt(
+  template: string,
+  start: number,
+): BasicAuthTemplateMatch | null {
+  let index = start + "${{".length;
+  index = skipTemplateWhitespace(template, index);
+  if (!template.startsWith("basic(", index)) {
+    return null;
+  }
+  index += "basic(".length;
+
+  const first = parseBasicAuthTemplateArg(template, index);
+  if (!first) {
+    return null;
+  }
+  index = skipTemplateWhitespace(template, first.index);
+  if (template[index] !== ",") {
+    return null;
+  }
+  index += 1;
+
+  const second = parseBasicAuthTemplateArg(template, index);
+  if (!second) {
+    return null;
+  }
+  index = skipTemplateWhitespace(template, second.index);
+  if (template[index] !== ")") {
+    return null;
+  }
+  index += 1;
+  index = skipTemplateWhitespace(template, index);
+  if (!template.startsWith("}}", index)) {
+    return null;
+  }
+
+  const end = index + "}}".length;
+  return {
+    start,
+    end,
+    first: first.arg,
+    second: second.arg,
+  };
+}
+
 /**
- * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
- * Each side is secrets.X, vars.X, "literal", or empty; comma is always required.
- * Returns a new instance each time to avoid `.lastIndex` state leaking
- * between callers when the `/g` flag is used.
- * Groups: (1) ns1, (2) key1, (3) lit1, (4) ns2, (5) key2, (6) lit2 — all optional.
- * Literal strings forbid `"` and `\` to keep the regex simple, and are
- * not subject to further template resolution (the resolver processes
- * basic() before simple templates so literals stay literal).
- *
- * Shared between build-time secret extraction and runtime template resolution.
+ * Parse `${{ basic(username, password) }}` templates in linear time.
+ * Each side is secrets.X, vars.X, "literal", or empty; comma is required.
+ * Literal strings forbid `"` and `\`, and are not subject to simple template
+ * resolution.
  */
-export function basicAuthTemplateRe(): RegExp {
-  return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*\)\s*\}\}/g;
+export function parseBasicAuthTemplates(
+  template: string,
+): readonly BasicAuthTemplateMatch[] {
+  const matches: BasicAuthTemplateMatch[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom < template.length) {
+    const start = template.indexOf("${{", searchFrom);
+    if (start === -1) {
+      break;
+    }
+    const match = parseBasicAuthTemplateAt(template, start);
+    if (match) {
+      matches.push(match);
+      searchFrom = match.end;
+    } else {
+      searchFrom = start + "${{".length;
+    }
+  }
+
+  return matches;
+}
+
+export function replaceBasicAuthTemplates(
+  template: string,
+  replacer: (match: BasicAuthTemplateMatch) => string,
+): string {
+  const matches = parseBasicAuthTemplates(template);
+  if (matches.length === 0) {
+    return template;
+  }
+
+  const parts: string[] = [];
+  let lastIndex = 0;
+  for (const match of matches) {
+    parts.push(template.slice(lastIndex, match.start), replacer(match));
+    lastIndex = match.end;
+  }
+  parts.push(template.slice(lastIndex));
+  return parts.join("");
 }
 
 /**
@@ -218,9 +419,13 @@ export function extractSecretNamesFromApis(
       // basic() args may reference secrets, vars, or be string literals;
       // only collect secrets here (vars don't need placeholders, literals
       // are baked into the config).
-      for (const match of value.matchAll(basicAuthTemplateRe())) {
-        if (match[1] === "secrets" && match[2]) names.add(match[2]);
-        if (match[4] === "secrets" && match[5]) names.add(match[5]);
+      for (const match of parseBasicAuthTemplates(value)) {
+        if (match.first.namespace === "secrets" && match.first.key) {
+          names.add(match.first.key);
+        }
+        if (match.second.namespace === "secrets" && match.second.key) {
+          names.add(match.second.key);
+        }
       }
     }
     // Scan auth.base for secret references (webhook-url connectors).
@@ -260,12 +465,12 @@ function collectFirewallTemplateReferencesFromValue(
       addReference(match[1], match[2]);
     }
   }
-  for (const match of template.matchAll(basicAuthTemplateRe())) {
-    if (match[1] && match[2]) {
-      addReference(match[1], match[2]);
+  for (const match of parseBasicAuthTemplates(template)) {
+    if (match.first.namespace && match.first.key) {
+      addReference(match.first.namespace, match.first.key);
     }
-    if (match[4] && match[5]) {
-      addReference(match[4], match[5]);
+    if (match.second.namespace && match.second.key) {
+      addReference(match.second.namespace, match.second.key);
     }
   }
 }

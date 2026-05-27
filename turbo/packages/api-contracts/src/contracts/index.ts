@@ -735,7 +735,8 @@ export {
 } from "./connector-schemas";
 
 export {
-  basicAuthTemplateRe,
+  parseBasicAuthTemplates,
+  replaceBasicAuthTemplates,
   extractSecretNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,
@@ -756,6 +757,10 @@ export {
   type FirewallPolicy,
   type FirewallPolicies,
   type RawPermissionPolicies,
+  type FirewallTemplateReferenceNamespace,
+  type FirewallTemplateReferences,
+  type BasicAuthTemplateArg,
+  type BasicAuthTemplateMatch,
   networkPoliciesSchema,
   type NetworkPolicies,
   hasBaseUrlParams,
