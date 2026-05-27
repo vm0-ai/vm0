@@ -2795,6 +2795,141 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
     source: { path: "illustration-template/vm0-illustration" },
   },
+  {
+    id: "vm0:image-style:postcard-illustration",
+    kind: "image-style",
+    name: "Postcard Illustration",
+    description:
+      "Hand-drawn editorial postcard / travel-journal illustration with fine black ink linework, flat saturated gouache fills, sharp edges, dense small repeated ink patterns, paper-grain texture, sparse white speckles, and a tall portrait composition.",
+    desc: 'Hand-drawn editorial postcard illustration style. Fine black marker/pen ink linework over flat saturated gouache color fills with sharp edges, dense small repeated ink patterns on surfaces (rows of windows, shingle curves, hatching, stippling), subtle paper-grain background texture, tiny scattered white speckles (snow / petals / sparkle), and a tall portrait composition with a layered foreground-midground-background. Travel-journal / urban-sketcher aesthetic. Trigger when the user says /postcard-illustration, asks for a "postcard illustration", "travel illustration", "urban sketcher style", or briefs a palette + scene archetype + complexity.',
+    source: { path: "illustration-template/postcard-illustration" },
+  },
+  {
+    id: "vm0:image-style:folk-storybook",
+    kind: "image-style",
+    name: "Folk Storybook Illustration",
+    description:
+      "Folk-art children's picture-book illustration — hand-painted gouache and watercolor scenes with anthropomorphic animal characters, closed-crescent-eye smiles, dusty muted folk palette, and decorative pattern surfaces.",
+    desc: "Folk-art children's picture-book illustration style — hand-painted gouache/watercolor scene on aged paper, anthropomorphic animal characters with closed-crescent-eye smiles, dusty muted folk palette, decorative pattern surfaces (wallpaper, rugs, textiles), and a hushed lullaby mood. Trigger when users ask for a folk-art illustration, storybook scene, cozy animal illustration, or any new piece in this Eastern European picture-book style.",
+    source: { path: "illustration-template/folk-storybook" },
+  },
+  {
+    id: "vm0:image-style:papernook",
+    kind: "image-style",
+    name: "Papernook",
+    description:
+      "Hand-drawn editorial illustration set in a cozy cluttered personal-studio scene with warm cream paper, scratchy ink, painterly gouache fills, dot-eye character face, and dense edge-to-edge thematic props.",
+    desc: 'Hand-drawn editorial illustration in the spirit of a cluttered personal-studio scene. Loose scratchy black ink outlines that wobble, textured gouache fills with visible brush marks, warm cream paper background, simplified dot-eye character face, and a DENSE edge-to-edge composition where a centered character is orbited by thematic props that visually act out the scene metaphor. Default palette: dusty cornflower blue, soft coral pink, fresh sage green, charcoal, warm cream — no mustard, no burnt-orange. Trigger when user says /papernook, asks for a "papernook illustration", a "cozy cluttered editorial scene", a "warm-cream desk scene", or a new piece in this hand-drawn studio-clutter editorial style.',
+    source: { path: "illustration-template/papernook" },
+  },
+  {
+    id: "vm0:image-style:painterly-botanical",
+    kind: "image-style",
+    name: "Painterly Botanical",
+    description:
+      "Painterly watercolor + gouache portrait illustration with a single figure embraced by lush botanicals, closed-eye introspective expression, and a softly tinted paper-wash background.",
+    desc: 'Painterly watercolor + gouache portrait illustration. Single figure (closed eyes, contemplative) embraced by botanicals — leaves, blossoms, grasses. Translucent washes with visible pigment bleeds, sparse crisp ink line accents on key edges, tiny handwritten cursive signature in an upper corner, and a tinted paper-wash background (never pure white). Eight user axes drive composition: subject, hair, pose, botanicals, palette, background wash, complexity (L1/L2/L3), and format. Trigger when a brief describes a contemplative figure with foliage, a "watercolor portrait", a "botanical embrace", or asks for a piece in this painterly editorial style.',
+    source: { path: "illustration-template/painterly-botanical" },
+  },
+  {
+    id: "vm0:image-style:iso-scene",
+    kind: "image-style",
+    name: "Isometric Editorial Scene",
+    description:
+      "Isometric editorial-magazine scene illustration with ultra-fine hairline outlines, flat fills, a saturated monochromatic background, and a scene-as-metaphor composition built from theme-native props.",
+    desc: 'Isometric editorial-magazine scene illustration in a locked flat-vector style — ultra-fine hairline outlines, monochromatic saturated background filling the canvas, and a single composed scene whose props themselves embody the theme. Trigger when users say /iso-scene, ask for an "isometric editorial illustration", a "scene illustration in the editorial machine style", or brief with palette + scene archetype + complexity.',
+    source: { path: "illustration-template/iso-scene" },
+  },
+  {
+    id: "vm0:image-style:inkdab",
+    kind: "image-style",
+    name: "Inkdab Illustration",
+    description:
+      "Brush-pen editorial illustration where a free-floating color dab is painted first, then loose black ink linework is drawn freely on top — never as an outline around the color. Scribbled hatched hair, open-outline bodies, pure white background.",
+    desc: 'Brush-pen editorial illustration style — a flat accent-color "dab" painted first, then loose black ink drawn freely on top. ONE flat accent-color shape per prop (painted-first, never outlined in black), black hand-wobbled ink on pure white background, scribbled hatched hair, open-outline bodies with zero fill, and one small solid-accent triangle floating freely as a recurring motif. Trigger when user says /inkdab, asks for an "inkdab illustration", a "brush-pen illustration with a single accent color", a "free-floating color block illustration", or briefs in the style of the included reference images.',
+    source: { path: "illustration-template/inkdab" },
+  },
+  {
+    id: "vm0:image-style:riso-relic",
+    kind: "image-style",
+    name: "Riso Relic",
+    description:
+      'Pop-art retro risograph poster of a single nostalgic everyday object on a saturated single-hue field — bold black ink outlines, halftone grain, hand-drawn doodle accents, tiny "SMALL OBJECTS IN TIME" banner up top, chunky retro headline with offset drop-shadow at the bottom.',
+    desc: 'Pop-art retro risograph poster of a single nostalgic everyday object — saturated single-color background, bold black ink outlines, halftone/riso grain, hand-drawn doodle accents (sparkles, squiggles, dots, music notes, lightning), tiny white "SMALL OBJECTS IN TIME" banner at top, chunky retro display headline at bottom with offset black drop-shadow. Trigger when user says /riso-relic, asks for a "riso poster", a "small objects in time" illustration, or any new piece in this nostalgic pop-art relic-object style.',
+    source: { path: "illustration-template/riso-relic" },
+  },
+  {
+    id: "vm0:image-style:inkstomp",
+    kind: "image-style",
+    name: "Inkstomp",
+    description:
+      "Loud indie-packaging poster style — full-bleed saturated flat color, a two-line hand-lettered headline, and one weird-cute black brush-ink character.",
+    desc: 'Inkstomp — a loud, hand-screened indie-packaging poster style. Full-bleed saturated flat color filling the entire canvas, a two-line hand-lettered headline (thin arched caps over chunky drop-shadowed display), and one weird-cute character drawn in thick uniform black brush ink. Trigger when the user says /inkstomp, asks for an "inkstomp poster", a "Ray Fenwick / Hattie Stewart packaging poster", an "indie brush-ink flavor card", or briefs in a "palette + headline + character" shape.',
+    source: { path: "illustration-template/inkstomp" },
+  },
+  {
+    id: "vm0:image-style:folk-muse",
+    kind: "image-style",
+    name: "Folk Muse",
+    description:
+      "Flat folk-art gouache portrait style — a single contemplative chest-up figure framed by an asymmetric botanical surround, with painted irises, smooth flat hair, a hand against the cheek, and a patterned robe.",
+    desc: 'Flat folk-art gouache portrait illustration in the contemporary editorial style of Carson Ellis, Maja Tomljanovic, and Bodil Jane. A single chest-up figure with an elongated mannerist oval face, tiny almond half-lidded eyes, smooth flat hair, one hand pressed against the face, a patterned robe filling the lower frame, and an asymmetric botanical surround filling the background edge-to-edge. Hand-painted matte gouache texture, flat color blocks, no harsh outlines, no photorealism. Calm, slightly melancholic, contemplative mood. Trigger when the user says /folk-muse, asks for a "folk-art portrait", "gouache portrait", "Carson Ellis style portrait", or any new piece in this contemplative folk-portrait style.',
+    source: { path: "illustration-template/folk-muse" },
+  },
+  {
+    id: "vm0:image-style:sunlit-gouache",
+    kind: "image-style",
+    name: "Sunlit Gouache",
+    description:
+      "Bright pastel travel-painting illustration in opaque gouache on textured paper with chunky flat brushstrokes, vertical one-point perspective, and figures walking into warm sunlight.",
+    desc: 'Sunlit Gouache travel-painting illustration. Opaque gouache on textured paper, visible chunky flat brushstrokes with dry-brush highlights, locked six-color palette (cream, butter-yellow, sky-blue, sage-green, terracotta, one small red accent), vertical 2:3 one-point-perspective composition drawing the eye into a bright sunlit focal point, figures seen from behind walking into the scene, an overhead band of hanging elements (awning, prayer flags, catenary, bunting, lanterns) creating depth, dappled painterly reflections on the ground, airy optimistic warm mood. Trigger when user says /sunlit-gouache, asks for a "sunlit gouache illustration", "painterly travel scene", "gouache café/market/temple/station scene", or a new piece in this bright pastel painted-light style.',
+    source: { path: "illustration-template/sunlit-gouache" },
+  },
+  {
+    id: "vm0:image-style:mosaic-still-life",
+    kind: "image-style",
+    name: "Mosaic Still Life",
+    description:
+      "Editorial still-life illustration in a mosaic-tile + painterly hybrid style — tessellated ground/sky/wall surfaces with crisp painterly objects, an animal companion, and a patterned textile peeking through.",
+    desc: 'Mosaic-tile + painterly hybrid editorial illustration. Tessellated/pointillist mosaic surfaces (grass, sky, sand, walls, floors) anchor the scene, with crisp painterly still-life objects rendered ON TOP. Always features a still-life centerpiece on a table, an animal companion at the heart of the scene, and at least one patterned textile peeking through. Cozy, nostalgic, bucolic mood. Trigger when user says /mosaic-still-life, asks for a "mosaic illustration", "mosaic-tile editorial illustration", "tessellated still life", or briefs with a palette + scene + animal in this style.',
+    source: { path: "illustration-template/mosaic-still-life" },
+  },
+  {
+    id: "vm0:image-style:ink-mascot",
+    kind: "image-style",
+    name: "Ink Mascot",
+    description:
+      "Vintage editorial marketing card. Bold serif headline and short serif descriptor over a hand-drawn black-ink anthropomorphic mascot (stick limbs, chunky white sneakers) on a single solid saturated flat color background.",
+    desc: 'Generate a 3:5 portrait editorial marketing card in a locked vintage-textbook style. Bold serif headline plus an optional short serif descriptor sit on a single solid saturated flat color background (no gradient, no divider, no ground line). A hand-drawn black-ink anthropomorphic hero object — paint bucket, magnifying glass, envelope, notebook, funnel, megaphone, rocket, seedling, gift box, compass, etc. — stands with two thin stick arms, two stick legs, and chunky white sneakers with black laces (the signature detail). Crosshatch and stipple shading on rounded surfaces; floating ink doodles (sparkles, arrows, hearts, percent or dollar signs, motion lines) at the requested density. Dialable along six axes: concept, palette, hero object, action, doodle density (L1 minimal, L2 balanced, L3 packed), and type layout (A title-top, B headline-bottom, C headline-only, D big-word + tiny-descriptor). Trigger when user says /ink-mascot, asks for a "marketing card illustration", a "retro editorial mascot poster", or briefs with a marketing concept plus palette plus character.',
+    source: { path: "illustration-template/ink-mascot" },
+  },
+  {
+    id: "vm0:image-style:sticker-sheet",
+    kind: "image-style",
+    name: "Sticker Sheet",
+    description:
+      "Hand-painted gouache sticker-sheet illustration with ~20 themed objects floating on white, punchy saturated palette, wobbly hand-drawn ink overlay, and tiny decorative marks on every item.",
+    desc: 'Sticker Sheet — hand-painted gouache sticker-sheet illustration. ~20 small floating themed objects on pure white, punchy saturated palette (coral, mustard, sage, dusty pink, navy, cream, warm brown), flat brushy gouache fills with wobbly hand-drawn ink linework and tiny decorative marks (dots, hatches, squiggles) on every object. Each object slightly tilted, no drop shadows, cheerful cozy lifestyle journal mood. Trigger when user says /sticker-sheet, asks for a "sticker sheet illustration", "hand-painted gouache sticker pack", "themed object sheet", or briefs with a scene theme + object count in this house style.',
+    source: { path: "illustration-template/sticker-sheet" },
+  },
+  {
+    id: "vm0:image-style:flat-poster",
+    kind: "image-style",
+    name: "Flat Poster",
+    description:
+      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, wordmark pinned bottom-right.",
+    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; a short wordmark (default VM0) pinned bottom-right; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
+    source: { path: "illustration-template/flat-poster" },
+  },
+  {
+    id: "vm0:image-style:mellow-pop",
+    kind: "image-style",
+    name: "Mellow Pop",
+    description:
+      "Chill flat-vector editorial poster of a serene recurring character on a fully saturated solid color background, with a signature pop of bright leaf-green and a scene-as-metaphor composition.",
+    desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
+    source: { path: "illustration-template/mellow-pop" },
+  },
 ];
 
 function filterByKind(
