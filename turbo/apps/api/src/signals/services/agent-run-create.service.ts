@@ -52,6 +52,7 @@ import {
 import {
   type CreateRunResponse,
   type RunStatus,
+  runStatusSchema,
   unifiedRunRequestSchema,
 } from "@vm0/api-contracts/contracts/runs";
 import {
@@ -163,6 +164,7 @@ const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type ComputedGetter = Getter;
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -240,6 +242,16 @@ interface RunRecord {
   readonly createdAt: Date;
   readonly sessionId: string;
   readonly status: "pending" | "queued";
+}
+
+interface LockedRunPersistenceRow extends Record<string, unknown> {
+  readonly status: string;
+  readonly sandboxId: string | null;
+}
+
+interface DerivedPersistenceResult {
+  readonly status: RunStatus;
+  readonly sandboxId?: string;
 }
 
 interface RunCallback {
@@ -3280,6 +3292,26 @@ async function buildRunnerJobPayload(
   });
 }
 
+async function lockRunForDerivedPersistence(
+  tx: DbTransaction,
+  runId: string,
+): Promise<DerivedPersistenceResult | null> {
+  const rows = await tx.execute<LockedRunPersistenceRow>(sql`
+    SELECT
+      ${agentRuns.status} AS "status",
+      ${agentRuns.sandboxId} AS "sandboxId"
+    FROM ${agentRuns}
+    WHERE ${agentRuns.id} = ${runId}
+    FOR UPDATE
+  `);
+  const row = rows.rows[0];
+  if (!row) {
+    return null;
+  }
+  const status = runStatusSchema.parse(row.status);
+  return row.sandboxId ? { status, sandboxId: row.sandboxId } : { status };
+}
+
 async function dispatchRun(
   get: ComputedGetter,
   db: Db,
@@ -3301,7 +3333,7 @@ async function dispatchRun(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
-): Promise<{ readonly status: RunStatus; readonly sandboxId?: string }> {
+): Promise<DerivedPersistenceResult> {
   await db
     .update(agentRuns)
     .set({ lastHeartbeatAt: nowDate() })
@@ -3309,28 +3341,44 @@ async function dispatchRun(
 
   const payload = await buildRunnerJobPayload(get, db, args);
 
-  await db.insert(runnerJobQueue).values({
-    runId: args.run.id,
-    runnerGroup: payload.runnerGroup,
-    profile: payload.profile,
-    sessionId: payload.sessionId,
-    executionContext: payload.executionContext,
-    expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+  const persisted = await db.transaction(async (tx) => {
+    const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
+    if (!currentRun) {
+      throw new Error("Run disappeared before runner job persistence");
+    }
+    if (currentRun.status !== "pending") {
+      return currentRun;
+    }
+
+    await tx.insert(runnerJobQueue).values({
+      runId: args.run.id,
+      runnerGroup: payload.runnerGroup,
+      profile: payload.profile,
+      sessionId: payload.sessionId,
+      executionContext: payload.executionContext,
+      expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+    });
+
+    await tx
+      .update(agentRuns)
+      .set({ runnerGroup: payload.runnerGroup })
+      .where(
+        and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
+      );
+
+    return { status: "pending" as const };
   });
 
-  await db
-    .update(agentRuns)
-    .set({ runnerGroup: payload.runnerGroup })
-    .where(eq(agentRuns.id, args.run.id));
+  if (persisted.status === "pending") {
+    await notifyRunnerJob(db, {
+      runnerGroup: payload.runnerGroup,
+      runId: args.run.id,
+      profile: payload.profile,
+      sessionId: payload.sessionId,
+    });
+  }
 
-  await notifyRunnerJob(db, {
-    runnerGroup: payload.runnerGroup,
-    runId: args.run.id,
-    profile: payload.profile,
-    sessionId: payload.sessionId,
-  });
-
-  return { status: "pending" };
+  return persisted;
 }
 
 async function enqueueRunForConcurrency(
@@ -3354,38 +3402,59 @@ async function enqueueRunForConcurrency(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
-): Promise<void> {
+): Promise<DerivedPersistenceResult> {
   const payload = await buildRunnerJobPayload(get, db, args);
-  await db.insert(agentRunQueue).values({
-    runId: args.run.id,
-    userId: args.userId,
-    orgId: args.orgId,
-    encryptedParams: await encryptQueuedRunnerJobPayload(
-      payload,
-      args.featureSwitchContext,
-    ),
-    createdAt: args.run.createdAt,
-    expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+  const encryptedParams = await encryptQueuedRunnerJobPayload(
+    payload,
+    args.featureSwitchContext,
+  );
+
+  const persisted = await db.transaction(async (tx) => {
+    const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
+    if (!currentRun) {
+      throw new Error("Run disappeared before queue persistence");
+    }
+    if (currentRun.status !== "queued") {
+      return currentRun;
+    }
+
+    await tx.insert(agentRunQueue).values({
+      runId: args.run.id,
+      userId: args.userId,
+      orgId: args.orgId,
+      encryptedParams,
+      createdAt: args.run.createdAt,
+      expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+    });
+    const [depthRow] = await tx
+      .select({ depth: count() })
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.orgId, args.orgId));
+    recordSandboxOperation({
+      sandboxType: "runner",
+      actionType: "enqueue_zero_run",
+      durationMs: 0,
+      success: true,
+      runId: args.run.id,
+      dimensions: {
+        queue_depth: Number(depthRow?.depth ?? 0),
+      },
+    });
+    await tx
+      .update(agentRuns)
+      .set({ runnerGroup: payload.runnerGroup })
+      .where(
+        and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
+      );
+
+    return { status: "queued" as const };
   });
-  const [depthRow] = await db
-    .select({ depth: count() })
-    .from(agentRunQueue)
-    .where(eq(agentRunQueue.orgId, args.orgId));
-  recordSandboxOperation({
-    sandboxType: "runner",
-    actionType: "enqueue_zero_run",
-    durationMs: 0,
-    success: true,
-    runId: args.run.id,
-    dimensions: {
-      queue_depth: Number(depthRow?.depth ?? 0),
-    },
-  });
-  await db
-    .update(agentRuns)
-    .set({ runnerGroup: payload.runnerGroup })
-    .where(eq(agentRuns.id, args.run.id));
-  await publishOrgSignal(args.orgId, "queue:changed");
+
+  if (persisted.status === "queued") {
+    await publishOrgSignal(args.orgId, "queue:changed");
+  }
+
+  return persisted;
 }
 
 function createdRunResponse(
@@ -3862,7 +3931,7 @@ async function completeQueuedRun(input: {
     input.signal.throwIfAborted();
     return failedRunResponse(input.run, enqueueResult.error);
   }
-  return createdRunResponse(input.run, { status: "queued" });
+  return createdRunResponse(input.run, enqueueResult.value);
 }
 
 async function completePendingRun(input: {

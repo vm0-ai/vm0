@@ -4,7 +4,18 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { and, count, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
@@ -39,7 +50,35 @@ type QueuedRunnerJobPayload = NonNullable<
   Awaited<ReturnType<typeof decryptQueuedRunnerJobPayload>>
 >;
 
-async function promoteApiQueuedRunnerJob(
+interface QueueCandidate {
+  readonly runId: string;
+  readonly userId: string;
+  readonly createdAt: Date;
+  readonly encryptedParams: string | null;
+  readonly runStatus: string | null;
+}
+
+interface RunnerNotification {
+  readonly runId: string;
+  readonly runnerGroup: string;
+  readonly profile: string;
+  readonly sessionId: string | null;
+}
+
+type PromoteQueuedCandidateResult =
+  | {
+      readonly status: "promoted";
+      readonly runnerNotification: RunnerNotification | null;
+    }
+  | { readonly status: "full" }
+  | { readonly status: "removed-stale" }
+  | { readonly status: "lost" };
+
+interface LockedQueueRunRow extends Record<string, unknown> {
+  readonly status: string;
+}
+
+async function insertPromotedRunnerJob(
   tx: DbTransaction,
   args: {
     readonly orgId: string;
@@ -76,10 +115,204 @@ async function promoteApiQueuedRunnerJob(
     },
     expiresAt: new Date(promotedAt + 2 * 60 * 60 * 1000),
   });
-  await tx
-    .update(agentRuns)
-    .set({ runnerGroup: args.payload.runnerGroup })
-    .where(eq(agentRuns.id, args.runId));
+}
+
+async function loadDrainCandidates(
+  db: Db,
+  orgId: string,
+): Promise<readonly QueueCandidate[]> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+
+    const [orgRow] = await tx
+      .select({ tier: orgMetadata.tier })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
+    const limit = tierLimit(orgRow?.tier as OrgTier | null | undefined);
+
+    const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
+    const [activeRow] = await tx
+      .select({ count: count() })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, orgId),
+          or(
+            eq(agentRuns.status, "running"),
+            and(
+              eq(agentRuns.status, "pending"),
+              gt(agentRuns.createdAt, staleThreshold),
+            ),
+          ),
+        ),
+      );
+    const activeCount = Number(activeRow?.count ?? 0);
+    if (activeCount >= limit) {
+      return [];
+    }
+
+    return await tx
+      .select({
+        runId: agentRunQueue.runId,
+        userId: agentRunQueue.userId,
+        createdAt: agentRunQueue.createdAt,
+        encryptedParams: agentRunQueue.encryptedParams,
+        runStatus: agentRuns.status,
+      })
+      .from(agentRunQueue)
+      .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
+      .where(eq(agentRunQueue.orgId, orgId))
+      .orderBy(agentRunQueue.createdAt);
+  });
+}
+
+async function promoteQueuedCandidate(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly row: QueueCandidate;
+    readonly payload: QueuedRunnerJobPayload | null;
+  },
+): Promise<PromoteQueuedCandidateResult> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+    );
+
+    const [orgRow] = await tx
+      .select({ tier: orgMetadata.tier })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, args.orgId))
+      .limit(1);
+    const limit = tierLimit(orgRow?.tier as OrgTier | null | undefined);
+
+    const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
+    const [activeRow] = await tx
+      .select({ count: count() })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, args.orgId),
+          or(
+            eq(agentRuns.status, "running"),
+            and(
+              eq(agentRuns.status, "pending"),
+              gt(agentRuns.createdAt, staleThreshold),
+            ),
+          ),
+        ),
+      );
+    const activeCount = Number(activeRow?.count ?? 0);
+    if (activeCount >= limit) {
+      return { status: "full" };
+    }
+
+    const lockedRunRows = await tx.execute<LockedQueueRunRow>(sql`
+      SELECT ${agentRuns.status} AS "status"
+      FROM ${agentRuns}
+      WHERE ${agentRuns.id} = ${args.row.runId}
+      FOR UPDATE
+    `);
+    const lockedRun = lockedRunRows.rows[0];
+    if (!lockedRun) {
+      await tx
+        .delete(agentRunQueue)
+        .where(eq(agentRunQueue.runId, args.row.runId));
+      return { status: "removed-stale" };
+    }
+    if (lockedRun.status !== "queued") {
+      await tx
+        .delete(agentRunQueue)
+        .where(eq(agentRunQueue.runId, args.row.runId));
+      return { status: "removed-stale" };
+    }
+    if (args.row.runStatus !== "queued") {
+      return { status: "lost" };
+    }
+
+    const [queueRow] = await tx
+      .select({ runId: agentRunQueue.runId })
+      .from(agentRunQueue)
+      .where(
+        and(
+          eq(agentRunQueue.runId, args.row.runId),
+          eq(agentRunQueue.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    if (!queueRow) {
+      return { status: "lost" };
+    }
+
+    const runValues = args.payload
+      ? {
+          status: "pending",
+          lastHeartbeatAt: nowDate(),
+          runnerGroup: args.payload.runnerGroup,
+        }
+      : {
+          status: "pending",
+          lastHeartbeatAt: nowDate(),
+        };
+    const [updated] = await tx
+      .update(agentRuns)
+      .set(runValues)
+      .where(
+        and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
+      )
+      .returning({ id: agentRuns.id });
+    if (!updated) {
+      return { status: "lost" };
+    }
+
+    await tx
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.runId, args.row.runId));
+
+    if (!args.payload) {
+      return { status: "promoted", runnerNotification: null };
+    }
+
+    await insertPromotedRunnerJob(tx, {
+      orgId: args.orgId,
+      runId: args.row.runId,
+      queuedAt: args.row.createdAt,
+      payload: args.payload,
+    });
+    return {
+      status: "promoted",
+      runnerNotification: {
+        runId: args.row.runId,
+        runnerGroup: args.payload.runnerGroup,
+        profile: args.payload.profile,
+        sessionId: args.payload.sessionId,
+      },
+    };
+  });
+}
+
+async function loadQueuedRunnerJobPayload(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly encryptedParams: string | null;
+  },
+  signal: AbortSignal,
+): Promise<QueuedRunnerJobPayload | null> {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  signal.throwIfAborted();
+  const payload = await decryptQueuedRunnerJobPayload(
+    args.encryptedParams,
+    featureSwitchContext,
+  );
+  signal.throwIfAborted();
+  return payload;
 }
 
 /**
@@ -106,113 +339,56 @@ export const drainOrgQueue$ = command(
   ): Promise<number> => {
     const writeDb = set(writeDb$);
 
-    const transitioned = await writeDb.transaction(async (tx) => {
-      // Serialize all queue operations for this org; same hash as web.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
-      );
+    const queueRows = await loadDrainCandidates(writeDb, args.orgId);
+    signal.throwIfAborted();
 
-      const [orgRow] = await tx
-        .select({ tier: orgMetadata.tier })
-        .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, args.orgId))
-        .limit(1);
-      const limit = tierLimit(orgRow?.tier as OrgTier | null | undefined);
-
-      const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-      const [activeRow] = await tx
-        .select({ count: count() })
-        .from(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.orgId, args.orgId),
-            or(
-              eq(agentRuns.status, "running"),
-              and(
-                eq(agentRuns.status, "pending"),
-                gt(agentRuns.createdAt, staleThreshold),
-              ),
-            ),
-          ),
-        );
-      const activeCount = Number(activeRow?.count ?? 0);
-      if (activeCount >= limit) {
-        return { promoted: 0, runnerNotification: null };
-      }
-
-      const queueRows = await tx
-        .select({
-          runId: agentRunQueue.runId,
-          userId: agentRunQueue.userId,
-          createdAt: agentRunQueue.createdAt,
-          encryptedParams: agentRunQueue.encryptedParams,
-        })
-        .from(agentRunQueue)
-        .where(eq(agentRunQueue.orgId, args.orgId))
-        .orderBy(agentRunQueue.createdAt);
-
-      let promoted = 0;
-      for (const row of queueRows) {
-        await tx
-          .delete(agentRunQueue)
-          .where(eq(agentRunQueue.runId, row.runId));
-        const [updated] = await tx
-          .update(agentRuns)
-          .set({ status: "pending", lastHeartbeatAt: nowDate() })
-          .where(
-            and(eq(agentRuns.id, row.runId), eq(agentRuns.status, "queued")),
-          )
-          .returning({ id: agentRuns.id });
-        if (!updated) {
-          L.debug("drainOrgQueue: queued run already transitioned, skipping", {
-            runId: row.runId,
-          });
-          continue;
-        }
-        const featureSwitchContext = await loadUserFeatureSwitchContext(
-          tx,
-          args.orgId,
-          row.userId,
-        );
-        const payload = await decryptQueuedRunnerJobPayload(
-          row.encryptedParams,
-          featureSwitchContext,
-        );
-        if (payload) {
-          await promoteApiQueuedRunnerJob(tx, {
-            orgId: args.orgId,
-            runId: row.runId,
-            queuedAt: row.createdAt,
-            payload,
-          });
-        }
-        promoted = 1;
-        return payload
-          ? {
-              promoted,
-              runnerNotification: {
-                runId: row.runId,
-                runnerGroup: payload.runnerGroup,
-                profile: payload.profile,
-                sessionId: payload.sessionId,
+    for (const row of queueRows) {
+      const payload =
+        row.runStatus === "queued"
+          ? await loadQueuedRunnerJobPayload(
+              writeDb,
+              {
+                orgId: args.orgId,
+                userId: row.userId,
+                encryptedParams: row.encryptedParams,
               },
-            }
-          : { promoted, runnerNotification: null };
+              signal,
+            )
+          : null;
+
+      const result = await promoteQueuedCandidate(writeDb, {
+        orgId: args.orgId,
+        row,
+        payload,
+      });
+      signal.throwIfAborted();
+      if (result.status === "removed-stale") {
+        await publishOrgSignal(args.orgId, "queue:changed");
+        signal.throwIfAborted();
+        continue;
+      }
+      if (result.status === "full") {
+        return 0;
+      }
+      if (result.status === "lost") {
+        L.debug("drainOrgQueue: queued run already transitioned, skipping", {
+          runId: row.runId,
+        });
+        continue;
       }
 
-      return { promoted, runnerNotification: null };
-    });
-    signal.throwIfAborted();
-
-    await publishOrgSignal(args.orgId, "queue:changed");
-    signal.throwIfAborted();
-
-    if (transitioned.runnerNotification) {
-      await notifyRunnerJob(writeDb, transitioned.runnerNotification);
+      await publishOrgSignal(args.orgId, "queue:changed");
       signal.throwIfAborted();
+
+      if (result.runnerNotification) {
+        await notifyRunnerJob(writeDb, result.runnerNotification);
+        signal.throwIfAborted();
+      }
+
+      return 1;
     }
 
-    return transitioned.promoted;
+    return 0;
   },
 );
 
@@ -221,38 +397,70 @@ export const cleanupExpiredQueueEntries$ = command(
     const writeDb = set(writeDb$);
     const currentTime = nowDate();
 
-    const deleted = await writeDb
-      .delete(agentRunQueue)
-      .where(lt(agentRunQueue.expiresAt, currentTime))
-      .returning({ runId: agentRunQueue.runId });
-    signal.throwIfAborted();
+    const result = await writeDb.transaction(async (tx) => {
+      const expiredRunIds = tx
+        .select({ runId: agentRunQueue.runId })
+        .from(agentRunQueue)
+        .where(lt(agentRunQueue.expiresAt, currentTime));
 
-    if (deleted.length === 0) {
-      return 0;
-    }
+      const timedOut = await tx
+        .update(agentRuns)
+        .set({
+          status: "timeout",
+          completedAt: currentTime,
+          error: "Queued run expired (exceeded queue TTL)",
+        })
+        .where(
+          and(
+            inArray(agentRuns.id, expiredRunIds),
+            eq(agentRuns.status, "queued"),
+          ),
+        )
+        .returning({ runId: agentRuns.id });
 
-    await writeDb
-      .update(agentRuns)
-      .set({
-        status: "timeout",
-        completedAt: currentTime,
-        error: "Queued run expired (exceeded queue TTL)",
-      })
-      .where(
-        and(
+      const deletableRows = await tx
+        .select({ runId: agentRunQueue.runId })
+        .from(agentRunQueue)
+        .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
+        .where(
+          and(
+            lt(agentRunQueue.expiresAt, currentTime),
+            or(isNull(agentRuns.id), ne(agentRuns.status, "queued")),
+          ),
+        );
+
+      if (deletableRows.length === 0) {
+        return { deletedCount: 0, timedOutCount: timedOut.length };
+      }
+
+      const deleted = await tx
+        .delete(agentRunQueue)
+        .where(
           inArray(
-            agentRuns.id,
-            deleted.map((entry) => {
+            agentRunQueue.runId,
+            deletableRows.map((entry) => {
               return entry.runId;
             }),
           ),
-          eq(agentRuns.status, "queued"),
-        ),
-      );
+        )
+        .returning({ runId: agentRunQueue.runId });
+
+      return {
+        deletedCount: deleted.length,
+        timedOutCount: timedOut.length,
+      };
+    });
     signal.throwIfAborted();
 
-    L.debug("Cleaned up expired queue entries", { count: deleted.length });
-    return deleted.length;
+    if (result.deletedCount === 0) {
+      return 0;
+    }
+
+    L.debug("Cleaned up expired queue entries", {
+      count: result.deletedCount,
+      timedOut: result.timedOutCount,
+    });
+    return result.deletedCount;
   },
 );
 

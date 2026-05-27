@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
@@ -34,6 +34,20 @@ type NotFoundResponse = ReturnType<typeof notFound>;
 type RunNotCancellableResponse = ReturnType<typeof runNotCancellable>;
 
 const ACTIVE_STATUSES = ["queued", "pending", "running"] as const;
+type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
+
+interface LockedCancelRunRow extends Record<string, unknown> {
+  readonly id: string;
+  readonly status: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly sandboxId: string | null;
+  readonly runnerGroup: string | null;
+}
+
+function isActiveStatus(status: string): status is ActiveStatus {
+  return (ACTIVE_STATUSES as readonly string[]).includes(status);
+}
 
 /**
  * Cancel a run. Idempotent for already-cancelled runs (returns success
@@ -41,10 +55,9 @@ const ACTIVE_STATUSES = ["queued", "pending", "running"] as const;
  * exist or is owned by another (org, user) tuple. Returns
  * runNotCancellable for non-cancellable terminal statuses.
  *
- * The transactional shape (DELETE queue + UPDATE status guarded by
- * allowed-from list, with a re-read on lost-race) mirrors web's
- * `cancelRun` and is the correctness anchor for concurrent cancel
- * attempts.
+ * The transactional shape locks the run row first, classifies the
+ * current status under that lock, then updates status and removes
+ * derived queue/job rows. Side effects use the committed transition.
  */
 export const cancelRun$ = command(
   async (
@@ -60,61 +73,60 @@ export const cancelRun$ = command(
   > => {
     const writeDb = set(writeDb$);
 
-    const [run] = await writeDb
-      .select()
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, args.runId),
-          eq(agentRuns.userId, args.userId),
-          eq(agentRuns.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
+    const result = await writeDb.transaction(async (tx) => {
+      const lockedRows = await tx.execute<LockedCancelRunRow>(sql`
+        SELECT
+          ${agentRuns.id} AS "id",
+          ${agentRuns.status} AS "status",
+          ${agentRuns.userId} AS "userId",
+          ${agentRuns.orgId} AS "orgId",
+          ${agentRuns.sandboxId} AS "sandboxId",
+          ${agentRuns.runnerGroup} AS "runnerGroup"
+        FROM ${agentRuns}
+        WHERE ${agentRuns.id} = ${args.runId}
+          AND ${agentRuns.userId} = ${args.userId}
+          AND ${agentRuns.orgId} = ${args.orgId}
+        FOR UPDATE
+      `);
+      const run = lockedRows.rows[0];
+      if (!run) {
+        return notFound(`No such run: '${args.runId}'`);
+      }
 
-    if (!run) {
-      return notFound(`No such run: '${args.runId}'`);
-    }
+      if (run.status === "cancelled") {
+        return {
+          runId: args.runId,
+          previousStatus: run.status,
+          userId: run.userId,
+          orgId: run.orgId,
+          sandboxId: run.sandboxId,
+          runnerGroup: run.runnerGroup,
+          alreadyCancelled: true,
+        };
+      }
 
-    if (run.status === "cancelled") {
-      return {
-        runId: args.runId,
-        previousStatus: run.status,
-        userId: run.userId,
-        orgId: run.orgId,
-        sandboxId: run.sandboxId,
-        runnerGroup: run.runnerGroup,
-        alreadyCancelled: true,
-      };
-    }
+      if (!isActiveStatus(run.status)) {
+        return runNotCancellable(
+          `Run cannot be cancelled: current status is '${run.status}'`,
+        );
+      }
 
-    if (!(ACTIVE_STATUSES as readonly string[]).includes(run.status)) {
-      return runNotCancellable(
-        `Run cannot be cancelled: current status is '${run.status}'`,
-      );
-    }
-
-    const cancelled = await writeDb.transaction(async (tx) => {
-      await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.runId));
-      await tx
-        .delete(runnerJobQueue)
-        .where(eq(runnerJobQueue.runId, args.runId));
       const [updated] = await tx
         .update(agentRuns)
         .set({ status: "cancelled", completedAt: nowDate() })
         .where(
-          and(
-            eq(agentRuns.id, args.runId),
-            inArray(agentRuns.status, [...ACTIVE_STATUSES]),
-          ),
+          and(eq(agentRuns.id, args.runId), eq(agentRuns.status, run.status)),
         )
         .returning({ id: agentRuns.id });
-      return Boolean(updated);
-    });
-    signal.throwIfAborted();
+      if (!updated) {
+        throw new Error("Locked cancellable run was not updated");
+      }
 
-    if (cancelled) {
+      await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.runId));
+      await tx
+        .delete(runnerJobQueue)
+        .where(eq(runnerJobQueue.runId, args.runId));
+
       return {
         runId: args.runId,
         previousStatus: run.status,
@@ -124,34 +136,10 @@ export const cancelRun$ = command(
         runnerGroup: run.runnerGroup,
         alreadyCancelled: false,
       };
-    }
-
-    // Lost the race: another writer transitioned the row first. Re-read
-    // and classify — if the winner moved it to cancelled the user's intent
-    // is satisfied and we respond idempotently; any other terminal state
-    // is a genuine error.
-    const [current] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, args.runId))
-      .limit(1);
+    });
     signal.throwIfAborted();
 
-    if (current?.status === "cancelled") {
-      return {
-        runId: args.runId,
-        previousStatus: "cancelled",
-        userId: run.userId,
-        orgId: run.orgId,
-        sandboxId: run.sandboxId,
-        runnerGroup: run.runnerGroup,
-        alreadyCancelled: true,
-      };
-    }
-
-    return runNotCancellable(
-      `Run cannot be cancelled: status has already changed`,
-    );
+    return result;
   },
 );
 

@@ -171,6 +171,9 @@ async function insertRunFixture(args?: {
 async function insertQueueEntry(
   fixture: RunFixture,
   expiresAt: Date,
+  options?: {
+    readonly encryptedParams?: string;
+  },
 ): Promise<void> {
   const db = store.set(writeDb$);
   const [run] = await db
@@ -192,6 +195,9 @@ async function insertQueueEntry(
     orgId: run.orgId,
     createdAt: run.createdAt,
     expiresAt,
+    ...(options?.encryptedParams !== undefined
+      ? { encryptedParams: options.encryptedParams }
+      : {}),
   });
 }
 
@@ -262,6 +268,18 @@ async function findRunnerJob(runId: string): Promise<{
     .select({ runId: runnerJobQueue.runId })
     .from(runnerJobQueue)
     .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  return row ?? null;
+}
+
+async function findQueueEntry(runId: string): Promise<{
+  readonly runId: string;
+} | null> {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ runId: agentRunQueue.runId })
+    .from(agentRunQueue)
+    .where(eq(agentRunQueue.runId, runId))
     .limit(1);
   return row ?? null;
 }
@@ -542,6 +560,26 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       status: "timeout",
       error: "Queued run expired (exceeded queue TTL)",
     });
+    await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("deletes expired stale queue entries without changing terminal runs", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "cancelled", createdAt: minutesAgo(130) }),
+    );
+    await insertQueueEntry(fixture, minutesAgo(1));
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "cancelled",
+      error: null,
+    });
+    await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
   });
 
   it("drains queued runs when an org has no active runs", async () => {
@@ -560,6 +598,27 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       status: "pending",
       error: null,
     });
+  });
+
+  it("removes stale queue entries before decrypting queued payloads", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "cancelled", createdAt: minutesAgo(1) }),
+    );
+    await insertQueueEntry(fixture, minutesAgo(-60), {
+      encryptedParams: "invalid-encrypted-payload",
+    });
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "cancelled",
+      error: null,
+    });
+    await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
   });
 
   it("cleans expired export jobs and fails stuck export jobs", async () => {

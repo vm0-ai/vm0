@@ -334,29 +334,46 @@ type ClaimTransitionResult =
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
 
-type ClaimMissResult =
-  | { readonly status: "conflict" }
-  | { readonly status: "job-not-found" };
+interface LockedClaimRunRow extends Record<string, unknown> {
+  readonly id: string;
+  readonly status: string;
+}
 
-async function classifyClaimMiss(
-  db: Pick<Db, "select">,
+interface LockedRunnerJobRow extends Record<string, unknown> {
+  readonly runId: string;
+  readonly claimedAt: Date | null;
+  readonly isExpired: boolean;
+}
+
+async function lockClaimRun(
+  db: Pick<Db, "execute">,
   runId: string,
-  signal: AbortSignal,
-): Promise<ClaimMissResult> {
-  const [existingJob] = await db
-    .select({
-      runId: runnerJobQueue.runId,
-      isExpired: sql<boolean>`${runnerJobQueue.expiresAt} <= now()`,
-    })
-    .from(runnerJobQueue)
-    .where(eq(runnerJobQueue.runId, runId))
-    .limit(1);
-  signal.throwIfAborted();
+): Promise<LockedClaimRunRow | undefined> {
+  const rows = await db.execute<LockedClaimRunRow>(sql`
+    SELECT
+      ${agentRuns.id} AS "id",
+      ${agentRuns.status} AS "status"
+    FROM ${agentRuns}
+    WHERE ${agentRuns.id} = ${runId}
+    FOR UPDATE
+  `);
+  return rows.rows[0];
+}
 
-  if (!existingJob || existingJob.isExpired) {
-    return { status: "job-not-found" };
-  }
-  return { status: "conflict" };
+async function lockRunnerJob(
+  db: Pick<Db, "execute">,
+  runId: string,
+): Promise<LockedRunnerJobRow | undefined> {
+  const rows = await db.execute<LockedRunnerJobRow>(sql`
+    SELECT
+      ${runnerJobQueue.runId} AS "runId",
+      ${runnerJobQueue.claimedAt} AS "claimedAt",
+      ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+    FROM ${runnerJobQueue}
+    WHERE ${runnerJobQueue.runId} = ${runId}
+    FOR UPDATE
+  `);
+  return rows.rows[0];
 }
 
 async function transitionClaimedJobToRunning(
@@ -365,48 +382,45 @@ async function transitionClaimedJobToRunning(
   signal: AbortSignal,
 ): Promise<ClaimTransitionResult> {
   return await db.transaction(async (tx) => {
-    const [claimedJob] = await tx
-      .update(runnerJobQueue)
-      .set({ claimedAt: sql`now()` })
-      .where(
-        and(
-          eq(runnerJobQueue.runId, runId),
-          isNull(runnerJobQueue.claimedAt),
-          gt(runnerJobQueue.expiresAt, sql`now()`),
-        ),
-      )
-      .returning({
-        runId: runnerJobQueue.runId,
-        claimedAt: runnerJobQueue.claimedAt,
-      });
-    signal.throwIfAborted();
-    if (!claimedJob) {
-      return await classifyClaimMiss(tx, runId, signal);
-    }
-    if (!claimedJob.claimedAt) {
-      throw new Error("Runner job claim timestamp missing");
-    }
-
-    const [run] = await tx
-      .update(agentRuns)
-      .set({
-        status: "running",
-        startedAt: claimedJob.claimedAt,
-        lastHeartbeatAt: claimedJob.claimedAt,
-      })
-      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
-      .returning({ id: agentRuns.id });
+    const run = await lockClaimRun(tx, runId);
     signal.throwIfAborted();
     if (!run) {
+      return { status: "run-not-found" };
+    }
+    if (run.status !== "pending") {
       await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
       signal.throwIfAborted();
       return { status: "run-not-found" };
     }
 
+    const job = await lockRunnerJob(tx, runId);
+    signal.throwIfAborted();
+    if (!job || job.isExpired) {
+      return { status: "job-not-found" };
+    }
+    if (job.claimedAt) {
+      return { status: "conflict" };
+    }
+
+    const claimedAt = nowDate();
+    const [updatedRun] = await tx
+      .update(agentRuns)
+      .set({
+        status: "running",
+        startedAt: claimedAt,
+        lastHeartbeatAt: claimedAt,
+      })
+      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+    if (!updatedRun) {
+      throw new Error("Locked pending run was not claimed");
+    }
+
     await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
     signal.throwIfAborted();
 
-    return { status: "claimed" as const, claimedAt: claimedJob.claimedAt };
+    return { status: "claimed" as const, claimedAt };
   });
 }
 
@@ -423,42 +437,39 @@ async function failPoisonQueuedJob(
   signal: AbortSignal,
 ): Promise<PoisonJobResult> {
   return await db.transaction(async (tx) => {
-    const [claimedJob] = await tx
-      .update(runnerJobQueue)
-      .set({ claimedAt: sql`now()` })
-      .where(
-        and(
-          eq(runnerJobQueue.runId, runId),
-          isNull(runnerJobQueue.claimedAt),
-          gt(runnerJobQueue.expiresAt, sql`now()`),
-        ),
-      )
-      .returning({
-        runId: runnerJobQueue.runId,
-        claimedAt: runnerJobQueue.claimedAt,
-      });
+    const run = await lockClaimRun(tx, runId);
     signal.throwIfAborted();
-    if (!claimedJob) {
-      return await classifyClaimMiss(tx, runId, signal);
+    if (!run) {
+      return { status: "run-not-found" };
     }
-    if (!claimedJob.claimedAt) {
-      throw new Error("Runner job claim timestamp missing");
+    if (run.status !== "pending") {
+      await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+      signal.throwIfAborted();
+      return { status: "run-not-found" };
     }
 
-    const [run] = await tx
+    const job = await lockRunnerJob(tx, runId);
+    signal.throwIfAborted();
+    if (!job || job.isExpired) {
+      return { status: "job-not-found" };
+    }
+    if (job.claimedAt) {
+      return { status: "conflict" };
+    }
+
+    const failedAt = nowDate();
+    const [updatedRun] = await tx
       .update(agentRuns)
       .set({
         status: "failed",
-        completedAt: claimedJob.claimedAt,
+        completedAt: failedAt,
         error: errorMessage,
       })
       .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
       .returning({ id: agentRuns.id });
     signal.throwIfAborted();
-    if (!run) {
-      await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
-      signal.throwIfAborted();
-      return { status: "run-not-found" };
+    if (!updatedRun) {
+      throw new Error("Locked pending run was not failed");
     }
 
     await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
