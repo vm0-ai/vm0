@@ -4,17 +4,46 @@ pub(crate) const DEFAULT_REALTIME_HOST: &str = "realtime.ably.io";
 pub(super) const PROTOCOL_VERSION: &str = "5";
 const AGENT_STRING: &str = concat!("ably-subscriber-rs/", env!("CARGO_PKG_VERSION"));
 
-pub(super) fn is_localhost(host: &str) -> bool {
-    let Ok(url) = url::Url::parse(&format!("http://{host}/")) else {
-        return false;
-    };
-
+fn is_localhost_url(url: &url::Url) -> bool {
     match url.host() {
         Some(url::Host::Domain(host)) if host.eq_ignore_ascii_case("localhost") => true,
         Some(url::Host::Ipv4(addr)) if addr == std::net::Ipv4Addr::LOCALHOST => true,
         Some(url::Host::Ipv6(addr)) if addr == std::net::Ipv6Addr::LOCALHOST => true,
         _ => false,
     }
+}
+
+fn parse_endpoint_host(host: &str) -> Result<url::Url, Error> {
+    let url =
+        url::Url::parse(&format!("http://{host}/")).map_err(|_| Error::InvalidEndpointHost)?;
+
+    if url.host().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(Error::InvalidEndpointHost);
+    }
+
+    Ok(url)
+}
+
+fn build_endpoint_base_url(
+    host: &str,
+    localhost_scheme: &str,
+    remote_scheme: &str,
+) -> Result<url::Url, Error> {
+    let mut url = parse_endpoint_host(host)?;
+    let scheme = if is_localhost_url(&url) {
+        localhost_scheme
+    } else {
+        remote_scheme
+    };
+    url.set_scheme(scheme)
+        .map_err(|_| Error::InvalidEndpointHost)?;
+    Ok(url)
 }
 
 /// Derive REST host from realtime host.
@@ -27,8 +56,7 @@ pub(crate) fn rest_host(realtime_host: &str) -> String {
 }
 
 pub(super) fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Result<String, Error> {
-    let scheme = if is_localhost(host) { "ws" } else { "wss" };
-    let mut u = url::Url::parse(&format!("{scheme}://{host}/"))?;
+    let mut u = build_endpoint_base_url(host, "ws", "wss")?;
     {
         let mut q = u.query_pairs_mut();
         q.append_pair("access_token", token);
@@ -42,6 +70,16 @@ pub(super) fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Res
         }
     }
     Ok(u.to_string())
+}
+
+pub(super) fn build_token_request_url(host: &str, key_name: &str) -> Result<url::Url, Error> {
+    let mut url = build_endpoint_base_url(host, "http", "https")?;
+    url.path_segments_mut()
+        .map_err(|_| Error::InvalidEndpointHost)?
+        .push("keys")
+        .push(key_name)
+        .push("requestToken");
+    Ok(url)
 }
 
 #[cfg(test)]
@@ -86,6 +124,43 @@ mod tests {
     #[test]
     fn rest_host_custom() {
         assert_eq!(rest_host("custom.example.com"), "custom.example.com");
+    }
+
+    #[test]
+    fn build_token_request_url_basic() {
+        let url = build_token_request_url("rest.ably.io", "testKey.testId").unwrap();
+
+        assert_eq!(
+            url.as_str(),
+            "https://rest.ably.io/keys/testKey.testId/requestToken"
+        );
+    }
+
+    #[test]
+    fn build_token_request_url_localhost_uses_http() {
+        let url = build_token_request_url("127.0.0.1:9000", "testKey.testId").unwrap();
+
+        assert_eq!(
+            url.as_str(),
+            "http://127.0.0.1:9000/keys/testKey.testId/requestToken"
+        );
+    }
+
+    #[test]
+    fn build_token_request_url_encodes_key_name_as_single_segment() {
+        let url = build_token_request_url("rest.ably.io", "a/b?c#d% e").unwrap();
+
+        assert_eq!(
+            url.as_str(),
+            "https://rest.ably.io/keys/a%2Fb%3Fc%23d%25%20e/requestToken"
+        );
+    }
+
+    #[test]
+    fn build_token_request_url_preserves_preencoded_key_name_as_raw_text() {
+        let url = build_token_request_url("rest.ably.io", "%2F").unwrap();
+
+        assert_eq!(url.as_str(), "https://rest.ably.io/keys/%252F/requestToken");
     }
 
     fn assert_websocket_endpoint(
@@ -146,5 +221,38 @@ mod tests {
             let url = build_ws_url(host, "tok", None).unwrap();
             assert_websocket_endpoint(&url, "wss", expected_host, None);
         }
+    }
+
+    #[test]
+    fn endpoint_builders_reject_base_url_inputs() {
+        let cases = [
+            "example.com/path",
+            "example.com?x=1",
+            "example.com#frag",
+            "user@example.com",
+            "user:pass@example.com",
+        ];
+
+        for host in cases {
+            assert!(matches!(
+                build_ws_url(host, "tok", None),
+                Err(Error::InvalidEndpointHost)
+            ));
+            assert!(matches!(
+                build_token_request_url(host, "testKey.testId"),
+                Err(Error::InvalidEndpointHost)
+            ));
+        }
+    }
+
+    #[test]
+    fn invalid_endpoint_host_error_does_not_include_raw_host() {
+        let err = build_ws_url("user:secret@example.com", "tok", None).unwrap_err();
+        let message = err.to_string();
+
+        assert_eq!(message, "Invalid Ably endpoint host");
+        assert!(!message.contains("user"));
+        assert!(!message.contains("secret"));
+        assert!(!message.contains("example.com"));
     }
 }

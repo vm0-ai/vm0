@@ -316,8 +316,15 @@ pub enum Error {
     #[error("Token fetch failed: {}", redact_access_token(&.0.to_string()))]
     TokenFetch(BoxError),
 
-    /// Failure while parsing a realtime WebSocket URL built from the
-    /// subscription configuration.
+    /// Invalid realtime or REST endpoint host in the subscription configuration.
+    ///
+    /// The message deliberately omits the raw host input because callers may
+    /// accidentally include credentials in a host-like value.
+    #[error("Invalid Ably endpoint host")]
+    InvalidEndpointHost,
+
+    /// Failure while parsing an endpoint URL built from the subscription
+    /// configuration.
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
 }
