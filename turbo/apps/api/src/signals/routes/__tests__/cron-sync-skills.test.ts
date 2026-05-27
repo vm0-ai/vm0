@@ -10,16 +10,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-} from "@vm0/connectors/connectors";
-import {
   DEFAULT_SKILLS_BRANCH,
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
 import { getSkillStorageName } from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { getSeedSkillNames, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
 import { skills } from "@vm0/db/schema/skill";
 import { storages } from "@vm0/db/schema/storage";
@@ -39,16 +35,7 @@ const store = createStore();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const TEST_SKILL_PREFIX = "api-test-skill";
-function getTestSeedConnectorTypes(): string[] {
-  return CONNECTOR_TYPE_KEYS.filter((type) => {
-    return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
-      return !method.featureFlag;
-    });
-  });
-}
-const ALL_SEED_SKILL_NAMES: readonly string[] = [
-  ...new Set([...SEED_SKILLS, ...getTestSeedConnectorTypes()]),
-];
+const ALL_SEED_SKILL_NAMES = getSeedSkillNames();
 
 interface MockSkillEntry {
   readonly name: string;
