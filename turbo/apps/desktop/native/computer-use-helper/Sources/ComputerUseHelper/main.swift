@@ -647,10 +647,15 @@ final class ComputerUseVisualPointer: @unchecked Sendable {
             return
         }
 
-        let duration = min(0.34, max(0.18, distance / 900))
-        let curve = CGFloat(min(70, max(8, distance * 0.18)))
+        let duration = min(0.52, max(0.26, distance / 700))
+        let curve = CGFloat(min(110, max(14, distance * 0.28)))
         let sign: CGFloat = delta.x >= 0 ? 1 : -1
         let normalizedDistance = CGFloat(distance)
+        let overshootDistance = CGFloat(min(26, max(4, distance * 0.07)))
+        let overshoot = CGPoint(
+            x: end.x + (delta.x / normalizedDistance) * overshootDistance,
+            y: end.y + (delta.y / normalizedDistance) * overshootDistance
+        )
         let control = CGPoint(
             x: (start.x + end.x) / 2 - (delta.y / normalizedDistance) * curve * sign,
             y: (start.y + end.y) / 2 + (delta.x / normalizedDistance) * curve * sign
@@ -665,8 +670,19 @@ final class ComputerUseVisualPointer: @unchecked Sendable {
                 }
                 let elapsed = Date.timeIntervalSinceReferenceDate - startedAt
                 let progress = min(1, elapsed / duration)
-                let eased = Self.easeInOut(progress)
-                let origin = Self.quadraticBezierPoint(from: start, control: control, to: end, progress: eased)
+                let origin: CGPoint
+                if progress < 0.82 {
+                    let legProgress = Self.easeInOut(progress / 0.82)
+                    origin = Self.quadraticBezierPoint(
+                        from: start,
+                        control: control,
+                        to: overshoot,
+                        progress: legProgress
+                    )
+                } else {
+                    let legProgress = Self.easeOut((progress - 0.82) / 0.18)
+                    origin = Self.linearPoint(from: overshoot, to: end, progress: legProgress)
+                }
                 self?.baseFrame = CGRect(origin: origin, size: targetFrame.size)
                 self?.applyVisualFrame()
                 if progress >= 1 {
@@ -687,6 +703,19 @@ final class ComputerUseVisualPointer: @unchecked Sendable {
         }
         let adjusted = -2 * progress + 2
         return 1 - adjusted * adjusted * adjusted / 2
+    }
+
+    private static func easeOut(_ progress: TimeInterval) -> TimeInterval {
+        let inverse = 1 - progress
+        return 1 - inverse * inverse * inverse
+    }
+
+    private static func linearPoint(from start: CGPoint, to end: CGPoint, progress: TimeInterval) -> CGPoint {
+        let t = CGFloat(progress)
+        return CGPoint(
+            x: start.x + (end.x - start.x) * t,
+            y: start.y + (end.y - start.y) * t
+        )
     }
 
     private static func quadraticBezierPoint(
