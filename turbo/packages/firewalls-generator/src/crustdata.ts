@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.crustdata.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CRUSTDATA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CRUSTDATA_TOKEN }}",',
     '          "x-api-version": "2025-11-01",',
     "        },",
     "      },",

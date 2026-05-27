@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.wallet.paysponge.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SPONGE_MASTER_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.SPONGE_MASTER_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

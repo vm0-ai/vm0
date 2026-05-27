@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://www.msg9.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.MSG9_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.MSG9_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

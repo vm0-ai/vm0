@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://openapi.etsy.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.ETSY_TOKEN }}",',
+    '          "x-api-key": "${{ auth.ETSY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

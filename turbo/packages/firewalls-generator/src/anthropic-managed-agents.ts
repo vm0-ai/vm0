@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://api.anthropic.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.ANTHROPIC_MANAGED_AGENTS_TOKEN }}",',
+    '          "x-api-key": "${{ auth.ANTHROPIC_MANAGED_AGENTS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

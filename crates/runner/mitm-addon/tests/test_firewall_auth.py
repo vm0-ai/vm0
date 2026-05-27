@@ -57,7 +57,7 @@ class TestGetFirewallHeaders:
         mock_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": mock_headers}
         encrypted = "iv:tag:data"
-        auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        auth_templates = {"Authorization": "Bearer ${{ auth.TOKEN }}"}
 
         mock_fetch = AsyncMock(return_value=mock_result)
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -598,7 +598,7 @@ class TestHandleFirewallRequest:
         api_entry = {
             "id": "run-1:0",
             "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
         }
         vm_info = {
             "runId": "run-1",
@@ -1007,7 +1007,7 @@ class TestFetchFirewallHeaders:
         ):
             result = auth._fetch_firewall_headers_sync(
                 "iv:tag:data",
-                {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+                {"Authorization": "Bearer ${{ auth.TOKEN }}"},
                 "tok-xyz",
                 "https://api.vm0.ai",
             )
@@ -1020,7 +1020,7 @@ class TestFetchFirewallHeaders:
         assert call_args[0][0] == "https://api.vm0.ai/api/webhooks/agent/firewall/auth"
         body = json.loads(call_args[1]["data"])
         assert body["encryptedSecrets"] == "iv:tag:data"
-        assert body["authHeaders"] == {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        assert body["authHeaders"] == {"Authorization": "Bearer ${{ auth.TOKEN }}"}
         assert "runId" not in body
         assert "base" not in body
         assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"
@@ -1078,12 +1078,12 @@ class TestFetchFirewallHeaders:
                 {},
                 "tok-xyz",
                 "https://api.vm0.ai",
-                auth_base="${{ secrets.DISCORD_WEBHOOK_URL }}",
+                auth_base="${{ auth.DISCORD_WEBHOOK_URL }}",
             )
 
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
-        assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
+        assert body["authBase"] == "${{ auth.DISCORD_WEBHOOK_URL }}"
 
     def test_includes_auth_base_and_query_in_request_body(self, headers):
         mock_resp = MagicMock()
@@ -1106,15 +1106,15 @@ class TestFetchFirewallHeaders:
                 {},
                 "tok-xyz",
                 "https://api.vm0.ai",
-                auth_base="${{ secrets.WEBHOOK_URL }}",
-                auth_query={"api_key": "${{ secrets.API_KEY }}"},
+                auth_base="${{ auth.WEBHOOK_URL }}",
+                auth_query={"api_key": "${{ auth.API_KEY }}"},
             )
 
         assert result["base"] == "https://example.com/webhook/secret"
         assert result["query"] == {"api_key": "resolved-key"}
         body = json.loads(mock_req_cls.call_args[1]["data"])
-        assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
-        assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
+        assert body["authBase"] == "${{ auth.WEBHOOK_URL }}"
+        assert body["authQuery"] == {"api_key": "${{ auth.API_KEY }}"}
 
     def test_includes_billable_firewall_flag_in_request_body(self, headers):
         mock_resp = MagicMock()

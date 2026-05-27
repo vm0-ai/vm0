@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pdforge.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PDFORGE_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.PDFORGE_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

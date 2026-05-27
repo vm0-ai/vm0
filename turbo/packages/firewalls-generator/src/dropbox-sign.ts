@@ -4,7 +4,7 @@
  * Data source: https://developer.hellosign.com/api/api-reference-authentication
  *
  * Dropbox Sign uses HTTP Basic Auth with the API key as the username and
- * an empty password. The `basic(secrets.X, )` template helper produces
+ * an empty password. The `basic(auth.X, )` template helper produces
  * `Basic base64(apikey:)` at request time.
  *
  * Token format: 40-character hex string.
@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     '      base: "https://api.hellosign.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(secrets.DROPBOX_SIGN_TOKEN, ) }}",',
+    '          Authorization: "${{ basic(auth.DROPBOX_SIGN_TOKEN, ) }}",',
     "        },",
     "      },",
     "      permissions: [],",

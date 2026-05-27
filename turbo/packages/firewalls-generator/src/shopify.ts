@@ -42,7 +42,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.SHOPIFY_SHOP }}.myshopify.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-Shopify-Access-Token": "${{ secrets.SHOPIFY_TOKEN }}",',
+    '          "X-Shopify-Access-Token": "${{ auth.SHOPIFY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

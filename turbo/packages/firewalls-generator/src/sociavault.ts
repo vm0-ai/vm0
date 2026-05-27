@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.sociavault.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-API-Key": "${{ secrets.SOCIAVAULT_TOKEN }}",',
+    '          "X-API-Key": "${{ auth.SOCIAVAULT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

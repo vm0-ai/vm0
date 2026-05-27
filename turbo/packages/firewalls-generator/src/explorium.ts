@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.explorium.ai",',
     "      auth: {",
     "        headers: {",
-    '          api_key: "${{ secrets.EXPLORIUM_TOKEN }}",',
+    '          api_key: "${{ auth.EXPLORIUM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

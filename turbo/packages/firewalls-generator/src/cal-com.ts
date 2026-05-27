@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.cal.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CALCOM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CALCOM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

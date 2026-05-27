@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://a.klaviyo.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Klaviyo-API-Key ${{ secrets.KLAVIYO_TOKEN }}",',
+    '          Authorization: "Klaviyo-API-Key ${{ auth.KLAVIYO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

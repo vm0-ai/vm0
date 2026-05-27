@@ -27,7 +27,7 @@ function generateTypeScript(): string {
     '      base: "https://api.browser-use.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-Browser-Use-API-Key": "${{ secrets.BROWSER_USE_TOKEN }}",',
+    '          "X-Browser-Use-API-Key": "${{ auth.BROWSER_USE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

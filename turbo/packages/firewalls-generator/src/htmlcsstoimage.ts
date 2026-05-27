@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://hcti.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(vars.HCTI_USER_ID, secrets.HCTI_API_KEY) }}",',
+    '          Authorization: "${{ basic(auth.HCTI_USER_ID, auth.HCTI_API_KEY) }}",',
     "        },",
     "      },",
     "      permissions: [],",

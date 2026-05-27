@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://openrouter.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.OPENROUTER_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.OPENROUTER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

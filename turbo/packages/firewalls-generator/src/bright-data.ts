@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.brightdata.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.BRIGHTDATA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.BRIGHTDATA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

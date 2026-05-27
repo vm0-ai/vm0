@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.typeform.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.TYPEFORM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.TYPEFORM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

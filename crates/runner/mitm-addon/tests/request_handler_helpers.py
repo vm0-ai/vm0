@@ -57,7 +57,7 @@ def _write_github_firewall_registry(
             tmp_path,
             api_entry={
                 "base": base,
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
                 "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
             },
             network_policy={

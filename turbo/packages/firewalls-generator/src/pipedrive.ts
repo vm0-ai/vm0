@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pipedrive.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-token": "${{ secrets.PIPEDRIVE_TOKEN }}",',
+    '          "x-api-token": "${{ auth.PIPEDRIVE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

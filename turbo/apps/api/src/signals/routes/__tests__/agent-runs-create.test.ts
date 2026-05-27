@@ -869,11 +869,75 @@ describe("POST /api/agent/runs", () => {
     ).toBeFalsy();
   });
 
+  it("stores variable-backed firewall auth values in the encrypted auth map", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "SPROUTGIGS_USER_ID",
+      value: "buyer-123",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "SPROUTGIGS_API_SECRET",
+      encryptedValue: encryptSecretForTests("sproutgigs-real-secret"),
+      type: "user",
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use SproutGigs",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly auth: {
+            readonly headers?: Record<string, string>;
+          };
+        }[];
+      }[];
+    };
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    expect(decrypted).toMatchObject({
+      SPROUTGIGS_USER_ID: "buyer-123",
+      SPROUTGIGS_API_SECRET: "sproutgigs-real-secret",
+    });
+    expect(Object.values(decrypted ?? {})).not.toContain(
+      "$vars.SPROUTGIGS_USER_ID",
+    );
+
+    const sproutgigs = executionContext.firewalls.find((firewall) => {
+      return firewall.name === "sproutgigs";
+    });
+    expect(sproutgigs?.apis[0]?.auth.headers?.Authorization).toBe(
+      [
+        "${{",
+        " basic(auth.SPROUTGIGS_USER_ID, auth.SPROUTGIGS_API_SECRET) }}",
+      ].join(""),
+    );
+  });
+
   it("loads an api-token connector secret used only by the firewall, not the compose environment", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     // WeRead's credential is consumed by the firewall auth header template
-    // (Authorization: Bearer ${{ secrets.WEREAD_TOKEN }}), so the compose
+    // (Authorization: Bearer ${{ auth.WEREAD_TOKEN }}), so the compose
     // environment never references it. Regression: loadReferencedSecrets used
     // to drop any user secret not named in the compose environment, leaving
     // the weread firewall to fail with 424 CONNECTOR_NOT_CONFIGURED.

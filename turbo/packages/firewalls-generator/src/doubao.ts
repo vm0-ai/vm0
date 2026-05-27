@@ -47,7 +47,7 @@ function generateTypeScript(): string {
     '      base: "https://openspeech.bytedance.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-Api-Key": "${{ secrets.DOUBAO_API_KEY }}",',
+    '          "X-Api-Key": "${{ auth.DOUBAO_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

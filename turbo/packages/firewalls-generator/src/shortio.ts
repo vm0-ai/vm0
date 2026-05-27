@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.short.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SHORTIO_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SHORTIO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

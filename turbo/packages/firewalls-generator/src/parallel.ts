@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     '      base: "https://api.parallel.ai",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.PARALLEL_API_KEY }}",',
+    '          "x-api-key": "${{ auth.PARALLEL_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

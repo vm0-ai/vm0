@@ -23,7 +23,7 @@ function generateTypeScript(): string {
       base: "https://production-${region}.browserless.io",
       auth: {
         query: {
-          token: "$\{{ secrets.BROWSERLESS_TOKEN }}",
+          token: "$\{{ auth.BROWSERLESS_TOKEN }}",
         },
       },
       permissions: [],

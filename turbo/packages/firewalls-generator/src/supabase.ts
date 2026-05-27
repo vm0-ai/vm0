@@ -30,7 +30,7 @@ function generateTypeScript(): string {
     '      base: "https://api.supabase.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SUPABASE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SUPABASE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

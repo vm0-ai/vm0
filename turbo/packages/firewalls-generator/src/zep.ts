@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.getzep.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Api-Key ${{ secrets.ZEP_TOKEN }}",',
+    '          Authorization: "Api-Key ${{ auth.ZEP_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

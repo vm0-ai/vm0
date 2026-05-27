@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://console.neon.tech/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.NEON_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.NEON_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

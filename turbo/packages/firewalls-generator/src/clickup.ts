@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.clickup.com/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ secrets.CLICKUP_TOKEN }}",',
+    '          Authorization: "${{ auth.CLICKUP_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

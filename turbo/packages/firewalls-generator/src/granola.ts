@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://public-api.granola.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.GRANOLA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.GRANOLA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

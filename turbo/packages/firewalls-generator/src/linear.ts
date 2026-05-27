@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.linear.app",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LINEAR_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.LINEAR_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

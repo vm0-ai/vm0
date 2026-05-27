@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.cloudflare.com/client",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CLOUDFLARE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

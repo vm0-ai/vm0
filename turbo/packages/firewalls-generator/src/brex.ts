@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.brex.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.BREX_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.BREX_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

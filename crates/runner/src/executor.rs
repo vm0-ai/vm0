@@ -3168,7 +3168,7 @@ mod tests {
                     "base": "https://api.github.com",
                     "auth": {
                         "headers": {
-                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                            "Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"
                         }
                     },
                     "permissions": [

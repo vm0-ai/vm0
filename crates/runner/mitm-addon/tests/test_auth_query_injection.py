@@ -33,7 +33,7 @@ def make_query_inputs(
     flow.metadata["vm_run_id"] = "test-run"
     auth_config = {
         "headers": {},
-        "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"},
+        "query": {"api_key": "${{ auth.SERPAPI_TOKEN }}"},
     }
     if auth_overrides:
         auth_config.update(auth_overrides)
@@ -83,9 +83,9 @@ class TestAuthQueryInjection:
             real_flow,
             auth_overrides={
                 "query": {
-                    "api_key": "${{ secrets.SERPAPI_TOKEN }}",
-                    "empty_auth": "${{ vars.EMPTY }}",
-                    "space": "${{ vars.SPACE }}",
+                    "api_key": "${{ auth.SERPAPI_TOKEN }}",
+                    "empty_auth": "${{ auth.EMPTY }}",
+                    "space": "${{ auth.SPACE }}",
                 },
             },
             token_overrides={
@@ -138,8 +138,8 @@ class TestAuthQueryInjection:
             real_flow,
             api_base="https://example.com",
             auth_overrides={
-                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
-                "query": {"key": "${{ secrets.QUERY_KEY }}"},
+                "headers": {"Authorization": "Bearer ${{ auth.TOKEN }}"},
+                "query": {"key": "${{ auth.QUERY_KEY }}"},
             },
             token_overrides={
                 "headers": {"Authorization": "Bearer real-token"},
@@ -168,8 +168,8 @@ class TestAuthQueryInjection:
             "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
             "auth": {
                 "headers": {},
-                "base": "${{ secrets.WEBHOOK }}",
-                "query": {"api_key": "${{ secrets.KEY }}"},
+                "base": "${{ auth.WEBHOOK }}",
+                "query": {"api_key": "${{ auth.KEY }}"},
             },
         }
         vm_info = {
@@ -216,11 +216,11 @@ class TestAuthQueryInjection:
             "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
             "auth": {
                 "headers": {},
-                "base": "${{ secrets.WEBHOOK }}",
+                "base": "${{ auth.WEBHOOK }}",
                 "query": {
-                    "api_key": "${{ secrets.KEY }}",
-                    "empty_auth": "${{ vars.EMPTY }}",
-                    "space": "${{ vars.SPACE }}",
+                    "api_key": "${{ auth.KEY }}",
+                    "empty_auth": "${{ auth.EMPTY }}",
+                    "space": "${{ auth.SPACE }}",
                 },
             },
         }
@@ -276,8 +276,8 @@ class TestAuthQueryInjection:
             "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
             "auth": {
                 "headers": {},
-                "base": "${{ secrets.WEBHOOK }}",
-                "query": {"api_key": "${{ secrets.KEY }}"},
+                "base": "${{ auth.WEBHOOK }}",
+                "query": {"api_key": "${{ auth.KEY }}"},
             },
         }
         vm_info = {
@@ -318,7 +318,7 @@ class TestAuthQueryInjection:
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
+            "auth": {"headers": {"Authorization": "Bearer ${{ auth.TOKEN }}"}},
         }
         vm_info = {
             "runId": "run-1",

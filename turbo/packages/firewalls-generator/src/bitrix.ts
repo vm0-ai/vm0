@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     "    {",
     `      base: "${PLACEHOLDER_BASE}",`,
     "      auth: {",
-    '        base: "${{ secrets.BITRIX_WEBHOOK_URL }}",',
+    '        base: "${{ auth.BITRIX_WEBHOOK_URL }}",',
     "      },",
     "      permissions: [],",
     "    },",

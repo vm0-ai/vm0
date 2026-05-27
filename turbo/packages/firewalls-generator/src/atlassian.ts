@@ -41,7 +41,7 @@ export async function generate(): Promise<void> {
     '      base: "https://api.atlassian.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ATLASSIAN_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.ATLASSIAN_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -28,7 +28,7 @@ function generateTypeScript(): string {
       base: "https://${domain}",
       auth: {
         headers: {
-          APIKEY: "$\{{ secrets.JOTFORM_TOKEN }}",
+          APIKEY: "$\{{ auth.JOTFORM_TOKEN }}",
         },
       },
       permissions: [],

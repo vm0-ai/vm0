@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.honcho.dev",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.HONCHO_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.HONCHO_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

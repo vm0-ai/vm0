@@ -158,7 +158,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://www.strava.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.STRAVA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.STRAVA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

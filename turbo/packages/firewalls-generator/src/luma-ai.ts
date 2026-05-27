@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.lumalabs.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LUMA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.LUMA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

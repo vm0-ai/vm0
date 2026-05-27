@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.diffbot.com",',
     "      auth: {",
     "        query: {",
-    '          token: "${{ secrets.DIFFBOT_TOKEN }}",',
+    '          token: "${{ auth.DIFFBOT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -274,7 +274,7 @@ function generateTypeScript(
 // ── Generation ───────────────────────────────────────────────────────────
 
 interface GoogleFirewallAuth {
-  /** Auth header entries (e.g. { Authorization: "Bearer ${{ secrets.TOKEN }}" }). */
+  /** Auth header entries (e.g. { Authorization: "Bearer ${{ auth.TOKEN }}" }). */
   headers: Record<string, string>;
 }
 
@@ -485,7 +485,7 @@ const OAUTH_PLACEHOLDER =
 function bearerAuth(placeholderKey: string): GoogleFirewallAuth {
   return {
     headers: {
-      Authorization: `Bearer \${{ secrets.${placeholderKey} }}`,
+      Authorization: `Bearer \${{ auth.${placeholderKey} }}`,
     },
   };
 }
@@ -632,7 +632,7 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     placeholderValue: "AIzaSyBCoffeeSafeLocalCoffeeSafeLocalCo",
     auth: {
       headers: {
-        "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}",
+        "X-Goog-Api-Key": "${{ auth.YOUTUBE_TOKEN }}",
       },
     },
   },

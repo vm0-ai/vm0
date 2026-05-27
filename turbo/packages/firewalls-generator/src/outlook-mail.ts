@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://graph.microsoft.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.OUTLOOK_MAIL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.OUTLOOK_MAIL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

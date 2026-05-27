@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.agentmail.to",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.AGENTMAIL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.AGENTMAIL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.canva.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CANVA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CANVA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

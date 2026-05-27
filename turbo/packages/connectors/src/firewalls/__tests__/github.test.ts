@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractSecretNamesFromApis } from "../../firewall-types";
+import { extractAuthNamesFromApis } from "../../firewall-types";
 import { githubFirewall } from "../github.generated";
 
 /**
@@ -29,7 +29,7 @@ describe("githubFirewall", () => {
   });
 
   it("references only GITHUB_TOKEN across all apis", () => {
-    expect(extractSecretNamesFromApis([...githubFirewall.apis])).toEqual([
+    expect(extractAuthNamesFromApis([...githubFirewall.apis])).toEqual([
       "GITHUB_TOKEN",
     ]);
   });
@@ -47,7 +47,7 @@ describe("githubFirewall", () => {
         return a.base === base;
       });
       expect(entry?.auth.headers?.Authorization).toBe(
-        '${{ basic("x-access-token", secrets.GITHUB_TOKEN) }}',
+        '${{ basic("x-access-token", auth.GITHUB_TOKEN) }}',
       );
     }
   });
@@ -63,7 +63,7 @@ describe("githubFirewall", () => {
         return a.base === base;
       });
       expect(entry?.auth.headers?.Authorization).toBe(
-        "Bearer ${{ secrets.GITHUB_TOKEN }}",
+        "Bearer ${{ auth.GITHUB_TOKEN }}",
       );
     }
   });

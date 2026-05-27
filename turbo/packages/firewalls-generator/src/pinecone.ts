@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pinecone.io",',
     "      auth: {",
     "        headers: {",
-    '          "Api-Key": "${{ secrets.PINECONE_TOKEN }}",',
+    '          "Api-Key": "${{ auth.PINECONE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

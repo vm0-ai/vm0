@@ -299,7 +299,7 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             firewall_name="webhook",
             api_entry={
                 "base": "https://placeholder.example.com",
-                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "auth": {"base": "${{ auth.WEBHOOK_URL }}"},
                 "permissions": [{"name": "send", "rules": ["POST /"]}],
             },
             network_policy={
@@ -394,7 +394,7 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
             firewall_name="webhook",
             api_entry={
                 "base": "https://placeholder.example.com",
-                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "auth": {"base": "${{ auth.WEBHOOK_URL }}"},
                 "permissions": [{"name": "send", "rules": ["POST /"]}],
             },
             network_policy={

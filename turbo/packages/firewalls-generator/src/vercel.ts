@@ -147,7 +147,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.vercel.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.VERCEL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.VERCEL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

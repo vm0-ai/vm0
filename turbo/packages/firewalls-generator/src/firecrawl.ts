@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.firecrawl.dev",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.FIRECRAWL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.FIRECRAWL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

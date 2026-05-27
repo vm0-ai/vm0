@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     '      base: "https://api.bland.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ secrets.BLAND_API_KEY }}",',
+    '          Authorization: "${{ auth.BLAND_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

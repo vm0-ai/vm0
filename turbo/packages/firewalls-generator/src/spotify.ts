@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.spotify.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SPOTIFY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SPOTIFY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

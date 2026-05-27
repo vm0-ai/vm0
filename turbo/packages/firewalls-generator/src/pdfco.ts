@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pdf.co",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.PDFCO_TOKEN }}",',
+    '          "x-api-key": "${{ auth.PDFCO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

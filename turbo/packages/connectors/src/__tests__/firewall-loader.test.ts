@@ -34,7 +34,7 @@ apis:
   - base: https://api.custom.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.CUSTOM_TOKEN }}"
+        Authorization: "Bearer \${{ auth.CUSTOM_TOKEN }}"
     permissions:
       - name: read
         description: Read access
@@ -67,7 +67,7 @@ apis:
   - base: https://api.minimal.com
     auth:
       headers:
-        X-Api-Key: "\${{ secrets.API_KEY }}"
+        X-Api-Key: "\${{ auth.API_KEY }}"
 `;
 
     const config = await fetchFirewallConfig(

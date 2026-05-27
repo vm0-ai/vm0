@@ -211,7 +211,7 @@ function generateTypeScript(
     lines.push(`      base: "${baseUrl}",`);
     lines.push("      auth: {");
     lines.push("        headers: {");
-    lines.push('          Authorization: "Bearer ${{ secrets.XERO_TOKEN }}",');
+    lines.push('          Authorization: "Bearer ${{ auth.XERO_TOKEN }}",');
     lines.push("        },");
     lines.push("      },");
     lines.push("      permissions: [");

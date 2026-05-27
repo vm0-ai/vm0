@@ -30,7 +30,7 @@ export async function generate(): Promise<void> {
     '      base: "https://api.hubapi.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.HUBSPOT_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.HUBSPOT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

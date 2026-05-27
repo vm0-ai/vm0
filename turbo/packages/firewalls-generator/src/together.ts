@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.together.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.TOGETHER_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.TOGETHER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

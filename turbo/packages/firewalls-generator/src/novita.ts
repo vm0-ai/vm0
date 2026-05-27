@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     '      base: "https://api.novita.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.NOVITA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.NOVITA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

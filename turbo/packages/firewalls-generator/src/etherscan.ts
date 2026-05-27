@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.etherscan.io/v2/api",',
     "      auth: {",
     "        query: {",
-    '          apikey: "${{ secrets.ETHERSCAN_API_KEY }}",',
+    '          apikey: "${{ auth.ETHERSCAN_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

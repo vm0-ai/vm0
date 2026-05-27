@@ -1566,7 +1566,7 @@ describe("POST /api/zero/runs", () => {
     });
     expect(firewall?.apis[0]?.base).toBe("https://app.base44.com/mcp");
     expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
-      ["Bearer $", "{{ secrets.BASE44_TOKEN }}"].join(""),
+      ["Bearer $", "{{ auth.BASE44_TOKEN }}"].join(""),
     );
   });
 
@@ -1658,8 +1658,8 @@ describe("POST /api/zero/runs", () => {
     });
     expect(firewall?.apis[0]?.base).toBe("https://api.slock.ai");
     expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
-      Authorization: ["Bearer $", "{{ secrets.SLOCK_TOKEN }}"].join(""),
-      "X-Server-Id": ["$", "{{ secrets.SLOCK_SERVER_ID }}"].join(""),
+      Authorization: ["Bearer $", "{{ auth.SLOCK_TOKEN }}"].join(""),
+      "X-Server-Id": ["$", "{{ auth.SLOCK_SERVER_ID }}"].join(""),
     });
   });
 
@@ -1782,7 +1782,7 @@ describe("POST /api/zero/runs", () => {
       "https://{hostWildcard1}.internal.example.com/api/",
     );
     expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
-      `Bearer \${{ secrets.${secretKey} }}`,
+      `Bearer \${{ auth.${secretKey} }}`,
     );
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
       [secretKey]: "custom-secret",

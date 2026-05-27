@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.calendly.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CALENDLY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CALENDLY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.printful.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PRINTFUL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PRINTFUL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

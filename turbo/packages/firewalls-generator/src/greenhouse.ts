@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     '      base: "https://harvest.greenhouse.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(secrets.GREENHOUSE_TOKEN, ) }}",',
+    '          Authorization: "${{ basic(auth.GREENHOUSE_TOKEN, ) }}",',
     "        },",
     "      },",
     "      permissions: [],",

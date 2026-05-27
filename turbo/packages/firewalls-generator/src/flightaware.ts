@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://aeroapi.flightaware.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-apikey": "${{ secrets.FLIGHTAWARE_TOKEN }}",',
+    '          "x-apikey": "${{ auth.FLIGHTAWARE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

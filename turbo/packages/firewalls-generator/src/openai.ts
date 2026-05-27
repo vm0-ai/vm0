@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     '      base: "https://api.openai.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.OPENAI_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.OPENAI_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

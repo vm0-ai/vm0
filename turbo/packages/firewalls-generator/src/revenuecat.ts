@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.revenuecat.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.REVENUECAT_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.REVENUECAT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

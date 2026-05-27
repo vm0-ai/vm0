@@ -27,7 +27,7 @@ function generateTypeScript(): string {
     '      base: "https://api.zoom.us",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ZOOM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.ZOOM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

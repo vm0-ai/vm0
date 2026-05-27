@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://apis.garmin.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.GARMIN_CONNECT_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.GARMIN_CONNECT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

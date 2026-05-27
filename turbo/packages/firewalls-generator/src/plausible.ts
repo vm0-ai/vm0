@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://plausible.io/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PLAUSIBLE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PLAUSIBLE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

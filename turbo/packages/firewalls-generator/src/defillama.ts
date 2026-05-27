@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     "    {",
     `      base: "${PLACEHOLDER_BASE}",`,
     "      auth: {",
-    '        base: "https://pro-api.llama.fi/${{ secrets.DEFILLAMA_TOKEN }}",',
+    '        base: "https://pro-api.llama.fi/${{ auth.DEFILLAMA_TOKEN }}",',
     "      },",
     "      permissions: [],",
     "    },",

@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.stripe.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.STRIPE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.STRIPE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

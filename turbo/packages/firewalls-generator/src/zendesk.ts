@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.ZENDESK_API_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

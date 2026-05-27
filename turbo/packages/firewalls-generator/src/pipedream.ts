@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pipedream.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PIPEDREAM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PIPEDREAM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

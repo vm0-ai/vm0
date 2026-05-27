@@ -66,7 +66,7 @@ def make_rewrite_inputs(
         )
     flow.metadata["vm_run_id"] = "test-run"
 
-    auth_config = {"headers": {}, "base": "${{ secrets.WEBHOOK }}"}
+    auth_config = {"headers": {}, "base": "${{ auth.WEBHOOK }}"}
     if auth_overrides:
         auth_config.update(auth_overrides)
     api_entry = {
@@ -111,7 +111,7 @@ class TestAuthBaseUrlRewrite:
         flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
-            auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
+            auth_overrides={"base": "${{ auth.DISCORD_WEBHOOK_URL }}"},
             token_overrides={"resolved_secrets": ["DISCORD_WEBHOOK_URL"]},
             match_overrides={"name": "discord-webhook", "permission": "send-message"},
         )
@@ -133,7 +133,7 @@ class TestAuthBaseUrlRewrite:
         flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
-            auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
+            auth_overrides={"base": "${{ auth.DISCORD_WEBHOOK_URL }}"},
             token_overrides={"resolved_secrets": ["DISCORD_WEBHOOK_URL"]},
             match_overrides={"name": "discord-webhook", "permission": "send-message"},
         )
@@ -167,7 +167,7 @@ class TestAuthBaseUrlRewrite:
             resolved_base="https://mycompany.bitrix24.com/rest/1/real-token",
             rel_path="/crm.deal.list.json",
             api_base="https://bitrix.internal/rest/{uid}/{code}",
-            auth_overrides={"base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
+            auth_overrides={"base": "${{ auth.BITRIX_WEBHOOK_URL }}"},
             token_overrides={"resolved_secrets": ["BITRIX_WEBHOOK_URL"]},
             match_overrides={
                 "name": "bitrix",
@@ -195,7 +195,7 @@ class TestAuthBaseUrlRewrite:
             real_flow,
             tmp_path,
             path="/discord-webhook/hook?wait=true",
-            auth_overrides={"base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
+            auth_overrides={"base": "${{ auth.DISCORD_WEBHOOK_URL }}"},
             token_overrides={"resolved_secrets": ["DISCORD_WEBHOOK_URL"]},
             match_overrides={"name": "discord-webhook", "permission": "send-message"},
         )
@@ -219,7 +219,7 @@ class TestAuthBaseUrlRewrite:
             resolved_base="https://mycompany.bitrix24.com/rest/1/token/",
             rel_path="/crm.deal.list",
             api_base="https://firewall-placeholder.vm3.ai/bitrix/rest/{uid}/{code}",
-            auth_overrides={"base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
+            auth_overrides={"base": "${{ auth.BITRIX_WEBHOOK_URL }}"},
             token_overrides={"resolved_secrets": ["BITRIX_WEBHOOK_URL"]},
             match_overrides={
                 "name": "bitrix",
@@ -246,7 +246,7 @@ class TestAuthBaseUrlRewrite:
             tmp_path,
             path="/discord-webhook/hook?wait=true",
             resolved_base="https://example.com/hook?token=abc",
-            auth_overrides={"base": "${{ secrets.WEBHOOK_URL }}"},
+            auth_overrides={"base": "${{ auth.WEBHOOK_URL }}"},
             token_overrides={"resolved_secrets": ["WEBHOOK_URL"]},
         )
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
@@ -268,8 +268,8 @@ class TestAuthBaseUrlRewrite:
             path="/discord-webhook/hook?api_key=agent&q=test",
             resolved_base="https://example.com/hook?api_key=base&region=us",
             auth_overrides={
-                "base": "${{ secrets.WEBHOOK_URL }}",
-                "query": {"api_key": "${{ secrets.API_KEY }}"},
+                "base": "${{ auth.WEBHOOK_URL }}",
+                "query": {"api_key": "${{ auth.API_KEY }}"},
             },
             token_overrides={
                 "query": {"api_key": "trusted key"},
@@ -295,7 +295,7 @@ class TestAuthBaseUrlRewrite:
         original_url = flow.request.url
         api_entry = {
             "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
         }
         vm_info = {
             "runId": "run-1",
@@ -400,7 +400,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
+            "auth": {"headers": {"Authorization": "Bearer ${{ auth.TOKEN }}"}},
         }
         vm_info = {
             "runId": "run-1",
@@ -729,8 +729,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
             real_flow,
             tmp_path,
             auth_overrides={
-                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
-                "query": {"api_key": "${{ secrets.API_KEY }}"},
+                "headers": {"Authorization": "Bearer ${{ auth.TOKEN }}"},
+                "query": {"api_key": "${{ auth.API_KEY }}"},
             },
             token_overrides={
                 "headers": {"Authorization": "Bearer real-token"},

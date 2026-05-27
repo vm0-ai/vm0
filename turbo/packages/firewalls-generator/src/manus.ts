@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.manus.ai",',
     "      auth: {",
     "        headers: {",
-    '          "x-manus-api-key": "${{ secrets.MANUS_TOKEN }}",',
+    '          "x-manus-api-key": "${{ auth.MANUS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

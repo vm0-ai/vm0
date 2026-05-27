@@ -213,9 +213,7 @@ function generateTypeScript(
     lines.push(`      base: "${baseUrl}",`);
     lines.push("      auth: {");
     lines.push("        headers: {");
-    lines.push(
-      '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
-    );
+    lines.push('          Authorization: "Bearer ${{ auth.DROPBOX_TOKEN }}",');
     lines.push("        },");
     lines.push("      },");
     lines.push("      permissions: [");

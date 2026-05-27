@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.drive9.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DRIVE9_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.DRIVE9_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

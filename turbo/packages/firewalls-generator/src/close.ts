@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.close.com/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CLOSE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CLOSE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

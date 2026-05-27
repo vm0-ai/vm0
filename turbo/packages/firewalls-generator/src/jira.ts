@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.JIRA_DOMAIN }}",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",',
+    '          Authorization: "${{ basic(auth.JIRA_EMAIL, auth.JIRA_API_TOKEN) }}",',
     "        },",
     "      },",
     "      permissions: [],",

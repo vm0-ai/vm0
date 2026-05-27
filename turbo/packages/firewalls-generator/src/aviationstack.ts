@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.aviationstack.com",',
     "      auth: {",
     "        query: {",
-    '          access_key: "${{ secrets.AVIATIONSTACK_TOKEN }}",',
+    '          access_key: "${{ auth.AVIATIONSTACK_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

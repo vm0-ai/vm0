@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.attio.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ATTIO_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.ATTIO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

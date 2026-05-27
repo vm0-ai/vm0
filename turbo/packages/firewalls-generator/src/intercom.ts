@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.intercom.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.INTERCOM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.INTERCOM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://open.larksuite.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LARK_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.LARK_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

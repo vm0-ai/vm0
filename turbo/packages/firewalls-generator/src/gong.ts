@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     "          Authorization:",
-    '            "${{ basic(secrets.GONG_ACCESS_KEY, secrets.GONG_ACCESS_KEY_SECRET) }}",',
+    '            "${{ basic(auth.GONG_ACCESS_KEY, auth.GONG_ACCESS_KEY_SECRET) }}",',
     "        },",
     "      },",
     "      permissions: [],",

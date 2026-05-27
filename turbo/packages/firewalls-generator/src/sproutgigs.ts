@@ -122,7 +122,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     "          Authorization:",
-    '            "${{ basic(vars.SPROUTGIGS_USER_ID, secrets.SPROUTGIGS_API_SECRET) }}",',
+    '            "${{ basic(auth.SPROUTGIGS_USER_ID, auth.SPROUTGIGS_API_SECRET) }}",',
     "        },",
     "      },",
     "      permissions: [",

@@ -200,7 +200,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.clerk.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CLERK_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CLERK_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

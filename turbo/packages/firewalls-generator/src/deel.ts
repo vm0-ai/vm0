@@ -183,7 +183,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.letsdeel.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DEEL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.DEEL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

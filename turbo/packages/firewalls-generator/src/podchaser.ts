@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.podchaser.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PODCHASER_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PODCHASER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

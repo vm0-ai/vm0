@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.airtable.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.AIRTABLE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.AIRTABLE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

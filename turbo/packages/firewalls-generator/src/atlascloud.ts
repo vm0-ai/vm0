@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.atlascloud.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ATLASCLOUD_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.ATLASCLOUD_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

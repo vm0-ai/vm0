@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.builtwith.com",',
     "      auth: {",
     "        query: {",
-    '          KEY: "${{ secrets.BUILTWITH_TOKEN }}",',
+    '          KEY: "${{ auth.BUILTWITH_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

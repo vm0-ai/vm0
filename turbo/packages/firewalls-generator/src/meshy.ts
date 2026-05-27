@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.meshy.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.MESHY_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.MESHY_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

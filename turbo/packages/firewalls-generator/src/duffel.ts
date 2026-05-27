@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.duffel.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DUFFEL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.DUFFEL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

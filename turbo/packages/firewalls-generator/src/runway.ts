@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.dev.runwayml.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.RUNWAY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.RUNWAY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

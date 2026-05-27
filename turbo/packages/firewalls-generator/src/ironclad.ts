@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.IRONCLAD_HOST }}",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.IRONCLAD_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.IRONCLAD_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

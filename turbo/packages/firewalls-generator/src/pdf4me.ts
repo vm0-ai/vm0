@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pdf4me.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ secrets.PDF4ME_TOKEN }}",',
+    '          Authorization: "${{ auth.PDF4ME_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

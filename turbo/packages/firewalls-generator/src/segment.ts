@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.segmentapis.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SEGMENT_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SEGMENT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.mapbox.com",',
     "      auth: {",
     "        query: {",
-    '          access_token: "${{ secrets.MAPBOX_TOKEN }}",',
+    '          access_token: "${{ auth.MAPBOX_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

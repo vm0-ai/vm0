@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.replicate.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.REPLICATE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.REPLICATE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -42,7 +42,7 @@ pub struct ExecutionContext {
     // Deserialized for forward compatibility but not consumed by runner.
     #[serde(default, rename = "agentComposeVersionId")]
     pub _agent_compose_version_id: Option<String>,
-    // Vars are passed to the proxy registry for auth header template resolution.
+    // Vars are retained in the proxy registry for metadata/debug compatibility.
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
     // Checkpoint resume not yet implemented
@@ -59,13 +59,13 @@ pub struct ExecutionContext {
     pub resume_session: Option<ResumeSession>,
     #[serde(default)]
     pub secret_values: Option<Vec<String>>,
-    // Forwarded to mitm-addon via proxy registry for auth resolution
+    // Encrypted firewall auth value map, forwarded to mitm-addon for auth resolution.
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
-    // Maps secret names to OAuth connector types for runtime token refresh
+    // Maps refreshable auth keys to OAuth connector types for runtime token refresh.
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
-    // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh
+    // Per-auth-key refresh metadata, forwarded to mitm-addon for owner-aware refresh.
     #[serde(default)]
     pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,

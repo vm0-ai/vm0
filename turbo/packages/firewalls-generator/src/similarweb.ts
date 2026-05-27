@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://api.similarweb.com",',
     "      auth: {",
     "        headers: {",
-    '          "api-key": "${{ secrets.SIMILARWEB_TOKEN }}",',
+    '          "api-key": "${{ auth.SIMILARWEB_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

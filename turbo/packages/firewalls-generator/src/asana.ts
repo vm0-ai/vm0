@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://app.asana.com/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ASANA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.ASANA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

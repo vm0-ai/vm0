@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.line.me",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LINE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.LINE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

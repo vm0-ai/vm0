@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://connect.squareup.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SQUARE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SQUARE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

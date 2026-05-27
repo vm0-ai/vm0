@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.streak.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(secrets.STREAK_TOKEN, ) }}",',
+    '          Authorization: "${{ basic(auth.STREAK_TOKEN, ) }}",',
     "        },",
     "      },",
     "      permissions: [],",

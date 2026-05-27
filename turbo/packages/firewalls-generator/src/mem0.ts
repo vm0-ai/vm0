@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.mem0.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Token ${{ secrets.MEM0_TOKEN }}",',
+    '          Authorization: "Token ${{ auth.MEM0_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

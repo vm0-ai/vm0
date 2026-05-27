@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.supadata.ai",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.SUPADATA_TOKEN }}",',
+    '          "x-api-key": "${{ auth.SUPADATA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

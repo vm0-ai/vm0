@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "${{ vars.QDRANT_BASE_URL }}",',
     "      auth: {",
     "        headers: {",
-    '          "api-key": "${{ secrets.QDRANT_TOKEN }}",',
+    '          "api-key": "${{ auth.QDRANT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

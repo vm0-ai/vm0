@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.supermemory.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SUPERMEMORY_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.SUPERMEMORY_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

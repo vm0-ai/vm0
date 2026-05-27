@@ -193,7 +193,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.axiom.co",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.AXIOM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.AXIOM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

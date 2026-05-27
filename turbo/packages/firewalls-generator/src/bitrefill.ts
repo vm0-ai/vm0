@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.bitrefill.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.BITREFILL_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.BITREFILL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

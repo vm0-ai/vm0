@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.apollo.io",',
     "      auth: {",
     "        headers: {",
-    '          "X-Api-Key": "${{ secrets.APOLLO_TOKEN }}",',
+    '          "X-Api-Key": "${{ auth.APOLLO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

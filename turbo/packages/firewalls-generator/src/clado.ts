@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     '      base: "https://search.clado.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CLADO_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CLADO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

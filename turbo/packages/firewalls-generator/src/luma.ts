@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://public-api.luma.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-luma-api-key": "${{ secrets.LUMA_API_KEY }}",',
+    '          "x-luma-api-key": "${{ auth.LUMA_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://dev.to/api",',
     "      auth: {",
     "        headers: {",
-    '          "api-key": "${{ secrets.DEVTO_TOKEN }}",',
+    '          "api-key": "${{ auth.DEVTO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

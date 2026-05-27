@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "${{ vars.METABASE_BASE_URL }}",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.METABASE_TOKEN }}",',
+    '          "x-api-key": "${{ auth.METABASE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

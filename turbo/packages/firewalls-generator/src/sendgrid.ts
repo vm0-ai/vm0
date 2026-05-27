@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.sendgrid.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SENDGRID_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SENDGRID_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

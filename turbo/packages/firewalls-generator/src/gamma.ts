@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://public-api.gamma.app",',
     "      auth: {",
     "        headers: {",
-    '          "X-API-KEY": "${{ secrets.GAMMA_TOKEN }}",',
+    '          "X-API-KEY": "${{ auth.GAMMA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

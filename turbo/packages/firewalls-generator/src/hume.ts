@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.hume.ai",',
     "      auth: {",
     "        headers: {",
-    '          "X-Hume-Api-Key": "${{ secrets.HUME_TOKEN }}",',
+    '          "X-Hume-Api-Key": "${{ auth.HUME_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

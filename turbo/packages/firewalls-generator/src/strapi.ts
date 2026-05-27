@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "${{ vars.STRAPI_BASE_URL }}",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.STRAPI_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.STRAPI_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

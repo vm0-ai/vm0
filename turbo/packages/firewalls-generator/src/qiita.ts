@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://qiita.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.QIITA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.QIITA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

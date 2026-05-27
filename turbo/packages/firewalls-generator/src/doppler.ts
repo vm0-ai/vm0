@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.doppler.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DOPPLER_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.DOPPLER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

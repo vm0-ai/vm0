@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.twenty.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.TWENTY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.TWENTY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

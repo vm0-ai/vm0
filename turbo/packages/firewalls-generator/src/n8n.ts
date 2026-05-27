@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "${{ vars.N8N_BASE_URL }}/api/v1",',
     "      auth: {",
     "        headers: {",
-    '          "X-N8N-API-KEY": "${{ secrets.N8N_TOKEN }}",',
+    '          "X-N8N-API-KEY": "${{ auth.N8N_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

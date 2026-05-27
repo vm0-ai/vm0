@@ -25,12 +25,28 @@ export const firewallPermissionSchema = z.object({
 /**
  * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
  */
+const LEGACY_AUTH_REF_PATTERN =
+  /\$\{\{[^}]*\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)[^}]*\}\}/;
+
+function rejectLegacyAuthRefs(value: string, ctx: z.RefinementCtx): void {
+  if (!LEGACY_AUTH_REF_PATTERN.test(value)) {
+    return;
+  }
+  ctx.addIssue({
+    code: "custom",
+    message:
+      "Firewall auth templates must use auth.NAME instead of secrets.NAME or vars.NAME",
+  });
+}
+
+const authTemplateStringSchema = z.string().superRefine(rejectLegacyAuthRefs);
+
 export const firewallApiSchema = z.object({
   base: z.string(),
   auth: z.object({
-    headers: z.record(z.string(), z.string()).optional(),
-    base: z.string().optional(),
-    query: z.record(z.string(), z.string()).optional(),
+    headers: z.record(z.string(), authTemplateStringSchema).optional(),
+    base: authTemplateStringSchema.optional(),
+    query: z.record(z.string(), authTemplateStringSchema).optional(),
   }),
   permissions: z.array(firewallPermissionSchema).optional(),
 });
@@ -172,15 +188,14 @@ export type Firewall = z.infer<typeof firewallSchema>;
 export type Firewalls = z.infer<typeof firewallsSchema>;
 
 /**
- * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.
- * Tolerates optional whitespace inside braces: `${{ secrets.X }}` and `${{secrets.X}}`.
+ * Regex pattern matching `${{ auth.XXX }}` references in auth templates.
+ * Tolerates optional whitespace inside braces: `${{ auth.X }}` and `${{auth.X}}`.
  */
-const AUTH_SECRET_PATTERN =
-  /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const AUTH_VALUE_PATTERN = /\$\{\{\s*auth\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
  * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
- * Each side is secrets.X, vars.X, "literal", or empty; comma is always required.
+ * Each side is auth.X, "literal", or empty; comma is always required.
  * Returns a new instance each time to avoid `.lastIndex` state leaking
  * between callers when the `/g` flag is used.
  * Groups: (1) ns1, (2) key1, (3) lit1, (4) ns2, (5) key2, (6) lit2 — all optional.
@@ -191,43 +206,40 @@ const AUTH_SECRET_PATTERN =
  * Shared between build-time secret extraction and runtime template resolution.
  */
 export function basicAuthTemplateRe(): RegExp {
-  return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*\)\s*\}\}/g;
+  return /\$\{\{\s*basic\(\s*(?:(auth)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*,\s*(?:(auth)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*\)\s*\}\}/g;
 }
 
 /**
- * Extract all secret names referenced in firewall rule auth header templates.
- * Handles both simple `${{ secrets.X }}` and `${{ basic(...) }}` templates.
- * E.g., `Bearer ${{ secrets.GITHUB_TOKEN }}` → `["GITHUB_TOKEN"]`
+ * Extract all auth keys referenced in firewall rule auth templates.
+ * Handles both simple `${{ auth.X }}` and `${{ basic(...) }}` templates.
+ * E.g., `Bearer ${{ auth.GITHUB_TOKEN }}` → `["GITHUB_TOKEN"]`
  */
-export function extractSecretNamesFromApis(
+export function extractAuthNamesFromApis(
   apis: FirewallConfig["apis"],
 ): string[] {
   const names = new Set<string>();
   for (const entry of apis) {
     for (const value of Object.values(entry.auth.headers ?? {})) {
-      for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
+      for (const match of value.matchAll(AUTH_VALUE_PATTERN)) {
         names.add(match[1]!);
       }
-      // basic() args may reference secrets, vars, or be string literals;
-      // only collect secrets here (vars don't need placeholders, literals
-      // are baked into the config).
       for (const match of value.matchAll(basicAuthTemplateRe())) {
-        if (match[1] === "secrets" && match[2]) names.add(match[2]);
-        if (match[4] === "secrets" && match[5]) names.add(match[5]);
+        if (match[1] === "auth" && match[2]) names.add(match[2]);
+        if (match[4] === "auth" && match[5]) names.add(match[5]);
       }
     }
-    // Scan auth.base for secret references (webhook-url connectors).
-    // Only simple ${{ secrets.X }} — basic() makes no sense in a URL template.
+    // Scan auth.base for auth references (webhook-url connectors).
+    // Only simple ${{ auth.X }} — basic() makes no sense in a URL template.
     if (entry.auth.base) {
-      for (const match of entry.auth.base.matchAll(AUTH_SECRET_PATTERN)) {
+      for (const match of entry.auth.base.matchAll(AUTH_VALUE_PATTERN)) {
         names.add(match[1]!);
       }
     }
-    // Scan auth.query for secret references (query-param auth connectors).
-    // Only simple ${{ secrets.X }} — basic() makes no sense in query params.
+    // Scan auth.query for auth references (query-param auth connectors).
+    // Only simple ${{ auth.X }} — basic() makes no sense in query params.
     if (entry.auth.query) {
       for (const value of Object.values(entry.auth.query)) {
-        for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
+        for (const match of value.matchAll(AUTH_VALUE_PATTERN)) {
           names.add(match[1]!);
         }
       }

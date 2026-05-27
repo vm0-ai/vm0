@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://maps.googleapis.com",',
     "      auth: {",
     "        query: {",
-    '          key: "${{ secrets.GOOGLE_MAPS_TOKEN }}",',
+    '          key: "${{ auth.GOOGLE_MAPS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

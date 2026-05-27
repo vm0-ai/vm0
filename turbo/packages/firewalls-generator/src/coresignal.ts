@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.coresignal.com",',
     "      auth: {",
     "        headers: {",
-    '          apikey: "${{ secrets.CORESIGNAL_TOKEN }}",',
+    '          apikey: "${{ auth.CORESIGNAL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

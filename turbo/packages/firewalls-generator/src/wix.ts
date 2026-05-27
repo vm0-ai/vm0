@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://www.wixapis.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ secrets.WIX_TOKEN }}",',
+    '          Authorization: "${{ auth.WIX_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

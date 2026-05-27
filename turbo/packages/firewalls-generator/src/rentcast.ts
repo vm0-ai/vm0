@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.rentcast.io/v1",',
     "      auth: {",
     "        headers: {",
-    '          "X-Api-Key": "${{ secrets.RENTCAST_API_KEY }}",',
+    '          "X-Api-Key": "${{ auth.RENTCAST_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

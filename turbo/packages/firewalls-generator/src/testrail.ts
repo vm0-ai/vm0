@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     "          Authorization:",
-    '            "${{ basic(secrets.TESTRAIL_EMAIL, secrets.TESTRAIL_TOKEN) }}",',
+    '            "${{ basic(auth.TESTRAIL_EMAIL, auth.TESTRAIL_TOKEN) }}",',
     "        },",
     "      },",
     "      permissions: [],",

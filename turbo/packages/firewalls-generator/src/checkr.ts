@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.checkr.com/v1",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(secrets.CHECKR_TOKEN, \\"\\") }}",',
+    '          Authorization: "${{ basic(auth.CHECKR_TOKEN, \\"\\") }}",',
     "        },",
     "      },",
     "      permissions: [",

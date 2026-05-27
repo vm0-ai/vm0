@@ -41,7 +41,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
                 "permissions": [
                     {
                         "name": "read-repos",
@@ -95,7 +95,7 @@ async def test_firewall_malformed_config_block_reports_reason(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
                 "permissions": [
                     {
                         "name": "read-repos",
@@ -141,7 +141,7 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
             "permissions": [
                 {
                     "name": "read-repos",
@@ -190,7 +190,7 @@ async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
             "permissions": [
                 {
                     "name": "read-repos",
@@ -241,7 +241,7 @@ async def test_firewall_permission_denied_block_reports_reason(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
                 "permissions": [
                     {
                         "name": "read-repos",
@@ -288,7 +288,7 @@ async def test_firewall_permission_allows_matched(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "auth": {"headers": {"Authorization": "Bearer ${{ auth.GITHUB_TOKEN }}"}},
                 "permissions": [
                     {
                         "name": "read-repos",
@@ -338,7 +338,7 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
             firewall_name="example",
             api_entry={
                 "base": "https://api-{region}.example.com/v1",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+                "auth": {"headers": {"Authorization": "Bearer ${{ auth.EXAMPLE_TOKEN }}"}},
                 "permissions": [
                     {
                         "name": "read-items",

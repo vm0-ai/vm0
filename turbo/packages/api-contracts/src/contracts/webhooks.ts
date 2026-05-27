@@ -184,6 +184,8 @@ const firewallAuthResponseSchema = z.object({
   // normal source; billable firewall auth can shorten it to force credit
   // re-authorization. Null means non-expiring only for non-billable auth.
   expiresAt: z.number().nullable(),
+  // Kept as resolvedSecrets for the runner/addon wire contract; values are
+  // resolved firewall auth keys after the auth.* migration.
   resolvedSecrets: z.array(z.string()),
   refreshedConnectors: z.array(z.string()),
   refreshedSecrets: z.array(z.string()),
@@ -199,12 +201,13 @@ export const webhookFirewallAuthContract = c.router({
     path: "/api/webhooks/agent/firewall/auth",
     headers: authHeadersSchema,
     body: z.object({
-      encryptedSecrets: z.string().min(1),
+      encryptedSecrets: z.string().min(1), // encrypted firewall auth value map
       authHeaders: z.record(z.string(), z.string()),
       authBase: z.string().optional(),
       authQuery: z.record(z.string(), z.string()).optional(),
       secretConnectorMap: z.record(z.string(), z.string()).optional(),
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
+      // Kept for older addon payload shape; auth resolution no longer reads it.
       vars: z.record(z.string(), z.string()).optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.

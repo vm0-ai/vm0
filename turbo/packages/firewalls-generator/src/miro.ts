@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.miro.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.MIRO_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.MIRO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

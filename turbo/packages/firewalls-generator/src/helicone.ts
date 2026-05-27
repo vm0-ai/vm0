@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.helicone.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.HELICONE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.HELICONE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

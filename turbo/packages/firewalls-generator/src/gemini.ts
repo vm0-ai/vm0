@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://generativelanguage.googleapis.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-goog-api-key": "${{ secrets.GEMINI_TOKEN }}",',
+    '          "x-goog-api-key": "${{ auth.GEMINI_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

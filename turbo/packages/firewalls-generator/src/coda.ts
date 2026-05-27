@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://coda.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CODA_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CODA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

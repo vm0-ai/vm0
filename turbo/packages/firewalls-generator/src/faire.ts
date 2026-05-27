@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://www.faire.com/external-api/v2",',
     "      auth: {",
     "        headers: {",
-    '          "X-FAIRE-ACCESS-TOKEN": "${{ secrets.FAIRE_TOKEN }}",',
+    '          "X-FAIRE-ACCESS-TOKEN": "${{ auth.FAIRE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

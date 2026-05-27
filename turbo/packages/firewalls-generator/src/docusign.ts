@@ -46,7 +46,7 @@ function generateTypeScript(): string {
       base: "https://${domain}",
       auth: {
         headers: {
-          Authorization: "Bearer $\{{ secrets.DOCUSIGN_TOKEN }}",
+          Authorization: "Bearer $\{{ auth.DOCUSIGN_TOKEN }}",
         },
       },
       permissions: [],

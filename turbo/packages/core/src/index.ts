@@ -238,7 +238,7 @@ export {
   connectorSessionStatusResponseSchema,
   scopeDiffResponseSchema,
   basicAuthTemplateRe,
-  extractSecretNamesFromApis,
+  extractAuthNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,
   firewallSchema,

@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.deepseek.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DEEPSEEK_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.DEEPSEEK_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

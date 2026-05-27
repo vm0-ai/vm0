@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "${{ vars.REAP_API_BASE_URL }}",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.REAP_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.REAP_API_KEY }}",',
     `          "Reap-Version": "${REAP_API_VERSION}",`,
     "        },",
     "      },",

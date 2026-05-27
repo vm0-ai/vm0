@@ -30,7 +30,7 @@ apis:
   - base: https://api.custom-git.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.GIT_TOKEN }}"
+        Authorization: "Bearer \${{ auth.GIT_TOKEN }}"
     permissions:
       - name: repo-read
         description: Read repository metadata
@@ -59,7 +59,7 @@ apis:
   - base: https://custom-chat.com/api
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.CHAT_TOKEN }}"
+        Authorization: "Bearer \${{ auth.CHAT_TOKEN }}"
     permissions:
       - name: full-access
         rules:
@@ -67,7 +67,7 @@ apis:
   - base: https://files.custom-chat.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.CHAT_TOKEN }}"
+        Authorization: "Bearer \${{ auth.CHAT_TOKEN }}"
     permissions:
       - name: full-access
         rules:
@@ -257,12 +257,12 @@ apis:
   - base: https://api.empty-perm.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.TOKEN }}"
+        Authorization: "Bearer \${{ auth.TOKEN }}"
     permissions: []
   - base: https://uploads.empty-perm.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.TOKEN }}"
+        Authorization: "Bearer \${{ auth.TOKEN }}"
     permissions: []
 `;
     const expanded = await resolveFirewallSelections(
@@ -285,7 +285,7 @@ apis:
   - base: https://api.example.com
     auth:
       headers:
-        X-Api-Key: "\${{ secrets.EXAMPLE_KEY }}"
+        X-Api-Key: "\${{ auth.EXAMPLE_KEY }}"
     permissions:
       - name: full-access
         rules:
@@ -678,7 +678,7 @@ describe("resolveFirewallBaseUrlVars", () => {
         base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
         auth: {
           headers: {
-            Authorization: "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
+            Authorization: "Bearer ${{ auth.ZENDESK_API_TOKEN }}",
           },
         },
       },
@@ -691,7 +691,7 @@ describe("resolveFirewallBaseUrlVars", () => {
       {
         base: "https://api.github.com",
         auth: {
-          headers: { Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}" },
+          headers: { Authorization: "Bearer ${{ auth.GITHUB_TOKEN }}" },
         },
       },
     ],
@@ -745,7 +745,7 @@ describe("resolveFirewallBaseUrlVars", () => {
       ZENDESK_SUBDOMAIN: "mycompany",
     });
     expect(result[0]!.apis[0]!.auth.headers!.Authorization).toBe(
-      "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
+      "Bearer ${{ auth.ZENDESK_API_TOKEN }}",
     );
   });
 

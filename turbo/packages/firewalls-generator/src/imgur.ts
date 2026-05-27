@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.imgur.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Client-ID ${{ secrets.IMGUR_CLIENT_ID }}",',
+    '          Authorization: "Client-ID ${{ auth.IMGUR_CLIENT_ID }}",',
     "        },",
     "      },",
     "      permissions: [],",

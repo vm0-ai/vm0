@@ -398,7 +398,7 @@ describe("openai-api-key codex provider", () => {
     expect(config.apis).toHaveLength(1);
     expect(config.apis[0]!.base).toBe("https://api.openai.com/v1/responses");
     expect(config.apis[0]!.auth.headers).toEqual({
-      Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+      Authorization: "Bearer ${{ auth.OPENAI_API_KEY }}",
     });
   });
 
@@ -591,8 +591,8 @@ describe("codex-oauth-token codex provider", () => {
   it("firewall injects Authorization and ChatGPT-Account-ID headers", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.apis[0]!.auth.headers).toEqual({
-      Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
-      "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
+      Authorization: "Bearer ${{ auth.CHATGPT_ACCESS_TOKEN }}",
+      "ChatGPT-Account-ID": "${{ auth.CHATGPT_ACCOUNT_ID }}",
     });
   });
 
@@ -808,7 +808,7 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
       expect(config.apis).toHaveLength(1);
       expect(config.apis[0]!.auth.headers).toMatchObject({
         Authorization: expect.stringMatching(
-          /^Bearer \$\{\{ secrets\.[A-Z_]+ \}\}$/,
+          /^Bearer \$\{\{ auth\.[A-Z_]+ \}\}$/,
         ),
       });
     },

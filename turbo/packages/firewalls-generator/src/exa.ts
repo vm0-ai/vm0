@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.exa.ai",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.EXA_TOKEN }}",',
+    '          "x-api-key": "${{ auth.EXA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://mcp.jam.dev",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.JAM_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.JAM_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

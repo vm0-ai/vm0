@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.todoist.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.TODOIST_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.TODOIST_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

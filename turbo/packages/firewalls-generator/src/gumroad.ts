@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.gumroad.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.GUMROAD_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.GUMROAD_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

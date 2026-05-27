@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.hunter.io",',
     "      auth: {",
     "        query: {",
-    '          api_key: "${{ secrets.HUNTER_TOKEN }}",',
+    '          api_key: "${{ auth.HUNTER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

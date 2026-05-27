@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.browserbase.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-BB-API-Key": "${{ secrets.BROWSERBASE_TOKEN }}",',
+    '          "X-BB-API-Key": "${{ auth.BROWSERBASE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

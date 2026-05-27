@@ -29,7 +29,7 @@ function generateTypeScript(): string {
       base: "https://${domain}",
       auth: {
         headers: {
-          Authorization: "Token $\{{ secrets.MAKE_TOKEN }}",
+          Authorization: "Token $\{{ auth.MAKE_TOKEN }}",
         },
       },
       permissions: [],

@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.customer.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.CUSTOMERIO_APP_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.CUSTOMERIO_APP_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

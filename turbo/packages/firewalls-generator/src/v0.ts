@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.v0.dev",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.V0_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.V0_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

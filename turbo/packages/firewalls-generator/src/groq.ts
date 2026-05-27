@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.groq.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.GROQ_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.GROQ_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

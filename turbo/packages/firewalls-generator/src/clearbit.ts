@@ -39,7 +39,7 @@ function generateTypeScript(): string {
     "    base,",
     "    auth: {",
     "      headers: {",
-    '        Authorization: "Bearer ${{ secrets.CLEARBIT_TOKEN }}",',
+    '        Authorization: "Bearer ${{ auth.CLEARBIT_TOKEN }}",',
     "      },",
     "    },",
     "    permissions: [],",

@@ -428,7 +428,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://slack.com/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SLACK_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SLACK_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",
@@ -444,7 +444,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   lines.push('      base: "https://files.slack.com",');
   lines.push("      auth: {");
   lines.push("        headers: {");
-  lines.push('          Authorization: "Bearer ${{ secrets.SLACK_TOKEN }}",');
+  lines.push('          Authorization: "Bearer ${{ auth.SLACK_TOKEN }}",');
   lines.push("        },");
   lines.push("      },");
   lines.push("      permissions: [");

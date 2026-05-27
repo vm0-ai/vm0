@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.apify.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.APIFY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.APIFY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

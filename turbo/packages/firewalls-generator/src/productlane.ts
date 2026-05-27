@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://productlane.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PRODUCTLANE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PRODUCTLANE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

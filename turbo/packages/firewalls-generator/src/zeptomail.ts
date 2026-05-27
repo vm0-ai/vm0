@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.zeptomail.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Zoho-enczapikey ${{ secrets.ZEPTOMAIL_TOKEN }}",',
+    '          Authorization: "Zoho-enczapikey ${{ auth.ZEPTOMAIL_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractSecretNamesFromApis } from "../../firewall-types";
+import { extractAuthNamesFromApis } from "../../firewall-types";
 import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
@@ -18,7 +18,7 @@ describe("base44 firewall", () => {
       base: "https://app.base44.com/mcp",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.BASE44_TOKEN }}",
+          Authorization: "Bearer ${{ auth.BASE44_TOKEN }}",
         },
       },
       permissions: [],
@@ -27,12 +27,12 @@ describe("base44 firewall", () => {
       base: "https://app.base44.com/api/apps",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.BASE44_TOKEN }}",
+          Authorization: "Bearer ${{ auth.BASE44_TOKEN }}",
         },
       },
       permissions: [],
     });
-    expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
+    expect(extractAuthNamesFromApis([...firewall.apis])).toStrictEqual([
       "BASE44_TOKEN",
     ]);
     expect(firewall.placeholders).toMatchObject({

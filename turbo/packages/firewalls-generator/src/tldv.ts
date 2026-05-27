@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://pasta.tldv.io",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.TLDV_TOKEN }}",',
+    '          "x-api-key": "${{ auth.TLDV_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

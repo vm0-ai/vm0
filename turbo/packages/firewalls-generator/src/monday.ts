@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.monday.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.MONDAY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.MONDAY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

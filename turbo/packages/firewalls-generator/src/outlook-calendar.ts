@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://graph.microsoft.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.OUTLOOK_CALENDAR_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.OUTLOOK_CALENDAR_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

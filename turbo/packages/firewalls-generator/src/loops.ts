@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://app.loops.so/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LOOPS_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.LOOPS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

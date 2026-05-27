@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.search.brave.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-Subscription-Token": "${{ secrets.BRAVE_API_KEY }}",',
+    '          "X-Subscription-Token": "${{ auth.BRAVE_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     "          Authorization:",
-    '            "${{ basic(secrets.SERVICENOW_USERNAME, secrets.SERVICENOW_PASSWORD) }}",',
+    '            "${{ basic(auth.SERVICENOW_USERNAME, auth.SERVICENOW_PASSWORD) }}",',
     "        },",
     "      },",
     "      permissions: [],",

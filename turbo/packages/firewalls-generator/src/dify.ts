@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.dify.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DIFY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.DIFY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

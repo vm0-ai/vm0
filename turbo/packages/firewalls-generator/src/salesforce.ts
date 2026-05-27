@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.SALESFORCE_INSTANCE }}.my.salesforce.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SALESFORCE_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SALESFORCE_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

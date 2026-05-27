@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://api.ahrefs.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.AHREFS_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.AHREFS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

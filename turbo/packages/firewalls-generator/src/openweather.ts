@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.openweathermap.org",',
     "      auth: {",
     "        query: {",
-    '          appid: "${{ secrets.OPENWEATHER_TOKEN }}",',
+    '          appid: "${{ auth.OPENWEATHER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://discord.com/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bot ${{ secrets.DISCORD_BOT_TOKEN }}",',
+    '          Authorization: "Bot ${{ auth.DISCORD_BOT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

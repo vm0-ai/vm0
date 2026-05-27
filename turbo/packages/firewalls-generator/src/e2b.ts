@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.e2b.app",',
     "      auth: {",
     "        headers: {",
-    '          "X-API-Key": "${{ secrets.E2B_TOKEN }}",',
+    '          "X-API-Key": "${{ auth.E2B_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

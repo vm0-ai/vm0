@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.wandb.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.WANDB_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.WANDB_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

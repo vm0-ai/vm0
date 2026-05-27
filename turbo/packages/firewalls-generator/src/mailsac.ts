@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://mailsac.com",',
     "      auth: {",
     "        headers: {",
-    '          "Mailsac-Key": "${{ secrets.MAILSAC_TOKEN }}",',
+    '          "Mailsac-Key": "${{ auth.MAILSAC_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

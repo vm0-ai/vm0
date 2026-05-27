@@ -187,7 +187,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.notion.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.NOTION_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.NOTION_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

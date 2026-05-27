@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://api.smith.langchain.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-Api-Key": "${{ secrets.LANGSMITH_TOKEN }}",',
+    '          "X-Api-Key": "${{ auth.LANGSMITH_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

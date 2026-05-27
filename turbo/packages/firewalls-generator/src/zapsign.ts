@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.zapsign.com.br",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ZAPSIGN_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.ZAPSIGN_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

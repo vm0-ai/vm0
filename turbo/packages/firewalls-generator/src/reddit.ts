@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://oauth.reddit.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.REDDIT_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.REDDIT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

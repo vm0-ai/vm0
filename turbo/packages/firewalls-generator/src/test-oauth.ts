@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://{pr}.vm6.ai/api/test/oauth-provider",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.TEST_OAUTH_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.TEST_OAUTH_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://backboard.railway.com",',
     "      auth: {",
     "        headers: {",
-    '          "Project-Access-Token": "${{ secrets.RAILWAY_PROJECT_TOKEN }}",',
+    '          "Project-Access-Token": "${{ auth.RAILWAY_PROJECT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -490,7 +490,7 @@ class TestMatchFirewallRequest:
             [
                 {
                     "base": "https://{subdomain}.zendesk.com",
-                    "auth": {"headers": {"Authorization": "Basic ${{ secrets.AUTH }}"}},
+                    "auth": {"headers": {"Authorization": "Basic ${{ auth.AUTH }}"}},
                     "permissions": [{"name": "tickets", "rules": ["GET /api/v2/tickets"]}],
                 }
             ],
@@ -740,7 +740,7 @@ class TestMatchFirewallRequestRelPath:
             [
                 {
                     "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
-                    "auth": {"headers": {}, "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
+                    "auth": {"headers": {}, "base": "${{ auth.DISCORD_WEBHOOK_URL }}"},
                     "permissions": [{"name": "send-message", "rules": ["POST /"]}],
                 }
             ],

@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://cloud.onyx.app",',
     "      auth: {",
     "        headers: {",
-    '          "Authorization": "Bearer ${{ secrets.ONYX_TOKEN }}",',
+    '          "Authorization": "Bearer ${{ auth.ONYX_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

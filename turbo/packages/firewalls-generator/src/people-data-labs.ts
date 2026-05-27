@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     '      base: "https://api.peopledatalabs.com",',
     "      auth: {",
     "        headers: {",
-    '          "X-Api-Key": "${{ secrets.PEOPLE_DATA_LABS_API_KEY }}",',
+    '          "X-Api-Key": "${{ auth.PEOPLE_DATA_LABS_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

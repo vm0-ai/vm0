@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     '      base: "https://external.api.recraft.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.RECRAFT_API_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.RECRAFT_API_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

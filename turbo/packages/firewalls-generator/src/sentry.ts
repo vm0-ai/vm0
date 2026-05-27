@@ -110,7 +110,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://sentry.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SENTRY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.SENTRY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

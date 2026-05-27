@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://serpapi.com",',
     "      auth: {",
     "        query: {",
-    '          api_key: "${{ secrets.SERPAPI_TOKEN }}",',
+    '          api_key: "${{ auth.SERPAPI_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

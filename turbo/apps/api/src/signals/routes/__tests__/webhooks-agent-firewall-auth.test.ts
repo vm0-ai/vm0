@@ -83,12 +83,12 @@ function encryptedSecrets(values: Record<string, string>): string {
   return encrypted;
 }
 
-function secretTemplate(name: string): string {
-  return `\${{ secrets.${name} }}`;
+function authTemplate(name: string): string {
+  return `\${{ auth.${name} }}`;
 }
 
-function varTemplate(name: string): string {
-  return `\${{ vars.${name} }}`;
+function legacyTemplate(namespace: "secrets" | "vars", name: string): string {
+  return `\${{ ${namespace}.${name} }}`;
 }
 
 function basicTemplate(first: string, second: string): string {
@@ -460,7 +460,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
         },
         headers: {},
@@ -479,7 +479,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
         },
         headers: { authorization: "Bearer invalid-token" },
@@ -536,7 +536,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: "not-encrypted",
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
         },
         headers: authHeaders(fixture),
@@ -548,7 +548,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("returns connector-not-configured for missing referenced secrets or vars", async () => {
+  it("returns connector-not-configured for missing referenced auth values", async () => {
     const fixture = await track(seedFixture());
 
     const missingSecret = await accept(
@@ -556,7 +556,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({}),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
         },
         headers: authHeaders(fixture),
@@ -574,13 +574,41 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "token" }),
-          authHeaders: { "X-Workspace": varTemplate("WORKSPACE_ID") },
+          authHeaders: { "X-Workspace": authTemplate("WORKSPACE_ID") },
         },
         headers: authHeaders(fixture),
       }),
       [424],
     );
     expect(missingVar.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+  });
+
+  it("rejects legacy source namespaces in firewall auth templates", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "token" }),
+          authHeaders: {
+            Authorization: `Bearer ${legacyTemplate("secrets", "API_TOKEN")}`,
+          },
+          authQuery: {
+            workspace: legacyTemplate("vars", "WORKSPACE_ID"),
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Firewall auth templates must use auth.NAME instead of secrets.NAME or vars.NAME",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("resolves simple and basic auth templates", async () => {
@@ -591,24 +619,19 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({
             API_TOKEN: "secret-token",
-            BASIC_PASSWORD: "secret-password",
-          }),
-          authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
-            "X-Basic": basicTemplate(
-              "vars.BASIC_USER",
-              "secrets.BASIC_PASSWORD",
-            ),
-          },
-          authBase: `https://${varTemplate("SUBDOMAIN")}.example.com`,
-          authQuery: {
-            workspace: varTemplate("WORKSPACE_ID"),
-            token: secretTemplate("API_TOKEN"),
-          },
-          vars: {
             BASIC_USER: "user",
+            BASIC_PASSWORD: "secret-password",
             SUBDOMAIN: "api",
             WORKSPACE_ID: "workspace-1",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
+            "X-Basic": basicTemplate("auth.BASIC_USER", "auth.BASIC_PASSWORD"),
+          },
+          authBase: `https://${authTemplate("SUBDOMAIN")}.example.com`,
+          authQuery: {
+            workspace: authTemplate("WORKSPACE_ID"),
+            token: authTemplate("API_TOKEN"),
           },
         },
         headers: authHeaders(fixture),
@@ -629,13 +652,19 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         token: "secret-token",
       },
       expiresAt: null,
-      resolvedSecrets: ["API_TOKEN", "BASIC_PASSWORD"],
+      resolvedSecrets: [
+        "API_TOKEN",
+        "BASIC_PASSWORD",
+        "BASIC_USER",
+        "SUBDOMAIN",
+        "WORKSPACE_ID",
+      ],
       refreshedConnectors: [],
       refreshedSecrets: [],
     });
   });
 
-  it("resolves query, vars, pass-through, and omitted query template cases", async () => {
+  it("resolves query, auth values, pass-through, and omitted query template cases", async () => {
     const fixture = await track(seedFixture());
 
     const combined = await accept(
@@ -644,19 +673,17 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           encryptedSecrets: encryptedSecrets({
             API_TOKEN: "secret-token",
             CLIENT_SECRET: "client-secret",
+            WORKSPACE_ID: "workspace-1",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
-            "X-Client": secretTemplate("CLIENT_SECRET"),
-            "X-Workspace": varTemplate("WORKSPACE_ID"),
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
+            "X-Client": authTemplate("CLIENT_SECRET"),
+            "X-Workspace": authTemplate("WORKSPACE_ID"),
             "X-Static": "static-value",
           },
           authQuery: {
-            token: secretTemplate("API_TOKEN"),
-            workspace: varTemplate("WORKSPACE_ID"),
-          },
-          vars: {
-            WORKSPACE_ID: "workspace-1",
+            token: authTemplate("API_TOKEN"),
+            workspace: authTemplate("WORKSPACE_ID"),
           },
         },
         headers: authHeaders(fixture),
@@ -675,7 +702,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         workspace: "workspace-1",
       },
       expiresAt: null,
-      resolvedSecrets: ["API_TOKEN", "CLIENT_SECRET"],
+      resolvedSecrets: ["API_TOKEN", "CLIENT_SECRET", "WORKSPACE_ID"],
       refreshedConnectors: [],
       refreshedSecrets: [],
     });
@@ -685,7 +712,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
         },
         headers: authHeaders(fixture),
@@ -725,120 +752,120 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const encode = (value: string): string => {
       return `Basic ${Buffer.from(value).toString("base64")}`;
     };
-    const literalSecretTemplate = `\${{ secrets.USER }}`;
-    const malformedBasicTemplate = `\${{ basic("oops"quoted", secrets.X) }}`;
+    const literalAuthTemplate = `\${{ auth.USER }}`;
+    const malformedBasicTemplate = `\${{ basic("oops"quoted", auth.X) }}`;
     type BasicAuthCase = {
       readonly template: string;
       readonly secrets: Record<string, string>;
       readonly vars: Record<string, string>;
       readonly expectedHeader: string;
-      readonly expectedSecrets: readonly string[];
+      readonly expectedAuthKeys: readonly string[];
     };
     const cases: readonly BasicAuthCase[] = [
       {
-        template: basicTemplate("secrets.USER", "secrets.PASS"),
+        template: basicTemplate("auth.USER", "auth.PASS"),
         secrets: { USER: "user", PASS: "pass" },
         vars: {},
         expectedHeader: encode("user:pass"),
-        expectedSecrets: ["PASS", "USER"],
+        expectedAuthKeys: ["PASS", "USER"],
       },
       {
-        template: basicTemplate("secrets.USER", ""),
+        template: basicTemplate("auth.USER", ""),
         secrets: { USER: "user" },
         vars: {},
         expectedHeader: encode("user:"),
-        expectedSecrets: ["USER"],
+        expectedAuthKeys: ["USER"],
       },
       {
-        template: basicTemplate("", "secrets.PASS"),
+        template: basicTemplate("", "auth.PASS"),
         secrets: { PASS: "pass" },
         vars: {},
         expectedHeader: encode(":pass"),
-        expectedSecrets: ["PASS"],
+        expectedAuthKeys: ["PASS"],
       },
       {
-        template: basicTemplate("vars.USER", "secrets.PASS"),
+        template: basicTemplate("auth.USER", "auth.PASS"),
         secrets: { PASS: "pass" },
         vars: { USER: "user" },
         expectedHeader: encode("user:pass"),
-        expectedSecrets: ["PASS"],
+        expectedAuthKeys: ["PASS", "USER"],
       },
       {
         template: basicTemplate("", ""),
         secrets: {},
         vars: {},
         expectedHeader: encode(":"),
-        expectedSecrets: [],
+        expectedAuthKeys: [],
       },
       {
-        template: basicTemplate("vars.USER", "vars.PASS"),
+        template: basicTemplate("auth.USER", "auth.PASS"),
         secrets: {},
         vars: { USER: "user", PASS: "pass" },
         expectedHeader: encode("user:pass"),
-        expectedSecrets: [],
+        expectedAuthKeys: ["PASS", "USER"],
       },
       {
-        template: basicTemplate('"literal"', "secrets.PASS"),
+        template: basicTemplate('"literal"', "auth.PASS"),
         secrets: { PASS: "pass" },
         vars: {},
         expectedHeader: encode("literal:pass"),
-        expectedSecrets: ["PASS"],
+        expectedAuthKeys: ["PASS"],
       },
       {
-        template: basicTemplate("secrets.USER", '"literal"'),
+        template: basicTemplate("auth.USER", '"literal"'),
         secrets: { USER: "user" },
         vars: {},
         expectedHeader: encode("user:literal"),
-        expectedSecrets: ["USER"],
+        expectedAuthKeys: ["USER"],
       },
       {
         template: basicTemplate('"user"', '"pass"'),
         secrets: {},
         vars: {},
         expectedHeader: encode("user:pass"),
-        expectedSecrets: [],
+        expectedAuthKeys: [],
       },
       {
         template: basicTemplate('""', '""'),
         secrets: {},
         vars: {},
         expectedHeader: encode(":"),
-        expectedSecrets: [],
+        expectedAuthKeys: [],
       },
       {
-        template: basicTemplate("vars.USER", '"literal"'),
+        template: basicTemplate("auth.USER", '"literal"'),
         secrets: {},
         vars: { USER: "user" },
         expectedHeader: encode("user:literal"),
-        expectedSecrets: [],
+        expectedAuthKeys: ["USER"],
       },
       {
-        template: basicTemplate(`"${literalSecretTemplate}"`, "secrets.PASS"),
+        template: basicTemplate(`"${literalAuthTemplate}"`, "auth.PASS"),
         secrets: { PASS: "pass", USER: "must-not-use" },
         vars: {},
-        expectedHeader: encode(`${literalSecretTemplate}:pass`),
-        expectedSecrets: ["PASS"],
+        expectedHeader: encode(`${literalAuthTemplate}:pass`),
+        expectedAuthKeys: ["PASS"],
       },
       {
-        template: basicTemplate('"secrets.USER"', "secrets.PASS"),
+        template: basicTemplate('"auth.USER"', "auth.PASS"),
         secrets: { PASS: "pass" },
         vars: {},
-        expectedHeader: encode("secrets.USER:pass"),
-        expectedSecrets: ["PASS"],
+        expectedHeader: encode("auth.USER:pass"),
+        expectedAuthKeys: ["PASS"],
       },
       {
         template: malformedBasicTemplate,
         secrets: { X: "x" },
         vars: {},
         expectedHeader: malformedBasicTemplate,
-        expectedSecrets: [],
+        expectedAuthKeys: [],
       },
       {
         template: basicTemplate('"user:name"', '"p@ss,word"'),
         secrets: {},
         vars: {},
         expectedHeader: encode("user:name:p@ss,word"),
-        expectedSecrets: [],
+        expectedAuthKeys: [],
       },
     ];
 
@@ -846,11 +873,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const response = await accept(
         firewallClient().resolve({
           body: {
-            encryptedSecrets: encryptedSecrets(testCase.secrets),
+            encryptedSecrets: encryptedSecrets({
+              ...testCase.secrets,
+              ...testCase.vars,
+            }),
             authHeaders: {
               Authorization: testCase.template,
             },
-            vars: testCase.vars,
           },
           headers: authHeaders(fixture),
         }),
@@ -859,7 +888,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       expect(response.body.headers.Authorization).toBe(testCase.expectedHeader);
       expect(response.body.resolvedSecrets).toStrictEqual(
-        testCase.expectedSecrets,
+        testCase.expectedAuthKeys,
       );
     }
   });
@@ -872,7 +901,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ OPENAI_TOKEN: "sk-fake" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("OPENAI_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("OPENAI_TOKEN")}`,
           },
           secretConnectorMap: {},
         },
@@ -902,7 +931,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
           firewallBillable: true,
         },
@@ -926,7 +955,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
           firewallBillable: true,
         },
@@ -957,7 +986,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
           firewallBillable: true,
         },
@@ -978,7 +1007,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
           firewallBillable: true,
         },
@@ -1008,7 +1037,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
           firewallBillable: true,
         },
@@ -1030,7 +1059,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("API_TOKEN")}`,
           },
           firewallBillable: true,
         },
@@ -1062,7 +1091,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1116,7 +1145,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             TEST_OAUTH_ACCESS_TOKEN: "stale-test-oauth-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
@@ -1180,7 +1209,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1221,7 +1250,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1270,7 +1299,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1309,7 +1338,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1352,7 +1381,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-buffered-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1388,7 +1417,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-snapshot-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1430,7 +1459,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-null-expiry-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1469,7 +1498,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             NOTION_ACCESS_TOKEN: "stale-force-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("NOTION_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
@@ -1506,7 +1535,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
@@ -1567,7 +1596,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
@@ -1601,7 +1630,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
@@ -1652,7 +1681,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${authTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
             CHATGPT_ACCESS_TOKEN: "codex-oauth-token",

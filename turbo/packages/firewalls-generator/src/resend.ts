@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.resend.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.RESEND_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.RESEND_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

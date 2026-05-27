@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.perplexity.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PERPLEXITY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PERPLEXITY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

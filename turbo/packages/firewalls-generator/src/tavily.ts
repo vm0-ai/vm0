@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.tavily.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.TAVILY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.TAVILY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     '      base: "https://backboard.railway.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.RAILWAY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.RAILWAY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

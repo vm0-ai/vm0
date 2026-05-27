@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.brevo.com",',
     "      auth: {",
     "        headers: {",
-    '          "api-key": "${{ secrets.BREVO_TOKEN }}",',
+    '          "api-key": "${{ auth.BREVO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

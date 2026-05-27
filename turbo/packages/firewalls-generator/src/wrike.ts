@@ -26,7 +26,7 @@ function generateTypeScript(): string {
       base: "https://${domain}",
       auth: {
         headers: {
-          Authorization: "bearer $\{{ secrets.WRIKE_TOKEN }}",
+          Authorization: "bearer $\{{ auth.WRIKE_TOKEN }}",
         },
       },
       permissions: [],

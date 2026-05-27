@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.stability.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.STABILITY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.STABILITY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

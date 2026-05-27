@@ -40,7 +40,6 @@ import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers"
 import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   expandHostWildcardsInBaseUrl,
-  extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
   type ExpandedFirewallConfig,
   type FirewallPolicies,
@@ -264,6 +263,7 @@ interface PermissionManifest {
 
 interface StoredExecutionSecrets {
   readonly secrets: Record<string, string> | undefined;
+  readonly authValues: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | null;
   readonly secretConnectorMetadataMap: Record<
     string,
@@ -722,13 +722,13 @@ function expandEnvironment(args: {
     vars: args.vars,
     secrets: {
       ...args.secrets,
-      ...firewallSecretPlaceholders(args.environmentFirewalls),
+      ...firewallAuthPlaceholders(args.environmentFirewalls),
     },
   });
   return result;
 }
 
-function firewallSecretPlaceholders(
+function firewallAuthPlaceholders(
   environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
 ): Record<string, string> | undefined {
   if (!environmentFirewalls || environmentFirewalls.length === 0) {
@@ -737,12 +737,6 @@ function firewallSecretPlaceholders(
 
   const placeholders: Record<string, string> = {};
   for (const firewall of environmentFirewalls) {
-    const secretNames = extractSecretNamesFromApis(firewall.apis);
-    for (const name of secretNames) {
-      placeholders[name] =
-        firewall.placeholders?.[name] ??
-        "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
-    }
     for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
       placeholders[name] = value;
     }
@@ -768,7 +762,7 @@ function missingEnvironmentReferences(args: {
     return [];
   }
   const grouped = extractAndGroupVariables(environment);
-  const firewallPlaceholders = firewallSecretPlaceholders(
+  const firewallPlaceholders = firewallAuthPlaceholders(
     args.environmentFirewalls,
   );
   const missingVars = grouped.vars
@@ -1539,6 +1533,60 @@ function mergeRecords(
   return compactRecord(merged);
 }
 
+function connectorAuthVariableValues(
+  connectorTypes: readonly ConnectorType[],
+  vars: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!vars) {
+    return undefined;
+  }
+
+  const values: Record<string, string> = {};
+  for (const connectorType of connectorTypes) {
+    const envBindings = getConnectorEnvBindings(connectorType);
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
+      if (!valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+        continue;
+      }
+      const varName = valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length);
+      const value = vars[varName];
+      if (value !== undefined) {
+        values[envName] = value;
+      }
+    }
+  }
+  return compactRecord(values);
+}
+
+function withoutConnectorVariableRefs(
+  values: Record<string, string> | undefined,
+  connectorTypes: readonly ConnectorType[],
+): Record<string, string> | undefined {
+  if (!values) {
+    return undefined;
+  }
+
+  const variableEnvRefs = new Map<string, Set<string>>();
+  for (const connectorType of connectorTypes) {
+    const envBindings = getConnectorEnvBindings(connectorType);
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
+      if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+        const refs = variableEnvRefs.get(envName) ?? new Set<string>();
+        refs.add(valueRef);
+        variableEnvRefs.set(envName, refs);
+      }
+    }
+  }
+
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!variableEnvRefs.get(key)?.has(value)) {
+      filtered[key] = value;
+    }
+  }
+  return compactRecord(filtered);
+}
+
 function filterSecretConnectorMap(args: {
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly overriddenSecrets: readonly (Record<string, string> | undefined)[];
@@ -1753,7 +1801,7 @@ async function loadCustomConnectorContext(
             headers: {
               [row.headerName]: row.headerTemplate.replaceAll(
                 CUSTOM_CONNECTOR_SECRET_PLACEHOLDER,
-                `\${{ secrets.${secretKey} }}`,
+                `\${{ auth.${secretKey} }}`,
               ),
             },
           },
@@ -2655,6 +2703,7 @@ async function buildStoredExecutionContext(args: {
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
     bodySecrets: args.body.secrets,
+    bodyVars: args.body.vars,
     customConnectorContext: args.customConnectorContext,
   });
   const secretNames = executionSecrets.secrets
@@ -2681,7 +2730,7 @@ async function buildStoredExecutionContext(args: {
       },
       resumeSession: args.resolved.resumeSession ?? null,
       encryptedSecrets: await encryptPersistentSecretsMap(
-        executionSecrets.secrets ?? null,
+        executionSecrets.authValues ?? null,
         args.featureSwitchContext,
       ),
       secretConnectorMap: executionSecrets.secretConnectorMap,
@@ -2795,6 +2844,7 @@ function buildStoredExecutionSecrets(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly bodySecrets: Record<string, string> | undefined;
+  readonly bodyVars: Record<string, string> | undefined;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
 }): StoredExecutionSecrets {
   const platformSecrets = injectPlatformEnvSecrets(
@@ -2809,15 +2859,27 @@ function buildStoredExecutionSecrets(args: {
       platformSecrets,
     ],
   });
+  const secrets = mergeRecords(
+    withoutConnectorVariableRefs(
+      args.connectorContext.secrets,
+      args.connectorContext.connectorTypes,
+    ),
+    args.modelProvider?.secrets,
+    args.bodySecrets,
+    args.customConnectorContext.secrets,
+    platformSecrets,
+  );
+  const authValues = mergeRecords(
+    secrets,
+    connectorAuthVariableValues(
+      args.connectorContext.connectorTypes,
+      args.bodyVars,
+    ),
+  );
 
   return {
-    secrets: mergeRecords(
-      args.connectorContext.secrets,
-      args.modelProvider?.secrets,
-      args.bodySecrets,
-      args.customConnectorContext.secrets,
-      platformSecrets,
-    ),
+    secrets,
+    authValues,
     secretConnectorMap:
       mergeRecords(
         filteredConnectorMap,
@@ -3325,6 +3387,7 @@ function validateRunEnvironmentReferences(args: {
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
     bodySecrets: args.body.secrets,
+    bodyVars: args.body.vars,
     customConnectorContext: args.customConnectorContext,
   });
   const connectorEnvironment = connectorEnvironmentTemplates(

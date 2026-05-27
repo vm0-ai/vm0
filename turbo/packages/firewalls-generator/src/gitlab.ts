@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://gitlab.com/api",',
     "      auth: {",
     "        headers: {",
-    '          "PRIVATE-TOKEN": "${{ secrets.GITLAB_TOKEN }}",',
+    '          "PRIVATE-TOKEN": "${{ auth.GITLAB_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

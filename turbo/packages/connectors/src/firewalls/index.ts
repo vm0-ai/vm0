@@ -546,10 +546,10 @@ const CONNECTOR_FIREWALLS = {
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**
- * Expand firewall placeholders to cover all secret names related to the
- * connector.  For each existing placeholder key, find related names via
- * envBindings (raw OAuth secret names and sibling aliases) and assign
- * the same placeholder value.
+ * Expand firewall placeholders to cover all secret-backed auth keys related
+ * to the connector. For each existing placeholder key, find related names via
+ * envBindings (raw OAuth secret names and sibling aliases) and assign the same
+ * placeholder value.
  */
 function expandPlaceholders(
   firewall: FirewallConfig,

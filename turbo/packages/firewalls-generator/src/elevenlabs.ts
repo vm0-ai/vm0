@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.elevenlabs.io",',
     "      auth: {",
     "        headers: {",
-    '          "xi-api-key": "${{ secrets.ELEVENLABS_TOKEN }}",',
+    '          "xi-api-key": "${{ auth.ELEVENLABS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

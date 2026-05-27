@@ -145,10 +145,10 @@ export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
-  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
-  // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
+  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted firewall auth value map
+  // Maps refreshable auth keys to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  // Per-auth-key refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
     .nullable()
     .optional(),
@@ -200,11 +200,11 @@ export const executionContextSchema = z.object({
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   secretValues: z.array(z.string()).nullable(),
-  // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
+  // AES-256-GCM encrypted firewall auth value map, passed through to mitm-addon for auth resolution
   encryptedSecrets: z.string().nullable(),
-  // Maps secret names to OAuth connector types for runtime token refresh
+  // Maps refreshable auth keys to OAuth connector types for runtime token refresh
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  // Per-auth-key refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
     .nullable()
     .optional(),

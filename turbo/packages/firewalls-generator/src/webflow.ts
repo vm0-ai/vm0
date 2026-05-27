@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     '      base: "https://api.webflow.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.WEBFLOW_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.WEBFLOW_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

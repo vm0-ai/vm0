@@ -736,7 +736,7 @@ export {
 
 export {
   basicAuthTemplateRe,
-  extractSecretNamesFromApis,
+  extractAuthNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,
   firewallSchema,

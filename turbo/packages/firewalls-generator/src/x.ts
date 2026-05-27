@@ -258,7 +258,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '      base: "https://api.x.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.X_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.X_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

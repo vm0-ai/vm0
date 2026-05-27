@@ -38,7 +38,7 @@ function generateTypeScript(): string {
     '      base: "https://i.weread.qq.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.WEREAD_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.WEREAD_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

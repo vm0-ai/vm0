@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.KOMMO_SUBDOMAIN }}.kommo.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.KOMMO_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.KOMMO_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

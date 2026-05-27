@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://core-api.uk.plain.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PLAIN_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PLAIN_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

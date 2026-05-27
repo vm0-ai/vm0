@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.SNOWFLAKE_ACCOUNT }}.snowflakecomputing.com/api",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SNOWFLAKE_PAT }}",',
+    '          Authorization: "Bearer ${{ auth.SNOWFLAKE_PAT }}",',
     '          "X-Snowflake-Authorization-Token-Type": "PROGRAMMATIC_ACCESS_TOKEN",',
     "        },",
     "      },",

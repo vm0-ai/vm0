@@ -9,7 +9,7 @@ import {
   getConnectorTypeForSecretName,
 } from "@vm0/connectors/connector-utils";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
-import { extractSecretNamesFromApis } from "@vm0/connectors/firewall-types";
+import { extractAuthNamesFromApis } from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
@@ -292,9 +292,9 @@ function printConnectorDomains(
 
   if (isFirewallConnectorType(ctx.connectorType)) {
     const firewallConfig = getConnectorFirewall(ctx.connectorType);
-    const secretNames = extractSecretNamesFromApis(firewallConfig.apis);
-    if (secretNames.length > 0) {
-      console.log(`Credentials resolved from: ${secretNames.join(", ")}`);
+    const authNames = extractAuthNamesFromApis(firewallConfig.apis);
+    if (authNames.length > 0) {
+      console.log(`Auth values resolved from: ${authNames.join(", ")}`);
     }
   }
 }

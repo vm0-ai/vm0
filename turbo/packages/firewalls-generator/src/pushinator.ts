@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pushinator.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PUSHINATOR_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PUSHINATOR_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

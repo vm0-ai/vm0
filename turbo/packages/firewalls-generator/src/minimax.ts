@@ -37,7 +37,7 @@ function generateTypeScript(): string {
     '      base: "https://api.minimax.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.MINIMAX_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.MINIMAX_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

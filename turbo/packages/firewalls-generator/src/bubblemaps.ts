@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     '      base: "https://api.bubblemaps.io",',
     "      auth: {",
     "        headers: {",
-    '          "X-ApiKey": "${{ secrets.BUBBLEMAPS_API_KEY }}",',
+    '          "X-ApiKey": "${{ auth.BUBBLEMAPS_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

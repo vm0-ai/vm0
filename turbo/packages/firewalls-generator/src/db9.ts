@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://api.db9.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DB9_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.DB9_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

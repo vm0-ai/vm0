@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://intervals.icu",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.INTERVALS_ICU_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.INTERVALS_ICU_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

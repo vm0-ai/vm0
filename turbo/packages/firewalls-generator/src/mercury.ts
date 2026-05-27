@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.mercury.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.MERCURY_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.MERCURY_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

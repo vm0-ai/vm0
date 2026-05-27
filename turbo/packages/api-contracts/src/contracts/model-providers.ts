@@ -1041,7 +1041,7 @@ function mpFirewall(
   placeholderValue: string,
 ): ExpandedFirewallConfig {
   const secretName = MODEL_PROVIDER_TYPES[type].secretName;
-  const secretRef = `\${{ secrets.${secretName} }}`;
+  const secretRef = `\${{ auth.${secretName} }}`;
   const headerValue = authHeader.valuePrefix
     ? `${authHeader.valuePrefix} ${secretRef}`
     : secretRef;
@@ -1150,8 +1150,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
         base: "https://chatgpt.com/backend-api/codex",
         auth: {
           headers: {
-            Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
-            "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
+            Authorization: "Bearer ${{ auth.CHATGPT_ACCESS_TOKEN }}",
+            "ChatGPT-Account-ID": "${{ auth.CHATGPT_ACCOUNT_ID }}",
           },
         },
         permissions: [

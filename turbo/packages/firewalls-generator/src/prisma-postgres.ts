@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     '      base: "https://api.prisma.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PRISMA_POSTGRES_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.PRISMA_POSTGRES_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

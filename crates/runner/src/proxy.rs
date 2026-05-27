@@ -1395,7 +1395,7 @@ exit 0
                 auth: FirewallAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".to_string(),
-                        "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
+                        "Bearer ${{ auth.GMAIL_TOKEN }}".to_string(),
                     )]),
                     base: None,
                     query: None,
@@ -1616,7 +1616,7 @@ exit 0
                 base: "https://firewall-placeholder.vm3.ai/discord-webhook/hook".to_string(),
                 auth: FirewallAuth {
                     headers: std::collections::HashMap::new(),
-                    base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
+                    base: Some("${{ auth.DISCORD_WEBHOOK_URL }}".to_string()),
                     query: None,
                 },
                 permissions: None,
@@ -1648,7 +1648,7 @@ exit 0
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let api = &value["vms"]["10.200.0.7"]["firewalls"][0]["apis"][0];
-        assert_eq!(api["auth"]["base"], "${{ secrets.DISCORD_WEBHOOK_URL }}");
+        assert_eq!(api["auth"]["base"], "${{ auth.DISCORD_WEBHOOK_URL }}");
         // headers should be empty object
         assert_eq!(api["auth"]["headers"], serde_json::json!({}));
     }
@@ -1680,7 +1680,7 @@ exit 0
                     query: Some(
                         [(
                             "api_key".to_string(),
-                            "${{ secrets.SERPAPI_TOKEN }}".to_string(),
+                            "${{ auth.SERPAPI_TOKEN }}".to_string(),
                         )]
                         .into_iter()
                         .collect(),
@@ -1717,7 +1717,7 @@ exit 0
         let api = &value["vms"]["10.200.0.8"]["firewalls"][0]["apis"][0];
         assert_eq!(
             api["auth"]["query"],
-            serde_json::json!({"api_key": "${{ secrets.SERPAPI_TOKEN }}"})
+            serde_json::json!({"api_key": "${{ auth.SERPAPI_TOKEN }}"})
         );
         // headers should be empty object, base should be absent
         assert_eq!(api["auth"]["headers"], serde_json::json!({}));

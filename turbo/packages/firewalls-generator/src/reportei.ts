@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://app.reportei.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.REPORTEI_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.REPORTEI_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

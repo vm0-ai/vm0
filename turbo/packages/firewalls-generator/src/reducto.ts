@@ -33,7 +33,7 @@ function generateTypeScript(): string {
     '      base: "https://platform.reducto.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.REDUCTO_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.REDUCTO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

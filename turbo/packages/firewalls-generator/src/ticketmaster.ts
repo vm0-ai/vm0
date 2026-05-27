@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://app.ticketmaster.com",',
     "      auth: {",
     "        query: {",
-    '          apikey: "${{ secrets.TICKETMASTER_API_KEY }}",',
+    '          apikey: "${{ auth.TICKETMASTER_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

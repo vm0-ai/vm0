@@ -39,7 +39,7 @@ function generateTypeScript(): string {
     '      base: "https://api.pandadoc.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "API-Key ${{ secrets.PANDADOC_TOKEN }}",',
+    '          Authorization: "API-Key ${{ auth.PANDADOC_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

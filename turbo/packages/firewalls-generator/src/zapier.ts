@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://actions.zapier.com",',
     "      auth: {",
     "        headers: {",
-    '          "x-api-key": "${{ secrets.ZAPIER_TOKEN }}",',
+    '          "x-api-key": "${{ auth.ZAPIER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://app.chatwoot.com",',
     "      auth: {",
     "        headers: {",
-    '          api_access_token: "${{ secrets.CHATWOOT_TOKEN }}",',
+    '          api_access_token: "${{ auth.CHATWOOT_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

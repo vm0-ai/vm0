@@ -1375,8 +1375,8 @@ describe("getConnectorEnvBindings", () => {
     expect(firewall.apis).toHaveLength(1);
     expect(firewall.apis[0]?.base).toBe("https://api.slock.ai");
     expect(firewall.apis[0]?.auth?.headers).toMatchObject({
-      Authorization: "Bearer ${{ secrets.SLOCK_TOKEN }}",
-      "X-Server-Id": "${{ secrets.SLOCK_SERVER_ID }}",
+      Authorization: "Bearer ${{ auth.SLOCK_TOKEN }}",
+      "X-Server-Id": "${{ auth.SLOCK_SERVER_ID }}",
     });
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
   });

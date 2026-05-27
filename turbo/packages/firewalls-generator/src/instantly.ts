@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     '      base: "https://api.instantly.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.INSTANTLY_API_KEY }}",',
+    '          Authorization: "Bearer ${{ auth.INSTANTLY_API_KEY }}",',
     "        },",
     "      },",
     "      permissions: [],",

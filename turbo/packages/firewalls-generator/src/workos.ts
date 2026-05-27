@@ -28,7 +28,7 @@ function generateTypeScript(): string {
     '      base: "https://api.workos.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.WORKOS_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.WORKOS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

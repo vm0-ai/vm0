@@ -34,7 +34,7 @@ function generateTypeScript(): string {
     '      base: "https://api.fireflies.ai/graphql",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.FIREFLIES_TOKEN }}",',
+    '          Authorization: "Bearer ${{ auth.FIREFLIES_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

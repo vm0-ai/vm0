@@ -42,7 +42,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.FRESHDESK_DOMAIN }}.freshdesk.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ basic(secrets.FRESHDESK_TOKEN, ) }}",',
+    '          Authorization: "${{ basic(auth.FRESHDESK_TOKEN, ) }}",',
     "        },",
     "      },",
     "      permissions: [],",

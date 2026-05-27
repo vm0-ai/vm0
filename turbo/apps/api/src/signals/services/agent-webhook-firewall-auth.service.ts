@@ -57,7 +57,6 @@ interface FirewallAuthBody {
   readonly authQuery?: Record<string, string>;
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
-  readonly vars?: Record<string, string>;
   readonly firewallBillable?: boolean;
   readonly forceRefresh?: boolean;
 }
@@ -219,11 +218,9 @@ interface RefreshBatchContext {
 }
 
 interface BasicArgContext {
-  readonly namespace?: string;
   readonly key?: string;
   readonly literal?: string;
-  readonly secrets: Record<string, string>;
-  readonly vars: Record<string, string>;
+  readonly authValues: Record<string, string>;
   readonly resolvedKeys: Set<string>;
 }
 
@@ -231,7 +228,9 @@ const L = logger("webhook:firewall-auth");
 const ORG_SENTINEL_USER_ID = "__org__";
 const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
-const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const TEMPLATE_RE = /\$\{\{\s*auth\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const LEGACY_TEMPLATE_RE =
+  /\$\{\{[^}]*\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)[^}]*\}\}/;
 
 function getOAuthProviderKeySourceType(providerKey: string): OAuthSecretSource {
   return isModelProviderOAuthProviderKey(providerKey)
@@ -1192,41 +1191,33 @@ async function refreshExpiredTokens(
   };
 }
 
-function collectReferencedKeys(
+function collectReferencedAuthKeys(
   authHeaders: Record<string, string>,
   authBase?: string,
   authQuery?: Record<string, string>,
-): { readonly secrets: Set<string>; readonly vars: Set<string> } {
-  const secretKeys = new Set<string>();
-  const varKeys = new Set<string>();
-  const addKey = (namespace: string, key: string): void => {
-    if (namespace === "secrets") {
-      secretKeys.add(key);
-    } else if (namespace === "vars") {
-      varKeys.add(key);
-    }
-  };
+): Set<string> {
+  const authKeys = new Set<string>();
 
   for (const template of Object.values(authHeaders)) {
     for (const match of template.matchAll(TEMPLATE_RE)) {
-      if (match[1] && match[2]) {
-        addKey(match[1], match[2]);
+      if (match[1]) {
+        authKeys.add(match[1]);
       }
     }
     for (const match of template.matchAll(basicAuthTemplateRe())) {
       if (match[1] && match[2]) {
-        addKey(match[1], match[2]);
+        authKeys.add(match[2]);
       }
       if (match[4] && match[5]) {
-        addKey(match[4], match[5]);
+        authKeys.add(match[5]);
       }
     }
   }
 
   if (authBase) {
     for (const match of authBase.matchAll(TEMPLATE_RE)) {
-      if (match[1] && match[2]) {
-        addKey(match[1], match[2]);
+      if (match[1]) {
+        authKeys.add(match[1]);
       }
     }
   }
@@ -1234,14 +1225,28 @@ function collectReferencedKeys(
   if (authQuery) {
     for (const template of Object.values(authQuery)) {
       for (const match of template.matchAll(TEMPLATE_RE)) {
-        if (match[1] && match[2]) {
-          addKey(match[1], match[2]);
+        if (match[1]) {
+          authKeys.add(match[1]);
         }
       }
     }
   }
 
-  return { secrets: secretKeys, vars: varKeys };
+  return authKeys;
+}
+
+function hasLegacyAuthTemplateReferences(
+  authHeaders: Record<string, string>,
+  authBase?: string,
+  authQuery?: Record<string, string>,
+): boolean {
+  return [
+    ...Object.values(authHeaders),
+    ...(authBase ? [authBase] : []),
+    ...Object.values(authQuery ?? {}),
+  ].some((template) => {
+    return LEGACY_TEMPLATE_RE.test(template);
+  });
 }
 
 function stringMatchGroup(value: unknown): string | undefined {
@@ -1252,41 +1257,31 @@ function resolveBasicArg(context: BasicArgContext): string {
   if (context.literal !== undefined) {
     return context.literal;
   }
-  if (!context.namespace || !context.key) {
+  if (!context.key) {
     return "";
   }
-  if (context.namespace === "secrets") {
-    context.resolvedKeys.add(context.key);
-    return context.secrets[context.key] ?? "";
-  }
-  return context.vars[context.key] ?? "";
+  context.resolvedKeys.add(context.key);
+  return context.authValues[context.key] ?? "";
 }
 
 function resolveTemplates(
   authHeaders: Record<string, string>,
-  secrets: Record<string, string>,
-  vars: Record<string, string>,
+  authValues: Record<string, string>,
   authBase?: string,
   authQuery?: Record<string, string>,
 ): {
   readonly headers: Record<string, string>;
-  readonly resolvedSecrets: readonly string[];
+  readonly resolvedAuthKeys: readonly string[];
   readonly base?: string;
   readonly query?: Record<string, string>;
 } {
   const resolvedKeys = new Set<string>();
 
   const resolveSimple = (template: string): string => {
-    return template.replace(
-      TEMPLATE_RE,
-      (_match, namespace: string, key: string) => {
-        if (namespace === "secrets") {
-          resolvedKeys.add(key);
-          return secrets[key] ?? "";
-        }
-        return vars[key] ?? "";
-      },
-    );
+    return template.replace(TEMPLATE_RE, (_match, key: string) => {
+      resolvedKeys.add(key);
+      return authValues[key] ?? "";
+    });
   };
 
   const headers: Record<string, string> = {};
@@ -1295,19 +1290,15 @@ function resolveTemplates(
       basicAuthTemplateRe(),
       (...matches: readonly unknown[]) => {
         const user = resolveBasicArg({
-          namespace: stringMatchGroup(matches[1]),
           key: stringMatchGroup(matches[2]),
           literal: stringMatchGroup(matches[3]),
-          secrets,
-          vars,
+          authValues,
           resolvedKeys,
         });
         const pass = resolveBasicArg({
-          namespace: stringMatchGroup(matches[4]),
           key: stringMatchGroup(matches[5]),
           literal: stringMatchGroup(matches[6]),
-          secrets,
-          vars,
+          authValues,
           resolvedKeys,
         });
         return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
@@ -1316,18 +1307,20 @@ function resolveTemplates(
     resolved = resolveSimple(resolved);
     headers[name] = resolved;
   }
+  const base = authBase ? resolveSimple(authBase) : undefined;
+  const query = authQuery
+    ? Object.fromEntries(
+        Object.entries(authQuery).map(([key, value]) => {
+          return [key, resolveSimple(value)];
+        }),
+      )
+    : undefined;
 
   return {
     headers,
-    resolvedSecrets: [...resolvedKeys].sort(),
-    base: authBase ? resolveSimple(authBase) : undefined,
-    query: authQuery
-      ? Object.fromEntries(
-          Object.entries(authQuery).map(([key, value]) => {
-            return [key, resolveSimple(value)];
-          }),
-        )
-      : undefined,
+    resolvedAuthKeys: [...resolvedKeys].sort(),
+    base,
+    query,
   };
 }
 
@@ -1350,19 +1343,28 @@ export async function resolveFirewallAuth(
     return badRequestMessage("Failed to decrypt secrets");
   }
 
-  const referenced = collectReferencedKeys(
+  if (
+    hasLegacyAuthTemplateReferences(
+      body.authHeaders,
+      body.authBase,
+      body.authQuery,
+    )
+  ) {
+    return badRequestMessage(
+      "Firewall auth templates must use auth.NAME instead of secrets.NAME or vars.NAME",
+    );
+  }
+
+  const referenced = collectReferencedAuthKeys(
     body.authHeaders,
     body.authBase,
     body.authQuery,
   );
 
-  const hasMissingSecrets = [...referenced.secrets].some((key) => {
+  const hasMissingAuthValues = [...referenced].some((key) => {
     return !(key in decryptedSecrets);
   });
-  const hasMissingVars = [...referenced.vars].some((key) => {
-    return !(key in (body.vars ?? {}));
-  });
-  if (hasMissingSecrets || hasMissingVars) {
+  if (hasMissingAuthValues) {
     return {
       status: 424,
       body: {
@@ -1380,7 +1382,7 @@ export async function resolveFirewallAuth(
       auth,
       body.secretConnectorMap,
       body.secretConnectorMetadataMap,
-      referenced.secrets,
+      referenced,
     )
   ) {
     return {
@@ -1415,7 +1417,7 @@ export async function resolveFirewallAuth(
       secrets: decryptedSecrets,
       secretConnectorMap: body.secretConnectorMap,
       secretConnectorMetadataMap: body.secretConnectorMetadataMap,
-      referencedKeys: referenced.secrets,
+      referencedKeys: referenced,
       forceRefresh: body.forceRefresh ?? false,
     });
     expiresAt = result.expiresAt;
@@ -1440,7 +1442,6 @@ export async function resolveFirewallAuth(
   const resolved = resolveTemplates(
     body.authHeaders,
     decryptedSecrets,
-    body.vars ?? {},
     body.authBase,
     body.authQuery,
   );
@@ -1452,7 +1453,7 @@ export async function resolveFirewallAuth(
       base: resolved.base,
       query: resolved.query,
       expiresAt: mergeExpiresAt(expiresAt, billableCacheExpiry.expiresAt),
-      resolvedSecrets: resolved.resolvedSecrets,
+      resolvedSecrets: resolved.resolvedAuthKeys,
       refreshedConnectors,
       refreshedSecrets,
     },
