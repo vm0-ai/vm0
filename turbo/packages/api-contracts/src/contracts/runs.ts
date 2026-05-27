@@ -21,12 +21,22 @@ const directRunModelProviderTypeSchema = modelProviderTypeSchema.refine(
 
 export const claudeToolEntrySchema = z
   .string()
-  .refine((tool) => tool.trim().length > 0, {
-    message: "Claude tool name must not be empty",
-  })
-  .refine((tool) => !tool.includes(","), {
-    message: "Claude tool name must not contain commas",
-  });
+  .refine(
+    (tool) => {
+      return tool.trim().length > 0;
+    },
+    {
+      message: "Claude tool name must not be empty",
+    },
+  )
+  .refine(
+    (tool) => {
+      return !tool.includes(",");
+    },
+    {
+      message: "Claude tool name must not contain commas",
+    },
+  );
 
 // Stored in Postgres `integer` columns. Keep request validation aligned with
 // the DB range so malformed sandbox payloads fail as 400s instead of DB errors.
