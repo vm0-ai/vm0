@@ -1,11 +1,12 @@
 """Tests for usage webhook delivery."""
 
 import json
-import threading
 import urllib.error
+import urllib.request
+import urllib.response
 import uuid
 from email.message import Message
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -30,79 +31,83 @@ class TestUsageWebhookDelivery:
         return flow
 
     def test_post_webhook_does_not_follow_redirects(self):
-        redirected_hits: list[str] = []
+        class FakeHttpResponse(urllib.response.addinfourl):
+            msg: str
 
-        def server_host_port(server: ThreadingHTTPServer) -> tuple[str, int]:
-            address = server.server_address
-            assert len(address) == 2
-            host, port = address
-            assert isinstance(host, str)
-            assert isinstance(port, int)
-            return host, port
+            def __init__(
+                self,
+                body: bytes,
+                headers: Message,
+                url: str,
+                code: int,
+                msg: str,
+            ) -> None:
+                super().__init__(BytesIO(body), headers, url, code=code)
+                self.msg = msg
 
-        def make_server_thread(
-            server: ThreadingHTTPServer,
-        ) -> tuple[threading.Thread, threading.Event]:
-            started = threading.Event()
+        class RedirectingHttpHandler(urllib.request.BaseHandler):
+            handler_order = 0
 
-            def serve():
-                started.set()
-                server.serve_forever(poll_interval=0.01)
+            def __init__(self) -> None:
+                self.urls: list[str] = []
 
-            thread = threading.Thread(target=serve, daemon=True)
-            return thread, started
+            def http_open(self, req: urllib.request.Request):
+                self.urls.append(req.full_url)
+                headers = Message()
+                if req.full_url == "http://example.test/webhook":
+                    headers["Location"] = "http://example.test/redirected"
+                    return FakeHttpResponse(
+                        b"",
+                        headers,
+                        req.full_url,
+                        302,
+                        "Found",
+                    )
+                if req.full_url == "http://example.test/redirected":
+                    return FakeHttpResponse(
+                        b"ok",
+                        headers,
+                        req.full_url,
+                        200,
+                        "OK",
+                    )
+                raise AssertionError(f"unexpected URL: {req.full_url}")
 
-        class TargetHandler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                redirected_hits.append(self.path)
-                self.send_response(200)
-                self.end_headers()
-
-            def log_message(self, fmt, *args):
-                return
-
-        target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
-
-        class RedirectHandler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                host, port = server_host_port(target_server)
-                self.send_response(302)
-                self.send_header("Location", f"http://{host}:{port}/redirected")
-                self.end_headers()
-
-            def log_message(self, fmt, *args):
-                return
-
-        redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
-        target_thread, target_started = make_server_thread(target_server)
-        redirect_thread, redirect_started = make_server_thread(redirect_server)
+        opener = usage.webhook._opener
+        opener_state = opener.__dict__
+        # add_handler mutates dispatch maps as well as the top-level handler list.
+        original_handlers = list(opener_state["handlers"])
+        original_handle_open = {
+            key: list(value) for key, value in opener_state["handle_open"].items()
+        }
+        original_handle_error = {
+            key: {nested_key: list(nested_value) for nested_key, nested_value in value.items()}
+            for key, value in opener_state["handle_error"].items()
+        }
+        original_process_response = {
+            key: list(value) for key, value in opener_state["process_response"].items()
+        }
+        original_process_request = {
+            key: list(value) for key, value in opener_state["process_request"].items()
+        }
+        handler = RedirectingHttpHandler()
         try:
-            target_thread.start()
-            assert target_started.wait(timeout=1)
-            redirect_thread.start()
-            assert redirect_started.wait(timeout=1)
-
-            host, port = server_host_port(redirect_server)
+            opener.add_handler(handler)
             with pytest.raises(urllib.error.HTTPError) as exc:
                 usage.webhook._post_webhook(
-                    f"http://{host}:{port}/webhook",
+                    "http://example.test/webhook",
                     "tok",
                     {"runId": "run-1"},
                 )
 
             assert exc.value.code == 302
-            assert redirected_hits == []
+            assert handler.urls == ["http://example.test/webhook"]
         finally:
-            if redirect_thread.is_alive():
-                redirect_server.shutdown()
-            if target_thread.is_alive():
-                target_server.shutdown()
-            redirect_server.server_close()
-            target_server.server_close()
-            redirect_thread.join(timeout=5)
-            target_thread.join(timeout=5)
-            assert not redirect_thread.is_alive()
-            assert not target_thread.is_alive()
+            opener_state["handlers"] = original_handlers
+            opener_state["handle_open"] = original_handle_open
+            opener_state["handle_error"] = original_handle_error
+            opener_state["process_response"] = original_process_response
+            opener_state["process_request"] = original_process_request
 
     def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
