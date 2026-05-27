@@ -43,6 +43,7 @@ class _XFirewallExport(NamedTuple):
     name: str
     registered_name: str
     billable_connectors: tuple[str, ...]
+    registered_permissions: tuple[_FirewallPermission, ...]
     permissions: tuple[_FirewallPermission, ...]
 
 
@@ -59,8 +60,9 @@ import { xFirewall } from "./packages/connectors/src/firewalls/x.generated.ts";
 
 collectAndValidatePermissions(xFirewall);
 const registeredXFirewall = getConnectorFirewall("x");
+collectAndValidatePermissions(registeredXFirewall);
 
-const permissions = xFirewall.apis.flatMap((api) =>
+const flattenPermissions = (firewall) => firewall.apis.flatMap((api) =>
   (api.permissions ?? []).map((permission) => ({ ...permission, base: api.base }))
 );
 
@@ -68,7 +70,8 @@ console.log(JSON.stringify({
   name: xFirewall.name,
   registeredName: registeredXFirewall.name,
   billableConnectors: BILLABLE_CONNECTORS,
-  permissions,
+  registeredPermissions: flattenPermissions(registeredXFirewall),
+  permissions: flattenPermissions(xFirewall),
 }));
 """.strip()
 
@@ -165,11 +168,13 @@ def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
         )
 
     billable_connectors = _parse_string_list(raw.get("billableConnectors"), "billableConnectors")
+    registered_permissions = _parse_x_firewall_permissions(raw.get("registeredPermissions"))
     permissions = _parse_x_firewall_permissions(raw.get("permissions"))
     return _XFirewallExport(
         name=name,
         registered_name=registered_name,
         billable_connectors=billable_connectors,
+        registered_permissions=registered_permissions,
         permissions=permissions,
     )
 
@@ -271,6 +276,15 @@ class TestFirewallConsistency:
         assert export.name in export.billable_connectors, (
             "The generated X firewall name is not listed in BILLABLE_CONNECTORS, "
             "so API run contexts would not mark X flows as billable."
+        )
+
+    def test_registered_firewall_permissions_match_generated_file(self):
+        export = _load_x_firewall_export()
+        assert sorted(export.registered_permissions) == sorted(export.permissions), (
+            "The X connector firewall registry does not expose the same "
+            "permission/rule set as x.generated.ts. Runtime firewall matching "
+            "uses the registry, so classifier drift checks must not silently "
+            "validate a different generated object."
         )
 
     def _load_firewall_permissions(self) -> set[str]:
