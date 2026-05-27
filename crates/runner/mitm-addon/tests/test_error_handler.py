@@ -157,6 +157,34 @@ class TestErrorHandler:
         assert entry["latency_ms"] > 0
         assert_utc_millisecond_timestamp(entry["timestamp"])
 
+    async def test_request_classified_error_logs_network_target(
+        self, registry_file, real_flow, mitm_ctx, headers
+    ):
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.1",
+            host="203.0.113.10",
+            port=8443,
+            sni="api.anthropic.com",
+            path="/v1/messages",
+            request_headers=headers(("Host", "api.anthropic.com")),
+        )
+
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        entry = json.loads((registry_file.parent / "network.jsonl").read_text().strip())
+        assert entry["type"] == "http"
+        assert entry["action"] == "ALLOW"
+        assert entry["host"] == "api.anthropic.com"
+        assert entry["port"] == 8443
+        assert entry["url"] == "https://api.anthropic.com:8443/v1/messages"
+        assert entry["status"] == 0
+        assert entry["error"] == "connection reset by peer"
+        assert flow.id not in mitm_addon._request_start_times
+
     def test_error_logs_legacy_target_when_original_url_port_is_invalid(
         self, tmp_path, real_flow, mitm_ctx
     ):
