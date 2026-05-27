@@ -1316,17 +1316,13 @@ async function loadPersistedRunEnvironmentSnapshot(
     const secretNameRows = await tx
       .select({
         name: secretsTable.name,
-        userId: secretsTable.userId,
       })
       .from(secretsTable)
       .where(
         and(
           eq(secretsTable.orgId, args.orgId),
           eq(secretsTable.type, "user"),
-          or(
-            eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
-            eq(secretsTable.userId, args.userId),
-          ),
+          eq(secretsTable.userId, args.userId),
         ),
       );
     const variableRows = await tx
@@ -1347,8 +1343,8 @@ async function loadPersistedRunEnvironmentSnapshot(
       );
 
     const userSecretNames = new Set(
-      secretNameRows.flatMap((row) => {
-        return row.userId === args.userId ? [row.name] : [];
+      secretNameRows.map((row) => {
+        return row.name;
       }),
     );
     const userVariableNames = new Set(
