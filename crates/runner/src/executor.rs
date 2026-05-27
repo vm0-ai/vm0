@@ -5386,6 +5386,37 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn execute_job_codex_ignores_claude_tool_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.disallowed_tools = Some(vec!["".into()]);
+        ctx.tools = Some(vec!["Bash,Read".into()]);
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::NoSessionId,
+            },
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.error().is_none());
+        assert!(outcome.sandbox.is_some());
+        assert_eq!(overrides.create_configs().len(), 1);
+    }
+
     // -----------------------------------------------------------------------
     // Keep-alive VM reuse integration tests
     // -----------------------------------------------------------------------
