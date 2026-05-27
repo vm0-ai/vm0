@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.23...guest-agent-v0.32.24) (2026-05-27)
+
+
+### Bug Fixes
+
+* make guest-agent api http config explicit ([#15095](https://github.com/vm0-ai/vm0/issues/15095)) ([ec72581](https://github.com/vm0-ai/vm0/commit/ec725819f03cef9d5f713050307b0e92b36aba4c))
+* validate claude tool list entries ([#15092](https://github.com/vm0-ai/vm0/issues/15092)) ([7f48d58](https://github.com/vm0-ai/vm0/commit/7f48d5836cd891200f3b0a4159aad9d0ad59726f))
+
 ## [0.32.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.22...guest-agent-v0.32.23) (2026-05-27)
 
 ## [0.32.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.21...guest-agent-v0.32.22) (2026-05-26)

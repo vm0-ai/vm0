@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.78.2](https://github.com/vm0-ai/vm0/compare/api-v1.78.1...api-v1.78.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* validate claude tool list entries ([#15092](https://github.com/vm0-ai/vm0/issues/15092)) ([7f48d58](https://github.com/vm0-ai/vm0/commit/7f48d5836cd891200f3b0a4159aad9d0ad59726f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.3
+    * @vm0/core bumped to 8.299.1
+    * @vm0/db bumped to 1.19.3
+
 ## [1.78.1](https://github.com/vm0-ai/vm0/compare/api-v1.78.0...api-v1.78.1) (2026-05-27)
 
 

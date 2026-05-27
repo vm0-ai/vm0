@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.11...runner-rs-v0.104.12) (2026-05-27)
+
+
+### Bug Fixes
+
+* validate claude tool list entries ([#15092](https://github.com/vm0-ai/vm0/issues/15092)) ([7f48d58](https://github.com/vm0-ai/vm0/commit/7f48d5836cd891200f3b0a4159aad9d0ad59726f))
+
 ## [0.104.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.10...runner-rs-v0.104.11) (2026-05-27)
 
 

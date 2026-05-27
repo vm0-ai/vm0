@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.393.0](https://github.com/vm0-ai/vm0/compare/web-v12.392.0...web-v12.393.0) (2026-05-27)
+
+
+### Features
+
+* **web:** remove free plan from pricing page ([#15098](https://github.com/vm0-ai/vm0/issues/15098)) ([250a5d8](https://github.com/vm0-ai/vm0/commit/250a5d8635d2c656657cbaf0da3b54d6d1cfa35b))
+
+
+### Bug Fixes
+
+* make /docs publicly accessible and include in sitemap ([#15112](https://github.com/vm0-ai/vm0/issues/15112)) ([e60727f](https://github.com/vm0-ai/vm0/commit/e60727fa765b0d476740bd64037c16b40a95b6e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.3
+    * @vm0/core bumped to 8.299.1
+    * @vm0/db bumped to 1.19.3
+
 ## [12.392.0](https://github.com/vm0-ai/vm0/compare/web-v12.391.0...web-v12.392.0) (2026-05-27)
 
 
