@@ -2930,6 +2930,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
     source: { path: "illustration-template/mellow-pop" },
   },
+  {
+    id: "vm0:image-style:endpaper",
+    kind: "image-style",
+    name: "Endpaper",
+    description:
+      "Riso-grain flat-vector collection of chill characters or objects scattered across a saturated solid color field, with two-tone interior shading and closed-eye sleepy faces.",
+    desc: 'Riso-grain flat-vector editorial collection illustration. Many small animals or objects scattered across a fully saturated solid color background — like the inside endpaper of a children\'s picture book. Subtle riso/screenprint grain inside every fill, two-tone interior shading on every character (darker top + lighter belly), closed crescent-eye sleepy smiles with tiny dot noses, NO outlines on character bodies, loose hand-drawn line details on props (yarn spirals, leaf veins, pot stripes), scattered curated composition where characters overlap and touch the canvas edges. Five dials: background hue, cast (cats/dogs/foxes/birds/sea-creatures/houseplants/kitchen-objects/etc.), character palette (3–5 curated fills), density (L1 sparse / L2 balanced / L3 packed), prop vocabulary matched to cast. Trigger when user says /endpaper, asks for an "endpaper illustration", a "scattered animal or object collection on saturated color", a "children\'s-book endpaper scene", or briefs with a cast + background hue + density + palette.',
+    source: { path: "illustration-template/endpaper" },
+  },
 ];
 
 function filterByKind(
