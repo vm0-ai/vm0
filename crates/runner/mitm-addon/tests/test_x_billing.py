@@ -477,12 +477,18 @@ class TestFirewallConsistency:
         )
 
     def test_generated_firewall_api_entries_use_supported_base(self):
-        bases = {entry.base for entry in _load_x_firewall_export().api_entries}
-        assert bases == {"https://api.x.com"}, (
-            "X billing classification currently keys by permission, method, and "
-            f"path only.  Generated xFirewall API entries now use bases {sorted(bases)}; "
-            "review whether billing classification needs to include API base before "
-            "trusting path-level drift checks."
+        export = _load_x_firewall_export()
+        assert export.api_entries == (
+            _FirewallApiEntry(
+                base="https://api.x.com",
+                permission_count=len(export.permissions),
+            ),
+        ), (
+            "X billing classification and the runtime drift tests assume a single "
+            "generated xFirewall API entry at https://api.x.com containing every "
+            f"permission.  Generated entries are now {export.api_entries}; review "
+            "whether billing classification needs to include API base or preserve "
+            "multi-entry firewall ordering before trusting path-level drift checks."
         )
 
     def test_generated_firewall_api_entries_have_permissions(self):
