@@ -277,7 +277,7 @@ class TestGetFirewallHeaders:
 
         with (
             patch.object(auth, "fetch_firewall_headers", mock_fetch),
-            pytest.raises(auth.MissingAuthExpiryError),
+            pytest.raises(auth.InvalidBillableAuthExpiryError),
         ):
             await auth.get_firewall_headers(
                 "run-1",
@@ -679,6 +679,51 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
+
+    async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
+        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": ["github"],
+        }
+        allow = _allow(api_entry)
+
+        with (
+            patch.object(
+                auth,
+                "fetch_firewall_headers",
+                AsyncMock(
+                    return_value={
+                        "headers": {"Authorization": "Bearer token"},
+                        "expiresAt": None,
+                    }
+                ),
+            ),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "invalid_auth_expiry"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "invalid_auth_expiry"
+        assert "valid cache expiry" in body["message"]
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
+        log_text = await asyncio.to_thread(
+            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
+        )
+        assert "invalid expiresAt" in log_text
 
     async def test_no_response_set_on_success(self, real_flow, headers, mitm_ctx):
         """On success, flow.response should remain None (request continues to origin)."""

@@ -35,8 +35,8 @@ class InsufficientCreditsError(Exception):
     """Raised when the auth endpoint denies billable firewall auth for credits."""
 
 
-class MissingAuthExpiryError(Exception):
-    """Raised when billable firewall auth succeeds without a valid cache expiry."""
+class InvalidBillableAuthExpiryError(Exception):
+    """Raised when billable firewall auth succeeds with an invalid cache expiry."""
 
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -439,7 +439,7 @@ async def get_firewall_headers(
             force_refresh=force_refresh,
         )
         if firewall_billable and not _has_valid_expiry(result.get("expiresAt")):
-            raise MissingAuthExpiryError(
+            raise InvalidBillableAuthExpiryError(
                 "Billable firewall auth response did not include a valid cache expiry"
             )
         headers = result["headers"]
@@ -678,6 +678,23 @@ async def handle_firewall_request(
             status=402,
             action="BLOCK",
             error_code="insufficient_credits",
+            message=str(e),
+            permission=allow.name,
+        )
+        return
+    except InvalidBillableAuthExpiryError as e:
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            f"Billable firewall auth response returned invalid expiresAt for {firewall_base}: {e}",
+            type="firewall",
+            firewall_base=firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=502,
+            action="ALLOW",
+            error_code="invalid_auth_expiry",
             message=str(e),
             permission=allow.name,
         )
