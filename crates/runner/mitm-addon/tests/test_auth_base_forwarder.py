@@ -514,8 +514,7 @@ class TestForwardRequestAsyncWrapper:
     async def test_releases_forward_slot_when_forwarding_raises(self):
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
-            patch.object(forwarder, "_forward_request_semaphore", None),
-            patch.object(forwarder, "_forward_request_semaphore_loop", None),
+            patch.object(forwarder, "_forward_request_semaphore_state", None),
             patch.object(
                 forwarder,
                 "_forward_request_sync",

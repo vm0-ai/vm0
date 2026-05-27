@@ -29,8 +29,7 @@ DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 
-_forward_request_semaphore: asyncio.Semaphore | None = None
-_forward_request_semaphore_loop: asyncio.AbstractEventLoop | None = None
+_forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
 
 
 class ForwardedResponseTooLargeError(Exception):
@@ -208,14 +207,15 @@ def _forward_request_sync(
 
 
 def _get_forward_request_semaphore() -> asyncio.Semaphore:
-    global _forward_request_semaphore
-    global _forward_request_semaphore_loop
+    global _forward_request_semaphore_state
 
     loop = asyncio.get_running_loop()
-    if _forward_request_semaphore is None or _forward_request_semaphore_loop is not loop:
-        _forward_request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_AUTH_BASE_FORWARDS)
-        _forward_request_semaphore_loop = loop
-    return _forward_request_semaphore
+    if _forward_request_semaphore_state is None or _forward_request_semaphore_state[0] is not loop:
+        _forward_request_semaphore_state = (
+            loop,
+            asyncio.Semaphore(MAX_CONCURRENT_AUTH_BASE_FORWARDS),
+        )
+    return _forward_request_semaphore_state[1]
 
 
 async def forward_request(
