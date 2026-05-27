@@ -46,6 +46,9 @@ class _XFirewallExport(NamedTuple):
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
 _TURBO_DIR = _REPO_ROOT / "turbo"
 _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" / "x.generated.ts"
+_VALID_FIREWALL_RULE_METHODS = frozenset(
+    {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ANY"}
+)
 _X_FIREWALL_EXPORT_SCRIPT = """
 import { xFirewall } from "./packages/connectors/src/firewalls/x.generated.ts";
 
@@ -176,6 +179,44 @@ def _load_x_firewall_permissions() -> tuple[_FirewallPermission, ...]:
     return _load_x_firewall_export().permissions
 
 
+def _fail_malformed_x_firewall_rule(rule: str, permission_name: str) -> NoReturn:
+    pytest.fail(
+        "Expected xFirewall rule to be shaped like "
+        f"`METHOD /path`, got {rule!r} for permission {permission_name!r}."
+    )
+
+
+def _validate_x_firewall_rule_path(pattern: str, rule: str, permission_name: str) -> None:
+    if (
+        not pattern.startswith("/")
+        or "?" in pattern
+        or "#" in pattern
+        or pattern != pattern.strip()
+    ):
+        _fail_malformed_x_firewall_rule(rule, permission_name)
+
+    segments = [segment for segment in pattern.split("/") if segment]
+    parameter_names: set[str] = set()
+    for index, segment in enumerate(segments):
+        parsed = matching.parse_segment(segment)
+        kind = parsed["kind"]
+        if kind == "error":
+            _fail_malformed_x_firewall_rule(rule, permission_name)
+        if kind == "literal":
+            continue
+
+        name = parsed["name"]
+        if name in parameter_names:
+            _fail_malformed_x_firewall_rule(rule, permission_name)
+        parameter_names.add(name)
+
+        greedy = parsed["greedy"]
+        if greedy and index != len(segments) - 1:
+            _fail_malformed_x_firewall_rule(rule, permission_name)
+        if greedy and (parsed["prefix"] or parsed["suffix"]):
+            _fail_malformed_x_firewall_rule(rule, permission_name)
+
+
 class TestTldSnapshot:
     """Static invariants for the checked-in IANA TLD snapshot."""
 
@@ -228,21 +269,11 @@ class TestFirewallConsistency:
             for rule in permission.rules:
                 parts = rule.split(" ", 1)
                 if len(parts) != 2:
-                    pytest.fail(
-                        "Expected xFirewall rule to be shaped like "
-                        f"`METHOD /path`, got {rule!r} for permission {permission.name!r}."
-                    )
+                    _fail_malformed_x_firewall_rule(rule, permission.name)
                 method, pattern = parts
-                if (
-                    not method.isalpha()
-                    or method != method.upper()
-                    or not pattern.startswith("/")
-                    or pattern != pattern.strip()
-                ):
-                    pytest.fail(
-                        "Expected xFirewall rule to be shaped like "
-                        f"`METHOD /path`, got {rule!r} for permission {permission.name!r}."
-                    )
+                if method not in _VALID_FIREWALL_RULE_METHODS:
+                    _fail_malformed_x_firewall_rule(rule, permission.name)
+                _validate_x_firewall_rule_path(pattern, rule, permission.name)
                 if matching.compile_path_pattern(pattern) is None:
                     pytest.fail(
                         "Expected xFirewall rule path to compile with the "
