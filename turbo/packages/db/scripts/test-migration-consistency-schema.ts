@@ -167,7 +167,7 @@ async function validateModelProviderAuthSessionLegacyView(
           'encrypted-provider-state',
           NOW() + INTERVAL '10 minutes'
         )
-        RETURNING id, org_id, status
+        RETURNING *
       `,
     );
     const legacyInserted = insertThroughLegacy.rows[0];
@@ -201,7 +201,7 @@ async function validateModelProviderAuthSessionLegacyView(
         UPDATE connector_cli_auth_sessions
         SET status = 'completing', updated_at = NOW()
         WHERE id = $1
-        RETURNING status
+        RETURNING *
       `,
       [legacyInserted.id],
     );
