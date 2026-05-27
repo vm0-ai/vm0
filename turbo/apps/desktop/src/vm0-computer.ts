@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import {
+  ComputerUseSnapshotStore,
+  SUPPORTED_COMPUTER_USE_CAPABILITIES,
+  executeComputerUseCommand,
+  type ComputerUseCommandKind,
+} from "./computer-use-accessibility";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 
 type JsonObject = Record<string, unknown>;
 
@@ -25,11 +31,6 @@ interface ParsedArgs {
 interface ParsedRuntimeCommands {
   readonly commands: readonly RuntimeCommand[];
   readonly outputArray: boolean;
-}
-
-interface PendingResponse {
-  readonly resolve: (response: RuntimeResponse) => void;
-  readonly reject: (error: Error) => void;
 }
 
 const appRoot = path.resolve(__dirname, "..");
@@ -67,7 +68,6 @@ const zeroCommands = new Map<string, string>([
 
 function usage(): string {
   return `Usage:
-  vm0-computer serve [--helper-path PATH]
   vm0-computer run JSON [--helper-path PATH]
   vm0-computer list-apps [--helper-path PATH]
   vm0-computer get-app-state --app APP [--helper-path PATH]
@@ -215,91 +215,26 @@ function commandFromArgs(
   return { kind, payload };
 }
 
-class RuntimeClient {
-  private readonly child: ChildProcessWithoutNullStreams;
-  private buffer = "";
-  private counter = 0;
-  private readonly pending = new Map<string, PendingResponse>();
-  private stderr = "";
-
-  constructor(helperPath: string) {
-    this.child = spawn(helperPath, ["serve"], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    this.child.stdout.setEncoding("utf8");
-    this.child.stdout.on("data", (chunk: string) => {
-      this.handleStdout(chunk);
-    });
-    this.child.stderr.setEncoding("utf8");
-    this.child.stderr.on("data", (chunk: string) => {
-      this.stderr += chunk;
-    });
-    this.child.on("close", (code) => {
-      for (const pending of this.pending.values()) {
-        pending.reject(
-          new Error(
-            this.stderr.trim() ||
-              `computer-use-helper exited with status ${code ?? "null"}`,
-          ),
-        );
-      }
-      this.pending.clear();
-    });
-  }
-
-  send(command: RuntimeCommand): Promise<RuntimeResponse> {
-    const id = `cli_${(this.counter += 1).toString()}`;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.child.stdin.write(
-        `${JSON.stringify({ id, ...command })}\n`,
-        (error: Error | null | undefined) => {
-          if (error) {
-            this.pending.delete(id);
-            reject(error);
-          }
-        },
-      );
-    });
-  }
-
-  close(): void {
-    this.child.stdin.end();
-  }
-
-  private handleStdout(chunk: string): void {
-    this.buffer += chunk;
-    while (this.buffer.includes("\n")) {
-      const index = this.buffer.indexOf("\n");
-      const line = this.buffer.slice(0, index).trim();
-      this.buffer = this.buffer.slice(index + 1);
-      if (line.length > 0) {
-        this.handleLine(line);
-      }
-    }
-  }
-
-  private handleLine(line: string): void {
-    const response: unknown = JSON.parse(line);
-    if (!isJsonObject(response) || typeof response.id !== "string") {
-      return;
-    }
-    const pending = this.pending.get(response.id);
-    if (!pending) {
-      return;
-    }
-    this.pending.delete(response.id);
-    pending.resolve(response);
-  }
+function isComputerUseCommandKind(
+  kind: string,
+): kind is ComputerUseCommandKind {
+  return SUPPORTED_COMPUTER_USE_CAPABILITIES.includes(
+    kind as ComputerUseCommandKind,
+  );
 }
 
-async function runServe(helperPath: string): Promise<void> {
-  const child = spawn(helperPath, ["serve"], { stdio: "inherit" });
-  const code = await new Promise<number | null>((resolve) => {
-    child.on("close", resolve);
-  });
-  process.exit(typeof code === "number" ? code : 1);
+function assertComputerUseCommandKind(kind: string): ComputerUseCommandKind {
+  if (isComputerUseCommandKind(kind)) {
+    return kind;
+  }
+  fail(`Unsupported vm0-computer command kind: ${kind}\n\n${usage()}`);
+}
+
+function runtimeResponse(
+  id: string,
+  result: Awaited<ReturnType<typeof executeComputerUseCommand>>,
+): RuntimeResponse {
+  return { id, ...result };
 }
 
 async function runCommands(
@@ -307,17 +242,31 @@ async function runCommands(
   commands: readonly RuntimeCommand[],
   outputArray: boolean,
 ): Promise<void> {
-  const client = new RuntimeClient(helperPath);
+  const nativeBackend = createComputerUseNativeBackend({ helperPath });
+  const snapshotStore = new ComputerUseSnapshotStore();
   try {
+    const permissions = await nativeBackend.getPermissions();
     const responses: RuntimeResponse[] = [];
+    let counter = 0;
     for (const command of commands) {
-      responses.push(await client.send(command));
+      const id = `cli_${(counter += 1).toString()}`;
+      const kind = assertComputerUseCommandKind(command.kind);
+      const result = await executeComputerUseCommand(
+        { id, kind, payload: command.payload ?? {} },
+        permissions,
+        {
+          nativeBackend,
+          platform: process.platform,
+          snapshotStore,
+        },
+      );
+      responses.push(runtimeResponse(id, result));
     }
     process.stdout.write(
       `${JSON.stringify(outputArray ? responses : responses[0], null, 2)}\n`,
     );
   } finally {
-    client.close();
+    nativeBackend.dispose();
   }
 }
 
@@ -330,10 +279,6 @@ async function main(): Promise<void> {
   }
 
   const helperPath = helperPathFrom(values);
-  if (command === "serve") {
-    await runServe(helperPath);
-    return;
-  }
   if (command === "run") {
     const raw = positional[1];
     if (!raw) {

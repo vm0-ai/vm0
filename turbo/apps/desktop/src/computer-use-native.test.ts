@@ -60,6 +60,13 @@ function responseFor(request) {
       result: { accessibility: true, screenRecording: true }
     };
   }
+  if (request.kind === "apps.list") {
+    return {
+      id: request.id,
+      status: "succeeded",
+      result: { apps: ["Safari"] }
+    };
+  }
   if (request.kind === "app.state") {
     return {
       id: request.id,
@@ -419,15 +426,14 @@ describe("computer use native backend", () => {
     }
   });
 
-  it("uses the same runtime contract from the vm0-computer CLI", async () => {
+  it("returns post-action app state from the vm0-computer CLI", async () => {
     const helper = await createSessionHelper();
     const commandInput = [
-      { kind: "app.state", payload: { app: "Safari", snapshotId: "snap_1" } },
+      { kind: "app.state", payload: { app: "Safari" } },
       {
         kind: "element.click",
         payload: {
           app: "Safari",
-          snapshotId: "snap_1",
           elementIndex: 1,
           button: "left",
           clickCount: 1,
@@ -456,16 +462,23 @@ describe("computer use native backend", () => {
         status: "succeeded",
         result: {
           app: "Safari",
-          snapshotId: "snap_1",
           elementIdsByIndex: ["w0", "w0.e0"],
+          screenshot: "data:image/png;base64,abc123",
+          text: expect.stringContaining("<app_state>"),
         },
       });
       expect(responses[1]).toMatchObject({
         status: "succeeded",
         result: {
-          snapshotId: "snap_1",
-          elementIndex: 1,
-          button: "left",
+          app: "Safari",
+          screenshot: "data:image/png;base64,abc123",
+          text: expect.stringContaining("<app_state>"),
+          action: {
+            app: "Safari",
+            elementIndex: 1,
+            button: "left",
+            clickCount: 1,
+          },
         },
       });
     } finally {
@@ -475,9 +488,7 @@ describe("computer use native backend", () => {
 
   it("preserves vm0-computer run array output for single-command arrays", async () => {
     const helper = await createSessionHelper();
-    const commandInput = [
-      { kind: "app.state", payload: { app: "Safari", snapshotId: "snap_1" } },
-    ];
+    const commandInput = [{ kind: "app.state", payload: { app: "Safari" } }];
 
     try {
       const { stdout } = await execFileAsync(
@@ -500,8 +511,9 @@ describe("computer use native backend", () => {
         status: "succeeded",
         result: {
           app: "Safari",
-          snapshotId: "snap_1",
           elementIdsByIndex: ["w0", "w0.e0"],
+          screenshot: "data:image/png;base64,abc123",
+          text: expect.stringContaining("<app_state>"),
         },
       });
     } finally {
@@ -515,27 +527,13 @@ describe("computer use native backend", () => {
       ["list-apps"],
       ["get-app-state", "--app", "Safari"],
       ["open-app", "--app", "Safari"],
-      [
-        "click",
-        "--app",
-        "Safari",
-        "--snapshot-id",
-        "snap_1",
-        "--element",
-        "w0.e0",
-        "--button",
-        "right",
-        "--click-count",
-        "2",
-      ],
+      ["click", "--app", "Safari", "--element", "w0.e0", "--click-count", "2"],
       [
         "scroll",
         "--app",
         "Safari",
-        "--snapshot-id",
-        "snap_1",
-        "--element-index",
-        "1",
+        "--element",
+        "w0.e0",
         "--direction",
         "down",
         "--pages",
@@ -545,10 +543,8 @@ describe("computer use native backend", () => {
         "set-value",
         "--app",
         "Safari",
-        "--snapshot-id",
-        "snap_1",
-        "--element-index",
-        "1",
+        "--element",
+        "w0.e0",
         "--value",
         "hello",
       ],
@@ -556,10 +552,8 @@ describe("computer use native backend", () => {
         "perform-action",
         "--app",
         "Safari",
-        "--snapshot-id",
-        "snap_1",
-        "--element-index",
-        "1",
+        "--element",
+        "w0.e0",
         "--action",
         "AXShowMenu",
       ],
@@ -585,9 +579,15 @@ describe("computer use native backend", () => {
             readonly payload?: Record<string, unknown>;
           };
         });
-      expect(requests.map((request) => request.kind)).toStrictEqual([
+      const publicCommandRequests = requests.filter((request) => {
+        return (
+          request.kind !== "permissions.state" && request.kind !== "app.state"
+        );
+      });
+      expect(
+        publicCommandRequests.map((request) => request.kind),
+      ).toStrictEqual([
         "apps.list",
-        "app.state",
         "app.open",
         "element.click",
         "element.scroll",
@@ -596,22 +596,29 @@ describe("computer use native backend", () => {
         "keyboard.type_text",
         "keyboard.press_key",
       ]);
-      expect(requests[3]?.payload).toMatchObject({
+      expect(publicCommandRequests[2]?.payload).toMatchObject({
         app: "Safari",
-        snapshotId: "snap_1",
         elementId: "w0.e0",
-        button: "right",
+        button: "left",
         clickCount: 2,
       });
-      expect(requests[4]?.payload).toMatchObject({
-        elementIndex: 1,
+      expect(publicCommandRequests[3]?.payload).toMatchObject({
+        elementId: "w0.e0",
         direction: "down",
         pages: 2,
       });
-      expect(requests[5]?.payload).toMatchObject({ value: "hello" });
-      expect(requests[6]?.payload).toMatchObject({ action: "AXShowMenu" });
-      expect(requests[7]?.payload).toMatchObject({ text: "hello" });
-      expect(requests[8]?.payload).toMatchObject({ key: "Escape" });
+      expect(publicCommandRequests[4]?.payload).toMatchObject({
+        value: "hello",
+      });
+      expect(publicCommandRequests[5]?.payload).toMatchObject({
+        action: "AXShowMenu",
+      });
+      expect(publicCommandRequests[6]?.payload).toMatchObject({
+        text: "hello",
+      });
+      expect(publicCommandRequests[7]?.payload).toMatchObject({
+        key: "Escape",
+      });
     } finally {
       await rm(helper.dir, { recursive: true, force: true });
     }
