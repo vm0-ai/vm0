@@ -4,7 +4,7 @@
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
  * - Mock (external): Web API via MSW
- * - Real (internal): All CLI code, formatters, validators, getConnectorEnvKeysForSecret
+ * - Real (internal): All CLI code, formatters, validators, getConnectorEnvNamesForSecret
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -76,7 +76,7 @@ describe("zero secret list command", () => {
   });
 
   describe("connector secrets", () => {
-    it("should display connector secret with derived environment keys", async () => {
+    it("should display connector secret with derived environment names", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/secrets", () => {
           return HttpResponse.json({

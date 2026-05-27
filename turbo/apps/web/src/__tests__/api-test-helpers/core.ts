@@ -52,7 +52,7 @@ function isComposeConfigOptions(
  *
  * Options:
  * - skipDefaultApiKey: true  → environment: {} (empty object)
- * - noEnvironmentBlock: true → no environment key at all
+ * - noEnvironmentBlock: true → no environment name at all
  */
 export function createDefaultComposeConfig(
   agentName: string,

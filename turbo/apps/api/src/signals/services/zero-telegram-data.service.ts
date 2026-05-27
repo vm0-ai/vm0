@@ -4,7 +4,7 @@ import type {
   TelegramBotStatus,
   TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { getConnectorProvidedEnvKeys } from "@vm0/connectors/connector-utils";
+import { getConnectorProvidedEnvNames } from "@vm0/connectors/connector-utils";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
@@ -277,7 +277,7 @@ function telegramEnvironment(args: {
       get(userVariables({ orgId: args.orgId, userId: args.userId })),
       get(zeroConnectorList({ orgId: args.orgId, userId: args.userId })),
     ]);
-    const connectorProvidedEnvKeys = getConnectorProvidedEnvKeys(
+    const connectorProvidedEnvNames = getConnectorProvidedEnvNames(
       connectorList.connectors.map((connector) => {
         return connector.type;
       }),
@@ -286,7 +286,7 @@ function telegramEnvironment(args: {
       ...secretList.secrets.map((secret) => {
         return secret.name;
       }),
-      ...connectorProvidedEnvKeys,
+      ...connectorProvidedEnvNames,
     ]);
     const existingVarNames = new Set(
       variableList.variables.map((variable) => {

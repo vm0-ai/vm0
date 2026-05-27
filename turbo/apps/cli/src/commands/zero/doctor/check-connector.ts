@@ -31,14 +31,14 @@ import { toPlatformUrl } from "./platform-url";
 import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
 
 interface CheckConnectorOptions {
-  envKey?: string;
+  envName?: string;
   url?: string;
   method: string;
   checkPermission?: string;
 }
 
 interface DiagContext {
-  envKey: string;
+  envName: string;
   connectorType: string;
   label: string;
   connectorAvailable: boolean;
@@ -48,7 +48,7 @@ interface DiagContext {
 
 interface UrlLookupResult {
   connectorType: string;
-  envKey: string;
+  envName: string;
   matchedBase: string;
   relativePath: string;
 }
@@ -101,12 +101,12 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
 
   if (!bestMatch) return null;
 
-  // Derive the environment key from the connector's env bindings.
+  // Derive the environment name from the connector's env bindings.
   const envBindings = getConnectorEnvBindings(
     bestMatch.connectorType as ConnectorType,
   );
-  const envKey = Object.keys(envBindings)[0];
-  if (!envKey) return null;
+  const envName = Object.keys(envBindings)[0];
+  if (!envName) return null;
 
   const relativePath =
     normalized === bestMatch.base
@@ -115,18 +115,18 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
 
   return {
     connectorType: bestMatch.connectorType,
-    envKey,
+    envName,
     matchedBase: bestMatch.base,
     relativePath,
   };
 }
 
-function checkEnvKey(ctx: DiagContext): boolean {
-  console.log("## Step 1: Sandbox environment key");
+function checkEnvName(ctx: DiagContext): boolean {
+  console.log("## Step 1: Sandbox environment name");
   console.log("");
-  const envPresent = Boolean(process.env[ctx.envKey]);
+  const envPresent = Boolean(process.env[ctx.envName]);
   console.log(
-    `Checking process.env.${ctx.envKey}: ${envPresent ? "present" : "not present"}`,
+    `Checking process.env.${ctx.envName}: ${envPresent ? "present" : "not present"}`,
   );
   if (envPresent) {
     console.log(
@@ -134,7 +134,7 @@ function checkEnvKey(ctx: DiagContext): boolean {
     );
   } else {
     console.log(
-      "No value found for this environment key. Note: credential replacement at the network boundary is independent of this key — the proxy injects auth headers based on the destination URL.",
+      "No value found for this environment name. Note: credential replacement at the network boundary is independent of this name — the proxy injects auth headers based on the destination URL.",
     );
   }
   console.log("");
@@ -453,18 +453,18 @@ function resolvePermissionFromUrl(
 export const checkConnectorCommand = new Command()
   .name("check-connector")
   .description(
-    "Diagnose connector health: environment key, connector configuration, and permission policies",
+    "Diagnose connector health: environment name, connector configuration, and permission policies",
   )
   .addOption(
     new Option(
-      "--env-key <ENV_KEY>",
-      "The connector environment key to check (e.g. GITHUB_TOKEN)",
+      "--env-name <ENV_NAME>",
+      "The connector environment name to check (e.g. GITHUB_TOKEN)",
     ),
   )
   .addOption(
     new Option(
       "--url <URL>",
-      "A full URL to diagnose — auto-detects the connector, environment key, and permission (e.g. https://api.github.com/repos/owner/repo)",
+      "A full URL to diagnose — auto-detects the connector, environment name, and permission (e.g. https://api.github.com/repos/owner/repo)",
     ),
   )
   .addOption(
@@ -483,10 +483,10 @@ export const checkConnectorCommand = new Command()
     "after",
     `
 Examples:
-  zero doctor check-connector --env-key GITHUB_TOKEN
+  zero doctor check-connector --env-name GITHUB_TOKEN
   zero doctor check-connector --url https://api.github.com/repos/owner/repo
   zero doctor check-connector --url https://slack.com/api/chat.postMessage --method POST
-  zero doctor check-connector --env-key SLACK_TOKEN --check-permission chat:write
+  zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
 
 How connectors work:
   A Connector holds the real credentials for an external service. These credentials
@@ -498,13 +498,13 @@ How connectors work:
   )
   .action(
     withErrorHandler(async (opts: CheckConnectorOptions) => {
-      if (!opts.envKey && !opts.url) {
+      if (!opts.envName && !opts.url) {
         throw new Error(
-          "Either --env-key or --url is required. Use --help for usage.",
+          "Either --env-name or --url is required. Use --help for usage.",
         );
       }
 
-      let envKey: string;
+      let envName: string;
       let connectorType: string;
       let urlLookup: UrlLookupResult | null = null;
 
@@ -516,22 +516,24 @@ How connectors work:
           );
         }
         connectorType = urlLookup.connectorType;
-        envKey = opts.envKey ?? urlLookup.envKey;
+        envName = opts.envName ?? urlLookup.envName;
         console.log(
           `URL ${opts.url} matches the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
         );
         console.log(`  Matched base URL: ${urlLookup.matchedBase}`);
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
-        console.log(`  Environment key:  ${envKey}`);
+        console.log(`  Environment name:  ${envName}`);
       } else {
-        connectorType = getConnectorTypeForSecretName((envKey = opts.envKey!))!;
+        connectorType = getConnectorTypeForSecretName(
+          (envName = opts.envName!),
+        )!;
         if (!connectorType) {
           throw new Error(
-            `Unknown environment key: ${envKey} — not managed by any connector`,
+            `Unknown environment name: ${envName} — not managed by any connector`,
           );
         }
         console.log(
-          `${envKey} is managed by the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
+          `${envName} is managed by the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
         );
       }
       console.log("");
@@ -544,7 +546,7 @@ How connectors work:
       const platformUrl = toPlatformUrl(apiUrl);
 
       const ctx: DiagContext = {
-        envKey,
+        envName,
         connectorType,
         label,
         connectorAvailable,
@@ -552,7 +554,7 @@ How connectors work:
         agentId: process.env.ZERO_AGENT_ID || undefined,
       };
 
-      checkEnvKey(ctx);
+      checkEnvName(ctx);
       const { isConnected, isExpired, hasPermission } =
         await checkConnectorStatus(ctx);
       const networkPolicies = await checkConnectorDomains(ctx);
@@ -577,7 +579,7 @@ How connectors work:
           networkPolicies,
         );
       } else if (opts.checkPermission) {
-        // --env-key mode with explicit --check-permission
+        // --env-name mode with explicit --check-permission
         checkPermissionPolicy(
           connectorType,
           label,
@@ -594,7 +596,7 @@ How connectors work:
           args.push(`--method ${opts.method}`);
         }
       } else {
-        args.push(`--env-key ${envKey}`);
+        args.push(`--env-name ${envName}`);
       }
       if (opts.checkPermission) {
         args.push(`--check-permission ${opts.checkPermission}`);

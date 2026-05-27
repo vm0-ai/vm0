@@ -666,7 +666,7 @@ describe("codex-oauth-token codex provider", () => {
   );
 
   it("CHATGPT_ACCESS_TOKEN placeholder is an opaque marker (not a JWT)", () => {
-    // Codex doesn't read this environment key in ChatGPT mode — it reads the real
+    // Codex doesn't read this environment name in ChatGPT mode — it reads the real
     // JWT from ~/.codex/auth.json (written by guest-agent #11877). The
     // firewall only needs a stable, non-empty marker to match-and-substitute
     // at egress. A JWT-shaped placeholder triggers Semgrep's
@@ -773,7 +773,7 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
 
   it("share the secretName with their claude-code twin gateway", () => {
     // Same API key powers both protocols on the same upstream gateway.
-    // The codex twin must not invent a separate secret environment key.
+    // The codex twin must not invent a separate secret environment name.
     const openrouterCodex = MODEL_PROVIDER_TYPES["openrouter-codex"];
     const openrouterClaudeCode = MODEL_PROVIDER_TYPES["openrouter-api-key"];
     expect(openrouterCodex.secretName).toBe(openrouterClaudeCode.secretName);

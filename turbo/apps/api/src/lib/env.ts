@@ -103,7 +103,7 @@ const baseEnv = createEnv<undefined, typeof SCHEMA>({
 });
 
 type EnvShape = typeof baseEnv;
-type EnvKey = keyof EnvShape;
+type EnvName = keyof EnvShape;
 
 const {
   get: getOverrideEnv,
@@ -121,7 +121,7 @@ const {
   return {};
 });
 
-export function env<K extends EnvKey>(name: K): EnvShape[K] {
+export function env<K extends EnvName>(name: K): EnvShape[K] {
   const overrideEnv = getOverrideEnv();
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name] as EnvShape[K];
@@ -137,7 +137,7 @@ export function optionalEnv(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
-export function mockEnv<K extends EnvKey>(
+export function mockEnv<K extends EnvName>(
   name: K,
   value: z.input<(typeof SCHEMA)[K]>,
 ): void {

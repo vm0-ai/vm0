@@ -563,7 +563,7 @@ function expandPlaceholders(
   const expanded: Record<string, string> = { ...firewall.placeholders };
 
   for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
-    // key is a mapped environment key (e.g. GITHUB_TOKEN)
+    // key is a mapped environment name (e.g. GITHUB_TOKEN)
     // → add the raw secret name and any sibling aliases
     const valueRef = envBindings[key];
     if (valueRef?.startsWith("$secrets.")) {
@@ -571,18 +571,18 @@ function expandPlaceholders(
       if (!expanded[rawName]) {
         expanded[rawName] = placeholderValue;
       }
-      for (const [envKey, ref] of Object.entries(envBindings)) {
-        if (ref === valueRef && !expanded[envKey]) {
-          expanded[envKey] = placeholderValue;
+      for (const [envName, ref] of Object.entries(envBindings)) {
+        if (ref === valueRef && !expanded[envName]) {
+          expanded[envName] = placeholderValue;
         }
       }
     }
 
-    // key is a raw secret name -> add all environment keys that reference it
+    // key is a raw secret name -> add all environment names that reference it
     const rawRef = `$secrets.${key}`;
-    for (const [envKey, ref] of Object.entries(envBindings)) {
-      if (ref === rawRef && !expanded[envKey]) {
-        expanded[envKey] = placeholderValue;
+    for (const [envName, ref] of Object.entries(envBindings)) {
+      if (ref === rawRef && !expanded[envName]) {
+        expanded[envName] = placeholderValue;
       }
     }
   }

@@ -28,7 +28,7 @@ function parseLimit(raw: string): number {
 export const searchCommand = new Command()
   .name("search")
   .description(
-    "Search connectors by type, label, environment key, secret, or tag",
+    "Search connectors by type, label, environment name, secret, or tag",
   )
   .argument("<keyword>", "Search keyword (case-insensitive)")
   .option("--agent <id>", "Show per-agent authorization column")

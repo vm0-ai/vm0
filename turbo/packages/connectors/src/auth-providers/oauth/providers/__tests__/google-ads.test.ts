@@ -41,7 +41,7 @@ describe("connector/providers/google-ads", () => {
       );
     });
 
-    it("resolves the OAuth client from Google env keys", () => {
+    it("resolves the OAuth client from Google env names", () => {
       const env: Record<string, string> = {
         GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
         GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",

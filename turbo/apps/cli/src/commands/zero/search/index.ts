@@ -35,7 +35,7 @@ If you don't have $SLACK_TOKEN, check the connector status:
   zero connector status slack
 
 To verify the token and network policy end-to-end:
-  zero doctor check-connector --env-key SLACK_TOKEN
+  zero doctor check-connector --env-name SLACK_TOKEN
 
 Slack API docs: https://api.slack.com/methods/search.messages
 

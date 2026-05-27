@@ -13,7 +13,7 @@ import {
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNames,
   getConnectorOAuthClient,
-  getConnectorProvidedEnvKeys,
+  getConnectorProvidedEnvNames,
   getConnectorSecretNames,
   getRuntimeAvailableConnectorTypes,
   getScopeDiff,
@@ -389,8 +389,8 @@ export function zeroConnectorList(args: {
       configuredTypes: getRuntimeAvailableConnectorTypes((name) => {
         return optionalEnv(name);
       }),
-      connectorProvidedEnvKeys: [
-        ...getConnectorProvidedEnvKeys(
+      connectorProvidedEnvNames: [
+        ...getConnectorProvidedEnvNames(
           connectorList.map((connector) => {
             return connector.type;
           }),

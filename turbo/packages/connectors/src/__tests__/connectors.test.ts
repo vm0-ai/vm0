@@ -31,7 +31,7 @@ import {
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
-  getConnectorProvidedEnvKeys,
+  getConnectorProvidedEnvNames,
   getConnectorOAuthClientConfig,
   getConnectorOAuthClient,
   getConnectorOAuthGrantConfigIfSupported,
@@ -1340,9 +1340,9 @@ describe("getEligibleConnectorTypes", () => {
 });
 
 describe("getConnectorManagedSecretNames", () => {
-  it("includes OAuth envBindings keys for OAuth connectors", () => {
+  it("includes OAuth envBindings names for OAuth connectors", () => {
     const managed = getConnectorManagedSecretNames(["github"]);
-    // OAuth env bindings keys
+    // OAuth env binding names
     expect(managed.has("GH_TOKEN")).toBe(true);
     expect(managed.has("GITHUB_TOKEN")).toBe(true);
     // OAuth auth method secret
@@ -1555,12 +1555,12 @@ describe("getConnectorEnvBindings", () => {
 
       const fieldNames = Object.keys(fields);
       const envBindings = getConnectorEnvBindings(type);
-      const envBindingKeys = Object.keys(envBindings);
+      const envBindingNames = Object.keys(envBindings);
 
-      // envBindings keys must be exactly the same set as secrets
+      // envBindings names must be exactly the same set as secrets
       expect(
-        envBindingKeys.sort(),
-        `${type}: envBindings keys must match api-token secrets`,
+        envBindingNames.sort(),
+        `${type}: envBindings names must match api-token secrets`,
       ).toEqual(fieldNames.sort());
 
       // each envBindings value must be $secrets.KEY or $vars.KEY (same name)
@@ -1825,14 +1825,14 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 });
 
-describe("getConnectorProvidedEnvKeys", () => {
-  it("returns environment keys for API-token-only connector", () => {
-    const names = getConnectorProvidedEnvKeys(["axiom"]);
+describe("getConnectorProvidedEnvNames", () => {
+  it("returns environment names for API-token-only connector", () => {
+    const names = getConnectorProvidedEnvNames(["axiom"]);
     expect(names.has("AXIOM_TOKEN")).toBe(true);
   });
 
-  it("returns environment keys for OAuth connector", () => {
-    const names = getConnectorProvidedEnvKeys(["github"]);
+  it("returns environment names for OAuth connector", () => {
+    const names = getConnectorProvidedEnvNames(["github"]);
     expect(names.has("GH_TOKEN")).toBe(true);
     expect(names.has("GITHUB_TOKEN")).toBe(true);
   });

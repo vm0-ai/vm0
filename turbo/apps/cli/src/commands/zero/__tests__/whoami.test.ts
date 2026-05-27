@@ -235,7 +235,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github", "google"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
       );
@@ -294,7 +294,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["slack"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
       );
@@ -373,7 +373,7 @@ describe("zero whoami command", () => {
           return HttpResponse.json({
             connectors: [],
             configuredTypes: [],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
       );
@@ -425,7 +425,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
       );
@@ -490,7 +490,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["slack"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
         http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
@@ -581,7 +581,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
         http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
@@ -651,7 +651,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
         http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
@@ -729,7 +729,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
         http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
@@ -823,7 +823,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github", "axiom"],
-            connectorProvidedEnvKeys: [],
+            connectorProvidedEnvNames: [],
           });
         }),
       );

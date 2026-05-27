@@ -153,7 +153,7 @@ describe("connector/providers/meta-ads", () => {
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
     });
 
-    it("resolves the OAuth client from Meta Ads env keys", () => {
+    it("resolves the OAuth client from Meta Ads env names", () => {
       const env: Record<string, string> = {
         META_ADS_OAUTH_CLIENT_ID: "test-client-id",
         META_ADS_OAUTH_CLIENT_SECRET: "test-client-secret",

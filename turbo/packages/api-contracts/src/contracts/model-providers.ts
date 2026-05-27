@@ -1107,7 +1107,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
   // Codex-framework twin of openrouter-api-key. It reuses the same stored
-  // OpenRouter secret, but the sandbox env key is OPENAI_API_KEY because codex
+  // OpenRouter secret, but the sandbox env name is OPENAI_API_KEY because codex
   // SDK hits OpenAI-compatible paths (/chat/completions, /responses) under
   // https://openrouter.ai/api/v1, derived from the OPENAI_BASE_URL mapping by
   // getFirewallBaseUrl.
@@ -1117,7 +1117,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
   // Codex-framework twin of vercel-ai-gateway. It reuses the same stored Vercel
-  // secret, but the sandbox env key is OPENAI_API_KEY. Base URL is scoped to
+  // secret, but the sandbox env name is OPENAI_API_KEY. Base URL is scoped to
   // the /v1 prefix by getFirewallBaseUrl so codex can use either
   // /chat/completions or /responses paths the gateway exposes.
   "vercel-ai-gateway-codex": mpFirewall(
