@@ -3,6 +3,7 @@
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
+use crate::urls;
 use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
@@ -33,16 +34,36 @@ const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 pub struct HttpClient {
     inner: Option<Client>,
     retry_delay: Duration,
+    api: Option<ApiHttpConfig>,
+}
+
+#[derive(Clone)]
+struct ApiHttpConfig {
+    urls: ApiUrls,
+    token: String,
+    vercel_bypass: String,
+}
+
+#[derive(Clone)]
+struct ApiUrls {
+    events: String,
+    checkpoint: String,
+    complete: String,
+    heartbeat: String,
+    telemetry: String,
+    checkpoint_prepare_history: String,
+    storage_prepare: String,
+    storage_commit: String,
 }
 
 impl HttpClient {
-    /// Build an enabled HTTP client.
+    /// Build an HTTP transport client without API webhook configuration.
     ///
     /// This constructor always initializes the underlying `reqwest` client and
-    /// does not check `VM0_API_TOKEN` or [`env::has_api`]. Use this in tests or
-    /// manual callers that intentionally need HTTP requests to be active.
-    /// Production guest-agent initialization should use
-    /// [`Self::for_current_env`] so no-API runs can use a disabled client.
+    /// does not check `VM0_API_TOKEN`. It can send presigned uploads, but
+    /// webhook JSON posts require API config from [`Self::with_api_config`] or
+    /// [`Self::for_current_env`]. Production guest-agent initialization should
+    /// use [`Self::for_current_env`] so no-API runs can use a disabled client.
     pub fn new() -> Result<Self, AgentError> {
         Self::with_retry_delay(DEFAULT_RETRY_DELAY)
     }
@@ -50,11 +71,32 @@ impl HttpClient {
     /// Build an enabled client with a custom retry delay.
     ///
     /// Integration tests use this to cover real retry behavior without paying
-    /// production backoff time. Production guest-agent initialization should use
-    /// [`Self::for_current_env`] so environment-gated no-API runs get a disabled
-    /// client.
+    /// production backoff time. This constructor does not enable API webhook
+    /// auth by itself; use [`Self::with_api_config`] for explicit API tests or
+    /// [`Self::for_current_env`] for production guest-agent initialization.
     #[doc(hidden)]
     pub fn with_retry_delay(retry_delay: Duration) -> Result<Self, AgentError> {
+        Self::build(None, retry_delay)
+    }
+
+    #[doc(hidden)]
+    pub fn with_api_config(
+        base_url: impl Into<String>,
+        token: impl Into<String>,
+        vercel_bypass: impl Into<String>,
+        retry_delay: Duration,
+    ) -> Result<Self, AgentError> {
+        Self::build(
+            Some(ApiHttpConfig::new(
+                base_url.into(),
+                token.into(),
+                vercel_bypass.into(),
+            )?),
+            retry_delay,
+        )
+    }
+
+    fn build(api: Option<ApiHttpConfig>, retry_delay: Duration) -> Result<Self, AgentError> {
         let inner = Client::builder()
             .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
             .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
@@ -66,25 +108,30 @@ impl HttpClient {
         Ok(Self {
             inner: Some(inner),
             retry_delay,
+            api,
         })
     }
 
     /// Build the HTTP client appropriate for the current environment.
     ///
     /// Production guest-agent initialization should use this constructor. When
-    /// [`env::has_api`] is true, currently when `VM0_API_TOKEN` is non-empty,
-    /// this returns the same enabled client as [`Self::new`]. Otherwise it
-    /// returns a disabled client whose request methods fail with the
-    /// disabled-client error before building or sending HTTP requests.
+    /// `VM0_API_TOKEN` is non-empty, this captures `VM0_API_URL`, the API
+    /// token, and optional Vercel bypass header once and returns a webhook-ready
+    /// client. Otherwise it returns a disabled client whose request methods fail
+    /// with the disabled-client error before building or sending HTTP requests.
     pub fn for_current_env() -> Result<Self, AgentError> {
-        if env::has_api() {
-            Self::new()
-        } else {
-            Ok(Self {
+        let Some(api) = Self::api_config_from_current_env()? else {
+            return Ok(Self {
                 inner: None,
                 retry_delay: DEFAULT_RETRY_DELAY,
-            })
-        }
+                api: None,
+            });
+        };
+        Self::build(Some(api), DEFAULT_RETRY_DELAY)
+    }
+
+    pub fn has_api(&self) -> bool {
+        self.api.is_some()
     }
 
     fn inner(&self) -> Result<&Client, AgentError> {
@@ -93,6 +140,94 @@ impl HttpClient {
                 "guest-agent HTTP client is disabled because VM0_API_TOKEN is unset".into(),
             )
         })
+    }
+
+    fn api_config(&self) -> Result<&ApiHttpConfig, AgentError> {
+        self.api.as_ref().ok_or_else(|| {
+            AgentError::Http(
+                "guest-agent API HTTP config is disabled because VM0_API_TOKEN is unset".into(),
+            )
+        })
+    }
+
+    fn api_config_from_current_env() -> Result<Option<ApiHttpConfig>, AgentError> {
+        let token = env::api_token();
+        if token.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(ApiHttpConfig::new(
+            env::api_url().to_string(),
+            token.to_string(),
+            env::vercel_bypass().to_string(),
+        )?))
+    }
+
+    pub(crate) fn events_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.events)
+    }
+
+    pub(crate) fn checkpoint_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.checkpoint)
+    }
+
+    pub(crate) fn complete_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.complete)
+    }
+
+    pub(crate) fn heartbeat_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.heartbeat)
+    }
+
+    pub(crate) fn telemetry_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.telemetry)
+    }
+
+    pub(crate) fn checkpoint_prepare_history_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.checkpoint_prepare_history)
+    }
+
+    pub(crate) fn storage_prepare_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.storage_prepare)
+    }
+
+    pub(crate) fn storage_commit_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.storage_commit)
+    }
+}
+
+impl ApiHttpConfig {
+    fn new(base_url: String, token: String, vercel_bypass: String) -> Result<Self, AgentError> {
+        if base_url.is_empty() {
+            return Err(AgentError::Http(
+                "VM0_API_URL is required when VM0_API_TOKEN is set".into(),
+            ));
+        }
+        if token.is_empty() {
+            return Err(AgentError::Http(
+                "VM0_API_TOKEN is required for enabled API HTTP config".into(),
+            ));
+        }
+        Ok(Self {
+            urls: ApiUrls::new(&base_url),
+            token,
+            vercel_bypass,
+        })
+    }
+}
+
+impl ApiUrls {
+    fn new(base_url: &str) -> Self {
+        Self {
+            events: urls::events_url(base_url),
+            checkpoint: urls::checkpoint_url(base_url),
+            complete: urls::complete_url(base_url),
+            heartbeat: urls::heartbeat_url(base_url),
+            telemetry: urls::telemetry_url(base_url),
+            checkpoint_prepare_history: urls::checkpoint_prepare_history_url(base_url),
+            storage_prepare: urls::storage_prepare_url(base_url),
+            storage_commit: urls::storage_commit_url(base_url),
+        }
     }
 }
 
@@ -153,6 +288,7 @@ impl HttpClient {
         max_retries: u32,
     ) -> Result<Option<Value>, AgentError> {
         let client = self.inner()?;
+        let api = self.api_config()?;
         let resp = send_with_retry(
             "POST",
             max_retries,
@@ -161,12 +297,11 @@ impl HttpClient {
             || {
                 let mut req = client
                     .post(url)
-                    .header("Authorization", format!("Bearer {}", env::api_token()))
+                    .header("Authorization", format!("Bearer {}", api.token))
                     .json(body);
 
-                let bypass = env::vercel_bypass();
-                if !bypass.is_empty() {
-                    req = req.header("x-vercel-protection-bypass", bypass);
+                if !api.vercel_bypass.is_empty() {
+                    req = req.header("x-vercel-protection-bypass", &api.vercel_bypass);
                 }
 
                 std::future::ready(Ok(req))
@@ -436,6 +571,7 @@ mod tests {
         let client = HttpClient {
             inner: None,
             retry_delay: DEFAULT_RETRY_DELAY,
+            api: None,
         };
         let result = client
             .post_json("http://127.0.0.1:1/test", &serde_json::json!({}), 1)
@@ -452,6 +588,7 @@ mod tests {
         let client = HttpClient {
             inner: None,
             retry_delay: DEFAULT_RETRY_DELAY,
+            api: None,
         };
         let result = client
             .put_presigned(
@@ -472,6 +609,7 @@ mod tests {
         let client = HttpClient {
             inner: None,
             retry_delay: DEFAULT_RETRY_DELAY,
+            api: None,
         };
         let result = client
             .put_presigned_file(

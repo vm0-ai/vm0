@@ -228,7 +228,7 @@ async fn execute(
                     false,
                     Some(diagnostic),
                 )
-            } else if env::has_api()
+            } else if http.has_api()
                 && is_claude_zero_turn_result(env::Framework::from_env(), &cli_result)
             {
                 let history_check_start = Instant::now();
@@ -584,7 +584,7 @@ async fn complete_execution(
     // final pass. Both go through the single-writer uploader, so the two
     // flushes never race the periodic tick on the pos files.
     let agent_type = env::Framework::from_env().agent_type();
-    if should_create_success_checkpoint(cli_exit_code, exit_code) && env::has_api() {
+    if should_create_success_checkpoint(cli_exit_code, exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
@@ -664,7 +664,7 @@ async fn complete_execution(
             );
         }
 
-        if env::has_api() {
+        if http.has_api() {
             if state.skip_recovery_checkpoint_for_no_history {
                 log_info!(
                     LOG_TAG,
@@ -713,6 +713,10 @@ mod tests {
         TEST_STATE_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn test_http_client(server: &MockServer) -> HttpClient {
+        HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
     }
 
     struct SystemLogOverrideGuard;
@@ -1252,7 +1256,7 @@ mod tests {
             None,
         );
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http);
 
         final_telemetry(&telemetry).await;
@@ -1358,7 +1362,7 @@ mod tests {
         });
 
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let exit_code = complete_execution(
             0,
@@ -1431,7 +1435,7 @@ mod tests {
         });
 
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let exit_code = complete_execution(
             0,
@@ -1503,7 +1507,7 @@ mod tests {
         });
 
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let failure_message = "CLI failed before all events uploaded";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -1586,7 +1590,7 @@ mod tests {
         });
 
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -1700,7 +1704,7 @@ mod tests {
         });
 
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let failure_message = "You've hit your usage limit.";
         let failure_diagnostic = FailureDiagnostic::new(

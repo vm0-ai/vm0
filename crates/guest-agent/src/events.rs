@@ -10,7 +10,6 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
-use crate::urls;
 use agent_diagnostics::FailureReason;
 use guest_common::{log_error, log_info};
 use serde_json::{Value, json};
@@ -44,25 +43,21 @@ pub async fn send_event(
 ) -> Result<(), AgentError> {
     capture_session_metadata(event);
 
-    let Some(payload) = prepare_event(event, seq, masker) else {
+    if !http.has_api() {
         return Ok(());
-    };
+    }
+
+    let payload = prepare_event(event, seq, masker);
     post_event(http, &payload).await
 }
 
 /// Prepare an event webhook payload by adding a sequence number, masking
 /// secrets, and wrapping the event in the HTTP payload shape.
 ///
-/// Returns `None` if there is no API token (local/test mode) or the event
-/// should not be posted. This function does not perform filesystem or network
-/// I/O; session metadata capture is handled separately before payload
-/// preparation, and network delivery happens in `post_event` / `send_event`.
-pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Option<Value> {
-    // No API token → local/test mode; skip posting events.
-    if !env::has_api() {
-        return None;
-    }
-
+/// This function does not perform filesystem or network I/O; session metadata
+/// capture is handled separately before payload preparation, and network
+/// delivery happens in `post_event` / `send_event`.
+pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Value {
     // Add sequence number
     if let Some(obj) = event.as_object_mut() {
         obj.insert("sequenceNumber".to_string(), json!(seq));
@@ -72,10 +67,10 @@ pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Opti
     masker.mask_value(event);
 
     // Build payload
-    Some(json!({
+    json!({
         "runId": env::run_id(),
         "events": [event],
-    }))
+    })
 }
 
 /// Extract a secret-masked Codex failure diagnostic from stdout JSONL.
@@ -253,8 +248,9 @@ fn truncate_diagnostic_message(message: &str) -> String {
 
 /// POST a prepared event payload to the webhook endpoint.
 pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
+    let url = http.events_url()?;
     match http
-        .post_json(urls::events_url(), payload, constants::HTTP_MAX_RETRIES)
+        .post_json(url, payload, constants::HTTP_MAX_RETRIES)
         .await
     {
         Ok(_) => Ok(()),

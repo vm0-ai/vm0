@@ -17,8 +17,8 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 /// Shared mock server — env vars are set once before any `LazyLock` in the
-/// library is accessed, so `env::api_url()`, `urls::*`, etc. all resolve to
-/// the mock server's address.
+/// library is accessed, so environment-backed guest-agent state resolves to
+/// test values.
 static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
     let server = MockServer::start();
     unsafe {
@@ -49,7 +49,14 @@ const MOCK_CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[allow(clippy::expect_used)]
 fn test_http_client(retry_delay: Duration) -> guest_agent::http::HttpClient {
-    guest_agent::http::HttpClient::with_retry_delay(retry_delay).expect("build test http client")
+    let server = &*MOCK_SERVER;
+    guest_agent::http::HttpClient::with_api_config(
+        server.base_url(),
+        "test-token-abc123",
+        "test-bypass-value",
+        retry_delay,
+    )
+    .expect("build test http client")
 }
 
 fn http_status(status: u16) -> HttpMockResponse {
@@ -85,12 +92,20 @@ fn request_header_eq(req: &HttpMockRequest, name: &str, expected: &str) -> bool 
         .any(|(key, value)| key.eq_ignore_ascii_case(name) && value == expected)
 }
 
+fn request_header_absent(req: &HttpMockRequest, name: &str) -> bool {
+    !req.headers_vec()
+        .iter()
+        .any(|(key, _)| key.eq_ignore_ascii_case(name))
+}
+
 fn upload_request_matches(
     req: &HttpMockRequest,
     expected_body: &[u8],
     expected_content_length: &str,
 ) -> bool {
     request_header_eq(req, "content-length", expected_content_length)
+        && request_header_absent(req, "authorization")
+        && request_header_absent(req, "x-vercel-protection-bypass")
         && req.body_ref() == expected_body
 }
 
@@ -227,6 +242,37 @@ async fn for_current_env_uses_enabled_client_when_api_token_is_set()
 
     mock.assert_calls_async(1).await;
     assert_eq!(result.unwrap()["status"], "ok");
+    mock.delete_async().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn for_current_env_uses_env_api_url_for_webhook_routes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .header("Authorization", "Bearer test-token-abc123")
+            .header("x-vercel-protection-bypass", "test-bypass-value")
+            .json_body_includes(r#"{"runId": "test-run-001"}"#);
+        then.status(200);
+    });
+
+    let masker = SecretMasker::from_raw("");
+    let mut event = json!({"type": "test", "data": "env route"});
+    guest_agent::events::send_event(
+        &guest_agent::http::HttpClient::for_current_env()?,
+        &mut event,
+        7,
+        &masker,
+    )
+    .await?;
+
+    mock.assert_calls_async(1).await;
+    assert_eq!(event["sequenceNumber"], 7);
     mock.delete_async().await;
     Ok(())
 }
@@ -377,6 +423,33 @@ async fn post_json_sends_vercel_bypass_header() {
     mock.delete_async().await;
 }
 
+#[tokio::test]
+async fn post_json_uses_explicit_api_config_without_env_api_url() {
+    let server = MockServer::start();
+    let http = guest_agent::http::HttpClient::with_api_config(
+        server.base_url(),
+        "explicit-token",
+        "explicit-bypass",
+        Duration::ZERO,
+    )
+    .expect("build explicit API client");
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .header("Authorization", "Bearer explicit-token")
+            .header("x-vercel-protection-bypass", "explicit-bypass");
+        then.status(200).json_body(json!({}));
+    });
+
+    let url = format!("{}/api/webhooks/agent/events", server.base_url());
+    let result = http.post_json(&url, &json!({"events": []}), 1).await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_ok());
+    mock.delete_async().await;
+}
+
 // =========================================================================
 // Group 3: put_presigned
 // =========================================================================
@@ -394,6 +467,35 @@ async fn put_presigned_success() {
     });
 
     let url = format!("{}/test/put-success", server.base_url());
+    let data = Bytes::from_static(b"test data");
+    let result = http_client!()
+        .put_presigned(&url, data, "application/octet-stream")
+        .await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_ok());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_does_not_send_api_headers() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-no-api-headers");
+        then.respond_with(|req| {
+            if request_header_absent(req, "authorization")
+                && request_header_absent(req, "x-vercel-protection-bypass")
+            {
+                http_status(200)
+            } else {
+                http_status(400)
+            }
+        });
+    });
+
+    let url = format!("{}/test/put-no-api-headers", server.base_url());
     let data = Bytes::from_static(b"test data");
     let result = http_client!()
         .put_presigned(&url, data, "application/octet-stream")
@@ -1024,10 +1126,7 @@ async fn prepare_event_does_not_capture_session_metadata() {
     });
     let payload = guest_agent::events::prepare_event(&mut event, 1, &masker);
 
-    assert!(
-        payload.is_some(),
-        "prepare_event should still prepare a payload when the API token is configured"
-    );
+    assert_eq!(payload["runId"], "test-run-001");
     assert!(
         !std::path::Path::new(sid_file).exists(),
         "prepare_event must not write the session ID file"

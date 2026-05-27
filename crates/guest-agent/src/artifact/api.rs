@@ -2,7 +2,6 @@ use super::FileEntry;
 use crate::constants;
 use crate::error::AgentError;
 use crate::http::HttpClient;
-use crate::urls;
 use api_contracts::generated::types::webhooks::agent::storages::{
     FileEntryWithHash, commit as storage_commit, prepare as storage_prepare,
 };
@@ -65,12 +64,14 @@ pub(super) async fn prepare_snapshot(
         changes: None,
     };
 
+    let url = http
+        .storage_prepare_url()
+        .map_err(|error| PrepareSnapshotError {
+            error,
+            telemetry_error: None,
+        })?;
     let response = match http
-        .post_json(
-            urls::storage_prepare_url(),
-            &payload,
-            constants::HTTP_MAX_RETRIES,
-        )
+        .post_json(url, &payload, constants::HTTP_MAX_RETRIES)
         .await
     {
         Ok(Some(value)) => value,
@@ -122,12 +123,9 @@ pub(super) async fn commit_snapshot(
         message: request.message.map(str::to_string),
     };
 
+    let url = http.storage_commit_url()?;
     let response = http
-        .post_json(
-            urls::storage_commit_url(),
-            &payload,
-            constants::HTTP_MAX_RETRIES,
-        )
+        .post_json(url, &payload, constants::HTTP_MAX_RETRIES)
         .await?;
 
     Ok(response

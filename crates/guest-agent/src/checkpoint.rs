@@ -8,7 +8,6 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::paths;
 use crate::session_history;
-use crate::urls;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -83,9 +82,10 @@ async fn upload_session_history(
     history_bytes: Vec<u8>,
 ) -> Result<(), AgentError> {
     let prep_start = std::time::Instant::now();
+    let url = http.checkpoint_prepare_history_url()?;
     let prep_resp = match http
         .post_json(
-            urls::checkpoint_prepare_history_url(),
+            url,
             &json!({
                 "runId": env::run_id(),
                 "hash": history_hash,
@@ -402,12 +402,9 @@ async fn create_checkpoint_impl(http: &HttpClient, mode: CheckpointMode) -> Resu
 
     log_info!(LOG_TAG, "Calling checkpoint API...");
     let api_start = std::time::Instant::now();
+    let url = http.checkpoint_url()?;
     let result = match http
-        .post_json(
-            urls::checkpoint_url(),
-            &payload,
-            constants::HTTP_MAX_RETRIES,
-        )
+        .post_json(url, &payload, constants::HTTP_MAX_RETRIES)
         .await
     {
         Ok(v) => v,

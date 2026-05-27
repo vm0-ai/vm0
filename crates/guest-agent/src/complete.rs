@@ -20,7 +20,6 @@
 
 use crate::env;
 use crate::http::HttpClient;
-use crate::urls;
 use guest_common::{log_info, log_warn};
 use serde::Serialize;
 
@@ -63,7 +62,7 @@ pub async fn report_success(
     sandbox_reuse_result: &str,
     last_event_sequence: Option<u32>,
 ) {
-    if !env::has_api() {
+    if !http.has_api() {
         return;
     }
 
@@ -77,7 +76,14 @@ pub async fn report_success(
 
     // 1 attempt — the runner's fallback is the safety net. Retrying from the
     // guest just delays VM exit without improving the outcome.
-    match http.post_json(urls::complete_url(), &payload, 1).await {
+    let url = match http.complete_url() {
+        Ok(url) => url,
+        Err(e) => {
+            log_warn!(LOG_TAG, "Complete webhook skipped: {e}");
+            return;
+        }
+    };
+    match http.post_json(url, &payload, 1).await {
         Ok(_) => log_info!(LOG_TAG, "Complete webhook acknowledged"),
         Err(e) => log_warn!(LOG_TAG, "Complete webhook failed (runner will retry): {e}"),
     }

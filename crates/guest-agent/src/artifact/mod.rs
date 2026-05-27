@@ -286,21 +286,22 @@ pub(crate) async fn create_snapshot(
 mod tests {
     use super::*;
     use std::sync::LazyLock;
+    use std::time::Duration;
 
-    static SNAPSHOT_MOCK_SERVER: LazyLock<httpmock::MockServer> = LazyLock::new(|| {
-        let server = httpmock::MockServer::start();
-        unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-        }
-        server
-    });
+    static SNAPSHOT_MOCK_SERVER: LazyLock<httpmock::MockServer> =
+        LazyLock::new(httpmock::MockServer::start);
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
     }
 
+    fn test_http_client(server: &httpmock::MockServer) -> Result<HttpClient, AgentError> {
+        HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+    }
+
     #[tokio::test]
-    async fn dedup_snapshot_posts_file_payloads_before_validation_failure_blocks_commit() {
+    async fn dedup_snapshot_posts_file_payloads_before_validation_failure_blocks_commit()
+    -> Result<(), AgentError> {
         disable_system_log();
         let server = &*SNAPSHOT_MOCK_SERVER;
 
@@ -357,7 +358,7 @@ mod tests {
             }));
         });
 
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server)?;
         let result = create_snapshot(
             &http,
             CreateSnapshotRequest {
@@ -401,7 +402,7 @@ mod tests {
                 .json_body(serde_json::json!({ "success": true }));
         });
 
-        let http = HttpClient::new().unwrap();
+        let http = test_http_client(server)?;
         let result = create_snapshot(
             &http,
             CreateSnapshotRequest {
@@ -427,5 +428,6 @@ mod tests {
         commit.assert_calls(0);
         prepare.delete_async().await;
         commit.delete_async().await;
+        Ok(())
     }
 }

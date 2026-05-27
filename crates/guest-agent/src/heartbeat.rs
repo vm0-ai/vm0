@@ -8,7 +8,6 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
-use crate::urls;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use std::time::Duration;
@@ -42,10 +41,12 @@ pub async fn heartbeat_loop_with_interval(
     interval: Duration,
 ) -> Result<(), AgentError> {
     // No API token → local/test mode; heartbeat has no server to reach.
-    if !env::has_api() {
+    if !http.has_api() {
         shutdown.cancelled().await;
         return Ok(());
     }
+
+    let heartbeat_url = http.heartbeat_url()?;
 
     let mut interval = tokio::time::interval(interval);
     let mut is_first = true;
@@ -56,7 +57,7 @@ pub async fn heartbeat_loop_with_interval(
             _ = shutdown.cancelled() => return Ok(()),
             _ = interval.tick() => {
                 let payload = json!({ "runId": env::run_id() });
-                match http.post_json(urls::heartbeat_url(), &payload, constants::HTTP_MAX_RETRIES).await {
+                match http.post_json(heartbeat_url, &payload, constants::HTTP_MAX_RETRIES).await {
                     Ok(_) => {
                         if is_first {
                             log_info!(LOG_TAG, "Heartbeat sent (initial)");
@@ -72,7 +73,7 @@ pub async fn heartbeat_loop_with_interval(
                         log_error!(LOG_TAG, "Network connectivity check failed: {e}");
                         return Err(AgentError::Execution(format!(
                             "Network connectivity check failed - cannot reach API at {}",
-                            urls::heartbeat_url()
+                            heartbeat_url
                         )));
                     }
                     Err(e) => {

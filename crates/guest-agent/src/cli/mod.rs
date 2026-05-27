@@ -243,6 +243,7 @@ pub async fn execute_cli(
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
+    let should_send_events = http.has_api();
     let event_http = http.clone();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
@@ -352,15 +353,20 @@ pub async fn execute_cli(
 
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
-                            if let Some(payload) = events::prepare_event(&mut event, seq, masker)
-                                && event_tx
+                            if should_send_events {
+                                let payload = events::prepare_event(&mut event, seq, masker);
+                                if event_tx
                                     .send(PreparedEvent {
                                         sequence: seq,
                                         payload,
                                     })
                                     .is_err()
-                            {
-                                log_warn!(LOG_TAG, "Event channel closed, dropping event seq={seq}");
+                                {
+                                    log_warn!(
+                                        LOG_TAG,
+                                        "Event channel closed, dropping event seq={seq}"
+                                    );
+                                }
                             }
                             seq += 1;
                         }

@@ -16,7 +16,6 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
-use crate::urls;
 use guest_common::log_warn;
 use serde_json::{Value, json};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -182,7 +181,8 @@ async fn upload_telemetry(
     });
 
     // Use 1 attempt for telemetry (non-critical, best-effort)
-    match http.post_json(urls::telemetry_url(), &payload, 1).await {
+    let url = http.telemetry_url()?;
+    match http.post_json(url, &payload, 1).await {
         Ok(_) => {
             save_position(paths::telemetry_system_log_pos_file(), log_pos);
             save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
@@ -271,7 +271,7 @@ impl Telemetry {
 /// tick that hasn't started yet. (A tick already in its `await` cannot
 /// be preempted; the worst-case wait for a flush is one in-flight tick.)
 async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>, http: HttpClient) {
-    if !env::has_api() {
+    if !http.has_api() {
         // Drain commands so callers don't block on `reply_rx`. Flushes
         // are a no-op (no API to upload to); Shutdown ends the loop.
         while let Some(cmd) = rx.recv().await {
