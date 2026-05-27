@@ -197,7 +197,12 @@ class TestFirewallConsistency:
                         f"`METHOD /path`, got {rule!r} for permission {permission.name!r}."
                     )
                 method, pattern = parts
-                if not method.isalpha() or method != method.upper() or not pattern.startswith("/"):
+                if (
+                    not method.isalpha()
+                    or method != method.upper()
+                    or not pattern.startswith("/")
+                    or pattern != pattern.strip()
+                ):
                     pytest.fail(
                         "Expected xFirewall rule to be shaped like "
                         f"`METHOD /path`, got {rule!r} for permission {permission.name!r}."
