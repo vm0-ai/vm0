@@ -140,6 +140,36 @@ process.stdin.on("data", (chunk) => {
   return { dir, helperPath, requestLogPath };
 }
 
+async function createDaemonDir(): Promise<string> {
+  return await mkdtemp(path.join(tmpdir(), "vm0-computer-daemon-"));
+}
+
+function daemonEnv(daemonDir: string): NodeJS.ProcessEnv {
+  return { ...process.env, VM0_COMPUTER_DAEMON_DIR: daemonDir };
+}
+
+async function startDaemon(
+  helperPath: string,
+  daemonDir: string,
+): Promise<void> {
+  await execFileAsync(
+    process.execPath,
+    [cliPath, "daemon", "start", "--helper-path", helperPath],
+    { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+  );
+}
+
+async function stopDaemon(daemonDir: string): Promise<void> {
+  try {
+    await execFileAsync(process.execPath, [cliPath, "daemon", "stop"], {
+      cwd: desktopRoot,
+      env: daemonEnv(daemonDir),
+    });
+  } catch {
+    // Test cleanup should not mask the original assertion failure.
+  }
+}
+
 describe("computer use native backend", () => {
   beforeAll(async () => {
     await execFileAsync("pnpm", ["build:cli"], { cwd: desktopRoot });
@@ -429,6 +459,7 @@ describe("computer use native backend", () => {
 
   it("returns post-action app state from the vm0-computer CLI", async () => {
     const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
     const commandInput = [
       { kind: "app.state", payload: { app: "Safari" } },
       {
@@ -443,16 +474,11 @@ describe("computer use native backend", () => {
     ];
 
     try {
+      await startDaemon(helper.helperPath, daemonDir);
       const { stdout } = await execFileAsync(
         process.execPath,
-        [
-          cliPath,
-          "run",
-          JSON.stringify(commandInput),
-          "--helper-path",
-          helper.helperPath,
-        ],
-        { cwd: desktopRoot },
+        [cliPath, "run", JSON.stringify(commandInput)],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
       );
       const responses = JSON.parse(stdout) as readonly Record<
         string,
@@ -483,25 +509,23 @@ describe("computer use native backend", () => {
         },
       });
     } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
 
   it("preserves vm0-computer run array output for single-command arrays", async () => {
     const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
     const commandInput = [{ kind: "app.state", payload: { app: "Safari" } }];
 
     try {
+      await startDaemon(helper.helperPath, daemonDir);
       const { stdout } = await execFileAsync(
         process.execPath,
-        [
-          cliPath,
-          "run",
-          JSON.stringify(commandInput),
-          "--helper-path",
-          helper.helperPath,
-        ],
-        { cwd: desktopRoot },
+        [cliPath, "run", JSON.stringify(commandInput)],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
       );
       const responses = JSON.parse(stdout) as readonly Record<
         string,
@@ -518,12 +542,15 @@ describe("computer use native backend", () => {
         },
       });
     } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
 
   it("maps Zero CLI command names through vm0-computer", async () => {
     const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
     const commandArgs = [
       ["list-apps"],
       ["get-app-state", "--app", "Safari"],
@@ -563,11 +590,12 @@ describe("computer use native backend", () => {
     ];
 
     try {
+      await startDaemon(helper.helperPath, daemonDir);
       for (const args of commandArgs) {
         await execFileAsync(
           process.execPath,
-          [cliPath, ...args, "--helper-path", helper.helperPath],
-          { cwd: desktopRoot },
+          [cliPath, ...args],
+          { cwd: desktopRoot, env: daemonEnv(daemonDir) },
         );
       }
 
@@ -621,7 +649,26 @@ describe("computer use native backend", () => {
         key: "Escape",
       });
     } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
       await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires a manually started vm0-computer daemon", async () => {
+    const daemonDir = await createDaemonDir();
+
+    try {
+      await expect(
+        execFileAsync(process.execPath, [cliPath, "list-apps"], {
+          cwd: desktopRoot,
+          env: daemonEnv(daemonDir),
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("vm0-computer daemon is not running"),
+      });
+    } finally {
+      await rm(daemonDir, { recursive: true, force: true });
     }
   });
 

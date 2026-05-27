@@ -13,7 +13,6 @@ import {
   ComputerUseSnapshotStore,
   executeComputerUseCommand,
 } from "./computer-use-accessibility";
-import { ComputerUseVisualPointer } from "./computer-use-visual-pointer";
 import {
   installComputerUseIpc,
   notifyDesktopComputerUseChanged,
@@ -96,7 +95,6 @@ let desktopAuthToken: string | null = null;
 let desktopAuthTokenRefresh: Promise<string | null> | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
-const computerUseVisualPointer = new ComputerUseVisualPointer();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
 
 protocol.registerSchemesAsPrivileged([
@@ -243,7 +241,6 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
         return executeComputerUseCommand(command, permissions, {
           nativeBackend: computerUseNativeBackend,
           snapshotStore: computerUseSnapshotStore,
-          visualizer: computerUseVisualPointer,
         });
       },
       onChange: notifyDesktopComputerUseChanged,
@@ -782,14 +779,12 @@ if (!hasSingleInstanceLock) {
   app.on("before-quit", (event) => {
     appIsQuitting = true;
     if (!computerUseRuntime || computerUseQuitStopStarted) {
-      computerUseVisualPointer.destroy();
       computerUseNativeBackend.dispose();
       return;
     }
     computerUseQuitStopStarted = true;
     event.preventDefault();
     void stopComputerUseRuntimeForQuit().finally(() => {
-      computerUseVisualPointer.destroy();
       computerUseNativeBackend.dispose();
       app.quit();
     });

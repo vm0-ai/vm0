@@ -181,7 +181,6 @@ interface ComputerUseSnapshotMetadata {
   readonly app: string;
   readonly snapshotId: string;
   readonly elementIdsByIndex?: readonly string[];
-  readonly elementBoundsByIndex?: readonly (ComputerUseCoordinateBounds | null)[];
   readonly focusedElementIndex?: number;
   readonly windowId?: number;
   readonly windowFrame?: ComputerUseCoordinateBounds;
@@ -195,7 +194,6 @@ interface ComputerUseSnapshotMetadata {
 interface IndexedAccessibilitySnapshot {
   readonly snapshot: AccessibilityAppStateSnapshot;
   readonly elementIdsByIndex: readonly string[];
-  readonly elementBoundsByIndex: readonly (ComputerUseCoordinateBounds | null)[];
   readonly focusedElementIndex?: number;
 }
 
@@ -203,31 +201,14 @@ interface ComputerUseElementTarget {
   readonly elementId?: string;
   readonly elementIndex?: number;
   readonly snapshotId?: string;
-  readonly bounds?: ComputerUseCoordinateBounds;
 }
 
 export type ComputerUseMouseButton = "left" | "right" | "middle";
-
-export interface ComputerUseActionVisualizerPointerEvent {
-  readonly commandId: string;
-  readonly action: ComputerUseCommandKind;
-  readonly phase: "target" | "click";
-  readonly source: "coordinate" | "element";
-  readonly screenX: number;
-  readonly screenY: number;
-}
-
-export interface ComputerUseActionVisualizer {
-  readonly showPointer?: (
-    event: ComputerUseActionVisualizerPointerEvent,
-  ) => void | Promise<void>;
-}
 
 interface ComputerUseCommandExecutionDependencies {
   readonly snapshotStore?: ComputerUseSnapshotStore;
   readonly platform?: NodeJS.Platform;
   readonly nativeBackend?: ComputerUseNativeBackend;
-  readonly visualizer?: ComputerUseActionVisualizer;
 }
 
 const DEFAULT_SNAPSHOT_STORE_LIMIT = 50;
@@ -547,56 +528,20 @@ function boundsIntersect(
   lhs: ComputerUseCoordinateBounds,
   rhs: ComputerUseCoordinateBounds,
 ): boolean {
-  if (!hasUsableBounds(lhs) || !hasUsableBounds(rhs)) {
-    return false;
-  }
   const lhsRight = lhs.x + lhs.width;
   const lhsBottom = lhs.y + lhs.height;
   const rhsRight = rhs.x + rhs.width;
   const rhsBottom = rhs.y + rhs.height;
   return (
+    lhs.width > 0 &&
+    lhs.height > 0 &&
+    rhs.width > 0 &&
+    rhs.height > 0 &&
     lhs.x < rhsRight &&
     lhsRight > rhs.x &&
     lhs.y < rhsBottom &&
     lhsBottom > rhs.y
   );
-}
-
-function hasUsableBounds(
-  bounds: ComputerUseCoordinateBounds | undefined | null,
-): bounds is ComputerUseCoordinateBounds {
-  return (
-    bounds !== undefined &&
-    bounds !== null &&
-    Number.isFinite(bounds.x) &&
-    Number.isFinite(bounds.y) &&
-    Number.isFinite(bounds.width) &&
-    Number.isFinite(bounds.height) &&
-    bounds.width > 0 &&
-    bounds.height > 0
-  );
-}
-
-function unionBounds(
-  current: ComputerUseCoordinateBounds | null,
-  next: ComputerUseCoordinateBounds | null,
-): ComputerUseCoordinateBounds | null {
-  if (!current) {
-    return next;
-  }
-  if (!next) {
-    return current;
-  }
-  const x = Math.min(current.x, next.x);
-  const y = Math.min(current.y, next.y);
-  const right = Math.max(current.x + current.width, next.x + next.width);
-  const bottom = Math.max(current.y + current.height, next.y + next.height);
-  return {
-    x,
-    y,
-    width: right - x,
-    height: bottom - y,
-  };
 }
 
 function elementIsInCapturedSource(
@@ -819,7 +764,6 @@ function indexAccessibilitySnapshot(
   const elements = snapshot.elements.map((element) => {
     return indexElement(element);
   });
-  const elementBoundsByIndex = collectElementBoundsByIndex(elements);
 
   return {
     snapshot: {
@@ -828,37 +772,8 @@ function indexAccessibilitySnapshot(
       ...(focusedElementIndex !== undefined ? { focusedElementIndex } : {}),
     },
     elementIdsByIndex,
-    elementBoundsByIndex,
     ...(focusedElementIndex !== undefined ? { focusedElementIndex } : {}),
   };
-}
-
-function collectElementBoundsByIndex(
-  elements: readonly AccessibilityElementSnapshot[],
-): readonly (ComputerUseCoordinateBounds | null)[] {
-  const elementBoundsByIndex: (ComputerUseCoordinateBounds | null)[] = [];
-  const collect = (
-    element: AccessibilityElementSnapshot,
-    inheritedBounds: ComputerUseCoordinateBounds | null,
-  ): ComputerUseCoordinateBounds | null => {
-    const ownBounds = hasUsableBounds(element.bounds) ? element.bounds : null;
-    let childBounds: ComputerUseCoordinateBounds | null = null;
-    for (const child of element.children ?? []) {
-      childBounds = unionBounds(
-        childBounds,
-        collect(child, ownBounds ?? inheritedBounds),
-      );
-    }
-    const targetBounds = ownBounds ?? childBounds ?? inheritedBounds;
-    if (element.index !== undefined) {
-      elementBoundsByIndex[element.index] = targetBounds;
-    }
-    return targetBounds;
-  };
-  elements.forEach((element) => {
-    collect(element, null);
-  });
-  return elementBoundsByIndex;
 }
 
 function nativeIndexedAccessibilitySnapshot(
@@ -870,7 +785,6 @@ function nativeIndexedAccessibilitySnapshot(
   return {
     snapshot,
     elementIdsByIndex: snapshot.elementIdsByIndex,
-    elementBoundsByIndex: collectElementBoundsByIndex(snapshot.elements),
     ...(snapshot.focusedElementIndex !== undefined
       ? { focusedElementIndex: snapshot.focusedElementIndex }
       : {}),
@@ -1350,7 +1264,6 @@ async function getAppState(
     app: indexed.snapshot.app,
     snapshotId: indexed.snapshot.snapshotId,
     elementIdsByIndex: indexed.elementIdsByIndex,
-    elementBoundsByIndex: indexed.elementBoundsByIndex,
     ...(indexed.focusedElementIndex !== undefined
       ? { focusedElementIndex: indexed.focusedElementIndex }
       : {}),
@@ -1483,89 +1396,10 @@ function resolveElementTarget(args: {
   if ("status" in snapshot) {
     return snapshot;
   }
-  const bounds = snapshot.elementBoundsByIndex?.[args.elementIndex] ?? null;
   return {
     elementIndex: args.elementIndex,
     snapshotId: snapshot.snapshotId,
-    ...(bounds ? { bounds } : {}),
   };
-}
-
-function roundScreenCoordinate(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function screenPointFromSnapshotPoint(args: {
-  readonly snapshot: ComputerUseSnapshotMetadata;
-  readonly x: number;
-  readonly y: number;
-}): { readonly screenX: number; readonly screenY: number } | null {
-  if (!args.snapshot.sourceBounds) {
-    return null;
-  }
-  return {
-    screenX: roundScreenCoordinate(
-      args.snapshot.sourceBounds.x +
-        (args.x / args.snapshot.screenshotWidth) *
-          args.snapshot.sourceBounds.width,
-    ),
-    screenY: roundScreenCoordinate(
-      args.snapshot.sourceBounds.y +
-        (args.y / args.snapshot.screenshotHeight) *
-          args.snapshot.sourceBounds.height,
-    ),
-  };
-}
-
-function screenPointFromElementBounds(bounds: ComputerUseCoordinateBounds): {
-  readonly screenX: number;
-  readonly screenY: number;
-} {
-  return {
-    screenX: roundScreenCoordinate(bounds.x + bounds.width / 2),
-    screenY: roundScreenCoordinate(bounds.y + bounds.height / 2),
-  };
-}
-
-function nativeResultScreenPoint(
-  result: Record<string, unknown>,
-): { readonly screenX: number; readonly screenY: number } | null {
-  return typeof result.screenX === "number" &&
-    typeof result.screenY === "number"
-    ? { screenX: result.screenX, screenY: result.screenY }
-    : null;
-}
-
-async function showVisualPointer(
-  visualizer: ComputerUseActionVisualizer | undefined,
-  event: ComputerUseActionVisualizerPointerEvent,
-): Promise<void> {
-  try {
-    await visualizer?.showPointer?.(event);
-  } catch (error) {
-    // Visual feedback must never block or fail the actual Computer Use action.
-    console.warn("Unable to show Computer Use visual pointer", error);
-  }
-}
-
-async function showVisualPointerForElementTarget(args: {
-  readonly visualizer?: ComputerUseActionVisualizer;
-  readonly commandId: string;
-  readonly action: ComputerUseCommandKind;
-  readonly target: ComputerUseElementTarget;
-}): Promise<void> {
-  if (!args.target.bounds) {
-    return;
-  }
-  const targetPoint = screenPointFromElementBounds(args.target.bounds);
-  await showVisualPointer(args.visualizer, {
-    commandId: args.commandId,
-    action: args.action,
-    phase: "target",
-    source: "element",
-    screenX: targetPoint.screenX,
-    screenY: targetPoint.screenY,
-  });
 }
 
 function elementTargetResult(
@@ -1587,7 +1421,6 @@ function elementTargetText(target: ComputerUseElementTarget): string {
 }
 
 async function clickElement(args: {
-  readonly commandId: string;
   readonly app: string;
   readonly elementId: string | null;
   readonly elementIndex: number | null;
@@ -1598,7 +1431,6 @@ async function clickElement(args: {
   readonly clickCount: number;
   readonly nativeBackend: ComputerUseNativeBackend;
   readonly snapshotStore: ComputerUseSnapshotStore;
-  readonly visualizer?: ComputerUseActionVisualizer;
 }): Promise<ComputerUseCommandExecutionResult> {
   if (args.elementId || args.elementIndex !== null) {
     if (args.button !== "left") {
@@ -1617,19 +1449,6 @@ async function clickElement(args: {
     if ("status" in target) {
       return target;
     }
-    const targetPoint = target.bounds
-      ? screenPointFromElementBounds(target.bounds)
-      : null;
-    if (targetPoint) {
-      await showVisualPointer(args.visualizer, {
-        commandId: args.commandId,
-        action: "element.click",
-        phase: "target",
-        source: "element",
-        screenX: targetPoint.screenX,
-        screenY: targetPoint.screenY,
-      });
-    }
     const nativeResult = await args.nativeBackend.clickElement({
       app: args.app,
       ...(target.elementId ? { elementId: target.elementId } : {}),
@@ -1640,17 +1459,6 @@ async function clickElement(args: {
       button: args.button,
       clickCount: args.clickCount,
     });
-    const resultPoint = nativeResultScreenPoint(nativeResult) ?? targetPoint;
-    if (resultPoint) {
-      await showVisualPointer(args.visualizer, {
-        commandId: args.commandId,
-        action: "element.click",
-        phase: "click",
-        source: "element",
-        screenX: resultPoint.screenX,
-        screenY: resultPoint.screenY,
-      });
-    }
     return {
       status: "succeeded",
       result: {
@@ -1667,21 +1475,6 @@ async function clickElement(args: {
     const snapshot = resolveClickSnapshot(args);
     if ("status" in snapshot) {
       return snapshot;
-    }
-    const targetPoint = screenPointFromSnapshotPoint({
-      snapshot,
-      x: args.x,
-      y: args.y,
-    });
-    if (targetPoint) {
-      await showVisualPointer(args.visualizer, {
-        commandId: args.commandId,
-        action: "element.click",
-        phase: "target",
-        source: "coordinate",
-        screenX: targetPoint.screenX,
-        screenY: targetPoint.screenY,
-      });
     }
     const clickPoint = await args.nativeBackend.clickPoint({
       app: args.app,
@@ -1700,14 +1493,6 @@ async function clickElement(args: {
       clickCount: args.clickCount,
     });
     const { screenX, screenY, ...nativeResult } = clickPoint;
-    await showVisualPointer(args.visualizer, {
-      commandId: args.commandId,
-      action: "element.click",
-      phase: "click",
-      source: "coordinate",
-      screenX,
-      screenY,
-    });
     return {
       status: "succeeded",
       result: {
@@ -1923,7 +1708,6 @@ export async function executeComputerUseCommand(
         snapshotStore,
         execute: async () => {
           return await clickElement({
-            commandId: command.id,
             app,
             elementId,
             elementIndex,
@@ -1934,7 +1718,6 @@ export async function executeComputerUseCommand(
             clickCount: payloadClickCount(command.payload),
             nativeBackend,
             snapshotStore,
-            visualizer: dependencies.visualizer,
           });
         },
       });
@@ -1964,12 +1747,6 @@ export async function executeComputerUseCommand(
         nativeBackend,
         snapshotStore,
         execute: async () => {
-          await showVisualPointerForElementTarget({
-            visualizer: dependencies.visualizer,
-            commandId: command.id,
-            action: command.kind,
-            target,
-          });
           return await scrollElement(
             app,
             target,
@@ -2005,12 +1782,6 @@ export async function executeComputerUseCommand(
         nativeBackend,
         snapshotStore,
         execute: async () => {
-          await showVisualPointerForElementTarget({
-            visualizer: dependencies.visualizer,
-            commandId: command.id,
-            action: command.kind,
-            target,
-          });
           return await setElementValue(app, target, value, nativeBackend);
         },
       });
@@ -2040,12 +1811,6 @@ export async function executeComputerUseCommand(
         nativeBackend,
         snapshotStore,
         execute: async () => {
-          await showVisualPointerForElementTarget({
-            visualizer: dependencies.visualizer,
-            commandId: command.id,
-            action: command.kind,
-            target,
-          });
           return await performElementAction(app, target, action, nativeBackend);
         },
       });
