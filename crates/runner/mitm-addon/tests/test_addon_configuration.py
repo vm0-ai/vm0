@@ -60,17 +60,22 @@ def _usage_event(source_key: str) -> usage_buffer.UsageEvent:
 
 
 class TestAddonConfiguration:
-    def test_load_registers_usage_options_and_signal_handler(self):
+    def test_load_registers_usage_options_and_signal_handler_without_pending_write(self, tmp_path):
         loader = _RecordingLoader()
+        pending_path = tmp_path / "usage-pending"
 
         # OS signal registration is process-global boundary state. Handler
         # behavior is covered by test_connection_hooks.py.
-        with patch.object(mitm_addon.signal, "signal") as signal_handler:
+        with (
+            patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(mitm_addon.signal, "signal") as signal_handler,
+        ):
             mitm_addon.load(loader)
 
         option_names = [option["name"] for option in loader.options]
         assert "vm0_usage_state_id" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
+        assert not pending_path.exists()
         signal_handler.assert_called_once_with(
             mitm_addon._RUNNER_USAGE_FLUSH_SIGNAL,
             mitm_addon._handle_runner_usage_flush_signal,
