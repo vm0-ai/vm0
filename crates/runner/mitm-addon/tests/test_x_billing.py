@@ -57,6 +57,7 @@ class _XFirewallExport(NamedTuple):
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
 _TURBO_DIR = _REPO_ROOT / "turbo"
 _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" / "x.generated.ts"
+_PATH_PARAM_RE = re.compile(r"^(?P<prefix>[^{}]*)\{(?P<name>[^{}]+)\}(?P<suffix>[^{}]*)$")
 _X_FIREWALL_EXPORT_SCRIPT = """
 import { collectAndValidatePermissions } from "./packages/connectors/src/firewall-expander.ts";
 import {
@@ -272,6 +273,25 @@ def _load_x_firewall_export() -> _XFirewallExport:
 
 def _load_x_firewall_permissions() -> tuple[_FirewallPermission, ...]:
     return _load_x_firewall_export().permissions
+
+
+def _sample_path_for_pattern(pattern: str) -> str:
+    segments: list[str] = []
+    for segment in pattern.split("/"):
+        if not segment:
+            continue
+        match = _PATH_PARAM_RE.match(segment)
+        if match is None:
+            segments.append(segment)
+            continue
+
+        name = match.group("name")
+        if name.endswith(("+", "*")):
+            segments.append("sample")
+        else:
+            segments.append(f"{match.group('prefix')}sample{match.group('suffix')}")
+
+    return "/" + "/".join(segments)
 
 
 class TestTldSnapshot:
@@ -665,6 +685,49 @@ class TestFirewallConsistency:
 
 
 class TestOverrideClassification:
+    def test_path_override_order_does_not_shadow_different_bucket_overrides(self):
+        compiled_overrides: list[tuple[str, str, str, str, matching.CompiledPathPattern, str]] = []
+        for scope, method, pattern, bucket in _PATH_OVERRIDES:
+            compiled_pattern = matching.compile_path_pattern(pattern)
+            if compiled_pattern is None:
+                pytest.fail(f"invalid X billing override path pattern: {scope} {method} {pattern}")
+
+            sample_path = _sample_path_for_pattern(pattern)
+            if matching.match_compiled_path(sample_path, compiled_pattern) is None:
+                pytest.fail(
+                    "The X billing override shadowing check generated a non-matching "
+                    f"sample path {sample_path!r} for pattern {pattern!r}."
+                )
+            compiled_overrides.append(
+                (scope, method, pattern, bucket, compiled_pattern, sample_path)
+            )
+
+        shadowed: list[tuple[str, str, str, str, str, str, str]] = []
+        for index, current in enumerate(compiled_overrides):
+            scope, method, pattern, bucket, compiled_pattern, sample_path = current
+            for other in compiled_overrides[index + 1 :]:
+                (
+                    other_scope,
+                    other_method,
+                    other_pattern,
+                    other_bucket,
+                    _other_compiled,
+                    other_sample,
+                ) = other
+                if scope != other_scope or method != other_method or bucket == other_bucket:
+                    continue
+                if matching.match_compiled_path(other_sample, compiled_pattern) is not None:
+                    shadowed.append(
+                        (scope, method, pattern, bucket, other_pattern, other_bucket, other_sample)
+                    )
+
+        assert not shadowed, (
+            "Earlier X billing path overrides shadow later overrides with "
+            f"different buckets: {shadowed}. classify_bucket uses "
+            "first-match-wins, so put the more specific override before the "
+            "broader pattern or split the patterns so they do not overlap."
+        )
+
     def test_no_duplicate_path_overrides(self):
         seen: dict[tuple[str, str, str], str] = {}
         duplicates: list[tuple[str, str, str, str, str]] = []
