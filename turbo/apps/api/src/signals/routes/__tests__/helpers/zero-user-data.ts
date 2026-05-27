@@ -27,6 +27,7 @@ interface VariableSeedValues {
   readonly name: string;
   readonly value: string;
   readonly description?: string | null;
+  readonly type?: "user" | "connector";
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
 }
@@ -87,6 +88,7 @@ export const seedVariables$ = command(
             name: row.name,
             value: row.value,
             description: row.description ?? null,
+            type: row.type ?? "user",
             createdAt: row.createdAt,
             updatedAt: row.updatedAt,
           };

@@ -328,7 +328,13 @@ export function userVariables({
         updatedAt: variables.updatedAt,
       })
       .from(variables)
-      .where(and(eq(variables.orgId, orgId), eq(variables.userId, userId)))
+      .where(
+        and(
+          eq(variables.orgId, orgId),
+          eq(variables.userId, userId),
+          eq(variables.type, "user"),
+        ),
+      )
       .orderBy(variables.name);
 
     return {
@@ -362,9 +368,15 @@ export const setUserVariable$ = command(
         name: args.variable.name,
         value: args.variable.value,
         description: args.variable.description ?? null,
+        type: "user",
       })
       .onConflictDoUpdate({
-        target: [variables.orgId, variables.userId, variables.name],
+        target: [
+          variables.orgId,
+          variables.userId,
+          variables.type,
+          variables.name,
+        ],
         set: {
           value: args.variable.value,
           description: args.variable.description ?? null,

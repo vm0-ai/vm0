@@ -281,7 +281,11 @@ async function loadUserManualGrantFieldNameSets(
       .select({ name: variables.name })
       .from(variables)
       .where(
-        and(eq(variables.orgId, args.orgId), eq(variables.userId, args.userId)),
+        and(
+          eq(variables.orgId, args.orgId),
+          eq(variables.userId, args.userId),
+          eq(variables.type, "user"),
+        ),
       ),
   ]);
 
@@ -617,6 +621,7 @@ async function hasManualGrantConnectorLocalState(args: {
         and(
           eq(variables.orgId, args.orgId),
           eq(variables.userId, args.userId),
+          eq(variables.type, "user"),
           inArray(variables.name, [...args.fields.variables]),
         ),
       )
@@ -665,6 +670,7 @@ async function deleteManualGrantConnectorLocalState(args: {
         and(
           eq(variables.orgId, args.orgId),
           eq(variables.userId, args.userId),
+          eq(variables.type, "user"),
           eq(variables.name, name),
         ),
       )
@@ -825,9 +831,15 @@ async function upsertApiTokenVariable(
       name: args.name,
       value: args.value,
       description: null,
+      type: "user",
     })
     .onConflictDoUpdate({
-      target: [variables.orgId, variables.userId, variables.name],
+      target: [
+        variables.orgId,
+        variables.userId,
+        variables.type,
+        variables.name,
+      ],
       set: {
         value: args.value,
         description: null,
@@ -876,6 +888,7 @@ async function deleteVariableNames(
         and(
           eq(variables.orgId, args.orgId),
           eq(variables.userId, args.userId),
+          eq(variables.type, "user"),
           eq(variables.name, name),
         ),
       );

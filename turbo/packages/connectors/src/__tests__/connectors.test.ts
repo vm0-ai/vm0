@@ -28,6 +28,7 @@ import {
   deriveConnectedManualGrantMethods,
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfig,
+  getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
   getConnectorTypeForSecretName,
@@ -1299,6 +1300,21 @@ describe("getAvailableConnectorAuthMethods", () => {
     expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([
       "api-token",
     ]);
+  });
+});
+
+describe("getConnectorAuthMethodEnvBindings", () => {
+  it("returns env bindings for the exact auth method", () => {
+    expect(getConnectorAuthMethodEnvBindings("ahrefs", "oauth")).toEqual({
+      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
+    });
+    expect(getConnectorAuthMethodEnvBindings("ahrefs", "api-token")).toEqual({
+      AHREFS_TOKEN: "$secrets.AHREFS_TOKEN",
+    });
+  });
+
+  it("returns empty env bindings for an unknown auth method", () => {
+    expect(getConnectorAuthMethodEnvBindings("ahrefs", "missing")).toEqual({});
   });
 });
 

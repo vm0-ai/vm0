@@ -87,6 +87,79 @@ describe("DELETE /api/zero/variables/:name", () => {
     expect(remaining).toStrictEqual([]);
   });
 
+  it("deletes only the user-owned variable when a connector-owned variable has the same name", async () => {
+    const fixture = await track(
+      store.set(
+        seedVariables$,
+        [
+          { name: "SHARED_NAME", value: "user-value" },
+          {
+            name: "SHARED_NAME",
+            value: "connector-value",
+            type: "connector",
+          },
+        ],
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroVariablesByNameContract);
+    const response = await client.delete({
+      params: { name: "SHARED_NAME" },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(response.status).toBe(204);
+
+    const writeDb = store.set(writeDb$);
+    const remaining = await writeDb
+      .select({
+        name: variables.name,
+        value: variables.value,
+        type: variables.type,
+      })
+      .from(variables)
+      .where(
+        and(
+          eq(variables.orgId, fixture.orgId),
+          eq(variables.userId, fixture.userId),
+          eq(variables.name, "SHARED_NAME"),
+        ),
+      );
+    expect(remaining).toStrictEqual([
+      { name: "SHARED_NAME", value: "connector-value", type: "connector" },
+    ]);
+  });
+
+  it("returns 404 when only a connector-owned variable exists", async () => {
+    const fixture = await track(
+      store.set(
+        seedVariables$,
+        [
+          {
+            name: "CONNECTOR_ONLY",
+            value: "connector-value",
+            type: "connector",
+          },
+        ],
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroVariablesByNameContract);
+    const response = await accept(
+      client.delete({
+        params: { name: "CONNECTOR_ONLY" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+    expect(response.body).toMatchObject({
+      error: { code: "NOT_FOUND" },
+    });
+  });
+
   it("returns 404 for a nonexistent variable", async () => {
     const fixture = await track(store.set(seedVariables$, [], context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId);

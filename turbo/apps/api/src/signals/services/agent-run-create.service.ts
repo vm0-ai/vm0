@@ -24,6 +24,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   deriveConnectedManualGrantMethods,
+  getConnectorAuthMethodEnvBindings,
   getConnectorEnvBindings,
   getConnectorProvidedEnvNames,
 } from "@vm0/connectors/connector-utils";
@@ -69,6 +70,7 @@ import {
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import {
   expandVariables,
+  expandVariablesInString,
   extractAndGroupVariables,
 } from "@vm0/core/variable-expander";
 import {
@@ -333,8 +335,11 @@ interface CreateAgentRunArgs {
 
 interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
+  readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
+  readonly storedEnvironment: Record<string, string> | undefined;
+  readonly manualEnvironment: Record<string, string> | undefined;
 }
 
 interface PersistedRunEnvironmentSecret {
@@ -659,18 +664,27 @@ function connectorEnvironmentTemplates(
   const environment: Record<string, string> = {};
   for (const connectorType of connectorTypes) {
     const envBindings = getConnectorEnvBindings(connectorType);
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (envName in environment) {
-        continue;
-      }
-      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-        environment[envName] = `\${{ secrets.${envName} }}`;
-      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
-        environment[envName] = `\${{ vars.${envName} }}`;
-      }
-    }
+    addConnectorEnvironmentTemplates(environment, envBindings);
   }
   return compactRecord(environment);
+}
+
+function addConnectorEnvironmentTemplates(
+  environment: Record<string, string>,
+  envBindings: Record<string, string>,
+): void {
+  for (const [envName, valueRef] of Object.entries(envBindings)) {
+    if (envName in environment) {
+      continue;
+    }
+    if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+      environment[envName] = `\${{ secrets.${envName} }}`;
+    } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+      environment[envName] = `\${{ vars.${envName} }}`;
+    } else {
+      environment[envName] = valueRef;
+    }
+  }
 }
 
 function connectorEnvironmentSecretTemplateNames(
@@ -707,15 +721,27 @@ function expandEnvironment(args: {
   readonly secrets: Record<string, string> | undefined;
   readonly additionalEnvironment: Record<string, string> | undefined;
   readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
-  readonly connectorEnvironment: Record<string, string> | undefined;
+  readonly storedConnectorEnvironment: Record<string, string> | undefined;
+  readonly connectorVars: Record<string, string> | undefined;
+  readonly manualConnectorEnvironment: Record<string, string> | undefined;
 }): Record<string, string> | null {
+  const storedConnectorEnvironment = expandStoredConnectorEnvironment({
+    environment: effectiveStoredConnectorEnvironment({
+      content: args.content,
+      additionalEnvironment: args.additionalEnvironment,
+      storedConnectorEnvironment: args.storedConnectorEnvironment,
+    }),
+    vars: args.connectorVars,
+    secrets: args.secrets,
+    environmentFirewalls: args.environmentFirewalls,
+  });
   const mergedEnvironment = environmentTemplates({
     content: args.content,
     additionalEnvironment: args.additionalEnvironment,
-    connectorEnvironment: args.connectorEnvironment,
+    connectorEnvironment: args.manualConnectorEnvironment,
   });
   if (!mergedEnvironment) {
-    return null;
+    return storedConnectorEnvironment ?? null;
   }
 
   const { result } = expandVariables(mergedEnvironment, {
@@ -725,7 +751,73 @@ function expandEnvironment(args: {
       ...firewallSecretPlaceholders(args.environmentFirewalls),
     },
   });
-  return result;
+  return mergeRecords(result, storedConnectorEnvironment) ?? null;
+}
+
+function effectiveStoredConnectorEnvironment(args: {
+  readonly content: AgentComposeContent;
+  readonly additionalEnvironment: Record<string, string> | undefined;
+  readonly storedConnectorEnvironment: Record<string, string> | undefined;
+}): Record<string, string> | undefined {
+  if (!args.storedConnectorEnvironment) {
+    return undefined;
+  }
+
+  const overrides = mergeRecords(
+    args.additionalEnvironment,
+    firstAgent(args.content)?.environment,
+  );
+  if (!overrides) {
+    return args.storedConnectorEnvironment;
+  }
+
+  const environment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(args.storedConnectorEnvironment)) {
+    if (overrides[key] === undefined) {
+      environment[key] = value;
+    }
+  }
+  return compactRecord(environment);
+}
+
+function expandStoredConnectorEnvironment(args: {
+  readonly environment: Record<string, string> | undefined;
+  readonly vars: Record<string, string> | undefined;
+  readonly secrets: Record<string, string> | undefined;
+  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+}): Record<string, string> | undefined {
+  if (!args.environment) {
+    return undefined;
+  }
+
+  const expanded: Record<string, string> = {};
+  const secretSources = mergeRecords(
+    args.secrets,
+    firewallSecretPlaceholders(args.environmentFirewalls),
+  );
+  for (const [key, value] of Object.entries(args.environment)) {
+    const expansion = expandVariablesInString(value, {
+      vars: args.vars,
+      secrets: secretSources,
+    });
+    if (expansion.missingVars.length > 0) {
+      throw new Error(
+        `Stored connector environment is missing required values: ${formatMissingReferences(expansion.missingVars)}`,
+      );
+    }
+    expanded[key] = expansion.result;
+  }
+  return compactRecord(expanded);
+}
+
+function formatMissingReferences(
+  refs: readonly { readonly source: string; readonly name: string }[],
+): string {
+  return refs
+    .map((ref) => {
+      return `${ref.source}.${ref.name}`;
+    })
+    .join(", ");
 }
 
 function firewallSecretPlaceholders(
@@ -757,17 +849,44 @@ function missingEnvironmentReferences(args: {
   readonly secrets: Record<string, string> | undefined;
   readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
   readonly additionalEnvironment: Record<string, string> | undefined;
-  readonly connectorEnvironment: Record<string, string> | undefined;
+  readonly storedConnectorEnvironment: Record<string, string> | undefined;
+  readonly connectorVars: Record<string, string> | undefined;
+  readonly manualConnectorEnvironment: Record<string, string> | undefined;
 }): string[] {
+  assertStoredConnectorEnvironmentReferences({
+    environment: effectiveStoredConnectorEnvironment({
+      content: args.content,
+      additionalEnvironment: args.additionalEnvironment,
+      storedConnectorEnvironment: args.storedConnectorEnvironment,
+    }),
+    vars: args.connectorVars,
+    secrets: args.secrets,
+    environmentFirewalls: args.environmentFirewalls,
+  });
   const environment = environmentTemplates({
     content: args.content,
     additionalEnvironment: args.additionalEnvironment,
-    connectorEnvironment: args.connectorEnvironment,
+    connectorEnvironment: args.manualConnectorEnvironment,
   });
-  if (!environment) {
+  const environmentMissing = missingReferencesInEnvironment({
+    environment,
+    vars: args.vars,
+    secrets: args.secrets,
+    environmentFirewalls: args.environmentFirewalls,
+  });
+  return environmentMissing;
+}
+
+function missingReferencesInEnvironment(args: {
+  readonly environment: Record<string, string> | undefined;
+  readonly vars: Record<string, string> | undefined;
+  readonly secrets: Record<string, string> | undefined;
+  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+}): string[] {
+  if (!args.environment) {
     return [];
   }
-  const grouped = extractAndGroupVariables(environment);
+  const grouped = extractAndGroupVariables(args.environment);
   const firewallPlaceholders = firewallSecretPlaceholders(
     args.environmentFirewalls,
   );
@@ -789,6 +908,20 @@ function missingEnvironmentReferences(args: {
       return `secrets.${ref.name}`;
     });
   return [...missingVars, ...missingSecrets];
+}
+
+function assertStoredConnectorEnvironmentReferences(args: {
+  readonly environment: Record<string, string> | undefined;
+  readonly vars: Record<string, string> | undefined;
+  readonly secrets: Record<string, string> | undefined;
+  readonly environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined;
+}): void {
+  const missing = missingReferencesInEnvironment(args);
+  if (missing.length > 0) {
+    throw new Error(
+      `Stored connector environment is missing required values: ${missing.join(", ")}`,
+    );
+  }
 }
 
 function allowedManualGrantConnectorTypes(args: {
@@ -1335,6 +1468,7 @@ async function loadPersistedRunEnvironmentSnapshot(
       .where(
         and(
           eq(variables.orgId, args.orgId),
+          eq(variables.type, "user"),
           or(
             eq(variables.userId, ORG_SENTINEL_USER_ID),
             eq(variables.userId, args.userId),
@@ -1561,98 +1695,185 @@ function filterSecretConnectorMap(args: {
   return compactRecord(filtered);
 }
 
-async function loadOauthConnectorContext(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Promise<ConnectorRuntimeContext> {
-  const connectorRows = await db
-    .select({ type: connectors.type })
-    .from(connectors)
-    .where(
-      and(eq(connectors.orgId, args.orgId), eq(connectors.userId, args.userId)),
-    );
-  if (connectorRows.length === 0) {
-    return {
-      secrets: undefined,
-      secretConnectorMap: undefined,
-      connectorTypes: [],
-    };
-  }
+interface StoredConnectorRuntimeRow {
+  readonly connectorType: ConnectorType;
+  readonly authMethod: string;
+}
 
-  const validConnectorTypes = connectorRows.flatMap((row) => {
+interface ConnectorEnvBindingSet {
+  readonly connectorType: ConnectorType;
+  readonly envBindings: Record<string, string>;
+}
+
+interface StoredConnectorRequirements {
+  readonly environment: Record<string, string>;
+  readonly secretNames: Set<string>;
+  readonly variableNames: Set<string>;
+}
+
+interface ResolvedStoredConnectorState {
+  readonly secrets: Record<string, string>;
+  readonly vars: Record<string, string>;
+  readonly secretConnectorMap: Record<string, string>;
+}
+
+function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
+  return {
+    secrets: undefined,
+    vars: undefined,
+    secretConnectorMap: undefined,
+    connectorTypes: [],
+    storedEnvironment: undefined,
+    manualEnvironment: undefined,
+  };
+}
+
+function allowedStoredConnectorRows(
+  rows: readonly { readonly type: string; readonly authMethod: string }[],
+  allowedConnectorTypes: readonly ConnectorType[] | undefined,
+): readonly StoredConnectorRuntimeRow[] {
+  const validRows = rows.flatMap((row) => {
     const parsed = connectorTypeSchema.safeParse(row.type);
-    return parsed.success ? [parsed.data] : [];
+    return parsed.success
+      ? [{ connectorType: parsed.data, authMethod: row.authMethod }]
+      : [];
   });
-  const allowedConnectorTypes = args.allowedConnectorTypes
-    ? validConnectorTypes.filter((type) => {
-        return args.allowedConnectorTypes?.includes(type);
-      })
-    : validConnectorTypes;
-  if (allowedConnectorTypes.length === 0) {
-    return {
-      secrets: undefined,
-      secretConnectorMap: undefined,
-      connectorTypes: [],
-    };
+  if (!allowedConnectorTypes) {
+    return validRows;
   }
+  return validRows.filter((row) => {
+    return allowedConnectorTypes.includes(row.connectorType);
+  });
+}
 
-  const connectorEnvBindings = allowedConnectorTypes.map((connectorType) => {
+function connectorEnvBindingSets(
+  rows: readonly StoredConnectorRuntimeRow[],
+): readonly ConnectorEnvBindingSet[] {
+  return rows.map((row) => {
     return {
-      connectorType,
-      envBindings: getConnectorEnvBindings(connectorType),
+      connectorType: row.connectorType,
+      envBindings: getConnectorAuthMethodEnvBindings(
+        row.connectorType,
+        row.authMethod,
+      ),
     };
   });
-  const requiredSecretNames = new Set<string>();
-  for (const { envBindings } of connectorEnvBindings) {
+}
+
+function collectStoredConnectorRequirements(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+): StoredConnectorRequirements {
+  const environment: Record<string, string> = {};
+  const secretNames = new Set<string>();
+  const variableNames = new Set<string>();
+
+  for (const { envBindings } of bindingSets) {
+    addConnectorEnvironmentTemplates(environment, envBindings);
     for (const valueRef of Object.values(envBindings)) {
-      if (valueRef.startsWith("$secrets.")) {
-        requiredSecretNames.add(valueRef.slice("$secrets.".length));
+      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        secretNames.add(valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length));
+      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+        variableNames.add(valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length));
       }
     }
   }
 
-  const secretRows =
-    requiredSecretNames.size === 0
-      ? []
-      : await db
-          .select({
-            name: secretsTable.name,
-            encryptedValue: secretsTable.encryptedValue,
-          })
-          .from(secretsTable)
-          .where(
-            and(
-              eq(secretsTable.orgId, args.orgId),
-              eq(secretsTable.userId, args.userId),
-              eq(secretsTable.type, "connector"),
-              inArray(secretsTable.name, [...requiredSecretNames]),
-            ),
-          );
-  const connectorSecrets: Record<string, string> = {};
-  for (const row of secretRows) {
-    connectorSecrets[row.name] = await decryptStoredSecretValue(
+  return { environment, secretNames, variableNames };
+}
+
+async function loadStoredConnectorSecrets(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: ReadonlySet<string>;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+): Promise<Record<string, string>> {
+  if (args.names.size === 0) {
+    return {};
+  }
+
+  const rows = await db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.type, "connector"),
+        inArray(secretsTable.name, [...args.names]),
+      ),
+    );
+  const values: Record<string, string> = {};
+  for (const row of rows) {
+    values[row.name] = await decryptStoredSecretValue(
       row.encryptedValue,
       args.featureSwitchContext,
     );
   }
+  return values;
+}
 
-  const resolvedSecrets: Record<string, string> = {};
+async function loadStoredConnectorVariables(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: ReadonlySet<string>;
+  },
+): Promise<Record<string, string>> {
+  if (args.names.size === 0) {
+    return {};
+  }
+
+  const rows = await db
+    .select({
+      name: variables.name,
+      value: variables.value,
+    })
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.type, "connector"),
+        inArray(variables.name, [...args.names]),
+      ),
+    );
+  return Object.fromEntries(
+    rows.map((row) => {
+      return [row.name, row.value];
+    }),
+  );
+}
+
+function resolveStoredConnectorState(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+  connectorSecrets: Record<string, string>,
+  connectorVariables: Record<string, string>,
+): ResolvedStoredConnectorState {
+  const secrets: Record<string, string> = {};
+  const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
-  for (const { connectorType, envBindings } of connectorEnvBindings) {
+
+  for (const { connectorType, envBindings } of bindingSets) {
     for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (valueRef.startsWith("$secrets.")) {
-        const secretName = valueRef.slice("$secrets.".length);
+      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
         const secretValue = connectorSecrets[secretName];
-        if (secretValue) {
-          resolvedSecrets[envName] = secretValue;
+        if (secretValue !== undefined) {
+          secrets[envName] = secretValue;
         }
-      } else {
-        resolvedSecrets[envName] = valueRef;
+      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+        const variableName = valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length);
+        const variableValue = connectorVariables[variableName];
+        if (variableValue !== undefined) {
+          vars[envName] = variableValue;
+        }
       }
     }
 
@@ -1663,16 +1884,72 @@ async function loadOauthConnectorContext(
     const secretName = secretMetadata.accessSecretName;
     secretConnectorMap[secretName] = connectorType;
     for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (valueRef === `$secrets.${secretName}`) {
+      if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
         secretConnectorMap[envName] = connectorType;
       }
     }
   }
 
+  return { secrets, vars, secretConnectorMap };
+}
+
+async function loadOauthConnectorContext(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+): Promise<ConnectorRuntimeContext> {
+  const connectorRows = await db
+    .select({ type: connectors.type, authMethod: connectors.authMethod })
+    .from(connectors)
+    .where(
+      and(eq(connectors.orgId, args.orgId), eq(connectors.userId, args.userId)),
+    );
+  if (connectorRows.length === 0) {
+    return emptyConnectorRuntimeContext();
+  }
+
+  const allowedConnectorRows = allowedStoredConnectorRows(
+    connectorRows,
+    args.allowedConnectorTypes,
+  );
+  if (allowedConnectorRows.length === 0) {
+    return emptyConnectorRuntimeContext();
+  }
+
+  const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
+  const requirements = collectStoredConnectorRequirements(bindingSets);
+  const [connectorSecrets, connectorVariables] = await Promise.all([
+    loadStoredConnectorSecrets(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      names: requirements.secretNames,
+      featureSwitchContext: args.featureSwitchContext,
+    }),
+    loadStoredConnectorVariables(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      names: requirements.variableNames,
+    }),
+  ]);
+  const resolved = resolveStoredConnectorState(
+    bindingSets,
+    connectorSecrets,
+    connectorVariables,
+  );
+
   return {
-    secrets: compactRecord(resolvedSecrets),
-    secretConnectorMap: compactRecord(secretConnectorMap),
-    connectorTypes: allowedConnectorTypes,
+    secrets: compactRecord(resolved.secrets),
+    vars: compactRecord(resolved.vars),
+    secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+    connectorTypes: allowedConnectorRows.map((row) => {
+      return row.connectorType;
+    }),
+    storedEnvironment: compactRecord(requirements.environment),
+    manualEnvironment: undefined,
   };
 }
 
@@ -2389,7 +2666,9 @@ function validateCompose(
     readonly validateEnvironmentReferences?: boolean;
     readonly environmentFirewalls?: readonly ExpandedFirewallConfig[];
     readonly additionalEnvironment?: Record<string, string>;
-    readonly connectorEnvironment?: Record<string, string>;
+    readonly storedConnectorEnvironment?: Record<string, string>;
+    readonly connectorVars?: Record<string, string>;
+    readonly manualConnectorEnvironment?: Record<string, string>;
   },
 ): { readonly framework: SupportedFramework } | CreateRunErrorResult {
   const framework = resolveFramework(content);
@@ -2406,7 +2685,9 @@ function validateCompose(
       secrets,
       environmentFirewalls: options?.environmentFirewalls,
       additionalEnvironment: options?.additionalEnvironment,
-      connectorEnvironment: options?.connectorEnvironment,
+      storedConnectorEnvironment: options?.storedConnectorEnvironment,
+      connectorVars: options?.connectorVars,
+      manualConnectorEnvironment: options?.manualConnectorEnvironment,
     });
     if (missing.length > 0) {
       return badRequestMessage(
@@ -2644,13 +2925,10 @@ async function buildStoredExecutionContext(args: {
   const permissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
     permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
+    vars: mergeRecords(args.body.vars, args.connectorContext.vars),
     connectorTypes: args.connectorContext.connectorTypes,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
-  const connectorEnvironment = connectorEnvironmentTemplates(
-    args.connectorContext.connectorTypes,
-  );
   const executionSecrets = buildStoredExecutionSecrets({
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
@@ -2675,7 +2953,9 @@ async function buildStoredExecutionContext(args: {
           secrets: executionSecrets.secrets,
           additionalEnvironment: args.modelProvider?.environment,
           environmentFirewalls: permissions?.environmentFirewalls,
-          connectorEnvironment,
+          storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+          connectorVars: args.connectorContext.vars,
+          manualConnectorEnvironment: args.connectorContext.manualEnvironment,
         }),
         ...args.extraEnvironment,
       },
@@ -3257,6 +3537,7 @@ async function loadRunConnectorContexts(
   return {
     connectorContext: {
       ...oauthConnectorContext,
+      manualEnvironment: connectorEnvironmentTemplates(allowedManualGrantTypes),
       connectorTypes: [
         ...new Set([
           ...oauthConnectorContext.connectorTypes,
@@ -3317,7 +3598,7 @@ function validateRunEnvironmentReferences(args: {
   const validationPermissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
     permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
+    vars: mergeRecords(args.body.vars, args.connectorContext.vars),
     connectorTypes: args.connectorContext.connectorTypes,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
@@ -3327,9 +3608,6 @@ function validateRunEnvironmentReferences(args: {
     bodySecrets: args.body.secrets,
     customConnectorContext: args.customConnectorContext,
   });
-  const connectorEnvironment = connectorEnvironmentTemplates(
-    args.connectorContext.connectorTypes,
-  );
   const validation = validateCompose(
     args.resolved.content,
     args.body.vars,
@@ -3338,7 +3616,9 @@ function validateRunEnvironmentReferences(args: {
       validateEnvironmentReferences: args.validateEnvironmentReferences,
       environmentFirewalls: validationPermissions?.environmentFirewalls,
       additionalEnvironment: args.modelProvider?.environment,
-      connectorEnvironment,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+      connectorVars: args.connectorContext.vars,
+      manualConnectorEnvironment: args.connectorContext.manualEnvironment,
     },
   );
 

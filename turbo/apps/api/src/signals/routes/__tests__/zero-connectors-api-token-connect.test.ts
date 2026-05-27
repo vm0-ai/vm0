@@ -203,11 +203,11 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
       secretRows(fixture, "ZENDESK_API_TOKEN", "user"),
     ).resolves.toHaveLength(1);
     await expect(variableRows(fixture, "ZENDESK_EMAIL")).resolves.toMatchObject(
-      [{ value: "support@example.com" }],
+      [{ value: "support@example.com", type: "user" }],
     );
     await expect(
       variableRows(fixture, "ZENDESK_SUBDOMAIN"),
-    ).resolves.toMatchObject([{ value: "example" }]);
+    ).resolves.toMatchObject([{ value: "example", type: "user" }]);
   });
 
   it("replaces stored OAuth state with derived API-token state", async () => {

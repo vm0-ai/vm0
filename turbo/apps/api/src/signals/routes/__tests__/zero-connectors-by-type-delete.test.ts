@@ -289,6 +289,50 @@ describe("DELETE /api/zero/connectors/:type", () => {
     });
   });
 
+  it("does not delete connector-owned variables while deleting legacy API-token state", async () => {
+    const fixture = await track(seedFixture());
+    await seedAtlassianApiTokenState(fixture);
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(variables).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "ATLASSIAN_DOMAIN",
+      value: "connector.example",
+      type: "connector",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    await accept(
+      client.delete({
+        params: { type: "atlassian" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    const remainingVariables = await writeDb
+      .select({
+        name: variables.name,
+        value: variables.value,
+        type: variables.type,
+      })
+      .from(variables)
+      .where(
+        and(
+          eq(variables.orgId, fixture.orgId),
+          eq(variables.userId, fixture.userId),
+        ),
+      );
+    expect(remainingVariables).toStrictEqual([
+      {
+        name: "ATLASSIAN_DOMAIN",
+        value: "connector.example",
+        type: "connector",
+      },
+    ]);
+  });
+
   it("deletes optional manual grant variables", async () => {
     const fixture = await track(seedFixture());
     await seedGitlabApiTokenState(fixture);

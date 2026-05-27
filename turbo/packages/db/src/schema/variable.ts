@@ -20,6 +20,7 @@ export const variables = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     value: text("value").notNull(),
     description: text("description"),
+    type: varchar("type", { length: 50 }).notNull().default("user"),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -28,9 +29,10 @@ export const variables = pgTable(
   (table) => {
     return [
       index("idx_variables_org").on(table.orgId),
-      uniqueIndex("idx_variables_org_user_name").on(
+      uniqueIndex("idx_variables_org_user_type_name").on(
         table.orgId,
         table.userId,
+        table.type,
         table.name,
       ),
     ];

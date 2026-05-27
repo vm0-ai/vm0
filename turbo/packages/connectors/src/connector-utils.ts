@@ -621,6 +621,17 @@ function connectorMethodSecretNames(
 }
 
 /**
+ * Get runtime environment bindings for a specific connector auth method.
+ */
+export function getConnectorAuthMethodEnvBindings(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorEnvBindings {
+  const method = getConnectorAuthMethod(type, authMethod);
+  return method ? connectorAccessEnvBindings(method.access) : {};
+}
+
+/**
  * Get runtime environment bindings for a connector type.
  */
 export function getConnectorEnvBindings(

@@ -30,6 +30,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -867,6 +868,150 @@ describe("POST /api/agent/runs", () => {
         return firewall.name === "zendesk";
       }),
     ).toBeFalsy();
+  });
+
+  it("loads stored connector-owned variables without exposing them as run vars", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "zendesk",
+      authMethod: "api-token",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_API_TOKEN",
+      encryptedValue: encryptSecretForTests("connector-zendesk-token"),
+      type: "connector",
+    });
+    await db.insert(variables).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "ZENDESK_SUBDOMAIN",
+        value: "user-subdomain",
+        type: "user",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "ZENDESK_SUBDOMAIN",
+        value: "connector-subdomain",
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "ZENDESK_EMAIL",
+        value: vm0Template("{{ vars.ZENDESK_SUBDOMAIN }}"),
+        type: "connector",
+      },
+    ]);
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: {
+        environment: {
+          ANTHROPIC_API_KEY: "test-key",
+          USER_ZENDESK_SUBDOMAIN: vm0Template("{{ vars.ZENDESK_SUBDOMAIN }}"),
+        },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use stored zendesk",
+        },
+      }),
+      [201],
+    );
+
+    const [run] = await db
+      .select({ vars: agentRuns.vars })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    expect(run?.vars).toStrictEqual({
+      ZENDESK_SUBDOMAIN: "user-subdomain",
+    });
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly { readonly base: string }[];
+      }[];
+    };
+    expect(executionContext.environment.ZENDESK_API_TOKEN).toBe(
+      "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    );
+    expect(executionContext.environment.ZENDESK_SUBDOMAIN).toBe(
+      "connector-subdomain",
+    );
+    expect(executionContext.environment.ZENDESK_EMAIL).toBe(
+      vm0Template("{{ vars.ZENDESK_SUBDOMAIN }}"),
+    );
+    expect(executionContext.environment.USER_ZENDESK_SUBDOMAIN).toBe(
+      "user-subdomain",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      ZENDESK_API_TOKEN: "connector-zendesk-token",
+    });
+    const zendesk = executionContext.firewalls.find((firewall) => {
+      return firewall.name === "zendesk";
+    });
+    expect(zendesk?.apis[0]?.base).toBe(
+      "https://connector-subdomain.zendesk.com",
+    );
+  });
+
+  it("returns 500 when stored connector-owned state is incomplete", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "zendesk",
+      authMethod: "api-token",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_API_TOKEN",
+      encryptedValue: encryptSecretForTests("connector-zendesk-token"),
+      type: "connector",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_SUBDOMAIN",
+      value: "connector-subdomain",
+      type: "connector",
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/agent/runs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        agentComposeId: compose.composeId,
+        prompt: "Use stored zendesk",
+      }),
+    });
+
+    expect(response.status).toBe(500);
   });
 
   it("loads an api-token connector secret used only by the firewall, not the compose environment", async () => {

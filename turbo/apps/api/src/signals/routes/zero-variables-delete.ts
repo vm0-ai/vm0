@@ -16,14 +16,14 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const writeDb = set(writeDb$);
-  // Atomic single-statement delete + 404 detection. Variables has no `type`
-  // column (unlike secrets), so the WHERE clause is a 3-tuple.
+  // Atomic single-statement delete + 404 detection for user-owned variables.
   const deleted = await writeDb
     .delete(variables)
     .where(
       and(
         eq(variables.orgId, auth.orgId),
         eq(variables.userId, auth.userId),
+        eq(variables.type, "user"),
         eq(variables.name, params.name),
       ),
     )
