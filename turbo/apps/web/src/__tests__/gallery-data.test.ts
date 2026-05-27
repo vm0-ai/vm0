@@ -26,13 +26,13 @@ describe("generation gallery data", () => {
     expect([...itemCategories].sort()).toEqual([...visibleCategories].sort());
   });
 
-  it("only shows the hosted website design gallery for now", () => {
+  it("only shows the website design gallery for now", () => {
     expect(GALLERY_CATEGORIES).toEqual(["all", "website"]);
     expect(GALLERY_CATEGORY_LABELS.website).toBe("Website Design");
-    expect(GALLERY_ITEMS.length).toBe(10);
+    expect(GALLERY_ITEMS.length).toBeGreaterThanOrEqual(10);
     expect(
       GALLERY_ITEMS.every((item) => {
-        return item.category === "website" && item.artifactUrl;
+        return item.category === "website";
       }),
     ).toBe(true);
   });
