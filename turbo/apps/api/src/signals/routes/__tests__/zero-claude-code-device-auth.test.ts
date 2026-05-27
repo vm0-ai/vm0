@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
-import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
@@ -56,11 +56,11 @@ function mockClaudeCodeDeviceAuthHttp() {
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
-    .delete(connectorCliAuthSessions)
+    .delete(modelProviderAuthSessions)
     .where(
       and(
-        eq(connectorCliAuthSessions.userId, userId),
-        eq(connectorCliAuthSessions.orgId, orgId),
+        eq(modelProviderAuthSessions.userId, userId),
+        eq(modelProviderAuthSessions.orgId, orgId),
       ),
     );
   await db
@@ -90,13 +90,13 @@ function claudeCodeDeviceAuthSessions(userId: string, orgId: string) {
   return store
     .set(writeDb$)
     .select()
-    .from(connectorCliAuthSessions)
+    .from(modelProviderAuthSessions)
     .where(
       and(
-        eq(connectorCliAuthSessions.userId, userId),
-        eq(connectorCliAuthSessions.orgId, orgId),
-        eq(connectorCliAuthSessions.connectorType, "claude-code-oauth-token"),
-        eq(connectorCliAuthSessions.source, "claude-code-device-auth"),
+        eq(modelProviderAuthSessions.userId, userId),
+        eq(modelProviderAuthSessions.orgId, orgId),
+        eq(modelProviderAuthSessions.connectorType, "claude-code-oauth-token"),
+        eq(modelProviderAuthSessions.source, "claude-code-device-auth"),
       ),
     );
 }

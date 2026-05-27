@@ -22,7 +22,7 @@ import * as modelStatSchema from "./schema/model-stat";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
-import * as connectorCliAuthSessionSchema from "./schema/connector-cli-auth-session";
+import * as modelProviderAuthSessionSchema from "./schema/model-provider-auth-session";
 import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connector-oauth-device-authorization-session";
 import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
@@ -107,7 +107,7 @@ export const schema = {
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,
-  ...connectorCliAuthSessionSchema,
+  ...modelProviderAuthSessionSchema,
   ...connectorOauthDeviceAuthorizationSessionSchema,
   ...connectorOauthStateSchema,
   ...usageEventSchema,

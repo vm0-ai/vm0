@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
@@ -156,11 +156,11 @@ function expectOAuthTokenBody(calls: {
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
-    .delete(connectorCliAuthSessions)
+    .delete(modelProviderAuthSessions)
     .where(
       and(
-        eq(connectorCliAuthSessions.userId, userId),
-        eq(connectorCliAuthSessions.orgId, orgId),
+        eq(modelProviderAuthSessions.userId, userId),
+        eq(modelProviderAuthSessions.orgId, orgId),
       ),
     );
   await db
@@ -190,13 +190,13 @@ function codexDeviceAuthSessions(userId: string, orgId: string) {
   return store
     .set(writeDb$)
     .select()
-    .from(connectorCliAuthSessions)
+    .from(modelProviderAuthSessions)
     .where(
       and(
-        eq(connectorCliAuthSessions.userId, userId),
-        eq(connectorCliAuthSessions.orgId, orgId),
-        eq(connectorCliAuthSessions.connectorType, "codex-oauth-token"),
-        eq(connectorCliAuthSessions.source, "codex-device-auth"),
+        eq(modelProviderAuthSessions.userId, userId),
+        eq(modelProviderAuthSessions.orgId, orgId),
+        eq(modelProviderAuthSessions.connectorType, "codex-oauth-token"),
+        eq(modelProviderAuthSessions.source, "codex-device-auth"),
       ),
     );
 }

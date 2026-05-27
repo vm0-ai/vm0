@@ -8,7 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
-import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -560,15 +560,15 @@ async function migrateAgentRunCallbacks(
   );
 }
 
-async function countCliAuthProviderStates(): Promise<CiphertextCounts> {
+async function countModelProviderAuthSessionProviderStates(): Promise<CiphertextCounts> {
   const rows = await db()
-    .select({ encrypted: connectorCliAuthSessions.encryptedProviderState })
-    .from(connectorCliAuthSessions)
-    .where(isNotNull(connectorCliAuthSessions.encryptedProviderState));
+    .select({ encrypted: modelProviderAuthSessions.encryptedProviderState })
+    .from(modelProviderAuthSessions)
+    .where(isNotNull(modelProviderAuthSessions.encryptedProviderState));
   return countCiphertexts(rows);
 }
 
-async function migrateCliAuthProviderStates(
+async function migrateModelProviderAuthSessionProviderStates(
   args: MigrationArgs,
   targetName: string,
 ): Promise<number> {
@@ -578,32 +578,35 @@ async function migrateCliAuthProviderStates(
     args,
     async (cursor, batchSize) => {
       const predicates = [
-        isNotNull(connectorCliAuthSessions.encryptedProviderState),
+        isNotNull(modelProviderAuthSessions.encryptedProviderState),
       ];
       if (cursor) {
-        predicates.push(gt(connectorCliAuthSessions.id, cursor));
+        predicates.push(gt(modelProviderAuthSessions.id, cursor));
       }
       return await database
         .select({
-          key: connectorCliAuthSessions.id,
-          encrypted: connectorCliAuthSessions.encryptedProviderState,
+          key: modelProviderAuthSessions.id,
+          encrypted: modelProviderAuthSessions.encryptedProviderState,
         })
-        .from(connectorCliAuthSessions)
+        .from(modelProviderAuthSessions)
         .where(and(...predicates))
-        .orderBy(asc(connectorCliAuthSessions.id))
+        .orderBy(asc(modelProviderAuthSessions.id))
         .limit(batchSize);
     },
     async (row, encrypted) => {
       const updated = await database
-        .update(connectorCliAuthSessions)
+        .update(modelProviderAuthSessions)
         .set({ encryptedProviderState: encrypted })
         .where(
           and(
-            eq(connectorCliAuthSessions.id, row.key),
-            eq(connectorCliAuthSessions.encryptedProviderState, row.encrypted!),
+            eq(modelProviderAuthSessions.id, row.key),
+            eq(
+              modelProviderAuthSessions.encryptedProviderState,
+              row.encrypted!,
+            ),
           ),
         )
-        .returning({ key: connectorCliAuthSessions.id });
+        .returning({ key: modelProviderAuthSessions.id });
       return updated.length;
     },
   );
@@ -928,9 +931,9 @@ async function run(): Promise<void> {
       args,
     ),
     await report(
-      "connector_cli_auth_sessions.encrypted_provider_state",
-      countCliAuthProviderStates,
-      migrateCliAuthProviderStates,
+      "model_provider_auth_sessions.encrypted_provider_state",
+      countModelProviderAuthSessionProviderStates,
+      migrateModelProviderAuthSessionProviderStates,
       args,
     ),
     await report(

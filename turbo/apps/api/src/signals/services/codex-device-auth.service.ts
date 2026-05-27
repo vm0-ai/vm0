@@ -1,7 +1,7 @@
 import { command, type Setter } from "ccstate";
 import type { CodexDeviceAuthScope } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
@@ -79,13 +79,13 @@ type CodexDeviceAuthSessionToken = z.infer<
 type CodexDeviceAuthProviderState = z.infer<
   typeof codexDeviceAuthProviderStateSchema
 >;
-type ConnectorCliAuthSession = typeof connectorCliAuthSessions.$inferSelect;
-type ConnectorCliAuthSessionStatus = ConnectorCliAuthSession["status"];
+type ModelProviderAuthSession = typeof modelProviderAuthSessions.$inferSelect;
+type ModelProviderAuthSessionStatus = ModelProviderAuthSession["status"];
 const CODEX_DEVICE_AUTH_ACTIVE_STATUSES = [
   "initializing",
   "awaiting_user_approval",
   "completing",
-] as const satisfies readonly ConnectorCliAuthSessionStatus[];
+] as const satisfies readonly ModelProviderAuthSessionStatus[];
 type CodexDeviceAuthFailureCode =
   | "CODEX_DEVICE_AUTH_UNAVAILABLE"
   | "CODEX_DEVICE_AUTH_FAILED"
@@ -192,7 +192,7 @@ function encodeSession(payload: CodexDeviceAuthSessionToken): string {
 
 async function encodeProviderState(
   payload: CodexDeviceAuthProviderState,
-  session: ConnectorCliAuthSession,
+  session: ModelProviderAuthSession,
 ): Promise<string> {
   return await encryptPersistentSecretValue(JSON.stringify(payload), {
     orgId: session.orgId,
@@ -215,7 +215,7 @@ function decodeSession(token: string): CodexDeviceAuthSessionToken | null {
 
 async function decodeProviderState(
   encryptedProviderState: string | null,
-  session: ConnectorCliAuthSession,
+  session: ModelProviderAuthSession,
 ): Promise<CodexDeviceAuthProviderState | null> {
   if (!encryptedProviderState) {
     return null;
@@ -262,7 +262,7 @@ function unknownErrorMessage(error: unknown, fallback: string): string {
 
 function terminalSessionSet(args: {
   readonly status: Extract<
-    ConnectorCliAuthSessionStatus,
+    ModelProviderAuthSessionStatus,
     "cancelled" | "error" | "expired" | "imported"
   >;
   readonly now: Date;
@@ -282,13 +282,13 @@ function terminalSessionSet(args: {
 
 function ownerWhere(args: { readonly orgId: string; readonly userId: string }) {
   return and(
-    eq(connectorCliAuthSessions.orgId, args.orgId),
-    eq(connectorCliAuthSessions.userId, args.userId),
+    eq(modelProviderAuthSessions.orgId, args.orgId),
+    eq(modelProviderAuthSessions.userId, args.userId),
     eq(
-      connectorCliAuthSessions.connectorType,
+      modelProviderAuthSessions.connectorType,
       CODEX_DEVICE_AUTH_CONNECTOR_TYPE,
     ),
-    eq(connectorCliAuthSessions.source, CODEX_DEVICE_AUTH_SOURCE),
+    eq(modelProviderAuthSessions.source, CODEX_DEVICE_AUTH_SOURCE),
   );
 }
 
@@ -297,7 +297,10 @@ function sessionWhere(args: {
   readonly orgId: string;
   readonly userId: string;
 }) {
-  return and(eq(connectorCliAuthSessions.id, args.sessionId), ownerWhere(args));
+  return and(
+    eq(modelProviderAuthSessions.id, args.sessionId),
+    ownerWhere(args),
+  );
 }
 
 async function cancelActiveSessions(args: {
@@ -307,7 +310,7 @@ async function cancelActiveSessions(args: {
   readonly now: Date;
 }): Promise<void> {
   await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set(
       terminalSessionSet({
         status: "cancelled",
@@ -318,7 +321,7 @@ async function cancelActiveSessions(args: {
     .where(
       and(
         ownerWhere(args),
-        inArray(connectorCliAuthSessions.status, [
+        inArray(modelProviderAuthSessions.status, [
           ...CODEX_DEVICE_AUTH_ACTIVE_STATUSES,
         ]),
       ),
@@ -333,7 +336,7 @@ async function cancelSession(args: {
   readonly message: string;
 }): Promise<void> {
   await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set(
       terminalSessionSet({
         status: "cancelled",
@@ -348,7 +351,7 @@ async function cancelSession(args: {
           orgId: args.orgId,
           userId: args.userId,
         }),
-        inArray(connectorCliAuthSessions.status, [
+        inArray(modelProviderAuthSessions.status, [
           ...CODEX_DEVICE_AUTH_ACTIVE_STATUSES,
         ]),
       ),
@@ -360,9 +363,9 @@ async function createSession(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly expiresAt: Date;
-}): Promise<ConnectorCliAuthSession> {
+}): Promise<ModelProviderAuthSession> {
   const [session] = await args.writeDb
-    .insert(connectorCliAuthSessions)
+    .insert(modelProviderAuthSessions)
     .values({
       orgId: args.orgId,
       userId: args.userId,
@@ -381,7 +384,7 @@ async function createSession(args: {
 function registerStartAbortCancellation(args: {
   readonly signal: AbortSignal;
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
   readonly orgId: string;
   readonly userId: string;
 }): () => void {
@@ -410,7 +413,7 @@ async function markSessionError(args: {
   readonly message: string;
 }) {
   await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set(
       terminalSessionSet({
         status: "error",
@@ -418,33 +421,33 @@ async function markSessionError(args: {
         message: args.message,
       }),
     )
-    .where(eq(connectorCliAuthSessions.id, args.sessionId));
+    .where(eq(modelProviderAuthSessions.id, args.sessionId));
 }
 
 async function markSessionExpired(args: {
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
 }) {
   await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set(
       terminalSessionSet({
         status: "expired",
         now: nowDate(),
       }),
     )
-    .where(eq(connectorCliAuthSessions.id, args.session.id));
+    .where(eq(modelProviderAuthSessions.id, args.session.id));
 }
 
 async function moveSessionToAwaitingApproval(args: {
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
   readonly scope: CodexDeviceAuthScope;
   readonly deviceAuthId: string;
   readonly userCode: string;
-}): Promise<ConnectorCliAuthSession> {
+}): Promise<ModelProviderAuthSession> {
   const [updated] = await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set({
       status: "awaiting_user_approval",
       approvalUrl: CODEX_DEVICE_AUTH_VERIFICATION_URL,
@@ -461,7 +464,7 @@ async function moveSessionToAwaitingApproval(args: {
       ),
       updatedAt: nowDate(),
     })
-    .where(eq(connectorCliAuthSessions.id, args.session.id))
+    .where(eq(modelProviderAuthSessions.id, args.session.id))
     .returning();
   if (!updated) {
     throw new Error("Failed to update Codex device auth session");
@@ -683,10 +686,10 @@ async function loadSession(args: {
   readonly sessionId: string;
   readonly orgId: string;
   readonly userId: string;
-}): Promise<ConnectorCliAuthSession | null> {
+}): Promise<ModelProviderAuthSession | null> {
   const [session] = await args.writeDb
     .select()
-    .from(connectorCliAuthSessions)
+    .from(modelProviderAuthSessions)
     .where(sessionWhere(args))
     .limit(1);
   return session ?? null;
@@ -694,37 +697,37 @@ async function loadSession(args: {
 
 async function claimCompleting(args: {
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
 }): Promise<boolean> {
   const [updated] = await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set({ status: "completing", updatedAt: nowDate() })
     .where(
       and(
-        eq(connectorCliAuthSessions.id, args.session.id),
-        eq(connectorCliAuthSessions.status, "awaiting_user_approval"),
+        eq(modelProviderAuthSessions.id, args.session.id),
+        eq(modelProviderAuthSessions.status, "awaiting_user_approval"),
       ),
     )
-    .returning({ id: connectorCliAuthSessions.id });
+    .returning({ id: modelProviderAuthSessions.id });
   return Boolean(updated);
 }
 
 async function markSessionImported(args: {
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
 }) {
   await args.writeDb
-    .update(connectorCliAuthSessions)
+    .update(modelProviderAuthSessions)
     .set(
       terminalSessionSet({
         status: "imported",
         now: nowDate(),
       }),
     )
-    .where(eq(connectorCliAuthSessions.id, args.session.id));
+    .where(eq(modelProviderAuthSessions.id, args.session.id));
 }
 
-function isSessionExpired(session: ConnectorCliAuthSession): boolean {
+function isSessionExpired(session: ModelProviderAuthSession): boolean {
   return session.expiresAt.getTime() <= nowDate().getTime();
 }
 
@@ -894,7 +897,7 @@ function authJsonFromTokens(tokens: CodexOAuthTokens): string {
 async function completeLoadedCodexDeviceAuth(args: {
   readonly stateSet: Setter;
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole: "admin" | "member" | undefined;
@@ -977,7 +980,7 @@ async function completeLoadedCodexDeviceAuth(args: {
 async function importClaimedCodexDeviceAuth(args: {
   readonly stateSet: Setter;
   readonly writeDb: Db;
-  readonly session: ConnectorCliAuthSession;
+  readonly session: ModelProviderAuthSession;
   readonly scope: CodexDeviceAuthScope;
   readonly orgId: string;
   readonly userId: string;

@@ -2829,6 +2829,13 @@
       "when": 1779884217820,
       "tag": "0403_lucky_shotgun",
       "breakpoints": true
+    },
+    {
+      "idx": 404,
+      "version": "7",
+      "when": 1779898259264,
+      "tag": "0404_rename_model_provider_auth_sessions",
+      "breakpoints": true
     }
   ]
 }

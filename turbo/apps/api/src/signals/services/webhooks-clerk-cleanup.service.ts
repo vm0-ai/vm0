@@ -13,6 +13,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
@@ -479,6 +480,9 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
   await db.delete(storages).where(eq(storages.orgId, orgId));
   await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
+  await db
+    .delete(modelProviderAuthSessions)
+    .where(eq(modelProviderAuthSessions.orgId, orgId));
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
   await db.delete(connectors).where(eq(connectors.orgId, orgId));
   await db
@@ -527,6 +531,9 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db.delete(agentComposes).where(eq(agentComposes.userId, userId));
   await db.delete(storages).where(eq(storages.userId, userId));
   await db.delete(modelProviders).where(eq(modelProviders.userId, userId));
+  await db
+    .delete(modelProviderAuthSessions)
+    .where(eq(modelProviderAuthSessions.userId, userId));
   await db.delete(secrets).where(eq(secrets.userId, userId));
   await db.delete(connectors).where(eq(connectors.userId, userId));
   await db.delete(variables).where(eq(variables.userId, userId));

@@ -19,6 +19,7 @@ import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
+import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -963,10 +964,16 @@ const deleteClerkFixture$ = command(
         eq(connectorOauthDeviceAuthorizationSessions.userId, fixture.userId),
       );
     await db
+      .delete(modelProviderAuthSessions)
+      .where(eq(modelProviderAuthSessions.userId, fixture.userId));
+    await db
       .delete(connectorOauthDeviceAuthorizationSessions)
       .where(
         eq(connectorOauthDeviceAuthorizationSessions.orgId, fixture.orgId),
       );
+    await db
+      .delete(modelProviderAuthSessions)
+      .where(eq(modelProviderAuthSessions.orgId, fixture.orgId));
     await db.delete(storages).where(eq(storages.userId, fixture.userId));
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     await db
@@ -1028,6 +1035,25 @@ async function seedClerkOauthDeviceAuthSession(
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
       intervalSeconds: 5,
+      expiresAt: new Date(nowDate().getTime() + 600_000),
+    });
+}
+
+async function seedClerkModelProviderAuthSession(
+  fixture: ClerkFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(modelProviderAuthSessions)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorType: "codex-oauth-token",
+      source: "codex-device-auth",
+      status: "awaiting_user_approval",
+      approvalUrl: "https://auth.test/device",
+      verificationCode: "TEST-CODE",
+      encryptedProviderState: "encrypted-provider-state",
       expiresAt: new Date(nowDate().getTime() + 600_000),
     });
 }
@@ -3104,6 +3130,7 @@ describe("POST /api/webhooks/clerk", () => {
       store.set(seedClerkFixture$, undefined, context.signal),
     );
     await seedClerkOauthDeviceAuthSession(fixture);
+    await seedClerkModelProviderAuthSession(fixture);
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "organization.deleted",
       data: { id: fixture.orgId },
@@ -3138,10 +3165,15 @@ describe("POST /api/webhooks/clerk", () => {
       .where(
         eq(connectorOauthDeviceAuthorizationSessions.orgId, fixture.orgId),
       );
+    const modelProviderAuthSessionRows = await db
+      .select({ id: modelProviderAuthSessions.id })
+      .from(modelProviderAuthSessions)
+      .where(eq(modelProviderAuthSessions.orgId, fixture.orgId));
     expect(cacheRows).toHaveLength(0);
     expect(metadataRows).toHaveLength(0);
     expect(membershipRows).toHaveLength(0);
     expect(deviceSessionRows).toHaveLength(0);
+    expect(modelProviderAuthSessionRows).toHaveLength(0);
   });
 
   it("does not schedule organization deletion cleanup without an org ID", async () => {
@@ -3205,6 +3237,7 @@ describe("POST /api/webhooks/clerk", () => {
       store.set(seedClerkFixture$, undefined, context.signal),
     );
     await seedClerkOauthDeviceAuthSession(fixture);
+    await seedClerkModelProviderAuthSession(fixture);
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "user.deleted",
       data: { id: fixture.userId },
@@ -3239,10 +3272,15 @@ describe("POST /api/webhooks/clerk", () => {
       .where(
         eq(connectorOauthDeviceAuthorizationSessions.userId, fixture.userId),
       );
+    const modelProviderAuthSessionRows = await db
+      .select({ id: modelProviderAuthSessions.id })
+      .from(modelProviderAuthSessions)
+      .where(eq(modelProviderAuthSessions.userId, fixture.userId));
     expect(cacheRows).toHaveLength(0);
     expect(userRows).toHaveLength(0);
     expect(orgRows).toHaveLength(1);
     expect(deviceSessionRows).toHaveLength(0);
+    expect(modelProviderAuthSessionRows).toHaveLength(0);
   });
 
   it("does not schedule user deletion cleanup without a user ID", async () => {
