@@ -109,28 +109,32 @@ export default async function DocsIndexPage({
           <h1 className="docs-title">{t("title")}</h1>
           <p className="docs-description">{t("description")}</p>
         </header>
-        {pages.length > 0 ? (
-          <div className="docs-index-grid">
-            {pages.map((page) => {
-              return (
-                <Link
-                  key={page.path}
-                  href={
-                    draft
-                      ? `/docs/${page.path}?status=draft`
-                      : `/docs/${page.path}`
-                  }
-                  className="docs-index-card"
-                >
-                  <span className="docs-index-section">
-                    {page.section.title}
-                  </span>
-                  <h2>{page.title}</h2>
-                  {page.description && <p>{page.description}</p>}
-                </Link>
-              );
-            })}
-          </div>
+        {navigation.length > 0 ? (
+          navigation.map((section) => {
+            return (
+              <section key={section.slug} className="docs-index-section-group">
+                <h2 className="docs-index-section-title">{section.title}</h2>
+                <div className="docs-index-grid">
+                  {section.pages.map((page) => {
+                    return (
+                      <Link
+                        key={page.path}
+                        href={
+                          draft
+                            ? `/docs/${page.path}?status=draft`
+                            : `/docs/${page.path}`
+                        }
+                        className="docs-index-card"
+                      >
+                        <h3>{page.title}</h3>
+                        {page.description && <p>{page.description}</p>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })
         ) : (
           <p className="docs-empty">{t("empty")}</p>
         )}
