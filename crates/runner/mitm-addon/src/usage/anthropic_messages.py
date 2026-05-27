@@ -11,7 +11,7 @@ import body_utils
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
-from .sse import SseUsageParser
+from .sse import SseUsageScanner
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _SseUsageParseErrorCallback = Callable[[str, str], None]
@@ -53,7 +53,7 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
 
 def create_anthropic_messages_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
-) -> tuple[SseUsageParser, dict]:
+) -> tuple[SseUsageScanner, dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
     Anthropic-shaped model providers use the Anthropic Messages API streaming
@@ -67,7 +67,7 @@ def create_anthropic_messages_sse_usage_extractor(
     incrementally and *usage* is a dict that accumulates extracted fields.
     """
     usage: dict = {}
-    parser = SseUsageParser(
+    parser = SseUsageScanner(
         _AnthropicMessagesSseUsageHandler(usage, on_parse_error=on_parse_error),
         capture_data_without_event=True,
     )

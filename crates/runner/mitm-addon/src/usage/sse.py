@@ -66,6 +66,9 @@ class SseUsageScanner:
         self._capturing_event = False
         self._captured_data_lines = 0
 
+    def __call__(self, chunk: bytes) -> None:
+        self.feed(chunk)
+
     def feed(self, chunk: bytes) -> None:
         i = 0
         while i < len(chunk):
@@ -251,27 +254,3 @@ def _find_next_line_ending(chunk: bytes, start: int) -> int:
     if next_cr == -1:
         return next_lf
     return min(next_lf, next_cr)
-
-
-class SseUsageParser:
-    """Callable parser wrapper with an explicit stream-end flush hook."""
-
-    def __init__(
-        self,
-        handler: SseUsageEventHandler,
-        *,
-        capture_data_without_event: bool = False,
-    ) -> None:
-        self._scanner = SseUsageScanner(
-            handler,
-            capture_data_without_event=capture_data_without_event,
-        )
-
-    def __call__(self, chunk: bytes) -> None:
-        self.feed(chunk)
-
-    def feed(self, chunk: bytes) -> None:
-        self._scanner.feed(chunk)
-
-    def finish(self) -> None:
-        self._scanner.finish()

@@ -31,7 +31,7 @@ from .model_tokens import (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
-from .sse import SseUsageParser
+from .sse import SseUsageScanner
 
 # Terminal Responses events whose Response object may carry usage. Keep this
 # narrow so high-volume delta events stay on the SSE discard path.
@@ -187,11 +187,11 @@ def _store_sse_result_values(
 
 def create_openai_responses_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
-) -> tuple[SseUsageParser, dict]:
+) -> tuple[SseUsageScanner, dict]:
     """Create an incremental SSE parser for OpenAI Responses streams."""
 
     usage: dict = {}
-    parser = SseUsageParser(
+    parser = SseUsageScanner(
         _OpenAIResponsesSseUsageHandler(usage, on_parse_error=on_parse_error),
         capture_data_without_event=True,
     )

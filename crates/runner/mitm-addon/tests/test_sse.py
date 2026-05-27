@@ -63,6 +63,17 @@ def test_finish_flushes_current_event_without_blank_line() -> None:
     assert handler.events == [("target", b"ok")]
 
 
+def test_callable_scanner_feeds_chunks_and_finish_flushes() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner(b"event: target\n")
+    scanner(b"data: ok")
+    scanner.finish()
+
+    assert handler.events == [("target", b"ok")]
+
+
 def test_supports_no_optional_space_and_split_crlf() -> None:
     handler = _CaptureHandler({"target"})
     scanner = SseUsageScanner(handler)
