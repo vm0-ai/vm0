@@ -25,6 +25,10 @@ assert_not_contains() {
   fi
 }
 
+without_mask_commands() {
+  grep -v '^::add-mask::' <<< "$1" || true
+}
+
 mkdir -p "${TMPDIR}/bin"
 cat > "${TMPDIR}/bin/op" <<'BASH'
 #!/usr/bin/env bash
@@ -86,8 +90,9 @@ success_output="$(
 assert_contains "$success_output" "ok: GOOGLE_OAUTH_CLIENT_SECRET"
 assert_contains "$success_output" "ok: SLACK_CLIENT_SECRET"
 assert_contains "$success_output" "Checked 2 Development secrets"
-assert_not_contains "$success_output" "shared-google-secret"
-assert_not_contains "$success_output" "shared-slack-secret"
+success_log_output="$(without_mask_commands "$success_output")"
+assert_not_contains "$success_log_output" "shared-google-secret"
+assert_not_contains "$success_log_output" "shared-slack-secret"
 
 status=0
 mixed_output="$(
@@ -106,9 +111,10 @@ assert_contains "$mixed_output" "X_OAUTH_CLIENT_SECRET is missing from GitHub se
 assert_contains "$mixed_output" "X_OAUTH_CLIENT_SECRET is missing or unreadable from 1Password"
 assert_contains "$mixed_output" "GH_OAUTH_CLIENT_SECRET differs between GitHub secrets and 1Password"
 assert_contains "$mixed_output" "3 secret comparison(s) failed"
-assert_not_contains "$mixed_output" "github-github-secret"
-assert_not_contains "$mixed_output" "op-github-secret"
-assert_not_contains "$mixed_output" "op-error-secret"
+mixed_log_output="$(without_mask_commands "$mixed_output")"
+assert_not_contains "$mixed_log_output" "github-github-secret"
+assert_not_contains "$mixed_log_output" "op-github-secret"
+assert_not_contains "$mixed_log_output" "op-error-secret"
 
 status=0
 empty_output="$(
