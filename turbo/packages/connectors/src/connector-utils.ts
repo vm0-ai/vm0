@@ -435,11 +435,6 @@ export function getAvailableConnectorAuthMethods(
 
 export type ConnectorEnvReader = (name: string) => string | undefined;
 
-export interface ConnectorOAuthEnvKeys {
-  readonly clientId: string;
-  readonly clientSecret?: string;
-}
-
 export type StaticConfidentialConnectorOAuthClient = {
   readonly clientRegistration: "static";
   readonly clientType: "confidential";
@@ -549,24 +544,6 @@ function hasConfiguredOAuth(
   type: ConnectorType,
 ): boolean {
   return getConnectorOAuthClient(type, readEnv) !== undefined;
-}
-
-export function getConnectorOAuthEnvKeys(
-  type: ConnectorType,
-): ConnectorOAuthEnvKeys | undefined {
-  const client = getConnectorOAuthClientConfig(type);
-  if (
-    !client ||
-    client.clientRegistration !== "static" ||
-    !("clientIdEnv" in client)
-  ) {
-    return undefined;
-  }
-  return {
-    clientId: client.clientIdEnv,
-    clientSecret:
-      client.clientType === "confidential" ? client.clientSecretEnv : undefined,
-  };
 }
 
 /**
