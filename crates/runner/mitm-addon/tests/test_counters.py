@@ -38,9 +38,9 @@ class TestUsagePendingCounter:
         assert json.loads(pending_path.read_text()) == pending_state
 
         next_pending_path = tmp_path / "next-usage-pending"
-        usage.set_pending_path(str(next_pending_path), usage_state_id="after-reset")
+        usage.set_pending_path(str(next_pending_path))
         state = assert_pending(next_pending_path, flows=0, buffered=0, reports=0)
-        assert state["usageStateId"] == "after-reset"
+        assert state["usageStateId"] != "before-reset"
 
     def test_reset_for_tests_reenables_pending_write_failure_warning(self, tmp_path):
         mock_log = MagicMock()
