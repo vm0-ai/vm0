@@ -15,12 +15,7 @@ class TestUsagePendingCounter:
     """Tests for usage pending counters."""
 
     def setup_method(self):
-        usage.counters._in_flight_flows = 0
-        usage.counters._buffered_usage_events = 0
-        usage.counters._pending_reports = 0
-        usage.counters._pending_path = ""
-        usage.counters._usage_state_id = "test-usage-state-id"
-        usage.counters._pending_write_error_logged = False
+        usage.counters.reset_for_tests()
 
     def test_increment_decrement_in_flight_flows(self, tmp_path):
         pending_path = tmp_path / "usage-pending"

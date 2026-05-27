@@ -48,11 +48,11 @@ def _reset_module_state() -> Iterator[None]:
     registry.reset_cache_for_tests()
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
-    usage.counters._pending_write_error_logged = False
-    usage.counters._buffered_usage_events = 0
+    usage.counters.reset_for_tests()
     usage.reset_usage_buffer_for_tests()
     yield
     usage.reset_usage_buffer_for_tests()
+    usage.counters.reset_for_tests()
 
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:

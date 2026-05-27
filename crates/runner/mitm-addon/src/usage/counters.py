@@ -37,6 +37,19 @@ _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
 
 
+def reset_for_tests() -> None:
+    """Reset mutable counter state between tests."""
+    global _in_flight_flows, _buffered_usage_events, _pending_reports
+    global _pending_path, _usage_state_id, _pending_write_error_logged
+    with _counter_lock:
+        _in_flight_flows = 0
+        _buffered_usage_events = 0
+        _pending_reports = 0
+        _pending_path = ""
+        _usage_state_id = str(uuid.uuid4())
+        _pending_write_error_logged = False
+
+
 def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
     """Set the path/state id for the pending-count file and write current state."""
     global _pending_path, _usage_state_id
