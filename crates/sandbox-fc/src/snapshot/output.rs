@@ -342,4 +342,17 @@ mod tests {
                 .expect("check valid marker")
         );
     }
+
+    #[tokio::test]
+    async fn snapshot_complete_marker_present_propagates_read_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.complete_marker())
+            .await
+            .expect("create marker directory");
+
+        let _err = snapshot_complete_marker_present(&output)
+            .await
+            .expect_err("marker directory should fail to read as marker content");
+    }
 }
