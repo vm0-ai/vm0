@@ -90,6 +90,9 @@ banned-from = ["matching"]
 # PLR2004: `assert status == 200` / `assert len(lines) == 2` are idiomatic in
 # tests; naming each threshold as a constant adds noise without catching bugs.
 "tests/**" = ["S101", "S105", "PLR2004"]
+# S603: this cross-language static consistency test executes trusted workspace
+# tooling with a constant argv (`pnpm exec tsx`) to load generated TypeScript data.
+"tests/test_x_billing.py" = ["S603"]
 
 [tool.basedpyright]
 include = ["src", "scripts", "tests"]
