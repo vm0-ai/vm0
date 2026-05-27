@@ -28,7 +28,6 @@ import {
   getConnectorAuthCodeGrantConfigIfSupported,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfigIfSupported,
-  getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
@@ -259,7 +258,7 @@ describe("connector auth method config", () => {
       (typeof connectorAuthMethodFixture)["connector-auth-method-fixture"];
 
     expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
-      "oauth" | "api-token" | "api" | "cli-auth"
+      "oauth" | "api-token" | "api"
     >();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
@@ -295,46 +294,10 @@ describe("connector auth method config", () => {
   });
 
   it("returns a single auth method config when present", () => {
-    expect(getConnectorAuthMethod("stripe", "cli-auth")?.label).toBe(
-      "Sign in with Stripe",
+    expect(getConnectorAuthMethod("stripe", "api-token")?.label).toBe(
+      "API Key",
     );
     expect(getConnectorAuthMethod("github", "api-token")).toBeUndefined();
-  });
-
-  it("declares Stripe CLI auth as a gated connection flow with modes", () => {
-    const method = getConnectorAuthMethod("stripe", "cli-auth");
-
-    expect(method).toBeDefined();
-    expect(method?.grant).toMatchObject({
-      kind: "interactive-pairing",
-      flow: "browser-verification",
-    });
-    expect(method?.access).toStrictEqual({ kind: "none" });
-    expect(method?.revoke).toStrictEqual({ kind: "none" });
-    expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
-    expect(
-      getConnectorInteractivePairingGrantConfigIfSupported("stripe"),
-    ).toStrictEqual(method?.grant);
-    expect(
-      getConnectorInteractivePairingGrantConfigIfSupported("github"),
-    ).toBeUndefined();
-    expect(
-      getConnectorInteractivePairingGrantConfigIfSupported("stripe")?.flow,
-    ).toBe("browser-verification");
-    expect(
-      getConnectorInteractivePairingGrantConfigIfSupported("stripe")?.modes,
-    ).toStrictEqual([
-      {
-        value: "test",
-        label: "Test mode",
-        description: "Import a Stripe test mode key.",
-      },
-      {
-        value: "live",
-        label: "Live mode",
-        description: "Import a Stripe live mode key.",
-      },
-    ]);
   });
 
   it("returns manual grant field storage types with secret default", () => {
@@ -1336,7 +1299,6 @@ describe("getConfiguredConnectorAuthMethods", () => {
     expect(getConfiguredConnectorAuthMethods("stripe")).toStrictEqual([
       "oauth",
       "api-token",
-      "cli-auth",
     ]);
     expect(getConfiguredConnectorAuthMethods("local-browser")).toStrictEqual([
       "api",
@@ -1345,15 +1307,10 @@ describe("getConfiguredConnectorAuthMethods", () => {
 });
 
 describe("getAvailableConnectorAuthMethods", () => {
-  it("exposes Stripe CLI auth only when its switch is enabled", () => {
+  it("exposes Stripe API-token auth without CLI auth", () => {
     expect(getAvailableConnectorAuthMethods("stripe", {})).toStrictEqual([
       "api-token",
     ]);
-    expect(
-      getAvailableConnectorAuthMethods("stripe", {
-        [FeatureSwitchKey.CliAuthStripe]: true,
-      }),
-    ).toStrictEqual(["api-token", "cli-auth"]);
   });
 
   it("exposes BentoML API-token auth only when its switch is enabled", () => {
@@ -1881,7 +1838,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(getConnectorAuthMethod("stripe", "api-token")).toBeDefined();
-    expect(getConnectorAuthMethod("stripe", "cli-auth")).toBeDefined();
     expect(runtimeAvailableTypes).toContain("stripe");
   });
 

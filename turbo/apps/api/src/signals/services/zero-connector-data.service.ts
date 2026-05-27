@@ -55,7 +55,6 @@ import {
   userFeatureSwitchContext,
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
-import { invalidateActiveCliAuthSessionsForConnectorType } from "./cli-auth-invalidation.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -571,15 +570,6 @@ export const deleteZeroConnectorLocalState$ = command(
       return false;
     }
 
-    await invalidateActiveCliAuthSessionsForConnectorType({
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorType: args.type,
-      signal,
-    });
-    signal.throwIfAborted();
-
     if (existing) {
       if (connectorAuthMethodHasOAuthGrant(args.type, existing.authMethod)) {
         await revokeExistingConnectorToken({
@@ -793,15 +783,6 @@ export const upsertOAuthConnector$ = command(
         : undefined,
     });
     const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
-
-    await invalidateActiveCliAuthSessionsForConnectorType({
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorType: args.type,
-      signal,
-    });
-    signal.throwIfAborted();
 
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),

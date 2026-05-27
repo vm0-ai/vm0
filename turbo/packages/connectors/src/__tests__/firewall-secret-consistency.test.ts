@@ -58,7 +58,6 @@ describe("firewall secret name consistency", () => {
             case "managed":
             case "auth-code":
             case "device-auth":
-            case "interactive-pairing":
               break;
           }
         }

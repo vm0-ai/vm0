@@ -56,30 +56,6 @@ export const stripe = {
         },
         revoke: { kind: "none" },
       },
-      "cli-auth": {
-        featureFlag: FeatureSwitchKey.CliAuthStripe,
-        label: "Sign in with Stripe",
-        helpText: "Approve access in Stripe to import an API key.",
-        grant: {
-          kind: "interactive-pairing",
-          flow: "browser-verification",
-          modes: [
-            {
-              value: "test",
-              label: "Test mode",
-              description: "Import a Stripe test mode key.",
-            },
-            {
-              value: "live",
-              label: "Live mode",
-              description: "Import a Stripe live mode key.",
-            },
-          ],
-          importsAuthMethod: "api-token",
-        },
-        access: { kind: "none" },
-        revoke: { kind: "none" },
-      },
     },
     defaultAuthMethod: "oauth",
   },

@@ -12,10 +12,6 @@ import { createApp } from "../app-factory";
 import { closeDbPool } from "../lib/db";
 import { clearMockedEnv } from "../lib/env";
 import { clearMockListStripeInvoices } from "../signals/external/stripe-client";
-import {
-  clearMockSandboxClient,
-  clearMockSandboxCleanupTimeoutMs,
-} from "../signals/external/sandbox";
 import { ROUTES, type RouteEntry } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
@@ -139,8 +135,6 @@ export function testContext(): TestContext {
     await clearAllDetached();
     clearMockedEnv();
     clearMockListStripeInvoices();
-    clearMockSandboxClient();
-    clearMockSandboxCleanupTimeoutMs();
   });
 
   afterAll(async () => {

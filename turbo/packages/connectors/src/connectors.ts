@@ -317,7 +317,6 @@ export type ConnectorGrantKind =
   | "manual"
   | "auth-code"
   | "device-auth"
-  | "interactive-pairing"
   | "managed";
 
 export interface ConnectorManualGrantConfig {
@@ -340,17 +339,6 @@ export interface ConnectorDeviceAuthGrantConfig {
   readonly scopes: string[];
 }
 
-export interface ConnectorInteractivePairingGrantConfig {
-  readonly kind: "interactive-pairing";
-  readonly flow: "browser-verification";
-  readonly modes?: readonly {
-    value: string;
-    label: string;
-    description?: string;
-  }[];
-  readonly importsAuthMethod?: ConnectorAuthMethodId;
-}
-
 export interface ConnectorManagedGrantConfig {
   readonly kind: "managed";
 }
@@ -359,7 +347,6 @@ export type ConnectorGrantConfig =
   | ConnectorManualGrantConfig
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig
-  | ConnectorInteractivePairingGrantConfig
   | ConnectorManagedGrantConfig;
 
 export type ConnectorAccessKind =
@@ -435,7 +422,7 @@ export interface ConnectorAuthMethodConfig {
  * These values describe user-selectable connection choices. Behavior must be
  * derived from the auth method lifecycle config, not from the id itself.
  */
-export type ConnectorAuthMethodId = "oauth" | "api-token" | "api" | "cli-auth";
+export type ConnectorAuthMethodId = "oauth" | "api-token" | "api";
 
 type AssertNever<T extends never> = T;
 
@@ -851,21 +838,18 @@ type ConnectorAuthMethodGrantKindById = {
   readonly oauth: "auth-code" | "device-auth";
   readonly "api-token": "manual";
   readonly api: "managed";
-  readonly "cli-auth": "interactive-pairing";
 };
 
 type ConnectorAuthMethodAccessKindById = {
   readonly oauth: "refresh-token" | "static";
   readonly "api-token": "static";
   readonly api: "managed" | "none";
-  readonly "cli-auth": "none";
 };
 
 type ConnectorAuthMethodRevokeKindById = {
   readonly oauth: "none" | "token-revoke";
   readonly "api-token": "none";
   readonly api: "none";
-  readonly "cli-auth": "none";
 };
 
 export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<
@@ -952,20 +936,6 @@ export type OAuthConnectorType = ConnectorTypesByGrantKind<
 export type OAuthAuthCodeConnectorType = ConnectorTypesByGrantKind<"auth-code">;
 export type OAuthDeviceAuthConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
-export type ConnectorCliAuthConnectorType =
-  ConnectorTypesByGrantKind<"interactive-pairing">;
-export type ConnectorBrowserVerificationCliAuthConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in keyof ConnectorAuthMethodsOf<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly grant: {
-        readonly kind: "interactive-pairing";
-        readonly flow: "browser-verification";
-      };
-    }
-      ? Type
-      : never;
-  }[keyof ConnectorAuthMethodsOf<Type>];
-}[ConnectorType];
 
 export type ConnectorInvalidDefaultAuthMethodType<
   Configs extends Record<string, ConnectorConfig>,

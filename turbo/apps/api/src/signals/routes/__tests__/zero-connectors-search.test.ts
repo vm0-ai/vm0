@@ -340,32 +340,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(localBrowser?.authMethods).toStrictEqual(["api"]);
   });
 
-  it("shows Stripe CLI auth when the feature switch is enabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFeatureSwitches.push({ orgId, userId });
-    await enableFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.CliAuthStripe]: true,
-      [FeatureSwitchKey.StripeConnector]: false,
-    });
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "stripe" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const stripe = response.body.connectors.find((c) => {
-      return c.id === "stripe";
-    });
-    expect(stripe).toBeDefined();
-    expect(stripe?.authMethods).toStrictEqual(["api-token", "cli-auth"]);
-  });
-
   it("shows ungated api-token while hiding feature-gated oauth", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 

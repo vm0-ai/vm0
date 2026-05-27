@@ -170,23 +170,9 @@ describe("zeroConnectorSearch", () => {
     expect(zapier?.authMethods).toStrictEqual(["api-token"]);
   });
 
-  it.each([
-    ["no Stripe CLI auth switch", {}, false],
-    [
-      "Stripe CLI auth without StripeConnector",
-      {
-        [FeatureSwitchKey.CliAuthStripe]: true,
-        [FeatureSwitchKey.StripeConnector]: false,
-      },
-      true,
-    ],
-  ] as const)(
-    "sets Stripe API search CLI auth availability for %s",
-    async (_name, switches, expectedCliAuth) => {
-      const authMethods = await stripeSearchAuthMethods(switches);
+  it("returns Stripe API-token search auth without CLI auth", async () => {
+    const authMethods = await stripeSearchAuthMethods({});
 
-      expect(authMethods).toContain("api-token");
-      expect(authMethods.includes("cli-auth")).toBe(expectedCliAuth);
-    },
-  );
+    expect(authMethods).toStrictEqual(["api-token"]);
+  });
 });

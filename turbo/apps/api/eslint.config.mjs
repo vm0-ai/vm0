@@ -83,9 +83,6 @@ const promiseChainAllowlist = [
   // Centralized async helpers — these implement .then/.catch so the rest of
   // the codebase doesn't have to.
   "src/signals/utils.ts",
-  // sandboxOperation is the centralized SandboxError-mapping helper used by
-  // every sandbox call site; the .then chain is the contract.
-  "src/signals/external/sandbox.ts",
 ];
 
 export default [

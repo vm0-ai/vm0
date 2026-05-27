@@ -593,7 +593,6 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/event-consumers/telegram-typing",
     "/api/internal/event-consumers/telegram-typing",
   ],
-  ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/oauth-provider/authorize", "/api/test/oauth-provider/authorize"],
   [
     "/api/test/oauth-provider/device/code",
@@ -661,14 +660,6 @@ export const API_BACKEND_REWRITES = [
     V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
     "/api/v1/chat-threads/:threadId",
     V1_CHAT_THREAD_DETAIL_PATH_RE,
-  ],
-  [
-    "/api/zero/connectors/stripe/cli-auth/sessions",
-    "/api/zero/connectors/stripe/cli-auth/sessions",
-  ],
-  [
-    "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
-    "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
   ],
   ["/api/zero/api-keys", "/api/zero/api-keys"],
   [

@@ -1634,12 +1634,6 @@ const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-io/speech",
   "/api/zero/voice-io/stt",
 ] as const;
-const STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE =
-  "/api/zero/connectors/stripe/cli-auth/sessions";
-const STRIPE_CLI_AUTH_SESSIONS_PATH =
-  "/api/zero/connectors/stripe/cli-auth/sessions";
-const STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH =
-  "/api/zero/connectors/stripe/cli-auth/sessions/complete";
 const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
   "/api/zero/connectors/:type/authorize";
 const ZERO_CONNECTORS_AUTHORIZE_PATH = "/api/zero/connectors/github/authorize";
@@ -2390,11 +2384,6 @@ describe("API backend rewrites", () => {
         {
           source: "/api/user/export",
           destination: "https://api.example.test/api/user/export",
-        },
-        {
-          source: STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/zero/connectors/stripe/cli-auth/sessions",
         },
         {
           source: ZERO_API_KEYS_REWRITE_SOURCE,
@@ -4155,38 +4144,6 @@ describe("API backend rewrites", () => {
     for (const pathname of INTERNAL_CALLBACKS_TELEGRAM_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
-  });
-
-  it("should match only the exact Stripe CLI auth sessions rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE;
-    });
-    const exactIndex = rewrites.findIndex((entry) => {
-      return entry.source === STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE;
-    });
-    const childIndex = rewrites.findIndex((entry) => {
-      return (
-        entry.source === `${STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE}/:path*`
-      );
-    });
-    expect(rewrite).toStrictEqual({
-      source: STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/stripe/cli-auth/sessions",
-    });
-    expect(exactIndex).toBeGreaterThanOrEqual(0);
-    expect(childIndex).toBeGreaterThan(exactIndex);
-
-    const matcher = getPathMatch(STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(STRIPE_CLI_AUTH_SESSIONS_PATH)).toStrictEqual({});
-    expect(matcher(STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH)).toBe(false);
   });
 
   it("should match only the zero connectors list rewrite", async () => {

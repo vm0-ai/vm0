@@ -914,10 +914,6 @@ export {
   type ZeroLocalAgentConnectorContract,
 } from "./zero-connectors";
 export {
-  zeroCliAuthStripeContract,
-  type ZeroCliAuthStripeContract,
-} from "./zero-connectors-cli-auth-stripe";
-export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
   type CodexDeviceAuthScope,

@@ -32,7 +32,6 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
-  connectorCliAuthState$,
   connectFlowType$,
   pollingOAuthAuthCodeConnectorType$,
   connectorOAuthDeviceAuthState$,
@@ -51,7 +50,6 @@ import {
   pairLocalBrowserExtension$,
   tokenFormValuesFor$,
   selectedConnectorType$,
-  clearConnectorCliAuth$,
   isStandaloneMode,
   LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
@@ -63,7 +61,6 @@ import {
   localAgentHostsWatcherRef$,
   localAgentHosts$,
   type LocalBrowserExtensionStatus,
-  type ConnectorCliAuthState,
   type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
@@ -72,7 +69,6 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
-import { getCliAuthConnectMethodContentComponent } from "./cli-auth-connect-methods.tsx";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 // ---------------------------------------------------------------------------
@@ -195,18 +191,6 @@ type ConnectMethodContentEntry = {
   method: ConnectorAuthMethodConfig;
   Content: ConnectMethodContentComponent;
 };
-
-function connectorCliAuthFlowIsActive(
-  state: ConnectorCliAuthState,
-  type: ConnectorType,
-): boolean {
-  return (
-    state.connectorType === type &&
-    (state.status === "starting" ||
-      state.status === "pending" ||
-      state.status === "polling")
-  );
-}
 
 function connectorOAuthDeviceAuthFlowIsActive(
   state: ConnectorOAuthDeviceAuthState,
@@ -914,14 +898,6 @@ function getConnectMethodContentComponent(
     case "manual": {
       return ManualCredentialConnectMethodContent;
     }
-    case "interactive-pairing": {
-      switch (method.grant.flow) {
-        case "browser-verification": {
-          return getCliAuthConnectMethodContentComponent(method);
-        }
-      }
-      return null;
-    }
     case "managed": {
       return getManagedConnectContentComponent(item.type);
     }
@@ -1142,11 +1118,9 @@ export function ConnectModal({
 }) {
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
-  const clearConnectorCliAuth = useSet(clearConnectorCliAuth$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const connectFlowType = useGet(connectFlowType$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
-  const connectorCliAuthState = useGet(connectorCliAuthState$);
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
 
   const item = connectorTypes?.find((c) => {
@@ -1161,7 +1135,6 @@ export function ConnectModal({
   const connectFlowActive =
     connectFlowType === selectedType ||
     pollingType === selectedType ||
-    connectorCliAuthFlowIsActive(connectorCliAuthState, selectedType) ||
     connectorOAuthDeviceAuthFlowIsActive(
       connectorOAuthDeviceAuthState,
       selectedType,
@@ -1172,7 +1145,6 @@ export function ConnectModal({
       open
       onOpenChange={(open) => {
         if (!open) {
-          clearConnectorCliAuth();
           clearConnectorOAuthDeviceAuth();
           onClose();
         }
@@ -1207,7 +1179,6 @@ export function ConnectModal({
           showPermissionDialogOnConnect={showPermissionDialogOnConnect}
           onSuccess={async () => {
             await onSuccess?.();
-            clearConnectorCliAuth();
             clearConnectorOAuthDeviceAuth();
             onClose();
           }}

@@ -5,16 +5,9 @@ import { vi, type Mock } from "vitest";
 import { mockStripeClient } from "../signals/external/stripe-client";
 
 type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
-type AsyncIterableMock = Mock<
-  (...args: unknown[]) => AsyncIterable<VercelSandboxLogMock>
->;
 type BooleanMock = Mock<(...args: unknown[]) => boolean>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
-type VercelSandboxLogMock = {
-  readonly stream: string;
-  readonly data: string;
-};
 
 export interface ApiTestMocks {
   readonly axiom: {
@@ -153,13 +146,6 @@ export interface ApiTestMocks {
   readonly vercelOidc: {
     readonly getToken: AsyncMock;
   };
-  readonly vercelSandbox: {
-    readonly create: AsyncMock;
-    readonly get: AsyncMock;
-    readonly runCommand: AsyncMock;
-    readonly waitCommand: AsyncMock;
-    readonly logs: AsyncIterableMock;
-  };
   readonly webpush: {
     readonly sendNotification: AsyncMock;
     readonly setVapidDetails: SyncMock;
@@ -184,21 +170,6 @@ export interface ApiTestMocks {
 }
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
-  function emptyVercelSandboxLogs(): AsyncIterable<VercelSandboxLogMock> {
-    return {
-      [Symbol.asyncIterator]() {
-        return {
-          next() {
-            return Promise.resolve<IteratorResult<VercelSandboxLogMock>>({
-              done: true,
-              value: undefined,
-            });
-          },
-        };
-      },
-    };
-  }
-
   const axiom = {
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     ingest: vi.fn<(...args: unknown[]) => boolean>(),
@@ -362,23 +333,6 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     vercelOidc: {
       getToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
-    vercelSandbox: {
-      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => {
-        return Promise.resolve({ sandboxId: "sb_created" });
-      }),
-      get: vi.fn<(...args: unknown[]) => Promise<unknown>>((params) => {
-        return Promise.resolve(params);
-      }),
-      runCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => {
-        return Promise.resolve({ cmdId: "cmd_mock", exitCode: null });
-      }),
-      waitCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(() => {
-        return Promise.resolve({ cmdId: "cmd_mock", exitCode: 0 });
-      }),
-      logs: vi.fn<(...args: unknown[]) => AsyncIterable<VercelSandboxLogMock>>(
-        emptyVercelSandboxLogs,
-      ),
-    },
     webpush: {
       sendNotification: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       setVapidDetails: vi.fn<(...args: unknown[]) => void>(),
@@ -507,79 +461,6 @@ vi.mock("@vercel/oidc", () => {
       return apiTestMocks.vercelOidc.getToken();
     },
   };
-});
-
-vi.mock("@vercel/sandbox", () => {
-  function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null;
-  }
-
-  function stringField(
-    value: unknown,
-    field: string,
-    fallback: string,
-  ): string {
-    if (!isRecord(value)) {
-      return fallback;
-    }
-    const fieldValue = value[field];
-    return typeof fieldValue === "string" ? fieldValue : fallback;
-  }
-
-  function exitCodeField(value: unknown): number | null {
-    if (!isRecord(value)) {
-      return null;
-    }
-    const exitCode = value.exitCode;
-    return typeof exitCode === "number" ? exitCode : null;
-  }
-
-  class MockCommand {
-    readonly cmdId: string;
-    readonly exitCode: number | null;
-
-    constructor(command: unknown) {
-      this.cmdId = stringField(command, "cmdId", "cmd_mock");
-      this.exitCode = exitCodeField(command);
-    }
-
-    async wait(params?: { readonly signal?: AbortSignal }) {
-      const command = await apiTestMocks.vercelSandbox.waitCommand(
-        this.cmdId,
-        params,
-      );
-      return new MockCommand(command);
-    }
-
-    logs(params?: { readonly signal?: AbortSignal }) {
-      return apiTestMocks.vercelSandbox.logs(this.cmdId, params);
-    }
-  }
-
-  class Sandbox {
-    readonly sandboxId: string;
-
-    constructor(sandboxId: string) {
-      this.sandboxId = sandboxId;
-    }
-
-    static async create(params?: unknown) {
-      const sandbox = await apiTestMocks.vercelSandbox.create(params);
-      return new Sandbox(stringField(sandbox, "sandboxId", "sb_created"));
-    }
-
-    static async get(params: { readonly sandboxId: string }) {
-      const sandbox = await apiTestMocks.vercelSandbox.get(params);
-      return new Sandbox(stringField(sandbox, "sandboxId", params.sandboxId));
-    }
-
-    async runCommand(params: unknown) {
-      const command = await apiTestMocks.vercelSandbox.runCommand(params);
-      return new MockCommand(command);
-    }
-  }
-
-  return { Sandbox };
 });
 
 vi.mock("web-push", async (importActual) => {
@@ -903,39 +784,6 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.coupons.retrieve.mockReset();
   apiTestMocks.stripe.prices.retrieve.mockReset();
   apiTestMocks.stripe.prices.create.mockReset();
-  apiTestMocks.vercelSandbox.create.mockReset();
-  apiTestMocks.vercelSandbox.create.mockResolvedValue({
-    sandboxId: "sb_created",
-  });
-  apiTestMocks.vercelSandbox.get.mockReset();
-  apiTestMocks.vercelSandbox.get.mockImplementation((params) => {
-    return Promise.resolve(params);
-  });
-  apiTestMocks.vercelSandbox.runCommand.mockReset();
-  apiTestMocks.vercelSandbox.runCommand.mockResolvedValue({
-    cmdId: "cmd_mock",
-    exitCode: null,
-  });
-  apiTestMocks.vercelSandbox.waitCommand.mockReset();
-  apiTestMocks.vercelSandbox.waitCommand.mockResolvedValue({
-    cmdId: "cmd_mock",
-    exitCode: 0,
-  });
-  apiTestMocks.vercelSandbox.logs.mockReset();
-  apiTestMocks.vercelSandbox.logs.mockImplementation(() => {
-    return {
-      [Symbol.asyncIterator]() {
-        return {
-          next() {
-            return Promise.resolve<IteratorResult<VercelSandboxLogMock>>({
-              done: true,
-              value: undefined,
-            });
-          },
-        };
-      },
-    };
-  });
   apiTestMocks.webpush.sendNotification.mockReset();
   apiTestMocks.webpush.sendNotification.mockResolvedValue(undefined);
   apiTestMocks.webpush.setVapidDetails.mockReset();

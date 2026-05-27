@@ -65,22 +65,6 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
   });
-
-  it("should enable Stripe CLI auth for staff orgs only", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {})).toBe(false);
-
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
-
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(false);
-  });
 });
 
 describe("getAllFeatureStates", () => {
@@ -196,14 +180,6 @@ describe("overrides", () => {
         overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
       }),
     ).toBe(false);
-  });
-
-  it("should allow Stripe CLI auth to be overridden", () => {
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
-        overrides: { [FeatureSwitchKey.CliAuthStripe]: true },
-      }),
-    ).toBe(true);
   });
 
   it("should behave identically when no overrides provided", () => {

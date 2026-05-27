@@ -76,7 +76,6 @@ function getManualCredentialMethod(
       }
       case "auth-code":
       case "device-auth":
-      case "interactive-pairing":
       case "managed":
       case undefined: {
         continue;
@@ -95,7 +94,6 @@ function hasProviderDrivenConnectMethod(
     switch (method?.grant.kind) {
       case "auth-code":
       case "device-auth":
-      case "interactive-pairing":
       case "managed": {
         return true;
       }

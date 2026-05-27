@@ -6,7 +6,6 @@ import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodId,
-  type ConnectorBrowserVerificationCliAuthConnectorType,
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
@@ -15,7 +14,6 @@ import {
   getConnectorAuthMethod,
   connectorAuthMethodHasOAuthGrant,
   getConfiguredConnectorAuthMethods,
-  getConnectorInteractivePairingGrantConfigIfSupported,
   getConnectorTags,
   hasRequiredScopes,
   isGoogleOAuthConnector,
@@ -45,7 +43,6 @@ import {
   zeroSecretsContract,
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
-import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
@@ -93,12 +90,6 @@ const CONNECTOR_LIST_MANAGED_AUTH_METHOD_TYPES = [
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
 };
-
-type StripeCliAuthMode = "test" | "live";
-
-function isStripeCliAuthMode(value: string): value is StripeCliAuthMode {
-  return value === "test" || value === "live";
-}
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -151,7 +142,6 @@ function getAvailableConnectorConnectAuthMethods(
       }
       case "auth-code":
       case "device-auth":
-      case "interactive-pairing":
       case "manual": {
         break;
       }
@@ -479,55 +469,6 @@ export const setConnectorsSearch$ = command(({ set }, v: string) => {
 
 const internalSelectedConnectorType$ = state<ConnectorType | null>(null);
 
-export type ConnectorCliAuthState =
-  | {
-      readonly status: "idle";
-      readonly connectorType: ConnectorType | null;
-      readonly mode: string | null;
-    }
-  | {
-      readonly status: "starting";
-      readonly connectorType: ConnectorType;
-      readonly mode: string | null;
-      readonly requestId: string;
-    }
-  | {
-      readonly status: "pending";
-      readonly connectorType: ConnectorType;
-      readonly mode: string | null;
-      readonly requestId: string;
-      readonly sessionToken: string;
-      readonly browserUrl: string;
-      readonly verificationText: string;
-      readonly expiresAtMs: number;
-      readonly approvalOpened: boolean;
-      readonly errorMessage: string | null;
-    }
-  | {
-      readonly status: "polling";
-      readonly connectorType: ConnectorType;
-      readonly mode: string | null;
-      readonly requestId: string;
-      readonly sessionToken: string;
-      readonly browserUrl: string;
-      readonly verificationText: string;
-      readonly expiresAtMs: number;
-      readonly approvalOpened: boolean;
-      readonly errorMessage: string | null;
-    }
-  | {
-      readonly status: "error";
-      readonly connectorType: ConnectorType | null;
-      readonly mode: string | null;
-      readonly message: string;
-    }
-  | {
-      readonly status: "expired";
-      readonly connectorType: ConnectorType;
-      readonly mode: string | null;
-      readonly message: string;
-    };
-
 type ActiveConnectorOAuthDeviceAuthState = {
   readonly connectorType: ConnectorType;
   readonly requestId: string;
@@ -566,23 +507,12 @@ type ConnectorConnectFlowState = {
   readonly id: string;
 };
 
-function createIdleConnectorCliAuthState(
-  connectorType: ConnectorType | null = null,
-  mode: string | null = null,
-): ConnectorCliAuthState {
-  return { status: "idle", connectorType, mode };
-}
-
 function createIdleConnectorOAuthDeviceAuthState(
   connectorType: ConnectorType | null = null,
 ): ConnectorOAuthDeviceAuthState {
   return { status: "idle", connectorType };
 }
 
-const internalConnectorCliAuthState$ = state<ConnectorCliAuthState>(
-  createIdleConnectorCliAuthState(),
-);
-const resetConnectorCliAuthFlowSignal$ = resetSignal();
 const internalConnectorOAuthDeviceAuthState$ =
   state<ConnectorOAuthDeviceAuthState>(
     createIdleConnectorOAuthDeviceAuthState(),
@@ -595,11 +525,6 @@ export const selectedConnectorType$ = computed((get) => {
 export const setSelectedConnectorType$ = command(
   ({ get, set }, type: ConnectorType | null) => {
     set(internalSelectedConnectorType$, type);
-    const current = get(internalConnectorCliAuthState$);
-    if (type !== current.connectorType) {
-      set(resetConnectorCliAuthFlowSignal$);
-      set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
-    }
     const deviceAuthCurrent = get(internalConnectorOAuthDeviceAuthState$);
     if (type !== deviceAuthCurrent.connectorType) {
       set(resetConnectorOAuthDeviceAuthFlowSignal$);
@@ -610,10 +535,6 @@ export const setSelectedConnectorType$ = command(
     }
   },
 );
-
-export const connectorCliAuthState$ = computed((get) => {
-  return get(internalConnectorCliAuthState$);
-});
 
 export const connectorOAuthDeviceAuthState$ = computed((get) => {
   return get(internalConnectorOAuthDeviceAuthState$);
@@ -737,7 +658,6 @@ function getManualCredentialFieldStorageType(
     }
     case "auth-code":
     case "device-auth":
-    case "interactive-pairing":
     case "managed":
     case undefined: {
       throw new Error(`${type} ${authMethod} does not use manual credentials`);
@@ -1292,111 +1212,6 @@ export const setPermissionDialogType$ = command(
   },
 );
 
-// ---------------------------------------------------------------------------
-// CLI auth browser-verification flow state
-// ---------------------------------------------------------------------------
-
-type CliAuthBrowserVerificationStartResult = {
-  readonly mode: string | null;
-  readonly sessionToken: string;
-  readonly browserUrl: string;
-  readonly verificationText: string;
-  readonly expiresInMs: number;
-};
-
-type CliAuthBrowserVerificationCompleteResult =
-  | { readonly status: "pending"; readonly errorMessage: string | null }
-  | { readonly status: "complete" };
-
-type CliAuthBrowserVerificationAdapter = {
-  readonly isMode: (mode: string) => boolean;
-  readonly start: (args: {
-    readonly createClient: ZeroClientFactory;
-    readonly mode: string | null;
-    readonly signal: AbortSignal;
-  }) => Promise<CliAuthBrowserVerificationStartResult>;
-  readonly complete: (args: {
-    readonly createClient: ZeroClientFactory;
-    readonly sessionToken: string;
-    readonly signal: AbortSignal;
-  }) => Promise<CliAuthBrowserVerificationCompleteResult>;
-};
-
-type WatchConnectorCliAuthBrowserVerificationArgs = {
-  readonly type: ConnectorType;
-  readonly requestId: string;
-  readonly adapter: CliAuthBrowserVerificationAdapter;
-  readonly createClient: ZeroClientFactory;
-  readonly expiresAtMs: number;
-  readonly options: PostConnectOptions;
-};
-
-function secondsToMilliseconds(value: number): number {
-  return Math.max(0, value * 1000);
-}
-
-const CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS = {
-  stripe: {
-    isMode: isStripeCliAuthMode,
-    start: async ({ createClient, mode, signal }) => {
-      if (!mode || !isStripeCliAuthMode(mode)) {
-        throw new Error("Select a valid CLI auth mode");
-      }
-      const client = createClient(zeroCliAuthStripeContract);
-      const result = await accept(
-        client.start({
-          body: { mode },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      return {
-        mode: result.body.mode,
-        sessionToken: result.body.sessionToken,
-        browserUrl: result.body.browserUrl,
-        verificationText: result.body.verificationCode,
-        expiresInMs: secondsToMilliseconds(result.body.expiresIn),
-      };
-    },
-    complete: async ({ createClient, sessionToken, signal }) => {
-      const client = createClient(zeroCliAuthStripeContract);
-      const result = await accept(
-        client.complete({
-          body: { sessionToken },
-          fetchOptions: { signal },
-        }),
-        [200],
-        { toast: false },
-      );
-      if (result.body.status === "pending") {
-        return {
-          status: "pending",
-          errorMessage: result.body.errorMessage,
-        };
-      }
-      return { status: "complete" };
-    },
-  },
-} satisfies Record<
-  ConnectorBrowserVerificationCliAuthConnectorType,
-  CliAuthBrowserVerificationAdapter
->;
-
-function getCliAuthBrowserVerificationAdapter(
-  type: ConnectorType,
-): CliAuthBrowserVerificationAdapter | null {
-  if (type in CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS) {
-    return CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS[
-      type as ConnectorBrowserVerificationCliAuthConnectorType
-    ];
-  }
-  return null;
-}
-
-function createConnectorCliAuthRequestId(type: ConnectorType): string {
-  return `${type}-cli-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 function createConnectorConnectFlowState(
   type: ConnectorType,
 ): ConnectorConnectFlowState {
@@ -1406,300 +1221,9 @@ function createConnectorConnectFlowState(
   };
 }
 
-function userFacingConnectorCliAuthMessage(message: string): string {
-  return message
-    .replaceAll("Stripe CLI", "Stripe")
-    .replaceAll("CLI auth", "connection")
-    .replaceAll("cli auth", "connection");
+function secondsToMilliseconds(value: number): number {
+  return Math.max(0, value * 1000);
 }
-
-function cliAuthErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? userFacingConnectorCliAuthMessage(error.message)
-    : "Connection failed";
-}
-
-function isCurrentConnectorCliAuthRequest(
-  state: ConnectorCliAuthState,
-  type: ConnectorType,
-  requestId: string,
-): state is Extract<
-  ConnectorCliAuthState,
-  { readonly status: "pending" | "polling" }
-> {
-  return (
-    (state.status === "pending" || state.status === "polling") &&
-    state.connectorType === type &&
-    state.requestId === requestId
-  );
-}
-
-function getConnectorCliAuthMode(
-  type: ConnectorType,
-  state: ConnectorCliAuthState,
-): string | null {
-  return state.connectorType === type ? state.mode : null;
-}
-
-function connectorCliAuthRequiresMode(type: ConnectorType): boolean {
-  return (
-    (getConnectorInteractivePairingGrantConfigIfSupported(type)?.modes
-      ?.length ?? 0) > 0
-  );
-}
-
-function connectorCliAuthModeIsAllowed(
-  type: ConnectorType,
-  mode: string,
-): boolean {
-  const adapter = getCliAuthBrowserVerificationAdapter(type);
-  return adapter?.isMode(mode) ?? false;
-}
-
-export const setConnectorCliAuthMode$ = command(
-  ({ set }, type: ConnectorType, mode: string | null) => {
-    if (mode !== null && !connectorCliAuthModeIsAllowed(type, mode)) {
-      return;
-    }
-    set(resetConnectorCliAuthFlowSignal$);
-    set(
-      internalConnectorCliAuthState$,
-      createIdleConnectorCliAuthState(type, mode),
-    );
-  },
-);
-
-export const clearConnectorCliAuth$ = command(({ set }) => {
-  set(resetConnectorCliAuthFlowSignal$);
-  set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
-});
-
-const finishConnectorCliAuthConnection$ = command(
-  ({ set }, type: ConnectorType, options: PostConnectOptions) => {
-    set(finishConnectorConnection$, type, options);
-    set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
-    return true;
-  },
-);
-
-const CONNECTOR_CHANGED_TOPIC = "connector:changed";
-
-const watchConnectorCliAuthBrowserVerification$ = command(
-  async (
-    { set },
-    {
-      type,
-      requestId,
-      adapter,
-      createClient,
-      expiresAtMs,
-      options,
-    }: WatchConnectorCliAuthBrowserVerificationArgs,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    // Server-driven completion: the API drives the sandbox poll in the
-    // background and publishes `connector:changed` on terminal status.
-    // Each event triggers one `complete` API call to learn whether the
-    // session finished or hit an error — no client-side polling cadence.
-    const onConnectorChanged$ = command(
-      async ({ get, set }, sig: AbortSignal): Promise<boolean> => {
-        const latest = get(internalConnectorCliAuthState$);
-        if (!isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
-          return true;
-        }
-        if (Date.now() >= expiresAtMs) {
-          set(internalConnectorCliAuthState$, {
-            status: "expired",
-            connectorType: type,
-            mode: latest.mode,
-            message: "Connection session expired. Start again to retry.",
-          });
-          return true;
-        }
-
-        set(internalConnectorCliAuthState$, { ...latest, status: "polling" });
-
-        const completeSettled = await settle(
-          adapter.complete({
-            createClient,
-            sessionToken: latest.sessionToken,
-            signal: sig,
-          }),
-          sig,
-        );
-        const completeResult = completeSettled.ok
-          ? completeSettled.value
-          : {
-              status: "error" as const,
-              message: cliAuthErrorMessage(completeSettled.error),
-            };
-
-        const current = get(internalConnectorCliAuthState$);
-        if (!isCurrentConnectorCliAuthRequest(current, type, requestId)) {
-          return true;
-        }
-
-        if (completeResult.status === "complete") {
-          set(finishConnectorCliAuthConnection$, type, options);
-          return true;
-        }
-
-        if (completeResult.status === "error") {
-          set(internalConnectorCliAuthState$, {
-            status: "error",
-            connectorType: type,
-            mode: current.mode,
-            message: completeResult.message,
-          });
-          return true;
-        }
-
-        set(internalConnectorCliAuthState$, {
-          ...current,
-          status: "pending",
-          errorMessage: completeResult.errorMessage
-            ? userFacingConnectorCliAuthMessage(completeResult.errorMessage)
-            : null,
-        });
-        return false;
-      },
-    );
-
-    await set(
-      setAblyLoop$,
-      CONNECTOR_CHANGED_TOPIC,
-      onConnectorChanged$,
-      signal,
-    );
-    signal.throwIfAborted();
-
-    return true;
-  },
-);
-
-export const openConnectorCliAuthApprovalPage$ = command(
-  ({ get, set }, type: ConnectorType): boolean => {
-    const current = get(internalConnectorCliAuthState$);
-    if (
-      (current.status !== "pending" && current.status !== "polling") ||
-      current.connectorType !== type
-    ) {
-      return false;
-    }
-
-    const approvalWindow = window.open(current.browserUrl, "_blank");
-    if (!approvalWindow) {
-      set(internalConnectorCliAuthState$, {
-        ...current,
-        errorMessage: "Could not open the approval page. Try again.",
-      });
-      return false;
-    }
-
-    approvalWindow.opener = null;
-    set(internalConnectorCliAuthState$, {
-      ...current,
-      approvalOpened: true,
-      errorMessage: null,
-    });
-    return true;
-  },
-);
-
-export const runConnectorCliAuth$ = command(
-  async (
-    { get, set },
-    type: ConnectorType,
-    options: PostConnectOptions,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const adapter = getCliAuthBrowserVerificationAdapter(type);
-    if (!adapter || get(internalSelectedConnectorType$) !== type) {
-      return false;
-    }
-
-    const initialState = get(internalConnectorCliAuthState$);
-    const selectedMode = getConnectorCliAuthMode(type, initialState);
-    if (connectorCliAuthRequiresMode(type) && !selectedMode) {
-      return false;
-    }
-
-    const flow = createConnectorConnectFlowState(type);
-    set(internalConnectFlowState$, flow);
-    return await withCleanup(
-      (async () => {
-        const requestId = createConnectorCliAuthRequestId(type);
-        const flowSignal = set(resetConnectorCliAuthFlowSignal$, signal);
-        set(internalConnectorCliAuthState$, {
-          status: "starting",
-          connectorType: type,
-          mode: selectedMode,
-          requestId,
-        });
-
-        const createClient = get(zeroClient$);
-        const startSettled = await settle(
-          adapter.start({
-            createClient,
-            mode: selectedMode,
-            signal: flowSignal,
-          }),
-          flowSignal,
-        );
-        const startResult = startSettled.ok ? startSettled.value : null;
-        if (!startSettled.ok && get(internalSelectedConnectorType$) === type) {
-          set(internalConnectorCliAuthState$, {
-            status: "error",
-            connectorType: type,
-            mode: selectedMode,
-            message: cliAuthErrorMessage(startSettled.error),
-          });
-        }
-        signal.throwIfAborted();
-        if (!startResult || get(internalSelectedConnectorType$) !== type) {
-          return false;
-        }
-
-        const expiresAtMs = Date.now() + startResult.expiresInMs;
-        set(internalConnectorCliAuthState$, {
-          status: "pending",
-          connectorType: type,
-          mode: startResult.mode,
-          requestId,
-          sessionToken: startResult.sessionToken,
-          browserUrl: startResult.browserUrl,
-          verificationText: startResult.verificationText,
-          expiresAtMs,
-          approvalOpened: false,
-          errorMessage: null,
-        });
-
-        await set(
-          watchConnectorCliAuthBrowserVerification$,
-          {
-            type,
-            requestId,
-            adapter,
-            createClient,
-            expiresAtMs,
-            options,
-          },
-          flowSignal,
-        );
-
-        const finalState = get(internalConnectorCliAuthState$);
-        return (
-          finalState.status === "idle" && finalState.connectorType === null
-        );
-      })(),
-      () => {
-        set(internalConnectFlowState$, (current) => {
-          return current?.id === flow.id ? null : current;
-        });
-      },
-    );
-  },
-);
 
 // ---------------------------------------------------------------------------
 // OAuth device authorization flow state

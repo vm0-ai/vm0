@@ -261,7 +261,7 @@ describe("connectors — auth method feature flags", () => {
   });
 });
 
-describe("connectors — CLI auth availability", () => {
+describe("connectors — Stripe auth availability", () => {
   async function stripeAuthMethods(
     featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
   ) {
@@ -280,23 +280,9 @@ describe("connectors — CLI auth availability", () => {
     return stripe?.availableAuthMethods ?? [];
   }
 
-  it.each([
-    ["no Stripe CLI auth switch", {}, false],
-    [
-      "Stripe CLI auth without StripeConnector",
-      {
-        [FeatureSwitchKey.CliAuthStripe]: true,
-        [FeatureSwitchKey.StripeConnector]: false,
-      },
-      true,
-    ],
-  ] as const)(
-    "sets Stripe CLI auth availability for %s",
-    async (_name, featureSwitches, expectedCliAuth) => {
-      const authMethods = await stripeAuthMethods(featureSwitches);
+  it("returns Stripe API-token auth without CLI auth", async () => {
+    const authMethods = await stripeAuthMethods({});
 
-      expect(authMethods).toContain("api-token");
-      expect(authMethods.includes("cli-auth")).toBe(expectedCliAuth);
-    },
-  );
+    expect(authMethods).toStrictEqual(["api-token"]);
+  });
 });

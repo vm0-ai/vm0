@@ -51,7 +51,6 @@ import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
-import { vercelSandboxSmokeRoutes } from "./routes/vercel-sandbox-smoke";
 import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoints";
 import { webhooksAgentCompleteRoutes } from "./routes/webhooks-agent-complete";
 import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
@@ -79,7 +78,6 @@ import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
-import { zeroCliAuthStripeRoutes } from "./routes/zero-connectors-cli-auth-stripe";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
@@ -208,7 +206,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
-  ...vercelSandboxSmokeRoutes,
   ...webhooksClerkRoutes,
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
@@ -260,7 +257,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComposesRoutes,
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
-  ...zeroCliAuthStripeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,

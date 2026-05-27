@@ -16,7 +16,6 @@ import {
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import {
   zeroSecretsContract,
   zeroVariablesContract,
@@ -28,18 +27,13 @@ import {
   click,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import {
-  connectorCliAuthState$,
-  setSelectedConnectorType$,
-} from "../../../signals/zero-page/settings/connectors.ts";
+import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   setMockOauthDeviceAuthSessionStartResponse,
   setMockOauthDeviceAuthSessionPollResponses,
-  setMockStripeCliAuthCompleteResponse,
 } from "../../../mocks/handlers/api-connectors.ts";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -401,43 +395,6 @@ describe("connect modal - content by auth method", () => {
     expect(screen.getByText("or")).toBeInTheDocument();
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
-
-  it("hides Stripe CLI auth when the feature switch is disabled", async () => {
-    await openConnectModal("stripe");
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Sign in with Stripe")).not.toBeInTheDocument();
-  });
-
-  it("shows Stripe CLI auth in the Stripe modal when enabled", async () => {
-    await openConnectModal("stripe", {
-      featureSwitches: {
-        [FeatureSwitchKey.CliAuthStripe]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("heading", { name: "API Key" }),
-    ).toBeInTheDocument();
-  });
-
-  it("does not show Stripe CLI auth for unsupported connectors", async () => {
-    await openConnectModal("axiom", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Sign in with Stripe")).not.toBeInTheDocument();
-  });
 });
 
 describe("connect modal - loading states", () => {
@@ -614,7 +571,7 @@ describe("connect modal - interactions", () => {
     });
   });
 
-  it("keeps manual Stripe API key save available when CLI auth is enabled", async () => {
+  it("keeps manual Stripe API key save available", async () => {
     const user = userEvent.setup();
     let submittedSecret: { name: string; value: string } | undefined;
 
@@ -633,9 +590,7 @@ describe("connect modal - interactions", () => {
       }),
     );
 
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
+    await openConnectModal("stripe");
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("sk_live_...")).toBeInTheDocument();
@@ -649,198 +604,6 @@ describe("connect modal - interactions", () => {
         name: "STRIPE_TOKEN",
         value: "sk_test_key",
       });
-    });
-  });
-
-  it("starts Stripe CLI auth only after selecting a configured mode", async () => {
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockReturnValue({ closed: false, opener: {} } as Window);
-    setMockStripeCliAuthCompleteResponse({
-      status: "pending",
-      errorMessage: null,
-    });
-
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    const startButton = getButtonByText("Select a mode to continue");
-    expect(startButton).toBeDisabled();
-
-    expect(getButtonByText(/Test mode/)).toHaveTextContent(
-      "Import a Stripe test mode key.",
-    );
-    expect(getButtonByText(/Live mode/)).toHaveTextContent(
-      "Import a Stripe live mode key.",
-    );
-
-    click(getButtonByText(/Test mode/));
-    const selectedModeStartButton = getButtonByText("Sign in with Stripe");
-    expect(selectedModeStartButton).toBeEnabled();
-
-    click(selectedModeStartButton);
-
-    await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
-    });
-    expect(openSpy).not.toHaveBeenCalled();
-    expect(
-      screen.getByText("Open the approval page to continue."),
-    ).toBeInTheDocument();
-
-    click(getButtonByText("Open approval page"));
-
-    expect(openSpy).toHaveBeenCalledWith(
-      "https://dashboard.stripe.com/stripecli/confirm_auth",
-      "_blank",
-    );
-    expect(openSpy).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(screen.getByText("Waiting for approval...")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText(/close/i));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps Stripe CLI auth open when completion is still pending", async () => {
-    vi.spyOn(window, "open").mockReturnValue({
-      closed: false,
-      opener: {},
-    } as Window);
-    setMockStripeCliAuthCompleteResponse({
-      status: "pending",
-      errorMessage: "Approval is still pending",
-    });
-
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    click(getButtonByText(/Test mode/));
-    click(getButtonByText("Sign in with Stripe"));
-
-    await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
-    });
-
-    click(getButtonByText("Open approval page"));
-    triggerAblyEvent("connector:changed");
-
-    await waitFor(() => {
-      expect(screen.getByText("Approval is still pending")).toBeInTheDocument();
-    });
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-
-    click(screen.getByLabelText(/close/i));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-  });
-
-  it("stops polling when Stripe CLI auth completion returns a terminal failure", async () => {
-    vi.spyOn(window, "open").mockReturnValue({
-      closed: false,
-      opener: {},
-    } as Window);
-    let completeCalls = 0;
-    server.use(
-      mockApi(zeroCliAuthStripeContract.complete, ({ respond }) => {
-        completeCalls++;
-        return respond(503, {
-          error: {
-            message: "Stripe CLI config did not contain a test mode API key",
-            code: "CLI_AUTH_STRIPE_FAILED",
-          },
-        });
-      }),
-    );
-
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    click(getButtonByText(/Test mode/));
-    click(getButtonByText("Sign in with Stripe"));
-
-    await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
-    });
-    click(getButtonByText("Open approval page"));
-    triggerAblyEvent("connector:changed");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Stripe config did not contain a test mode API key"),
-      ).toBeInTheDocument();
-    });
-
-    expect(completeCalls).toBe(1);
-    expect(screen.queryByText("Open approval page")).not.toBeInTheDocument();
-    expect(getButtonByText("Sign in with Stripe")).toBeEnabled();
-
-    click(screen.getByLabelText(/close/i));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-  });
-
-  it("completes Stripe CLI auth and opens the post-connect permission dialog", async () => {
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockReturnValue({ closed: false, opener: {} } as Window);
-
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    click(getButtonByText(/Test mode/));
-    click(getButtonByText("Sign in with Stripe"));
-
-    await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
-    });
-    expect(openSpy).not.toHaveBeenCalled();
-
-    click(getButtonByText("Open approval page"));
-    triggerAblyEvent("connector:changed");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("You've successfully connected with Stripe!"),
-      ).toBeInTheDocument();
-    });
-    expect(openSpy).toHaveBeenCalledWith(
-      "https://dashboard.stripe.com/stripecli/confirm_auth",
-      "_blank",
-    );
-    expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
-
-    click(screen.getByText("Later"));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 });
@@ -889,101 +652,32 @@ describe("connect modal - state management", () => {
   });
 
   it("keeps the dialog open on outside click while a connection flow is active", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
-    setMockStripeCliAuthCompleteResponse({
-      status: "pending",
-      errorMessage: null,
-    });
+    mockConnectorOauthStart();
+    vi.spyOn(window, "open").mockReturnValue(
+      createMockAuthWindow(false) as unknown as Window,
+    );
 
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
+    await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
     });
 
-    click(getButtonByText(/Test mode/));
-    click(getButtonByText("Sign in with Stripe"));
+    click(screen.getByText("Sign in with GitHub"));
 
     await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
+      expect(screen.getByText("Connecting...")).toBeInTheDocument();
     });
 
     click(document.body);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
+    expect(screen.getByText("Connecting...")).toBeInTheDocument();
 
     click(screen.getByLabelText(/close/i));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-  });
-
-  it("clears Stripe CLI auth state when the dialog closes", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
-
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    click(getButtonByText(/Test mode/));
-    click(getButtonByText("Sign in with Stripe"));
-
-    await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText(/close/i));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-
-    const cleared = context.store.get(connectorCliAuthState$);
-    expect(cleared.status).toBe("idle");
-    expect(cleared.connectorType).toBeNull();
-    expect(cleared.mode).toBeNull();
-  });
-
-  it("clears Stripe CLI auth state when switching connectors", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
-
-    await openConnectModal("stripe", {
-      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
-    });
-
-    click(getButtonByText(/Test mode/));
-    click(getButtonByText("Sign in with Stripe"));
-
-    await waitFor(() => {
-      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
-    });
-
-    context.store.set(setSelectedConnectorType$, "axiom");
-
-    await waitFor(() => {
-      expect(screen.getByText("Save")).toBeInTheDocument();
-    });
-
-    context.store.set(setSelectedConnectorType$, "stripe");
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Stripe" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
   });
 });
 

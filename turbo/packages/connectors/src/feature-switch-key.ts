@@ -24,7 +24,6 @@ export enum FeatureSwitchKey {
   GoogleAdsConnector = "googleAdsConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
-  CliAuthStripe = "cliAuthStripe",
   PosthogConnector = "posthogConnector",
   PwaOfflineCache = "pwaOfflineCache",
   MailchimpConnector = "mailchimpConnector",

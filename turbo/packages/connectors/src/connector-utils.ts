@@ -9,7 +9,6 @@ import {
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorGenerationType,
-  type ConnectorInteractivePairingGrantConfig,
   type DynamicPublicConnectorOAuthClientConfig,
   type ConnectorOAuthClientConfig,
   type ConnectorManualGrantFieldConfig,
@@ -26,7 +25,6 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,
   "api-token": 1,
   api: 2,
-  "cli-auth": 3,
 } as const satisfies Record<ConnectorAuthMethodId, number>;
 
 function isConnectorAuthMethodId(
@@ -267,8 +265,6 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
     case "managed":
     case "manual":
       return 1;
-    case "interactive-pairing":
-      return 0;
   }
 }
 
@@ -287,7 +283,6 @@ function isConnectorOAuthGrantConfig(
       return true;
     case "manual":
     case "managed":
-    case "interactive-pairing":
       return false;
   }
 }
@@ -314,24 +309,7 @@ export function connectorAuthMethodHasOAuthGrant(
       return true;
     case "manual":
     case "managed":
-    case "interactive-pairing":
     case undefined:
-      return false;
-  }
-}
-
-function isConnectorInteractivePairingGrantConfig(
-  method: ConnectorAuthMethodConfig,
-): method is ConnectorAuthMethodConfig & {
-  readonly grant: ConnectorInteractivePairingGrantConfig;
-} {
-  switch (method.grant.kind) {
-    case "interactive-pairing":
-      return true;
-    case "manual":
-    case "auth-code":
-    case "device-auth":
-    case "managed":
       return false;
   }
 }
@@ -364,17 +342,6 @@ export function getConnectorDeviceAuthGrantConfigIfSupported(
 
 export function getConnectorOAuthScopes(type: ConnectorType): string[] {
   return [...(getConnectorOAuthGrantConfigIfSupported(type)?.scopes ?? [])];
-}
-
-export function getConnectorInteractivePairingGrantConfigIfSupported(
-  type: ConnectorType,
-): ConnectorInteractivePairingGrantConfig | undefined {
-  for (const method of connectorAuthMethodValues(type)) {
-    if (isConnectorInteractivePairingGrantConfig(method)) {
-      return method.grant;
-    }
-  }
-  return undefined;
 }
 
 export function getConnectorGenerationTypes(
@@ -432,8 +399,7 @@ function shouldIncludeApiAuthMethod(
 /**
  * Return user-selectable connector connection flows for a surface.
  *
- * This does not describe persisted connected state. For example, a `cli-auth`
- * flow can import an API key and still appear as `api-token` once connected.
+ * This does not describe persisted connected state.
  */
 export function getAvailableConnectorAuthMethods(
   type: ConnectorType,
@@ -455,7 +421,6 @@ export function getAvailableConnectorAuthMethods(
       }
       case "auth-code":
       case "device-auth":
-      case "interactive-pairing":
       case "manual": {
         break;
       }

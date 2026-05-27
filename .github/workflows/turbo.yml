@@ -1478,7 +1478,6 @@ jobs:
           echo "✅ Serial tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_SANDBOX_SMOKE_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"

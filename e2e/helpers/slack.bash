@@ -41,10 +41,6 @@ _slack_test_endpoint_bypass_args() {
 }
 
 _slack_api_backend_url() {
-    if [[ -n "${VERCEL_SANDBOX_SMOKE_API_URL:-}" ]]; then
-        printf '%s' "$VERCEL_SANDBOX_SMOKE_API_URL"
-        return
-    fi
     if [[ "${VM0_API_URL:-}" == *"-www."* ]]; then
         printf '%s' "${VM0_API_URL/-www./-api.}"
         return
