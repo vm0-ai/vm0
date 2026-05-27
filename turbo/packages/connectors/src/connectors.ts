@@ -349,12 +349,7 @@ export type ConnectorGrantConfig =
   | ConnectorDeviceAuthGrantConfig
   | ConnectorManagedGrantConfig;
 
-export type ConnectorAccessKind =
-  | "static"
-  | "refresh-token"
-  | "credential-exchange"
-  | "managed"
-  | "none";
+export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
 export interface ConnectorStaticAccessConfig {
   readonly kind: "static";
@@ -368,18 +363,6 @@ export interface ConnectorRefreshTokenAccessConfig {
   readonly outputs: Record<string, string>;
 }
 
-export interface ConnectorCredentialExchangeAccessConfig {
-  readonly kind: "credential-exchange";
-  readonly provider: string;
-  readonly inputs: Record<string, string>;
-  readonly outputs: Record<string, string>;
-}
-
-export interface ConnectorManagedAccessConfig {
-  readonly kind: "managed";
-  readonly outputs?: Record<string, string>;
-}
-
 export interface ConnectorNoAccessConfig {
   readonly kind: "none";
 }
@@ -387,8 +370,6 @@ export interface ConnectorNoAccessConfig {
 export type ConnectorAccessConfig =
   | ConnectorStaticAccessConfig
   | ConnectorRefreshTokenAccessConfig
-  | ConnectorCredentialExchangeAccessConfig
-  | ConnectorManagedAccessConfig
   | ConnectorNoAccessConfig;
 
 export type ConnectorRevokeKind = "none" | "token-revoke";

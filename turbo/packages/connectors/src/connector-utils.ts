@@ -245,10 +245,7 @@ function connectorAccessOutputs(
   switch (access.kind) {
     case "static":
     case "refresh-token":
-    case "credential-exchange":
       return access.outputs;
-    case "managed":
-      return access.outputs ?? {};
     case "none":
       return {};
   }
