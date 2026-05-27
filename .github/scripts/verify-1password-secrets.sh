@@ -16,6 +16,16 @@ if [[ -z "${EXPECTED_KEYS:-}" ]]; then
   exit 1
 fi
 
+if ! command -v op >/dev/null 2>&1; then
+  echo "::error::1Password CLI (op) is not installed"
+  exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "::error::jq is not installed"
+  exit 1
+fi
+
 if ! visible_vaults="$(op vault list --format json | jq -r '.[].name' | sort)"; then
   echo "::error::failed to list 1Password vaults"
   exit 1
