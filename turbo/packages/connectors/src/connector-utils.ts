@@ -9,11 +9,8 @@ import {
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorGenerationType,
-  type DynamicPublicConnectorOAuthClientConfig,
   type ConnectorOAuthClientConfig,
   type ConnectorManualGrantFieldConfig,
-  type StaticConfidentialConnectorOAuthClientConfig,
-  type StaticPublicConnectorOAuthClientConfig,
   type ConnectorType,
   type OAuthAuthCodeConnectorType,
   type OAuthDeviceAuthConnectorType,
@@ -444,18 +441,21 @@ export interface ConnectorOAuthEnvKeys {
 }
 
 export type StaticConfidentialConnectorOAuthClient = {
-  readonly client: StaticConfidentialConnectorOAuthClientConfig;
+  readonly clientRegistration: "static";
+  readonly clientType: "confidential";
   readonly clientId: string;
   readonly clientSecret: string;
 };
 
 export type StaticPublicConnectorOAuthClient = {
-  readonly client: StaticPublicConnectorOAuthClientConfig;
+  readonly clientRegistration: "static";
+  readonly clientType: "public";
   readonly clientId: string;
 };
 
 export type DynamicPublicConnectorOAuthClient = {
-  readonly client: DynamicPublicConnectorOAuthClientConfig;
+  readonly clientRegistration: "dynamic";
+  readonly clientType: "public";
 };
 
 export type StaticConnectorOAuthClient =
@@ -469,7 +469,7 @@ export type ConnectorOAuthClient =
 export function isStaticConnectorOAuthClient(
   oauthClient: ConnectorOAuthClient,
 ): oauthClient is StaticConnectorOAuthClient {
-  return oauthClient.client.clientRegistration === "static";
+  return oauthClient.clientRegistration === "static";
 }
 
 export function isStaticConfidentialConnectorOAuthClient(
@@ -477,7 +477,7 @@ export function isStaticConfidentialConnectorOAuthClient(
 ): oauthClient is StaticConfidentialConnectorOAuthClient {
   return (
     isStaticConnectorOAuthClient(oauthClient) &&
-    oauthClient.client.clientType === "confidential"
+    oauthClient.clientType === "confidential"
   );
 }
 
@@ -492,18 +492,23 @@ export function resolveConnectorOAuthClient(
   readEnv: ConnectorEnvReader,
 ): ConnectorOAuthClient | undefined {
   if (client.clientRegistration === "dynamic") {
-    return { client };
+    return { clientRegistration: "dynamic", clientType: "public" };
   }
 
   if ("clientId" in client) {
     if (client.clientType === "confidential") {
       return {
-        client,
+        clientRegistration: "static",
+        clientType: "confidential",
         clientId: client.clientId,
         clientSecret: client.clientSecret,
       };
     }
-    return { client, clientId: client.clientId };
+    return {
+      clientRegistration: "static",
+      clientType: "public",
+      clientId: client.clientId,
+    };
   }
 
   const clientId = readEnv(client.clientIdEnv);
@@ -512,7 +517,7 @@ export function resolveConnectorOAuthClient(
   }
 
   if (client.clientType === "public") {
-    return { client, clientId };
+    return { clientRegistration: "static", clientType: "public", clientId };
   }
 
   const clientSecret = readEnv(client.clientSecretEnv);
@@ -520,7 +525,12 @@ export function resolveConnectorOAuthClient(
     return undefined;
   }
 
-  return { client, clientId, clientSecret };
+  return {
+    clientRegistration: "static",
+    clientType: "confidential",
+    clientId,
+    clientSecret,
+  };
 }
 
 export function getConnectorOAuthClient(

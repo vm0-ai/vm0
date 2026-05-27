@@ -1644,7 +1644,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     });
 
     expect(oauthClient).toStrictEqual({
-      client: getConnectorOAuthClientConfig("github"),
+      clientRegistration: "static",
+      clientType: "confidential",
       clientId: "github-client-id",
       clientSecret: "github-client-secret",
     });
@@ -1662,7 +1663,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     const oauthClient = getConnectorOAuthClient("test-oauth", emptyEnv);
 
     expect(oauthClient).toStrictEqual({
-      client: getConnectorOAuthClientConfig("test-oauth"),
+      clientRegistration: "static",
+      clientType: "confidential",
       clientId: "test-oauth-client",
       clientSecret: "test-oauth-secret",
     });
@@ -1683,11 +1685,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     );
 
     expect(oauthClient).toStrictEqual({
-      client: {
-        clientRegistration: "static",
-        clientType: "public",
-        clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
-      },
+      clientRegistration: "static",
+      clientType: "public",
       clientId: "public-client-id",
     });
   });
@@ -1699,7 +1698,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     } as const;
 
     expect(resolveConnectorOAuthClient(client, emptyEnv)).toStrictEqual({
-      client,
+      clientRegistration: "dynamic",
+      clientType: "public",
     });
   });
 
