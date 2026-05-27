@@ -374,3 +374,142 @@ class TestResponseHeadersHandler:
         assert json_state["response_data_count"] == 2
         assert json_state["response_includes"] == {"users": 1}
         assert json_state["response_result_count"] == 2
+
+    def test_model_provider_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
+        """Billable model provider JSON should parse usage without unbounded buffering."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b'"}],"usage":{"input_tokens":50,"output_tokens":100}}')
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        usage_result, error = flow.metadata["model_json_usage_finish"]()
+        assert error is None
+        assert usage_result["model"] == "claude-sonnet-4-6"
+        assert usage_result["message_id"] == "msg_1"
+        assert usage_result["tokens.input"] == 50
+        assert usage_result["tokens.output"] == 100
+
+    def test_non_billable_model_provider_buffer_truncated(self, real_flow, headers):
+        """Non-billable model providers should use the normal bounded buffer."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_provider_usage" not in flow.metadata
+
+    def test_non_model_provider_buffer_truncated(self, real_flow, headers):
+        """Non-model-provider responses should truncate at 64KB."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        # No firewall_name — not a model provider
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+
+    def test_billable_x_connector_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
+        """Billable X connector responses should not buffer the full body."""
+        flow = real_flow(with_response=False, host="api.x.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        callback(b'{"data":[{"id":"1","text":"')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b'"}],"meta":{"result_count":1}}')
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        json_state, error = flow.metadata["x_json_response_finish"]()
+        assert error is None
+        assert json_state["response_data_count"] == 1
+        assert json_state["response_result_count"] == 1
+
+    def test_non_billable_x_non_stream_uses_bounded_forensic_buffer_only(self, real_flow, headers):
+        """Non-billable X JSON should not attach the billable response parser."""
+        flow = real_flow(with_response=False, host="api.x.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = False
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        assert "x_ndjson_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
+
+    def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow, headers):
+        """Future billable connectors must not get unbounded buffers by default."""
+        flow = real_flow(with_response=False, host="api.gamma.example")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "gamma"  # hypothetical future billable connector
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        large_chunk = b"g" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        # And no X-specific state gets attached to a non-x flow.
+        assert "x_ndjson_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata

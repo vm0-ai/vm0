@@ -2,6 +2,7 @@
 
 import json
 import time
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -300,3 +301,50 @@ class TestErrorHandler:
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 2  # not 3 — partial trailing dropped
         assert by_cat["user.read"] == 1
+
+    def test_full_path_error_to_opener(self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor):
+        """Integration: error() → _maybe_report → _enqueue → _retry → _opener.
+
+        Verifies that error() hook delivers partial usage all the way to _opener.
+        """
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-int-002"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 80,
+        }
+        flow.error = Error("connection reset by peer")
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(api_url="https://api.vm0.ai"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
+        req = mock_opener.open.call_args[0][0]
+        body = json.loads(req.data)
+        assert body["runId"] == "run-int-002"
+        assert [
+            {key: value for key, value in event.items() if key != "idempotencyKey"}
+            for event in body["events"]
+        ] == [
+            {
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 80,
+            }
+        ]
+        uuid.UUID(body["events"][0]["idempotencyKey"])

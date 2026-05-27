@@ -369,3 +369,129 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         assert flow.id not in mitm_addon._request_start_times
+
+    def test_response_releases_streaming_state(self, tmp_path, real_flow, mitm_ctx):
+        """The completed response hook must not retain parser/buffer closures."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"model":"claude-sonnet-4-6"}')
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+
+    def test_response_without_run_id_releases_x_json_streaming_state(self, real_flow):
+        """Even early-returning flows should not retain response parser closures."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"data":[{"id":"1"}]}')
+        assert "x_json_response_finish" in flow.metadata
+
+        mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
+
+    def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
+        """Early-returning SSE flows should not retain parser closures."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "text/event-stream"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5","usage":{"output_tokens":7}}}\n'
+        )
+        assert "model_sse_usage_finish" in flow.metadata
+
+        mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
+
+    def test_response_does_not_clear_external_stream_callback(self, tmp_path, real_flow, mitm_ctx):
+        """Cleanup should only reset the stream callback installed by this addon."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        def external_stream(chunk):
+            return chunk
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.stream = external_stream
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is external_stream
+
+    def test_response_does_not_clear_replaced_stream_callback(self, tmp_path, real_flow, mitm_ctx):
+        """Cleanup should not clear a callback that replaced ours after responseheaders."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+
+        def external_stream(chunk):
+            return chunk
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        vm0_stream = response_stream(flow)
+        vm0_stream(b'{"model":"claude-sonnet-4-6"}')
+        flow.response.stream = external_stream
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is external_stream
+        assert "stream_buffer" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata

@@ -9,3 +9,11 @@ def request_bodies_from_calls(call_args_list):
 
 def usage_event_events_from_calls(call_args_list):
     return [event for body in request_bodies_from_calls(call_args_list) for event in body["events"]]
+
+
+def set_stream_buffer(flow, body: bytes):
+    flow.metadata["stream_buffer"] = bytearray(body)
+    flow.metadata["stream_buffer_state"] = {
+        "truncated": False,
+        "total_bytes": len(body),
+    }
