@@ -826,7 +826,7 @@ type ConnectorAuthMethodGrantKindById = {
 type ConnectorAuthMethodAccessKindById = {
   readonly oauth: "refresh-token" | "static";
   readonly "api-token": "static";
-  readonly api: "managed" | "none";
+  readonly api: "none";
 };
 
 type ConnectorAuthMethodRevokeKindById = {
@@ -839,6 +839,33 @@ export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<
   | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodGrantKindById>
   | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodAccessKindById>
   | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodRevokeKindById>
+>;
+
+export type ConnectorAuthMethodKindMapsMatchConfigUnions = AssertNever<
+  | Exclude<
+      ConnectorAuthMethodGrantKindById[keyof ConnectorAuthMethodGrantKindById],
+      ConnectorGrantKind
+    >
+  | Exclude<
+      ConnectorGrantKind,
+      ConnectorAuthMethodGrantKindById[keyof ConnectorAuthMethodGrantKindById]
+    >
+  | Exclude<
+      ConnectorAuthMethodAccessKindById[keyof ConnectorAuthMethodAccessKindById],
+      ConnectorAccessKind
+    >
+  | Exclude<
+      ConnectorAccessKind,
+      ConnectorAuthMethodAccessKindById[keyof ConnectorAuthMethodAccessKindById]
+    >
+  | Exclude<
+      ConnectorAuthMethodRevokeKindById[keyof ConnectorAuthMethodRevokeKindById],
+      ConnectorRevokeKind
+    >
+  | Exclude<
+      ConnectorRevokeKind,
+      ConnectorAuthMethodRevokeKindById[keyof ConnectorAuthMethodRevokeKindById]
+    >
 >;
 
 type InvalidAuthMethodGrantKindConnectorType = {

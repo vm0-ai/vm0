@@ -9,7 +9,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
+import {
+  CONNECTOR_TYPE_KEYS,
+  CONNECTOR_TYPES,
+} from "@vm0/connectors/connectors";
 import {
   DEFAULT_SKILLS_BRANCH,
   DEFAULT_SKILLS_OWNER,
@@ -36,8 +39,15 @@ const store = createStore();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const TEST_SKILL_PREFIX = "api-test-skill";
+function getTestSeedConnectorTypes(): string[] {
+  return CONNECTOR_TYPE_KEYS.filter((type) => {
+    return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
+      return !method.featureFlag;
+    });
+  });
+}
 const ALL_SEED_SKILL_NAMES: readonly string[] = [
-  ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+  ...new Set([...SEED_SKILLS, ...getTestSeedConnectorTypes()]),
 ];
 
 interface MockSkillEntry {

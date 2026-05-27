@@ -58,15 +58,6 @@ export function getConfiguredConnectorAuthMethods(
  */
 
 /**
- * Get auth methods for a connector type
- */
-export function getConnectorAuthMethods(
-  type: ConnectorType,
-): Partial<Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>> {
-  return CONNECTOR_TYPES[type].authMethods;
-}
-
-/**
  * Get one auth method config for a connector type.
  */
 export function getConnectorAuthMethod(
@@ -141,25 +132,6 @@ function requiredManualGrantFieldNames(
 
 function hasRequiredManualGrantFields(fields: ManualGrantFieldNames): boolean {
   return fields.secrets.length > 0 || fields.variables.length > 0;
-}
-
-function getConnectorRequiredManualGrantFieldNames(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): ManualGrantFieldNames | null {
-  const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
-  return fields ? requiredManualGrantFieldNames(fields) : null;
-}
-
-function getConnectorManualGrantFieldStorageType(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-  name: string,
-): "secret" | "variable" {
-  const fieldConfig = getManualGrantFields(
-    getConnectorAuthMethod(type, authMethod),
-  )?.[name];
-  return fieldConfig?.storage ?? "secret";
 }
 
 export function getConnectorManualGrantFieldNames(
@@ -263,7 +235,7 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   }
 }
 
-export type ConnectorOAuthGrantConfig =
+type ConnectorOAuthGrantConfig =
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig;
 
@@ -282,13 +254,13 @@ function isConnectorOAuthGrantConfig(
   }
 }
 
-export function getConnectorOAuthGrantConfig(
+function getConnectorOAuthGrantConfig(
   type: OAuthGrantConnectorType,
 ): ConnectorOAuthGrantConfig;
-export function getConnectorOAuthGrantConfig(
+function getConnectorOAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined;
-export function getConnectorOAuthGrantConfig(
+function getConnectorOAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined {
   for (const method of connectorAuthMethodValues(type)) {
@@ -504,19 +476,19 @@ export function isStaticConfidentialConnectorOAuthClient(
   );
 }
 
-export function getConnectorOAuthClientConfig(
+function getConnectorOAuthClientConfig(
   type: OAuthGrantConnectorType,
 ): ConnectorOAuthClientConfig;
-export function getConnectorOAuthClientConfig(
+function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined;
-export function getConnectorOAuthClientConfig(
+function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
   return getConnectorOAuthGrantConfig(type)?.client;
 }
 
-export function resolveConnectorOAuthClient(
+function resolveConnectorOAuthClient(
   client: ConnectorOAuthClientConfig,
   readEnv: ConnectorEnvReader,
 ): ConnectorOAuthClient | undefined {
@@ -665,19 +637,6 @@ export function getConnectorEnvBindings(
 }
 
 /**
- * Connector types eligible for agent compose without runtime feature context:
- * include connectors with at least one always-available connection flow.
- */
-export function getEligibleConnectorTypes(): string[] {
-  return CONNECTOR_TYPE_KEYS.filter((type) => {
-    const config = CONNECTOR_TYPES[type];
-    return Object.values(config.authMethods).some((method) => {
-      return !method.featureFlag;
-    });
-  });
-}
-
-/**
  * Get connector label and derived environment names for a connector secret.
  * Performs a reverse lookup from secret name to the connector type and
  * env bindings that reference it.
@@ -809,38 +768,6 @@ export function getScopeDiff(
 }
 
 /**
- * Get all secret/variable names managed by connectors across ALL auth methods.
- * Unlike `getConnectorProvidedEnvNames` (which only reads envBindings),
- * this function also includes api-token auth method secrets.
- *
- * Used to hide connector-managed secrets from the secrets & variables list.
- */
-export function getConnectorManagedSecretNames(
-  types: ConnectorType[],
-): Set<string> {
-  const managed = new Set<string>();
-  for (const type of types) {
-    const config = CONNECTOR_TYPES[type];
-    for (const method of Object.values(config.authMethods)) {
-      for (const name of Object.keys(getManualGrantFields(method) ?? {})) {
-        managed.add(name);
-      }
-    }
-    for (const method of Object.values(config.authMethods)) {
-      for (const name of connectorMethodSecretNames(method)) {
-        managed.add(name);
-      }
-    }
-    // Also include envBindings names (OAuth-derived environment names like GH_TOKEN)
-    const envBindings = getConnectorEnvBindings(type);
-    for (const envName of Object.keys(envBindings)) {
-      managed.add(envName);
-    }
-  }
-  return managed;
-}
-
-/**
  * Reverse lookup: given a secret/environment name, find which connector type manages it.
  * Checks manual grant fields, access storage names, and env binding names.
  * Returns null if no connector manages this name.
@@ -868,36 +795,4 @@ export function getConnectorTypeForSecretName(
     }
   }
   return null;
-}
-
-export function getApiTokenFieldsByType(
-  type: ConnectorType,
-): ManualGrantFieldNames | null {
-  // Compatibility wrapper for legacy API-token callers. New state inference
-  // should use manual grant helpers so the method id is preserved.
-  return getConnectorRequiredManualGrantFieldNames(type, "api-token");
-}
-
-export function getApiTokenFieldStorageType(
-  type: ConnectorType,
-  name: string,
-): "secret" | "variable" {
-  // Unknown fields preserve the historical form-submit behavior and are treated
-  // as encrypted secrets by the manual grant storage helper.
-  return getConnectorManualGrantFieldStorageType(type, "api-token", name);
-}
-
-export function deriveApiTokenConnectedTypes(
-  userSecretNames: Set<string>,
-  userVariableNames?: Set<string>,
-): ConnectorType[] {
-  // Compatibility wrapper for legacy API-token callers. The config-driven
-  // helper carries authMethod for production state inference.
-  return deriveConnectedManualGrantMethods(userSecretNames, userVariableNames)
-    .filter((method) => {
-      return method.authMethod === "api-token";
-    })
-    .map((method) => {
-      return method.type;
-    });
 }

@@ -1,7 +1,10 @@
 #!/usr/bin/env tsx
 
 import { eq, sql } from "drizzle-orm";
-import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
+import {
+  CONNECTOR_TYPE_KEYS,
+  CONNECTOR_TYPES,
+} from "@vm0/connectors/connectors";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@vm0/core/github-url";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
@@ -16,6 +19,14 @@ import { settle } from "../signals/utils";
 
 function writeLine(message: string): void {
   process.stdout.write(`${message}\n`);
+}
+
+function getDevSeedConnectorTypes(): string[] {
+  return CONNECTOR_TYPE_KEYS.filter((type) => {
+    return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
+      return !method.featureFlag;
+    });
+  });
 }
 
 /**
@@ -352,7 +363,7 @@ async function devSeed() {
 
   // --- skills (seed skills + common connectors, batch insert) ---
   writeLine("Seeding skills");
-  const eligibleConnectorTypes = getEligibleConnectorTypes();
+  const eligibleConnectorTypes = getDevSeedConnectorTypes();
   const skillValues = buildSeedSkillValues([
     ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
   ]);

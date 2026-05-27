@@ -19,8 +19,19 @@ import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { buildSeedSkillValues } from "./db-test-seeders/seed-skill-values";
-import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
+import {
+  CONNECTOR_TYPE_KEYS,
+  CONNECTOR_TYPES,
+} from "@vm0/connectors/connectors";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+
+function getTestSeedConnectorTypes(): string[] {
+  return CONNECTOR_TYPE_KEYS.filter((type) => {
+    return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
+      return !method.featureFlag;
+    });
+  });
+}
 
 export async function setup() {
   console.log("[globalSetup] Seeding skill data…");
@@ -29,7 +40,7 @@ export async function setup() {
 
   try {
     const allNames = [
-      ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+      ...new Set([...SEED_SKILLS, ...getTestSeedConnectorTypes()]),
     ];
 
     // 1. Seed skills

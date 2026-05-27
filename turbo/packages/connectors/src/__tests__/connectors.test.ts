@@ -30,18 +30,12 @@ import {
   getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
-  getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
   getConnectorProvidedEnvNames,
-  getConnectorOAuthClientConfig,
   getConnectorOAuthClient,
-  getConnectorOAuthGrantConfig,
   getConnectorOAuthScopes,
   getConnectorManualGrantFieldNames,
-  getApiTokenFieldStorageType,
-  getApiTokenFieldsByType,
-  getEligibleConnectorTypes,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
   hasConnectorOAuthGrant,
@@ -50,7 +44,6 @@ import {
   isStaticConfidentialConnectorOAuthClient,
   isStaticConnectorOAuthClient,
   isGoogleOAuthConnector,
-  resolveConnectorOAuthClient,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
@@ -303,26 +296,6 @@ describe("connector auth method config", () => {
     expect(getConnectorAuthMethod("github", "api-token")).toBeUndefined();
   });
 
-  it("returns manual grant field storage types with secret default", () => {
-    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_EMAIL")).toBe(
-      "variable",
-    );
-    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_API_TOKEN")).toBe(
-      "secret",
-    );
-    expect(getApiTokenFieldStorageType("zendesk", "UNKNOWN_FIELD")).toBe(
-      "secret",
-    );
-  });
-
-  it("groups required api-token credential fields by storage", () => {
-    expect(getApiTokenFieldsByType("atlassian")).toStrictEqual({
-      secrets: ["ATLASSIAN_TOKEN"],
-      variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
-    });
-    expect(getApiTokenFieldsByType("github")).toBeNull();
-  });
-
   it("groups all manual grant field names by storage", () => {
     expect(getConnectorManualGrantFieldNames("atlassian")).toStrictEqual({
       secrets: ["ATLASSIAN_TOKEN"],
@@ -507,9 +480,7 @@ describe("hasConnectorOAuthProvider", () => {
       );
 
       for (const type of providerTypes) {
-        const client = getConnectorOAuthClientConfig(type);
-        expect(client, `${type}: OAuth client config`).toBeDefined();
-        const oauthClient = resolveConnectorOAuthClient(client, () => {
+        const oauthClient = getConnectorOAuthClient(type, () => {
           return "test-client-credential";
         });
         expect(oauthClient, `${type}: OAuth client`).toBeDefined();
@@ -1331,41 +1302,6 @@ describe("getAvailableConnectorAuthMethods", () => {
   });
 });
 
-describe("getEligibleConnectorTypes", () => {
-  it("excludes Lark while every auth method is feature-gated", () => {
-    expect(getEligibleConnectorTypes()).not.toContain("lark");
-  });
-});
-
-describe("getConnectorManagedSecretNames", () => {
-  it("includes OAuth envBindings names for OAuth connectors", () => {
-    const managed = getConnectorManagedSecretNames(["github"]);
-    // OAuth env binding names
-    expect(managed.has("GH_TOKEN")).toBe(true);
-    expect(managed.has("GITHUB_TOKEN")).toBe(true);
-    // OAuth auth method secret
-    expect(managed.has("GITHUB_ACCESS_TOKEN")).toBe(true);
-  });
-
-  it("includes api-token auth method secrets for api-token-only connectors", () => {
-    const managed = getConnectorManagedSecretNames(["atlassian"]);
-    expect(managed.has("ATLASSIAN_TOKEN")).toBe(true);
-    expect(managed.has("ATLASSIAN_EMAIL")).toBe(true);
-    expect(managed.has("ATLASSIAN_DOMAIN")).toBe(true);
-  });
-
-  it("returns empty set for empty input", () => {
-    const managed = getConnectorManagedSecretNames([]);
-    expect(managed.size).toBe(0);
-  });
-
-  it("combines managed names across multiple connector types", () => {
-    const managed = getConnectorManagedSecretNames(["github", "atlassian"]);
-    expect(managed.has("GH_TOKEN")).toBe(true);
-    expect(managed.has("ATLASSIAN_TOKEN")).toBe(true);
-  });
-});
-
 describe("getConnectorEnvBindings", () => {
   it("returns non-empty envBindings for connector types that surface environment entries to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
@@ -1451,7 +1387,7 @@ describe("getConnectorEnvBindings", () => {
     //   envBindings: values -> declared OAuth connector secrets
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
-      if (!getConnectorOAuthGrantConfig(type)) continue;
+      if (!hasConnectorOAuthGrant(type)) continue;
 
       const oauthSecrets = getConnectorSecretNames(type, "oauth");
       const prefix = oauthSecrets
@@ -1547,7 +1483,7 @@ describe("getConnectorEnvBindings", () => {
 
   it("api-token-only connectors expose all secrets via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
-      if (getConnectorOAuthGrantConfig(type)) continue;
+      if (hasConnectorOAuthGrant(type)) continue;
       const fields = getApiTokenManualGrantFields(type);
       if (!fields) continue;
 
@@ -1674,35 +1610,12 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("supports static public OAuth clients with only a client id", () => {
-    const oauthClient = resolveConnectorOAuthClient(
-      {
-        clientRegistration: "static",
-        clientType: "public",
-        clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
-      },
-      (name) => {
-        return name === "PUBLIC_OAUTH_CLIENT_ID"
-          ? "public-client-id"
-          : undefined;
-      },
-    );
+    const oauthClient = getConnectorOAuthClient("test-oauth-device", emptyEnv);
 
     expect(oauthClient).toStrictEqual({
       clientRegistration: "static",
       clientType: "public",
-      clientId: "public-client-id",
-    });
-  });
-
-  it("supports dynamic public OAuth clients without runtime OAuth client env", () => {
-    const client = {
-      clientRegistration: "dynamic",
-      clientType: "public",
-    } as const;
-
-    expect(resolveConnectorOAuthClient(client, emptyEnv)).toStrictEqual({
-      clientRegistration: "dynamic",
-      clientType: "public",
+      clientId: "test-oauth-device-client",
     });
   });
 
@@ -1727,12 +1640,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       expect(clientSecret).toBe("github-client-secret");
     }
 
-    const publicOAuthClient = resolveConnectorOAuthClient(
-      {
-        clientRegistration: "static",
-        clientType: "public",
-        clientId: "public-client-id",
-      },
+    const publicOAuthClient = getConnectorOAuthClient(
+      "test-oauth-device",
       emptyEnv,
     );
     if (!publicOAuthClient) {
@@ -1744,24 +1653,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     ).toBeFalsy();
     if (isStaticConnectorOAuthClient(publicOAuthClient)) {
       const clientId: string = publicOAuthClient.clientId;
-      expect(clientId).toBe("public-client-id");
+      expect(clientId).toBe("test-oauth-device-client");
     }
-
-    const dynamicClient = {
-      clientRegistration: "dynamic",
-      clientType: "public",
-    } as const;
-    const dynamicOAuthClient = resolveConnectorOAuthClient(
-      dynamicClient,
-      emptyEnv,
-    );
-    if (!dynamicOAuthClient) {
-      throw new Error("Expected dynamic OAuth client");
-    }
-    expect(isStaticConnectorOAuthClient(dynamicOAuthClient)).toBeFalsy();
-    expect(
-      isStaticConfidentialConnectorOAuthClient(dynamicOAuthClient),
-    ).toBeFalsy();
   });
 
   it("includes all connectors that share a configured OAuth app", () => {
@@ -1787,9 +1680,9 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
-    const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
-      return getConnectorOAuthGrantConfig(type);
-    });
+    const activeOAuthTypes = connectorTypeSchema.options.filter(
+      hasConnectorOAuthGrant,
+    );
 
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
       return "configured";
@@ -1862,7 +1755,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
     expectTypeOf(
       getConnectorAuthCodeGrantConfig("github"),
     ).toEqualTypeOf<ConnectorAuthCodeGrantConfig>();
-    expect(getConnectorOAuthGrantConfig("github")).toStrictEqual(method?.grant);
+    expect(getConnectorAuthCodeGrantConfig("github")).toStrictEqual(
+      method?.grant,
+    );
     expect(getConnectorAuthCodeGrantConfig("github")).toMatchObject({
       kind: "auth-code",
       tokenUrl: "https://github.com/login/oauth/access_token",
@@ -1918,7 +1813,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
   });
 
   it("returns undefined for connectors without OAuth grants", () => {
-    expect(getConnectorOAuthGrantConfig("axiom")).toBeUndefined();
+    expect(hasConnectorOAuthGrant("axiom")).toBe(false);
     expect(getConnectorOAuthScopes("axiom")).toStrictEqual([]);
     expect(getConnectorAuthCodeGrantConfig("base44")).toBeUndefined();
     expect(getConnectorDeviceAuthGrantConfig("github")).toBeUndefined();
@@ -1941,7 +1836,9 @@ describe("connector OAuth authorization-code config", () => {
 
   it("keeps provider authorization URLs out of connector OAuth grants", () => {
     for (const type of connectorTypeSchema.options) {
-      const grant = getConnectorOAuthGrantConfig(type);
+      const grant =
+        getConnectorAuthCodeGrantConfig(type) ??
+        getConnectorDeviceAuthGrantConfig(type);
       if (!grant) {
         continue;
       }
