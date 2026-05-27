@@ -433,6 +433,48 @@ async function secretValuesForRunner(
   });
 }
 
+function scheduleClaimSucceededSideEffects(args: {
+  readonly runId: string;
+  readonly userId: string;
+  readonly apiToClaimMs: number | undefined;
+}): void {
+  waitUntil(
+    publishRunChangedForUserSafely(args.userId, args.runId, {
+      status: "running",
+    }),
+  );
+  const apiToClaimMs = args.apiToClaimMs;
+  if (apiToClaimMs === undefined) {
+    return;
+  }
+
+  waitUntil(
+    tapError(
+      recordClaimApiToClaimMetric({
+        runId: args.runId,
+        durationMs: apiToClaimMs,
+      }),
+      (error) => {
+        L.warn("recordSandboxOperation failed", { runId: args.runId, error });
+      },
+    ),
+  );
+}
+
+async function recordClaimApiToClaimMetric(args: {
+  readonly runId: string;
+  readonly durationMs: number;
+}): Promise<void> {
+  await Promise.resolve();
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "api_to_claim",
+    durationMs: args.durationMs,
+    success: true,
+    runId: args.runId,
+  });
+}
+
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
@@ -522,6 +564,21 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
   const sandboxToken = generateSandboxToken(run.userId, run.id, run.orgId);
+  const apiToClaimMs = elapsedSinceApiStartMs(
+    storedContext.apiStartTime,
+    currentTime,
+  );
+  const responseBody = {
+    ...storedContext,
+    runId: run.id,
+    prompt: run.prompt,
+    appendSystemPrompt: run.appendSystemPrompt,
+    agentComposeVersionId: run.agentComposeVersionId,
+    vars: (run.vars as Record<string, string>) ?? null,
+    checkpointId: run.resumedFromCheckpointId ?? null,
+    sandboxToken,
+    secretValues,
+  };
 
   const claimResult = await transitionClaimedJobToRunning(
     db,
@@ -536,38 +593,15 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Run not found");
   }
 
-  await publishRunChangedForUserSafely(run.userId, runId, {
-    status: "running",
+  scheduleClaimSucceededSideEffects({
+    runId,
+    userId: run.userId,
+    apiToClaimMs,
   });
-  signal.throwIfAborted();
-
-  const apiToClaimMs = elapsedSinceApiStartMs(
-    storedContext.apiStartTime,
-    currentTime,
-  );
-  if (apiToClaimMs !== undefined) {
-    recordSandboxOperation({
-      sandboxType: "runner",
-      actionType: "api_to_claim",
-      durationMs: apiToClaimMs,
-      success: true,
-      runId,
-    });
-  }
 
   return {
     status: 200 as const,
-    body: {
-      ...storedContext,
-      runId: run.id,
-      prompt: run.prompt,
-      appendSystemPrompt: run.appendSystemPrompt,
-      agentComposeVersionId: run.agentComposeVersionId,
-      vars: (run.vars as Record<string, string>) ?? null,
-      checkpointId: run.resumedFromCheckpointId ?? null,
-      sandboxToken,
-      secretValues,
-    },
+    body: responseBody,
   };
 });
 
