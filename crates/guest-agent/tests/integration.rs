@@ -450,6 +450,48 @@ async fn post_json_uses_explicit_api_config_without_env_api_url() {
     mock.delete_async().await;
 }
 
+#[tokio::test]
+async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
+-> Result<(), Box<dyn std::error::Error>> {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let env_server = &*MOCK_SERVER;
+    let explicit_server = MockServer::start();
+
+    let env_mock = env_server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200);
+    });
+    let explicit_mock = explicit_server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .header("Authorization", "Bearer explicit-token");
+        then.respond_with(|req| {
+            if request_header_absent(req, "x-vercel-protection-bypass") {
+                http_status(200)
+            } else {
+                http_status(400)
+            }
+        });
+    });
+
+    let http = guest_agent::http::HttpClient::with_api_config(
+        explicit_server.base_url(),
+        "explicit-token",
+        "",
+        Duration::ZERO,
+    )?;
+    let masker = SecretMasker::from_raw("");
+    let mut event = json!({"type": "test", "data": "explicit route"});
+    guest_agent::events::send_event(&http, &mut event, 3, &masker).await?;
+
+    explicit_mock.assert_calls_async(1).await;
+    env_mock.assert_calls_async(0).await;
+    assert_eq!(event["sequenceNumber"], 3);
+    explicit_mock.delete_async().await;
+    env_mock.delete_async().await;
+    Ok(())
+}
+
 // =========================================================================
 // Group 3: put_presigned
 // =========================================================================
@@ -475,6 +517,29 @@ async fn put_presigned_success() {
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
     mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn transport_only_client_can_send_presigned_upload_without_api_config()
+-> Result<(), Box<dyn std::error::Error>> {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-transport-only");
+        then.respond_with(|req| upload_validation_response(req, b"transport-only upload", "21"));
+    });
+
+    let url = format!("{}/test/put-transport-only", server.base_url());
+    let http = guest_agent::http::HttpClient::new()?;
+    http.put_presigned(
+        &url,
+        Bytes::from_static(b"transport-only upload"),
+        "application/octet-stream",
+    )
+    .await?;
+
+    mock.assert_calls_async(1).await;
+    mock.delete_async().await;
+    Ok(())
 }
 
 #[tokio::test]
