@@ -17,12 +17,16 @@ fn contains_url_ignored_ascii_whitespace(value: &str) -> bool {
     value.bytes().any(|b| matches!(b, b'\t' | b'\n' | b'\r'))
 }
 
+fn contains_endpoint_path_separator(value: &str) -> bool {
+    value.bytes().any(|b| matches!(b, b'/' | b'\\'))
+}
+
 fn invalid_url_component() -> Error {
     Error::Url(url::ParseError::InvalidDomainCharacter)
 }
 
 fn parse_endpoint_host(host: &str, scheme: &str) -> Result<url::Url, Error> {
-    if contains_url_ignored_ascii_whitespace(host) {
+    if contains_url_ignored_ascii_whitespace(host) || contains_endpoint_path_separator(host) {
         return Err(invalid_url_component());
     }
 
@@ -314,6 +318,11 @@ mod tests {
             "https://example.com",
             "example.com/path",
             "example.com/",
+            "example.com/.",
+            "example.com/..",
+            "example.com/%2e%2e",
+            r"example.com\path",
+            r"example.com\..",
             "example.com?x=1",
             "example.com#frag",
             "rest\t.ably.io",
