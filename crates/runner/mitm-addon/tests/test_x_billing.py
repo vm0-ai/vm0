@@ -244,7 +244,8 @@ def _load_x_firewall_export() -> _XFirewallExport:
         )
 
     command = ["pnpm", "exec", "tsx", "-e", _X_FIREWALL_EXPORT_SCRIPT]
-    completed = subprocess.run(
+    # Trusted workspace tooling with constant argv; no user-controlled shell input.
+    completed = subprocess.run(  # noqa: S603
         command,
         cwd=_TURBO_DIR,
         text=True,
