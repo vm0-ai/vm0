@@ -277,6 +277,33 @@ def _load_x_firewall_permissions() -> tuple[_FirewallPermission, ...]:
     return _load_x_firewall_export().permissions
 
 
+@functools.cache
+def _compile_generated_x_firewall() -> matching.CompiledFirewallSet:
+    export = _load_x_firewall_export()
+    permissions_by_base: dict[str, list[dict[str, object]]] = {}
+    for permission in export.permissions:
+        permissions_by_base.setdefault(permission.base, []).append(
+            {"name": permission.name, "rules": list(permission.rules)}
+        )
+    compiled = matching.compile_firewalls(
+        [
+            {
+                "name": export.name,
+                "apis": [
+                    {
+                        "base": entry.base,
+                        "permissions": permissions_by_base.get(entry.base, []),
+                    }
+                    for entry in export.api_entries
+                ],
+            }
+        ]
+    )
+    if compiled is None:
+        pytest.fail("Generated X firewall failed to compile with the production matcher.")
+    return compiled
+
+
 def _sample_path_for_pattern(pattern: str) -> str:
     segments: list[str] = []
     for segment in pattern.split("/"):
@@ -521,19 +548,101 @@ class TestFirewallConsistency:
 
     def test_every_override_path_exists_in_firewall(self):
         """Each `_PATH_OVERRIDES` entry must point at a real rule in the
-        firewall generator output.  Catches typos in the method or path
-        pattern that would otherwise silently fail to match at runtime."""
+        firewall generator output, or at a literal generated path that
+        runtime first-match semantics routes through a broader rule under
+        the claimed permission.  Catches typos in the method or path pattern
+        that would otherwise silently fail to match at runtime."""
         firewall = self._load_firewall_rules()
+        all_generated_rules = {
+            (generated_method, generated_pattern)
+            for rules in firewall.values()
+            for generated_method, generated_pattern in rules
+        }
+        generated_rule_buckets: dict[tuple[str, str], set[str | None]] = {}
+        for permission in _load_x_firewall_permissions():
+            for rule in permission.rules:
+                generated_method, generated_pattern = rule.split(" ", 1)
+                sample_path = _sample_path_for_pattern(generated_pattern)
+                bucket = classify_bucket(permission.name, generated_method, sample_path)
+                generated_rule_buckets.setdefault((generated_method, generated_pattern), set()).add(
+                    bucket
+                )
+        compiled_firewall = _compile_generated_x_firewall()
         missing: list[tuple[str, str, str]] = []
-        for scope, method, pattern, _bucket in _PATH_OVERRIDES:
+        for scope, method, pattern, bucket in _PATH_OVERRIDES:
             rules = firewall.get(scope, set())
-            if (method, pattern) not in rules:
+            if (method, pattern) in rules:
+                continue
+            if (method, pattern) not in all_generated_rules:
+                missing.append((scope, method, pattern))
+                continue
+            sample_path = _sample_path_for_pattern(pattern)
+            if bucket not in generated_rule_buckets.get((method, pattern), set()):
+                missing.append((scope, method, pattern))
+                continue
+            runtime_match = matching.match_compiled_firewall_request(
+                f"https://api.x.com{sample_path}",
+                method,
+                compiled_firewall,
+            )
+            if not isinstance(runtime_match, matching.FirewallAllow):
+                missing.append((scope, method, pattern))
+                continue
+            if runtime_match.permission != scope:
                 missing.append((scope, method, pattern))
         assert not missing, (
             "Classifier overrides reference (scope, method, path) tuples "
-            f"that are not in the firewall generator output: {missing}.  "
-            "Either the firewall rule was renamed/removed upstream, or "
-            "the override has a typo."
+            f"that are not reachable through the firewall generator output: {missing}.  "
+            "Either the firewall rule was renamed/removed upstream, the "
+            "runtime first-match permission changed, or the override has a typo."
+        )
+
+    def test_runtime_firewall_match_preserves_declared_billing_bucket(self):
+        """Static drift checks read generated rule ownership, but runtime
+        firewall matching is first-match-wins.  A broad earlier generated
+        rule can capture a later literal path under a different permission;
+        the classifier must still emit the bucket implied by the generated
+        literal rule.
+        """
+        compiled_firewall = _compile_generated_x_firewall()
+        mismatches: list[tuple[str, str, str, str, str | None, str | None, str | None]] = []
+        for permission in _load_x_firewall_permissions():
+            for rule in permission.rules:
+                method, pattern = rule.split(" ", 1)
+                sample_path = _sample_path_for_pattern(pattern)
+                declared_bucket = classify_bucket(permission.name, method, sample_path)
+                runtime_match = matching.match_compiled_firewall_request(
+                    f"{permission.base}{sample_path}",
+                    method,
+                    compiled_firewall,
+                )
+                if not isinstance(runtime_match, matching.FirewallAllow):
+                    mismatches.append(
+                        (permission.name, method, pattern, sample_path, declared_bucket, None, None)
+                    )
+                    continue
+
+                runtime_permission = runtime_match.permission or ""
+                runtime_bucket = classify_bucket(runtime_permission, method, sample_path)
+                if runtime_bucket != declared_bucket:
+                    mismatches.append(
+                        (
+                            permission.name,
+                            method,
+                            pattern,
+                            sample_path,
+                            declared_bucket,
+                            runtime_permission,
+                            runtime_bucket,
+                        )
+                    )
+
+        assert not mismatches, (
+            "Generated X firewall rule samples classify to different buckets "
+            f"after production first-match firewall matching: {mismatches}. "
+            "Add a runtime-permission path override, or change firewall "
+            "matching/generation so the literal generated owner is what "
+            "runtime matching returns."
         )
 
     # Firewall paths that deliberately take their scope's default bucket.
