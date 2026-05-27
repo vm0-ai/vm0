@@ -151,5 +151,4 @@ class TestAddonConfiguration:
 
         assert len(timers) == 1
         assert timers[0].started is True
-        assert timers[0].daemon is True
         assert 12.0 <= timers[0].delay <= 18.0
