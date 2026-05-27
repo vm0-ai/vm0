@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { printConnectorGuidance } from "./connector-guidance";
 import { runLister, type GenerationType } from "./lister";
 
-export interface DispatchOptions {
+interface DispatchOptions {
   readonly generationType: GenerationType;
   readonly provider?: string;
   readonly prompt?: string;

@@ -313,7 +313,7 @@ type CandidateStatus =
   | "not-connected"
   | "not-available";
 
-export interface ListerOptions {
+interface ListerOptions {
   all?: boolean;
   json?: boolean;
 }
@@ -739,4 +739,3 @@ export async function runLister(
     );
   }
 }
-
