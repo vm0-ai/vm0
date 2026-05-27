@@ -729,6 +729,8 @@ class TestHandleFirewallRequest:
                 AsyncMock(
                     return_value={
                         "headers": {"Authorization": "Bearer token"},
+                        "base": "https://forward.example/secret",
+                        "query": {"api_key": "secret"},
                         "expiresAt": None,
                     }
                 ),
@@ -742,6 +744,8 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_error"] == "invalid_auth_expiry"
         assert "Authorization" not in flow.request.headers
+        assert "auth_url_rewrite" not in flow.metadata
+        assert "api_key" not in flow.request.query
         assert cached_headers(("test-run", "https://api.github.com")) is None
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_auth_expiry"
