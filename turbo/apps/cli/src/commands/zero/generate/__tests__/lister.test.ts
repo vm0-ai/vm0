@@ -125,7 +125,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("vm0");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
-      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
     );
     expect(text).toContain("Use: zero generate image --provider built-in -h");
     expect(text).not.toContain(
@@ -218,6 +218,7 @@ describe("zero generate lister", () => {
         expect.objectContaining({
           model: "fal-ai/bytedance/seedream/v4/text-to-image",
         }),
+        expect.objectContaining({ model: "fal-ai/nano-banana-2" }),
       ]),
     });
   });

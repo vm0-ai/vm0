@@ -709,23 +709,15 @@ export {
   type ConnectorEnvBindings,
 } from "@vm0/connectors/connectors";
 export {
-  getConnectorAuthMethods,
   getConnectorSecretNames,
   getConnectorEnvBindings,
-  getEligibleConnectorTypes,
   getConnectorEnvNamesForSecret,
   getConnectorProvidedEnvNames,
-  getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   isGoogleOAuthConnector,
   hasRequiredScopes,
   getScopeDiff,
   type ScopeDiff,
-  getApiTokenFieldsByType,
-  deriveApiTokenConnectedTypes,
-  searchConnectors,
-  type ConnectorSearchResult,
-  type ConnectorSearchOutput,
 } from "@vm0/connectors/connector-utils";
 export {
   connectorSessionStatusSchema,

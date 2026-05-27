@@ -6,7 +6,6 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
-  type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorEnvBindings,
   type ConnectorGenerationType,
@@ -57,15 +56,6 @@ export function getConfiguredConnectorAuthMethods(
  * - Runtime injection happens later when a run receives environment entries, secrets,
  *   variables, and firewall context.
  */
-
-/**
- * Get auth methods for a connector type
- */
-export function getConnectorAuthMethods(
-  type: ConnectorType,
-): Partial<Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>> {
-  return CONNECTOR_TYPES[type].authMethods;
-}
 
 /**
  * Get one auth method config for a connector type.
@@ -142,25 +132,6 @@ function requiredManualGrantFieldNames(
 
 function hasRequiredManualGrantFields(fields: ManualGrantFieldNames): boolean {
   return fields.secrets.length > 0 || fields.variables.length > 0;
-}
-
-function getConnectorRequiredManualGrantFieldNames(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): ManualGrantFieldNames | null {
-  const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
-  return fields ? requiredManualGrantFieldNames(fields) : null;
-}
-
-function getConnectorManualGrantFieldStorageType(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-  name: string,
-): "secret" | "variable" {
-  const fieldConfig = getManualGrantFields(
-    getConnectorAuthMethod(type, authMethod),
-  )?.[name];
-  return fieldConfig?.storage ?? "secret";
 }
 
 export function getConnectorManualGrantFieldNames(
@@ -264,7 +235,7 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   }
 }
 
-export type ConnectorOAuthGrantConfig =
+type ConnectorOAuthGrantConfig =
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig;
 
@@ -283,13 +254,13 @@ function isConnectorOAuthGrantConfig(
   }
 }
 
-export function getConnectorOAuthGrantConfig(
+function getConnectorOAuthGrantConfig(
   type: OAuthGrantConnectorType,
 ): ConnectorOAuthGrantConfig;
-export function getConnectorOAuthGrantConfig(
+function getConnectorOAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined;
-export function getConnectorOAuthGrantConfig(
+function getConnectorOAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined {
   for (const method of connectorAuthMethodValues(type)) {
@@ -505,19 +476,19 @@ export function isStaticConfidentialConnectorOAuthClient(
   );
 }
 
-export function getConnectorOAuthClientConfig(
+function getConnectorOAuthClientConfig(
   type: OAuthGrantConnectorType,
 ): ConnectorOAuthClientConfig;
-export function getConnectorOAuthClientConfig(
+function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined;
-export function getConnectorOAuthClientConfig(
+function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
   return getConnectorOAuthGrantConfig(type)?.client;
 }
 
-export function resolveConnectorOAuthClient(
+function resolveConnectorOAuthClient(
   client: ConnectorOAuthClientConfig,
   readEnv: ConnectorEnvReader,
 ): ConnectorOAuthClient | undefined {
@@ -666,19 +637,6 @@ export function getConnectorEnvBindings(
 }
 
 /**
- * Connector types eligible for agent compose without runtime feature context:
- * include connectors with at least one always-available connection flow.
- */
-export function getEligibleConnectorTypes(): string[] {
-  return CONNECTOR_TYPE_KEYS.filter((type) => {
-    const config = CONNECTOR_TYPES[type];
-    return Object.values(config.authMethods).some((method) => {
-      return !method.featureFlag;
-    });
-  });
-}
-
-/**
  * Get connector label and derived environment names for a connector secret.
  * Performs a reverse lookup from secret name to the connector type and
  * env bindings that reference it.
@@ -810,38 +768,6 @@ export function getScopeDiff(
 }
 
 /**
- * Get all secret/variable names managed by connectors across ALL auth methods.
- * Unlike `getConnectorProvidedEnvNames` (which only reads envBindings),
- * this function also includes api-token auth method secrets.
- *
- * Used to hide connector-managed secrets from the secrets & variables list.
- */
-export function getConnectorManagedSecretNames(
-  types: ConnectorType[],
-): Set<string> {
-  const managed = new Set<string>();
-  for (const type of types) {
-    const config = CONNECTOR_TYPES[type];
-    for (const method of Object.values(config.authMethods)) {
-      for (const name of Object.keys(getManualGrantFields(method) ?? {})) {
-        managed.add(name);
-      }
-    }
-    for (const method of Object.values(config.authMethods)) {
-      for (const name of connectorMethodSecretNames(method)) {
-        managed.add(name);
-      }
-    }
-    // Also include envBindings names (OAuth-derived environment names like GH_TOKEN)
-    const envBindings = getConnectorEnvBindings(type);
-    for (const envName of Object.keys(envBindings)) {
-      managed.add(envName);
-    }
-  }
-  return managed;
-}
-
-/**
  * Reverse lookup: given a secret/environment name, find which connector type manages it.
  * Checks manual grant fields, access storage names, and env binding names.
  * Returns null if no connector manages this name.
@@ -869,246 +795,4 @@ export function getConnectorTypeForSecretName(
     }
   }
   return null;
-}
-
-export function getApiTokenFieldsByType(
-  type: ConnectorType,
-): ManualGrantFieldNames | null {
-  // Compatibility wrapper for legacy API-token callers. New state inference
-  // should use manual grant helpers so the method id is preserved.
-  return getConnectorRequiredManualGrantFieldNames(type, "api-token");
-}
-
-export function getApiTokenFieldStorageType(
-  type: ConnectorType,
-  name: string,
-): "secret" | "variable" {
-  // Unknown fields preserve the historical form-submit behavior and are treated
-  // as encrypted secrets by the manual grant storage helper.
-  return getConnectorManualGrantFieldStorageType(type, "api-token", name);
-}
-
-export function deriveApiTokenConnectedTypes(
-  userSecretNames: Set<string>,
-  userVariableNames?: Set<string>,
-): ConnectorType[] {
-  // Compatibility wrapper for legacy API-token callers. The config-driven
-  // helper carries authMethod for production state inference.
-  return deriveConnectedManualGrantMethods(userSecretNames, userVariableNames)
-    .filter((method) => {
-      return method.authMethod === "api-token";
-    })
-    .map((method) => {
-      return method.type;
-    });
-}
-
-/**
- * Result of a connector search hit, one per matched connector type.
- */
-export interface ConnectorSearchResult {
-  readonly type: ConnectorType;
-  readonly score: number;
-  /** Short label describing the matched field (e.g. "type", "env:GH_TOKEN", "tag:vcs", "token:gh"). */
-  readonly matchedField: string;
-}
-
-export interface ConnectorSearchOutput {
-  /** Results sorted by score desc then type asc, already capped at `limit`. */
-  readonly results: readonly ConnectorSearchResult[];
-  /** Total candidates above the minimum threshold, before applying `limit`. */
-  readonly total: number;
-}
-
-const TOKEN_BOUNDARY = /[_\-\s]+/;
-const CASE_BOUNDARY = /(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/;
-const MIN_SCORE = 10;
-
-/**
- * Split a string into lowercase tokens on `_`, `-`, whitespace, and
- * camel/Pascal case boundaries. Digits stay attached to the preceding letters
- * (e.g. `v2`). Empty tokens are dropped and duplicates deduped.
- */
-function tokenize(input: string): Set<string> {
-  const tokens = new Set<string>();
-  for (const chunk of input.split(TOKEN_BOUNDARY)) {
-    if (!chunk) continue;
-    for (const sub of chunk.split(CASE_BOUNDARY)) {
-      const lower = sub.toLowerCase();
-      if (lower) tokens.add(lower);
-    }
-  }
-  return tokens;
-}
-
-function listSecretNames(config: ConnectorConfig): string[] {
-  const names: string[] = [];
-  for (const method of Object.values(config.authMethods)) {
-    for (const name of Object.keys(getManualGrantFields(method) ?? {})) {
-      names.push(name);
-    }
-    for (const valueRef of Object.values(
-      connectorAccessEnvBindings(method.access),
-    )) {
-      if (valueRef.startsWith("$secrets.")) {
-        names.push(valueRef.slice("$secrets.".length));
-      }
-    }
-  }
-  return names;
-}
-
-type ScoreHit = { score: number; matchedField: string };
-
-function findExactMatch(
-  keywordLower: string,
-  type: ConnectorType,
-  config: ConnectorConfig,
-): ScoreHit | null {
-  if (type.toLowerCase() === keywordLower) {
-    return { score: 100, matchedField: "type" };
-  }
-  for (const envName of Object.keys(getConnectorEnvBindings(type))) {
-    if (envName.toLowerCase() === keywordLower) {
-      return { score: 90, matchedField: `env:${envName}` };
-    }
-  }
-  if (config.label.toLowerCase() === keywordLower) {
-    return { score: 80, matchedField: "label" };
-  }
-  const tags = config.tags ?? [];
-  for (const tag of tags) {
-    if (tag === keywordLower) {
-      return { score: 70, matchedField: `tag:${tag}` };
-    }
-  }
-  return null;
-}
-
-function findSubstringMatch(
-  keywordLower: string,
-  type: ConnectorType,
-  config: ConnectorConfig,
-): ScoreHit | null {
-  if (type.toLowerCase().includes(keywordLower)) {
-    return { score: 50, matchedField: "type" };
-  }
-  if (config.label.toLowerCase().includes(keywordLower)) {
-    return { score: 50, matchedField: "label" };
-  }
-  for (const envName of Object.keys(getConnectorEnvBindings(type))) {
-    if (envName.toLowerCase().includes(keywordLower)) {
-      return { score: 40, matchedField: `env:${envName}` };
-    }
-  }
-  for (const name of listSecretNames(config)) {
-    if (name.toLowerCase().includes(keywordLower)) {
-      return { score: 30, matchedField: `secret:${name}` };
-    }
-  }
-  const tags = config.tags ?? [];
-  for (const tag of tags) {
-    if (tag.includes(keywordLower)) {
-      return { score: 25, matchedField: `tag:${tag}` };
-    }
-  }
-  return null;
-}
-
-function collectCandidateTokens(
-  type: ConnectorType,
-  config: ConnectorConfig,
-): Set<string> {
-  const tokens = new Set<string>();
-  const sources = [
-    type,
-    config.label,
-    ...Object.keys(getConnectorEnvBindings(type)),
-    ...listSecretNames(config),
-    ...(config.tags ?? []),
-  ];
-  for (const source of sources) {
-    for (const token of tokenize(source)) {
-      tokens.add(token);
-    }
-  }
-  return tokens;
-}
-
-function findTokenIntersection(
-  keywordTokens: Set<string>,
-  type: ConnectorType,
-  config: ConnectorConfig,
-): ScoreHit | null {
-  const candidateTokens = collectCandidateTokens(type, config);
-  let intersection = 0;
-  let firstCommon = "";
-  for (const token of keywordTokens) {
-    if (candidateTokens.has(token)) {
-      intersection++;
-      if (!firstCommon) firstCommon = token;
-    }
-  }
-  if (intersection === 0) return null;
-  return { score: 10 * intersection, matchedField: `token:${firstCommon}` };
-}
-
-function scoreConnector(
-  keywordLower: string,
-  keywordTokens: Set<string>,
-  type: ConnectorType,
-  config: ConnectorConfig,
-): ScoreHit | null {
-  const exact = findExactMatch(keywordLower, type, config);
-  if (exact) return exact;
-
-  const candidates: ScoreHit[] = [];
-  const substring = findSubstringMatch(keywordLower, type, config);
-  if (substring) candidates.push(substring);
-  const token = findTokenIntersection(keywordTokens, type, config);
-  if (token) candidates.push(token);
-
-  if (candidates.length === 0) return null;
-  const best = candidates.reduce((a, b) => {
-    return a.score >= b.score ? a : b;
-  });
-  if (best.score < MIN_SCORE) return null;
-  return best;
-}
-
-/**
- * Search the connector catalog by weighted multi-field ranking.
- *
- * Matches the keyword against type keys, labels, environment names, secret names,
- * and `tags`. Score is the max over matched rules (never a sum). Results with
- * score below the minimum threshold are dropped. Sort order: score desc, then
- * type asc.
- */
-export function searchConnectors(
-  keyword: string,
-  limit: number,
-  filter?: (type: ConnectorType) => boolean,
-): ConnectorSearchOutput {
-  const trimmed = keyword.trim();
-  if (!trimmed) return { results: [], total: 0 };
-
-  const keywordLower = trimmed.toLowerCase();
-  const keywordTokens = tokenize(trimmed);
-
-  const hits: ConnectorSearchResult[] = [];
-  for (const type of CONNECTOR_TYPE_KEYS) {
-    if (filter && !filter(type)) continue;
-    const config = CONNECTOR_TYPES[type];
-    const hit = scoreConnector(keywordLower, keywordTokens, type, config);
-    if (!hit) continue;
-    hits.push({ type, score: hit.score, matchedField: hit.matchedField });
-  }
-
-  hits.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.type.localeCompare(b.type);
-  });
-
-  const capped = limit > 0 ? hits.slice(0, limit) : hits;
-  return { results: capped, total: hits.length };
 }

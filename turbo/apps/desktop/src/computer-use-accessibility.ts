@@ -20,6 +20,8 @@ export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
 export type ComputerUseCommandKind =
   (typeof SUPPORTED_COMPUTER_USE_CAPABILITIES)[number];
 
+type AccessibilityElementClickableKind = "mouse" | "pick" | "press" | "select";
+
 export interface ComputerUseCommand {
   readonly id: string;
   readonly kind: ComputerUseCommandKind;
@@ -51,6 +53,11 @@ export interface AccessibilityElementSnapshot {
   readonly expanded?: boolean;
   readonly hidden?: boolean;
   readonly actions?: readonly string[];
+  readonly pressable?: boolean;
+  readonly pickable?: boolean;
+  readonly selectable?: boolean;
+  readonly mouseClickable?: boolean;
+  readonly clickableKind?: AccessibilityElementClickableKind;
   readonly bounds?: ComputerUseCoordinateBounds;
   readonly children?: readonly AccessibilityElementSnapshot[];
 }
@@ -81,6 +88,11 @@ interface AccessibilityVisibleElement {
   readonly selected?: boolean;
   readonly expanded?: boolean;
   readonly actions?: readonly string[];
+  readonly pressable?: boolean;
+  readonly pickable?: boolean;
+  readonly selectable?: boolean;
+  readonly mouseClickable?: boolean;
+  readonly clickableKind?: AccessibilityElementClickableKind;
 }
 
 export interface AccessibilityAppStateSnapshot {
@@ -144,6 +156,7 @@ export interface ComputerUseCommandFailure {
     readonly code:
       | "permission_denied"
       | "accessibility_unavailable"
+      | "element_action_unsupported"
       | "window_unavailable"
       | "screen_recording_unavailable"
       | "app_not_found"
@@ -391,6 +404,11 @@ function elementHasMeaningfulContent(
     element.enabled === false ||
     element.selected === true ||
     element.expanded !== undefined ||
+    element.pressable === true ||
+    element.pickable === true ||
+    element.selectable === true ||
+    element.mouseClickable === true ||
+    element.clickableKind !== undefined ||
     (element.actions !== undefined && element.actions.length > 0)
   );
 }
@@ -642,6 +660,11 @@ function visibleElementForSnapshotElement(
     ...(element.actions && element.actions.length > 0
       ? { actions: element.actions }
       : {}),
+    ...(element.pressable === true ? { pressable: true } : {}),
+    ...(element.pickable === true ? { pickable: true } : {}),
+    ...(element.selectable === true ? { selectable: true } : {}),
+    ...(element.mouseClickable === true ? { mouseClickable: true } : {}),
+    ...(element.clickableKind ? { clickableKind: element.clickableKind } : {}),
   };
 }
 
@@ -806,6 +829,15 @@ const ROLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 const DEFAULT_ACTION_NAMES = new Set(["AXPress"]);
+const PRIMARY_CLICK_ROLE_NAMES = new Set([
+  "AXButton",
+  "AXCheckBox",
+  "AXDisclosureTriangle",
+  "AXMenuBarItem",
+  "AXMenuItem",
+  "AXPopUpButton",
+  "AXRadioButton",
+]);
 
 const ACTION_LABELS: Readonly<Record<string, string>> = Object.freeze({
   AXCancel: "Cancel",
@@ -879,9 +911,29 @@ function elementAnnotations(element: AccessibilityElementSnapshot): string[] {
   }
   if (element.selected === true) {
     annotations.push("selected");
+  } else if (element.selectable === true) {
+    annotations.push("selectable");
   }
   if (element.expanded === true) {
     annotations.push("expanded");
+  }
+  if (
+    element.pressable === true &&
+    element.clickableKind === "press" &&
+    (element.role === undefined || !PRIMARY_CLICK_ROLE_NAMES.has(element.role))
+  ) {
+    annotations.push("pressable");
+  }
+  if (element.pickable === true && element.clickableKind === "pick") {
+    annotations.push("pickable");
+  }
+  if (
+    element.mouseClickable === true &&
+    element.clickableKind === "mouse" &&
+    element.selectable !== true &&
+    (element.role === undefined || !PRIMARY_CLICK_ROLE_NAMES.has(element.role))
+  ) {
+    annotations.push("clickable");
   }
   return annotations;
 }
@@ -909,6 +961,9 @@ function actionLabel(action: string): string {
 function secondaryActions(element: AccessibilityElementSnapshot): string[] {
   return (element.actions ?? [])
     .filter((action) => {
+      if (action === "AXPick" && element.clickableKind === "pick") {
+        return false;
+      }
       return !DEFAULT_ACTION_NAMES.has(action);
     })
     .map((action) => {

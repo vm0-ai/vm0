@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.300.0](https://github.com/vm0-ai/vm0/compare/core-v8.299.1...core-v8.300.0) (2026-05-27)
+
+
+### Features
+
+* **platform:** add URL-routed artifact sidebar behind ChatArtifactSidebar switch ([#15034](https://github.com/vm0-ai/vm0/issues/15034)) ([d2642cd](https://github.com/vm0-ai/vm0/commit/d2642cd5c3f4f5c7d547f4ca1d2e481e4a961dd8))
+
+
+### Refactoring
+
+* align connector lifecycle checks ([#15115](https://github.com/vm0-ai/vm0/issues/15115)) ([ead9783](https://github.com/vm0-ai/vm0/commit/ead97835707696396efa8a57fea46fe0c6297477))
+* move connector search to dedicated module ([#15121](https://github.com/vm0-ai/vm0/issues/15121)) ([f60da30](https://github.com/vm0-ai/vm0/commit/f60da3044ca4d2f4a0b487937240c3c4971d69b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.4
+    * @vm0/connectors bumped to 1.37.0
+
 ## [8.299.1](https://github.com/vm0-ai/vm0/compare/core-v8.299.0...core-v8.299.1) (2026-05-27)
 
 

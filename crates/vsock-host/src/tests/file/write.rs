@@ -4,14 +4,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use vsock_proto::{Decoder, MSG_ERROR, MSG_EXEC_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
+use vsock_proto::{Decoder, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
     normal_operation_readiness, pending_request_count, setup_host_and_guest,
 };
 use super::support::{
-    expect_write_file, send_write_file_failure, send_write_file_success, spawn_write_file,
+    expect_write_file, send_guest_error, send_write_file_failure, send_write_file_success,
+    spawn_write_file,
 };
 use crate::{FrameWriteObserver, operation_tracker::NormalOperationReadiness};
 
@@ -35,9 +36,7 @@ async fn test_write_file() {
         assert!(!sudo);
         assert!(!append);
 
-        let payload = vsock_proto::encode_write_file_result(true, "");
-        let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        send_write_file_success(&mut guest, msgs[0].seq).await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -116,9 +115,7 @@ async fn write_file_error_response_releases_tracker() {
         NormalOperationReadiness::Busy
     );
 
-    let payload = vsock_proto::encode_error("guest write failed");
-    let resp = vsock_proto::encode(MSG_ERROR, write.seq(), &payload).unwrap();
-    guest.write_all(&resp).await.unwrap();
+    send_guest_error(&mut guest, write.seq(), "guest write failed").await;
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("guest write failed"));
@@ -320,9 +317,7 @@ async fn test_write_file_failure() {
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
 
-        let payload = vsock_proto::encode_write_file_result(false, "permission denied");
-        let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        send_write_file_failure(&mut guest, msgs[0].seq, "permission denied").await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();

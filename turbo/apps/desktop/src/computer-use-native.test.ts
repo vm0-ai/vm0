@@ -319,6 +319,7 @@ describe("computer use native backend", () => {
   it.each([
     ["app_not_found", "Unable to open Things: Unable to find application"],
     ["app_open_failed", "Unable to open Things"],
+    ["element_action_unsupported", "Element does not support a primary click"],
     ["window_unavailable", "Unable to resolve a background window target"],
   ])("preserves %s helper failures", async (code, message) => {
     const helper = await createHelper({

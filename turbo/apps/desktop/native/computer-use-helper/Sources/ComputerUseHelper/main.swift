@@ -1095,6 +1095,133 @@ func actionNames(_ element: AXUIElement) -> [String] {
     }
 }
 
+let axPressActionName = "AXPress"
+let axPickActionName = "AXPick"
+let selectableRoles: Set<String> = ["AXCell", "AXColumn", "AXRow", "AXTab"]
+let selectableSubroles: Set<String> = ["AXOutlineRow"]
+
+enum ElementClickStrategy: String {
+    case mouse
+    case pick
+    case press
+}
+
+struct ElementClickCapabilities {
+    let role: String?
+    let subrole: String?
+    let frame: CGRect?
+    let pressable: Bool
+    let pickable: Bool
+    let selectable: Bool
+    let mouseClickable: Bool
+    let webAreaMouseClick: Bool
+
+    var clickableKind: String? {
+        if webAreaMouseClick, frame != nil {
+            return "mouse"
+        }
+        if pressable {
+            return "press"
+        }
+        if pickable {
+            return "pick"
+        }
+        if selectable, frame != nil {
+            return "select"
+        }
+        if mouseClickable {
+            return "mouse"
+        }
+        return nil
+    }
+}
+
+struct ElementClickTarget {
+    let element: AXUIElement
+    let capabilities: ElementClickCapabilities
+    let promotedDepth: Int
+    let strategy: ElementClickStrategy
+}
+
+func clickableFrame(_ element: AXUIElement) -> CGRect? {
+    guard let frame = elementFrame(element),
+          frame.width > 0,
+          frame.height > 0
+    else {
+        return nil
+    }
+    return frame
+}
+
+func isSelectableElement(role roleName: String?, subrole: String?, selected: Bool?) -> Bool {
+    if let roleName, selectableRoles.contains(roleName), selected != nil {
+        return true
+    }
+    if let subrole, selectableSubroles.contains(subrole), selected != nil {
+        return true
+    }
+    return false
+}
+
+func clickCapabilities(
+    _ element: AXUIElement,
+    actions actionList: [String]? = nil,
+    selected selectedValue: Bool? = nil
+) -> ElementClickCapabilities {
+    let elementRole = role(element)
+    let elementSubrole = stringValue(attribute(element, kAXSubroleAttribute as CFString))
+    let elementActions = Set(actionList ?? actionNames(element))
+    let elementSelected = selectedValue ?? boolValue(attribute(element, kAXSelectedAttribute as CFString))
+    let frame = clickableFrame(element)
+    let selectable = isSelectableElement(role: elementRole, subrole: elementSubrole, selected: elementSelected)
+    let webAreaMouseClick = shouldUseMouseClickForElement(element)
+    let mouseClickable = frame != nil && (webAreaMouseClick || selectable)
+    return ElementClickCapabilities(
+        role: elementRole,
+        subrole: elementSubrole,
+        frame: frame,
+        pressable: elementActions.contains(axPressActionName),
+        pickable: elementActions.contains(axPickActionName),
+        selectable: selectable,
+        mouseClickable: mouseClickable,
+        webAreaMouseClick: webAreaMouseClick
+    )
+}
+
+func preferredClickStrategy(_ capabilities: ElementClickCapabilities) -> ElementClickStrategy? {
+    if capabilities.webAreaMouseClick, capabilities.frame != nil {
+        return .mouse
+    }
+    if capabilities.pressable {
+        return .press
+    }
+    if capabilities.pickable {
+        return .pick
+    }
+    if capabilities.mouseClickable {
+        return .mouse
+    }
+    return nil
+}
+
+func setClickCapabilityFields(_ node: inout [String: Any], capabilities: ElementClickCapabilities) {
+    if capabilities.pressable {
+        node["pressable"] = true
+    }
+    if capabilities.pickable {
+        node["pickable"] = true
+    }
+    if capabilities.selectable {
+        node["selectable"] = true
+    }
+    if capabilities.mouseClickable {
+        node["mouseClickable"] = true
+    }
+    if let clickableKind = capabilities.clickableKind {
+        node["clickableKind"] = clickableKind
+    }
+}
+
 func attributeIsSettable(_ element: AXUIElement, _ name: CFString) -> Bool? {
     var settable = DarwinBoolean(false)
     let error = AXUIElementIsAttributeSettable(element, name, &settable)
@@ -1842,7 +1969,8 @@ func describe(
     if let enabled = boolValue(attribute(element, kAXEnabledAttribute as CFString)) {
         node["enabled"] = enabled
     }
-    if let selected = boolValue(attribute(element, kAXSelectedAttribute as CFString)) {
+    let selected = boolValue(attribute(element, kAXSelectedAttribute as CFString))
+    if let selected {
         node["selected"] = selected
     }
     if let expanded = boolValue(attribute(element, kAXExpandedAttribute as CFString)) {
@@ -1858,6 +1986,7 @@ func describe(
     if let bounds = bounds(element) {
         node["bounds"] = bounds
     }
+    setClickCapabilityFields(&node, capabilities: clickCapabilities(element, actions: actions, selected: selected))
 
     if depth >= limits.maxDepth {
         markTruncated(&truncationReasons, "max_depth")
@@ -2214,53 +2343,63 @@ func handleElementClick(_ request: [String: Any], session: ComputerUseRuntimeSes
     let elementId = try resolveElementId(request, session: session, commandName: "element.click")
     let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
     let button = optionalString(request, "button") ?? "left"
-    let config = try mouseEventConfig(button: button)
     let app = try resolveRunningApp(named: appName)
     let element = try resolveElement(appName: appName, elementId: elementId)
-    if shouldUseMouseClickForElement(element), let frame = elementFrame(element) {
-        let point = CGPoint(x: frame.midX, y: frame.midY)
-        return try withFrontmostPreservation(
-            dispatchMode: "background_mouse_event",
-            dispatchTarget: "element_point",
-            inputRisk: "background_app_pointer"
-        ) {
-            guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
-                throw windowTargetUnavailableFailure(appName: appName)
-            }
-            var result = try performBackgroundMouseClick(
-                target: target,
-                point: point,
-                config: config,
-                clickCount: clickCount
-            )
-            result["elementClickMode"] = "web_area_mouse_fallback"
-            return (targetPID: target.pid, result: result)
-        }
+    guard let clickTarget = resolveElementClickTarget(element) else {
+        throw HelperFailure(
+            code: "element_action_unsupported",
+            message: "Element is visible but does not support a primary click action: \(elementId)"
+        )
     }
-    if button != "left" {
+    if clickTarget.strategy != .mouse && button != "left" {
         throw HelperFailure(
             code: "unsupported_command",
             message: "element.click with element target only supports the left button"
         )
     }
-    return try withFrontmostPreservation(
-        dispatchMode: "accessibility_action",
-        dispatchTarget: "element",
-        inputRisk: "targeted_app_action"
-    ) {
-        for index in 0..<clickCount {
-            let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
-            if error != .success {
-                throw HelperFailure(
-                    code: "accessibility_unavailable",
-                    message: "Unable to press \(elementId): \(error.rawValue)"
-                )
-            }
-            if index + 1 < clickCount {
-                usleep(50_000)
-            }
+
+    if clickTarget.strategy == .mouse {
+        let config = try mouseEventConfig(button: button)
+        let mode = clickTarget.capabilities.webAreaMouseClick
+            ? "web_area_mouse_fallback"
+            : "capability_mouse_fallback"
+        return try performElementMouseClick(
+            app: app,
+            appName: appName,
+            clickTarget: clickTarget,
+            config: config,
+            clickCount: clickCount,
+            mode: mode
+        )
+    }
+
+    do {
+        return try performElementAccessibilityClick(
+            app: app,
+            elementId: elementId,
+            clickTarget: clickTarget,
+            clickCount: clickCount
+        )
+    } catch let unsupported as UnsupportedClickAction {
+        guard clickTarget.capabilities.frame != nil else {
+            throw HelperFailure(
+                code: "element_action_unsupported",
+                message: "Primary click action \(unsupported.actionName) is unsupported for \(elementId): \(unsupported.error.rawValue)"
+            )
         }
-        return (targetPID: app.processIdentifier, result: [:])
+        let config = try mouseEventConfig(button: button)
+        return try performElementMouseClick(
+            app: app,
+            appName: appName,
+            clickTarget: clickTarget,
+            config: config,
+            clickCount: clickCount,
+            mode: "unsupported_action_mouse_fallback",
+            extra: [
+                "unsupportedAction": unsupported.actionName,
+                "unsupportedActionError": unsupported.error.rawValue,
+            ]
+        )
     }
 }
 
@@ -2349,6 +2488,130 @@ func shouldUseMouseClickForElement(_ element: AXUIElement) -> Bool {
         return false
     }
     return hasRoleInElementAncestry(element, roleName: "AXWebArea")
+}
+
+struct UnsupportedClickAction: Error {
+    let actionName: String
+    let error: AXError
+}
+
+func isUnsupportedActionError(_ error: AXError) -> Bool {
+    return error == .actionUnsupported || error == .attributeUnsupported
+}
+
+func resolveElementClickTarget(_ element: AXUIElement) -> ElementClickTarget? {
+    var current: AXUIElement? = element
+    var depth = 0
+    while let node = current, depth <= limits.maxDepth {
+        let capabilities = clickCapabilities(node)
+        if !(depth > 0 && capabilities.role == "AXWebArea"),
+           let strategy = preferredClickStrategy(capabilities)
+        {
+            return ElementClickTarget(
+                element: node,
+                capabilities: capabilities,
+                promotedDepth: depth,
+                strategy: strategy
+            )
+        }
+        current = axElementValue(attribute(node, kAXParentAttribute as CFString))
+        depth += 1
+    }
+    return nil
+}
+
+func elementClickResultMetadata(clickTarget: ElementClickTarget) -> [String: Any] {
+    var result: [String: Any] = [
+        "clickStrategy": clickTarget.strategy.rawValue,
+    ]
+    if clickTarget.promotedDepth > 0 {
+        result["clickTargetPromoted"] = true
+        result["clickTargetPromotedDepth"] = clickTarget.promotedDepth
+    }
+    if let role = clickTarget.capabilities.role {
+        result["clickTargetRole"] = role
+    }
+    if let subrole = clickTarget.capabilities.subrole {
+        result["clickTargetSubrole"] = subrole
+    }
+    if let clickableKind = clickTarget.capabilities.clickableKind {
+        result["clickableKind"] = clickableKind
+    }
+    return result
+}
+
+func performElementMouseClick(
+    app: NSRunningApplication,
+    appName: String,
+    clickTarget: ElementClickTarget,
+    config: (down: CGEventType, up: CGEventType, button: CGMouseButton),
+    clickCount: Int,
+    mode: String,
+    extra: [String: Any] = [:]
+) throws -> [String: Any] {
+    guard let frame = clickTarget.capabilities.frame else {
+        throw HelperFailure(
+            code: "element_action_unsupported",
+            message: "Element does not have a usable frame for a mouse click"
+        )
+    }
+    let point = CGPoint(x: frame.midX, y: frame.midY)
+    return try withFrontmostPreservation(
+        dispatchMode: "background_mouse_event",
+        dispatchTarget: "element_point",
+        inputRisk: "background_app_pointer"
+    ) {
+        guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+            throw windowTargetUnavailableFailure(appName: appName)
+        }
+        var result = try performBackgroundMouseClick(
+            target: target,
+            point: point,
+            config: config,
+            clickCount: clickCount
+        )
+        result["elementClickMode"] = mode
+        for (key, value) in elementClickResultMetadata(clickTarget: clickTarget) {
+            result[key] = value
+        }
+        for (key, value) in extra {
+            result[key] = value
+        }
+        return (targetPID: target.pid, result: result)
+    }
+}
+
+func performElementAccessibilityClick(
+    app: NSRunningApplication,
+    elementId: String,
+    clickTarget: ElementClickTarget,
+    clickCount: Int
+) throws -> [String: Any] {
+    let actionName = clickTarget.strategy == .pick ? axPickActionName : axPressActionName
+    return try withFrontmostPreservation(
+        dispatchMode: "accessibility_action",
+        dispatchTarget: "element",
+        inputRisk: "targeted_app_action"
+    ) {
+        for index in 0..<clickCount {
+            let error = AXUIElementPerformAction(clickTarget.element, actionName as CFString)
+            if error != .success {
+                if index == 0, isUnsupportedActionError(error) {
+                    throw UnsupportedClickAction(actionName: actionName, error: error)
+                }
+                throw HelperFailure(
+                    code: "accessibility_unavailable",
+                    message: "Unable to perform \(actionName) on \(elementId): \(error.rawValue)"
+                )
+            }
+            if index + 1 < clickCount {
+                usleep(50_000)
+            }
+        }
+        var result = elementClickResultMetadata(clickTarget: clickTarget)
+        result["clickAction"] = actionName
+        return (targetPID: app.processIdentifier, result: result)
+    }
 }
 
 func normalizeKeyToken(_ value: String) -> String {

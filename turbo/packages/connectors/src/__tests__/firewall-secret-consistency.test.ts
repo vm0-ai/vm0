@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { connectorTypeSchema } from "../connectors";
-import {
-  getConnectorAuthMethods,
-  getConnectorEnvBindings,
-} from "../connector-utils";
+import { CONNECTOR_TYPES, connectorTypeSchema } from "../connectors";
+import { getConnectorEnvBindings } from "../connector-utils";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
 const PLATFORM_INJECTED_SECRET_NAMES: Partial<
@@ -47,7 +44,7 @@ describe("firewall secret name consistency", () => {
       } else {
         // API-token path: use manual grant fields directly.
         for (const method of Object.values(
-          getConnectorAuthMethods(connectorType),
+          CONNECTOR_TYPES[connectorType].authMethods,
         )) {
           switch (method.grant.kind) {
             case "manual":

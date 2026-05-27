@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.170.0](https://github.com/vm0-ai/vm0/compare/cli-v9.169.2...cli-v9.170.0) (2026-05-27)
+
+
+### Features
+
+* add nano banana 2 image generation ([#15122](https://github.com/vm0-ai/vm0/issues/15122)) ([ee43836](https://github.com/vm0-ai/vm0/commit/ee43836a706e4f6d8fdfddef95dd119f4533f711))
+
+
+### Refactoring
+
+* move connector search to dedicated module ([#15121](https://github.com/vm0-ai/vm0/issues/15121)) ([f60da30](https://github.com/vm0-ai/vm0/commit/f60da3044ca4d2f4a0b487937240c3c4971d69b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.42.4
+    * @vm0/connectors bumped to 1.37.0
+    * @vm0/core bumped to 8.300.0
+
 ## [9.169.2](https://github.com/vm0-ai/vm0/compare/cli-v9.169.1...cli-v9.169.2) (2026-05-27)
 
 

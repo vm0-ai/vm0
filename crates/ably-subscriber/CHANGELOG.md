@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.15](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.14...ably-subscriber-v0.7.15) (2026-05-27)
+
+
+### Bug Fixes
+
+* harden ably endpoint url construction ([#15111](https://github.com/vm0-ai/vm0/issues/15111)) ([c29a319](https://github.com/vm0-ai/vm0/commit/c29a319d9f4ac4405cbb2cbcb0a121070da8a4c0))
+
 ## [0.7.14](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.13...ably-subscriber-v0.7.14) (2026-05-22)
 
 

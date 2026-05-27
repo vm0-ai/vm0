@@ -225,6 +225,66 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
+  it("should pass Nano Banana 2 edit controls to the image API", async () => {
+    let capturedBody: unknown;
+    server.use(
+      http.post(IMAGE_URL, async ({ request }) => {
+        capturedBody = await request.json();
+
+        return HttpResponse.json({
+          ...IMAGE_RESULT,
+          model: "fal-ai/nano-banana-2",
+          provider: "fal",
+          outputFormat: "webp",
+          sourceImageUrls: [
+            "https://example.com/reference-1.png",
+            "https://example.com/reference-2.png",
+          ],
+        });
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--skip-style",
+      "--model",
+      "nano-banana-2",
+      "--prompt",
+      "Combine these references into a campaign image",
+      "--image-url",
+      "https://example.com/reference-1.png",
+      "--image-url",
+      "https://example.com/reference-2.png",
+      "--format",
+      "webp",
+      "--seed",
+      "456",
+      "--safety-tolerance",
+      "5",
+    ]);
+
+    expect(capturedBody).toEqual({
+      prompt: "Combine these references into a campaign image",
+      model: "nano-banana-2",
+      size: "auto",
+      quality: "medium",
+      background: "auto",
+      outputFormat: "webp",
+      moderation: "auto",
+      seed: 456,
+      safetyTolerance: "5",
+      imageUrls: [
+        "https://example.com/reference-1.png",
+        "https://example.com/reference-2.png",
+      ],
+    });
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Model: fal-ai/nano-banana-2");
+    expect(stdout).toContain("Provider: fal");
+  });
+
   it("should print JSON metadata when --json is provided", async () => {
     server.use(
       http.post(IMAGE_URL, () => {
@@ -473,6 +533,7 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("gpt-image-1 (default)");
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
+    expect(helpOutput).toContain("nano-banana-2");
     expect(normalizedHelpOutput).toContain("support varies");
     expect(helpOutput).toContain("3840x2160");
     expect(helpOutput).toContain("edges divisible by 16");
@@ -483,6 +544,7 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("--safety-tolerance");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--image-prompt-strength");
+    expect(helpOutput).toContain("Nano Banana 2 accepts up to 14");
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--skip-style");
     expect(helpOutput).not.toContain("--styled ");

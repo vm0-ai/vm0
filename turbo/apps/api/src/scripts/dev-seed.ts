@@ -1,10 +1,9 @@
 #!/usr/bin/env tsx
 
 import { eq, sql } from "drizzle-orm";
-import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@vm0/core/github-url";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { getSeedSkillNames } from "@vm0/core/zero-seed-skills";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
@@ -239,6 +238,9 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.036), 1],
   ]),
+  ...usageGroup("image", "fal-ai/nano-banana-2", [
+    ["output_image", usd(0.08 * 1.2), 1],
+  ]),
 
   // BytePlus ModelArk video generation with a 200% provider-price multiplier.
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
@@ -349,10 +351,7 @@ async function devSeed() {
 
   // --- skills (seed skills + common connectors, batch insert) ---
   writeLine("Seeding skills");
-  const eligibleConnectorTypes = getEligibleConnectorTypes();
-  const skillValues = buildSeedSkillValues([
-    ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
-  ]);
+  const skillValues = buildSeedSkillValues(getSeedSkillNames());
   const inserted = await database
     .insert(skills)
     .values(skillValues)

@@ -222,14 +222,25 @@ fn mock_token_endpoint(server: &MockServer, key_name: &str) {
 }
 
 fn test_config(ws_port: u16, http_port: u16, channel: &str) -> SubscribeConfig {
+    test_config_with_key_name(ws_port, http_port, channel, "testKey.testId")
+}
+
+fn test_config_with_key_name(
+    ws_port: u16,
+    http_port: u16,
+    channel: &str,
+    key_name: &str,
+) -> SubscribeConfig {
     let host = format!("127.0.0.1:{ws_port}");
     let rest_host = format!("127.0.0.1:{http_port}");
     let channel = channel.to_string();
+    let key_name = key_name.to_string();
     let mut config = SubscribeConfig::new(
         Box::new(move || {
+            let key_name = key_name.clone();
             Box::pin(async {
                 Ok(ably_subscriber::TokenRequest {
-                    key_name: "testKey.testId".into(),
+                    key_name,
                     timestamp: now_ms(),
                     nonce: "nonce-1".into(),
                     mac: "fake-mac".into(),
@@ -655,6 +666,111 @@ async fn http_token_exchange_error() {
         Err(other) => panic!("expected Http error, got {other:?}"),
         Ok(_) => panic!("expected error, got Ok"),
     }
+}
+
+#[tokio::test]
+async fn token_exchange_encodes_key_name_as_path_segment() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+
+    let now = now_ms();
+    let token_mock = http.mock(|when, then| {
+        when.method(POST)
+            .path("/keys/a%2Fb%3Fc%23d%25%20e/requestToken");
+        then.status(201)
+            .header("content-type", "application/json")
+            .json_body(serde_json::json!({
+                "token": "mock-token-abc",
+                "expires": now + 3_600_000,
+                "issued": now,
+            }));
+    });
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let _conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+    });
+
+    let mut sub = subscribe(test_config_with_key_name(
+        ws_port,
+        http.port(),
+        "ch",
+        "a/b?c#d% e",
+    ))
+    .await
+    .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    assert_eq!(token_mock.calls(), 1);
+    sub.close();
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn token_exchange_invalid_json_response_is_http_error() {
+    let http = MockServer::start();
+    http.mock(|when, then| {
+        when.method(POST).path("/keys/testKey.testId/requestToken");
+        then.status(201)
+            .header("content-type", "application/json")
+            .body("{not-json");
+    });
+
+    let result = subscribe(test_config(19999, http.port(), "ch")).await;
+    match result {
+        Err(ably_subscriber::Error::Http(_)) => {}
+        Err(other) => panic!("expected Http error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+}
+
+#[tokio::test]
+async fn token_exchange_invalid_rest_host_fails_before_request() {
+    let http = MockServer::start();
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path("/keys/testKey.testId/requestToken");
+        then.status(201)
+            .header("content-type", "application/json")
+            .json_body(serde_json::json!({
+                "token": "mock-token-abc",
+                "expires": now_ms() + 3_600_000,
+                "issued": now_ms(),
+            }));
+    });
+
+    let mut config = test_config(19999, http.port(), "ch");
+    config.rest_host = Some(format!("127.0.0.1:{}/path", http.port()));
+
+    let result = subscribe(config).await;
+    match result {
+        Err(ably_subscriber::Error::Url(_)) => {}
+        Err(other) => panic!("expected Url error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+    assert_eq!(token_mock.calls(), 0);
+}
+
+#[tokio::test]
+async fn token_exchange_dot_segment_key_name_fails_before_request() {
+    let http = MockServer::start();
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path("/keys/requestToken");
+        then.status(201)
+            .header("content-type", "application/json")
+            .json_body(serde_json::json!({
+                "token": "mock-token-abc",
+                "expires": now_ms() + 3_600_000,
+                "issued": now_ms(),
+            }));
+    });
+
+    let result = subscribe(test_config_with_key_name(19999, http.port(), "ch", ".")).await;
+    match result {
+        Err(ably_subscriber::Error::Url(_)) => {}
+        Err(other) => panic!("expected Url error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+    assert_eq!(token_mock.calls(), 0);
 }
 
 // ---------------------------------------------------------------------------

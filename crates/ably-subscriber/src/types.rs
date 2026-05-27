@@ -232,10 +232,13 @@ pub struct SubscribeConfig {
     pub channel: String,
     /// Optional channel parameters (e.g. `{"rewind": "2m"}`).
     pub channel_params: Option<HashMap<String, String>>,
-    /// Ably realtime host. Defaults to `"realtime.ably.io"`.
+    /// Ably realtime host/authority, without a URL scheme, path, query, or
+    /// fragment. Defaults to `"realtime.ably.io"`.
     pub host: Option<String>,
     /// Ably REST host for token exchange. Defaults to `"rest.ably.io"` when
     /// `host` is the default, otherwise falls back to the realtime host value.
+    /// Like [`host`](Self::host), this must be a host/authority rather than a
+    /// base URL.
     pub rest_host: Option<String>,
     /// Override timing parameters. `None` uses [`TimingConfig::default()`].
     pub timing: Option<TimingConfig>,
@@ -316,8 +319,14 @@ pub enum Error {
     #[error("Token fetch failed: {}", redact_access_token(&.0.to_string()))]
     TokenFetch(BoxError),
 
-    /// Failure while parsing a realtime WebSocket URL built from the
-    /// subscription configuration.
+    /// Invalid endpoint URL or URL component built from the subscription
+    /// configuration or token request.
+    ///
+    /// This also covers local validation failures for endpoint host and
+    /// [`TokenRequest`] key-name values that would otherwise be silently
+    /// normalized by URL parsing. The message deliberately omits the raw input
+    /// because callers may accidentally include credentials in host-like values
+    /// or authentication material in token request fields.
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
 }

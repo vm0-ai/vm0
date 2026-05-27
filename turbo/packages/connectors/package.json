@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.36.6",
+  "version": "1.37.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,10 @@
     "./connector-utils": {
       "import": "./src/connector-utils.ts",
       "types": "./src/connector-utils.ts"
+    },
+    "./connector-search": {
+      "import": "./src/connector-search.ts",
+      "types": "./src/connector-search.ts"
     },
     "./connectors": {
       "import": "./src/connectors.ts",

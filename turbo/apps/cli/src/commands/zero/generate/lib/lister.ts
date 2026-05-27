@@ -101,6 +101,13 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       command: "zero generate image --provider built-in --model seedream4 -h",
       reason: "available without connector setup",
     },
+    {
+      label: "Built-in fal.ai",
+      model: "fal-ai/nano-banana-2",
+      command:
+        "zero generate image --provider built-in --model nano-banana-2 -h",
+      reason: "available without connector setup",
+    },
   ],
   presentation: [
     {
@@ -210,7 +217,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "zero generate image --provider built-in -h",
     models:
-      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
   },
   video: {
     label: "Built-in video generation",

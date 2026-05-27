@@ -17,9 +17,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { schema } from "@vm0/db";
 import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { getSeedSkillNames } from "@vm0/core/zero-seed-skills";
 import { buildSeedSkillValues } from "./db-test-seeders/seed-skill-values";
-import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 
 export async function setup() {
@@ -28,9 +27,7 @@ export async function setup() {
   const db = drizzle(pool, { schema });
 
   try {
-    const allNames = [
-      ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
-    ];
+    const allNames = getSeedSkillNames();
 
     // 1. Seed skills
     await db
