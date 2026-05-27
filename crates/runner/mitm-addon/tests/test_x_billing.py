@@ -32,6 +32,7 @@ from usage.providers.connectors.x_tlds import IANA_TLD_VERSION, IANA_TLDS
 
 
 class _FirewallPermission(NamedTuple):
+    base: str
     name: str
     rules: tuple[str, ...]
 
@@ -42,7 +43,9 @@ _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" 
 _X_FIREWALL_EXPORT_SCRIPT = """
 import { xFirewall } from "./packages/connectors/src/firewalls/x.generated.ts";
 
-console.log(JSON.stringify(xFirewall.apis.flatMap((api) => api.permissions ?? [])));
+console.log(JSON.stringify(xFirewall.apis.flatMap((api) =>
+  (api.permissions ?? []).map((permission) => ({ ...permission, base: api.base }))
+)));
 """.strip()
 
 
@@ -69,6 +72,13 @@ def _parse_x_firewall_permissions(raw: object) -> tuple[_FirewallPermission, ...
                 f"but entry {index} is {type(entry).__name__}."
             )
 
+        base = entry.get("base")
+        if not isinstance(base, str):
+            _fail_x_firewall_load(
+                "Expected each xFirewall permission entry to have a string "
+                f"`base`, but entry {index} has {type(base).__name__}."
+            )
+
         name = entry.get("name")
         if not isinstance(name, str):
             _fail_x_firewall_load(
@@ -92,7 +102,7 @@ def _parse_x_firewall_permissions(raw: object) -> tuple[_FirewallPermission, ...
                 )
             validated_rules.append(rule)
 
-        permissions.append(_FirewallPermission(name=name, rules=tuple(validated_rules)))
+        permissions.append(_FirewallPermission(base=base, name=name, rules=tuple(validated_rules)))
 
     return tuple(permissions)
 
@@ -195,6 +205,15 @@ class TestFirewallConsistency:
                 rules.add((method, pattern))
             result.setdefault(permission.name, set()).update(rules)
         return result
+
+    def test_generated_firewall_permissions_use_supported_base(self):
+        bases = {permission.base for permission in _load_x_firewall_permissions()}
+        assert bases == {"https://api.x.com"}, (
+            "X billing classification currently keys by permission, method, and "
+            f"path only.  Generated xFirewall permissions now use bases {sorted(bases)}; "
+            "review whether billing classification needs to include API base before "
+            "trusting path-level drift checks."
+        )
 
     def test_generated_firewall_payload_has_expected_stable_scopes(self):
         firewall_scopes = self._load_firewall_permissions()
