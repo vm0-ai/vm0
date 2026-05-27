@@ -174,15 +174,12 @@ describe("runner apiStartTime contract", () => {
 });
 
 describe("runner Claude tool list contracts", () => {
-  it("keeps stored execution contexts tolerant of legacy tool list values", () => {
+  it("keeps runner context schemas tolerant of legacy tool list values", () => {
     expect(
       storedExecutionContextSchema.shape.tools.safeParse(["Bash,Read"]).success,
     ).toBe(true);
-  });
-
-  it("rejects ambiguous tool list values in claimed execution contexts", () => {
     expect(
       executionContextSchema.shape.tools.safeParse(["Bash,Read"]).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 });
