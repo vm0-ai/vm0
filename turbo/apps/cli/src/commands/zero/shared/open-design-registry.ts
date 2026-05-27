@@ -50,11 +50,11 @@ export interface OpenDesignCandidateSlice {
   readonly registryVersion: string;
   readonly source: {
     readonly repo: string;
-    readonly commit: string;
+    readonly ref: string;
   };
   readonly sources: readonly {
     readonly repo: string;
-    readonly commit: string;
+    readonly ref: string;
   }[];
   readonly candidates: {
     readonly skills: readonly OpenDesignRegistryEntry[];
@@ -3043,16 +3043,16 @@ export function selectOpenDesignCandidates(): OpenDesignCandidateSlice {
     registryVersion: OPEN_DESIGN_REGISTRY_VERSION,
     source: {
       repo: OPEN_DESIGN_REPO,
-      commit: OPEN_DESIGN_COMMIT,
+      ref: OPEN_DESIGN_COMMIT,
     },
     sources: [
       {
         repo: OPEN_DESIGN_REPO,
-        commit: OPEN_DESIGN_COMMIT,
+        ref: OPEN_DESIGN_COMMIT,
       },
       {
         repo: VM0_SKILLS_REPO,
-        commit: VM0_SKILLS_REF,
+        ref: VM0_SKILLS_REF,
       },
     ],
     candidates: {
