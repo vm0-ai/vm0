@@ -26,6 +26,15 @@ HOP_BY_HOP: frozenset[str] = frozenset(
 )
 DEFAULT_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
+MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
+MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
+
+_forward_request_semaphore: asyncio.Semaphore | None = None
+_forward_request_semaphore_loop: asyncio.AbstractEventLoop | None = None
+
+
+class ForwardedResponseTooLargeError(Exception):
+    """Raised when an auth.base upstream response exceeds the local body cap."""
 
 
 def header_pairs(headers) -> list[tuple[str, str]]:
@@ -149,6 +158,13 @@ def _outbound_request_headers(
     return outbound
 
 
+def _read_response_body(resp) -> bytes:
+    body = resp.read(MAX_AUTH_BASE_RESPONSE_BODY_BYTES + 1)
+    if len(body) > MAX_AUTH_BASE_RESPONSE_BODY_BYTES:
+        raise ForwardedResponseTooLargeError("Forwarded auth.base response body too large")
+    return body
+
+
 def _forward_request_sync(
     url: str,
     method: str,
@@ -183,12 +199,23 @@ def _forward_request_sync(
             conn.putheader(header_name, header_value)
         conn.endheaders(body)
         resp = conn.getresponse()
-        resp_body = resp.read()
+        resp_body = _read_response_body(resp)
         return resp.status, resp_body, _filter_response_headers(resp.getheaders())
     finally:
         if resp is not None:
             resp.close()
         conn.close()
+
+
+def _get_forward_request_semaphore() -> asyncio.Semaphore:
+    global _forward_request_semaphore
+    global _forward_request_semaphore_loop
+
+    loop = asyncio.get_running_loop()
+    if _forward_request_semaphore is None or _forward_request_semaphore_loop is not loop:
+        _forward_request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_AUTH_BASE_FORWARDS)
+        _forward_request_semaphore_loop = loop
+    return _forward_request_semaphore
 
 
 async def forward_request(
@@ -198,4 +225,5 @@ async def forward_request(
     body: bytes | None,
 ) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
-    return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
+    async with _get_forward_request_semaphore():
+        return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)

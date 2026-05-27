@@ -1,5 +1,6 @@
 """Tests for auth.base low-level HTTP forwarding."""
 
+import asyncio
 import contextlib
 import threading
 from collections.abc import Iterator
@@ -398,6 +399,52 @@ class TestAuthBaseForwarderSecurity:
         assert ("X-Keep", "ok") in pairs
 
 
+class TestAuthBaseForwarderResponseBodyLimit:
+    def test_reads_response_with_bounded_size(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            _patched_forwarder_connection(body=b"ok") as upstream,
+        ):
+            status, body, _headers = forwarder._forward_request_sync(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        upstream.resp.read.assert_called_once_with(5)
+
+    def test_accepts_body_at_limit(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            _patched_forwarder_connection(body=b"1234") as upstream,
+        ):
+            status, body, _headers = forwarder._forward_request_sync(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert status == 200
+        assert body == b"1234"
+        upstream.resp.read.assert_called_once_with(5)
+
+    def test_rejects_body_over_limit_and_closes_resources(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
+            _patched_forwarder_connection(body=b"12345") as upstream,
+            pytest.raises(forwarder.ForwardedResponseTooLargeError),
+        ):
+            forwarder._forward_request_sync("https://example.com", "GET", [], None)
+
+        upstream.resp.read.assert_called_once_with(5)
+        upstream.resp.close.assert_called_once()
+        upstream.conn.close.assert_called_once()
+
+
 class TestAuthBaseForwarderResourceCleanup:
     def test_closes_response_on_success(self):
         with _patched_forwarder_connection(
@@ -464,6 +511,56 @@ class TestAuthBaseForwarderResourceCleanup:
 
 
 class TestForwardRequestAsyncWrapper:
+    async def test_limits_concurrent_forwarding_work(self):
+        active = 0
+        max_active = 0
+        started = 0
+        lock = threading.Lock()
+        cap_reached = threading.Event()
+        release = threading.Event()
+
+        def blocking_forward(*_args):
+            nonlocal active
+            nonlocal max_active
+            nonlocal started
+
+            with lock:
+                active += 1
+                started += 1
+                max_active = max(max_active, active)
+                if started == forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS:
+                    cap_reached.set()
+            try:
+                if not release.wait(timeout=5):
+                    raise TimeoutError("test did not release blocked forwards")
+                return 200, b"ok", {}
+            finally:
+                with lock:
+                    active -= 1
+
+        task_count = forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS + 2
+        with patch.object(forwarder, "_forward_request_sync", side_effect=blocking_forward):
+            tasks = [
+                asyncio.create_task(
+                    forwarder.forward_request("https://example.com", "GET", [], None)
+                )
+                for _ in range(task_count)
+            ]
+            try:
+                cap_was_reached = await asyncio.to_thread(cap_reached.wait, 2)
+                assert cap_was_reached
+                await asyncio.sleep(0)
+                with lock:
+                    assert started == forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS
+                    assert max_active == forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS
+                release.set()
+                results = await asyncio.gather(*tasks)
+            finally:
+                release.set()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert results == [(200, b"ok", {})] * task_count
+
     async def test_offloads_request_work_from_event_loop_thread(self):
         event_loop_thread_id = threading.get_ident()
         forwarding_thread_ids = []
@@ -474,7 +571,7 @@ class TestForwardRequestAsyncWrapper:
         class FakeResponse:
             status = 200
 
-            def read(self):
+            def read(self, size):
                 record_forwarding_thread()
                 return b"ok"
 
