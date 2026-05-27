@@ -396,6 +396,40 @@ enum BackgroundWindowLocalEvent {
     }
 }
 
+final class HelperRunLoopThread: @unchecked Sendable {
+    static let shared = HelperRunLoopThread()
+
+    private final class RunLoopBox: @unchecked Sendable {
+        var runLoop: CFRunLoop?
+    }
+
+    private let runLoop: CFRunLoop
+
+    private init() {
+        let box = RunLoopBox()
+        let semaphore = DispatchSemaphore(value: 0)
+
+        Thread.detachNewThread {
+            let timer = Timer(timeInterval: 3_600, repeats: true) { _ in }
+            RunLoop.current.add(timer, forMode: .common)
+            box.runLoop = CFRunLoopGetCurrent()
+            semaphore.signal()
+            RunLoop.current.run()
+        }
+
+        semaphore.wait()
+        guard let runLoop = box.runLoop else {
+            fatalError("Unable to start helper run loop thread")
+        }
+        self.runLoop = runLoop
+    }
+
+    func addSource(_ source: CFRunLoopSource, mode: CFRunLoopMode = .commonModes) {
+        CFRunLoopAddSource(runLoop, source, mode)
+        CFRunLoopWakeUp(runLoop)
+    }
+}
+
 enum BackgroundWindowScreenshot {
     private static let maxLongEdgePixels = 1_600
     private static let maxPixelArea = 1_920_000
@@ -559,6 +593,220 @@ struct AddressedEventDispatcher {
         event.setWindowAddressingFields(windowNumber: target.windowNumber)
         event.postToPid(target.pid)
     }
+}
+
+final class BackgroundActivationSession: @unchecked Sendable {
+    enum TapKind {
+        case previous
+        case target
+    }
+
+    private enum Phase {
+        case deliveringToTarget
+        case holding
+        case finished
+    }
+
+    final class TapContext {
+        let session: BackgroundActivationSession
+        let kind: TapKind
+
+        init(session: BackgroundActivationSession, kind: TapKind) {
+            self.session = session
+            self.kind = kind
+        }
+    }
+
+    private static let focusSuppressionEventMask = CGEventMask.max
+
+    private let target: WindowTarget
+    private let stateLock = NSLock()
+    private var phase: Phase = .deliveringToTarget
+    private var taps: [CFMachPort] = []
+    private var contexts: [TapContext] = []
+    private var finished = false
+
+    private init(target: WindowTarget) {
+        self.target = target
+    }
+
+    static func start(target: WindowTarget) -> BackgroundActivationSession {
+        let session = BackgroundActivationSession(target: target)
+        session.installTapsIfPossible(previousApp: NSWorkspace.shared.frontmostApplication)
+        return session
+    }
+
+    var hasFocusSuppressionTaps: Bool {
+        !taps.isEmpty
+    }
+
+    func beginTargetDelivery() {
+        guard hasFocusSuppressionTaps else { return }
+        setPhase(.deliveringToTarget)
+    }
+
+    func holdFocusSuppressionUntilFinish() {
+        guard hasFocusSuppressionTaps else { return }
+        setPhase(.holding)
+    }
+
+    func activateWindow() {
+        Self.postWindowActivationEvent(targetPID: target.pid, windowNumber: target.windowNumber)
+        Self.postWindowCenterPrimer(target: target)
+    }
+
+    func finish() {
+        stateLock.lock()
+        guard !finished else {
+            stateLock.unlock()
+            return
+        }
+        finished = true
+        phase = .finished
+        stateLock.unlock()
+
+        for tap in taps {
+            CFMachPortInvalidate(tap)
+        }
+        taps.removeAll()
+        contexts.removeAll()
+    }
+
+    deinit {
+        finish()
+    }
+
+    private static func postWindowActivationEvent(targetPID: pid_t, windowNumber: Int) {
+        guard windowNumber != 0 else { return }
+        let event = NSEvent.otherEvent(
+            with: .appKitDefined,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: windowNumber,
+            context: nil,
+            subtype: Int16(1),
+            data1: 0,
+            data2: 0
+        )?.cgEvent
+        guard let event else { return }
+        event.setWindowAddressingFields(windowNumber: windowNumber)
+        event.postToPid(targetPID)
+        usleep(20_000)
+    }
+
+    private static func postWindowCenterPrimer(target: WindowTarget) {
+        guard target.windowNumber != 0, target.frame.width > 0, target.frame.height > 0 else {
+            return
+        }
+
+        let point = CGPoint(x: target.frame.midX, y: target.frame.midY)
+        let dispatcher = AddressedEventDispatcher(target: target)
+        try? dispatcher.postMouse(
+            .leftMouseDown,
+            at: point,
+            button: .left,
+            clickState: 1,
+            pressure: 1
+        )
+        usleep(30_000)
+        try? dispatcher.postMouse(
+            .leftMouseUp,
+            at: point,
+            button: .left,
+            clickState: 1,
+            pressure: 0
+        )
+        usleep(20_000)
+    }
+
+    private func installTapsIfPossible(previousApp: NSRunningApplication?) {
+        guard let previousApp, previousApp.processIdentifier != target.pid else { return }
+
+        do {
+            try installTap(kind: .previous, pid: previousApp.processIdentifier)
+            try installTap(kind: .target, pid: target.pid)
+        } catch {
+            for tap in taps {
+                CFMachPortInvalidate(tap)
+            }
+            taps.removeAll()
+            contexts.removeAll()
+        }
+    }
+
+    private func installTap(kind: TapKind, pid: pid_t) throws {
+        let context = TapContext(session: self, kind: kind)
+        let pointer = Unmanaged.passUnretained(context).toOpaque()
+
+        guard let tap = CGEvent.tapCreateForPid(
+            pid: pid,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: Self.focusSuppressionEventMask,
+            callback: backgroundActivationEventTapCallback,
+            userInfo: pointer
+        ) else {
+            throw HelperFailure(
+                code: "accessibility_unavailable",
+                message: "Unable to install background focus event tap for pid \(pid)"
+            )
+        }
+
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            throw HelperFailure(
+                code: "accessibility_unavailable",
+                message: "Unable to install background focus event tap run loop source for pid \(pid)"
+            )
+        }
+
+        HelperRunLoopThread.shared.addSource(source)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        contexts.append(context)
+        taps.append(tap)
+    }
+
+    func shouldDrop(kind: TapKind, type: CGEventType) -> Bool {
+        guard isFocusMessage(type: type) else { return false }
+
+        stateLock.lock()
+        let currentPhase = phase
+        stateLock.unlock()
+
+        switch currentPhase {
+        case .deliveringToTarget, .holding:
+            return kind == .previous
+        case .finished:
+            return false
+        }
+    }
+
+    private func setPhase(_ newPhase: Phase) {
+        stateLock.lock()
+        phase = newPhase
+        stateLock.unlock()
+    }
+
+    private func isFocusMessage(type: CGEventType) -> Bool {
+        type.rawValue == 13 || type.rawValue == 19 || type.rawValue == 20
+    }
+}
+
+nonisolated(unsafe) private let backgroundActivationEventTapCallback: CGEventTapCallBack = { _, type, event, rawContext in
+    guard let rawContext else {
+        return Unmanaged.passUnretained(event)
+    }
+
+    let context = Unmanaged<BackgroundActivationSession.TapContext>
+        .fromOpaque(rawContext)
+        .takeUnretainedValue()
+
+    if context.session.shouldDrop(kind: context.kind, type: type) {
+        return nil
+    }
+
+    return Unmanaged.passUnretained(event)
 }
 
 func isRecord(_ value: Any) -> [String: Any]? {
@@ -1965,13 +2213,41 @@ func handleElementClick(_ request: [String: Any], session: ComputerUseRuntimeSes
     }
     let elementId = try resolveElementId(request, session: session, commandName: "element.click")
     let clickCount = max(1, min(optionalInt(request, "clickCount", default: 1), 3))
+    let button = optionalString(request, "button") ?? "left"
+    let config = try mouseEventConfig(button: button)
     let app = try resolveRunningApp(named: appName)
+    let element = try resolveElement(appName: appName, elementId: elementId)
+    if shouldUseMouseClickForElement(element), let frame = elementFrame(element) {
+        let point = CGPoint(x: frame.midX, y: frame.midY)
+        return try withFrontmostPreservation(
+            dispatchMode: "background_mouse_event",
+            dispatchTarget: "element_point",
+            inputRisk: "background_app_pointer"
+        ) {
+            guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+                throw windowTargetUnavailableFailure(appName: appName)
+            }
+            var result = try performBackgroundMouseClick(
+                target: target,
+                point: point,
+                config: config,
+                clickCount: clickCount
+            )
+            result["elementClickMode"] = "web_area_mouse_fallback"
+            return (targetPID: target.pid, result: result)
+        }
+    }
+    if button != "left" {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "element.click with element target only supports the left button"
+        )
+    }
     return try withFrontmostPreservation(
         dispatchMode: "accessibility_action",
         dispatchTarget: "element",
         inputRisk: "targeted_app_action"
     ) {
-        let element = try resolveElement(appName: appName, elementId: elementId)
         for index in 0..<clickCount {
             let error = AXUIElementPerformAction(element, kAXPressAction as CFString)
             if error != .success {
@@ -2006,6 +2282,73 @@ func mouseEventConfig(button: String) throws -> (
         code: "unsupported_command",
         message: "Unsupported mouse button: \(button)"
     )
+}
+
+func performBackgroundMouseClick(
+    target: WindowTarget,
+    point: CGPoint,
+    config: (down: CGEventType, up: CGEventType, button: CGMouseButton),
+    clickCount: Int
+) throws -> [String: Any] {
+    let activation = BackgroundActivationSession.start(target: target)
+    defer { activation.finish() }
+
+    activation.beginTargetDelivery()
+    activation.activateWindow()
+
+    let dispatcher = AddressedEventDispatcher(target: target)
+    for index in 1...clickCount {
+        try dispatcher.postMouse(
+            config.down,
+            at: point,
+            button: config.button,
+            clickState: Int64(index),
+            pressure: 1
+        )
+        usleep(30_000)
+        try dispatcher.postMouse(
+            config.up,
+            at: point,
+            button: config.button,
+            clickState: Int64(index),
+            pressure: 0
+        )
+        if index < clickCount {
+            usleep(50_000)
+        }
+    }
+
+    activation.holdFocusSuppressionUntilFinish()
+    usleep(200_000)
+
+    return [
+        "screenX": point.x,
+        "screenY": point.y,
+        "targetWindowId": target.windowNumber,
+        "backgroundActivation": true,
+        "focusSuppression": activation.hasFocusSuppressionTaps,
+    ]
+}
+
+func hasRoleInElementAncestry(_ element: AXUIElement, roleName: String) -> Bool {
+    var current: AXUIElement? = element
+    var depth = 0
+    while let node = current, depth <= limits.maxDepth {
+        if role(node) == roleName {
+            return true
+        }
+        current = axElementValue(attribute(node, kAXParentAttribute as CFString))
+        depth += 1
+    }
+    return false
+}
+
+func shouldUseMouseClickForElement(_ element: AXUIElement) -> Bool {
+    let elementRole = role(element)
+    if elementRole == "AXMenuBarItem" || elementRole == "AXMenuItem" {
+        return false
+    }
+    return hasRoleInElementAncestry(element, roleName: "AXWebArea")
 }
 
 func normalizeKeyToken(_ value: String) -> String {
@@ -2139,34 +2482,15 @@ func handleElementClickPoint(
             windowFrame: windowFrame
         )
 
-        let dispatcher = AddressedEventDispatcher(target: target)
-        for index in 1...clickCount {
-            try dispatcher.postMouse(
-                config.down,
-                at: point,
-                button: config.button,
-                clickState: Int64(index),
-                pressure: 1
-            )
-            usleep(30_000)
-            try dispatcher.postMouse(
-                config.up,
-                at: point,
-                button: config.button,
-                clickState: Int64(index),
-                pressure: 0
-            )
-            if index < clickCount {
-                usleep(50_000)
-            }
-        }
-
+        let result = try performBackgroundMouseClick(
+            target: target,
+            point: point,
+            config: config,
+            clickCount: clickCount
+        )
         return (
             targetPID: target.pid,
-            result: [
-                "screenX": point.x,
-                "screenY": point.y,
-            ]
+            result: result
         )
     }
 }
