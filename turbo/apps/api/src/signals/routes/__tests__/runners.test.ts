@@ -553,7 +553,7 @@ describe("POST /api/runners/*", () => {
     });
   });
 
-  it("rejects invalid stored execution context without claiming the job", async () => {
+  it("fails invalid stored execution context and dequeues the job", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -576,21 +576,35 @@ describe("POST /api/runners/*", () => {
     });
 
     const db = store.set(writeDb$);
-    const [job] = await db
-      .select({ claimedAt: runnerJobQueue.claimedAt })
+    const remainingJobs = await db
+      .select({ runId: runnerJobQueue.runId })
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, queued.runId));
-    expect(job?.claimedAt).toBeNull();
+    expect(remainingJobs).toHaveLength(0);
 
     const [run] = await db
       .select({
         status: agentRuns.status,
+        error: agentRuns.error,
+        completedAt: agentRuns.completedAt,
         startedAt: agentRuns.startedAt,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, queued.runId));
-    expect(run?.status).toBe("pending");
+    expect(run).toMatchObject({
+      status: "failed",
+      error: "Runner job missing valid execution context",
+    });
+    expect(run?.completedAt).toBeInstanceOf(Date);
     expect(run?.startedAt).toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${queued.runId}`,
+      { status: "failed" },
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `run:changed:${queued.runId}`,
+      { status: "running" },
+    );
   });
 
   it("removes a claimable job when the run is no longer pending", async () => {
