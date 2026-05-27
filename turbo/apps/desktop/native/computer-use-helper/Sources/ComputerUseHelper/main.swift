@@ -471,7 +471,7 @@ final class ComputerUseVisualPointerView: NSView {
         let bottomShadow = NSShadow()
         bottomShadow.shadowColor = NSColor(calibratedWhite: 0.02, alpha: 0.48)
         bottomShadow.shadowBlurRadius = 3.4
-        bottomShadow.shadowOffset = NSSize(width: 0.9, height: 2.1)
+        bottomShadow.shadowOffset = NSSize(width: 0.9, height: -2.1)
         bottomShadow.set()
 
         NSColor(calibratedRed: 0.34, green: 0.37, blue: 0.40, alpha: 1).setFill()
