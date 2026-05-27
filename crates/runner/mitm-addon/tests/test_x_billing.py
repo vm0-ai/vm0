@@ -193,7 +193,7 @@ class TestFirewallConsistency:
                         f"`METHOD /path`, got {rule!r} for permission {permission.name!r}."
                     )
                 rules.add((method, pattern))
-            result[permission.name] = rules
+            result.setdefault(permission.name, set()).update(rules)
         return result
 
     def test_generated_firewall_payload_has_expected_stable_scopes(self):
@@ -206,18 +206,16 @@ class TestFirewallConsistency:
             "and the JSON loader before trusting classifier drift assertions."
         )
 
-    def test_generated_firewall_permission_names_are_unique(self):
-        seen: set[str] = set()
-        duplicates: list[str] = []
+    def test_generated_firewall_permissions_have_rules(self):
+        empty: list[str] = []
         for permission in _load_x_firewall_permissions():
-            if permission.name in seen:
-                duplicates.append(permission.name)
-            seen.add(permission.name)
+            if not permission.rules:
+                empty.append(permission.name)
 
-        assert not duplicates, (
-            "Generated xFirewall permissions contain duplicate names: "
-            f"{duplicates}.  Duplicate permission names make set/dict-based "
-            "classifier drift checks hide one permission group's rules."
+        assert not empty, (
+            "Generated xFirewall permissions contain empty rule groups: "
+            f"{empty}.  Empty groups can make classifier scope checks pass "
+            "while no firewall paths actually exercise that scope."
         )
 
     def test_every_firewall_scope_is_mapped_or_intentionally_skipped(self):
