@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { extractSecretNamesFromApis } from "../firewall-types";
+import {
+  extractFirewallAuthReferences,
+  extractSecretNamesFromApis,
+} from "../firewall-types";
 
 describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
   it("extracts secrets from auth.headers only", () => {
@@ -202,5 +205,37 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
       },
     ];
     expect(extractSecretNamesFromApis(apis)).toEqual(["REAL"]);
+  });
+
+  it("extracts source-aware auth references by namespace", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: "${{ basic(vars.USER, secrets.PASS) }}",
+            "X-Collision-Secret": "${{ secrets.API_KEY }}",
+            "X-Collision-Var": "${{ vars.API_KEY }}",
+            "X-Literal": '${{ basic("secrets.FAKE", "vars.FAKE") }}',
+          },
+          base: "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK }}",
+          query: {
+            secret: "${{ secrets.QUERY_SECRET }}",
+            variable: "${{ vars.QUERY_VAR }}",
+          },
+        },
+      },
+    ];
+
+    expect(extractFirewallAuthReferences(apis)).toStrictEqual({
+      secrets: ["PASS", "API_KEY", "WEBHOOK", "QUERY_SECRET"],
+      vars: ["USER", "API_KEY", "WEBHOOK_HOST", "QUERY_VAR"],
+    });
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual([
+      "PASS",
+      "API_KEY",
+      "WEBHOOK",
+      "QUERY_SECRET",
+    ]);
   });
 });

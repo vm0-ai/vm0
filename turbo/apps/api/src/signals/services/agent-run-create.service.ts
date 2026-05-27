@@ -1651,8 +1651,6 @@ async function loadOauthConnectorContext(
         if (secretValue) {
           resolvedSecrets[envName] = secretValue;
         }
-      } else {
-        resolvedSecrets[envName] = valueRef;
       }
     }
 

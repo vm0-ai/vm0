@@ -177,6 +177,13 @@ export type Firewalls = z.infer<typeof firewallsSchema>;
  */
 const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const AUTH_REFERENCE_PATTERN =
+  /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+export interface FirewallAuthReferences {
+  readonly secrets: readonly string[];
+  readonly vars: readonly string[];
+}
 
 /**
  * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
@@ -234,6 +241,59 @@ export function extractSecretNamesFromApis(
     }
   }
   return [...names];
+}
+
+function collectAuthReferencesFromTemplate(
+  template: string,
+  references: { secrets: Set<string>; vars: Set<string> },
+): void {
+  const addReference = (namespace: string, name: string): void => {
+    if (namespace === "secrets") {
+      references.secrets.add(name);
+    } else if (namespace === "vars") {
+      references.vars.add(name);
+    }
+  };
+
+  for (const match of template.matchAll(AUTH_REFERENCE_PATTERN)) {
+    if (match[1] && match[2]) {
+      addReference(match[1], match[2]);
+    }
+  }
+  for (const match of template.matchAll(basicAuthTemplateRe())) {
+    if (match[1] && match[2]) {
+      addReference(match[1], match[2]);
+    }
+    if (match[4] && match[5]) {
+      addReference(match[4], match[5]);
+    }
+  }
+}
+
+export function extractFirewallAuthReferences(
+  apis: FirewallConfig["apis"],
+): FirewallAuthReferences {
+  const references = {
+    secrets: new Set<string>(),
+    vars: new Set<string>(),
+  };
+
+  for (const entry of apis) {
+    for (const value of Object.values(entry.auth.headers ?? {})) {
+      collectAuthReferencesFromTemplate(value, references);
+    }
+    if (entry.auth.base) {
+      collectAuthReferencesFromTemplate(entry.auth.base, references);
+    }
+    for (const value of Object.values(entry.auth.query ?? {})) {
+      collectAuthReferencesFromTemplate(value, references);
+    }
+  }
+
+  return {
+    secrets: [...references.secrets],
+    vars: [...references.vars],
+  };
 }
 
 /**

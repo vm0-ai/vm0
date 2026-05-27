@@ -635,6 +635,48 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("resolves same-name secrets and vars by namespace", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_KEY: "secret-value" }),
+          authHeaders: {
+            "X-Secret": secretTemplate("API_KEY"),
+            "X-Var": varTemplate("API_KEY"),
+          },
+          authBase: `https://${varTemplate("API_KEY")}.example.com/${secretTemplate("API_KEY")}`,
+          authQuery: {
+            secret: secretTemplate("API_KEY"),
+            variable: varTemplate("API_KEY"),
+          },
+          vars: {
+            API_KEY: "var-value",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      headers: {
+        "X-Secret": "secret-value",
+        "X-Var": "var-value",
+      },
+      base: "https://var-value.example.com/secret-value",
+      query: {
+        secret: "secret-value",
+        variable: "var-value",
+      },
+      expiresAt: null,
+      resolvedSecrets: ["API_KEY"],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+  });
+
   it("resolves query, vars, pass-through, and omitted query template cases", async () => {
     const fixture = await track(seedFixture());
 

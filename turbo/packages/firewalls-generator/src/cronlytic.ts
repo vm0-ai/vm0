@@ -3,8 +3,6 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://www.cronlytic.com/api-documentation";
 const PLACEHOLDER_API_KEY =
   "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
-const PLACEHOLDER_USER_ID =
-  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf0";
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -21,7 +19,6 @@ function generateTypeScript(): string {
     '  description: "Cronlytic API",',
     "  placeholders: {",
     `    CRONLYTIC_API_KEY: "${PLACEHOLDER_API_KEY}",`,
-    `    CRONLYTIC_USER_ID: "${PLACEHOLDER_USER_ID}",`,
     "  },",
     "  apis: [",
     "    {",
@@ -29,7 +26,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     '          "x-api-key": "${{ secrets.CRONLYTIC_API_KEY }}",',
-    '          "x-user-id": "${{ secrets.CRONLYTIC_USER_ID }}",',
+    '          "x-user-id": "${{ vars.CRONLYTIC_USER_ID }}",',
     "        },",
     "      },",
     "      permissions: [],",
