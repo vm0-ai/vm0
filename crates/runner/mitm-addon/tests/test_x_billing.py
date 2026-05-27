@@ -379,17 +379,19 @@ class TestFirewallConsistency:
 
     def test_registered_firewall_shape_matches_generated_file(self):
         export = _load_x_firewall_export()
-        assert sorted(export.registered_api_entries) == sorted(export.api_entries), (
+        assert export.registered_api_entries == export.api_entries, (
             "The X connector firewall registry does not expose the same API "
-            "entry shape as x.generated.ts. Runtime firewall matching uses "
-            "the registry, so generated-file drift checks must not silently "
-            "ignore registry-only API entries."
+            "entry shape and order as x.generated.ts. Runtime firewall matching "
+            "uses the registry and first-match semantics make order meaningful, "
+            "so generated-file drift checks must not silently ignore registry-only "
+            "or reordered API entries."
         )
-        assert sorted(export.registered_permissions) == sorted(export.permissions), (
+        assert export.registered_permissions == export.permissions, (
             "The X connector firewall registry does not expose the same "
-            "permission/rule set as x.generated.ts. Runtime firewall matching "
-            "uses the registry, so classifier drift checks must not silently "
-            "validate a different generated object."
+            "permission/rule set and order as x.generated.ts. Runtime firewall "
+            "matching uses the registry and first-match semantics make order "
+            "meaningful, so classifier drift checks must not silently validate "
+            "a different or reordered generated object."
         )
 
     def _load_firewall_permissions(self) -> set[str]:
@@ -452,6 +454,26 @@ class TestFirewallConsistency:
             "but X billing override classification is indexed by the concrete "
             "request method and would not apply ANY-specific overrides without "
             "additional classifier logic."
+        )
+
+    def test_generated_firewall_rules_use_simple_parameter_segments(self):
+        complex_patterns: list[tuple[str, str, str, str]] = []
+        for permission in _load_x_firewall_permissions():
+            for rule in permission.rules:
+                method, pattern = rule.split(" ", 1)
+                for segment in pattern.split("/"):
+                    if "{" not in segment and "}" not in segment:
+                        continue
+                    if _SIMPLE_PATH_PARAM_SEGMENT_RE.fullmatch(segment) is None:
+                        complex_patterns.append((permission.name, method, pattern, segment))
+                        break
+
+        assert not complex_patterns, (
+            "Generated xFirewall rules use mixed or greedy parameter segments: "
+            f"{complex_patterns}. The X billing drift tests use representative "
+            "sample paths to prove runtime first-match bucket preservation; "
+            "upgrade those overlap checks before accepting generated paths "
+            "beyond literal segments and whole-segment `{param}` placeholders."
         )
 
     def test_generated_firewall_api_entries_use_supported_base(self):
