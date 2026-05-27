@@ -2794,6 +2794,13 @@
       "when": 1779810000003,
       "tag": "0398_useful_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 399,
+      "version": "7",
+      "when": 1779848875612,
+      "tag": "0399_icy_kronos",
+      "breakpoints": true
     }
   ]
 }
