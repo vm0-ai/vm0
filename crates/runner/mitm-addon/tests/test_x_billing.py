@@ -48,6 +48,7 @@ class _XFirewallExport(NamedTuple):
     name: str
     registered_name: str
     billable_connectors: tuple[str, ...]
+    registered_api_entries: tuple[_FirewallApiEntry, ...]
     api_entries: tuple[_FirewallApiEntry, ...]
     registered_permissions: tuple[_FirewallPermission, ...]
     permissions: tuple[_FirewallPermission, ...]
@@ -71,15 +72,17 @@ collectAndValidatePermissions(registeredXFirewall);
 const flattenPermissions = (firewall) => firewall.apis.flatMap((api) =>
   (api.permissions ?? []).map((permission) => ({ ...permission, base: api.base }))
 );
+const flattenApiEntries = (firewall) => firewall.apis.map((api) => ({
+  base: api.base,
+  permissionCount: api.permissions?.length ?? 0,
+}));
 
 console.log(JSON.stringify({
   name: xFirewall.name,
   registeredName: registeredXFirewall.name,
   billableConnectors: BILLABLE_CONNECTORS,
-  apiEntries: xFirewall.apis.map((api) => ({
-    base: api.base,
-    permissionCount: api.permissions?.length ?? 0,
-  })),
+  registeredApiEntries: flattenApiEntries(registeredXFirewall),
+  apiEntries: flattenApiEntries(xFirewall),
   registeredPermissions: flattenPermissions(registeredXFirewall),
   permissions: flattenPermissions(xFirewall),
 }));
@@ -211,6 +214,7 @@ def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
         )
 
     billable_connectors = _parse_string_list(raw.get("billableConnectors"), "billableConnectors")
+    registered_api_entries = _parse_x_firewall_api_entries(raw.get("registeredApiEntries"))
     api_entries = _parse_x_firewall_api_entries(raw.get("apiEntries"))
     registered_permissions = _parse_x_firewall_permissions(raw.get("registeredPermissions"))
     permissions = _parse_x_firewall_permissions(raw.get("permissions"))
@@ -218,6 +222,7 @@ def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
         name=name,
         registered_name=registered_name,
         billable_connectors=billable_connectors,
+        registered_api_entries=registered_api_entries,
         api_entries=api_entries,
         registered_permissions=registered_permissions,
         permissions=permissions,
@@ -323,8 +328,14 @@ class TestFirewallConsistency:
             "so API run contexts would not mark X flows as billable."
         )
 
-    def test_registered_firewall_permissions_match_generated_file(self):
+    def test_registered_firewall_shape_matches_generated_file(self):
         export = _load_x_firewall_export()
+        assert sorted(export.registered_api_entries) == sorted(export.api_entries), (
+            "The X connector firewall registry does not expose the same API "
+            "entry shape as x.generated.ts. Runtime firewall matching uses "
+            "the registry, so generated-file drift checks must not silently "
+            "ignore registry-only API entries."
+        )
         assert sorted(export.registered_permissions) == sorted(export.permissions), (
             "The X connector firewall registry does not expose the same "
             "permission/rule set as x.generated.ts. Runtime firewall matching "
@@ -358,6 +369,25 @@ class TestFirewallConsistency:
                 rules.add((method, pattern))
             result.setdefault(permission.name, set()).update(rules)
         return result
+
+    def test_generated_firewall_rules_are_uniquely_owned(self):
+        owners: dict[tuple[str, str, str], list[str]] = {}
+        for permission in _load_x_firewall_permissions():
+            for rule in permission.rules:
+                method, pattern = rule.split(" ", 1)
+                owners.setdefault((permission.base, method, pattern), []).append(permission.name)
+
+        duplicates = [
+            (base, method, pattern, permission_names)
+            for (base, method, pattern), permission_names in owners.items()
+            if len(permission_names) > 1
+        ]
+        assert not duplicates, (
+            "Generated xFirewall has duplicate base/method/path rules: "
+            f"{duplicates}. Runtime firewall matching returns the first "
+            "matching permission, so duplicate endpoint ownership can make "
+            "X billing classify a different scope than these drift checks expect."
+        )
 
     def test_generated_firewall_api_entries_use_supported_base(self):
         bases = {entry.base for entry in _load_x_firewall_export().api_entries}
