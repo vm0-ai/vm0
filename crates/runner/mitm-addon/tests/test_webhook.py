@@ -73,26 +73,13 @@ class TestUsageWebhookDelivery:
                     )
                 raise AssertionError(f"unexpected URL: {req.full_url}")
 
-        opener = usage.webhook._opener
-        opener_state = opener.__dict__
-        # add_handler mutates dispatch maps as well as the top-level handler list.
-        original_handlers = list(opener_state["handlers"])
-        original_handle_open = {
-            key: list(value) for key, value in opener_state["handle_open"].items()
-        }
-        original_handle_error = {
-            key: {nested_key: list(nested_value) for nested_key, nested_value in value.items()}
-            for key, value in opener_state["handle_error"].items()
-        }
-        original_process_response = {
-            key: list(value) for key, value in opener_state["process_response"].items()
-        }
-        original_process_request = {
-            key: list(value) for key, value in opener_state["process_request"].items()
-        }
         handler = RedirectingHttpHandler()
-        try:
-            opener.add_handler(handler)
+        production_handler_types = [
+            type(production_handler)
+            for production_handler in usage.webhook._opener.__dict__["handlers"]
+        ]
+        opener = urllib.request.build_opener(handler, *production_handler_types)
+        with patch.object(usage.webhook, "_opener", opener):
             with pytest.raises(urllib.error.HTTPError) as exc:
                 usage.webhook._post_webhook(
                     "http://example.test/webhook",
@@ -102,12 +89,6 @@ class TestUsageWebhookDelivery:
 
             assert exc.value.code == 302
             assert handler.urls == ["http://example.test/webhook"]
-        finally:
-            opener_state["handlers"] = original_handlers
-            opener_state["handle_open"] = original_handle_open
-            opener_state["handle_error"] = original_handle_error
-            opener_state["process_response"] = original_process_response
-            opener_state["process_request"] = original_process_request
 
     def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
