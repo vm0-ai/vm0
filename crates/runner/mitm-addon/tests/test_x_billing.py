@@ -206,6 +206,20 @@ class TestFirewallConsistency:
             "and the JSON loader before trusting classifier drift assertions."
         )
 
+    def test_generated_firewall_permission_names_are_unique(self):
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for permission in _load_x_firewall_permissions():
+            if permission.name in seen:
+                duplicates.append(permission.name)
+            seen.add(permission.name)
+
+        assert not duplicates, (
+            "Generated xFirewall permissions contain duplicate names: "
+            f"{duplicates}.  Duplicate permission names make set/dict-based "
+            "classifier drift checks hide one permission group's rules."
+        )
+
     def test_every_firewall_scope_is_mapped_or_intentionally_skipped(self):
         firewall_scopes = self._load_firewall_permissions()
         classified = set(_PERMISSION_TO_BUCKET.keys())
