@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.79.0](https://github.com/vm0-ai/vm0/compare/api-v1.78.2...api-v1.79.0) (2026-05-27)
+
+
+### Features
+
+* add nano banana 2 image generation ([#15122](https://github.com/vm0-ai/vm0/issues/15122)) ([ee43836](https://github.com/vm0-ai/vm0/commit/ee43836a706e4f6d8fdfddef95dd119f4533f711))
+
+
+### Refactoring
+
+* align connector lifecycle checks ([#15115](https://github.com/vm0-ai/vm0/issues/15115)) ([ead9783](https://github.com/vm0-ai/vm0/commit/ead97835707696396efa8a57fea46fe0c6297477))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.4
+    * @vm0/connectors bumped to 1.37.0
+    * @vm0/core bumped to 8.300.0
+    * @vm0/db bumped to 1.20.0
+
 ## [1.78.2](https://github.com/vm0-ai/vm0/compare/api-v1.78.1...api-v1.78.2) (2026-05-27)
 
 

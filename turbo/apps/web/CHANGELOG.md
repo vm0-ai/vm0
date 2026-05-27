@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.393.1](https://github.com/vm0-ai/vm0/compare/web-v12.393.0...web-v12.393.1) (2026-05-27)
+
+
+### Refactoring
+
+* align connector lifecycle checks ([#15115](https://github.com/vm0-ai/vm0/issues/15115)) ([ead9783](https://github.com/vm0-ai/vm0/commit/ead97835707696396efa8a57fea46fe0c6297477))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.4
+    * @vm0/core bumped to 8.300.0
+    * @vm0/db bumped to 1.20.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.0
+
 ## [12.393.0](https://github.com/vm0-ai/vm0/compare/web-v12.392.0...web-v12.393.0) (2026-05-27)
 
 
