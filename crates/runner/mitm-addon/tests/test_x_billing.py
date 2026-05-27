@@ -20,6 +20,7 @@ from typing import ClassVar, NamedTuple, NoReturn
 
 import pytest
 
+import matching
 from usage.providers.connectors.x_billing import (
     _INCLUDES_TO_BUCKET,
     _PATH_OVERRIDES,
@@ -206,6 +207,11 @@ class TestFirewallConsistency:
                     pytest.fail(
                         "Expected xFirewall rule to be shaped like "
                         f"`METHOD /path`, got {rule!r} for permission {permission.name!r}."
+                    )
+                if matching.compile_path_pattern(pattern) is None:
+                    pytest.fail(
+                        "Expected xFirewall rule path to compile with the "
+                        f"production matcher, got {rule!r} for permission {permission.name!r}."
                     )
                 rules.add((method, pattern))
             result.setdefault(permission.name, set()).update(rules)
