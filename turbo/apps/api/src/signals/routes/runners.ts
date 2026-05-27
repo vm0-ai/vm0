@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, type Setter } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   runnersHeartbeatContract,
@@ -475,6 +475,41 @@ async function recordClaimApiToClaimMetric(args: {
   });
 }
 
+function scheduleClaimFailedSideEffects(args: {
+  readonly set: Setter;
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly error: string;
+}): void {
+  const backgroundSignal = new AbortController().signal;
+  waitUntil(
+    publishRunChangedForUserSafely(args.userId, args.runId, {
+      status: "failed",
+    }),
+  );
+  waitUntil(
+    tapError(
+      args.set(
+        dispatchCompleteSideEffects$,
+        {
+          runId: args.runId,
+          orgId: args.orgId,
+          status: "failed",
+          error: args.error,
+        },
+        backgroundSignal,
+      ),
+      (error) => {
+        L.error("dispatchCompleteSideEffects failed", {
+          runId: args.runId,
+          error,
+        });
+      },
+    ),
+  );
+}
+
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
@@ -524,30 +559,13 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return notFound("Run not found");
     }
 
-    await publishRunChangedForUserSafely(run.userId, runId, {
-      status: "failed",
+    scheduleClaimFailedSideEffects({
+      set,
+      runId,
+      userId: run.userId,
+      orgId: run.orgId,
+      error: INVALID_EXECUTION_CONTEXT_ERROR,
     });
-    signal.throwIfAborted();
-    waitUntil(
-      tapError(
-        set(
-          dispatchCompleteSideEffects$,
-          {
-            runId,
-            orgId: run.orgId,
-            status: "failed",
-            error: INVALID_EXECUTION_CONTEXT_ERROR,
-          },
-          signal,
-        ),
-        (error) => {
-          L.error("dispatchCompleteSideEffects failed", {
-            runId,
-            error,
-          });
-        },
-      ),
-    );
     return badRequestMessage("Job missing execution context");
   }
   const storedContext = storedContextResult.data;
