@@ -210,6 +210,15 @@ pub struct DecodedExecResult<'a> {
     pub diagnostic: &'a str,
 }
 
+fn validate_exec_output_chunk_limit(chunk_limit_bytes: u32) -> Result<(), ProtocolError> {
+    if chunk_limit_bytes == 0 {
+        return Err(ProtocolError::InvalidPayload(
+            "exec output chunk limit must be non-zero",
+        ));
+    }
+    Ok(())
+}
+
 fn exec_output_policy_encoded_len(policy: ExecOutputPolicy) -> Result<usize, ProtocolError> {
     match policy {
         ExecOutputPolicy::Discard => Ok(1),
@@ -217,21 +226,13 @@ fn exec_output_policy_encoded_len(policy: ExecOutputPolicy) -> Result<usize, Pro
         ExecOutputPolicy::Stream {
             chunk_limit_bytes, ..
         } => {
-            if chunk_limit_bytes == 0 {
-                return Err(ProtocolError::InvalidPayload(
-                    "exec output chunk limit must be non-zero",
-                ));
-            }
+            validate_exec_output_chunk_limit(chunk_limit_bytes)?;
             Ok(9)
         }
         ExecOutputPolicy::CaptureAndStream {
             chunk_limit_bytes, ..
         } => {
-            if chunk_limit_bytes == 0 {
-                return Err(ProtocolError::InvalidPayload(
-                    "exec output chunk limit must be non-zero",
-                ));
-            }
+            validate_exec_output_chunk_limit(chunk_limit_bytes)?;
             Ok(13)
         }
     }
@@ -635,11 +636,7 @@ fn decode_exec_output_policy(
             let limit_bytes = read_u32(payload, offset, "exec stream policy limit truncated")?;
             let chunk_limit_bytes =
                 read_u32(payload, offset, "exec stream policy chunk limit truncated")?;
-            if chunk_limit_bytes == 0 {
-                return Err(ProtocolError::InvalidPayload(
-                    "exec output chunk limit must be non-zero",
-                ));
-            }
+            validate_exec_output_chunk_limit(chunk_limit_bytes)?;
             Ok(ExecOutputPolicy::Stream {
                 limit_bytes,
                 chunk_limit_bytes,
@@ -661,11 +658,7 @@ fn decode_exec_output_policy(
                 offset,
                 "exec capture-and-stream chunk limit truncated",
             )?;
-            if chunk_limit_bytes == 0 {
-                return Err(ProtocolError::InvalidPayload(
-                    "exec output chunk limit must be non-zero",
-                ));
-            }
+            validate_exec_output_chunk_limit(chunk_limit_bytes)?;
             Ok(ExecOutputPolicy::CaptureAndStream {
                 capture_limit_bytes,
                 stream_limit_bytes,
