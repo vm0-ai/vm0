@@ -29,10 +29,10 @@ describe("generation gallery data", () => {
   it("only shows the website design gallery for now", () => {
     expect(GALLERY_CATEGORIES).toEqual(["all", "website"]);
     expect(GALLERY_CATEGORY_LABELS.website).toBe("Website Design");
-    expect(GALLERY_ITEMS.length).toBeGreaterThanOrEqual(10);
+    expect(GALLERY_ITEMS.length).toBe(153);
     expect(
       GALLERY_ITEMS.every((item) => {
-        return item.category === "website";
+        return item.category === "website" && item.artifactUrl;
       }),
     ).toBe(true);
   });
