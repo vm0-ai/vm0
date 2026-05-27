@@ -266,6 +266,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publish_snapshot_complete_marker_preserves_existing_marker_on_validation_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        for artifact in [output.snapshot(), output.memory(), output.cow()] {
+            tokio::fs::write(&artifact, b"snapshot artifact")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+        tokio::fs::write(output.complete_marker(), SNAPSHOT_COMPLETE_MARKER_CONTENT)
+            .await
+            .expect("write existing marker");
+
+        let err = publish_snapshot_complete_marker(&output)
+            .expect_err("publish should fail before marker creation");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        let marker = tokio::fs::read(output.complete_marker())
+            .await
+            .expect("read existing marker");
+        assert_eq!(marker, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+    }
+
+    #[tokio::test]
     async fn publish_snapshot_complete_marker_preserves_existing_marker_on_create_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
