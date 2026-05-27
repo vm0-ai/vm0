@@ -2157,6 +2157,7 @@ function buildPermissionManifest(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
+  readonly connectorVars?: Record<string, string>;
   readonly connectorTypes?: readonly ConnectorType[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
 }): PermissionManifest | undefined {
@@ -2169,13 +2170,21 @@ function buildPermissionManifest(args: {
       return getConnectorFirewall(type);
     });
   const connectorManifest = applyConnectorPolicies(
-    [...connectorFirewalls, ...(args.customConnectorFirewalls ?? [])],
+    connectorFirewalls,
+    args.permissionPolicies,
+  );
+  const customConnectorManifest = applyConnectorPolicies(
+    args.customConnectorFirewalls ?? [],
     args.permissionPolicies,
   );
   const providerManifest = modelProviderPermissionManifest(args.modelProvider);
   const firewalls = [
-    ...(providerManifest?.firewalls ?? []),
-    ...connectorManifest.firewalls,
+    ...resolveFirewallBaseUrlVars(providerManifest?.firewalls ?? [], args.vars),
+    ...resolveFirewallBaseUrlVars(
+      connectorManifest.firewalls,
+      mergeRecords(args.vars, args.connectorVars),
+    ),
+    ...resolveFirewallBaseUrlVars(customConnectorManifest.firewalls, args.vars),
   ];
 
   if (firewalls.length === 0) {
@@ -2183,7 +2192,7 @@ function buildPermissionManifest(args: {
   }
 
   return {
-    firewalls: resolveFirewallBaseUrlVars(firewalls, args.vars),
+    firewalls,
     environmentFirewalls: [
       ...(providerManifest?.environmentFirewalls ?? []),
       ...connectorFirewalls,
@@ -2192,6 +2201,7 @@ function buildPermissionManifest(args: {
     networkPolicies: {
       ...providerManifest?.networkPolicies,
       ...connectorManifest.networkPolicies,
+      ...customConnectorManifest.networkPolicies,
     },
   };
 }
@@ -2932,7 +2942,8 @@ async function buildStoredExecutionContext(args: {
   const permissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
     permissionPolicies: args.body.permissionPolicies,
-    vars: mergeRecords(args.body.vars, args.connectorContext.vars),
+    vars: args.body.vars,
+    connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });
@@ -3605,7 +3616,8 @@ function validateRunEnvironmentReferences(args: {
   const validationPermissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
     permissionPolicies: args.body.permissionPolicies,
-    vars: mergeRecords(args.body.vars, args.connectorContext.vars),
+    vars: args.body.vars,
+    connectorVars: args.connectorContext.vars,
     connectorTypes: args.connectorContext.connectorTypes,
     customConnectorFirewalls: args.customConnectorContext.firewalls,
   });

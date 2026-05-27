@@ -28,6 +28,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -1790,6 +1791,116 @@ describe("POST /api/zero/runs", () => {
     expect(
       executionContext.networkPolicies["internal-api"]?.unknownPolicy,
     ).toBe("allow");
+  });
+
+  it("keeps connector-owned vars out of custom connector firewall base URLs", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    const customConnectorId = randomUUID();
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "zendesk",
+      authMethod: "api-token",
+    });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "zendesk",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_API_TOKEN",
+      encryptedValue: encryptSecretForTests("connector-zendesk-token"),
+      type: "connector",
+    });
+    await db.insert(variables).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "ZENDESK_SUBDOMAIN",
+        value: "user-subdomain",
+        type: "user",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "ZENDESK_SUBDOMAIN",
+        value: "connector-subdomain",
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "ZENDESK_EMAIL",
+        value: "connector@example.com",
+        type: "connector",
+      },
+    ]);
+    await db.insert(orgCustomConnectors).values({
+      id: customConnectorId,
+      orgId: fx.orgId,
+      slug: "internal-api",
+      displayName: "Internal API",
+      prefixes: [
+        [
+          "https://",
+          "$",
+          "{{ vars.ZENDESK_SUBDOMAIN }}",
+          ".internal.example.com/api/",
+        ].join(""),
+      ],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+      createdBy: fx.userId,
+    });
+    await db.insert(orgCustomConnectorSecrets).values({
+      connectorId: customConnectorId,
+      orgId: fx.orgId,
+      userId: fx.userId,
+      encryptedValue: encryptSecretForTests("custom-secret"),
+    });
+    await db.insert(userCustomConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      customConnectorId,
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "custom connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly { readonly base: string }[];
+      }[];
+    };
+    const customFirewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "internal-api";
+    });
+    const zendeskFirewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "zendesk";
+    });
+
+    expect(customFirewall?.apis[0]?.base).toBe(
+      "https://user-subdomain.internal.example.com/api/",
+    );
+    expect(zendeskFirewall?.apis[0]?.base).toBe(
+      "https://connector-subdomain.zendesk.com",
+    );
   });
 
   it("rejects omitted modelProvider when the org default provider is VM0", async () => {
