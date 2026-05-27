@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
@@ -96,6 +97,9 @@ export const cancelRun$ = command(
 
     const cancelled = await writeDb.transaction(async (tx) => {
       await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.runId));
+      await tx
+        .delete(runnerJobQueue)
+        .where(eq(runnerJobQueue.runId, args.runId));
       const [updated] = await tx
         .update(agentRuns)
         .set({ status: "cancelled", completedAt: nowDate() })

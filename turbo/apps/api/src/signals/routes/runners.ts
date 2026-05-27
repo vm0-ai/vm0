@@ -162,6 +162,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
+    eq(agentRuns.status, "pending"),
   ];
 
   if (auth.type === "official-runner") {

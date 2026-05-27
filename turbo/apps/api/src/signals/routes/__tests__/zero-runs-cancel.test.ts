@@ -4,6 +4,7 @@ import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { createStore } from "ccstate";
@@ -194,6 +195,59 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     );
     expect(response.body.error.code).toBe("RUN_NOT_CANCELLABLE");
     expect(response.body.error.message).toContain("cannot be cancelled");
+  });
+
+  it("deletes a pending runner job when cancelling before claim", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "pending",
+      },
+      context.signal,
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(runnerJobQueue).values({
+      runId,
+      runnerGroup: "vm0/test",
+      profile: "vm0/default",
+      sessionId: null,
+      executionContext: {
+        workingDir: "/workspace",
+        storageManifest: null,
+        environment: null,
+        resumeSession: null,
+        encryptedSecrets: null,
+        cliAgentType: "claude-code",
+      },
+      expiresAt: new Date(now() + 60_000),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const remainingJobs = await writeDb
+      .select({ runId: runnerJobQueue.runId })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, runId));
+    expect(remainingJobs).toHaveLength(0);
   });
 
   it("returns 200 when run is already cancelled (idempotent; no side effects)", async () => {
