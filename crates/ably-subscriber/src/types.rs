@@ -319,9 +319,14 @@ pub enum Error {
     #[error("Token fetch failed: {}", redact_access_token(&.0.to_string()))]
     TokenFetch(BoxError),
 
-    /// Failure while parsing an endpoint URL built from the subscription
-    /// configuration. The message deliberately omits the raw URL input because
-    /// callers may accidentally include credentials in host-like values.
+    /// Invalid endpoint URL or URL component built from the subscription
+    /// configuration or token request.
+    ///
+    /// This also covers local validation failures for endpoint host and
+    /// [`TokenRequest`] key-name values that would otherwise be silently
+    /// normalized by URL parsing. The message deliberately omits the raw input
+    /// because callers may accidentally include credentials in host-like values
+    /// or authentication material in token request fields.
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
 }
