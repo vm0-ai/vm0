@@ -6,6 +6,7 @@ import {
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
+import { classifyChatAttachment } from "../chat-page/parse-body-blocks.ts";
 import {
   openDocumentLightbox$ as openDocumentLightboxModal$,
   openImageLightbox$ as openImageLightboxModal$,
@@ -46,16 +47,6 @@ export type ArtifactRef =
       imageId: string;
     };
 
-interface ArtifactOpenInput {
-  url: string;
-  kind: ArtifactPreviewKind;
-  filename: string;
-}
-
-function encodeArtifactParam(input: ArtifactOpenInput): string {
-  return input.url;
-}
-
 function decodeArtifactParam(value: string): ArtifactRef | null {
   if (value.startsWith(IMAGE_ID_PREFIX)) {
     const imageId = value.slice(IMAGE_ID_PREFIX.length);
@@ -67,40 +58,14 @@ function decodeArtifactParam(value: string): ArtifactRef | null {
   return null;
 }
 
-// Open metadata that callers pass alongside the URL so the sidebar knows the
-// filename + kind without having to re-classify from a bare URL. Kept in
-// memory because the URL only carries the reference.
-interface ArtifactOpenMetadata {
-  filename: string;
-  kind: ArtifactPreviewKind;
-}
-
-const artifactOpenMetadataByUrl$ = state<
-  ReadonlyMap<string, ArtifactOpenMetadata>
->(new Map());
-
-const rememberArtifactMetadata$ = command(
-  ({ get, set }, input: ArtifactOpenInput) => {
-    const current = get(artifactOpenMetadataByUrl$);
-    const existing = current.get(input.url);
-    if (
-      existing &&
-      existing.filename === input.filename &&
-      existing.kind === input.kind
-    ) {
-      return;
-    }
-    const next = new Map(current);
-    next.set(input.url, { filename: input.filename, kind: input.kind });
-    set(artifactOpenMetadataByUrl$, next);
-  },
-);
-
 export const chatArtifactSidebarEnabled$ = computed((get) => {
   const features = get(featureSwitch$);
   return features[FeatureSwitchKey.ChatArtifactSidebar] ?? false;
 });
 
+// The URL alone is the source of truth: kind + filename are derived from
+// the URL itself via classifyChatAttachment, so deep-linking or refreshing
+// the page re-renders the right body without any in-memory metadata cache.
 export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   const params = get(searchParams$);
   const raw = params.get(ARTIFACT_QUERY_PARAM);
@@ -110,13 +75,9 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   if (raw.startsWith(IMAGE_ID_PREFIX)) {
     return decodeArtifactParam(raw);
   }
-  const metadata = get(artifactOpenMetadataByUrl$).get(raw);
-  return {
-    source: "url",
-    url: raw,
-    kind: metadata?.kind ?? "file",
-    filename: metadata?.filename ?? filenameFromUrl(raw),
-  };
+  const filename = filenameFromUrl(raw);
+  const kind = classifyChatAttachment({ filename, url: raw });
+  return { source: "url", url: raw, kind, filename };
 });
 
 function filenameFromUrl(url: string): string {
@@ -125,14 +86,11 @@ function filenameFromUrl(url: string): string {
   return last && last.length > 0 ? last : "file";
 }
 
-export const openArtifact$ = command(
-  ({ get, set }, input: ArtifactOpenInput) => {
-    set(rememberArtifactMetadata$, input);
-    const params = new URLSearchParams(get(searchParams$));
-    params.set(ARTIFACT_QUERY_PARAM, encodeArtifactParam(input));
-    set(updateSearchParams$, params);
-  },
-);
+const openArtifact$ = command(({ get, set }, url: string) => {
+  const params = new URLSearchParams(get(searchParams$));
+  params.set(ARTIFACT_QUERY_PARAM, url);
+  set(updateSearchParams$, params);
+});
 
 export const closeArtifact$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
@@ -169,11 +127,7 @@ export const toggleArtifactFullscreen$ = command(({ get, set }) => {
 export const openImageLightboxOrArtifact$ = command(
   ({ get, set }, url: string) => {
     if (get(chatArtifactSidebarEnabled$)) {
-      set(openArtifact$, {
-        url,
-        kind: "image",
-        filename: filenameFromUrl(url),
-      });
+      set(openArtifact$, url);
       return;
     }
     set(openImageLightboxModal$, url);
@@ -183,11 +137,7 @@ export const openImageLightboxOrArtifact$ = command(
 export const openVideoLightboxOrArtifact$ = command(
   ({ get, set }, value: { url: string; filename: string }) => {
     if (get(chatArtifactSidebarEnabled$)) {
-      set(openArtifact$, {
-        url: value.url,
-        kind: "video",
-        filename: value.filename,
-      });
+      set(openArtifact$, value.url);
       return;
     }
     set(openVideoLightboxModal$, value);
@@ -204,11 +154,7 @@ export const openDocumentLightboxOrArtifact$ = command(
     },
   ) => {
     if (get(chatArtifactSidebarEnabled$)) {
-      set(openArtifact$, {
-        url: value.url,
-        kind: value.kind,
-        filename: value.filename,
-      });
+      set(openArtifact$, value.url);
       return;
     }
     set(openDocumentLightboxModal$, value);

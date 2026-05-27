@@ -4,6 +4,7 @@ import MarkdownPreview, {
 import { IconLoader2, IconPhoto } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { openImageLightboxOrArtifact$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import { theme$ } from "../../signals/theme.ts";
@@ -228,18 +229,18 @@ function PlainLink({ href, children, ...rest }: MarkdownAnchorProps) {
   );
 }
 
-function MediaImage({
-  src,
-  alt,
-  onImageClick,
-}: {
-  src: string;
-  alt: string;
-  onImageClick?: (url: string) => void;
-}) {
+function MediaImage({ src, alt }: { src: string; alt: string }) {
   const imageLoadStatuses = useGet(imageLoadStatusByKey$);
   const imageLoadStatusRef = useSet(imageLoadStatusRef$);
   const setImageLoadStatus = useSet(setImageLoadStatus$);
+  // Self-sourced lightbox handler so MediaImage doesn't need a callback
+  // prop chained from the Markdown caller. Removing the `onImageClick`
+  // prop chain is what lets the `components` map and the renderer
+  // functions live at module scope with stable identity — which in turn
+  // prevents React from tearing down the <video>/<img> subtree on every
+  // re-render of the parent (the previous behavior caused .mp4 metadata
+  // to refetch every time `?artifact=` was toggled).
+  const openImageLightbox = useSet(openImageLightboxOrArtifact$);
   const imageLoadKey = `markdown:${src}`;
   const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
   const showPlaceholder = imageStatus !== "loaded";
@@ -248,7 +249,7 @@ function MediaImage({
     <button
       type="button"
       onClick={() => {
-        onImageClick?.(src);
+        openImageLightbox(src);
       }}
       className="relative block max-w-full my-1 overflow-hidden rounded-lg border border-foreground/10 cursor-zoom-in"
     >
@@ -282,14 +283,7 @@ function MediaImage({
   );
 }
 
-function MediaLink({
-  href,
-  children,
-  onImageClick,
-  ...rest
-}: MarkdownAnchorProps & {
-  onImageClick?: (url: string) => void;
-}) {
+function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
   if (!href || !isSafeMediaUrl(href)) {
     return (
       <PlainLink href={href} {...rest}>
@@ -300,7 +294,7 @@ function MediaLink({
 
   if (isImageUrl(href)) {
     const alt = typeof children === "string" ? children : "";
-    return <MediaImage src={href} alt={alt} onImageClick={onImageClick} />;
+    return <MediaImage src={href} alt={alt} />;
   }
 
   if (isVideoUrl(href)) {
@@ -320,73 +314,65 @@ function MediaLink({
   );
 }
 
-function MarkdownLinkRenderer(
-  props: { children?: ReactNode } & MarkdownAnchorProps & {
-      mediaPreview: boolean;
-      onImageClick: ((url: string) => void) | undefined;
-    },
+// Module-scope renderers passed into MarkdownPreview's `components` map.
+// Function identity is stable across renders, which keeps MarkdownPreview
+// from re-mounting the children at <a>/<img> positions on parent re-render.
+function PlainLinkRenderer(
+  props: { children?: ReactNode } & MarkdownAnchorProps,
 ) {
-  const { mediaPreview, onImageClick, children, ...rest } = props;
-  if (mediaPreview) {
-    return (
-      <MediaLink {...rest} onImageClick={onImageClick}>
-        {children}
-      </MediaLink>
-    );
-  }
+  const { children, ...rest } = props;
   return <PlainLink {...rest}>{children}</PlainLink>;
 }
 
-function MarkdownImageRenderer(
-  props: MarkdownImageProps & {
-    mediaPreview: boolean;
-    onImageClick: ((url: string) => void) | undefined;
-  },
+function MediaLinkRenderer(
+  props: { children?: ReactNode } & MarkdownAnchorProps,
 ) {
-  const { mediaPreview, onImageClick, src, alt, ...rest } = props;
-  const imageProps = omitMarkdownNodeProp(rest);
-  const hasSafeSrc = typeof src === "string" && isSafeMediaUrl(src);
-  if (mediaPreview && hasSafeSrc) {
-    return <MediaImage src={src} alt={alt ?? ""} onImageClick={onImageClick} />;
-  }
-  return <img {...imageProps} src={src} alt={alt} />;
+  const { children, ...rest } = props;
+  return <MediaLink {...rest}>{children}</MediaLink>;
 }
+
+function PlainImageRenderer(props: MarkdownImageProps) {
+  const { src, alt, ...rest } = props;
+  return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
+}
+
+function MediaImageRenderer(props: MarkdownImageProps) {
+  const { src, alt, ...rest } = props;
+  const hasSafeSrc = typeof src === "string" && isSafeMediaUrl(src);
+  if (hasSafeSrc) {
+    return <MediaImage src={src} alt={alt ?? ""} />;
+  }
+  return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
+}
+
+const PLAIN_MARKDOWN_COMPONENTS = {
+  table: ResponsiveTable,
+  a: PlainLinkRenderer,
+  img: PlainImageRenderer,
+} as const;
+
+const MEDIA_MARKDOWN_COMPONENTS = {
+  table: ResponsiveTable,
+  a: MediaLinkRenderer,
+  img: MediaImageRenderer,
+} as const;
 
 export function Markdown({
   className,
   style,
   mediaPreview = false,
   mathEnabled = false,
-  onImageClick,
   remarkPlugins,
   rehypePlugins,
   ...rest
 }: MarkdownPreviewProps & {
   mediaPreview?: boolean;
   mathEnabled?: boolean;
-  onImageClick?: (url: string) => void;
 }) {
   const theme = useGet(theme$);
-  const renderLink = (
-    props: { children?: ReactNode } & MarkdownAnchorProps,
-  ) => {
-    return (
-      <MarkdownLinkRenderer
-        {...props}
-        mediaPreview={mediaPreview}
-        onImageClick={onImageClick}
-      />
-    );
-  };
-  const renderImage = (props: MarkdownImageProps) => {
-    return (
-      <MarkdownImageRenderer
-        {...props}
-        mediaPreview={mediaPreview}
-        onImageClick={onImageClick}
-      />
-    );
-  };
+  const components = mediaPreview
+    ? MEDIA_MARKDOWN_COMPONENTS
+    : PLAIN_MARKDOWN_COMPONENTS;
   return (
     <MarkdownPreview
       className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
@@ -405,11 +391,7 @@ export function Markdown({
       rehypePlugins={
         mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
       }
-      components={{
-        table: ResponsiveTable,
-        a: renderLink,
-        img: renderImage,
-      }}
+      components={components}
       {...rest}
     />
   );

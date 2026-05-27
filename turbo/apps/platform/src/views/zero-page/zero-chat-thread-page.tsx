@@ -1707,18 +1707,29 @@ export function ZeroChatThreadPage() {
 
   return (
     <>
-      {artifactSidebarOpen ? (
-        <div className="flex flex-1 min-h-0 bg-transparent">
-          <div className="flex flex-1 basis-0 min-w-0 min-h-0">
-            {threadArea}
-          </div>
+      {/* Keep the wrapper structure stable across artifact open/close so the
+          thread area's React subtree (and its scroll/keyboard state) never
+          unmounts when the sidebar appears. Only the wrapper className and
+          the optional sidebar sibling change with state. Below xl: the
+          thread half hides so the sidebar fills the pane (no toggle, the
+          50/50 split needs each half ~640px to clear the composer's sm:
+          breakpoint, below which the model picker collapses to icons). */}
+      <div className="flex flex-1 min-h-0 bg-transparent">
+        <div
+          className={
+            artifactSidebarOpen
+              ? "hidden xl:flex flex-1 basis-0 min-w-0 min-h-0"
+              : "flex flex-1 min-w-0 min-h-0"
+          }
+        >
+          {threadArea}
+        </div>
+        {artifactSidebarOpen && (
           <div className="flex flex-1 basis-0 min-w-0 min-h-0">
             <ArtifactSidebarSlot />
           </div>
-        </div>
-      ) : (
-        threadArea
-      )}
+        )}
+      </div>
       {!sidebarEnabled && leftThread && (
         <ChatArtifactsDrawer thread={leftThread} />
       )}
@@ -2501,7 +2512,6 @@ function BodyContentBlocks({
               }
               mediaPreview
               mathEnabled
-              onImageClick={openLightbox}
             />
           );
         }

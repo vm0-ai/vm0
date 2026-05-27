@@ -6,9 +6,12 @@ import {
   IconEye,
   IconExternalLink,
   IconFileMusic,
+  IconFileTypePdf,
   IconLoader2,
   IconPlayerPlay,
+  IconTable,
   IconVideo,
+  IconWorld,
 } from "@tabler/icons-react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
@@ -20,7 +23,6 @@ import {
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   chatArtifactSidebarEnabled$,
-  openArtifact$,
   openDocumentLightboxOrArtifact$,
   openVideoLightboxOrArtifact$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
@@ -116,6 +118,27 @@ function TextPreview(props: TextPreviewProps) {
   return <TextPreviewInline {...props} />;
 }
 
+type AttachmentAnchorChipKind =
+  | "text"
+  | "json"
+  | "markdown"
+  | "csv"
+  | "pdf"
+  | "html";
+
+function attachmentAnchorChipIcon(kind: AttachmentAnchorChipKind): ReactNode {
+  if (kind === "html") {
+    return <IconWorld size={13} stroke={1.8} />;
+  }
+  if (kind === "csv") {
+    return <IconTable size={13} stroke={1.8} />;
+  }
+  if (kind === "pdf") {
+    return <IconFileTypePdf size={13} stroke={1.8} />;
+  }
+  return <IconExternalLink size={13} stroke={1.8} />;
+}
+
 function AttachmentAnchorChip({
   filename,
   url,
@@ -123,10 +146,12 @@ function AttachmentAnchorChip({
 }: {
   filename: string;
   url: string;
-  kind: "text" | "json" | "markdown";
+  kind: AttachmentAnchorChipKind;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  const openArtifact = useSet(openArtifact$);
+  // Switch-aware open. html chips can render even when the sidebar feature is
+  // off, in which case this routes back to the legacy modal lightbox.
+  const openDocument = useSet(openDocumentLightboxOrArtifact$);
 
   return (
     <a
@@ -138,7 +163,7 @@ function AttachmentAnchorChip({
         }
         event.preventDefault();
         event.currentTarget.blur();
-        openArtifact({ url, kind, filename });
+        openDocument({ kind, url, filename });
       }}
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
@@ -148,7 +173,7 @@ function AttachmentAnchorChip({
         data-testid={`attachment-preview-${kind}-icon`}
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-muted/40 text-muted-foreground transition-colors group-hover/anchor-chip:border-foreground/15 group-hover/anchor-chip:bg-muted/60 group-hover/anchor-chip:text-foreground"
       >
-        <IconExternalLink size={13} stroke={1.8} />
+        {attachmentAnchorChipIcon(kind)}
       </span>
       <span className="min-w-0 truncate font-medium">{filename}</span>
     </a>
@@ -248,40 +273,13 @@ function DocumentThumbnailPreview({
   const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   const openDocumentLightbox = useSet(openDocumentLightboxOrArtifact$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
-  const publicUrl = publicAttachmentUrl(url);
 
-  if (sidebarEnabled && kind === "markdown") {
-    return (
-      <AttachmentAnchorChip filename={filename} url={url} kind="markdown" />
-    );
-  }
-
-  if (kind === "html") {
-    return (
-      <a
-        href={publicUrl}
-        data-testid="attachment-preview-html"
-        onClick={(event) => {
-          if (shouldUseNativeAnchorNavigation(event)) {
-            return;
-          }
-          event.preventDefault();
-          event.currentTarget.blur();
-          openDocumentLightbox({ kind, url, filename });
-        }}
-        aria-label={`Open html preview for ${filename}`}
-        title={filename}
-        className="group/html-preview inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
-      >
-        <span
-          data-testid="attachment-preview-html-icon"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-muted/40 text-muted-foreground transition-colors group-hover/html-preview:border-foreground/15 group-hover/html-preview:bg-muted/60 group-hover/html-preview:text-foreground"
-        >
-          <IconExternalLink size={13} stroke={1.8} />
-        </span>
-        <span className="min-w-0 truncate font-medium">{filename}</span>
-      </a>
-    );
+  // html chip is always the collapsed anchor form (it has no body to inline);
+  // markdown/csv/pdf use the same chip when the artifact sidebar is on, and
+  // keep the full thumbnail card otherwise so legacy lightbox layouts still
+  // look right.
+  if (kind === "html" || sidebarEnabled) {
+    return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
   }
 
   const accentClass =

@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconCopy,
   IconDownload,
-  IconLink,
+  IconExternalLink,
   IconLoader2,
   IconX,
 } from "@tabler/icons-react";
@@ -27,7 +28,6 @@ import {
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
-import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -61,7 +61,7 @@ export function ArtifactSidebar({ artifactRef }: { artifactRef: ArtifactRef }) {
         className={
           fullscreen
             ? "fixed inset-0 z-40 flex flex-col bg-background"
-            : "flex h-full min-h-0 flex-col border-l border-border/60 bg-background"
+            : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background"
         }
         data-testid="artifact-sidebar"
       >
@@ -83,7 +83,7 @@ export function ArtifactSidebar({ artifactRef }: { artifactRef: ArtifactRef }) {
       className={
         fullscreen
           ? "fixed inset-0 z-40 flex flex-col bg-background"
-          : "flex h-full min-h-0 flex-col border-l border-border/60 bg-background"
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background"
       }
       data-testid="artifact-sidebar"
     >
@@ -151,58 +151,63 @@ function ArtifactSidebarHeader({
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
+  const publicUrl = url ? publicAttachmentUrl(url) : undefined;
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-border/60 px-4 py-3">
-      {kind && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
-          <FilePreviewIcon
-            filename={title}
-            contentType={contentTypeForKind(kind)}
-            testId="artifact-sidebar-file-icon"
-          />
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-foreground">
+    <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
+      {url ? (
+        <button
+          type="button"
+          onClick={() => {
+            detach(
+              copyAttachmentLinkToClipboard(url),
+              Reason.DomCallback,
+              "artifact copy link",
+            );
+          }}
+          aria-label="Copy artifact URL"
+          title={publicUrl}
+          className="group/copy-url flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        >
+          <IconCopy size={14} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate font-mono text-xs">
+            {publicUrl}
+          </span>
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {title}
         </div>
-        {kind && (
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            {kind}
-          </div>
-        )}
-      </div>
+      )}
       <div className="flex shrink-0 items-center gap-1">
         {url && (
           <>
-            <button
-              type="button"
-              onClick={() => {
-                detach(
-                  copyAttachmentLinkToClipboard(url),
-                  Reason.DomCallback,
-                  "artifact copy link",
-                );
-              }}
-              aria-label="Copy link"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-            >
-              <IconLink size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                detach(
-                  downloadAttachmentUrl(url, undefined, title),
-                  Reason.DomCallback,
-                  "artifact download",
-                );
-              }}
-              aria-label="Download"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-            >
-              <IconDownload size={16} />
-            </button>
+            {kind === "html" ? (
+              <a
+                href={publicAttachmentUrl(url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open in new tab"
+                data-testid="artifact-sidebar-open-external"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              >
+                <IconExternalLink size={16} />
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  detach(
+                    downloadAttachmentUrl(url, undefined, title),
+                    Reason.DomCallback,
+                    "artifact download",
+                  );
+                }}
+                aria-label="Download"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              >
+                <IconDownload size={16} />
+              </button>
+            )}
           </>
         )}
         <button
@@ -210,7 +215,7 @@ function ArtifactSidebarHeader({
           onClick={onToggleFullscreen}
           aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
           data-testid="artifact-sidebar-fullscreen-toggle"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
           {fullscreen ? (
             <IconArrowsDiagonalMinimize2 size={16} />
@@ -458,9 +463,13 @@ function ArtifactIframeBody({
   kind: "html" | "pdf";
   filename: string;
 }) {
+  // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
+  // (thumbnails / bookmarks) so the embedded preview shows just the page
+  // and toolbar by default. Firefox/PDF.js silently ignores it.
+  const src = kind === "pdf" ? `${url}#navpanes=0` : url;
   return (
     <iframe
-      src={url}
+      src={src}
       title={`${filename} preview`}
       sandbox={kind === "html" ? "allow-scripts" : undefined}
       className="h-full w-full bg-background"
@@ -476,23 +485,4 @@ function ArtifactGenericBody({ filename }: { filename: string }) {
       <p className="text-xs">{filename}</p>
     </div>
   );
-}
-
-const CONTENT_TYPE_BY_KIND: Readonly<
-  Record<ArtifactKindForBody, string | undefined>
-> = {
-  markdown: "text/markdown",
-  text: "text/plain",
-  json: "application/json",
-  csv: "text/csv",
-  html: "text/html",
-  pdf: "application/pdf",
-  image: "image/*",
-  video: "video/*",
-  audio: "audio/*",
-  file: undefined,
-};
-
-function contentTypeForKind(kind: ArtifactKindForBody): string | undefined {
-  return CONTENT_TYPE_BY_KIND[kind];
 }
