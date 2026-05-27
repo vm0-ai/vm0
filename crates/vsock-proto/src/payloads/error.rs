@@ -42,6 +42,14 @@ mod tests {
     }
 
     #[test]
+    fn error_payload_roundtrip_empty_message() {
+        let payload = encode_error("");
+
+        assert_eq!(payload.as_slice(), &[0, 0]);
+        assert!(decode_error(&payload).unwrap().is_empty());
+    }
+
+    #[test]
     fn error_payload_truncates_oversized_ascii_to_u16_max() {
         let message = "A".repeat(u16::MAX as usize + 1);
         let payload = encode_error(&message);
