@@ -307,9 +307,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroMaps]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Enable managed Zero Maps CLI access for geocoding, directions, and places. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Enable managed Zero Maps CLI access for geocoding, directions, and places.",
+    enabled: true,
   },
 };
 
