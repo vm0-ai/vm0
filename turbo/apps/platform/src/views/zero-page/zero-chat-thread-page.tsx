@@ -6,7 +6,6 @@ import type {
 } from "react";
 import {
   useGet,
-  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
@@ -2047,22 +2046,19 @@ function useChatComposerModel(
   // initial value seeds from threadData once it resolves (a React useState
   // initializer would snapshot `undefined` on first render). `modelSelection$`
   // internally flips to a user-override once `setModelSelection$` is called,
-  // so unsaved edits survive subsequent threadData$ reloads.
-  const threadDataLoadable = useLoadable(thread.threadData$);
-  const modelSelectionLoadable = useLoadable(thread.modelSelection$);
-  const defaultModelSelectionLoadable = useLoadable(
+  // so unsaved edits survive subsequent threadData$ reloads. Read with
+  // useLastResolved so the picker keeps the previous value during the
+  // threadData$ refetches triggered by chatThreadRunUpdated Ably events —
+  // otherwise the picker briefly flips to a skeleton on every run change.
+  const threadDataResolved = useLastResolved(thread.threadData$);
+  const modelSelectionResolved = useLastResolved(thread.modelSelection$);
+  const defaultModelSelectionResolved = useLastResolved(
     thread.defaultModelSelection$,
   );
-  const modelSelection =
-    modelSelectionLoadable.state === "hasData"
-      ? modelSelectionLoadable.data
-      : null;
+  const modelSelection = modelSelectionResolved ?? null;
+  const defaultModelSelection = defaultModelSelectionResolved ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const defaultModelSelection =
-    defaultModelSelectionLoadable.state === "hasData"
-      ? defaultModelSelectionLoadable.data
-      : null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
@@ -2085,10 +2081,12 @@ function useChatComposerModel(
     disabled: false,
     defaultSelection: defaultModelSelection,
   });
+  // Skeleton only on cold start (nothing has ever resolved). Once we have any
+  // resolved value, refetches reuse the cached value instead of flashing.
   const modelPickerLoading =
-    threadDataLoadable.state === "loading" ||
-    modelSelectionLoadable.state === "loading" ||
-    defaultModelSelectionLoadable.state === "loading";
+    threadDataResolved === undefined ||
+    modelSelectionResolved === undefined ||
+    defaultModelSelectionResolved === undefined;
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
@@ -2115,9 +2113,13 @@ function ChatThreadComposer({
   const hasMessages = groups.length > 0;
   const messagesResolved = groupsLoadable.state === "hasData";
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinishedResolved = allFinishedLoadable.state === "hasData";
-  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
+  // useLastResolved (not useLastLoadable) so refetches keep the previously
+  // resolved value instead of flipping `sending` and the placeholder. Once
+  // resolved (even to false), the value sticks across subsequent threadData$
+  // reloads driven by chatThreadRunUpdated Ably events.
+  const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
+  const allFinishedResolved = allFinishedResolvedValue !== undefined;
+  const allFinished = allFinishedResolvedValue ?? false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [, queueMessage] = useLoadableSet(thread.queueMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
