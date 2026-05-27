@@ -463,8 +463,8 @@ describe("OAuth device authorization connector routes", () => {
     expect(
       inspectPersistentSecretCiphertext(session.encryptedProviderState),
     ).toStrictEqual({
-      format: "dual",
-      hasLegacy: true,
+      format: "kms",
+      hasLegacy: false,
       hasKms: true,
     });
     const decryptedProviderState = await decryptPersistentSecretValue(

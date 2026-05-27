@@ -9,6 +9,7 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
+import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
@@ -134,7 +135,7 @@ function parsePositiveInteger(value: string | undefined): number {
 function parseArgs(argv: readonly string[]): MigrationArgs {
   let dryRun = false;
   let reportOnly = false;
-  let mode: Exclude<StoredSecretWriteMode, "legacy"> = "dual";
+  let mode: Exclude<StoredSecretWriteMode, "legacy"> = "kms";
   let batchSize = DEFAULT_BATCH_SIZE;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -608,6 +609,58 @@ async function migrateCliAuthProviderStates(
   );
 }
 
+async function countConnectorOauthDeviceProviderStates(): Promise<CiphertextCounts> {
+  const rows = await db()
+    .select({
+      encrypted:
+        connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
+    })
+    .from(connectorOauthDeviceAuthorizationSessions);
+  return countCiphertexts(rows);
+}
+
+async function migrateConnectorOauthDeviceProviderStates(
+  args: MigrationArgs,
+  targetName: string,
+): Promise<number> {
+  const database = db();
+  return await migrateDirectColumn(
+    targetName,
+    args,
+    async (cursor, batchSize) => {
+      const predicates = cursor
+        ? [gt(connectorOauthDeviceAuthorizationSessions.id, cursor)]
+        : [];
+      return await database
+        .select({
+          key: connectorOauthDeviceAuthorizationSessions.id,
+          encrypted:
+            connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
+        })
+        .from(connectorOauthDeviceAuthorizationSessions)
+        .where(predicates.length > 0 ? and(...predicates) : undefined)
+        .orderBy(asc(connectorOauthDeviceAuthorizationSessions.id))
+        .limit(batchSize);
+    },
+    async (row, encrypted) => {
+      const updated = await database
+        .update(connectorOauthDeviceAuthorizationSessions)
+        .set({ encryptedProviderState: encrypted })
+        .where(
+          and(
+            eq(connectorOauthDeviceAuthorizationSessions.id, row.key),
+            eq(
+              connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
+              row.encrypted!,
+            ),
+          ),
+        )
+        .returning({ key: connectorOauthDeviceAuthorizationSessions.id });
+      return updated.length;
+    },
+  );
+}
+
 async function countAgentRunQueuePayloads(): Promise<CiphertextCounts> {
   const rows = await db()
     .select({ encrypted: agentRunQueue.encryptedParams })
@@ -878,6 +931,12 @@ async function run(): Promise<void> {
       "connector_cli_auth_sessions.encrypted_provider_state",
       countCliAuthProviderStates,
       migrateCliAuthProviderStates,
+      args,
+    ),
+    await report(
+      "connector_oauth_device_authorization_sessions.encrypted_provider_state",
+      countConnectorOauthDeviceProviderStates,
+      migrateConnectorOauthDeviceProviderStates,
       args,
     ),
     await report(

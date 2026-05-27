@@ -407,7 +407,7 @@ export async function encryptPersistentSecretValue(
     return encryptSecretValue(plaintext);
   }
 
-  return await encryptPersistentSecretValueWithMode(plaintext, "dual");
+  return await encryptPersistentSecretValueWithMode(plaintext, "kms");
 }
 
 export async function decryptPersistentSecretValue(

@@ -129,7 +129,7 @@ function parsePositiveInteger(value: string | undefined): number {
 function parseArgs(argv: readonly string[]): MigrationArgs {
   let dryRun = false;
   let reportOnly = false;
-  let mode: Exclude<StoredSecretWriteMode, "legacy"> = "dual";
+  let mode: Exclude<StoredSecretWriteMode, "legacy"> = "kms";
   let batchSize = DEFAULT_BATCH_SIZE;
 
   for (let index = 0; index < argv.length; index += 1) {

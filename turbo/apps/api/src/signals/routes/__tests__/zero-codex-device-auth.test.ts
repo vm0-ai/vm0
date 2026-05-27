@@ -305,8 +305,8 @@ describe("Codex device auth routes", () => {
     expect(
       inspectPersistentSecretCiphertext(sessions[0]!.encryptedProviderState!),
     ).toStrictEqual({
-      format: "dual",
-      hasLegacy: true,
+      format: "kms",
+      hasLegacy: false,
       hasKms: true,
     });
     expect(kms.calls).toHaveLength(1);
