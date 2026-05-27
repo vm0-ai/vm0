@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { getConnectorOAuthClient } from "../../../../connector-utils";
-import { isOAuthConnectorType } from "../../../connector-auth";
+import { hasConnectorOAuthProvider } from "../../../connector-auth";
 import { googleAdsProvider } from "../google-ads-provider";
 import { server } from "./test-server";
 
@@ -11,7 +11,7 @@ const USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 describe("connector/providers/google-ads", () => {
   describe("googleAdsProvider", () => {
     it("registers google-ads as an OAuth connector type", () => {
-      expect(isOAuthConnectorType("google-ads")).toBe(true);
+      expect(hasConnectorOAuthProvider("google-ads")).toBe(true);
     });
 
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {

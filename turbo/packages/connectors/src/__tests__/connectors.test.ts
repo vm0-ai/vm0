@@ -14,11 +14,13 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
+  type ConnectorDeviceAuthGrantConfig,
   type ConnectorInvalidDefaultAuthMethodType,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type OAuthAuthCodeConnectorType,
+  type AuthCodeGrantConnectorType,
 } from "../connectors";
 import {
   getAvailableConnectorAuthMethods,
@@ -42,8 +44,9 @@ import {
   getEligibleConnectorTypes,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
-  isOAuthAuthCodeConnectorType,
-  isOAuthDeviceAuthConnectorType,
+  hasConnectorOAuthGrant,
+  hasConnectorAuthCodeGrant,
+  hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorOAuthClient,
   isStaticConnectorOAuthClient,
   isGoogleOAuthConnector,
@@ -52,7 +55,7 @@ import {
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorOAuthAuthUrl,
-  isOAuthConnectorType,
+  hasConnectorOAuthProvider,
   getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
   refreshConnectorOAuthToken,
@@ -153,7 +156,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   x: "https://twitter.com/i/oauth2/authorize",
   xero: "https://login.xero.com/identity/connect/authorize",
   zoom: "https://zoom.us/oauth/authorize",
-} as const satisfies Record<OAuthAuthCodeConnectorType, string>;
+} as const satisfies Record<AuthCodeGrantConnectorType, string>;
 
 function authorizationBaseUrl(url: string): string {
   const parsed = new URL(url);
@@ -363,17 +366,15 @@ describe("connector auth method config", () => {
   });
 });
 
-describe("isOAuthConnectorType", () => {
+describe("hasConnectorOAuthProvider", () => {
   it("matches exactly the connector types that declare OAuth grants", () => {
-    const oauthConnectorTypes = connectorTypeSchema.options
-      .filter((type) => {
-        return getConnectorOAuthGrantConfig(type) !== undefined;
-      })
-      .sort();
+    const oauthConnectorTypes = new Set<ConnectorType>(
+      connectorTypeSchema.options.filter(hasConnectorOAuthGrant),
+    );
 
     for (const type of connectorTypeSchema.options) {
-      expect(isOAuthConnectorType(type)).toBe(
-        oauthConnectorTypes.includes(type),
+      expect(hasConnectorOAuthProvider(type)).toBe(
+        oauthConnectorTypes.has(type),
       );
     }
   });
@@ -502,15 +503,12 @@ describe("isOAuthConnectorType", () => {
 
     try {
       const providerTypes = connectorTypeSchema.options.filter(
-        isOAuthAuthCodeConnectorType,
+        hasConnectorAuthCodeGrant,
       );
 
       for (const type of providerTypes) {
         const client = getConnectorOAuthClientConfig(type);
         expect(client, `${type}: OAuth client config`).toBeDefined();
-        if (!client) {
-          throw new Error(`${type} OAuth client config not found`);
-        }
         const oauthClient = resolveConnectorOAuthClient(client, () => {
           return "test-client-credential";
         });
@@ -1861,6 +1859,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
   it("returns auth-code grant config for GitHub", () => {
     const method = getConnectorAuthMethod("github", "oauth");
 
+    expectTypeOf(
+      getConnectorAuthCodeGrantConfig("github"),
+    ).toEqualTypeOf<ConnectorAuthCodeGrantConfig>();
     expect(getConnectorOAuthGrantConfig("github")).toStrictEqual(method?.grant);
     expect(getConnectorAuthCodeGrantConfig("github")).toMatchObject({
       kind: "auth-code",
@@ -1876,6 +1877,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
   });
 
   it("returns device-auth grant config for device OAuth connectors", () => {
+    expectTypeOf(
+      getConnectorDeviceAuthGrantConfig("test-oauth-device"),
+    ).toEqualTypeOf<ConnectorDeviceAuthGrantConfig>();
     expect(
       getConnectorDeviceAuthGrantConfig("test-oauth-device"),
     ).toMatchObject({
@@ -1924,12 +1928,12 @@ describe("connector OAuth lifecycle grant helpers", () => {
 describe("connector OAuth authorization-code config", () => {
   it("declares the current auth-code OAuth connectors with auth-code grants", () => {
     for (const type of connectorTypeSchema.options) {
-      if (!isOAuthAuthCodeConnectorType(type)) {
+      if (!hasConnectorAuthCodeGrant(type)) {
         continue;
       }
 
       expect(
-        getConnectorAuthCodeGrantConfig(type)?.kind,
+        getConnectorAuthCodeGrantConfig(type).kind,
         `${type}: OAuth grant kind`,
       ).toBe("auth-code");
     }
@@ -1956,7 +1960,7 @@ describe("connector OAuth authorization-code config", () => {
 
 describe("connector OAuth device authorization config", () => {
   it("declares the test OAuth device connector as a device authorization flow", () => {
-    expect(isOAuthDeviceAuthConnectorType("test-oauth-device")).toBe(true);
+    expect(hasConnectorDeviceAuthGrant("test-oauth-device")).toBe(true);
     expect(
       getConnectorDeviceAuthGrantConfig("test-oauth-device"),
     ).toMatchObject({
@@ -1973,7 +1977,7 @@ describe("connector OAuth device authorization config", () => {
   });
 
   it("declares the Base44 connector as a device authorization flow", () => {
-    expect(isOAuthDeviceAuthConnectorType("base44")).toBe(true);
+    expect(hasConnectorDeviceAuthGrant("base44")).toBe(true);
     expect(getConnectorDeviceAuthGrantConfig("base44")).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
@@ -1988,7 +1992,7 @@ describe("connector OAuth device authorization config", () => {
   });
 
   it("declares the Slock connector as a device authorization flow", () => {
-    expect(isOAuthDeviceAuthConnectorType("slock")).toBe(true);
+    expect(hasConnectorDeviceAuthGrant("slock")).toBe(true);
     expect(getConnectorDeviceAuthGrantConfig("slock")).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",

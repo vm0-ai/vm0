@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   ConnectorOAuthClientConfig,
-  OAuthConnectorType,
+  OAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
@@ -390,7 +390,7 @@ function mockSlackOAuth(options: {
 }
 
 interface ProviderMockOptions {
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthGrantConnectorType;
   readonly accessToken?: string;
   readonly refreshToken?: string | null;
   readonly expiresIn?: number;
@@ -870,7 +870,9 @@ function mockXeroProvider(options: ResolvedProviderMockOptions): void {
 }
 
 function mockProviderOAuth(options: ProviderMockOptions): void {
-  const providerMockers: Partial<Record<OAuthConnectorType, ProviderMocker>> = {
+  const providerMockers: Partial<
+    Record<OAuthGrantConnectorType, ProviderMocker>
+  > = {
     github: (resolvedOptions) => {
       mockGitHubOAuth({
         accessToken: resolvedOptions.accessToken,
@@ -1018,7 +1020,7 @@ async function findDecryptedSecret(args: {
 }
 
 interface ProviderSuccessCase {
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthGrantConnectorType;
   readonly externalId: string;
   readonly externalUsername: string;
   readonly externalEmail: string | null;
@@ -1159,7 +1161,7 @@ const providerSuccessCases = [
   },
 ] as const satisfies readonly ProviderSuccessCase[];
 
-function hasFetchableUserInfo(type: OAuthConnectorType): boolean {
+function hasFetchableUserInfo(type: OAuthGrantConnectorType): boolean {
   return type !== "notion" && type !== "sentry" && type !== "intervals-icu";
 }
 

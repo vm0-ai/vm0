@@ -913,11 +913,11 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-export type OAuthConnectorType = ConnectorTypesByGrantKind<
+export type OAuthGrantConnectorType = ConnectorTypesByGrantKind<
   "auth-code" | "device-auth"
 >;
-export type OAuthAuthCodeConnectorType = ConnectorTypesByGrantKind<"auth-code">;
-export type OAuthDeviceAuthConnectorType =
+export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
+export type DeviceAuthGrantConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
 
 export type ConnectorInvalidDefaultAuthMethodType<

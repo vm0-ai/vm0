@@ -23,7 +23,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  isOAuthConnectorType,
+  hasConnectorOAuthProvider,
   revokeConnectorOAuthToken,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -32,7 +32,7 @@ import {
   connectorTypeSchema,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type OAuthConnectorType,
+  type OAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -106,7 +106,7 @@ interface EncryptedApiTokenSecret {
 }
 
 interface PendingOAuthRevoke {
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthGrantConnectorType;
   readonly encryptedAccessToken: string;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -521,7 +521,7 @@ async function loadPendingOAuthRevoke(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingOAuthRevoke | null> {
-  if (!isOAuthConnectorType(args.type)) {
+  if (!hasConnectorOAuthProvider(args.type)) {
     return null;
   }
 
@@ -1101,7 +1101,7 @@ function connectorTokenExpiresAt(args: {
 }
 
 function allowedOAuthConnectorSecretNames(
-  type: OAuthConnectorType,
+  type: OAuthGrantConnectorType,
 ): Set<string> {
   return new Set(getConnectorSecretNames(type, "oauth"));
 }
@@ -1117,7 +1117,7 @@ function isOAuthPrimaryTokenSecret(args: {
 }
 
 function validateExtraOAuthConnectorSecrets(args: {
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthGrantConnectorType;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
@@ -1154,7 +1154,7 @@ async function upsertExtraOAuthConnectorSecrets(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthGrantConnectorType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
@@ -1182,7 +1182,7 @@ export const upsertOAuthConnector$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: OAuthConnectorType;
+      readonly type: OAuthGrantConnectorType;
       readonly accessToken: string;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];

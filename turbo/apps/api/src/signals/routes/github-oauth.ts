@@ -3,7 +3,7 @@ import {
   githubOauthContract,
   type GithubOauthConnectQuery,
 } from "@vm0/api-contracts/contracts/github-oauth";
-import type { OAuthAuthCodeConnectorType } from "@vm0/connectors/connectors";
+import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import {
   getConnectorOAuthClient,
   getConnectorOAuthScopes,
@@ -52,7 +52,7 @@ import {
 } from "./oauth-web-origin";
 
 const REDIRECT_STATUS = 307;
-const GITHUB_CONNECTOR_TYPE = "github" satisfies OAuthAuthCodeConnectorType;
+const GITHUB_CONNECTOR_TYPE = "github" satisfies AuthCodeGrantConnectorType;
 const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
 const L = logger("GithubOAuthRoute");
 

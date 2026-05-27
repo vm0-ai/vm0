@@ -9,7 +9,7 @@ import {
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
   getConnectorOAuthSecretMetadata,
-  isOAuthConnectorType,
+  hasConnectorOAuthProvider,
 } from "@vm0/connectors/auth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -211,7 +211,7 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    if (!isOAuthConnectorType(connectorType)) {
+    if (!hasConnectorOAuthProvider(connectorType)) {
       return stringError(400, `${connectorType} connector does not use OAuth`);
     }
     const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);

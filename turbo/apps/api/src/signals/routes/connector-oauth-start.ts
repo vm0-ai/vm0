@@ -1,17 +1,17 @@
 import {
-  getConnectorOAuthGrantConfig,
   getConnectorOAuthClient,
-  isOAuthAuthCodeConnectorType,
+  hasConnectorOAuthGrant,
+  hasConnectorAuthCodeGrant,
   type ConnectorEnvReader,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorType,
-  OAuthAuthCodeConnectorType,
+  AuthCodeGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorOAuthAuthUrl,
-  isOAuthConnectorType,
+  hasConnectorOAuthProvider,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 
@@ -32,7 +32,7 @@ type PrepareResolvedConnectorOAuthStartResult =
 type ResolveConnectorOAuthStartTypeResult =
   | {
       readonly ok: true;
-      readonly type: OAuthAuthCodeConnectorType;
+      readonly type: AuthCodeGrantConnectorType;
     }
   | {
       readonly ok: false;
@@ -49,14 +49,14 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
 export function resolveConnectorOAuthStartType(
   type: ConnectorType,
 ): ResolveConnectorOAuthStartTypeResult {
-  if (!getConnectorOAuthGrantConfig(type)) {
+  if (!hasConnectorOAuthGrant(type)) {
     return { ok: false, reason: "connector_does_not_use_oauth" };
   }
-  if (!isOAuthConnectorType(type)) {
-    return { ok: false, reason: "oauth_provider_not_configured" };
-  }
-  if (!isOAuthAuthCodeConnectorType(type)) {
+  if (!hasConnectorAuthCodeGrant(type)) {
     return { ok: false, reason: "unsupported_oauth_flow" };
+  }
+  if (!hasConnectorOAuthProvider(type)) {
+    return { ok: false, reason: "oauth_provider_not_configured" };
   }
   return { ok: true, type };
 }
@@ -65,7 +65,7 @@ export function resolveConnectorOAuthStartType(
 // ConnectorType first so non-OAuth connectors keep their route-specific errors,
 // then build the provider authorization URL at the normal async commit point.
 export function prepareResolvedConnectorOAuthStart(args: {
-  readonly type: OAuthAuthCodeConnectorType;
+  readonly type: AuthCodeGrantConnectorType;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
 }): PrepareResolvedConnectorOAuthStartResult {
@@ -85,7 +85,7 @@ export function prepareResolvedConnectorOAuthStart(args: {
 }
 
 export async function buildResolvedConnectorOAuthAuthResult(args: {
-  readonly type: OAuthAuthCodeConnectorType;
+  readonly type: AuthCodeGrantConnectorType;
   readonly oauthClient: ConnectorOAuthClient;
   readonly redirectUri: string;
   readonly state: string;

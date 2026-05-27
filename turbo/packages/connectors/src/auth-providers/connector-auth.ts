@@ -1,12 +1,12 @@
 import type {
   ConnectorType,
-  OAuthAuthCodeConnectorType,
-  OAuthConnectorType,
-  OAuthDeviceAuthConnectorType,
+  AuthCodeGrantConnectorType,
+  OAuthGrantConnectorType,
+  DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
-  isOAuthAuthCodeConnectorType,
+  hasConnectorAuthCodeGrant,
   isStaticConfidentialConnectorOAuthClient,
   isStaticConnectorOAuthClient,
   type ConnectorOAuthClient,
@@ -110,25 +110,25 @@ export type ConnectorOAuthRevokeResult =
   | { readonly status: "unsupported" };
 
 type AuthCodeConnectorOAuthProviderMap = {
-  readonly [Type in OAuthAuthCodeConnectorType]: AuthCodeConnectorAuthProvider<Type>;
+  readonly [Type in AuthCodeGrantConnectorType]: AuthCodeConnectorAuthProvider<Type>;
 };
 
 type DeviceAuthConnectorOAuthProviderMap = {
-  readonly [Type in OAuthDeviceAuthConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
+  readonly [Type in DeviceAuthGrantConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
 export type ConnectorOAuthSecretMetadata = AuthProviderSecretMetadata;
 
-function deviceAuthConnectorProviderFor<T extends OAuthDeviceAuthConnectorType>(
+function deviceAuthConnectorProviderFor<T extends DeviceAuthGrantConnectorType>(
   type: T,
 ): DeviceAuthConnectorOAuthProviderMap[T] {
   return DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type];
 }
 
-function connectorAccessProviderFor<T extends OAuthConnectorType>(
+function connectorAccessProviderFor<T extends OAuthGrantConnectorType>(
   type: T,
 ): OAuthConnectorAccessProvider<T> {
-  if (isOAuthAuthCodeConnectorType(type)) {
+  if (hasConnectorAuthCodeGrant(type)) {
     return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type]
       .access as OAuthConnectorAccessProvider<T>;
   }
@@ -137,10 +137,10 @@ function connectorAccessProviderFor<T extends OAuthConnectorType>(
     .access as OAuthConnectorAccessProvider<T>;
 }
 
-function connectorRevokeProviderFor<T extends OAuthConnectorType>(
+function connectorRevokeProviderFor<T extends OAuthGrantConnectorType>(
   type: T,
 ): OAuthConnectorRevokeProvider<T> {
-  if (isOAuthAuthCodeConnectorType(type)) {
+  if (hasConnectorAuthCodeGrant(type)) {
     return AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type]
       .revoke as OAuthConnectorRevokeProvider<T>;
   }
@@ -224,12 +224,14 @@ const CONNECTOR_OAUTH_PROVIDERS = {
   ...DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS,
 };
 
-export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
+export function hasConnectorOAuthProvider(
+  type: string,
+): type is OAuthGrantConnectorType {
   return Object.hasOwn(CONNECTOR_OAUTH_PROVIDERS, type);
 }
 
 export function getConnectorOAuthSecretMetadata(
-  type: OAuthConnectorType,
+  type: OAuthGrantConnectorType,
 ): ConnectorOAuthSecretMetadata;
 export function getConnectorOAuthSecretMetadata(
   type: string,
@@ -237,11 +239,11 @@ export function getConnectorOAuthSecretMetadata(
 export function getConnectorOAuthSecretMetadata(
   type: string,
 ): ConnectorOAuthSecretMetadata | undefined {
-  if (!isOAuthConnectorType(type)) {
+  if (!hasConnectorOAuthProvider(type)) {
     return undefined;
   }
 
-  if (isOAuthAuthCodeConnectorType(type)) {
+  if (hasConnectorAuthCodeGrant(type)) {
     return getAuthProviderSecretMetadata(
       AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type],
     );
@@ -253,7 +255,7 @@ export function getConnectorOAuthSecretMetadata(
 }
 
 export async function buildConnectorOAuthAuthUrl<
-  T extends OAuthAuthCodeConnectorType,
+  T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
@@ -270,7 +272,7 @@ export async function buildConnectorOAuthAuthUrl<
 }
 
 export async function exchangeConnectorOAuthCode<
-  T extends OAuthAuthCodeConnectorType,
+  T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
@@ -293,7 +295,7 @@ export async function exchangeConnectorOAuthCode<
 }
 
 export async function startConnectorOAuthDeviceAuth<
-  T extends OAuthDeviceAuthConnectorType,
+  T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
@@ -308,7 +310,7 @@ export async function startConnectorOAuthDeviceAuth<
 }
 
 export async function pollConnectorOAuthDeviceAuth<
-  T extends OAuthDeviceAuthConnectorType,
+  T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
@@ -323,7 +325,7 @@ export async function pollConnectorOAuthDeviceAuth<
 }
 
 export async function refreshConnectorOAuthToken<
-  T extends OAuthConnectorType,
+  T extends OAuthGrantConnectorType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
@@ -344,7 +346,7 @@ export async function refreshConnectorOAuthToken<
 }
 
 export async function revokeConnectorOAuthToken<
-  T extends OAuthConnectorType,
+  T extends OAuthGrantConnectorType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;

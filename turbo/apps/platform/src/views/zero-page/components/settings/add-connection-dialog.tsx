@@ -27,8 +27,8 @@ import {
   connectorAuthMethodHasOAuthGrant,
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
-  isOAuthAuthCodeConnectorType,
-  isOAuthDeviceAuthConnectorType,
+  hasConnectorAuthCodeGrant,
+  hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
@@ -884,13 +884,13 @@ function getConnectMethodContentComponent(
 ): ConnectMethodContentComponent | null {
   switch (method.grant.kind) {
     case "auth-code": {
-      if (isOAuthAuthCodeConnectorType(item.type)) {
+      if (hasConnectorAuthCodeGrant(item.type)) {
         return OAuthAuthCodeConnectMethodContent;
       }
       return null;
     }
     case "device-auth": {
-      if (isOAuthDeviceAuthConnectorType(item.type)) {
+      if (hasConnectorDeviceAuthGrant(item.type)) {
         return OAuthDeviceAuthConnectMethodContent;
       }
       return null;
@@ -1078,7 +1078,7 @@ function ConnectModalContent({
 
   const progressContent =
     hasAuthCodeGrant(item.type, item.availableAuthMethods) &&
-    isOAuthAuthCodeConnectorType(item.type)
+    hasConnectorAuthCodeGrant(item.type)
       ? getOAuthAuthCodeProgressContent({
           isPolling,
           settling,

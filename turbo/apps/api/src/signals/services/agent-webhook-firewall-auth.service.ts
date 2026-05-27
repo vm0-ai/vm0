@@ -5,12 +5,12 @@ import {
   getConnectorOAuthClient,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
-import type { OAuthConnectorType } from "@vm0/connectors/connectors";
+import type { OAuthGrantConnectorType } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorOAuthSecretMetadata,
-  isOAuthConnectorType,
+  hasConnectorOAuthProvider,
   refreshConnectorOAuthToken,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
@@ -174,7 +174,7 @@ interface RefreshTokenContext {
 type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
-      readonly connectorType: OAuthConnectorType;
+      readonly connectorType: OAuthGrantConnectorType;
       readonly oauthClient: ConnectorOAuthClient;
       readonly context: RefreshTokenContext;
     }
@@ -638,7 +638,7 @@ function prepareRefreshTokenContext(
     };
   }
 
-  if (!isOAuthConnectorType(args.connectorType)) {
+  if (!hasConnectorOAuthProvider(args.connectorType)) {
     L.debug(`${args.connectorType} is not an OAuth connector type, skipping`);
     return null;
   }

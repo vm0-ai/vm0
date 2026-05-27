@@ -7,17 +7,17 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorType,
-  OAuthDeviceAuthConnectorType,
+  DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthGrantConfig,
   getConnectorOAuthClient,
-  isOAuthDeviceAuthConnectorType,
+  hasConnectorOAuthGrant,
+  hasConnectorDeviceAuthGrant,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  isOAuthConnectorType,
+  hasConnectorOAuthProvider,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
 } from "@vm0/connectors/auth-providers";
@@ -85,7 +85,7 @@ type PollClaimedSessionArgs = {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthConnectorType;
+  readonly type: DeviceAuthGrantConnectorType;
   readonly oauthClient: ConnectorOAuthClient;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
@@ -179,25 +179,25 @@ function isFreshPollingSession(
 function resolveDeviceAuthType(
   type: ConnectorType,
 ):
-  | OAuthDeviceAuthConnectorType
+  | DeviceAuthGrantConnectorType
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof internalServerError> {
-  if (!getConnectorOAuthGrantConfig(type)) {
+  if (!hasConnectorOAuthGrant(type)) {
     return badRequestMessage(`${type} connector does not use OAuth`);
   }
-  if (!isOAuthConnectorType(type)) {
-    return internalServerError(`${type} OAuth provider is not configured`);
-  }
-  if (!isOAuthDeviceAuthConnectorType(type)) {
+  if (!hasConnectorDeviceAuthGrant(type)) {
     return badRequestMessage(
       `${type} connector does not support OAuth device authorization`,
     );
+  }
+  if (!hasConnectorOAuthProvider(type)) {
+    return internalServerError(`${type} OAuth provider is not configured`);
   }
   return type;
 }
 
 function resolveRequiredOAuthClient(
-  type: OAuthDeviceAuthConnectorType,
+  type: DeviceAuthGrantConnectorType,
 ): ConnectorOAuthClient | ReturnType<typeof internalServerError> {
   const oauthClient = getConnectorOAuthClient(type, optionalEnv);
   if (!oauthClient) {
@@ -210,7 +210,7 @@ async function lockDeviceAuthSessionOwner(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthConnectorType;
+  readonly type: DeviceAuthGrantConnectorType;
 }): Promise<void> {
   await args.writeDb.execute(
     sql`SELECT pg_advisory_xact_lock(hashtext('oauth_device_authorization:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type}))`,
@@ -221,7 +221,7 @@ async function markActiveSessionsSuperseded(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthConnectorType;
+  readonly type: DeviceAuthGrantConnectorType;
   readonly now: Date;
 }): Promise<void> {
   await args.writeDb
@@ -278,7 +278,7 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthConnectorType;
+  readonly type: DeviceAuthGrantConnectorType;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
@@ -380,7 +380,7 @@ async function claimSession(args: {
 
 async function parseEncryptedProviderState(args: {
   readonly session: DeviceAuthSessionRow;
-  readonly type: OAuthDeviceAuthConnectorType;
+  readonly type: DeviceAuthGrantConnectorType;
 }): Promise<EncryptedProviderState> {
   const decrypted = await decryptPersistentSecretValue(
     args.session.encryptedProviderState,
@@ -526,7 +526,7 @@ async function completeClaimedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthDeviceAuthConnectorType;
+  readonly type: DeviceAuthGrantConnectorType;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly result: OAuthDeviceAuthCompleteResult;

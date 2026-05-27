@@ -13,8 +13,9 @@ import {
   type ConnectorOAuthClientConfig,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type OAuthAuthCodeConnectorType,
-  type OAuthDeviceAuthConnectorType,
+  type OAuthGrantConnectorType,
+  type AuthCodeGrantConnectorType,
+  type DeviceAuthGrantConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
@@ -283,6 +284,12 @@ function isConnectorOAuthGrantConfig(
 }
 
 export function getConnectorOAuthGrantConfig(
+  type: OAuthGrantConnectorType,
+): ConnectorOAuthGrantConfig;
+export function getConnectorOAuthGrantConfig(
+  type: ConnectorType,
+): ConnectorOAuthGrantConfig | undefined;
+export function getConnectorOAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorOAuthGrantConfig | undefined {
   for (const method of connectorAuthMethodValues(type)) {
@@ -291,6 +298,12 @@ export function getConnectorOAuthGrantConfig(
     }
   }
   return undefined;
+}
+
+export function hasConnectorOAuthGrant(
+  type: ConnectorType,
+): type is OAuthGrantConnectorType {
+  return getConnectorOAuthGrantConfig(type) !== undefined;
 }
 
 export function connectorAuthMethodHasOAuthGrant(
@@ -310,6 +323,12 @@ export function connectorAuthMethodHasOAuthGrant(
 }
 
 export function getConnectorAuthCodeGrantConfig(
+  type: AuthCodeGrantConnectorType,
+): ConnectorAuthCodeGrantConfig;
+export function getConnectorAuthCodeGrantConfig(
+  type: ConnectorType,
+): ConnectorAuthCodeGrantConfig | undefined;
+export function getConnectorAuthCodeGrantConfig(
   type: ConnectorType,
 ): ConnectorAuthCodeGrantConfig | undefined {
   const grant = getConnectorOAuthGrantConfig(type);
@@ -322,6 +341,12 @@ export function getConnectorAuthCodeGrantConfig(
   }
 }
 
+export function getConnectorDeviceAuthGrantConfig(
+  type: DeviceAuthGrantConnectorType,
+): ConnectorDeviceAuthGrantConfig;
+export function getConnectorDeviceAuthGrantConfig(
+  type: ConnectorType,
+): ConnectorDeviceAuthGrantConfig | undefined;
 export function getConnectorDeviceAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorDeviceAuthGrantConfig | undefined {
@@ -474,6 +499,12 @@ export function isStaticConfidentialConnectorOAuthClient(
   );
 }
 
+export function getConnectorOAuthClientConfig(
+  type: OAuthGrantConnectorType,
+): ConnectorOAuthClientConfig;
+export function getConnectorOAuthClientConfig(
+  type: ConnectorType,
+): ConnectorOAuthClientConfig | undefined;
 export function getConnectorOAuthClientConfig(
   type: ConnectorType,
 ): ConnectorOAuthClientConfig | undefined {
@@ -708,15 +739,15 @@ export function getConnectorProvidedEnvNames(
   return provided;
 }
 
-export function isOAuthAuthCodeConnectorType(
+export function hasConnectorAuthCodeGrant(
   type: ConnectorType,
-): type is OAuthAuthCodeConnectorType {
+): type is AuthCodeGrantConnectorType {
   return getConnectorOAuthGrantConfig(type)?.kind === "auth-code";
 }
 
-export function isOAuthDeviceAuthConnectorType(
+export function hasConnectorDeviceAuthGrant(
   type: ConnectorType,
-): type is OAuthDeviceAuthConnectorType {
+): type is DeviceAuthGrantConnectorType {
   return getConnectorOAuthGrantConfig(type)?.kind === "device-auth";
 }
 

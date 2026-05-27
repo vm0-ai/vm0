@@ -1,8 +1,8 @@
 import type {
   CONNECTOR_TYPES,
   ConnectorOAuthClientConfig,
-  OAuthConnectorType,
-  OAuthDeviceAuthConnectorType,
+  OAuthGrantConnectorType,
+  DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 
 export interface OAuthTokenResult {
@@ -128,7 +128,7 @@ export type OAuthDeviceAuthPollResult =
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
-type ConnectorOAuthClientFor<T extends OAuthConnectorType> = {
+type ConnectorOAuthClientFor<T extends OAuthGrantConnectorType> = {
   [Method in keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]]: (typeof CONNECTOR_TYPES)[T]["authMethods"][Method] extends {
     readonly grant: {
       readonly kind: "auth-code" | "device-auth";
@@ -160,24 +160,24 @@ type TokenCredentialArgs<Client extends ConnectorOAuthClientConfig> =
       ? { readonly clientId: string }
       : NoClientCredentialArgs;
 
-export type ConnectorOAuthAuthorizeArgs<T extends OAuthConnectorType> =
+export type ConnectorOAuthAuthorizeArgs<T extends OAuthGrantConnectorType> =
   OAuthAuthorizeFlowArgs & StaticClientIdArgs<ConnectorOAuthClientFor<T>>;
 
-export type ConnectorOAuthExchangeArgs<T extends OAuthConnectorType> =
+export type ConnectorOAuthExchangeArgs<T extends OAuthGrantConnectorType> =
   OAuthExchangeFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
 
-export type ConnectorOAuthRefreshArgs<T extends OAuthConnectorType> =
+export type ConnectorOAuthRefreshArgs<T extends OAuthGrantConnectorType> =
   OAuthRefreshFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
 
-export type ConnectorOAuthRevokeArgs<T extends OAuthConnectorType> =
+export type ConnectorOAuthRevokeArgs<T extends OAuthGrantConnectorType> =
   OAuthRevokeFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
 
 export type ConnectorOAuthDeviceAuthStartArgs<
-  T extends OAuthDeviceAuthConnectorType,
+  T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthStartFlowArgs &
   StaticClientIdArgs<ConnectorOAuthClientFor<T>>;
 
 export type ConnectorOAuthDeviceAuthPollArgs<
-  T extends OAuthDeviceAuthConnectorType,
+  T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthPollFlowArgs &
   TokenCredentialArgs<ConnectorOAuthClientFor<T>>;

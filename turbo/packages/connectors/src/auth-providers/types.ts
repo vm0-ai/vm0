@@ -1,7 +1,7 @@
 import type {
-  OAuthAuthCodeConnectorType,
-  OAuthConnectorType,
-  OAuthDeviceAuthConnectorType,
+  AuthCodeGrantConnectorType,
+  OAuthGrantConnectorType,
+  DeviceAuthGrantConnectorType,
 } from "../connectors";
 import type {
   AuthUrlResult,
@@ -22,7 +22,7 @@ interface NoneGrantProvider {
   readonly kind: "none";
 }
 
-export interface AuthCodeGrantProvider<T extends OAuthAuthCodeConnectorType> {
+export interface AuthCodeGrantProvider<T extends AuthCodeGrantConnectorType> {
   readonly kind: "auth-code";
   buildAuthUrl(
     args: ConnectorOAuthAuthorizeArgs<T>,
@@ -31,7 +31,7 @@ export interface AuthCodeGrantProvider<T extends OAuthAuthCodeConnectorType> {
 }
 
 export interface DeviceAuthGrantProvider<
-  T extends OAuthDeviceAuthConnectorType,
+  T extends DeviceAuthGrantConnectorType,
 > {
   readonly kind: "device-auth";
   startDeviceAuth(
@@ -47,14 +47,14 @@ export interface NoneAccessProvider {
   getAccessSecretName(): string;
 }
 
-export interface RefreshTokenAccessProvider<T extends OAuthConnectorType> {
+export interface RefreshTokenAccessProvider<T extends OAuthGrantConnectorType> {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
   getRefreshSecretName(): string;
   refreshToken(args: ConnectorOAuthRefreshArgs<T>): Promise<OAuthRefreshResult>;
 }
 
-export type OAuthConnectorAccessProvider<T extends OAuthConnectorType> =
+export type OAuthConnectorAccessProvider<T extends OAuthGrantConnectorType> =
   | NoneAccessProvider
   | RefreshTokenAccessProvider<T>;
 
@@ -62,12 +62,12 @@ interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-interface TokenRevokeProvider<T extends OAuthConnectorType> {
+interface TokenRevokeProvider<T extends OAuthGrantConnectorType> {
   readonly kind: "token-revoke";
   revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
 }
 
-export type OAuthConnectorRevokeProvider<T extends OAuthConnectorType> =
+export type OAuthConnectorRevokeProvider<T extends OAuthGrantConnectorType> =
   | NoneRevokeProvider
   | TokenRevokeProvider<T>;
 
@@ -78,7 +78,7 @@ export interface AuthProvider<TGrant, TAccess, TRevoke> {
 }
 
 export type AuthCodeConnectorAuthProvider<
-  T extends OAuthAuthCodeConnectorType,
+  T extends AuthCodeGrantConnectorType,
 > = AuthProvider<
   AuthCodeGrantProvider<T>,
   OAuthConnectorAccessProvider<T>,
@@ -86,7 +86,7 @@ export type AuthCodeConnectorAuthProvider<
 >;
 
 export type DeviceAuthConnectorAuthProvider<
-  T extends OAuthDeviceAuthConnectorType,
+  T extends DeviceAuthGrantConnectorType,
 > = AuthProvider<
   DeviceAuthGrantProvider<T>,
   OAuthConnectorAccessProvider<T>,

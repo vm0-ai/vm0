@@ -1,4 +1,4 @@
-import type { OAuthAuthCodeConnectorType } from "@vm0/connectors/connectors";
+import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import { z } from "zod";
 
 import { getAuthCodeGrantConfig } from "./grant-config";
@@ -10,7 +10,7 @@ const MICROSOFT_AUTHORIZATION_URL =
 const MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me";
 
 type MicrosoftOAuthConnectorType = Extract<
-  OAuthAuthCodeConnectorType,
+  AuthCodeGrantConnectorType,
   "outlook-calendar" | "outlook-mail"
 >;
 

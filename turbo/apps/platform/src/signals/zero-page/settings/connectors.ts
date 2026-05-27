@@ -17,8 +17,8 @@ import {
   getConnectorTags,
   hasRequiredScopes,
   isGoogleOAuthConnector,
-  isOAuthAuthCodeConnectorType,
-  isOAuthDeviceAuthConnectorType,
+  hasConnectorAuthCodeGrant,
+  hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
   zeroLocalAgentHostsContract,
@@ -165,7 +165,7 @@ export function getConnectorConnectLaunchMode({
   if (!hasAuthCodeGrant) {
     return "modal";
   }
-  if (!isOAuthAuthCodeConnectorType(type)) {
+  if (!hasConnectorAuthCodeGrant(type)) {
     return "modal";
   }
   if (preferModalForGoogleOAuth && isGoogleOAuthConnector(type)) {
@@ -1421,7 +1421,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    if (!isOAuthDeviceAuthConnectorType(type)) {
+    if (!hasConnectorDeviceAuthGrant(type)) {
       throw new Error(`${type} does not use device authorization OAuth`);
     }
 
@@ -1624,7 +1624,7 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 // ---------------------------------------------------------------------------
 
 function assertConnectorUsesOAuthAuthCode(type: ConnectorType): void {
-  if (!isOAuthAuthCodeConnectorType(type)) {
+  if (!hasConnectorAuthCodeGrant(type)) {
     throw new Error(`${type} does not use authorization-code OAuth`);
   }
 }

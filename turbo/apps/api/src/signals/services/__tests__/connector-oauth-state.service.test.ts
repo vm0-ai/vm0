@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { OAuthConnectorType } from "@vm0/connectors/connectors";
+import type { OAuthGrantConnectorType } from "@vm0/connectors/connectors";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { createStore } from "ccstate";
 import { inArray } from "drizzle-orm";
@@ -14,7 +14,7 @@ const store = createStore();
 
 type SeedOAuthStateInput = {
   readonly state?: string;
-  readonly type?: OAuthConnectorType;
+  readonly type?: OAuthGrantConnectorType;
   readonly consumedAt?: Date | null;
   readonly expiresAt?: Date;
 };

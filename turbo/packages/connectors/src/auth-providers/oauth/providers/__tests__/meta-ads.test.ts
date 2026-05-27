@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { getConnectorOAuthClient } from "../../../../connector-utils";
-import { isOAuthConnectorType } from "../../../connector-auth";
+import { hasConnectorOAuthProvider } from "../../../connector-auth";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
@@ -139,7 +139,7 @@ describe("connector/providers/meta-ads", () => {
 
   describe("metaAdsProvider", () => {
     it("registers meta-ads as an OAuth connector type", () => {
-      expect(isOAuthConnectorType("meta-ads")).toBe(true);
+      expect(hasConnectorOAuthProvider("meta-ads")).toBe(true);
     });
 
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {

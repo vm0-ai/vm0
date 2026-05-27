@@ -6,7 +6,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   isGoogleOAuthConnector,
-  isOAuthAuthCodeConnectorType,
+  hasConnectorAuthCodeGrant,
 } from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -134,7 +134,7 @@ function canAuthorizeConnector(
 ): boolean {
   return (
     isConnected ||
-    (isOAuthAuthCodeConnectorType(connectorType) &&
+    (hasConnectorAuthCodeGrant(connectorType) &&
       (item?.availableAuthMethods.includes("oauth") ?? false))
   );
 }
