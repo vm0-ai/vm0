@@ -16,16 +16,19 @@ if [[ -z "${EXPECTED_KEYS:-}" ]]; then
   exit 1
 fi
 
-visible_vaults="$(op vault list --format json | jq -r '.[].name' | sort)"
-if ! grep -qx "$VAULT_NAME" <<< "$visible_vaults"; then
-  echo "::error::1Password token cannot access ${VAULT_NAME} vault"
-  echo "Visible vaults:"
-  sed 's/^/- /' <<< "$visible_vaults"
+if ! visible_vaults="$(op vault list --format json | jq -r '.[].name' | sort)"; then
+  echo "::error::failed to list 1Password vaults"
   exit 1
 fi
 
 if [[ -n "${EXPECTED_FORBIDDEN_VAULT:-}" ]] && grep -qx "$EXPECTED_FORBIDDEN_VAULT" <<< "$visible_vaults"; then
   echo "::error::1Password token unexpectedly has access to ${EXPECTED_FORBIDDEN_VAULT} vault"
+  exit 1
+fi
+
+if ! grep -qx "$VAULT_NAME" <<< "$visible_vaults"; then
+  visible_vault_count="$(grep -c . <<< "$visible_vaults")"
+  echo "::error::1Password token cannot access ${VAULT_NAME} vault; visible vault count: ${visible_vault_count}"
   exit 1
 fi
 
@@ -88,16 +91,11 @@ while IFS= read -r key; do
   ref="op://${VAULT_NAME}/${item}/${key}"
 
   has_op_value=true
-  err_file="$(mktemp)"
-  if ! op_value="$(op read "$ref" 2>"$err_file")"; then
-    echo "::error::${key} is missing from 1Password (${ref})"
-    sed -n '1,3p' "$err_file"
-    rm -f "$err_file"
+  if ! op_value="$(op read "$ref" 2>/dev/null)"; then
+    echo "::error::${key} is missing or unreadable from 1Password (${ref})"
     failures=$((failures + 1))
     has_op_value=false
     op_value=
-  else
-    rm -f "$err_file"
   fi
 
   if [[ "$has_op_value" == "true" && -z "$op_value" ]]; then
