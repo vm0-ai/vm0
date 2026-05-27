@@ -32,6 +32,7 @@ from mitmproxy.addonmanager import Loader
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
+import flow_metadata_keys as metadata_keys
 import matching
 import registry
 import response_streaming
@@ -49,6 +50,7 @@ from url_utils import AuthorityValidationError, get_trusted_authority
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
+_USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
 _usage_flush_requested = threading.Event()
 _usage_flush_signal_lock = threading.Lock()
@@ -168,10 +170,10 @@ _request_start_times: dict = {}
 
 
 def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
-    flow.metadata["original_url"] = error.fallback_url
-    flow.metadata["firewall_action"] = "DENY"
-    flow.metadata["firewall_error"] = error.reason
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    flow.metadata[metadata_keys.ORIGINAL_URL] = error.fallback_url
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = error.reason
 
     log_proxy_entry(
         proxy_log_path,
@@ -261,13 +263,13 @@ async def request(flow: http.HTTPFlow) -> None:
 
     try:
         # Store info for response handler
-        flow.metadata["vm_run_id"] = run_id
+        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
         flow.metadata["vm_client_ip"] = client_ip
-        flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
-        flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
-        flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
-        flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
-        flow.metadata["cli_agent_type"] = vm_info.get("cliAgentType") or "claude-code"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
+        flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
 
         try:
             trusted_authority = get_trusted_authority(flow)
@@ -276,8 +278,8 @@ async def request(flow: http.HTTPFlow) -> None:
             return
 
         original_url = trusted_authority.url
-        flow.metadata["original_url"] = original_url
-        flow.metadata["trusted_authority_host"] = trusted_authority.host
+        flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+        flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
         flow.metadata["trusted_authority_port"] = trusted_authority.port
 
         hostname = trusted_authority.host.lower()
@@ -298,7 +300,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
                 and not flow.request.path.startswith("/api/test/")
             ):
-                flow.metadata["firewall_action"] = "ALLOW"
+                flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
                 return
 
         # --- Step 2: Firewall match with permission check ---
@@ -311,7 +313,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 compiled_network_policies,
             )
             if isinstance(result, matching.FirewallBlock):
-                proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+                proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
                 block_message = (
                     "malformed network policy"
                     if result.reason == "malformed_network_policy"
@@ -330,9 +332,9 @@ async def request(flow: http.HTTPFlow) -> None:
                     name=result.name,
                     reason=result.reason,
                 )
-                flow.metadata["firewall_action"] = "DENY"
-                flow.metadata["firewall_base"] = result.base
-                flow.metadata["firewall_name"] = result.name
+                flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+                flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
+                flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
                 error_body = json.dumps(
                     {
                         "error": "permission_denied",
@@ -357,7 +359,9 @@ async def request(flow: http.HTTPFlow) -> None:
                     is_billable_firewall(result.name, vm_info),
                 )
                 await handle_firewall_request(flow, result, vm_info)
-                if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
+                if flow.response is not None and not flow.metadata.get(
+                    metadata_keys.AUTH_URL_REWRITE
+                ):
                     # Local firewall/auth errors never reach a provider. They only
                     # need pre-tracking to keep shutdown from racing while auth is
                     # resolving, so release as soon as the local response exists.
@@ -365,7 +369,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 return
 
         # No firewall match — pass through directly
-        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except Exception:
         _request_start_times.pop(flow.id, None)
         _release_tracked_usage_flow(flow)
@@ -380,15 +384,15 @@ def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> Non
     The response/error decorator pops the metadata flag so decrement runs
     exactly once.
     """
-    if flow.metadata.get("_usage_flow_tracked"):
+    if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
     if firewall_billable:
         usage.increment_in_flight_flows()
-        flow.metadata["_usage_flow_tracked"] = True
+        flow.metadata[_USAGE_FLOW_TRACKED] = True
 
 
 def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
-    if flow.metadata.pop("_usage_flow_tracked", False):
+    if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
         usage.decrement_in_flight_flows()
 
 
@@ -414,7 +418,7 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     """Feed server-side WebSocket frames into model-provider usage parsers."""
     if not flow.websocket or not flow.websocket.messages:
         return
-    if not flow.metadata.get("vm_run_id", ""):
+    if not flow.metadata.get(metadata_keys.VM_RUN_ID, ""):
         return
 
     message = flow.websocket.messages[-1]
@@ -456,7 +460,7 @@ def _track_usage_flow(fn):
 @_track_usage_flow
 def websocket_end(flow: http.HTTPFlow) -> None:
     """Report model-provider usage extracted from a WebSocket-upgraded response."""
-    run_id = flow.metadata.get("vm_run_id", "")
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
     if run_id:
         _report_model_provider_usage_once(flow, run_id)
 
@@ -472,19 +476,19 @@ def response(flow: http.HTTPFlow) -> None:
     # not leak into ``_request_start_times``. Mirrors ``error()``.
     start_time = _request_start_times.pop(flow.id, None)
 
-    run_id = flow.metadata.get("vm_run_id", "")
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
     if not run_id:
         # Unregistered VM: the request handler returned before populating
         # metadata, so none of this handler's work applies.
         return
 
     latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
-    original_url = flow.metadata["original_url"]
-    firewall_action = flow.metadata.get("firewall_action", "ALLOW")
+    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
     request_size = len(flow.request.raw_content or b"")
     response_size = _response_size(flow)
-    stream_buf = flow.metadata.get("stream_buffer")
+    stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
 
     # Parse URL for host
@@ -499,8 +503,8 @@ def response(flow: http.HTTPFlow) -> None:
     # Log HTTP network entry for this run. DNS/kmsg rows are produced by the
     # Rust runner; api-contracts is the shared network-log schema boundary.
     # [NETWORK_LOG_FIELDS]
-    network_log_path = flow.metadata.get("vm_network_log_path", "")
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if network_log_path:
         log_entry = {
             "type": "http",
@@ -516,12 +520,12 @@ def response(flow: http.HTTPFlow) -> None:
         }
 
         # Add firewall match info if this was a firewall request
-        firewall_base = flow.metadata.get("firewall_base")
+        firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
         if firewall_base:
             add_firewall_metadata(flow, log_entry)
 
         # Add request headers, request body, and response body when capture is enabled
-        if flow.metadata.get("capture_body"):
+        if flow.metadata.get(metadata_keys.CAPTURE_BODY):
             body_utils.add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
@@ -534,13 +538,13 @@ def response(flow: http.HTTPFlow) -> None:
     # buffered JSON body only for legacy/test flows that did not pass through
     # responseheaders() and therefore have no incremental extractor.
     if (
-        not flow.metadata.get("_model_json_usage_finalized")
-        and not flow.metadata.get("model_provider_usage")
+        not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
+        and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
     ):
-        firewall_name = flow.metadata.get("firewall_name", "")
+        firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
         if firewall_name.startswith("model-provider:") and flow.metadata.get(
-            "firewall_billable", False
+            metadata_keys.FIREWALL_BILLABLE, False
         ):
             if response_streaming.uses_openai_responses_usage_protocol(flow):
                 json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
@@ -555,7 +559,7 @@ def response(flow: http.HTTPFlow) -> None:
                     )
                 )
             if json_usage:
-                flow.metadata["model_provider_usage"] = json_usage
+                flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
             elif json_error is not None:
                 log_proxy_entry(
                     proxy_log_path,
@@ -579,9 +583,9 @@ def response(flow: http.HTTPFlow) -> None:
     if (
         flow.response
         and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED
-        and flow.metadata.get("firewall_base")
+        and flow.metadata.get(metadata_keys.FIREWALL_BASE)
     ):
-        api_id = flow.metadata.get("firewall_api_id", "")
+        api_id = flow.metadata.get(metadata_keys.FIREWALL_API_ID, "")
         if api_id:
             cache_key = (run_id, api_id)
             clear_cached_firewall_headers(cache_key)
@@ -606,16 +610,16 @@ def error(flow: http.HTTPFlow) -> None:
     """
     start_time = _request_start_times.pop(flow.id, None)
 
-    run_id = flow.metadata.get("vm_run_id", "")
-    network_log_path = flow.metadata.get("vm_network_log_path", "")
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
 
     if not run_id or not network_log_path:
         return
 
     latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
-    original_url = flow.metadata["original_url"]
-    firewall_action = flow.metadata.get("firewall_action", "ALLOW")
+    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
     try:
         parsed_url = urllib.parse.urlparse(original_url)
@@ -644,7 +648,7 @@ def error(flow: http.HTTPFlow) -> None:
     }
 
     # Add firewall context if available
-    firewall_base = flow.metadata.get("firewall_base")
+    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
     if firewall_base:
         add_firewall_metadata(flow, log_entry)
 
@@ -662,7 +666,7 @@ def error(flow: http.HTTPFlow) -> None:
     # dropped from billing.  Do not run the generic connector fallback for
     # non-streaming JSON errors: partial bodies could otherwise be treated
     # as unparseable successes and billed from request-side hints.
-    if flow.metadata.get("x_ndjson_state") is not None:
+    if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
         usage.report_connector_usage(flow, run_id)
 
     log_proxy_entry(
@@ -710,9 +714,9 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     if not vm_info:
         return
 
-    flow.metadata["vm_run_id"] = vm_info.get("runId", "")
-    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
-    flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
     flow.metadata["tcp_start_time"] = time.time()
 
 
@@ -727,8 +731,8 @@ def tcp_error(flow: tcp.TCPFlow) -> None:
 
 
 def _log_tcp(flow: tcp.TCPFlow) -> None:
-    run_id = flow.metadata.get("vm_run_id", "")
-    network_log_path = flow.metadata.get("vm_network_log_path", "")
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
     if not run_id or not network_log_path:
         return
 

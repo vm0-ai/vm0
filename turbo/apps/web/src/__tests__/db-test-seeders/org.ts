@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
+import { auth } from "@clerk/nextjs/server";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -18,9 +19,17 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { getTestAuthContext } from "../api-test-helpers/core";
 import { ORG_SENTINEL_USER_ID } from "../test-constants/org";
 import { ensureOrgRow } from "../test-helpers";
+
+async function getTestAuthContext(): Promise<{
+  userId: string;
+  orgId: string;
+}> {
+  const { userId, orgId } = await auth();
+  if (!userId) throw new Error("Mock Clerk userId is null");
+  return { userId, orgId: orgId ?? `org_mock_${userId}` };
+}
 
 /**
  * Create a test org by inserting into org_cache.

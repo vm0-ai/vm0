@@ -153,6 +153,14 @@ assert flow.metadata["firewall_action"] == "ALLOW"
 assert flow.metadata["service_base"] == "https://api.github.com"
 ```
 
+### Shared Flow Metadata Keys
+
+Shared `flow.metadata` contract keys used across addon modules live in
+`src/flow_metadata_keys.py`. Tests may import those constants when seeding
+internal metadata for later hook phases. Keep externally visible log or schema
+field assertions as string literals so tests still catch accidental output key
+changes.
+
 ## What to Test
 
 - **URL matching**: `match_service()` with various URLs, path boundaries

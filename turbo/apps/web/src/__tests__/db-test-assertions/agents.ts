@@ -6,7 +6,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 // ---------------------------------------------------------------------------
-// Session / conversation assertions (migrated from api-test-helpers/agents.ts)
+// Session / conversation assertions used by migration tests.
 // ---------------------------------------------------------------------------
 
 /**

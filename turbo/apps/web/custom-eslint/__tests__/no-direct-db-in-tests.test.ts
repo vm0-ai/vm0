@@ -45,7 +45,7 @@ ruleTester.run("no-direct-db-in-tests", rule, {
     },
     {
       // Test infrastructure import is fine
-      code: 'import { createTestRun } from "../__tests__/api-test-helpers";',
+      code: 'import { createTestRun } from "../__tests__/db-test-seeders/runs";',
     },
     {
       // Non-service relative import is fine

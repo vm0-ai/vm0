@@ -121,7 +121,7 @@ interface UserContext {
 /**
  * Insert a row into org_cache for testing cache behavior.
  */
-export async function insertOrgCacheEntry(entry: {
+async function insertOrgCacheEntry(entry: {
   orgId: string;
   slug: string;
   name?: string;

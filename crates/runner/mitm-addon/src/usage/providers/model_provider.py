@@ -1,11 +1,11 @@
 """Model-provider billing entry point.
 
 Buffers token counts already normalized by an addon-side provider extractor
-(stored in ``flow.metadata["model_provider_usage"]``) for aggregate upload to
+(stored in ``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]``) for aggregate upload to
 the platform ``/api/webhooks/agent/usage-event`` endpoint.
 
 Model-provider usage is intentionally reported only for platform-billable
-flows. ``flow.metadata["firewall_billable"]`` comes from the web layer's
+flows. ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` comes from the web layer's
 ``billableFirewalls`` list; when it is false, the run is using BYO provider
 credentials or another non-platform-billable path and must not charge platform
 credits. The same flag gates incremental usage extraction before this reporter
@@ -17,6 +17,7 @@ from typing import TypeGuard
 
 from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
@@ -46,26 +47,26 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     writes a proxy warning because that indicates an environment/reporting setup
     problem.
     """
-    firewall_name = flow.metadata.get("firewall_name", "")
+    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
     if not (firewall_name.startswith("model-provider:") and run_id):
         return False
-    if not flow.metadata.get("firewall_billable", False):
+    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
         return False
-    usage = flow.metadata.get("model_provider_usage")
+    usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
     if not usage or not isinstance(usage, dict):
         return False
     message_id = _string_or_none(usage.get("message_id")) or flow.id
     provider = (
-        _string_or_none(flow.metadata.get("model_usage_provider"))
+        _string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER))
         or _string_or_none(usage.get("model"))
         or "unknown"
     )
     events = _build_usage_events(run_id, message_id, provider, usage)
     if not events:
         return False
-    sandbox_token = flow.metadata.get("vm_sandbox_token", "")
+    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
     api_url = get_api_url()
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if not sandbox_token or not api_url:
         log_proxy_entry(
             proxy_log_path,

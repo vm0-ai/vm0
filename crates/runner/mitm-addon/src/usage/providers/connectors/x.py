@@ -14,6 +14,7 @@ from typing import TypedDict
 from mitmproxy import http
 
 import body_utils
+import flow_metadata_keys as metadata_keys
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
@@ -260,11 +261,11 @@ def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
       - ``is_stream``: bool — True when the request path is one of the X v2
         NDJSON streaming endpoints (see :data:`_STREAM_ENDPOINTS`).
 
-    Reads from ``flow.metadata["original_url"]`` (set by the request handler
+    Reads from ``flow.metadata[metadata_keys.ORIGINAL_URL]`` (set by the request handler
     via ``url_utils.get_original_url``) rather than ``pretty_url`` to stay
     consistent with the rest of the addon.
     """
-    parsed = urllib.parse.urlparse(flow.metadata.get("original_url", ""))
+    parsed = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, ""))
     qs = urllib.parse.parse_qs(parsed.query)
     id_like_values = qs.get("ids", []) + qs.get("usernames", [])
     ids_count = _count_non_empty_comma_segments(id_like_values)
@@ -300,7 +301,7 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         billing dimension, so we collapse them into one log key.
 
     For X NDJSON streaming endpoints, the responseheaders hook registers an
-    incremental parser that populates ``flow.metadata["x_ndjson_state"]``
+    incremental parser that populates ``flow.metadata[metadata_keys.X_NDJSON_STATE]``
     as response bytes arrive.  When that state is present we return its
     accumulated counters directly (``body_format: "ndjson"``) and skip
     the legacy buffered ``json.loads`` fallback, since stream buffers are
@@ -314,7 +315,7 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     Incremental parser failures may also include ``parse_error`` for proxy
     audit logs.
     """
-    state = flow.metadata.get("stream_buffer_state") or {}
+    state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE) or {}
     truncated = bool(state.get("truncated", False))
     result: dict = {"body_parsed": False, "body_truncated": truncated}
 
@@ -327,7 +328,7 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     # every chunk regardless of that cap, so billing counts are complete.
     # Reporting body_truncated=True here would misleadingly suggest the
     # counts are unreliable when they are not.
-    ndjson_state = flow.metadata.get("x_ndjson_state")
+    ndjson_state = flow.metadata.get(metadata_keys.X_NDJSON_STATE)
     if ndjson_state is not None:
         result["body_parsed"] = True
         result["body_truncated"] = False
@@ -339,11 +340,11 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         result["ndjson_lines_failed"] = ndjson_state["lines_failed"]
         return result
 
-    json_state = flow.metadata.get("x_json_state")
+    json_state = flow.metadata.get(metadata_keys.X_JSON_STATE)
     if isinstance(json_state, dict):
         return {**result, **json_state}
 
-    buf = flow.metadata.get("stream_buffer")
+    buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     if not buf:
         return result
     if not flow.response:
@@ -480,8 +481,8 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
 
     **Caller contract**: the dispatcher in
     :mod:`usage.providers.connectors` guarantees ``run_id`` is non-empty,
-    ``flow.metadata["firewall_billable"]`` is True, and
-    ``flow.metadata["firewall_name"] == "x"`` before calling this.  Those
+    ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, and
+    ``flow.metadata[metadata_keys.FIREWALL_NAME] == "x"`` before calling this.  Those
     gates are not re-checked here.
 
     Additional X-specific skip conditions:
@@ -492,12 +493,12 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     - ``firewall_permission`` is not mapped to an X billing bucket
       (e.g. the ``"app-only"`` scope for BearerToken-only endpoints)
     """
-    firewall_name = flow.metadata.get("firewall_name", "")
+    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
     if not flow.response or not (
         _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
     ):
         return
-    permission = flow.metadata.get("firewall_permission", "")
+    permission = flow.metadata.get(metadata_keys.FIREWALL_PERMISSION, "")
     if not permission:
         return
     # mitmproxy's ``flow.request.path`` is the raw request-target — it
@@ -524,7 +525,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
 
     req_meta = _parse_request_metadata(flow)
     resp_meta = _parse_response_metadata(flow)
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
 
     # Structured context common to every billing-side proxy log entry
     # for this flow — threaded into the helper so the log firing at the
@@ -575,7 +576,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         )
 
     # Buffer usage events for aggregate platform upload.
-    sandbox_token = flow.metadata.get("vm_sandbox_token", "")
+    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:
         log_proxy_entry(
