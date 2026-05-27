@@ -58,6 +58,7 @@ _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
 _TURBO_DIR = _REPO_ROOT / "turbo"
 _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" / "x.generated.ts"
 _PATH_PARAM_RE = re.compile(r"^(?P<prefix>[^{}]*)\{(?P<name>[^{}]+)\}(?P<suffix>[^{}]*)$")
+_SIMPLE_PATH_PARAM_SEGMENT_RE = re.compile(r"^\{[^{}+*]+\}$")
 _X_FIREWALL_EXPORT_SCRIPT = """
 import { collectAndValidatePermissions } from "./packages/connectors/src/firewall-expander.ts";
 import {
@@ -685,6 +686,29 @@ class TestFirewallConsistency:
 
 
 class TestOverrideClassification:
+    def test_path_overrides_use_simple_parameter_segments(self):
+        """The representative-path overlap tests below are intentionally
+        simple.  Keep manual X billing overrides to literal segments and
+        whole-segment ``{param}`` placeholders unless the overlap checker
+        is upgraded to reason about mixed prefix/suffix parameter forms.
+        """
+        complex_patterns: list[tuple[str, str, str, str]] = []
+        for scope, method, pattern, bucket in _PATH_OVERRIDES:
+            for segment in pattern.split("/"):
+                if "{" not in segment and "}" not in segment:
+                    continue
+                if _SIMPLE_PATH_PARAM_SEGMENT_RE.fullmatch(segment) is None:
+                    complex_patterns.append((scope, method, pattern, bucket))
+                    break
+
+        assert not complex_patterns, (
+            "X billing path overrides use mixed or greedy parameter segments: "
+            f"{complex_patterns}. The current representative-path shadowing "
+            "tests only prove non-shadowing for literal segments and "
+            "whole-segment `{param}` placeholders; upgrade the overlap check "
+            "before adding more complex override patterns."
+        )
+
     def test_every_path_override_classifies_sample_to_configured_bucket(self):
         mismatches: list[tuple[str, str, str, str, str, str | None]] = []
         for scope, method, pattern, bucket in _PATH_OVERRIDES:
