@@ -125,29 +125,42 @@ const SECTION_ORDER: Record<string, number> = {
   "Core concepts": 30,
   "Core Concepts": 30,
   "What Zero delivers": 40,
-  Channels: 50,
+  Integrations: 50,
   Connectors: 60,
   "Who it's for": 70,
 };
 
 const UNKNOWN_SECTION_ORDER = 1000;
 
+function normalizeSectionTitle(title: string): string {
+  return title === "Channels" ? "Integrations" : title;
+}
+
+function normalizeSectionSlug(slug: string | undefined, title: string): string {
+  if (!slug || slug === "channels") {
+    return slugify(title);
+  }
+  return slug;
+}
+
 function resolveSection(
   section: string | StrapiDocsSection | undefined,
 ): DocsSection {
   if (typeof section === "string") {
-    const title = section.trim();
-    if (!title) {
+    const rawTitle = section.trim();
+    if (!rawTitle) {
       return { title: "Docs", slug: "docs", order: 0 };
     }
+    const title = normalizeSectionTitle(rawTitle);
     return {
       title,
       slug: slugify(title),
       order: SECTION_ORDER[title] ?? UNKNOWN_SECTION_ORDER,
     };
   }
-  const sectionTitle = section?.title || section?.name || "Docs";
-  const sectionSlug = section?.slug || slugify(sectionTitle);
+  const rawSectionTitle = section?.title || section?.name || "Docs";
+  const sectionTitle = normalizeSectionTitle(rawSectionTitle);
+  const sectionSlug = normalizeSectionSlug(section?.slug, sectionTitle);
   const explicitOrder = section?.order;
   return {
     title: sectionTitle,

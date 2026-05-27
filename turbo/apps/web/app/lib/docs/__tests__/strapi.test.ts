@@ -123,6 +123,40 @@ describe("docs/strapi", () => {
     });
   });
 
+  it("renames the legacy Channels docs section to Integrations", async () => {
+    server.use(
+      http.get(`${STRAPI_URL}/api/docs-pages`, () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: 4,
+              documentId: "doc-slack",
+              title: "Slack",
+              description: "Connect Slack.",
+              slug: "slack",
+              path: "integrations/slack",
+              order: 1,
+              createdAt: "2026-05-01T00:00:00.000Z",
+              updatedAt: "2026-05-01T00:00:00.000Z",
+              publishedAt: "2026-05-01T00:00:00.000Z",
+              section: { title: "Channels", slug: "channels" },
+              body: "# Slack",
+            },
+          ],
+          meta: {},
+        });
+      }),
+    );
+
+    const pages = await getDocsPagesFromStrapi("en");
+
+    expect(pages[0]?.section).toEqual({
+      title: "Integrations",
+      slug: "integrations",
+      order: 50,
+    });
+  });
+
   it("fetches a single docs page by path", async () => {
     let capturedLocale: string | null = null;
     let capturedPath: string | null = null;
