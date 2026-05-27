@@ -1845,7 +1845,7 @@ describe("POST /api/webhooks/github", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("acknowledges dispatch failures such as missing installations", async () => {
+  it("ignores label triggers for unbound GitHub installations", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
@@ -1856,6 +1856,28 @@ describe("POST /api/webhooks/github", () => {
       payload: buildGitHubIssuesPayload(fixture, {
         action: "opened",
         installationId: remoteGitHubId(),
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("ignores bot mentions for unbound GitHub installations", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture, {
+        installationId: remoteGitHubId(),
+        commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
       }),
     });
     await clearAllDetached();

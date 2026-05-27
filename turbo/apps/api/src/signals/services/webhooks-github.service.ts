@@ -825,6 +825,22 @@ async function loadActiveInstallation(args: {
   readonly ghInstallationId: string;
   readonly signal: AbortSignal;
 }): Promise<GitHubInstallationRecord> {
+  const installation = await findActiveInstallation(args);
+
+  if (!installation) {
+    throw new Error(
+      `GitHub installation not found: installationId=${args.ghInstallationId}`,
+    );
+  }
+
+  return installation;
+}
+
+async function findActiveInstallation(args: {
+  readonly db: Db;
+  readonly ghInstallationId: string;
+  readonly signal: AbortSignal;
+}): Promise<GitHubInstallationRecord | null> {
   const [installation] = await args.db
     .select()
     .from(githubInstallations)
@@ -837,13 +853,7 @@ async function loadActiveInstallation(args: {
     .limit(1);
   args.signal.throwIfAborted();
 
-  if (!installation) {
-    throw new Error(
-      `GitHub installation not found: installationId=${args.ghInstallationId}`,
-    );
-  }
-
-  return installation;
+  return installation ?? null;
 }
 
 async function maybeAddCommentReaction(args: {
@@ -1195,11 +1205,19 @@ const dispatchMatchingLabelListener$ = command(
 
     const labelNames = labelsForAction({ action, labels: issue.labels, label });
     const db = set(writeDb$);
-    const installationRecord = await loadActiveInstallation({
+    const installationRecord = await findActiveInstallation({
       db,
       ghInstallationId: String(installation.id),
       signal,
     });
+    if (!installationRecord) {
+      L.debug("Ignoring GitHub label trigger for unbound installation", {
+        action,
+        installationId: String(installation.id),
+        repo: repository.full_name,
+      });
+      return;
+    }
     const listener = await loadMatchingLabelListener({
       db,
       installationId: installationRecord.id,
@@ -1337,11 +1355,20 @@ export const handleGithubIssueCommentEvent$ = command(
     }
 
     const db = set(writeDb$);
-    const installation = await loadActiveInstallation({
+    const installation = await findActiveInstallation({
       db,
       ghInstallationId: String(payload.installation.id),
       signal,
     });
+    if (!installation) {
+      L.debug("Ignoring GitHub issue_comment for unbound installation", {
+        action: payload.action,
+        installationId: String(payload.installation.id),
+        repo: payload.repository.full_name,
+        commentId: payload.comment.id,
+      });
+      return;
+    }
     const token = await getGitHubTokenForInstallation({ installation, signal });
     signal.throwIfAborted();
 
