@@ -393,9 +393,13 @@ describe("isOAuthConnectorType", () => {
 
   it("rejects refresh for OAuth connectors without refresh-token access", async () => {
     const oauthClient = getConnectorOAuthClient("github", (name) => {
-      return name === "GITHUB_CLIENT_ID"
-        ? "test-github-client"
-        : "test-github-secret";
+      if (name === "GH_OAUTH_CLIENT_ID") {
+        return "test-github-client";
+      }
+      if (name === "GH_OAUTH_CLIENT_SECRET") {
+        return "test-github-secret";
+      }
+      return undefined;
     });
     expect(oauthClient).toBeDefined();
 
