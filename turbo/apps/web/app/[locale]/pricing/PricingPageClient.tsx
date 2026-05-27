@@ -359,6 +359,12 @@ export function PricingPageClient() {
                     pro={true}
                     team={true}
                   />
+                  <TableRow
+                    feature={t("tableFeatures.scheduledRuns")}
+                    description={t("tableFeatures.scheduledRunsDesc")}
+                    pro={true}
+                    team={true}
+                  />
 
                   <TableSection
                     title={t("sections.connectorsAndIntegrations")}
@@ -368,6 +374,12 @@ export function PricingPageClient() {
                     description={t("tableFeatures.connectorsDesc")}
                     pro={t("tableValues.allConnectors")}
                     team={t("tableValues.allConnectors")}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.multiChannel")}
+                    description={t("tableFeatures.multiChannelDesc")}
+                    pro={true}
+                    team={true}
                   />
                   <TableRow
                     feature={t("tableFeatures.bringOwnLLM")}
@@ -410,8 +422,8 @@ export function PricingPageClient() {
                     team={t("tableValues.unlimited")}
                   />
                   <TableRow
-                    feature={t("tableFeatures.autoRecharge")}
-                    description={t("tableFeatures.autoRechargeDesc")}
+                    feature={t("tableFeatures.memberUsage")}
+                    description={t("tableFeatures.memberUsageDesc")}
                     pro={true}
                     team={true}
                   />
@@ -457,6 +469,10 @@ export function PricingPageClient() {
               <FAQItem
                 question={t("faq.whatAreCredits")}
                 answer={t("faq.whatAreCreditsAnswer")}
+              />
+              <FAQItem
+                question={t("faq.freeTrial")}
+                answer={t("faq.freeTrialAnswer")}
               />
               <FAQItem
                 question={t("faq.changePlans")}
