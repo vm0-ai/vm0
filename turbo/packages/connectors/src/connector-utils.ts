@@ -331,14 +331,17 @@ export function getConnectorAuthCodeGrantConfig(
 export function getConnectorAuthCodeGrantConfig(
   type: ConnectorType,
 ): ConnectorAuthCodeGrantConfig | undefined {
-  const grant = getConnectorOAuthGrantConfig(type);
-  switch (grant?.kind) {
-    case "auth-code":
-      return grant;
-    case "device-auth":
-    case undefined:
-      return undefined;
+  for (const method of connectorAuthMethodValues(type)) {
+    switch (method.grant.kind) {
+      case "auth-code":
+        return method.grant;
+      case "device-auth":
+      case "manual":
+      case "managed":
+        break;
+    }
   }
+  return undefined;
 }
 
 export function getConnectorDeviceAuthGrantConfig(
@@ -350,14 +353,17 @@ export function getConnectorDeviceAuthGrantConfig(
 export function getConnectorDeviceAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorDeviceAuthGrantConfig | undefined {
-  const grant = getConnectorOAuthGrantConfig(type);
-  switch (grant?.kind) {
-    case "device-auth":
-      return grant;
-    case "auth-code":
-    case undefined:
-      return undefined;
+  for (const method of connectorAuthMethodValues(type)) {
+    switch (method.grant.kind) {
+      case "device-auth":
+        return method.grant;
+      case "auth-code":
+      case "manual":
+      case "managed":
+        break;
+    }
   }
+  return undefined;
 }
 
 export function getConnectorOAuthScopes(type: ConnectorType): string[] {
@@ -742,13 +748,13 @@ export function getConnectorProvidedEnvNames(
 export function hasConnectorAuthCodeGrant(
   type: ConnectorType,
 ): type is AuthCodeGrantConnectorType {
-  return getConnectorOAuthGrantConfig(type)?.kind === "auth-code";
+  return getConnectorAuthCodeGrantConfig(type) !== undefined;
 }
 
 export function hasConnectorDeviceAuthGrant(
   type: ConnectorType,
 ): type is DeviceAuthGrantConnectorType {
-  return getConnectorOAuthGrantConfig(type)?.kind === "device-auth";
+  return getConnectorDeviceAuthGrantConfig(type) !== undefined;
 }
 
 /**
