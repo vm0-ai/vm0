@@ -1421,42 +1421,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Hand-drawn editorial postcard / travel-journal illustration with fine black ink linework, flat saturated gouache fills, sharp edges, dense small repeated ink patterns, paper-grain texture, sparse white speckles, and a tall portrait composition.",
     desc: 'Hand-drawn editorial postcard illustration style. Fine black marker/pen ink linework over flat saturated gouache color fills with sharp edges, dense small repeated ink patterns on surfaces (rows of windows, shingle curves, hatching, stippling), subtle paper-grain background texture, tiny scattered white speckles (snow / petals / sparkle), and a tall portrait composition with a layered foreground-midground-background. Travel-journal / urban-sketcher aesthetic. Trigger when the user says /postcard-illustration, asks for a "postcard illustration", "travel illustration", "urban sketcher style", or briefs a palette + scene archetype + complexity.',
-    source: sourceRef(
-      VM0_SKILLS_REPO,
-      VM0_SKILLS_REF,
-      "illustration-template/postcard-illustration",
-    ),
-    targets: ["image", "website", "poster", "presentation", "report"],
-    tags: [
-      "image",
-      "illustration",
-      "postcard",
-      "travel",
-      "urban-sketcher",
-      "hand-drawn",
-      "editorial",
-    ],
-    triggers: [
-      "postcard illustration",
-      "travel illustration",
-      "urban sketcher",
-      "travel journal",
-      "city scene illustration",
-      "hand drawn postcard",
-    ],
-    bestFor: [
-      "travel and destination artwork",
-      "cityscape and landmark illustrations",
-      "editorial blog covers with a sense of place",
-      "botanical close-up postcards",
-    ],
-    outputKinds: ["image"],
-    primaryOutputKind: "image",
-    executorHints: ["skill-authored", "built-in-image"],
-    previewHint: "image",
-    remixHint: "prompt-with-resource-hints",
-    status: "experimental",
-    priority: 20,
+    source: { path: "illustration-template/postcard-illustration" },
   },
 ];
 
