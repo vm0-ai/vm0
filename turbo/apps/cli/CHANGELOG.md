@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.168.0](https://github.com/vm0-ai/vm0/compare/cli-v9.167.1...cli-v9.168.0) (2026-05-27)
+
+
+### Features
+
+* **cli:** simplify Open Design candidate selection to kind-only ([#15028](https://github.com/vm0-ai/vm0/issues/15028)) ([c2157f6](https://github.com/vm0-ai/vm0/commit/c2157f664bf8f3569c86e0a6475c8f857b6251e3))
+
 ## [9.167.1](https://github.com/vm0-ai/vm0/compare/cli-v9.167.0...cli-v9.167.1) (2026-05-26)
 
 
