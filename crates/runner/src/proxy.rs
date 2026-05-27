@@ -1151,6 +1151,7 @@ exit 0
             "mitm_addon.py",
             "auth.py",
             "body_utils.py",
+            "flow_metadata_keys.py",
             "matching.py",
             "registry.py",
             "response_streaming.py",
