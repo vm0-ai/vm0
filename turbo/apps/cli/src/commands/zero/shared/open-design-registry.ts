@@ -2930,6 +2930,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
     source: { path: "illustration-template/mellow-pop" },
   },
+  {
+    id: "vm0:image-style:light-pop-portrait",
+    kind: "image-style",
+    name: "Light Pop Portrait",
+    description:
+      "Light hand-drawn flat-vector single-character portrait on a fully saturated color block — chunky black hair, big shiny eyes, tiny red nose, pink five-point-star sparkle blush.",
+    desc: 'Light Pop Portrait — a hand-drawn flat-vector single-character portrait style for playful avatars, mood pieces, and editorial character cards. Square 1:1 canvas filled with one fully saturated background hue; a single child–tween character with chunky glossy-black hair (with one or two flyaway strands), big round shiny eyes (single white glint each, thin lashes above), tiny round red nose, expressive small mouth, and pink FIVE-POINT STAR sparkle blush on the cheeks (never solid dots). Thin delicate slightly-wavy hand-drawn contour lines, flat solid fills only, no gradients or texture, ~5-color palette per piece. Eight creative dials: expression, hairstyle, gender register, pose, palette, headwear, prop, outfit. Trigger when user says /light-pop-portrait, asks for a "light pop portrait", "flat-vector character portrait", "saturated color-block character", or briefs with expression + hairstyle + palette + prop.',
+    source: { path: "illustration-template/light-pop-portrait" },
+  },
 ];
 
 function filterByKind(
