@@ -301,6 +301,14 @@ class TestFirewallConsistency:
             "typos."
         )
 
+    def test_no_acknowledged_default_scope_is_stale(self):
+        stale = set(self._ACKNOWLEDGED_DEFAULT_PATHS) - set(_PERMISSION_TO_BUCKET)
+        assert not stale, (
+            "The acknowledged-default path table has entries for scopes that "
+            f"the classifier no longer maps: {sorted(stale)}.  Remove the "
+            "stale default-path entries or restore the classifier mapping."
+        )
+
     def test_overrides_never_reference_intentionally_unmapped(self):
         """`classify_bucket` consults ``_PATH_OVERRIDES`` before
         ``_PERMISSION_TO_BUCKET``, so an override under an
@@ -484,6 +492,21 @@ class TestFirewallConsistency:
 
 
 class TestOverrideClassification:
+    def test_no_duplicate_path_overrides(self):
+        seen: dict[tuple[str, str, str], str] = {}
+        duplicates: list[tuple[str, str, str, str, str]] = []
+        for scope, method, pattern, bucket in _PATH_OVERRIDES:
+            key = (scope, method, pattern)
+            previous = seen.get(key)
+            if previous is not None:
+                duplicates.append((scope, method, pattern, previous, bucket))
+            seen[key] = bucket
+
+        assert not duplicates, (
+            "Duplicate X billing path overrides would be hidden by "
+            f"first-match-wins classification: {duplicates}."
+        )
+
     def test_path_overrides_match_compiled_patterns(self):
         assert classify_bucket("tweet.read", "GET", "/2/tweets/123/retweeted_by") == "user.read"
         assert classify_bucket("tweet.read", "GET", "/2/tweets/123") == "posts.read"
