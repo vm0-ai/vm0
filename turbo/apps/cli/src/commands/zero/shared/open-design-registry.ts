@@ -2930,6 +2930,15 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
     source: { path: "illustration-template/mellow-pop" },
   },
+  {
+    id: "vm0:image-style:grainy-duotone",
+    kind: "image-style",
+    name: "Grainy Duotone",
+    description:
+      "Editorial spot illustration on a warm cream background — grainy charcoal-stippled hands, outline-free flat two-tone color blocks with internal patterns, and scattered ambient marks.",
+    desc: 'Grainy-duotone editorial spot illustration: warm cream off-white background, grainy charcoal-stippled hands (and occasional faces) drawn in textured black ink, paired with free-floating flat two-tone color blocks that carry NO outlines and are filled with internal patterns (grid, dots, spiral, hatching, squiggles, wavy lines), surrounded by scattered ambient marks (zigzags, triangles, x marks, circles, dashes). Square 1:1 scene-as-metaphor compositions. Five creative dials per brief: palette (two flat hues, e.g. teal+yellow / coral+sage / lavender+mustard / navy+peach / burgundy+dusty pink), elements (hand(s) + 1-3 props like flag, sprout, magnifier, balloons, ladder), scene archetype (Launch / Grow / Connect / Discover / Communicate / Reflect / Navigate / Care / Transform / Build), complexity (L1 minimal / L2 balanced / L3 rich), and mood (celebratory / calm / curious / reflective / determined / warm / quiet). Trigger when user says /grainy-duotone, asks for a "grainy two-tone editorial illustration", "charcoal-stippled hand illustration", "duotone editorial spot", or briefs with a scene metaphor + two-color palette + complexity.',
+    source: { path: "illustration-template/grainy-duotone" },
+  },
 ];
 
 function filterByKind(
