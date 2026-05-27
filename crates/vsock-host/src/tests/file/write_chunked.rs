@@ -5,16 +5,17 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
-use vsock_proto::{
-    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-};
+use vsock_proto::{Decoder, ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
     normal_operation_readiness, operation_count, pending_request_count, read_guest_message,
     send_exec_result, setup_host_and_guest,
 };
-use super::support::ChunkedWriteTempPath;
+use super::support::{
+    ChunkedWriteTempPath, send_guest_error, send_write_file_failure, send_write_file_result,
+    send_write_file_success,
+};
 use crate::file as file_impl;
 use crate::{FrameWriteObserver, operation_tracker::NormalOperationReadiness};
 
@@ -129,10 +130,7 @@ async fn test_write_file_chunked() {
                     temp_path.assert_next_chunk(path, "/tmp/big.bin");
                     chunks_received.push((append, chunk.to_vec()));
 
-                    let payload = vsock_proto::encode_write_file_result(true, "");
-                    let resp =
-                        vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
-                    guest.write_all(&resp).await.unwrap();
+                    send_write_file_success(&mut guest, msg.seq).await;
                 } else if msg.msg_type == MSG_EXEC_START {
                     // Atomic rename: mv temp → target
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
@@ -189,11 +187,7 @@ async fn write_file_chunked_tracks_one_operation_until_rename_result() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Busy
     );
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
@@ -201,11 +195,7 @@ async fn write_file_chunked_tracks_one_operation_until_rename_result() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Busy
     );
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, second.seq).await;
 
     let rename = read_guest_message(&mut guest).await;
     assert_eq!(rename.msg_type, MSG_EXEC_START);
@@ -247,19 +237,11 @@ async fn write_file_chunked_rename_result_before_connection_close_keeps_tracker_
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, second.seq).await;
 
     let rename = read_guest_message(&mut guest).await;
     assert_eq!(rename.msg_type, MSG_EXEC_START);
@@ -296,19 +278,11 @@ async fn write_file_chunked_failure_remains_busy_until_cleanup_result() {
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(false, "disk full");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_failure(&mut guest, second.seq, "disk full").await;
 
     let cleanup = read_guest_message(&mut guest).await;
     assert_eq!(cleanup.msg_type, MSG_EXEC_START);
@@ -350,19 +324,11 @@ async fn write_file_chunked_error_response_cleans_up_and_releases_tracker() {
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_error("guest write failed");
-    guest
-        .write_all(&vsock_proto::encode(MSG_ERROR, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_guest_error(&mut guest, second.seq, "guest write failed").await;
 
     let cleanup = read_guest_message(&mut guest).await;
     assert_eq!(cleanup.msg_type, MSG_EXEC_START);
@@ -403,11 +369,7 @@ async fn write_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
@@ -455,29 +417,17 @@ async fn write_file_chunked_rename_error_response_cleans_up_and_releases_tracker
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, second.seq).await;
 
     let rename = read_guest_message(&mut guest).await;
     assert_eq!(rename.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
     assert_eq!(decoded.label, "write-file-rename");
-    let payload = vsock_proto::encode_error("rename unavailable");
-    guest
-        .write_all(&vsock_proto::encode(MSG_ERROR, rename.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_guest_error(&mut guest, rename.seq, "rename unavailable").await;
 
     let cleanup = read_guest_message(&mut guest).await;
     assert_eq!(cleanup.msg_type, MSG_EXEC_START);
@@ -518,29 +468,17 @@ async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(false, "disk full");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_failure(&mut guest, second.seq, "disk full").await;
 
     let cleanup = read_guest_message(&mut guest).await;
     assert_eq!(cleanup.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
     assert_eq!(decoded.label, "exec-cleanup");
-    let payload = vsock_proto::encode_error("cleanup unavailable");
-    guest
-        .write_all(&vsock_proto::encode(MSG_ERROR, cleanup.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_guest_error(&mut guest, cleanup.seq, "cleanup unavailable").await;
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
@@ -596,29 +534,17 @@ async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(false, "disk full");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_failure(&mut guest, second.seq, "disk full").await;
 
     let cleanup = read_guest_message(&mut guest).await;
     assert_eq!(cleanup.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
     assert_eq!(decoded.label, "exec-cleanup");
-    let payload = vsock_proto::encode_error("cleanup unavailable");
-    guest
-        .write_all(&vsock_proto::encode(MSG_ERROR, cleanup.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_guest_error(&mut guest, cleanup.seq, "cleanup unavailable").await;
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
@@ -656,19 +582,11 @@ async fn write_file_chunked_cleanup_nonzero_exit_retries_untracked_on_drop() {
 
     let first = read_guest_message(&mut guest).await;
     assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(true, "");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_success(&mut guest, first.seq).await;
 
     let second = read_guest_message(&mut guest).await;
     assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    let payload = vsock_proto::encode_write_file_result(false, "disk full");
-    guest
-        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
-        .await
-        .unwrap();
+    send_write_file_failure(&mut guest, second.seq, "disk full").await;
 
     let cleanup = read_guest_message(&mut guest).await;
     assert_eq!(cleanup.msg_type, MSG_EXEC_START);
@@ -735,9 +653,7 @@ async fn test_write_file_at_chunk_limit_uses_single_message() {
         assert_eq!(chunk, content_clone);
         assert!(!append);
 
-        let payload = vsock_proto::encode_write_file_result(true, "");
-        let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        send_write_file_success(&mut guest, msgs[0].seq).await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -782,10 +698,7 @@ async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
                     } else {
                         (true, "")
                     };
-                    let payload = vsock_proto::encode_write_file_result(success, err);
-                    let resp =
-                        vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
-                    guest.write_all(&resp).await.unwrap();
+                    send_write_file_result(&mut guest, msg.seq, success, err).await;
                 } else if msg.msg_type == MSG_EXEC_START {
                     // Cleanup: rm -f temp file
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
@@ -845,10 +758,7 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
                         assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
                         temp_path = Some(path.to_string());
                     }
-                    let payload = vsock_proto::encode_write_file_result(true, "");
-                    let resp =
-                        vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
-                    guest.write_all(&resp).await.unwrap();
+                    send_write_file_success(&mut guest, msg.seq).await;
                 } else if msg.msg_type == MSG_EXEC_START {
                     exec_count += 1;
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
@@ -929,10 +839,7 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
 
                     assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
                     temp_path = Some(path.to_string());
-                    let payload = vsock_proto::encode_write_file_result(true, "");
-                    let resp =
-                        vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
-                    guest.write_all(&resp).await.unwrap();
+                    send_write_file_success(&mut guest, msg.seq).await;
                     if let Some(tx) = first_chunk_tx.take() {
                         let _ = tx.send(());
                     }
