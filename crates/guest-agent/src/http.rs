@@ -34,10 +34,9 @@ const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 pub struct HttpClient {
     inner: Option<Client>,
     retry_delay: Duration,
-    api: Option<ApiHttpConfig>,
+    api: Option<Arc<ApiHttpConfig>>,
 }
 
-#[derive(Clone)]
 struct ApiHttpConfig {
     urls: ApiUrls,
     token: String,
@@ -108,7 +107,7 @@ impl HttpClient {
         Ok(Self {
             inner: Some(inner),
             retry_delay,
-            api,
+            api: api.map(Arc::new),
         })
     }
 
@@ -143,11 +142,14 @@ impl HttpClient {
     }
 
     fn api_config(&self) -> Result<&ApiHttpConfig, AgentError> {
-        self.api.as_ref().ok_or_else(|| {
-            AgentError::Http(
-                "guest-agent API HTTP config is disabled because VM0_API_TOKEN is unset".into(),
-            )
-        })
+        self.api
+            .as_ref()
+            .map(Arc::as_ref)
+            .ok_or_else(|| {
+                AgentError::Http(
+                    "guest-agent API HTTP config is disabled; build the client with API config to send webhooks".into(),
+                )
+            })
     }
 
     fn api_config_from_current_env() -> Result<Option<ApiHttpConfig>, AgentError> {
