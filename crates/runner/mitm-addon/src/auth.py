@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
 
+import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
     forward_request,
@@ -101,14 +102,14 @@ def _prepare_firewall_metadata(
     # field entirely for non-vm0 / no-billable-connector runs.
     firewall_billable = is_billable_firewall(allow.name, vm_info)
 
-    flow.metadata["firewall_base"] = firewall_base
-    flow.metadata["firewall_api_id"] = api_id
-    flow.metadata["firewall_name"] = allow.name
-    flow.metadata["firewall_permission"] = allow.permission or ""
-    flow.metadata["firewall_rule_match"] = allow.rule or ""
-    flow.metadata["firewall_params"] = allow.params
-    flow.metadata["firewall_billable"] = firewall_billable
-    flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
+    flow.metadata[metadata_keys.FIREWALL_BASE] = firewall_base
+    flow.metadata[metadata_keys.FIREWALL_API_ID] = api_id
+    flow.metadata[metadata_keys.FIREWALL_NAME] = allow.name
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = allow.permission or ""
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = allow.rule or ""
+    flow.metadata[metadata_keys.FIREWALL_PARAMS] = allow.params
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = vm_info.get("modelUsageProvider")
 
 
 def _set_matched_firewall_failure_response(
@@ -127,9 +128,9 @@ def _set_matched_firewall_failure_response(
     # failures. They are orthogonal: for example, action=ALLOW can pair with
     # an auth or forwarding error when the firewall granted the request but
     # the addon could not fulfill it. See #10493.
-    firewall_base = flow.metadata["firewall_base"]
-    flow.metadata["firewall_action"] = action
-    flow.metadata["firewall_error"] = error_code
+    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = action
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = error_code
     body: dict[str, object] = {
         "error": error_code,
         "message": message,
@@ -476,11 +477,13 @@ async def get_firewall_headers(
 
 
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
-    flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["auth_resolved_secrets"] = token_meta.get("resolved_secrets", [])
-    flow.metadata["auth_refreshed_connectors"] = token_meta.get("refreshed_connectors", [])
-    flow.metadata["auth_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
-    flow.metadata["auth_cache_hit"] = token_meta.get("cache_hit", False)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] = token_meta.get("resolved_secrets", [])
+    flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] = token_meta.get(
+        "refreshed_connectors", []
+    )
+    flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] = token_meta.get("refreshed_secrets", [])
+    flow.metadata[metadata_keys.AUTH_CACHE_HIT] = token_meta.get("cache_hit", False)
 
 
 def _apply_header_query_injection(
@@ -546,7 +549,7 @@ async def _apply_url_rewrite(
         )
         return False
 
-    flow.metadata["auth_url_rewrite"] = True
+    flow.metadata[metadata_keys.AUTH_URL_REWRITE] = True
     log_proxy_entry(
         proxy_log_path,
         "info",
@@ -600,10 +603,10 @@ async def handle_firewall_request(
     """Handle a firewall-matched request: fetch resolved headers, inject into request."""
     _prepare_firewall_metadata(flow, allow, vm_info)
     api_entry = allow.api_entry
-    firewall_base = flow.metadata["firewall_base"]
-    api_id = flow.metadata["firewall_api_id"]
-    run_id = flow.metadata.get("vm_run_id", "")
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+    api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     sandbox_token = vm_info.get("sandboxToken", "")
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
@@ -613,7 +616,7 @@ async def handle_firewall_request(
     secret_connector_metadata_map = vm_info.get("secretConnectorMetadataMap")
     vars_map = vm_info.get("vars")
 
-    firewall_billable = bool(flow.metadata["firewall_billable"])
+    firewall_billable = bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE])
 
     if not encrypted_secrets:
         log_proxy_entry(
@@ -729,7 +732,9 @@ async def handle_firewall_request(
 
     _record_firewall_auth_success_metadata(flow, token_meta)
 
-    trusted_host = flow.metadata.get("trusted_authority_host") or flow.request.pretty_host
+    trusted_host = (
+        flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST) or flow.request.pretty_host
+    )
     log_proxy_entry(
         proxy_log_path,
         "info",

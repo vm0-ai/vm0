@@ -20,6 +20,8 @@ import brotli  # type: ignore[import-untyped]
 import zstandard
 from mitmproxy import ctx, http
 
+import flow_metadata_keys as metadata_keys
+
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
@@ -423,8 +425,8 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     # Response body — read from stream_buffer (available for all responses).
     # The buffer contains raw wire bytes (possibly gzip/br/zstd compressed).
     if flow.response:
-        stream_buf = flow.metadata.get("stream_buffer")
-        stream_state = flow.metadata.get("stream_buffer_state")
+        stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
+        stream_state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE)
         stream_truncated = False
         if stream_buf is not None:
             # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.

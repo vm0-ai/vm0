@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 from mitmproxy import ctx, http
 
+import flow_metadata_keys as metadata_keys
+
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 
 
@@ -63,22 +65,22 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
-    log_entry["firewall_base"] = meta.get("firewall_base", "")
-    log_entry["firewall_name"] = meta.get("firewall_name", "")
-    log_entry["firewall_permission"] = meta.get("firewall_permission", "")
-    log_entry["firewall_rule_match"] = meta.get("firewall_rule_match", "")
-    log_entry["firewall_billable"] = meta.get("firewall_billable", False)
+    log_entry["firewall_base"] = meta.get(metadata_keys.FIREWALL_BASE, "")
+    log_entry["firewall_name"] = meta.get(metadata_keys.FIREWALL_NAME, "")
+    log_entry["firewall_permission"] = meta.get(metadata_keys.FIREWALL_PERMISSION, "")
+    log_entry["firewall_rule_match"] = meta.get(metadata_keys.FIREWALL_RULE_MATCH, "")
+    log_entry["firewall_billable"] = meta.get(metadata_keys.FIREWALL_BILLABLE, False)
 
     # Optional fields — only include when present
-    for key in (
-        "firewall_params",
-        "firewall_error",
-        "auth_resolved_secrets",
-        "auth_refreshed_connectors",
-        "auth_refreshed_secrets",
-        "auth_cache_hit",
-        "auth_url_rewrite",
+    for metadata_key, log_key in (
+        (metadata_keys.FIREWALL_PARAMS, "firewall_params"),
+        (metadata_keys.FIREWALL_ERROR, "firewall_error"),
+        (metadata_keys.AUTH_RESOLVED_SECRETS, "auth_resolved_secrets"),
+        (metadata_keys.AUTH_REFRESHED_CONNECTORS, "auth_refreshed_connectors"),
+        (metadata_keys.AUTH_REFRESHED_SECRETS, "auth_refreshed_secrets"),
+        (metadata_keys.AUTH_CACHE_HIT, "auth_cache_hit"),
+        (metadata_keys.AUTH_URL_REWRITE, "auth_url_rewrite"),
     ):
-        value = meta.get(key)
+        value = meta.get(metadata_key)
         if value is not None:
-            log_entry[key] = value
+            log_entry[log_key] = value

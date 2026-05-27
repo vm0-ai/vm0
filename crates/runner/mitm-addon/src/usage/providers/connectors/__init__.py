@@ -16,12 +16,13 @@ from collections.abc import Callable
 
 from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
 from logging_utils import log_proxy_entry
 
 from . import x
 
 # Map firewall_name → per-connector report_usage handler.  A handler is only
-# invoked when ``flow.metadata["firewall_billable"]`` is True, so the
+# invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, so the
 # BILLABLE_CONNECTORS whitelist in ``@vm0/core`` and this table must stay
 # in sync.  (The web layer controls who shows up as ``billable``; this
 # table controls who we know how to parse.  Desync manifests as a
@@ -45,9 +46,9 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     connector module):
 
     - ``run_id`` is empty (no billing attribution).
-    - ``flow.metadata["firewall_billable"]`` is False (web layer decided
+    - ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is False (web layer decided
       this firewall is not platform-billable for this run).
-    - ``flow.metadata["firewall_name"]`` has no registered handler (covers
+    - ``flow.metadata[metadata_keys.FIREWALL_NAME]`` has no registered handler (covers
       both the model-provider path — routed through
       :func:`report_model_provider_usage` instead — and any firewall that
       ``@vm0/core``'s ``BILLABLE_CONNECTORS`` flags as billable but which
@@ -55,9 +56,9 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     """
     if not run_id:
         return
-    if not flow.metadata.get("firewall_billable", False):
+    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
         return
-    firewall_name = flow.metadata.get("firewall_name", "")
+    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
     if firewall_name.startswith("model-provider:"):
         return
     handler = _HANDLERS.get(firewall_name)
@@ -65,7 +66,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
         if firewall_name and firewall_name not in _unregistered_handler_warned:
             _unregistered_handler_warned.add(firewall_name)
             log_proxy_entry(
-                flow.metadata.get("vm_proxy_log_path", ""),
+                flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
                 "warn",
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
