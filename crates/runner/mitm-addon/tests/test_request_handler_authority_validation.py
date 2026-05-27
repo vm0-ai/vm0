@@ -58,6 +58,43 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     assert "Authorization" not in flow.request.headers
 
 
+async def test_authority_validation_deny_response_logs_network_target(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        port=8443,
+        sni="attacker.example.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    auth_fetch.assert_not_called()
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+    assert entry["type"] == "http"
+    assert entry["action"] == "DENY"
+    assert entry["host"] == "attacker.example.com"
+    assert entry["port"] == 8443
+    assert entry["url"] == "https://attacker.example.com:8443/repos"
+    assert entry["status"] == 403
+    assert flow.id not in mitm_addon._request_start_times
+
+
 async def test_matching_sni_and_host_allows_firewall_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
