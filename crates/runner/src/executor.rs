@@ -2213,6 +2213,11 @@ fn validate_claude_tool_env_entries(env_name: &str, tools: &[String]) -> Result<
                 "{env_name} entry at index {index} must not contain commas"
             ));
         }
+        if tool.trim_start().starts_with('-') {
+            return Err(format!(
+                "{env_name} entry at index {index} must not start with a hyphen"
+            ));
+        }
     }
 
     Ok(())
@@ -3378,6 +3383,8 @@ mod tests {
             ("", "must not be empty"),
             ("   ", "must not be empty"),
             ("CronCreate,CronDelete", "must not contain commas"),
+            ("--help", "must not start with a hyphen"),
+            (" -v", "must not start with a hyphen"),
         ] {
             let mut ctx = minimal_context();
             ctx.disallowed_tools = Some(vec![tool.into()]);
@@ -3392,6 +3399,8 @@ mod tests {
             ("", "must not be empty"),
             ("   ", "must not be empty"),
             ("Bash,Read", "must not contain commas"),
+            ("--help", "must not start with a hyphen"),
+            (" -x", "must not start with a hyphen"),
         ] {
             let mut ctx = minimal_context();
             ctx.tools = Some(vec![tool.into()]);

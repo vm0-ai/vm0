@@ -363,12 +363,16 @@ describe("POST /api/agent/runs", () => {
       { body: { tools: [""] }, field: "tools" },
       { body: { tools: ["   "] }, field: "tools" },
       { body: { tools: ["Bash,Read"] }, field: "tools" },
+      { body: { tools: ["--help"] }, field: "tools" },
+      { body: { tools: [" -x"] }, field: "tools" },
       { body: { disallowedTools: [""] }, field: "disallowedTools" },
       { body: { disallowedTools: ["   "] }, field: "disallowedTools" },
       {
         body: { disallowedTools: ["CronCreate,CronDelete"] },
         field: "disallowedTools",
       },
+      { body: { disallowedTools: ["--settings"] }, field: "disallowedTools" },
+      { body: { disallowedTools: [" -v"] }, field: "disallowedTools" },
     ];
 
     for (const testCase of cases) {

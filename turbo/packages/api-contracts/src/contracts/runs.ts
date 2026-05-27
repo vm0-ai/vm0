@@ -36,6 +36,14 @@ export const claudeToolEntrySchema = z
     {
       message: "Claude tool name must not contain commas",
     },
+  )
+  .refine(
+    (tool) => {
+      return !tool.trimStart().startsWith("-");
+    },
+    {
+      message: "Claude tool name must not start with a hyphen",
+    },
   );
 
 // Stored in Postgres `integer` columns. Keep request validation aligned with
