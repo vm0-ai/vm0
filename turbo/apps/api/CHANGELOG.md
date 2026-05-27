@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.79.1](https://github.com/vm0-ai/vm0/compare/api-v1.79.0...api-v1.79.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* write persistent secrets with kms only ([#15129](https://github.com/vm0-ai/vm0/issues/15129)) ([1312000](https://github.com/vm0-ai/vm0/commit/13120008ef96aa6a378f58fa9b384e4846bd9fbe))
+
+
+### Refactoring
+
+* prune connector utility exports ([#15132](https://github.com/vm0-ai/vm0/issues/15132)) ([4df6f99](https://github.com/vm0-ai/vm0/commit/4df6f99f69e9cbea9f15dd4cb3add8eb52f20cab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.5
+    * @vm0/connectors bumped to 1.37.1
+    * @vm0/core bumped to 8.300.1
+    * @vm0/db bumped to 1.20.1
+
 ## [1.79.0](https://github.com/vm0-ai/vm0/compare/api-v1.78.2...api-v1.79.0) (2026-05-27)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.394.0](https://github.com/vm0-ai/vm0/compare/web-v12.393.1...web-v12.394.0) (2026-05-27)
+
+
+### Features
+
+* **web:** nav polish — docs illustration + mobile dropdown ([#15099](https://github.com/vm0-ai/vm0/issues/15099)) ([2cd8fe8](https://github.com/vm0-ai/vm0/commit/2cd8fe878fd8e6c9001ac300079c07975f74b28d))
+
+
+### Refactoring
+
+* prune connector utility exports ([#15132](https://github.com/vm0-ai/vm0/issues/15132)) ([4df6f99](https://github.com/vm0-ai/vm0/commit/4df6f99f69e9cbea9f15dd4cb3add8eb52f20cab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.5
+    * @vm0/core bumped to 8.300.1
+    * @vm0/db bumped to 1.20.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.1
+
 ## [12.393.1](https://github.com/vm0-ai/vm0/compare/web-v12.393.0...web-v12.393.1) (2026-05-27)
 
 
