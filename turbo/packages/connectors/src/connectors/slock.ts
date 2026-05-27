@@ -17,9 +17,8 @@ export const slock = {
           deviceAuthUrl: `${SLOCK_API_BASE_URL}/api/auth/device/authorize`,
           tokenUrl: `${SLOCK_API_BASE_URL}/api/auth/device/token`,
           client: {
-            clientRegistration: "static",
+            clientRegistration: "dynamic",
             clientType: "public",
-            clientId: "vm0",
           },
           scopes: [],
         },
