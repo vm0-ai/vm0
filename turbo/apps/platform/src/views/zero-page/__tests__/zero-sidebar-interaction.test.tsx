@@ -210,10 +210,10 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     const menu = await screen.findByRole("menu");
     await waitFor(() => {
       expect(
-        within(menu).getByRole("menuitem", {
-          name: /12,345 credits/,
+        queryAllByRoleFast("menuitem", menu).find((element) => {
+          return element.textContent?.includes("12,345 credits");
         }),
-      ).toBeInTheDocument();
+      ).toBeDefined();
     });
   });
 
