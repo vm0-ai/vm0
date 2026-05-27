@@ -4,7 +4,6 @@ import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
   hasConnectorAuthCodeGrant,
-  hasConnectorOAuthGrant,
   getConnectorOAuthClient,
   getConnectorOAuthScopes,
 } from "@vm0/connectors/connector-utils";
@@ -214,7 +213,7 @@ function resolveOAuthConnectorType(
   }
 
   const connectorType = typeResult.data;
-  if (!hasConnectorOAuthGrant(connectorType)) {
+  if (!hasConnectorOAuthProvider(connectorType)) {
     return {
       ok: false,
       response: redirectWithError(
@@ -231,16 +230,6 @@ function resolveOAuthConnectorType(
         origin,
         type,
         `${type} connector does not use authorization-code OAuth`,
-      ),
-    };
-  }
-  if (!hasConnectorOAuthProvider(connectorType)) {
-    return {
-      ok: false,
-      response: redirectWithError(
-        origin,
-        type,
-        `${type} OAuth provider is not configured`,
       ),
     };
   }

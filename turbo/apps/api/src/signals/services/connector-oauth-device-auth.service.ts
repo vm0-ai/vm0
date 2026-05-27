@@ -185,13 +185,13 @@ function resolveDeviceAuthType(
   if (!hasConnectorOAuthGrant(type)) {
     return badRequestMessage(`${type} connector does not use OAuth`);
   }
+  if (!hasConnectorOAuthProvider(type)) {
+    return internalServerError(`${type} OAuth provider is not configured`);
+  }
   if (!hasConnectorDeviceAuthGrant(type)) {
     return badRequestMessage(
       `${type} connector does not support OAuth device authorization`,
     );
-  }
-  if (!hasConnectorOAuthProvider(type)) {
-    return internalServerError(`${type} OAuth provider is not configured`);
   }
   return type;
 }

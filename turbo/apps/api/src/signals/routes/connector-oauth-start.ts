@@ -52,11 +52,11 @@ export function resolveConnectorOAuthStartType(
   if (!hasConnectorOAuthGrant(type)) {
     return { ok: false, reason: "connector_does_not_use_oauth" };
   }
-  if (!hasConnectorAuthCodeGrant(type)) {
-    return { ok: false, reason: "unsupported_oauth_flow" };
-  }
   if (!hasConnectorOAuthProvider(type)) {
     return { ok: false, reason: "oauth_provider_not_configured" };
+  }
+  if (!hasConnectorAuthCodeGrant(type)) {
+    return { ok: false, reason: "unsupported_oauth_flow" };
   }
   return { ok: true, type };
 }
