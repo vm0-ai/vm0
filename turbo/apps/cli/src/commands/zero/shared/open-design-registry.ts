@@ -3000,6 +3000,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       path: "illustration-template/mellow-pop",
     },
   },
+  {
+    id: "vm0:image-style:editorial-flatfolk",
+    kind: "image-style",
+    name: "Editorial Flatfolk",
+    description:
+      "Editorial hand-drawn naive book-illustration style — flat saturated color blocks, loose ink line overlay, paper grain, and a strong sense of place.",
+    desc: 'Editorial hand-drawn naive book-illustration style. Flat saturated color blocks with loose hand-drawn ink line work sitting ON TOP of the color, subtle paper grain across the canvas, simple ink hatching for sky / sun rays / rain / snow, and a strong sense of place built from tall narrow architecture and a one-point depth axis. Five dials per brief: palette (warm-primary, coastal-peach, jewel-night, winter-cool, autumn-rust, monsoon-twilight), scene metaphor (street, harbor, market, transit, park, square, interior, alpine-village), perspective (one-point street, frontal facade, low-angle hero, isometric, top-down), cast (solo wanderer, paired, small crowd, none), and light/weather (midday sun, golden hour, rain, snow, blue hour). Trigger when user says /editorial-flatfolk, asks for an "editorial flat-folk illustration", a "saturated naive book-illustration scene", a "tall narrow row-house illustration", or briefs a palette + scene metaphor + season.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/editorial-flatfolk",
+    },
+  },
 ];
 
 function filterByKind(
