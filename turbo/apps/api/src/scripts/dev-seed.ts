@@ -239,6 +239,9 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.036), 1],
   ]),
+  ...usageGroup("image", "fal-ai/nano-banana-2", [
+    ["output_image", usd(0.08 * 1.2), 1],
+  ]),
 
   // BytePlus ModelArk video generation with a 200% provider-price multiplier.
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [

@@ -149,7 +149,7 @@ export function createImageGenerateCommand(
     )
     .option(
       "--model <model>",
-      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
+      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, or nano-banana-2",
       "gpt-image-1",
     )
     .option(
@@ -223,7 +223,7 @@ Notes:
 Models:
   - fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
     gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image,
-    seedream4.
+    seedream4, nano-banana-2.
     GPT Image models bill by fal output image quality and size.
     Other fal generations bill by output image or rounded-up output
     megapixel, depending on the model.
@@ -242,15 +242,15 @@ Options:
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
   - Background: auto, opaque, or transparent when supported. gpt-image-2,
     Flux, Qwen, and Seedream do not support transparent backgrounds.
-  - Format: png, jpeg, or webp for GPT Image models; png or jpeg for the
-    other fal models.
-  - fal-only controls: --seed, --safety-tolerance for Flux, and
+  - Format: png, jpeg, or webp for GPT Image and Nano Banana 2 models; png or
+    jpeg for the other fal models.
+  - fal-only controls: --seed and --safety-tolerance for supported fal models;
     --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
     not supported on the fal-backed image path.
   - Image-to-image: pass --image-url to use the model's fal edit/redux endpoint.
-    Flux Redux accepts --image-prompt-strength to override the provider
-    default; GPT edit models accept --input-fidelity and supported models
-    accept --mask-image-url.
+    Nano Banana 2 accepts up to 14 source images. Flux Redux accepts
+    --image-prompt-strength to override the provider default; GPT edit models
+    accept --input-fidelity and supported models accept --mask-image-url.
 
 Image Styles:
 ${formatStyleListing(styles)}`;

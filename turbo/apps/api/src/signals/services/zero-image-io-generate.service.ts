@@ -26,6 +26,8 @@ const IMAGE_IO_MAX_PIXELS = 8_294_400;
 const IMAGE_IO_MAX_EDGE = 3840;
 const IMAGE_IO_EDGE_MULTIPLE = 16;
 const IMAGE_IO_MAX_ASPECT_RATIO = 3;
+const NANO_BANANA_2_MODEL = "fal-ai/nano-banana-2";
+const NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS = 14;
 
 const USAGE_KIND = "image";
 const FAL_OUTPUT_IMAGE_CATEGORY = "output_image";
@@ -79,6 +81,8 @@ const IMAGE_MODEL_ALIASES = {
   "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
   "qwen-image": "fal-ai/qwen-image",
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
+  "nano-banana-2": NANO_BANANA_2_MODEL,
+  "nano-banana2": NANO_BANANA_2_MODEL,
 } as const;
 
 const IMAGE_MODEL_CONFIGS = {
@@ -269,6 +273,30 @@ const IMAGE_MODEL_CONFIGS = {
     usesOpenAiByok: false,
     supportsSeed: true,
     supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
+  },
+  [NANO_BANANA_2_MODEL]: {
+    alias: "nano-banana-2",
+    endpointId: NANO_BANANA_2_MODEL,
+    imageToImageEndpointId: "fal-ai/nano-banana-2/edit",
+    sourceImageInput: "image_urls",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "aspect_ratio",
+    outputFormats: IMAGE_OUTPUT_FORMATS,
+    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
+    billingMode: "image",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsQuality: false,
+    supportsBackground: false,
+    usesOpenAiByok: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: true,
     supportsEnhancePrompt: false,
     supportsMaskImage: false,
     supportsInputFidelity: false,
@@ -858,9 +886,13 @@ function parseSourceImageUrls(
   if (sourceImageUrls.length === 0) {
     return sourceImageUrls;
   }
-  if (sourceImageUrls.length > MAX_SOURCE_IMAGE_URLS) {
+  const maxSourceImageUrls =
+    modelConfig.alias === "nano-banana-2"
+      ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
+      : MAX_SOURCE_IMAGE_URLS;
+  if (sourceImageUrls.length > maxSourceImageUrls) {
     return badRequest(
-      `imageUrls supports at most ${MAX_SOURCE_IMAGE_URLS} images`,
+      `imageUrls supports at most ${maxSourceImageUrls} images`,
     );
   }
   if (
@@ -1265,6 +1297,9 @@ function falImageSize(options: ImageOptions) {
 
 function falAspectRatio(options: ImageOptions): string {
   if (options.size === "auto") {
+    if (options.model === NANO_BANANA_2_MODEL) {
+      return "auto";
+    }
     return "16:9";
   }
   const parsed = parseSize(options.size);
@@ -1286,6 +1321,7 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
     modelConfig.alias !== "seedream4"
       ? { output_format: options.outputFormat }
       : {}),
+    ...(options.model === NANO_BANANA_2_MODEL ? { resolution: "1K" } : {}),
     ...(modelConfig.supportsQuality ? { quality: options.quality } : {}),
     ...(modelConfig.supportsBackground
       ? { background: options.background }

@@ -59,11 +59,22 @@ const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
 const FAL_FLUX_MEDIA_URL = "https://fal.media/files/test/flux-redux.jpg";
+const FAL_NANO_BANANA_2_URL = "https://queue.fal.run/fal-ai/nano-banana-2";
+const FAL_NANO_BANANA_2_EDIT_URL =
+  "https://queue.fal.run/fal-ai/nano-banana-2/edit";
+const FAL_NANO_BANANA_2_MEDIA_URL =
+  "https://fal.media/files/test/nano-banana-2.webp";
 const MOCKUP_IMAGE_URL = "https://example.com/mockup.png";
+const SECOND_MOCKUP_IMAGE_URL = "https://example.com/mockup-2.png";
 const IMAGE_PRICING_MARKUP_MULTIPLIER = 1.2;
 const FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL = 40;
 const FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL = Math.ceil(
   FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL * IMAGE_PRICING_MARKUP_MULTIPLIER,
+);
+const FAL_NANO_BANANA_2_PROVIDER_CREDITS_PER_IMAGE = 80;
+const FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE = Math.ceil(
+  FAL_NANO_BANANA_2_PROVIDER_CREDITS_PER_IMAGE *
+    IMAGE_PRICING_MARKUP_MULTIPLIER,
 );
 const WEB_ORIGIN = "https://www.vm0.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
@@ -365,6 +376,27 @@ async function upsertFluxImagePricing(): Promise<void> {
       target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
       set: {
         unitPrice: FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL,
+        unitSize: 1,
+        updatedAt: sql`now()`,
+      },
+    });
+}
+
+async function upsertNanoBanana2ImagePricing(): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .insert(usagePricing)
+    .values({
+      kind: "image",
+      provider: "fal-ai/nano-banana-2",
+      category: "output_image",
+      unitPrice: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+      unitSize: 1,
+    })
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: {
+        unitPrice: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
         unitSize: 1,
         updatedAt: sql`now()`,
       },
@@ -1475,6 +1507,208 @@ describe("POST /api/zero/image-io/generate", () => {
       status: "processed",
       billingError: null,
       creditsCharged: 96,
+    });
+  });
+
+  it("generates Nano Banana 2 images through fal with 20 percent markup pricing", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertNanoBanana2ImagePricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedAuthorization: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_NANO_BANANA_2_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("nano-banana-2-request"));
+      }),
+      http.get(FAL_NANO_BANANA_2_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/webp" },
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a launch poster with crisp product typography",
+        model: "nano-banana-2",
+        size: "1024x1024",
+        outputFormat: "webp",
+        seed: 123,
+        safetyTolerance: "5",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_NANO_BANANA_2_MEDIA_URL,
+          width: 1024,
+          height: 1024,
+          content_type: "image/webp",
+        },
+      ],
+      description: "A launch poster with crisp product typography.",
+      seed: 123,
+    });
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/webp",
+      size: IMAGE_BYTES.byteLength,
+      creditsCharged: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+      model: "fal-ai/nano-banana-2",
+      provider: "fal",
+      imageSize: "1024x1024",
+      quality: "model-default",
+      background: "auto",
+      outputFormat: "webp",
+      billingCategory: "output_image",
+      billingQuantity: 1,
+      sourceUrl: FAL_NANO_BANANA_2_MEDIA_URL,
+      seed: 123,
+    });
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toMatchObject({
+      prompt: "a launch poster with crisp product typography",
+      aspect_ratio: "1:1",
+      num_images: 1,
+      output_format: "webp",
+      resolution: "1K",
+      seed: 123,
+      safety_tolerance: "5",
+    });
+
+    const usageRows = await store
+      .set(writeDb$)
+      .select()
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+          eq(usageEvent.kind, "image"),
+          eq(usageEvent.provider, "fal-ai/nano-banana-2"),
+        ),
+      );
+    expect(usageRows).toHaveLength(1);
+    expect(usageRows[0]).toMatchObject({
+      idempotencyKey: builtInGenerationUsageIdempotencyKey({
+        generationId,
+        scope: "image",
+        category: "output_image",
+      }),
+      category: "output_image",
+      quantity: 1,
+      status: "processed",
+      billingError: null,
+      creditsCharged: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+    });
+  });
+
+  it("edits images with Nano Banana 2 through fal", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertNanoBanana2ImagePricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedAuthorization: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_NANO_BANANA_2_EDIT_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("nano-banana-2-edit-request"));
+      }),
+      http.get(FAL_NANO_BANANA_2_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const sourceImageUrls = [MOCKUP_IMAGE_URL, SECOND_MOCKUP_IMAGE_URL];
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "combine these references into a polished product campaign",
+        model: "nano-banana-2",
+        imageUrls: sourceImageUrls,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_NANO_BANANA_2_MEDIA_URL,
+          width: 1536,
+          height: 1024,
+          content_type: "image/png",
+        },
+      ],
+      description: "A polished product campaign.",
+    });
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/png",
+      creditsCharged: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+      model: "fal-ai/nano-banana-2",
+      provider: "fal",
+      imageSize: "1536x1024",
+      quality: "model-default",
+      background: "auto",
+      outputFormat: "png",
+      billingCategory: "output_image",
+      billingQuantity: 1,
+      sourceUrl: FAL_NANO_BANANA_2_MEDIA_URL,
+      sourceImageUrls,
+    });
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toMatchObject({
+      prompt: "combine these references into a polished product campaign",
+      aspect_ratio: "auto",
+      num_images: 1,
+      output_format: "png",
+      resolution: "1K",
+      safety_tolerance: "4",
+      image_urls: sourceImageUrls,
     });
   });
 
