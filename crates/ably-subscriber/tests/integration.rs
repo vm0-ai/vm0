@@ -750,6 +750,29 @@ async fn token_exchange_invalid_rest_host_fails_before_request() {
     assert_eq!(token_mock.calls(), 0);
 }
 
+#[tokio::test]
+async fn token_exchange_dot_segment_key_name_fails_before_request() {
+    let http = MockServer::start();
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path("/keys/requestToken");
+        then.status(201)
+            .header("content-type", "application/json")
+            .json_body(serde_json::json!({
+                "token": "mock-token-abc",
+                "expires": now_ms() + 3_600_000,
+                "issued": now_ms(),
+            }));
+    });
+
+    let result = subscribe(test_config_with_key_name(19999, http.port(), "ch", ".")).await;
+    match result {
+        Err(ably_subscriber::Error::InvalidTokenRequestKeyName) => {}
+        Err(other) => panic!("expected InvalidTokenRequestKeyName error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+    assert_eq!(token_mock.calls(), 0);
+}
+
 // ---------------------------------------------------------------------------
 // Test 8: token renewal — server receives AUTH after short-TTL token
 // ---------------------------------------------------------------------------

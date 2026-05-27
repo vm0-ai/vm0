@@ -326,6 +326,14 @@ pub enum Error {
     #[error("Invalid Ably endpoint host")]
     InvalidEndpointHost,
 
+    /// Token request key name cannot be represented safely as an endpoint path
+    /// segment.
+    ///
+    /// The message deliberately omits the raw key name because token request
+    /// fields are authentication material.
+    #[error("Invalid Ably token request key name")]
+    InvalidTokenRequestKeyName,
+
     /// Failure while parsing an endpoint URL built from the subscription
     /// configuration.
     #[error("URL parse error: {0}")]

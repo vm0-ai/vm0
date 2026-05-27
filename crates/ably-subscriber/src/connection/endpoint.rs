@@ -71,6 +71,10 @@ pub(super) fn build_ws_url(host: &str, token: &str, resume: Option<&str>) -> Res
 }
 
 pub(super) fn build_token_request_url(host: &str, key_name: &str) -> Result<url::Url, Error> {
+    if matches!(key_name, "." | "..") {
+        return Err(Error::InvalidTokenRequestKeyName);
+    }
+
     let mut url = build_endpoint_base_url(host, "http", "https")?;
     url.path_segments_mut()
         .map_err(|_| Error::InvalidEndpointHost)?
@@ -181,6 +185,16 @@ mod tests {
         let url = build_token_request_url("rest.ably.io", "%2F").unwrap();
 
         assert_eq!(url.as_str(), "https://rest.ably.io/keys/%252F/requestToken");
+    }
+
+    #[test]
+    fn build_token_request_url_rejects_dot_segments() {
+        for key_name in [".", ".."] {
+            assert!(matches!(
+                build_token_request_url("rest.ably.io", key_name),
+                Err(Error::InvalidTokenRequestKeyName)
+            ));
+        }
     }
 
     fn assert_websocket_endpoint(
