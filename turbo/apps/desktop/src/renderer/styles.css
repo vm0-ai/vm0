@@ -418,6 +418,30 @@ button {
   color: #3d4a5c;
 }
 
+.command-log-section-details > .command-log-section-title {
+  cursor: pointer;
+  list-style: none;
+}
+
+.command-log-section-details
+  > .command-log-section-title::-webkit-details-marker {
+  display: none;
+}
+
+.command-log-section-disclosure {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #667085;
+  transition: transform 120ms ease;
+}
+
+.command-log-section-details[open] .command-log-section-disclosure {
+  transform: rotate(90deg);
+}
+
 .command-log-section-title h3 {
   margin: 0;
   font-size: 12px;

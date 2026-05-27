@@ -70,6 +70,7 @@ const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
   "text",
   "visibleElements",
 ]);
+const RESULT_TEXT_PREVIEW_LABEL = "[shown in App State]";
 
 function BridgeSubscription() {
   const setupBridge = useSet(setupComputerUseBridge$);
@@ -265,7 +266,7 @@ function resultSummaryRecord(
     }
   }
   if (recordStringValue(result, "text")) {
-    summary.text = "[shown in Agent State]";
+    summary.text = RESULT_TEXT_PREVIEW_LABEL;
   }
   if (recordStringValue(result, "screenshot")) {
     summary.screenshot = "[shown as image]";
@@ -516,19 +517,39 @@ function CommandStatusBadge({
 
 function CommandLogSection({
   children,
+  collapsible = false,
   icon,
   title,
 }: {
   readonly children: ReactNode;
+  readonly collapsible?: boolean;
   readonly icon: ReactNode;
   readonly title: string;
 }) {
+  const titleContent = (
+    <>
+      {collapsible && (
+        <span className="command-log-section-disclosure">
+          <IconChevronRight size={14} />
+        </span>
+      )}
+      {icon}
+      <h3>{title}</h3>
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="command-log-section command-log-section-details">
+        <summary className="command-log-section-title">{titleContent}</summary>
+        {children}
+      </details>
+    );
+  }
+
   return (
     <section className="command-log-section">
-      <div className="command-log-section-title">
-        {icon}
-        <h3>{title}</h3>
-      </div>
+      <div className="command-log-section-title">{titleContent}</div>
       {children}
     </section>
   );
@@ -671,7 +692,11 @@ function CommandLogRow({
             </CommandLogSection>
           )}
           {entry.result && (
-            <CommandLogSection title="Result" icon={<IconCheck size={15} />}>
+            <CommandLogSection
+              title="Result"
+              icon={<IconCheck size={15} />}
+              collapsible
+            >
               <KeyValueList
                 value={resultSummaryRecord(entry.result)}
                 emptyLabel="No result fields were returned."
@@ -679,10 +704,7 @@ function CommandLogRow({
             </CommandLogSection>
           )}
           {resultText && (
-            <CommandLogSection
-              title="Agent State"
-              icon={<IconCode size={15} />}
-            >
+            <CommandLogSection title="App State" icon={<IconCode size={15} />}>
               <pre className="agent-state-block">{resultText}</pre>
             </CommandLogSection>
           )}
