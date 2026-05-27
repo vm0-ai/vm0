@@ -214,6 +214,7 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
         auth: {
           headers: {
             Authorization: "${{ basic(" + "\t".repeat(20_000),
+            Repeated: ('${{ basic("' + "\t".repeat(20)).repeat(1_000),
           },
         },
       },
