@@ -511,6 +511,30 @@ class TestAuthBaseForwarderResourceCleanup:
 
 
 class TestForwardRequestAsyncWrapper:
+    async def test_releases_forward_slot_when_forwarding_raises(self):
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "_forward_request_semaphore", None),
+            patch.object(forwarder, "_forward_request_semaphore_loop", None),
+            patch.object(
+                forwarder,
+                "_forward_request_sync",
+                side_effect=[
+                    ConnectionError("upstream unavailable"),
+                    (200, b"ok", {}),
+                ],
+            ),
+        ):
+            with pytest.raises(ConnectionError, match="upstream unavailable"):
+                await forwarder.forward_request("https://example.com", "GET", [], None)
+
+            result = await asyncio.wait_for(
+                forwarder.forward_request("https://example.com", "GET", [], None),
+                timeout=1,
+            )
+
+        assert result == (200, b"ok", {})
+
     async def test_limits_concurrent_forwarding_work(self):
         active = 0
         max_active = 0
