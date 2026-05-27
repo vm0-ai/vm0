@@ -389,6 +389,22 @@ class TestFirewallConsistency:
             "X billing classify a different scope than these drift checks expect."
         )
 
+    def test_generated_firewall_rules_do_not_use_any_method(self):
+        wildcard_rules: list[tuple[str, str, str]] = []
+        for permission in _load_x_firewall_permissions():
+            for rule in permission.rules:
+                method, pattern = rule.split(" ", 1)
+                if method == "ANY":
+                    wildcard_rules.append((permission.name, method, pattern))
+
+        assert not wildcard_rules, (
+            "Generated xFirewall has wildcard HTTP method rules: "
+            f"{wildcard_rules}. Production firewall matching supports ANY, "
+            "but X billing override classification is indexed by the concrete "
+            "request method and would not apply ANY-specific overrides without "
+            "additional classifier logic."
+        )
+
     def test_generated_firewall_api_entries_use_supported_base(self):
         bases = {entry.base for entry in _load_x_firewall_export().api_entries}
         assert bases == {"https://api.x.com"}, (
