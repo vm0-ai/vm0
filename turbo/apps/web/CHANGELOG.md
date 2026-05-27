@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.390.0](https://github.com/vm0-ai/vm0/compare/web-v12.389.10...web-v12.390.0) (2026-05-27)
+
+
+### Features
+
+* add Pro features + 7-day trial onboarding step ([#14348](https://github.com/vm0-ai/vm0/issues/14348)) ([dad9a48](https://github.com/vm0-ai/vm0/commit/dad9a48110ee2e5e3871f73d494a27bc3fc7bb46))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.0
+    * @vm0/core bumped to 8.297.4
+    * @vm0/db bumped to 1.19.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.36.4
+
 ## [12.389.10](https://github.com/vm0-ai/vm0/compare/web-v12.389.9...web-v12.389.10) (2026-05-27)
 
 

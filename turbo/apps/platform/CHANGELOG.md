@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.387.0](https://github.com/vm0-ai/vm0/compare/app-v0.386.3...app-v0.387.0) (2026-05-27)
+
+
+### Features
+
+* add Pro features + 7-day trial onboarding step ([#14348](https://github.com/vm0-ai/vm0/issues/14348)) ([dad9a48](https://github.com/vm0-ai/vm0/commit/dad9a48110ee2e5e3871f73d494a27bc3fc7bb46))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.0
+    * @vm0/connectors bumped to 1.36.4
+    * @vm0/core bumped to 8.297.4
+
 ## [0.386.3](https://github.com/vm0-ai/vm0/compare/app-v0.386.2...app-v0.386.3) (2026-05-27)
 
 

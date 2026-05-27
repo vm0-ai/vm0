@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.64](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.63...vsock-test-v0.9.64) (2026-05-27)
+
+
+### Refactoring
+
+* **vsock-test:** replace harness deref with host accessor ([#15066](https://github.com/vm0-ai/vm0/issues/15066)) ([cc132a6](https://github.com/vm0-ai/vm0/commit/cc132a6f4afac71ad97a072e0f20c2438f8f1611))
+
 ## [0.9.63](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.62...vsock-test-v0.9.63) (2026-05-27)
 
 

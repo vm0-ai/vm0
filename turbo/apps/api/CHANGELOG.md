@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.77.0](https://github.com/vm0-ai/vm0/compare/api-v1.76.3...api-v1.77.0) (2026-05-27)
+
+
+### Features
+
+* add Pro features + 7-day trial onboarding step ([#14348](https://github.com/vm0-ai/vm0/issues/14348)) ([dad9a48](https://github.com/vm0-ai/vm0/commit/dad9a48110ee2e5e3871f73d494a27bc3fc7bb46))
+
+
+### Refactoring
+
+* rename connector oauth client resolution ([#15064](https://github.com/vm0-ai/vm0/issues/15064)) ([6fad31e](https://github.com/vm0-ai/vm0/commit/6fad31ec416a8ea6f4ad3a38ed319a0a140cefbe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.42.0
+    * @vm0/connectors bumped to 1.36.4
+    * @vm0/core bumped to 8.297.4
+    * @vm0/db bumped to 1.19.0
+
 ## [1.76.3](https://github.com/vm0-ai/vm0/compare/api-v1.76.2...api-v1.76.3) (2026-05-27)
 
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.104.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.8...runner-rs-v0.104.9) (2026-05-27)
+
+
+### Documentation
+
+* **mitm-addon:** explain usage zero-clobber guard ([#15067](https://github.com/vm0-ai/vm0/issues/15067)) ([6acacff](https://github.com/vm0-ai/vm0/commit/6acacff24db92eea0a2d356e69bca7f8f54bc78f))
+
+
+### Refactoring
+
+* remove sse usage parser wrapper ([#15056](https://github.com/vm0-ai/vm0/issues/15056)) ([b1fde4a](https://github.com/vm0-ai/vm0/commit/b1fde4ad5bb942576ef71061ccc9df542368dc36))
+* split mitm request handler tests ([#15068](https://github.com/vm0-ai/vm0/issues/15068)) ([f428c91](https://github.com/vm0-ai/vm0/commit/f428c910a6d918c3fbc2c8914291ccb22fcbe4bb))
+
 ## [0.104.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.7...runner-rs-v0.104.8) (2026-05-27)
 
 
