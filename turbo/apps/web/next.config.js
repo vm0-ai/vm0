@@ -134,6 +134,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "cdn.vm0.io",
       },
+      {
+        protocol: "https",
+        hostname: "**.sites.vm0.io",
+      },
     ],
   },
   compiler: {
