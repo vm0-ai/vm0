@@ -232,6 +232,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert len(parse_errors) == 1
         event, error = parse_errors[0]
         assert event == "response.completed"
+        assert isinstance(error, str)
         assert error
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.input"] == 13

@@ -74,6 +74,7 @@ class TestAnthropicSseUsageExtractor:
         assert len(parse_errors) == 1
         event, error = parse_errors[0]
         assert event == "message_start"
+        assert isinstance(error, str)
         assert error
         assert usage == {}
 
