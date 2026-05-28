@@ -67,9 +67,8 @@ type StoredConnectorRow = {
   readonly updatedAt: Date;
 };
 
-interface ConnectorScopedCredentialNames {
+interface ConnectorScopedSecretNames {
   readonly secretNames: ReadonlySet<string>;
-  readonly variableNames: ReadonlySet<string>;
 }
 
 const oauthScopesSchema = z.array(z.string());
@@ -341,50 +340,39 @@ export function zeroConnectorList(args: {
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [storedRows, connectorSecretRows, connectorVariableRows, overrides] =
-      await Promise.all([
-        db
-          .select({
-            id: connectors.id,
-            type: connectors.type,
-            authMethod: connectors.authMethod,
-            externalId: connectors.externalId,
-            externalUsername: connectors.externalUsername,
-            externalEmail: connectors.externalEmail,
-            oauthScopes: connectors.oauthScopes,
-            needsReconnect: connectors.needsReconnect,
-            createdAt: connectors.createdAt,
-            updatedAt: connectors.updatedAt,
-          })
-          .from(connectors)
-          .where(
-            and(
-              eq(connectors.orgId, args.orgId),
-              eq(connectors.userId, args.userId),
-            ),
+    const [storedRows, connectorSecretRows, overrides] = await Promise.all([
+      db
+        .select({
+          id: connectors.id,
+          type: connectors.type,
+          authMethod: connectors.authMethod,
+          externalId: connectors.externalId,
+          externalUsername: connectors.externalUsername,
+          externalEmail: connectors.externalEmail,
+          oauthScopes: connectors.oauthScopes,
+          needsReconnect: connectors.needsReconnect,
+          createdAt: connectors.createdAt,
+          updatedAt: connectors.updatedAt,
+        })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.orgId, args.orgId),
+            eq(connectors.userId, args.userId),
           ),
-        db
-          .select({ name: secrets.name })
-          .from(secrets)
-          .where(
-            and(
-              eq(secrets.orgId, args.orgId),
-              eq(secrets.userId, args.userId),
-              eq(secrets.type, "connector"),
-            ),
+        ),
+      db
+        .select({ name: secrets.name })
+        .from(secrets)
+        .where(
+          and(
+            eq(secrets.orgId, args.orgId),
+            eq(secrets.userId, args.userId),
+            eq(secrets.type, "connector"),
           ),
-        db
-          .select({ name: variables.name })
-          .from(variables)
-          .where(
-            and(
-              eq(variables.orgId, args.orgId),
-              eq(variables.userId, args.userId),
-              eq(variables.type, "connector"),
-            ),
-          ),
-        get(userFeatureSwitchOverrides(args.orgId, args.userId)),
-      ]);
+        ),
+      get(userFeatureSwitchOverrides(args.orgId, args.userId)),
+    ]);
     const featureStates = getAllFeatureStates({
       userId: args.userId,
       orgId: args.orgId,
@@ -401,14 +389,9 @@ export function zeroConnectorList(args: {
       }
       return [storedConnectorRowToResponse(row, parsed.data)];
     });
-    const connectorScopedCredentialNames: ConnectorScopedCredentialNames = {
+    const connectorScopedSecretNames: ConnectorScopedSecretNames = {
       secretNames: new Set(
         connectorSecretRows.map((row) => {
-          return row.name;
-        }),
-      ),
-      variableNames: new Set(
-        connectorVariableRows.map((row) => {
           return row.name;
         }),
       ),
@@ -422,7 +405,7 @@ export function zeroConnectorList(args: {
       connectorProvidedEnvNames: [
         ...connectorProvidedEnvNamesForStoredConnectors(
           connectorList,
-          connectorScopedCredentialNames,
+          connectorScopedSecretNames,
         ),
       ],
     };
@@ -431,7 +414,7 @@ export function zeroConnectorList(args: {
 
 function connectorProvidedEnvNamesForStoredConnectors(
   connectorList: readonly ConnectorResponse[],
-  connectorScopedCredentialNames: ConnectorScopedCredentialNames,
+  connectorScopedSecretNames: ConnectorScopedSecretNames,
 ): Set<string> {
   const provided = new Set<string>();
   for (const connector of connectorList) {
@@ -444,7 +427,7 @@ function connectorProvidedEnvNamesForStoredConnectors(
         continue;
       }
       const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-      if (!connectorScopedCredentialNames.secretNames.has(secretName)) {
+      if (!connectorScopedSecretNames.secretNames.has(secretName)) {
         continue;
       }
       provided.add(envName);
