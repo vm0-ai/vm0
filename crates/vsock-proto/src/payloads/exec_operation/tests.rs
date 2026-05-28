@@ -1299,6 +1299,13 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     let empty_payload = encode_exec_control(7, NONCE, "message", b"", 5000).unwrap();
     assert_eq!(decode_exec_control(&empty_payload).unwrap().payload, b"");
 
+    let max_payload = vec![0xAB; EXEC_CONTROL_MAX_PAYLOAD_BYTES];
+    let max_payload_message = encode_exec_control(7, NONCE, "message", &max_payload, 5000).unwrap();
+    assert_eq!(
+        decode_exec_control(&max_payload_message).unwrap().payload,
+        max_payload
+    );
+
     let err = encode_exec_control(0, NONCE, "message", b"body", 5000).unwrap_err();
     assert!(matches!(
         err,
