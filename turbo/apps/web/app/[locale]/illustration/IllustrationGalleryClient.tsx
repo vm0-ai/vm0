@@ -44,8 +44,16 @@ export function IllustrationGalleryClient() {
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
-      <section className="hero-section" style={{ paddingBottom: "32px" }}>
+      <section className="hero-section illu-hero">
         <div className="container">
+          <div className="illu-cover">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`${ASSET_BASE}/refs/soft-vector/ref-bike-lime.png`}
+              alt="Illustration cover"
+              loading="eager"
+            />
+          </div>
           <h1 className="hero-title">Illustration</h1>
           <p className="hero-description">
             An open gallery of every illustration style in the vm0-skills

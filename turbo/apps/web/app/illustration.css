@@ -6,6 +6,39 @@
   padding: 0 24px;
 }
 
+.illu-hero {
+  padding-top: calc(var(--total-header-height) + 140px);
+  padding-bottom: 56px;
+}
+@media (max-width: 720px) {
+  .illu-hero {
+    padding-top: calc(var(--total-header-height) + 80px);
+    padding-bottom: 40px;
+  }
+}
+
+.illu-cover {
+  display: flex;
+  margin-bottom: 56px;
+}
+.illu-cover img {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  border-radius: 16px;
+  border: 0.7px solid hsl(var(--gray-200));
+  background: #fff;
+}
+@media (max-width: 720px) {
+  .illu-cover {
+    margin-bottom: 36px;
+  }
+  .illu-cover img {
+    max-width: 320px;
+  }
+}
+
 .illu-meta-grid {
   display: grid;
   grid-template-columns: minmax(120px, max-content) minmax(160px, max-content) minmax(160px, max-content);
