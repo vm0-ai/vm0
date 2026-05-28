@@ -40,7 +40,7 @@ describe("zero generate website command", () => {
       "website",
       "--prompt",
       "observability launch site",
-      "--template",
+      "--template-direction",
       "launch",
       "--title",
       "Clearpath",
@@ -65,6 +65,64 @@ describe("zero generate website command", () => {
     );
     expect(stdout).toContain("Template direction: launch");
     expect(stdout).toContain("Audience: small engineering teams");
+  });
+
+  it("should accept --template and --design-system from the registry", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "Pricing page for a SaaS",
+      "--template",
+      "saas-landing",
+      "--design-system",
+      "stripe",
+      "--site",
+      "saas-pricing-demo",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template: template:saas-landing (Saas Landing)",
+    );
+    expect(stdout).toContain(
+      "Selected design system: design-system:stripe (Stripe)",
+    );
+  });
+
+  it("should reject a template that does not target website", async () => {
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "website",
+        "--prompt",
+        "Pricing page for a SaaS",
+        "--template",
+        "html-ppt-pitch-deck",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Unknown template for website");
+  });
+
+  it("should reject an unknown design system", async () => {
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "website",
+        "--prompt",
+        "Pricing page for a SaaS",
+        "--design-system",
+        "definitely-not-a-design-system",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Unknown design system");
   });
 
   it("should print JSON resource selection metadata when --json is provided", async () => {

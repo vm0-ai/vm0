@@ -1,6 +1,17 @@
 import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
-import { type GenerationTarget, toGenerationTarget } from "./resource-registry";
+import {
+  findDesignSystem,
+  findTemplate,
+  listDesignSystems,
+  listTemplates,
+  type GenerationTarget,
+  toGenerationTarget,
+} from "./resource-registry";
+import {
+  canonicalizeRegistryId,
+  formatRegistryListing,
+} from "./resource-listing";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -11,6 +22,8 @@ interface ArtifactOptions {
   site?: string;
   title?: string;
   audience?: string;
+  designSystem?: string;
+  template?: string;
   all?: boolean;
   json?: boolean;
 }
@@ -24,6 +37,42 @@ interface ArtifactCommandConfig {
   examples: string;
   details: (options: ArtifactOptions) => readonly string[];
   artifactRules: readonly string[];
+}
+
+function unknownDesignSystemError(id: string, usageCommand: string): Error {
+  const designSystems = listDesignSystems();
+  const message = [
+    `Unknown design system: ${id}`,
+    "",
+    "Available design systems:",
+    formatRegistryListing(designSystems, "design systems"),
+    "",
+    `Example:`,
+    `  ${usageCommand} --design-system ${
+      designSystems[0]?.id ?? "<design-system-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
+}
+
+function unknownTemplateError(
+  id: string,
+  usageCommand: string,
+  target: GenerationTarget,
+): Error {
+  const templates = listTemplates(target);
+  const message = [
+    `Unknown template for ${target}: ${id}`,
+    "",
+    `Available templates for ${target}:`,
+    formatRegistryListing(templates, `${target} templates`),
+    "",
+    `Example:`,
+    `  ${usageCommand} --template ${
+      templates[0]?.id ?? "<template-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
 }
 
 export function createArtifactGenerateCommand(
@@ -44,10 +93,19 @@ export function createArtifactGenerateCommand(
     .option("--site <slug>", "Hosted site slug; defaults to generated name")
     .option("--title <text>", "Requested artifact title or name")
     .option("--audience <text>", "Audience context")
+    .option(
+      "--design-system <id>",
+      "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
+    )
+    .option(
+      "--template <id>",
+      `Template id from the registry, scoped to ${config.target} (see Templates below). Accepts either short id or full 'template:<id>'.`,
+    )
     .option("--json", "Print metadata as JSON")
-    .addHelpText(
-      "after",
-      `
+    .addHelpText("after", () => {
+      const designSystems = listDesignSystems();
+      const templates = listTemplates(config.target);
+      return `
 Examples:
 ${config.examples}
 
@@ -57,8 +115,14 @@ Output:
   --prompt and no piped input, prints the provider menu instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN`,
-    )
+  - Authenticates via ZERO_TOKEN
+
+Design Systems:
+${formatRegistryListing(designSystems, "design systems")}
+
+Templates (${config.target}):
+${formatRegistryListing(templates, `${config.target} templates`)}`;
+    })
     .action(
       withErrorHandler(async (options: ArtifactOptions) => {
         const dispatch = await dispatchGenerate({
@@ -71,12 +135,58 @@ Notes:
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
 
+        let resolvedDesignSystem;
+        if (options.designSystem !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "design-system",
+            options.designSystem,
+          );
+          const entry = findDesignSystem(canonical);
+          if (!entry) {
+            throw unknownDesignSystemError(
+              options.designSystem,
+              config.usageCommand,
+            );
+          }
+          resolvedDesignSystem = entry;
+        }
+
+        let resolvedTemplate;
+        if (options.template !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "template",
+            options.template,
+          );
+          const entry = findTemplate(canonical);
+          if (!entry || !entry.targets?.includes(config.target)) {
+            throw unknownTemplateError(
+              options.template,
+              config.usageCommand,
+              config.target,
+            );
+          }
+          resolvedTemplate = entry;
+        }
+
+        const extraDetails = [
+          `Selected design system: ${
+            resolvedDesignSystem
+              ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
+              : "agent decides"
+          }`,
+          `Selected template: ${
+            resolvedTemplate
+              ? `${resolvedTemplate.id} (${resolvedTemplate.name})`
+              : "agent decides"
+          }`,
+        ];
+
         const packet = createHtmlArtifactAuthoringPacket({
           kind: toGenerationTarget(config.target),
           prompt,
           slugSource: options.title,
           site: options.site,
-          details: config.details(options),
+          details: [...config.details(options), ...extraDetails],
           artifactRules: config.artifactRules,
         });
 

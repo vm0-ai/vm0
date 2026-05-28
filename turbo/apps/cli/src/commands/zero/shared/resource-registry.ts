@@ -44,6 +44,13 @@ export interface RegistryEntry {
   readonly description: string;
   readonly desc?: string;
   readonly source: ResourceSourceRef;
+  /**
+   * Generation targets this entry applies to. Mandatory for `kind: "template"`
+   * so we can filter templates per `generate` subcommand. Optional and unused
+   * for other kinds — design systems apply to all HTML targets, image styles
+   * apply only to image generation, and so on.
+   */
+  readonly targets?: readonly GenerationTarget[];
 }
 
 export interface ResourceCandidateSlice {
@@ -720,6 +727,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Admin or analytics dashboard in a single HTML file with fixed sidebar, top bar, KPI cards, and one or two charts.",
     source: { path: "design-templates/dashboard" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:finance-report",
@@ -728,6 +736,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Quarterly or monthly financial report with masthead KPIs, revenue and burn charts, P&L summary, highlights, and outlook.",
     source: { path: "design-templates/finance-report" },
+    targets: ["report"],
   },
   {
     id: "template:docs-page",
@@ -736,6 +745,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Documentation page with inline-start navigation, scrollable article body, and inline-end table of contents.",
     source: { path: "design-templates/docs-page" },
+    targets: ["docs-design"],
   },
   {
     id: "template:mobile-app",
@@ -744,6 +754,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Mobile app screen rendered inside a pixel-accurate iPhone 15 Pro frame using reusable screen archetypes.",
     source: { path: "design-templates/mobile-app" },
+    targets: ["mobile-app-design"],
   },
   {
     id: "template:html-ppt-graphify-dark-graph",
@@ -752,6 +763,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Dark knowledge-graph deck with midnight gradients, force-graph cover visuals, command-line highlights, and glass-morphism cards.",
     source: { path: "design-templates/html-ppt-graphify-dark-graph" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-retro-zine",
@@ -760,6 +772,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Retro editorial zine presentation template with expressive composition, tactile paper energy, and bold magazine-like rhythm.",
     source: { path: "design-templates/html-ppt-zhangzara-retro-zine" },
+    targets: ["presentation", "poster"],
   },
   {
     id: "template:weekly-update",
@@ -768,6 +781,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-file horizontal-swipe weekly team update deck for shipped work, in-flight work, blockers, metrics, and asks.",
     source: { path: "design-templates/weekly-update" },
+    targets: ["report", "presentation"],
   },
   {
     id: "template:web-prototype-taste-editorial",
@@ -776,6 +790,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial-minimalist web prototype with warm monochrome canvas, serif display type, hairline borders, pastel chips, and ambient micro-motion.",
     source: { path: "design-templates/web-prototype-taste-editorial" },
+    targets: ["website"],
   },
   {
     id: "template:audio-jingle",
@@ -784,6 +799,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Audio generation skill — jingles, beds, voiceover, and sound effects. Routes music requests to Suno V5 / Udio / Lyria, speech to MiniMax TTS / FishAudio / ElevenLabs V3, and SFX to ElevenLabs SFX or AudioCraft. Output is one MP3/WAV file…",
     source: { path: "design-templates/audio-jingle" },
+    targets: ["intro-video"],
   },
   {
     id: "template:blog-post",
@@ -792,6 +808,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A long-form article / blog post — masthead, hero image placeholder, article body with figures and pull quotes, author byline, related posts.",
     source: { path: "design-templates/blog-post" },
+    targets: ["website"],
   },
   {
     id: "template:clinical-case-report",
@@ -800,6 +817,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Structured medical case presentation for clinical rounds, conferences, and documentation. Generates SOAP-format or narrative case reports with physiologically accurate vitals, labs, and evidence-based plans.",
     source: { path: "design-templates/clinical-case-report" },
+    targets: ["report"],
   },
   {
     id: "template:critique",
@@ -808,6 +826,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Run a 5-dimension expert design review on any HTML artifact in the project — Philosophy / Visual hierarchy / Detail / Functionality / Innovation, each scored 0–10. Outputs a single self-contained HTML report with a radar chart, evidence…",
     source: { path: "design-templates/critique" },
+    targets: [
+      "website",
+      "dashboard-design",
+      "presentation",
+      "report",
+      "docs-design",
+      "poster",
+      "mobile-app-design",
+    ],
   },
   {
     id: "template:dating-web",
@@ -816,6 +843,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A consumer-feeling dating / matchmaking dashboard — left rail navigation, ticker bar of community signals, headline KPIs, a 30-day mutual-matches bar chart, and a match-rate trend block. Editorial typography, restrained accent.",
     source: { path: "design-templates/dating-web" },
+    targets: ["website"],
   },
   {
     id: "template:dcf-valuation",
@@ -824,6 +852,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Discounted cash flow valuation and intrinsic value analysis for public companies.",
     source: { path: "design-templates/dcf-valuation" },
+    targets: ["report"],
   },
   {
     id: "template:digital-eguide",
@@ -832,6 +861,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'A two-spread digital e-guide preview — page 1 is a cover (display title, author, "What\'s inside" stats, table of contents teaser); page 2 is a spread (lesson body with pull-quote and a step list). Lifestyle / creator brand tone.',
     source: { path: "design-templates/digital-eguide" },
+    targets: ["website", "docs-design"],
   },
   {
     id: "template:email-marketing",
@@ -840,6 +870,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A brand product-launch email — masthead with wordmark, hero image block, headline lockup with skewed-italic accent, body copy, primary CTA, and a specifications grid. Pure HTML email layout (centered single column, table fallback).",
     source: { path: "design-templates/email-marketing" },
+    targets: ["website"],
   },
   {
     id: "template:eng-runbook",
@@ -848,6 +879,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "An engineering runbook — service overview, alerts table, dashboards links, common procedures with copy-pasteable commands, on-call rotation, and an incident-response checklist.",
     source: { path: "design-templates/eng-runbook" },
+    targets: ["docs-design"],
   },
   {
     id: "template:flowai-live-dashboard-template",
@@ -856,6 +888,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "FlowAI team-management dashboard — three tabs (Members, Details, Activity Log), KPI row, role chart, presence sparklines, contributor panel, light/dark, CSV export, single HTML.",
     source: { path: "design-templates/flowai-live-dashboard-template" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:gamified-app",
@@ -864,6 +897,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A multi-frame gamified mobile-app prototype — three phone frames on a dark showcase stage. Frame 1: cover / poster, Frame 2: today's quests with XP ribbons and a level bar, Frame 3: quest detail. Vivid quest tiles, level ribbon, bottom t…",
     source: { path: "design-templates/gamified-app" },
+    targets: ["website", "mobile-app-design"],
   },
   {
     id: "template:github-dashboard",
@@ -872,6 +906,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "GitHub repository analytics dashboard — stars, forks, contributors, issues, pull requests, recent activity, and top contributors.",
     source: { path: "design-templates/github-dashboard" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:guizang-ppt",
@@ -880,6 +915,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "电子杂志 × 电子墨水风格的横向翻页网页 PPT — WebGL 流体背景、衬线标题、章节幕封、数据大字报、图片网格。适合分享 / 演讲 / 发布会 / 杂志风 PPT。",
     source: { path: "design-templates/guizang-ppt" },
+    targets: ["presentation"],
   },
   {
     id: "template:hr-onboarding",
@@ -888,6 +924,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'A new-hire onboarding plan as a single page — first week schedule, buddy + manager intro, learning track, equipment checklist, and "you\'re set when…" outcomes.',
     source: { path: "design-templates/hr-onboarding" },
+    targets: ["docs-design"],
   },
   {
     id: "template:html-ppt",
@@ -896,6 +933,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "HTML PPT Studio — static HTML presentations driven by templates. Many styles, layouts, animations, and keyboard navigation for talks, pitches, reports, and 小红书图文.",
     source: { path: "design-templates/html-ppt" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-course-module",
@@ -904,6 +942,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Online-course / workshop module deck — warm paper background + Playfair serif, persistent left sidebar of learning objectives, MCQ self-check page. Use for teaching modules, training materials, workshop slides.",
     source: { path: "design-templates/html-ppt-course-module" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-dir-key-nav-minimal",
@@ -912,6 +951,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "极简方向键 keynote — 每页独立单色背景、160px display 标题、4px accent 线、箭头 → 前缀 Mono 列表、← → kbd 提示。适合 keynote、launch、公开演讲。",
     source: { path: "design-templates/html-ppt-dir-key-nav-minimal" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-hermes-cyber-terminal",
@@ -920,6 +960,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "暗终端 honest-review deck — 黑底 + 赛博网格 + CRT 暗角 + 扫描线、`$ prompt` 命令行标题、薄荷绿大字、JetBrains Mono、stroke-only 柱状图。适合 CLI/agent/dev tool 测评。",
     source: { path: "design-templates/html-ppt-hermes-cyber-terminal" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-knowledge-arch-blueprint",
@@ -928,6 +969,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "奶油蓝图架构 deck — 奶油纸底色 + 单一锈红高亮、48px 蓝图网格、2px 黑边硬卡片、pipeline 步骤盒、右侧 insight callout、Playfair 衬线大字。零渐变零软阴影。",
     source: { path: "design-templates/html-ppt-knowledge-arch-blueprint" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-obsidian-claude-gradient",
@@ -936,6 +978,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "GitHub 暗紫渐变 deck — GitHub-dark + 紫蓝 radial 环境光 + 60px 网格、紫色 pill 标签、三色渐变标题、GitHub 风代码 palette。适合开发者工作流 / MCP / Agent 教程。",
     source: { path: "design-templates/html-ppt-obsidian-claude-gradient" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-pitch-deck",
@@ -944,6 +987,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Investor-ready 10-slide HTML pitch deck — white + blue→purple gradient hero, big numbers, traction bar chart, $4.5M-style ask page.",
     source: { path: "design-templates/html-ppt-pitch-deck" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-presenter-mode-reveal",
@@ -952,6 +996,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "演讲者模式 deck — tokyo-night 默认主题，5 套主题 T 键切换，每页带 150-300 字逐字稿示例，按 S 打开 CURRENT/NEXT/SCRIPT/TIMER 四张磁吸卡片。适合提词器场景。",
     source: { path: "design-templates/html-ppt-presenter-mode-reveal" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-product-launch",
@@ -960,6 +1005,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Launch keynote deck — dark hero + light content, warm orange→peach accent, feature cards, pricing tiers, CTA.",
     source: { path: "design-templates/html-ppt-product-launch" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-taste-brutalist",
@@ -968,6 +1014,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "16:9 HTML deck in tactical-telemetry / CRT-terminal taste. Deactivated-CRT charcoal slides, white-phosphor monospace, hazard-red accent, scanline overlay, ASCII syntax, density over decoration. Distilled from Leonxlnx/taste-skill `brutal…",
     source: { path: "design-templates/html-ppt-taste-brutalist" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-taste-editorial",
@@ -976,6 +1023,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "16:9 HTML deck in editorial-minimalist taste. Warm cream slides, serif display + grotesque body, hairline rules, monospace meta, generous macro-whitespace, one accent. Distilled from Leonxlnx/taste-skill `minimalist-skill`.",
     source: { path: "design-templates/html-ppt-taste-editorial" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-tech-sharing",
@@ -984,6 +1032,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Conference / internal tech-talk deck — GitHub-dark, JetBrains Mono, terminal code blocks, agenda + Q&A pages. Use for engineering presentations, internal sharing sessions, conference talks, and code-heavy walkthroughs.",
     source: { path: "design-templates/html-ppt-tech-sharing" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-testing-safety-alert",
@@ -992,6 +1041,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "红琥珀警示 deck — 顶/底 45° 红黑 hazard 条纹、红色否定标题、L1/L2/L3 三档卡片、policy-yaml 代码块、红绿 checklist、事故堆叠柱状图。适合安全 / 风险 / 复盘 / 红队。",
     source: { path: "design-templates/html-ppt-testing-safety-alert" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-weekly-report",
@@ -1000,6 +1050,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Team weekly / status-update deck — corporate clarity, 8-cell KPI grid, shipped list, 8-week bar chart, next-week table. Use for 周报, business reviews, team status updates, and exec dashboards.",
     source: { path: "design-templates/html-ppt-weekly-report" },
+    targets: ["presentation", "report"],
   },
   {
     id: "template:html-ppt-xhs-pastel-card",
@@ -1008,6 +1059,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "柔和马卡龙慢生活 deck — 奶油底 + 柔光 blob、Playfair 斜体 + sans 正文、28px 圆角马卡龙卡片、SVG donut 图、chip+page 顶栏。适合生活方式 / 个人成长 / 慢生活内容。",
     source: { path: "design-templates/html-ppt-xhs-pastel-card" },
+    targets: ["presentation", "poster"],
   },
   {
     id: "template:html-ppt-xhs-post",
@@ -1016,6 +1068,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "小红书 / Instagram 风 9 页 3:4 竖版图文（810×1080）— 暖色 pastel、虚线 sticker 卡片、底部页码点点。",
     source: { path: "design-templates/html-ppt-xhs-post" },
+    targets: ["presentation", "poster"],
   },
   {
     id: "template:html-ppt-xhs-white-editorial",
@@ -1024,6 +1077,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "白底杂志风 deck — 纯白 + 顶部 10 色彩虹 bar、80-110px display 标题、紫→蓝→绿→橙→粉渐变文字、马卡龙软卡片组、黑底白字 .focus pill。小红书图文 + 横版 PPT 双用。",
     source: { path: "design-templates/html-ppt-xhs-white-editorial" },
+    targets: ["presentation", "poster"],
   },
   {
     id: "template:html-ppt-zhangzara-8-bit-orbit",
@@ -1032,6 +1086,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "8-Bit Orbit — pixel-art neon arcade aesthetic on a deep navy void. For cyberpunk, gaming, web3, indie dev tools, hackathon demos that should feel like a CRT screen at 2am.",
     source: { path: "design-templates/html-ppt-zhangzara-8-bit-orbit" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-biennale-yellow",
@@ -1040,6 +1095,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Biennale Yellow — solar yellow on warm parchment with deep indigo serif and sun-glow gradients. For art-biennale posters, museum programmes, curatorial pitches, literary publications.",
     source: { path: "design-templates/html-ppt-zhangzara-biennale-yellow" },
+    targets: ["presentation", "poster"],
   },
   {
     id: "template:html-ppt-zhangzara-block-frame",
@@ -1048,6 +1104,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "BlockFrame — neobrutalist deck with pastel-neon color blocks and chunky black borders. Pop-graphic and design-led for indie SaaS launches, agency credentials, brand redesigns.",
     source: { path: "design-templates/html-ppt-zhangzara-block-frame" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-blue-professional",
@@ -1056,6 +1113,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Blue Professional — cream paper background with electric cobalt blue accents; clean modern professional. For B2B SaaS pitches, consulting deliverables, advisory updates, investor reports.",
     source: { path: "design-templates/html-ppt-zhangzara-blue-professional" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-bold-poster",
@@ -1064,6 +1122,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bold Poster — editorial poster aesthetic with massive Shrikhand display and a single fire-engine red accent. For magazine-cover brand manifestos and editorial / cultural pitches.",
     source: { path: "design-templates/html-ppt-zhangzara-bold-poster" },
+    targets: ["presentation", "poster"],
   },
   {
     id: "template:html-ppt-zhangzara-broadside",
@@ -1072,6 +1131,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Broadside — dark editorial canvas with a single fire orange accent and bilingual Latin/Chinese type stack. For manifestos, magazine pitches, design talks, bilingual EN/CN decks.",
     source: { path: "design-templates/html-ppt-zhangzara-broadside" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-capsule",
@@ -1080,6 +1140,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Capsule — modular pill-shaped cards on warm bone with a full pastel-pop palette. For lifestyle brands, creator portfolios, DTC launches, beauty / wellness, agency credentials.",
     source: { path: "design-templates/html-ppt-zhangzara-capsule" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-cartesian",
@@ -1088,6 +1149,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Cartesian — quiet warm-neutral palette with classical Playfair serifs; tasteful and unhurried. For investment theses, white papers, advisory work, longform research, gallery decks.",
     source: { path: "design-templates/html-ppt-zhangzara-cartesian" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-cobalt-grid",
@@ -1096,6 +1158,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Cobalt Grid — electric cobalt italic serifs on a graph-paper canvas with stair-stepped pixel-glitch decorations. For design / research bulletins, art publications, curated trend reports.",
     source: { path: "design-templates/html-ppt-zhangzara-cobalt-grid" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-coral",
@@ -1104,6 +1167,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Coral — cream and coral on near-black, set in oversized Bebas Neue. Warm-graphic editorial for fashion, beauty, fitness, F&B, lifestyle brands, agency credentials.",
     source: { path: "design-templates/html-ppt-zhangzara-coral" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-creative-mode",
@@ -1112,6 +1176,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Creative Mode — cream paper canvas with confident multi-color accents and Archivo Black display. For creative agency pitches, design studio decks, ad credentials, brand creative reviews.",
     source: { path: "design-templates/html-ppt-zhangzara-creative-mode" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-daisy-days",
@@ -1120,6 +1185,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Daisy Days — cheerful pastel deck with hand-drawn daisies, stars, and rainbows. Friendly, soft, and warm for educational content, kids and family, wellness, community workshops.",
     source: { path: "design-templates/html-ppt-zhangzara-daisy-days" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-editorial-tri-tone",
@@ -1128,6 +1194,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial Tri-Tone — three-color editorial: dusty pink, mustard cream, deep burgundy; Bricolage + Instrument Serif. For fashion-magazine spreads, brand decks, lifestyle media.",
     source: { path: "design-templates/html-ppt-zhangzara-editorial-tri-tone" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-grove",
@@ -1136,6 +1203,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Grove — forest-green canvas with cream type, classical Playfair serifs, single rust accent. For sustainability and wellness brands, outdoor products, wineries, advisory deliverables.",
     source: { path: "design-templates/html-ppt-zhangzara-grove" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-long-table",
@@ -1144,6 +1212,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Long Table — warm cream and rust-red supper-club aesthetic with bold uppercase grotesk headlines and italic Fraunces. For supper clubs, dinner series, lifestyle and wine brands.",
     source: { path: "design-templates/html-ppt-zhangzara-long-table" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-mat",
@@ -1152,6 +1221,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Mat — dark sage canvas with bone paper and burnt-orange accent; mid-century modern with wood undertones. For architecture/interior brands, ceramics, craft, furniture, advisory decks.",
     source: { path: "design-templates/html-ppt-zhangzara-mat" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-monochrome",
@@ -1160,6 +1230,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Monochrome — ivory ledger paper with all-black type; Lora serif headlines, Jost body, no color. For research synthesis, white papers, longform reports, bilingual EN/CN deliverables.",
     source: { path: "design-templates/html-ppt-zhangzara-monochrome" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-neo-grid-bold",
@@ -1168,6 +1239,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Neo-Grid Bold — editorial neo-brutalism with a single neon yellow accent on off-white paper. For design-led pitches, brand work, founder talks, conference keynotes.",
     source: { path: "design-templates/html-ppt-zhangzara-neo-grid-bold" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-peoples-platform",
@@ -1176,6 +1248,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "People's Platform (Block & Bold) — activist poster energy: blue, orange, red on cream, with Alfa Slab + Caveat Brush. For cultural commentary, manifestos, civic decks, campaign pitches.",
     source: { path: "design-templates/html-ppt-zhangzara-peoples-platform" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-pin-and-paper",
@@ -1184,6 +1257,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Pin & Paper — yellow paper with safety-pin illustrations, ink-blue handwritten Caveat, paper-grain texture. For qualitative research, founder reflections, longform brand stories.",
     source: { path: "design-templates/html-ppt-zhangzara-pin-and-paper" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-pink-script",
@@ -1192,6 +1266,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Pink Script (After Hours) — black canvas, hot pink accent, pearl-cream paper, Instrument Serif. Late-night editorial luxury for fashion, creator brands, nightlife, and luxury reveals.",
     source: { path: "design-templates/html-ppt-zhangzara-pink-script" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-playful",
@@ -1200,6 +1275,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Playful — sun-warm peach background with Syne display: a friendly indie launch deck. For creator portfolios, indie product launches, lifestyle brands, small-business pitches.",
     source: { path: "design-templates/html-ppt-zhangzara-playful" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-raw-grid",
@@ -1208,6 +1284,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Raw Grid — neo-brutalist deck with thick borders, offset shadows, and a pink/sage/ink palette. For founder pitches, accelerator demos, brand decks, indie launches, creator portfolios.",
     source: { path: "design-templates/html-ppt-zhangzara-raw-grid" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-retro-windows",
@@ -1216,6 +1293,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Retro Windows — Windows 95 chrome: gray title bars, MS Sans Serif, pixel typography, full nostalgia. For retro gaming, Y2K-aesthetic brands, creator portfolios, tech-history talks.",
     source: { path: "design-templates/html-ppt-zhangzara-retro-windows" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-sakura-chroma",
@@ -1224,6 +1302,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Sakura Chroma — vintage Japanese cassette-package aesthetic: cream paper, diagonal rainbow ribbons, condensed bold type, JIS-style spec checkboxes. For analog / kawaii-tech decks.",
     source: { path: "design-templates/html-ppt-zhangzara-sakura-chroma" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-scatterbrain",
@@ -1232,6 +1311,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Scatterbrain — Post-it inspired: pastel sticky notes, Caveat handwriting, Shrikhand + Zilla Slab. For brainstorms, workshops, creative-agency credentials, ideation pitches.",
     source: { path: "design-templates/html-ppt-zhangzara-scatterbrain" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-signal",
@@ -1240,6 +1320,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Signal — deep navy canvas with bone paper and a single muted-gold accent; institutional with quiet weight. For investor decks, board presentations, consulting deliverables, legal briefs.",
     source: { path: "design-templates/html-ppt-zhangzara-signal" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-soft-editorial",
@@ -1248,6 +1329,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Soft Editorial — Cormorant Garamond serif on warm paper with sage, blush, and lemon accents. For literary brand stories, gallery decks, advisory deliverables, lifestyle media.",
     source: { path: "design-templates/html-ppt-zhangzara-soft-editorial" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-stencil-tablet",
@@ -1256,6 +1338,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Stencil & Tablet — bone paper with stencil-cut headlines and a six-color earth palette. Archaeology meets brand: museum decks, art/architecture brands, heritage and craft work.",
     source: { path: "design-templates/html-ppt-zhangzara-stencil-tablet" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-studio",
@@ -1264,6 +1347,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Studio — black canvas with electric-yellow type; high-voltage design studio aesthetic. For studio credentials, creative agency pitches, brand showcases, fashion / sneaker work.",
     source: { path: "design-templates/html-ppt-zhangzara-studio" },
+    targets: ["presentation"],
   },
   {
     id: "template:html-ppt-zhangzara-vellum",
@@ -1272,6 +1356,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Vellum — deep navy canvas with warm-yellow italic Cormorant serifs and a single dusty teal accent. Quiet, scholarly aesthetic for research synthesis, white papers, advisory work.",
     source: { path: "design-templates/html-ppt-zhangzara-vellum" },
+    targets: ["presentation"],
   },
   {
     id: "template:hyperframes",
@@ -1280,6 +1365,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "HTML video composition skill — captions, voiceover, audio-reactive animation, scene transitions, and timing in HyperFrames HTML. For CLI commands see hyperframes-cli.",
     source: { path: "design-templates/hyperframes" },
+    targets: ["intro-video"],
   },
   {
     id: "template:ib-pitch-book",
@@ -1288,6 +1374,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Investment-banking pitch book — trading comps, precedent transactions, valuation football field, DCF sensitivity, strategic-options matrix. For Board / sell-side discussion materials.",
     source: { path: "design-templates/ib-pitch-book" },
+    targets: ["report", "presentation"],
   },
   {
     id: "template:image-poster",
@@ -1296,6 +1383,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-image generation skill for posters, key art, and editorial illustrations. Defaults to gpt-image-2 but is provider-agnostic — the same workflow drives Flux, Imagen, or Midjourney via the active upstream tooling. Output is one or mo…",
     source: { path: "design-templates/image-poster" },
+    targets: ["poster"],
   },
   {
     id: "template:invoice",
@@ -1304,6 +1392,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A printable invoice page — sender + recipient block, line items table, tax breakdown, totals, and payment instructions.",
     source: { path: "design-templates/invoice" },
+    targets: ["report"],
   },
   {
     id: "template:kami-deck",
@@ -1312,6 +1401,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Produce a print-grade slide deck in the kami (紙 / 纸) design system — warm parchment background (or ink-blue for cover / chapter slides), serif at one weight, ink-blue accent ≤ 5% per slide, no italic. Horizontal magazine swipe pagination…",
     source: { path: "design-templates/kami-deck" },
+    targets: ["presentation"],
   },
   {
     id: "template:kami-landing",
@@ -1320,6 +1410,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Produce a print-grade single-page kami (紙 / 纸) document — warm parchment canvas, ink-blue accent, serif at one weight, no italic, no cool grays. The output reads like a professional white paper or studio one-pager, not an app UI. Multili…",
     source: { path: "design-templates/kami-landing" },
+    targets: ["website"],
   },
   {
     id: "template:kanban-board",
@@ -1328,6 +1419,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Kanban / task board with columns (To do / In progress / In review / Done), draggable-looking cards, assignee avatars, swimlanes, and a top filter bar.",
     source: { path: "design-templates/kanban-board" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:last30days",
@@ -1336,6 +1428,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Recent community and social trend research over the last 30 days.",
     source: { path: "design-templates/last30days" },
+    targets: ["dashboard-design", "report"],
   },
   {
     id: "template:live-artifact",
@@ -1344,6 +1437,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create refreshable, auditable artifacts backed by connector or local data. Trigger when the user asks for live dashboards, refreshable reports, synced views, or reusable data-backed artifacts.",
     source: { path: "design-templates/live-artifact" },
+    targets: ["dashboard-design", "report", "website"],
   },
   {
     id: "template:live-dashboard",
@@ -1352,6 +1446,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Notion-style team dashboard as a Live Artifact — KPIs, 7-day sparkline, activity feed, and a linked-database task table wired to Notion via Composio. Refreshable, with mock fallback.",
     source: { path: "design-templates/live-dashboard" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:magazine-poster",
@@ -1360,6 +1455,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "An editorial-style poster — newsprint paper, dateline, oversized serif headline with a struck-through word and italic accent, a 2-column body block, and 6 numbered sections with annotated pull-quote captions. Reads like a Sunday-paper fu…",
     source: { path: "design-templates/magazine-poster" },
+    targets: ["poster"],
   },
   {
     id: "template:meeting-notes",
@@ -1368,6 +1464,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'Meeting notes page — title bar with attendees, agenda checklist, decisions block, action items table with owners + dates, and a "next meeting" footer.',
     source: { path: "design-templates/meeting-notes" },
+    targets: ["docs-design"],
   },
   {
     id: "template:mobile-onboarding",
@@ -1376,6 +1473,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A multi-screen mobile onboarding flow rendered as three phone frames side by side — splash, value-prop, sign-in. Status bar, swipe dots, primary CTA.",
     source: { path: "design-templates/mobile-onboarding" },
+    targets: ["mobile-app-design"],
   },
   {
     id: "template:motion-frames",
@@ -1384,6 +1482,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A single-frame motion-design composition with looping CSS animations — rotating type ring, animated globe, ticking timer, parallax labels. Renders as a hero video poster you can hand straight to HyperFrames or any keyframe-based exporter.",
     source: { path: "design-templates/motion-frames" },
+    targets: ["intro-video"],
   },
   {
     id: "template:open-design-landing",
@@ -1392,6 +1491,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-page editorial landing site in the Atelier Zero visual language (Monocle / Apartamento / Études collage). Composes from a typed inputs.json with optional gpt-image-2 assets.",
     source: { path: "design-templates/open-design-landing" },
+    targets: ["website"],
   },
   {
     id: "template:open-design-landing-deck",
@@ -1400,6 +1500,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-file slide deck in the Atelier Zero visual language — warm-paper, italic-serif emphasis, coral terminating dots, surreal collage. Horizontal swipe + ESC overview grid.",
     source: { path: "design-templates/open-design-landing-deck" },
+    targets: ["presentation"],
   },
   {
     id: "template:orbit-general",
@@ -1408,6 +1509,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Open Orbit daily digest — pulls 24h activity from every connected connector (GitHub, Linear, Notion, Slack, …) into a bento-grid dashboard. Invoked by the Orbit scheduler.",
     source: { path: "design-templates/orbit-general" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:orbit-github",
@@ -1416,6 +1518,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Open Orbit GitHub digest — 24h of PRs, reviews, issues, CI, and merges rendered in GitHub's native Notifications + PR-diff visual language. Invoked by the Orbit scheduler.",
     source: { path: "design-templates/orbit-github" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:orbit-gmail",
@@ -1424,6 +1527,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Open Orbit Gmail digest — 24h of inbox activity (replies, mentions, cc, bulk) rendered as the Orbit Daily Digest email inside Gmail's reading view. Invoked by the Orbit scheduler.",
     source: { path: "design-templates/orbit-gmail" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:orbit-linear",
@@ -1432,6 +1536,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Open Orbit Linear digest — 24h of issue movement, status changes, assignments, and cycle progress in Linear's native Inbox + cycle visual language. Invoked by the Orbit scheduler.",
     source: { path: "design-templates/orbit-linear" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:orbit-notion",
@@ -1440,6 +1545,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Open Orbit Notion digest — 24h of doc edits, comments, mentions, and database row changes rendered as a native Notion page. Invoked by the Orbit scheduler.",
     source: { path: "design-templates/orbit-notion" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:pm-spec",
@@ -1448,6 +1554,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Product spec / PRD as a single page — problem, success metrics, scope, user stories, design notes, rollout plan, open questions.",
     source: { path: "design-templates/pm-spec" },
+    targets: ["docs-design"],
   },
   {
     id: "template:pricing-page",
@@ -1456,6 +1563,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A standalone pricing page — header, plan tiers, feature comparison table, and an FAQ.",
     source: { path: "design-templates/pricing-page" },
+    targets: ["website"],
   },
   {
     id: "template:replit-deck",
@@ -1464,6 +1572,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-file horizontal-swipe HTML deck in the style of Replit Slides's landing-page template gallery. Eight distinct themes (helix, holm, vance, bevel, world-dark, world-mint, atlas, bluehouse) — each a complete visual system (palette +…",
     source: { path: "design-templates/replit-deck" },
+    targets: ["presentation"],
   },
   {
     id: "template:saas-landing",
@@ -1472,6 +1581,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-page SaaS landing with hero, features, social proof, pricing, and CTA. Respects the active DESIGN.md color/typography/layout tokens.",
     source: { path: "design-templates/saas-landing" },
+    targets: ["website"],
   },
   {
     id: "template:simple-deck",
@@ -1480,6 +1590,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-file horizontal-swipe HTML deck. Built by copying the seed `assets/template.html` (which carries the proven 5-rule iframe nav script) and pasting slide layouts from `references/layouts.md`. Pitch decks, product overviews, study ma…",
     source: { path: "design-templates/simple-deck" },
+    targets: ["presentation"],
   },
   {
     id: "template:social-carousel",
@@ -1488,6 +1599,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'A three-card social-media carousel laid out as 1080×1080 squares — three cinematic, on-brand panels with display headlines that connect across the series ("onwards." → "to the next one." → "looking ahead."). Each card has a brand mark, a…',
     source: { path: "design-templates/social-carousel" },
+    targets: ["poster"],
   },
   {
     id: "template:social-media-dashboard",
@@ -1496,6 +1608,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'Creator-facing social media analytics dashboard in a single HTML file. A platform switcher (X / LinkedIn / YouTube / Instagram), a row of KPI cards (followers, engagement rate, likes, reposts), a follower-growth chart, a "top post this w…',
     source: { path: "design-templates/social-media-dashboard" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:social-media-matrix-tracker-template",
@@ -1503,6 +1616,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     name: "Social Media Matrix Tracker Template",
     description: "社媒矩阵数据追踪面板模板（Social Media Matrix Tracker）。",
     source: { path: "design-templates/social-media-matrix-tracker-template" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:sprite-animation",
@@ -1511,6 +1625,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A pixel / sprite-style animated explainer slide — full-bleed cream stage, bold display year, animated pixel-art mascot (e.g. Hanafuda card, mushroom, or 8-bit console), kinetic Japanese display type, ticking timeline ribbon. Reads like a…",
     source: { path: "design-templates/sprite-animation" },
+    targets: ["intro-video"],
   },
   {
     id: "template:team-okrs",
@@ -1519,6 +1634,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'OKR tracker page — quarter banner, three objectives with their key results as progress bars, owner avatars, status pills, and a "this quarter at a glance" sidebar.',
     source: { path: "design-templates/team-okrs" },
+    targets: ["docs-design", "dashboard-design"],
   },
   {
     id: "template:trading-analysis-dashboard-template",
@@ -1527,6 +1643,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Professional trading analysis dashboard template (single-file HTML) with light/dark theme switch, dense market panels, chart interactions, demo/live playback, and command palette behavior.",
     source: { path: "design-templates/trading-analysis-dashboard-template" },
+    targets: ["dashboard-design"],
   },
   {
     id: "template:tweaks",
@@ -1535,6 +1652,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Wrap any HTML artifact with a side panel of live, parameterized controls — accent color, type scale, density, motion, theme — that rewrite CSS custom properties in real time and persist to localStorage. Lets the user explore variants of…",
     source: { path: "design-templates/tweaks" },
+    targets: [
+      "website",
+      "dashboard-design",
+      "presentation",
+      "report",
+      "docs-design",
+      "poster",
+      "mobile-app-design",
+    ],
   },
   {
     id: "template:video-shortform",
@@ -1543,6 +1669,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Short-form video generation skill — 3-10 second clips for product reveals, motion teasers, ambient loops. Defaults to Seedance 2 but works the same with Kling 3 / 4, Veo 3 or Sora 2. Output is one MP4 saved to the project folder. When th…",
     source: { path: "design-templates/video-shortform" },
+    targets: ["intro-video"],
   },
   {
     id: "template:waitlist-page",
@@ -1551,6 +1678,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Minimal pre-launch landing with email capture, brand logo, and optional decorative layer. Reads DESIGN.md for colors, typography, and layout rules.",
     source: { path: "design-templates/waitlist-page" },
+    targets: ["website"],
   },
   {
     id: "template:web-prototype",
@@ -1559,6 +1687,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "General-purpose desktop web prototype. Single self-contained HTML file built by copying the seed `assets/template.html` and pasting section layouts from `references/layouts.md`. Default for any landing / marketing / docs / SaaS page when…",
     source: { path: "design-templates/web-prototype" },
+    targets: ["website"],
   },
   {
     id: "template:web-prototype-taste-brutalist",
@@ -1567,6 +1696,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Swiss industrial-print web prototype. Newsprint canvas, monolithic black grotesque, viewport-bleeding numerals, hairline grid dividers, hazard-red accent, ASCII syntax decoration. Distilled from Leonxlnx/taste-skill `brutalist-skill` (Sw…",
     source: { path: "design-templates/web-prototype-taste-brutalist" },
+    targets: ["website"],
   },
   {
     id: "template:web-prototype-taste-soft",
@@ -1575,6 +1705,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Apple-tier soft web prototype. Silver/cream canvas, double-bezel cards, button-in-button CTAs, generous squircle radii, spring motion, ambient mesh. Distilled from Leonxlnx/taste-skill `soft-skill` + sections 4–8 of `taste-skill`.",
     source: { path: "design-templates/web-prototype-taste-soft" },
+    targets: ["website"],
   },
   {
     id: "template:wireframe-sketch",
@@ -1583,6 +1714,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A hand-drawn wireframe exploration — graph-paper background, marker / pencil tone, multiple tab labels for variants, sticky-note annotations, scribbled chart placeholders, hatched fills. Reads like a designer's whiteboard before any pixe…",
     source: { path: "design-templates/wireframe-sketch" },
+    targets: ["website", "mobile-app-design", "dashboard-design"],
   },
   {
     id: "template:x-research",
@@ -1591,6 +1723,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "X/Twitter public sentiment research for recent market, company, product, or community discourse.",
     source: { path: "design-templates/x-research" },
+    targets: ["report"],
   },
   {
     id: "design-system:dashboard",
@@ -3170,6 +3303,54 @@ export function listImageStyles(): readonly RegistryEntry[] {
 
 export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
+    return entry.id === id;
+  });
+}
+
+export function listDesignSystems(): readonly RegistryEntry[] {
+  return filterByKind("design-system");
+}
+
+export function findDesignSystem(id: string): RegistryEntry | undefined {
+  return listDesignSystems().find((entry) => {
+    return entry.id === id;
+  });
+}
+
+export function listTemplates(
+  target?: GenerationTarget,
+): readonly RegistryEntry[] {
+  const all = filterByKind("template");
+  if (target === undefined) {
+    return all;
+  }
+  return all.filter((entry) => {
+    return entry.targets?.includes(target) ?? false;
+  });
+}
+
+export function findTemplate(id: string): RegistryEntry | undefined {
+  return filterByKind("template").find((entry) => {
+    return entry.id === id;
+  });
+}
+
+export function listAudioStyles(): readonly RegistryEntry[] {
+  return filterByKind("audio-style");
+}
+
+export function findAudioStyle(id: string): RegistryEntry | undefined {
+  return listAudioStyles().find((entry) => {
+    return entry.id === id;
+  });
+}
+
+export function listVideoTemplates(): readonly RegistryEntry[] {
+  return filterByKind("video-template");
+}
+
+export function findVideoTemplate(id: string): RegistryEntry | undefined {
+  return listVideoTemplates().find((entry) => {
     return entry.id === id;
   });
 }

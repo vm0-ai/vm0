@@ -131,4 +131,63 @@ describe("zero generate presentation command", () => {
     expect(helpOutput).toContain("Image model for generated visuals (default:");
     expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
   });
+
+  it("should list presentation templates and design systems in help", () => {
+    let helpOutput = "";
+    presentationCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
+    });
+
+    presentationCommand.outputHelp();
+
+    expect(helpOutput).toContain("Design Systems:");
+    expect(helpOutput).toContain("design-system:apple");
+    expect(helpOutput).toContain("Templates (presentation):");
+    expect(helpOutput).toContain("template:html-ppt-pitch-deck");
+    // Website-only template should NOT appear in presentation help
+    expect(helpOutput).not.toContain("template:saas-landing");
+  });
+
+  it("should accept --design-system and --template from the registry", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "presentation",
+      "--prompt",
+      "investor pitch",
+      "--design-system",
+      "apple",
+      "--template",
+      "html-ppt-pitch-deck",
+      "--title",
+      "Pitch",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected design system: design-system:apple (Apple)",
+    );
+    expect(stdout).toContain(
+      "Selected template: template:html-ppt-pitch-deck (HTML PPT Pitch Deck)",
+    );
+  });
+
+  it("should reject a template that does not target presentation", async () => {
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "presentation",
+        "--prompt",
+        "investor pitch",
+        "--template",
+        "saas-landing",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Unknown template for presentation");
+  });
 });

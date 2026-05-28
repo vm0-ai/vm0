@@ -169,4 +169,77 @@ describe("zero generate source-backed artifact commands", () => {
       expect(entry.source.ref).toBe("main");
     }
   });
+
+  it("annotates every template entry with at least one target", () => {
+    const selection = selectResourceCandidates();
+    for (const template of selection.candidates.templates) {
+      expect(
+        template.targets,
+        `${template.id} is missing the targets field`,
+      ).toBeDefined();
+      expect(
+        template.targets?.length,
+        `${template.id} has an empty targets array`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("accepts --design-system and --template on report", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "report",
+      "--prompt",
+      "Q2 finance report",
+      "--site",
+      "q2-finance-demo",
+      "--design-system",
+      "apple",
+      "--template",
+      "finance-report",
+    ]);
+
+    const stdout = output();
+    expect(stdout).toContain(
+      "Selected design system: design-system:apple (Apple)",
+    );
+    expect(stdout).toContain(
+      "Selected template: template:finance-report (Finance Report)",
+    );
+  });
+
+  it("rejects an unknown template id on dashboard-design", async () => {
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "dashboard-design",
+        "--prompt",
+        "a dashboard",
+        "--template",
+        "not-a-real-template",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Unknown template for dashboard-design");
+  });
+
+  it("rejects a template that does not target the requested kind", async () => {
+    // saas-landing is a website-only template — should fail for dashboard-design
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "dashboard-design",
+        "--prompt",
+        "a dashboard",
+        "--template",
+        "saas-landing",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Unknown template for dashboard-design");
+  });
 });

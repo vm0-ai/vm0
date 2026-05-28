@@ -1,15 +1,29 @@
 import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
+import {
+  findDesignSystem,
+  findTemplate,
+  listDesignSystems,
+  listTemplates,
+} from "../shared/resource-registry";
+import {
+  canonicalizeRegistryId,
+  formatRegistryListing,
+} from "../shared/resource-listing";
 import { dispatchGenerate } from "./lib/dispatch";
 
-const WEBSITE_TEMPLATES = ["auto", "launch", "profile"] as const;
+const WEBSITE_TEMPLATE_DIRECTIONS = ["auto", "launch", "profile"] as const;
 const WEBSITE_MAX_IMAGES = 3;
+const WEBSITE_TARGET = "website";
+const WEBSITE_USAGE_COMMAND = "zero generate website";
 
 interface WebsiteOptions {
   readonly prompt?: string;
   readonly provider?: string;
-  readonly template: string;
+  readonly templateDirection: string;
+  readonly template?: string;
+  readonly designSystem?: string;
   readonly images: number;
   readonly imageModel?: string;
   readonly site?: string;
@@ -19,15 +33,17 @@ interface WebsiteOptions {
   readonly json?: boolean;
 }
 
-function parseTemplate(value: string): string {
+function parseTemplateDirection(value: string): string {
   if (
-    WEBSITE_TEMPLATES.some((template) => {
-      return template === value;
+    WEBSITE_TEMPLATE_DIRECTIONS.some((direction) => {
+      return direction === value;
     })
   ) {
     return value;
   }
-  throw new InvalidArgumentError("template must be auto, launch, or profile");
+  throw new InvalidArgumentError(
+    "template-direction must be auto, launch, or profile",
+  );
 }
 
 function parseImageCount(value: string): number {
@@ -47,6 +63,38 @@ function parseImageCount(value: string): number {
   return imageCount;
 }
 
+function unknownDesignSystemError(id: string): Error {
+  const designSystems = listDesignSystems();
+  const message = [
+    `Unknown design system: ${id}`,
+    "",
+    "Available design systems:",
+    formatRegistryListing(designSystems, "design systems"),
+    "",
+    `Example:`,
+    `  ${WEBSITE_USAGE_COMMAND} --design-system ${
+      designSystems[0]?.id ?? "<design-system-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
+}
+
+function unknownTemplateError(id: string): Error {
+  const templates = listTemplates(WEBSITE_TARGET);
+  const message = [
+    `Unknown template for ${WEBSITE_TARGET}: ${id}`,
+    "",
+    `Available templates for ${WEBSITE_TARGET}:`,
+    formatRegistryListing(templates, `${WEBSITE_TARGET} templates`),
+    "",
+    `Example:`,
+    `  ${WEBSITE_USAGE_COMMAND} --template ${
+      templates[0]?.id ?? "<template-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
+}
+
 export const websiteCommand = new Command()
   .name("website")
   .description("Prepare website authoring instructions from a prompt")
@@ -60,10 +108,18 @@ export const websiteCommand = new Command()
     "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
   )
   .option(
-    "--template <template>",
-    "Template: auto, launch, or profile",
-    parseTemplate,
+    "--template-direction <direction>",
+    "High-level website direction: auto, launch, or profile",
+    parseTemplateDirection,
     "auto",
+  )
+  .option(
+    "--template <id>",
+    "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
+  )
+  .option(
+    "--design-system <id>",
+    "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
   )
   .option(
     "--images <count>",
@@ -79,12 +135,15 @@ export const websiteCommand = new Command()
   .option("--title <text>", "Requested site title or name")
   .option("--audience <text>", "Audience context")
   .option("--json", "Print metadata as JSON")
-  .addHelpText(
-    "after",
-    `
+  .addHelpText("after", () => {
+    const designSystems = listDesignSystems();
+    const templates = listTemplates(WEBSITE_TARGET);
+    return `
 Examples:
   Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
-  Pick template:         zero generate website --template profile --images 2 --image-model gpt-image-1.5 --prompt "Portfolio for a robotics photographer"
+  Pick direction:        zero generate website --template-direction profile --images 2 --image-model gpt-image-1.5 --prompt "Portfolio for a robotics photographer"
+  Pick template:         zero generate website --template saas-landing --prompt "Launch site for a billing API"
+  Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
   Stable hosted slug:    zero generate website --site api-migration-demo --prompt "An internal migration microsite"
   Pipe prompt:           cat brief.txt | zero generate website
   List providers:        zero generate website
@@ -95,8 +154,14 @@ Output:
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML artifact and hosts it with zero host`,
-  )
+  - The agent authors the HTML artifact and hosts it with zero host
+
+Design Systems:
+${formatRegistryListing(designSystems, "design systems")}
+
+Templates (website):
+${formatRegistryListing(templates, "website templates")}`;
+  })
   .action(
     withErrorHandler(async (options: WebsiteOptions) => {
       const dispatch = await dispatchGenerate({
@@ -109,19 +174,52 @@ Notes:
       if (dispatch.outcome === "handled") return;
       const prompt = dispatch.prompt;
 
+      let resolvedDesignSystem;
+      if (options.designSystem !== undefined) {
+        const canonical = canonicalizeRegistryId(
+          "design-system",
+          options.designSystem,
+        );
+        const entry = findDesignSystem(canonical);
+        if (!entry) {
+          throw unknownDesignSystemError(options.designSystem);
+        }
+        resolvedDesignSystem = entry;
+      }
+
+      let resolvedTemplate;
+      if (options.template !== undefined) {
+        const canonical = canonicalizeRegistryId("template", options.template);
+        const entry = findTemplate(canonical);
+        if (!entry || !entry.targets?.includes(WEBSITE_TARGET)) {
+          throw unknownTemplateError(options.template);
+        }
+        resolvedTemplate = entry;
+      }
+
       const packet = createHtmlArtifactAuthoringPacket({
         kind: "website",
         prompt,
         slugSource: options.title,
         site: options.site,
         details: [
-          `Template direction: ${options.template}`,
+          `Template direction: ${options.templateDirection}`,
           `Suggested generated visual count: ${options.images}`,
           `Image model preference if visuals are generated separately: ${
             options.imageModel ?? "default"
           }`,
           `Requested title/site name: ${options.title ?? "not specified"}`,
           `Audience: ${options.audience ?? "not specified"}`,
+          `Selected design system: ${
+            resolvedDesignSystem
+              ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
+              : "agent decides"
+          }`,
+          `Selected template: ${
+            resolvedTemplate
+              ? `${resolvedTemplate.id} (${resolvedTemplate.name})`
+              : "agent decides"
+          }`,
         ],
         artifactRules: [
           "Build the usable website as the first screen; do not output a landing-page plan.",

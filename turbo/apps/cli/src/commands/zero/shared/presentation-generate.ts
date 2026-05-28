@@ -1,10 +1,21 @@
 import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
+import {
+  findDesignSystem,
+  findTemplate,
+  listDesignSystems,
+  listTemplates,
+} from "./resource-registry";
+import {
+  canonicalizeRegistryId,
+  formatRegistryListing,
+} from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
 const PRESENTATION_MAX_IMAGES = 8;
+const PRESENTATION_TARGET = "presentation";
 
 interface PresentationOptions {
   prompt?: string;
@@ -16,6 +27,8 @@ interface PresentationOptions {
   theme?: string;
   audience?: string;
   title?: string;
+  designSystem?: string;
+  template?: string;
   all?: boolean;
   json?: boolean;
 }
@@ -50,6 +63,42 @@ function parseImageCount(value: string): number {
     );
   }
   return imageCount;
+}
+
+function unknownDesignSystemError(id: string, usageCommand: string): Error {
+  const designSystems = listDesignSystems();
+  const message = [
+    `Unknown design system: ${id}`,
+    "",
+    "Available design systems:",
+    formatRegistryListing(designSystems, "design systems"),
+    "",
+    `Example:`,
+    `  ${usageCommand} --design-system ${
+      designSystems[0]?.id ?? "<design-system-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
+}
+
+function unknownTemplateError(
+  id: string,
+  usageCommand: string,
+  target: string,
+): Error {
+  const templates = listTemplates(PRESENTATION_TARGET);
+  const message = [
+    `Unknown template for ${target}: ${id}`,
+    "",
+    `Available templates for ${target}:`,
+    formatRegistryListing(templates, `${target} templates`),
+    "",
+    `Example:`,
+    `  ${usageCommand} --template ${
+      templates[0]?.id ?? "<template-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
 }
 
 export function createPresentationGenerateCommand(
@@ -88,10 +137,19 @@ export function createPresentationGenerateCommand(
     )
     .option("--audience <text>", "Audience context")
     .option("--title <text>", "Requested deck title")
+    .option(
+      "--design-system <id>",
+      "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
+    )
+    .option(
+      "--template <id>",
+      "Template id from the registry, scoped to presentation (see Templates below). Accepts either 'html-ppt-pitch-deck' or 'template:html-ppt-pitch-deck'.",
+    )
     .option("--json", "Print metadata as JSON")
-    .addHelpText(
-      "after",
-      `
+    .addHelpText("after", () => {
+      const designSystems = listDesignSystems();
+      const templates = listTemplates(PRESENTATION_TARGET);
+      return `
 Examples:
 ${config.examples}
 
@@ -100,8 +158,14 @@ Output:
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML presentation artifact and hosts it with zero host`,
-    )
+  - The agent authors the HTML presentation artifact and hosts it with zero host
+
+Design Systems:
+${formatRegistryListing(designSystems, "design systems")}
+
+Templates (presentation):
+${formatRegistryListing(templates, "presentation templates")}`;
+    })
     .action(
       withErrorHandler(async (options: PresentationOptions) => {
         const dispatch = await dispatchGenerate({
@@ -113,6 +177,39 @@ Notes:
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
+
+        let resolvedDesignSystem;
+        if (options.designSystem !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "design-system",
+            options.designSystem,
+          );
+          const entry = findDesignSystem(canonical);
+          if (!entry) {
+            throw unknownDesignSystemError(
+              options.designSystem,
+              config.usageCommand,
+            );
+          }
+          resolvedDesignSystem = entry;
+        }
+
+        let resolvedTemplate;
+        if (options.template !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "template",
+            options.template,
+          );
+          const entry = findTemplate(canonical);
+          if (!entry || !entry.targets?.includes(PRESENTATION_TARGET)) {
+            throw unknownTemplateError(
+              options.template,
+              config.usageCommand,
+              PRESENTATION_TARGET,
+            );
+          }
+          resolvedTemplate = entry;
+        }
 
         const packet = createHtmlArtifactAuthoringPacket({
           kind: "presentation",
@@ -128,6 +225,16 @@ Notes:
             `Theme: ${options.theme ?? "agent decides from style"}`,
             `Audience: ${options.audience ?? "not specified"}`,
             `Requested deck title: ${options.title ?? "not specified"}`,
+            `Selected design system: ${
+              resolvedDesignSystem
+                ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
+                : "agent decides"
+            }`,
+            `Selected template: ${
+              resolvedTemplate
+                ? `${resolvedTemplate.id} (${resolvedTemplate.name})`
+                : "agent decides"
+            }`,
           ],
           artifactRules: [
             "Think like a presentation designer, not a web page designer.",

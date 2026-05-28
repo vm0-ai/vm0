@@ -3,11 +3,8 @@ import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { createStyledImageAuthoringPacket } from "./image-style-authoring";
-import {
-  findImageStyle,
-  listImageStyles,
-  type RegistryEntry,
-} from "./resource-registry";
+import { findImageStyle, listImageStyles } from "./resource-registry";
+import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -41,25 +38,13 @@ interface ImageGenerateCommandConfig {
   examples: string;
 }
 
-function formatStyleListing(styles: readonly RegistryEntry[]): string {
-  if (styles.length === 0) {
-    return "  (no image styles registered)";
-  }
-  return styles
-    .map((style) => {
-      const desc = style.desc ?? style.description;
-      return `  ${style.id}\n    ${desc}`;
-    })
-    .join("\n\n");
-}
-
 function requireStyleError(usageCommand: string): Error {
   const styles = listImageStyles();
   const message = [
     "--style <id> or --skip-style is required",
     "",
     "Available styles:",
-    formatStyleListing(styles),
+    formatRegistryListing(styles, "image styles"),
     "",
     `Examples:`,
     `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
@@ -74,7 +59,7 @@ function unknownStyleError(id: string, usageCommand: string): Error {
     `Unknown image style: ${id}`,
     "",
     "Available styles:",
-    formatStyleListing(styles),
+    formatRegistryListing(styles, "image styles"),
     "",
     `Example:`,
     `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
@@ -251,7 +236,7 @@ Options:
     accept --input-fidelity and supported models accept --mask-image-url.
 
 Image Styles:
-${formatStyleListing(styles)}`;
+${formatRegistryListing(styles, "image styles")}`;
     })
     .action(
       withErrorHandler(async (options: ImageOptions, command: Command) => {
