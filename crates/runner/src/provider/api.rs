@@ -739,6 +739,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_client_poll_sends_held_session_states() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "group": "default",
+                        "profiles": ["vm0/default"],
+                        "heldSessionStates": [
+                            {
+                                "sessionId": "sess-a",
+                                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+                            }
+                        ]
+                    }));
+                then.status(200)
+                    .json_body(serde_json::json!({ "job": null }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let profiles = vec!["vm0/default".to_string()];
+        let held_session_states = vec![HeldSessionState {
+            session_id: "sess-a".to_string(),
+            last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
+        }];
+
+        let job = api
+            .poll("default", &profiles, &held_session_states)
+            .await
+            .unwrap();
+
+        assert!(job.is_none());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn api_client_claim_conflict_or_not_found_is_already_claimed() {
         for status in [409_u16, 404] {
             let server = MockServer::start_async().await;

@@ -288,6 +288,40 @@ async fn session_affinity_reuses_idle_vm() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn reuse_take_refreshes_provider_held_session_states() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.budget);
+
+    seed_idle_pool(&idle_pool, &budget, "sess-refresh", "vm0/default", 2, 4096).await;
+
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-refresh")),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
+
+    let updates = env.handle.held_session_state_updates();
+    assert!(
+        updates.iter().any(Vec::is_empty),
+        "provider should observe an empty held-session state after idle take; updates: {updates:?}"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn disabled_io_limiter_feature_omits_limits_on_fresh_create() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =

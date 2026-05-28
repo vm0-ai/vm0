@@ -191,6 +191,49 @@ describe("runner dispatch affinity", () => {
     });
   });
 
+  it("uses the newest duplicate held session state for a runner", async () => {
+    const targetRunnerId = randomUUID();
+    await Promise.all([
+      seedRunnerState({
+        runnerId: targetRunnerId,
+        heldSessionStates: [
+          {
+            sessionId: "session-a",
+            lastCompletedAt: SESSION_LAST_COMPLETED_AT,
+          },
+          {
+            sessionId: "session-a",
+            lastCompletedAt: "2026-05-28T00:00:02.000Z",
+          },
+        ],
+      }),
+      seedRunnerState({
+        runnerId: randomUUID(),
+        heldSessionStates: [
+          {
+            sessionId: "session-a",
+            lastCompletedAt: NEWER_SESSION_LAST_COMPLETED_AT,
+          },
+        ],
+      }),
+    ]);
+    const db = store.set(writeDb$);
+    const runId = randomUUID();
+
+    await notifyRunnerJob(db, {
+      runnerGroup: "vm0/test",
+      runId,
+      profile: "vm0/default",
+      sessionId: "session-a",
+    });
+
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("job", {
+      runId,
+      profile: "vm0/default",
+      targetRunnerId,
+    });
+  });
+
   it("falls back to broadcast when matching session runners are ineligible", async () => {
     await Promise.all([
       seedRunnerState({
