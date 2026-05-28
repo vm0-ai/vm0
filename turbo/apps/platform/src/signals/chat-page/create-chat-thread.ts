@@ -112,6 +112,18 @@ function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
   );
 }
 
+function isUnterminatedAssistantRunMessage(
+  message: PagedChatMessage,
+  terminatedRunIds: Set<string>,
+): boolean {
+  return (
+    message.role === "assistant" &&
+    message.runId !== undefined &&
+    message.runLifecycleEvent === undefined &&
+    !terminatedRunIds.has(message.runId)
+  );
+}
+
 function createInterruptedAssistantMessage(
   message: PagedChatMessage,
   runId: string,
@@ -254,10 +266,7 @@ function deriveRunIndicatorState(
         hasQueued = true;
         continue;
       }
-      if (
-        message.runId !== undefined &&
-        message.runLifecycleEvent === undefined
-      ) {
+      if (isUnterminatedAssistantRunMessage(message, terminatedRunIds)) {
         return "running";
       }
       hasQueued = false;

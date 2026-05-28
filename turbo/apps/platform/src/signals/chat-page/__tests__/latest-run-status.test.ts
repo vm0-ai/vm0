@@ -252,6 +252,72 @@ describe("latestRunStatus$", () => {
     });
   });
 
+  it("returns null after assistant output is followed by a completion marker", async () => {
+    const threadId = "thread-completed-output-1";
+    const runId = "run-completed-output-1";
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-assistant-output",
+              role: "assistant",
+              content: "Done",
+              runId,
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+            {
+              id: "msg-assistant-completed",
+              role: "assistant",
+              content: null,
+              runId,
+              runLifecycleEvent: "completed",
+              createdAt: "2026-04-13T00:00:02Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          latestSessionId: null,
+          activeRunIds: [],
+          activeRuns: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      withoutRender: true,
+    });
+
+    const thread = createThreadSignals(threadId);
+
+    await vi.waitFor(async () => {
+      await expect(
+        context.store.get(thread.latestRunStatus$),
+      ).resolves.toBeNull();
+    });
+  });
+
   it("returns null when no active runs are attached to the thread", async () => {
     const threadId = "thread-idle-1";
 
