@@ -2956,6 +2956,48 @@ mod tests {
         exec_seq: u32,
     }
 
+    fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
+        let id = sandbox::SandboxId::new_v4();
+        let base_dir = std::env::temp_dir().join("sandbox-fc-operation-entrypoint-test");
+        let (state_tx, _) = watch::channel(state);
+
+        FirecrackerSandbox {
+            config: sandbox::SandboxConfig {
+                id,
+                resources: test_resources(),
+                device_rate_limits: None,
+            },
+            factory_config: FirecrackerConfig {
+                binary_path: base_dir.join("firecracker"),
+                kernel_path: base_dir.join("vmlinux"),
+                rootfs_path: base_dir.join("rootfs.ext4"),
+                base_dir: base_dir.clone(),
+                profile: "test".into(),
+                proxy_port: None,
+                dns_port: None,
+                snapshot: None,
+            },
+            id: id.to_string(),
+            sandbox_paths: SandboxPaths::new(base_dir.join("workspace")),
+            sock_paths: SockPaths::new(base_dir.join("sock")),
+            network: SandboxNetwork::from_lease(NetnsLease::new_for_test("test-ns")),
+            cow_device: None,
+            device_rate_limits: None,
+            runtime: SandboxRuntimeHandles::default(),
+            process_group_pid: None,
+            state: Arc::new(AtomicU8::new(state as u8)),
+            state_publish_lock: Arc::new(Mutex::new(())),
+            state_tx,
+            guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
+            park_coordinator: ParkCoordinator::new(),
+            leak_tx: None,
+            delete_workspace_on_leak_cleanup: true,
+            destroyed: true,
+            is_parked: false,
+            park_fence: None,
+        }
+    }
+
     async fn connect_mock_guest(vsock_path: &str) -> UnixStream {
         let listener_path = format!("{vsock_path}_{}", vsock_proto::VSOCK_PORT);
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -3510,6 +3552,31 @@ mod tests {
             }
             other => panic!("expected invalid state error, got {other:?}"),
         }
+    }
+
+    async fn assert_file_entrypoints_invalid_state(
+        sandbox: &FirecrackerSandbox,
+        expected_state: &str,
+    ) {
+        let read_err = sandbox
+            .read_file("/tmp/system.log", 1024)
+            .await
+            .unwrap_err();
+        assert_invalid_state_operation(read_err, SandboxOperation::ReadFile, expected_state);
+
+        let copy_err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                Path::new("unused-copy-target"),
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_invalid_state_operation(copy_err, SandboxOperation::CopyFile, expected_state);
     }
 
     fn mark_coordinator_parked(coordinator: &ParkCoordinator) {
@@ -4941,6 +5008,35 @@ mod tests {
             );
         }
         coordinator
+            .abort_prepare_park(&attempt)
+            .expect("abort prepare park");
+    }
+
+    #[tokio::test]
+    async fn file_operation_entrypoints_preserve_operation_context_for_start_rejections() {
+        for (state, expected_state) in [
+            (SandboxState::Created, "created"),
+            (SandboxState::Running, "running"),
+        ] {
+            let sandbox = test_sandbox_with_state(state);
+
+            assert_file_entrypoints_invalid_state(&sandbox, expected_state).await;
+        }
+
+        let sandbox = test_sandbox_with_state(SandboxState::Running);
+        let attempt = sandbox
+            .park_coordinator
+            .begin_prepare_park()
+            .expect("begin prepare park");
+
+        assert_file_entrypoints_invalid_state(
+            &sandbox,
+            "ClosingForPark { attempt_id: ParkAttemptId(1) }",
+        )
+        .await;
+
+        sandbox
+            .park_coordinator
             .abort_prepare_park(&attempt)
             .expect("abort prepare park");
     }
