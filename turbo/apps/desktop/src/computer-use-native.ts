@@ -44,12 +44,20 @@ export type ComputerUseNativeTypeTextResult = ComputerUseNativeActionResult & {
   readonly description?: string;
 };
 
+export interface ComputerUseNativeAppRecord {
+  readonly name: string;
+  readonly bundleId?: string;
+  readonly appPath?: string;
+  readonly running?: boolean;
+  readonly pid?: number;
+}
+
 export interface ComputerUseNativeBackend {
   readonly dispose: () => void;
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
   readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
   readonly requestScreenRecordingPermission: () => Promise<ComputerUsePermissionState>;
-  readonly listApps: () => Promise<readonly string[]>;
+  readonly listApps: () => Promise<readonly ComputerUseNativeAppRecord[]>;
   readonly getAppState: (
     app: string,
     snapshotId: string,
@@ -201,23 +209,51 @@ function resultRecord(result: unknown, kind: string): Record<string, unknown> {
   );
 }
 
-function resultStringArray(
+function resultOptionalNumber(
   result: Record<string, unknown>,
   key: string,
-): readonly string[] {
+): number | undefined {
   const value = result[key];
-  if (
-    Array.isArray(value) &&
-    value.every((entry): entry is string => {
-      return typeof entry === "string";
-    })
-  ) {
-    return value;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function resultAppRecords(
+  result: Record<string, unknown>,
+): readonly ComputerUseNativeAppRecord[] {
+  const value = result.apps;
+  if (!Array.isArray(value)) {
+    throw new ComputerUseNativeHelperError(
+      "accessibility_unavailable",
+      "Native Computer Use helper returned invalid apps",
+    );
   }
-  throw new ComputerUseNativeHelperError(
-    "accessibility_unavailable",
-    `Native Computer Use helper returned invalid ${key}`,
-  );
+
+  return value.map((entry) => {
+    if (typeof entry === "string" && entry.trim().length > 0) {
+      return { name: entry };
+    }
+    if (!isRecord(entry)) {
+      throw new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        "Native Computer Use helper returned invalid app entry",
+      );
+    }
+
+    const name = resultRequiredString(entry, "name");
+    const bundleId = resultOptionalString(entry, "bundleId");
+    const appPath = resultOptionalString(entry, "appPath");
+    const pid = resultOptionalNumber(entry, "pid");
+    const running = entry.running;
+    return {
+      name,
+      ...(bundleId ? { bundleId } : {}),
+      ...(appPath ? { appPath } : {}),
+      ...(typeof running === "boolean" ? { running } : {}),
+      ...(pid !== undefined ? { pid } : {}),
+    };
+  });
 }
 
 function resultOptionalString(
@@ -574,7 +610,7 @@ export function createComputerUseNativeBackend(
     },
     listApps: async () => {
       const result = await run({ kind: "apps.list" });
-      return resultStringArray(result, "apps");
+      return resultAppRecords(result);
     },
     getAppState: async (app, snapshotId) => {
       const result = await run({ kind: "app.state", app, snapshotId });

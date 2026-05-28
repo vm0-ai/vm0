@@ -12,7 +12,7 @@ interface StyledImageAuthoringOptions {
 }
 
 interface StyledImageAuthoringPacket {
-  readonly type: "open-design-resource-selection";
+  readonly type: "generation-source-selection";
   readonly kind: "image";
   readonly prompt: string;
   readonly registryVersion: string;
@@ -46,7 +46,7 @@ interface StyledImageAuthoringPacket {
   readonly instructions: string;
 }
 
-const outputDir = "./opendesign/images";
+const outputDir = "./generated/images";
 const artifactRules = [
   "Resolve the selected style source before generating the image.",
   "Use the style skill's referenced assets and generation path when it provides one.",
@@ -88,7 +88,7 @@ export function createStyledImageAuthoringPacket(
   const instructions = [
     `# Zero generate image --style ${options.style.id}`,
     "",
-    "This is a federated generation resource-selection packet for the current agent.",
+    "This is a federated generation source-selection packet for the current agent.",
     "Zero is not generating this image on the server yet. The image style has already been selected by the caller — resolve it and generate the styled image.",
     "",
     "## User Prompt",
@@ -151,7 +151,7 @@ export function createStyledImageAuthoringPacket(
   ].join("\n");
 
   return {
-    type: "open-design-resource-selection",
+    type: "generation-source-selection",
     kind: "image",
     prompt: options.prompt,
     registryVersion: candidateSlice.registryVersion,

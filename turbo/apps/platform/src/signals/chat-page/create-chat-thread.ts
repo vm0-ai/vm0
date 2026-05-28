@@ -97,7 +97,8 @@ function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "assistant" &&
     msg.runId !== undefined &&
-    msg.error?.trim().toLowerCase() === "run cancelled"
+    (msg.runLifecycleEvent === "cancelled" ||
+      msg.error?.trim().toLowerCase() === "run cancelled")
   );
 }
 
@@ -114,6 +115,7 @@ function createInterruptedAssistantMessage(
     interruptsRunId: runId,
     error: "Run cancelled",
     status: "cancelled",
+    runLifecycleEvent: "cancelled",
     blocks: enrichBlocksWithTextPreviews(blocks),
     isQueued: false,
     isOptimisticRun: false,
@@ -209,6 +211,96 @@ function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
     : "just now";
   const pick = DONE_PHRASES[Math.floor(Math.random() * DONE_PHRASES.length)]!;
   return pick(time);
+}
+
+function deriveRunIndicatorState(
+  messages: readonly EnrichedChatMessage[],
+): string | null {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+
+  let hasQueued = false;
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      hasQueued = false;
+      continue;
+    }
+    if (message.isOptimisticRun) {
+      return "running";
+    }
+    if (
+      message.isQueued &&
+      message.runId === undefined &&
+      message.revokesMessageId === undefined
+    ) {
+      hasQueued = true;
+      continue;
+    }
+    if (message.runId !== undefined && !terminatedRunIds.has(message.runId)) {
+      return "running";
+    }
+  }
+  return hasQueued ? "queued" : null;
+}
+
+function terminatedRunIdsFromMessages(
+  messages: readonly EnrichedChatMessage[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
+function liveRunIdsFromMessages(
+  messages: readonly EnrichedChatMessage[],
+): string[] {
+  const terminatedRunIds = terminatedRunIdsFromMessages(messages);
+  const liveRunIds: string[] = [];
+  const seenRunIds = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.role === "user" &&
+      message.runId !== undefined &&
+      !terminatedRunIds.has(message.runId) &&
+      !seenRunIds.has(message.runId)
+    ) {
+      liveRunIds.push(message.runId);
+      seenRunIds.add(message.runId);
+    }
+  }
+  return liveRunIds;
+}
+
+function cancellableRunIdsFromThreadAndMessages(
+  thread: ChatThread,
+  messages: readonly EnrichedChatMessage[],
+): string[] {
+  const terminatedRunIds = terminatedRunIdsFromMessages(messages);
+  const liveRunIds = liveRunIdsFromMessages(messages);
+  const seenRunIds = new Set(liveRunIds);
+  for (const runId of thread.activeRunIds) {
+    if (!terminatedRunIds.has(runId) && !seenRunIds.has(runId)) {
+      liveRunIds.push(runId);
+      seenRunIds.add(runId);
+    }
+  }
+  return liveRunIds;
 }
 
 function shouldForceNewSessionForModelChange(
@@ -768,22 +860,6 @@ function createRawMessagesComputed({
   });
 }
 
-function createInterruptedRunIdsComputed(
-  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
-): Computed<Promise<Set<string>>> {
-  return computed(async (get): Promise<Set<string>> => {
-    const raw = await get(rawMessages$);
-    return new Set(
-      raw.flatMap((entry) => {
-        const { message } = entry;
-        return isInterruptControlMessage(message) && message.interruptsRunId
-          ? [message.interruptsRunId]
-          : [];
-      }),
-    );
-  });
-}
-
 function createAllMessagesComputed(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
@@ -960,7 +1036,6 @@ function createPagedMessages(
     serverMessages$,
     optimisticMessages$,
   });
-  const interruptedRunIds$ = createInterruptedRunIdsComputed(rawMessages$);
   const allMessages$ = createAllMessagesComputed(rawMessages$);
 
   const groupedChatMessages$ = computed(
@@ -1032,9 +1107,9 @@ function createPagedMessages(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    allMessages$,
     groupedChatMessages$,
     hasOlderHistory$,
-    interruptedRunIds$,
     fetchNextPage$,
     backfillHistoryBoundary$,
     refreshLatestMessages$,
@@ -1208,9 +1283,15 @@ function createInputRef() {
 }
 
 function createLatestRunStatus(
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
   return computed(async (get): Promise<string | null> => {
+    const messages = await get(allMessages$);
+    const stateFromMessages = deriveRunIndicatorState(messages);
+    if (stateFromMessages !== null) {
+      return stateFromMessages;
+    }
     const thread = await get(threadData$);
     return thread?.activeRuns[0]?.status ?? null;
   });
@@ -1234,7 +1315,7 @@ interface RunTrackingDeps {
   threadId: string;
   reloadThread$: Command<void, []>;
   threadData$: Computed<Promise<ChatThread | null>>;
-  interruptedRunIds$: Computed<Promise<Set<string>>>;
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -1293,7 +1374,7 @@ function createRunTracking({
   threadId,
   reloadThread$,
   threadData$,
-  interruptedRunIds$,
+  allMessages$,
   latestChatMessageId$,
   initialPage$,
   fetchNextPage$,
@@ -1305,14 +1386,12 @@ function createRunTracking({
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
-    const thread = await get(threadData$);
-    if (!thread) {
+    const messages = await get(allMessages$);
+    if (deriveRunIndicatorState(messages) !== null) {
       return false;
     }
-    const interruptedRunIds = await get(interruptedRunIds$);
-    return thread.activeRunIds.every((runId) => {
-      return interruptedRunIds.has(runId);
-    });
+    const thread = await get(threadData$);
+    return (thread?.activeRunIds.length ?? 0) === 0;
   });
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
@@ -1396,27 +1475,7 @@ function createRunTracking({
     signal.throwIfAborted();
   });
 
-  const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const thread = await get(threadData$);
-    signal.throwIfAborted();
-    if (!thread) {
-      return;
-    }
-    await set(
-      dataSource.cancelRuns$,
-      {
-        threadId,
-        agentId: thread.agentId,
-        interrupts: thread.activeRunIds.map((runId) => {
-          return { runId, clientMessageId: crypto.randomUUID() };
-        }),
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-  });
-
-  return { allFinished$, subscribeChatThread$, cancelRun$ };
+  return { allFinished$, subscribeChatThread$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1744,11 +1803,13 @@ function createMessageCommands(deps: MessageCommandsDeps) {
 function createCancelRunWithQueuedRecall({
   threadId,
   threadData$,
+  allMessages$,
   groupedChatMessages$,
   dataSource,
 }: {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   dataSource: ChatThreadDataSource;
 }) {
@@ -1759,7 +1820,10 @@ function createCancelRunWithQueuedRecall({
       return;
     }
 
-    const groups = await get(groupedChatMessages$);
+    const [messages, groups] = await Promise.all([
+      get(allMessages$),
+      get(groupedChatMessages$),
+    ]);
     signal.throwIfAborted();
     const queuedMessages = groups.flatMap((group) => {
       return group.messages.filter((message) => {
@@ -1772,7 +1836,10 @@ function createCancelRunWithQueuedRecall({
       });
     });
 
-    const interruptRequests = thread.activeRunIds.map((runId) => {
+    const interruptRequests = cancellableRunIdsFromThreadAndMessages(
+      thread,
+      messages,
+    ).map((runId) => {
       const clientMessageId = crypto.randomUUID();
       set(appendOptimisticChatMessage$, {
         threadId,
@@ -1916,9 +1983,9 @@ export function createChatThreadSignals(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    allMessages$,
     groupedChatMessages$,
     hasOlderHistory$,
-    interruptedRunIds$,
     fetchNextPage$,
     backfillHistoryBoundary$,
     refreshLatestMessages$,
@@ -1936,7 +2003,7 @@ export function createChatThreadSignals(
     threadId,
     reloadThread$,
     threadData$,
-    interruptedRunIds$,
+    allMessages$,
     latestChatMessageId$,
     initialPage$,
     fetchNextPage$,
@@ -1961,6 +2028,7 @@ export function createChatThreadSignals(
   const cancelRun$ = createCancelRunWithQueuedRecall({
     threadId,
     threadData$,
+    allMessages$,
     groupedChatMessages$,
     dataSource,
   });
@@ -1976,8 +2044,6 @@ export function createChatThreadSignals(
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   } = createArtifacts(threadId, groupedChatMessages$);
-
-  const latestRunStatus$ = createLatestRunStatus(threadData$);
 
   return {
     threadId,
@@ -2008,7 +2074,7 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     groupedChatMessages$,
     hasOlderHistory$,
-    latestRunStatus$,
+    latestRunStatus$: createLatestRunStatus(allMessages$, threadData$),
     allFinished$: runTracking.allFinished$,
     fetchNextPage$,
     loadHistory$,

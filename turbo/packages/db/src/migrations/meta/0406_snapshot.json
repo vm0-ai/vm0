@@ -1,6 +1,6 @@
 {
-  "id": "3bfabbae-47bb-4ad4-b9dd-c4ead7b66f57",
-  "prevId": "5f166caa-116a-425e-a805-eab1cb48a3d7",
+  "id": "58a6e1b5-b649-4db9-aeb1-c68f6accab42",
+  "prevId": "3bfabbae-47bb-4ad4-b9dd-c4ead7b66f57",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1869,6 +1869,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "run_lifecycle_event": {
+          "name": "run_lifecycle_event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sequence_number": {
           "name": "sequence_number",
           "type": "integer",
@@ -1985,6 +1991,22 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_messages_run_lifecycle_unique": {
+          "name": "chat_messages_run_lifecycle_unique",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"chat_messages\".\"run_lifecycle_event\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

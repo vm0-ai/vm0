@@ -2148,15 +2148,16 @@ function ChatThreadComposer({
   const messagesResolved = groupsLoadable.state === "hasData";
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   // useLastResolved (not useLastLoadable) so refetches keep the previously
-  // resolved value instead of flipping `sending` and the placeholder. Once
-  // resolved (even to false), the value sticks across subsequent threadData$
-  // reloads driven by chatThreadRunUpdated Ably events.
+  // resolved value instead of flipping `sending` and the placeholder. Before
+  // the first resolution, avoid showing a Stop button for a thread that may
+  // already be idle.
   const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
   const allFinishedResolved = allFinishedResolvedValue !== undefined;
   const allFinished = allFinishedResolvedValue ?? false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [, queueMessage] = useLoadableSet(thread.queueMessage$);
-  const sending = !allFinished || sendLoadable.state === "loading";
+  const sending =
+    (allFinishedResolved && !allFinished) || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
@@ -2296,7 +2297,8 @@ function isCancelledAssistantMessage(
 ): boolean {
   return (
     message?.role === "assistant" &&
-    message.error?.trim().toLowerCase() === "run cancelled"
+    (message.runLifecycleEvent === "cancelled" ||
+      message.error?.trim().toLowerCase() === "run cancelled")
   );
 }
 

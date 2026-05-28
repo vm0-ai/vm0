@@ -335,7 +335,7 @@ describe("zero generate image command", () => {
     expect(stdout).toContain(
       "# Zero generate image --style vm0:image-style:notion-illustration",
     );
-    expect(stdout).toContain("federated generation resource-selection packet");
+    expect(stdout).toContain("federated generation source-selection packet");
     expect(stdout).toContain("## Selected Image Style");
     expect(stdout).toContain("vm0:image-style:notion-illustration");
     expect(stdout).toContain("## Candidate Registry Slice");
@@ -359,10 +359,10 @@ describe("zero generate image command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      type: "open-design-resource-selection",
+      type: "generation-source-selection",
       kind: "image",
       prompt: "Notion illustration of a product manager mapping a launch plan",
-      outputDir: "./opendesign/images",
+      outputDir: "./generated/images",
     });
     const selection = parsed.selection as {
       candidates: { imageStyles: { id: string }[] };

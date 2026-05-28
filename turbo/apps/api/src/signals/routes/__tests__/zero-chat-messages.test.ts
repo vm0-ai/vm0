@@ -612,7 +612,7 @@ describe("POST /api/zero/chat/messages", () => {
       { status: "failed" },
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunUpdated:${response.body.threadId}`,
+      `chatThreadMessageCreated:${response.body.threadId}`,
       null,
     );
   });

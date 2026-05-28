@@ -379,16 +379,24 @@ async function insertAssistantErrorMessage(args: {
   readonly prompt: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly lifecycleEvent: "failed" | "cancelled";
   readonly getFormattedError: () => Promise<string>;
 }): Promise<void> {
   const displayErrorMessage = await args.getFormattedError();
-  await args.db.insert(chatMessages).values({
-    chatThreadId: args.threadId,
-    role: "assistant",
-    content: displayErrorMessage,
-    runId: args.runId,
-    error: displayErrorMessage,
-  });
+  await args.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: displayErrorMessage,
+      runId: args.runId,
+      error: displayErrorMessage,
+      runLifecycleEvent: args.lifecycleEvent,
+    })
+    .onConflictDoNothing({
+      target: chatMessages.runId,
+      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+    });
   await touchChatThreadLastMessageAt(args.db, args.threadId);
 
   await publishUserSignal(
@@ -405,6 +413,39 @@ async function insertAssistantErrorMessage(args: {
       url: `/chats/${args.threadId}`,
     },
   });
+}
+
+async function insertRunLifecycleMarker(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly event: "completed" | "cancelled";
+}): Promise<boolean> {
+  const inserted = await args.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: null,
+      runId: args.runId,
+      runLifecycleEvent: args.event,
+    })
+    .onConflictDoNothing({
+      target: chatMessages.runId,
+      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+    })
+    .returning({ id: chatMessages.id });
+  if (inserted.length === 0) {
+    return false;
+  }
+  await touchChatThreadLastMessageAt(args.db, args.threadId);
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
+  await publishThreadListChanged(args.userId);
+  return true;
 }
 
 async function handleCompletedChatCallback(args: {
@@ -472,6 +513,15 @@ async function handleCompletedChatCallback(args: {
   });
   args.signal.throwIfAborted();
 
+  await insertRunLifecycleMarker({
+    db: args.db,
+    runId: args.runId,
+    threadId: args.chatThread.chatThreadId,
+    userId: args.chatThread.userId,
+    event: "completed",
+  });
+  args.signal.throwIfAborted();
+
   let summary: string | null = null;
   if (lastResultText) {
     const generated = await settle(
@@ -507,25 +557,19 @@ async function handleFailedChatCallback(args: {
   readonly errorMessage: string;
   readonly getFormattedError: () => Promise<string>;
 }): Promise<void> {
+  const lifecycleEvent =
+    args.errorMessage.trim().toLowerCase() === "run cancelled"
+      ? "cancelled"
+      : "failed";
   await insertAssistantErrorMessage({
     db: args.db,
     runId: args.runId,
     prompt: args.run.prompt,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
+    lifecycleEvent,
     getFormattedError: args.getFormattedError,
   });
-}
-
-async function publishChatThreadRunUpdated(args: {
-  readonly userId: string;
-  readonly threadId: string;
-}): Promise<void> {
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadRunUpdated:${args.threadId}`,
-  );
-  await publishThreadListChanged(args.userId);
 }
 
 function buildWebChatPrompt(): string {
@@ -1192,12 +1236,6 @@ const handleChatCallback$ = command(
       });
       signal.throwIfAborted();
     }
-
-    await publishChatThreadRunUpdated({
-      userId: chatThread.userId,
-      threadId: chatThread.chatThreadId,
-    });
-    signal.throwIfAborted();
 
     await autoSendQueuedMessageOnRunComplete({
       db,

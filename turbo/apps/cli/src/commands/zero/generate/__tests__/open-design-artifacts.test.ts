@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { generateCommand } from "../index";
 import { selectOpenDesignCandidates } from "../../shared/open-design-registry";
 
-describe("zero generate Open Design artifact commands", () => {
+describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -40,7 +40,7 @@ describe("zero generate Open Design artifact commands", () => {
     },
     {
       command: "poster",
-      prompt: "A poster for Open Design generation",
+      prompt: "A poster for source-backed generation",
       template: "od:template:html-ppt-zhangzara-retro-zine",
     },
     {
@@ -54,7 +54,7 @@ describe("zero generate Open Design artifact commands", () => {
       template: "od:template:mobile-app",
     },
   ])(
-    "prints an Open Design resource selection packet for $command",
+    "prints a source selection packet for $command",
     async ({ command, prompt, template }) => {
       await generateCommand.parseAsync([
         "node",
@@ -72,21 +72,19 @@ describe("zero generate Open Design artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(`# Zero generate ${command}`);
-      expect(stdout).toContain(
-        "federated generation resource-selection packet",
-      );
+      expect(stdout).toContain("federated generation source-selection packet");
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(template);
       expect(stdout).toContain(`Artifact kind: ${command}`);
       expect(stdout).toContain("## Artifact Output Model");
       expect(stdout).toContain(
-        `Primary artifact: \`${command}\` at \`./opendesign/mockups/${command}-demo/index.html\`.`,
+        `Primary artifact: \`${command}\` at \`./generated/mockups/${command}-demo/index.html\`.`,
       );
       expect(stdout).toContain(
-        `Write the artifact under \`./opendesign/mockups/${command}-demo/\`.`,
+        `Write the artifact under \`./generated/mockups/${command}-demo/\`.`,
       );
       expect(stdout).toContain(
-        `zero host ./opendesign/mockups/${command}-demo --site ${command}-demo`,
+        `zero host ./generated/mockups/${command}-demo --site ${command}-demo`,
       );
     },
   );
@@ -105,16 +103,16 @@ describe("zero generate Open Design artifact commands", () => {
 
     const parsed = JSON.parse(output()) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      type: "open-design-resource-selection",
+      type: "generation-source-selection",
       kind: "mobile-app-design",
       prompt: "A mobile review screen",
-      outputDir: "./opendesign/mockups/mobile-review",
+      outputDir: "./generated/mockups/mobile-review",
       site: "mobile-review",
       artifact: {
         outputMode: "primary-artifact-with-supporting-assets",
         primaryArtifact: {
           kind: "mobile-app-design",
-          path: "./opendesign/mockups/mobile-review/index.html",
+          path: "./generated/mockups/mobile-review/index.html",
         },
       },
     });
