@@ -49,7 +49,7 @@ fn single_message(decoded: &ProtocolMessage) -> TestResult<&AblyMessage> {
     let messages = decoded
         .messages
         .as_deref()
-        .ok_or_else(|| io::Error::other("messages are present"))?;
+        .ok_or_else(|| io::Error::other("messages are missing"))?;
     let [message] = messages else {
         return Err(
             io::Error::other(format!("expected one message, got {}", messages.len())).into(),
