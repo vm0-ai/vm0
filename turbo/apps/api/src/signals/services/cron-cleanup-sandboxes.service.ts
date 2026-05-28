@@ -182,14 +182,6 @@ async function cleanupSingleRun(
   const cutoff = staleRunCutoff(run, cutoffs);
 
   const updated = await db.transaction(async (tx) => {
-    await tx
-      .select({ runId: runnerJobQueue.runId })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, run.id))
-      .for("update")
-      .limit(1);
-    signal.throwIfAborted();
-
     const [updatedRun] = await tx
       .update(agentRuns)
       .set({
