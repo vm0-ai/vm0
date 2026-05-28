@@ -801,6 +801,7 @@ class TestCompiledFirewallRequestMixedSegments:
         apis = [
             {
                 "base": "https://github.com/{owner}/{repo}.git",
+                "auth": {"headers": {}},
                 "permissions": [
                     {"name": "git|fetch", "rules": ["GET /info/refs"]},
                 ],

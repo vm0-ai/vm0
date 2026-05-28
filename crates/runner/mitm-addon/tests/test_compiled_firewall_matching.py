@@ -1087,6 +1087,31 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
+    def test_missing_auth_config_fails_closed_after_base_match(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
     @pytest.mark.parametrize(
         "permissions",
         [
@@ -1131,14 +1156,23 @@ class TestCompiledFirewallMatching:
     def test_request_url_is_parsed_once_for_multiple_api_entries(self):
         fws = wrap_firewalls(
             [
-                {"base": "https://one.example.com", "permissions": []},
+                {
+                    "base": "https://one.example.com",
+                    "auth": {"headers": {}},
+                    "permissions": [],
+                },
                 {
                     "base": "https://api.example.com",
+                    "auth": {"headers": {}},
                     "permissions": [
                         {"name": "read", "rules": ["GET /items/{id}"]},
                     ],
                 },
-                {"base": "https://three.example.com", "permissions": []},
+                {
+                    "base": "https://three.example.com",
+                    "auth": {"headers": {}},
+                    "permissions": [],
+                },
             ],
             name="example",
         )

@@ -570,7 +570,7 @@ def _is_string_record(value: object) -> bool:
 
 def _auth_config_is_valid(api_entry: dict) -> bool:
     if "auth" not in api_entry:
-        return True
+        return False
 
     raw_auth = api_entry["auth"]
     if not isinstance(raw_auth, dict):
