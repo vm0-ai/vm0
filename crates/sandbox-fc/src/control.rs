@@ -692,6 +692,7 @@ fn control_socket_not_found(input: &str) -> SandboxControlError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::ffi::OsStringExt;
     use std::os::unix::fs::symlink;
     use std::os::unix::net::UnixListener as StdUnixListener;
 
@@ -1541,6 +1542,21 @@ mod tests {
             panic!("expected connection error");
         };
         assert!(message.contains(&control_sock.display().to_string()));
+    }
+
+    #[test]
+    fn resolve_control_socket_prefix_ignores_non_utf8_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let (control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
+        let non_utf8_name = std::ffi::OsString::from_vec(b"sandbox-aa-\xff".to_vec());
+        let (_ignored_control_sock, _ignored_listener) =
+            bind_control_socket_for_test(&sock_parent.join(non_utf8_name));
+
+        let resolved = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap();
+
+        assert_eq!(resolved, control_sock);
     }
 
     #[test]
