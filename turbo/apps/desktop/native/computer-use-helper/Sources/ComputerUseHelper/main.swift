@@ -407,6 +407,16 @@ struct WindowTarget {
     let windowNumber: Int
     let title: String?
     let frame: CGRect
+    let isOnScreen: Bool
+    let currentSpaceId: UInt64?
+    let spaceIds: [UInt64]?
+
+    var onCurrentSpace: Bool? {
+        guard let currentSpaceId, let spaceIds else {
+            return nil
+        }
+        return spaceIds.contains(currentSpaceId)
+    }
 }
 
 struct WindowScreenshot {
@@ -427,6 +437,16 @@ struct CGWindowCandidate {
     let title: String?
     let frame: CGRect
     let area: Double
+    let isOnScreen: Bool
+    let currentSpaceId: UInt64?
+    let spaceIds: [UInt64]?
+
+    var onCurrentSpace: Bool? {
+        guard let currentSpaceId, let spaceIds else {
+            return nil
+        }
+        return spaceIds.contains(currentSpaceId)
+    }
 }
 
 struct KeyModifierDefinition {
@@ -453,6 +473,61 @@ final class RunLoopReference: @unchecked Sendable {
 
     init(_ runLoop: CFRunLoop) {
         self.runLoop = runLoop
+    }
+}
+
+enum WindowSpaceDetector {
+    private typealias MainConnectionFn = @convention(c) () -> UInt32
+    private typealias GetActiveSpaceFn = @convention(c) (Int32) -> UInt64
+    private typealias CopySpacesForWindowsFn = @convention(c) (
+        Int32,
+        Int32,
+        CFArray
+    ) -> CFArray?
+
+    private struct Resolved {
+        let main: MainConnectionFn
+        let getActiveSpace: GetActiveSpaceFn
+        let copySpacesForWindows: CopySpacesForWindowsFn
+    }
+
+    private static let resolved: Resolved? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+        let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2)
+        guard let main = dlsym(rtldDefault, "SLSMainConnectionID"),
+              let active = dlsym(rtldDefault, "SLSGetActiveSpace"),
+              let copySpaces = dlsym(rtldDefault, "SLSCopySpacesForWindows")
+        else {
+            return nil
+        }
+        return Resolved(
+            main: unsafeBitCast(main, to: MainConnectionFn.self),
+            getActiveSpace: unsafeBitCast(active, to: GetActiveSpaceFn.self),
+            copySpacesForWindows: unsafeBitCast(copySpaces, to: CopySpacesForWindowsFn.self)
+        )
+    }()
+
+    static func currentSpaceId() -> UInt64? {
+        guard let resolved else {
+            return nil
+        }
+        return resolved.getActiveSpace(Int32(bitPattern: resolved.main()))
+    }
+
+    static func spaceIds(forWindowNumber windowNumber: Int) -> [UInt64]? {
+        guard let resolved,
+              let cgWindowId = UInt32(exactly: windowNumber)
+        else {
+            return nil
+        }
+        let connectionId = Int32(bitPattern: resolved.main())
+        let windows = [NSNumber(value: cgWindowId)] as CFArray
+        guard let rawSpaces = resolved.copySpacesForWindows(connectionId, 7, windows) as? [NSNumber] else {
+            return nil
+        }
+        return rawSpaces.map { space in
+            space.uint64Value
+        }
     }
 }
 
@@ -1836,13 +1911,29 @@ func cgWindowBounds(_ value: Any?) -> CGRect? {
     return CGRect(dictionaryRepresentation: dictionary as CFDictionary)
 }
 
-func cgWindowCandidates(pid: pid_t) -> [CGWindowCandidate] {
-    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+func cgWindowIsOnScreen(_ value: Any?) -> Bool {
+    if let value = value as? Bool {
+        return value
+    }
+    if let value = value as? NSNumber {
+        return value.boolValue
+    }
+    return false
+}
+
+enum CGWindowCandidateScope {
+    case currentSpace
+    case anySpace
+}
+
+func cgWindowCandidates(pid: pid_t, scope: CGWindowCandidateScope = .currentSpace) -> [CGWindowCandidate] {
+    let options: CGWindowListOption = [.excludeDesktopElements]
     guard let rawList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
         return []
     }
 
-    return rawList.compactMap { record in
+    let currentSpaceId = WindowSpaceDetector.currentSpaceId()
+    let candidates = rawList.compactMap { record -> CGWindowCandidate? in
         guard (record[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
               (record[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
               let windowNumber = (record[kCGWindowNumber as String] as? NSNumber)?.intValue,
@@ -1853,12 +1944,27 @@ func cgWindowCandidates(pid: pid_t) -> [CGWindowCandidate] {
             return nil
         }
         let title = stringValue(record[kCGWindowName as String])
+        let spaceIds = WindowSpaceDetector.spaceIds(forWindowNumber: windowNumber)
         return CGWindowCandidate(
             windowNumber: windowNumber,
             title: title,
             frame: frame,
-            area: Double(frame.width * frame.height)
+            area: Double(frame.width * frame.height),
+            isOnScreen: cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String]),
+            currentSpaceId: currentSpaceId,
+            spaceIds: spaceIds
         )
+    }
+    if scope == .anySpace {
+        return candidates
+    }
+    if let currentSpaceId {
+        return candidates.filter { candidate in
+            candidate.spaceIds?.contains(currentSpaceId) ?? candidate.isOnScreen
+        }
+    }
+    return candidates.filter { candidate in
+        candidate.isOnScreen
     }
 }
 
@@ -1933,10 +2039,11 @@ func scoreWindowCandidate(
 func resolveWindowTarget(
     app: NSRunningApplication,
     root: AXUIElement? = nil,
-    preferredScreenPoint: CGPoint? = nil
+    preferredScreenPoint: CGPoint? = nil,
+    scope: CGWindowCandidateScope = .currentSpace
 ) -> WindowTarget? {
     let pid = app.processIdentifier
-    let candidates = cgWindowCandidates(pid: pid)
+    let candidates = cgWindowCandidates(pid: pid, scope: scope)
     guard !candidates.isEmpty else {
         return nil
     }
@@ -1949,7 +2056,15 @@ func resolveWindowTarget(
     guard let best else {
         return nil
     }
-    return WindowTarget(pid: pid, windowNumber: best.windowNumber, title: best.title, frame: best.frame)
+    return WindowTarget(
+        pid: pid,
+        windowNumber: best.windowNumber,
+        title: best.title,
+        frame: best.frame,
+        isOnScreen: best.isOnScreen,
+        currentSpaceId: best.currentSpaceId,
+        spaceIds: best.spaceIds
+    )
 }
 
 func waitForWindowTarget(app: NSRunningApplication, timeout: TimeInterval = 3) -> WindowTarget? {
@@ -1967,10 +2082,51 @@ func backgroundTargetUnavailableMessage(appName: String) -> String {
     return "Unable to resolve a background window target for \(appName)"
 }
 
-func windowTargetUnavailableFailure(appName: String) -> HelperFailure {
+func formatSpaceIds(_ spaceIds: [UInt64]?) -> String {
+    guard let spaceIds, !spaceIds.isEmpty else {
+        return "unknown"
+    }
+    return spaceIds.map(String.init).joined(separator: ", ")
+}
+
+func backgroundTargetUnavailableMessage(appName: String, pid: pid_t?) -> String {
+    let baseMessage = backgroundTargetUnavailableMessage(appName: appName)
+    guard let pid else {
+        return baseMessage
+    }
+
+    let currentSpaceCandidates = cgWindowCandidates(pid: pid)
+    if !currentSpaceCandidates.isEmpty {
+        return baseMessage
+    }
+
+    let allCandidates = cgWindowCandidates(pid: pid, scope: .anySpace)
+    guard let largestWindow = allCandidates.max(by: { left, right in
+        left.area < right.area
+    }) else {
+        return baseMessage
+    }
+
+    if largestWindow.onCurrentSpace == false {
+        let title = largestWindow.title.map { title in
+            " \"\(title)\""
+        } ?? ""
+        let currentSpace = largestWindow.currentSpaceId.map(String.init) ?? "unknown"
+        let windowSpaces = formatSpaceIds(largestWindow.spaceIds)
+        return "\(baseMessage). \(appName) has window\(title) \(largestWindow.windowNumber) on another macOS Space (current Space \(currentSpace), window Spaces \(windowSpaces)). Switch to that Space or move the window to the current Space, then retry."
+    }
+
+    if !largestWindow.isOnScreen {
+        return "\(baseMessage). \(appName) has windows known to WindowServer, but none are visible on the current macOS Space. Switch to the window's Space or move it to the current Space, then retry."
+    }
+
+    return baseMessage
+}
+
+func windowTargetUnavailableFailure(appName: String, pid: pid_t? = nil) -> HelperFailure {
     return HelperFailure(
         code: "window_unavailable",
-        message: backgroundTargetUnavailableMessage(appName: appName)
+        message: backgroundTargetUnavailableMessage(appName: appName, pid: pid)
     )
 }
 
@@ -2010,30 +2166,40 @@ func snapshotWindowTarget(
 ) throws -> WindowTarget {
     let app = try resolveRunningApp(named: appName)
     if let windowId {
-        guard let candidate = cgWindowCandidates(pid: app.processIdentifier).first(where: { candidate in
+        if let candidate = cgWindowCandidates(pid: app.processIdentifier).first(where: { candidate in
             candidate.windowNumber == windowId
-        }) else {
-            throw HelperFailure(
-                code: "unsupported_command",
-                message: "Snapshot target window is no longer available: \(snapshotId)"
+        }) {
+            if let windowFrame, rectDistance(candidate.frame, windowFrame) > 4 {
+                throw HelperFailure(
+                    code: "unsupported_command",
+                    message: "Snapshot target window moved or resized: \(snapshotId)"
+                )
+            }
+            return WindowTarget(
+                pid: app.processIdentifier,
+                windowNumber: candidate.windowNumber,
+                title: candidate.title,
+                frame: candidate.frame,
+                isOnScreen: candidate.isOnScreen,
+                currentSpaceId: candidate.currentSpaceId,
+                spaceIds: candidate.spaceIds
             )
         }
-        if let windowFrame, rectDistance(candidate.frame, windowFrame) > 4 {
-            throw HelperFailure(
-                code: "unsupported_command",
-                message: "Snapshot target window moved or resized: \(snapshotId)"
-            )
+
+        if cgWindowCandidates(pid: app.processIdentifier, scope: .anySpace).contains(where: { candidate in
+            candidate.windowNumber == windowId
+        }) {
+            throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
         }
-        return WindowTarget(
-            pid: app.processIdentifier,
-            windowNumber: candidate.windowNumber,
-            title: candidate.title,
-            frame: candidate.frame
+
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Snapshot target window is no longer available: \(snapshotId)"
         )
     }
 
     guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
-        throw windowTargetUnavailableFailure(appName: appName)
+        throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
     }
     return target
 }
@@ -2045,7 +2211,7 @@ func performWithRequiredBackgroundTarget<T>(
 ) throws -> T {
     let app = try resolveRunningApp(named: appName)
     guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
-        throw windowTargetUnavailableFailure(appName: appName)
+        throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
     }
 
     return try action(target)
@@ -2955,8 +3121,13 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     if let windowTitle = elements.first?["name"] as? String {
         response["windowTitle"] = windowTitle
     }
-    guard let target = resolveWindowTarget(app: runningApp, root: root) else {
-        throw windowTargetUnavailableFailure(appName: appName)
+    let resolvedTarget = resolveWindowTarget(app: runningApp, root: root) ??
+        resolveWindowTarget(app: runningApp, root: root, scope: .anySpace)
+    guard let target = resolvedTarget else {
+        throw windowTargetUnavailableFailure(appName: appName, pid: runningApp.processIdentifier)
+    }
+    if response["windowTitle"] == nil, let windowTitle = target.title {
+        response["windowTitle"] = windowTitle
     }
     let screenshot = try BackgroundWindowScreenshot.capture(windowNumber: target.windowNumber)
     let sourceName = target.title ??
@@ -2966,6 +3137,18 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     let sourceBounds = boundsRecord(target.frame)
     response["windowId"] = target.windowNumber
     response["windowFrame"] = sourceBounds
+    response["windowIsOnScreen"] = target.isOnScreen
+    if let onCurrentSpace = target.onCurrentSpace {
+        response["windowOnCurrentSpace"] = onCurrentSpace
+    }
+    if let currentSpaceId = target.currentSpaceId {
+        response["currentSpaceId"] = NSNumber(value: currentSpaceId)
+    }
+    if let spaceIds = target.spaceIds {
+        response["windowSpaceIds"] = spaceIds.map { spaceId in
+            NSNumber(value: spaceId)
+        }
+    }
     response["screenshot"] = screenshot.dataUrl
     response["screenshotMimeType"] = "image/png"
     response["screenshotSource"] = "window"
@@ -3015,10 +3198,11 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
             }
         }
 
-        guard let appWithWindow = targetApp,
-              waitForWindowTarget(app: appWithWindow, timeout: 3) != nil
-        else {
-            throw windowTargetUnavailableFailure(appName: appName)
+        guard let appWithWindow = targetApp else {
+            throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
+        }
+        guard waitForWindowTarget(app: appWithWindow, timeout: 3) != nil else {
+            throw windowTargetUnavailableFailure(appName: appName, pid: appWithWindow.processIdentifier)
         }
 
         return (targetPID: appWithWindow.processIdentifier, result: ["windowReady": true])
@@ -3290,7 +3474,7 @@ func performElementMouseClick(
         inputRisk: "background_app_pointer"
     ) {
         guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
-            throw windowTargetUnavailableFailure(appName: appName)
+            throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
         }
         var result = try performBackgroundMouseClick(
             target: target,

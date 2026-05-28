@@ -745,6 +745,31 @@ describe("computer use desktop runtime", () => {
     expect(text).not.toContain("w0.e0");
   });
 
+  it("renders off-Space window diagnostics", () => {
+    const snapshot = {
+      app: "Things",
+      snapshotId: "snap_1",
+      windowOnCurrentSpace: false,
+      currentSpaceId: 8,
+      windowSpaceIds: [9],
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Today",
+        },
+      ],
+    };
+    const text = renderAccessibilityTree(snapshot);
+
+    expect(text).toContain(
+      "Window is on another macOS Space (current Space 8, window Spaces 9).",
+    );
+    expect(text).toContain(
+      "macOS may expose only a reduced Accessibility tree",
+    );
+  });
+
   it("renders CUA-style element details and focused element summary", () => {
     const snapshot = {
       app: "Electron",

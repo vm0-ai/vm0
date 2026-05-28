@@ -104,6 +104,10 @@ export interface AccessibilityAppStateSnapshot {
   readonly windowTitle?: string;
   readonly windowId?: number;
   readonly windowFrame?: ComputerUseCoordinateBounds;
+  readonly windowIsOnScreen?: boolean;
+  readonly windowOnCurrentSpace?: boolean;
+  readonly currentSpaceId?: number;
+  readonly windowSpaceIds?: readonly number[];
   readonly snapshotId: string;
   readonly elements: readonly AccessibilityElementSnapshot[];
   readonly elementIdsByIndex?: readonly string[];
@@ -1069,6 +1073,23 @@ function focusedElementLine(
   return `The focused UI element is ${formatElementLine(element, 0)}.`;
 }
 
+function formatSpaceIds(spaceIds: readonly number[] | undefined): string {
+  return spaceIds && spaceIds.length > 0 ? spaceIds.join(", ") : "unknown";
+}
+
+function windowSpaceLine(
+  snapshot: AccessibilityAppStateSnapshot,
+): string | null {
+  if (snapshot.windowOnCurrentSpace !== false) {
+    return null;
+  }
+  const currentSpace =
+    snapshot.currentSpaceId !== undefined
+      ? snapshot.currentSpaceId.toString()
+      : "unknown";
+  return `Window is on another macOS Space (current Space ${currentSpace}, window Spaces ${formatSpaceIds(snapshot.windowSpaceIds)}). Screenshot capture can still work, but macOS may expose only a reduced Accessibility tree until the window is moved to the current Space.`;
+}
+
 export function renderAccessibilityTree(
   snapshot: AccessibilityAppStateSnapshot,
 ): string {
@@ -1092,6 +1113,10 @@ export function renderAccessibilityTree(
     formatText(indexed.windowTitle) ?? formatText(indexed.elements[0]?.name);
   if (windowTitle) {
     lines.push(`Window: "${windowTitle}", App: ${appName}.`);
+  }
+  const spaceLine = windowSpaceLine(indexed);
+  if (spaceLine) {
+    lines.push(spaceLine);
   }
 
   const visit = (
