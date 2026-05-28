@@ -36,6 +36,10 @@ _VALID_RULE_METHODS = frozenset(
 _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 
 
+def _has_base_url_params(base: str) -> bool:
+    return "{" in base and "}" in base
+
+
 class _BaseUrlParts(NamedTuple):
     scheme: str
     authority: str
@@ -438,7 +442,7 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     # Fast path: no parameters - compare scheme/authority independently so
     # host casing cannot bypass static firewall bases, while paths remain
     # case-sensitive.
-    if "{" not in base:
+    if not _has_base_url_params(base):
         base_parts = _split_base_match_url(base.rstrip("/"), allow_query_fragment=False)
         if base_parts is None:
             return None
@@ -833,7 +837,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
     if not base:
         return None
 
-    has_params = "{" in base
+    has_params = _has_base_url_params(base)
     try:
         parsed = urlsplit(base)
     except ValueError:

@@ -204,6 +204,17 @@ class TestMatchBaseUrl:
         )
         assert result == ("/repos", {})
 
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://api.github.com/static{",
+            "https://api.github.com/static}",
+        ],
+    )
+    def test_static_base_with_single_brace_is_not_parameterized(self, base):
+        result = matching.match_base_url(f"{base}/repos", base)
+        assert result == ("/repos", {})
+
     def test_static_base_evil_domain(self):
         result = matching.match_base_url(
             "https://api.github.com.evil.com/steal", "https://api.github.com"

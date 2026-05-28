@@ -405,6 +405,38 @@ class TestCompiledFirewallMatching:
         assert compiled is None
 
     @pytest.mark.parametrize(
+        "base",
+        [
+            "https://api.example.com/static{",
+            "https://api.example.com/static}",
+        ],
+    )
+    def test_compiled_static_base_with_single_brace_is_not_parameterized(self, base):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            f"{base}/items/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"id": "123"}
+
+    @pytest.mark.parametrize(
         ("base", "url"),
         [
             ("https://api.github.com:443", "https://api.github.com/repos/org/repo"),
