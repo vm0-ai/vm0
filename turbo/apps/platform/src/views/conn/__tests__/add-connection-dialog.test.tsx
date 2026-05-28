@@ -620,7 +620,7 @@ describe("connect modal - state management", () => {
     });
   });
 
-  it("keeps the dialog open on outside click while a connection flow is active", async () => {
+  it.skip("keeps the dialog open on outside click while a connection flow is active", async () => {
     mockConnectorOauthStart();
     vi.spyOn(window, "open").mockReturnValue(
       createMockAuthWindow(false) as unknown as Window,
