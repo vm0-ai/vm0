@@ -106,6 +106,38 @@ pub(in super::super) async fn wait_idle_pool_sessions(
     .await;
 }
 
+pub(in super::super) async fn wait_idle_pool_session_states(
+    pool: &SharedIdlePool,
+    expected: &[(&str, &str)],
+    timeout: Duration,
+) {
+    let mut expected: Vec<(String, String)> = expected
+        .iter()
+        .map(|(session, last_completed_at)| {
+            ((*session).to_string(), (*last_completed_at).to_string())
+        })
+        .collect();
+    expected.sort_unstable();
+    wait_for_probe(timeout, || async {
+        let mut actual: Vec<(String, String)> = pool
+            .lock()
+            .await
+            .held_session_states()
+            .into_iter()
+            .map(|state| (state.session_id, state.last_completed_at))
+            .collect();
+        actual.sort_unstable();
+        if actual == expected {
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "idle pool session states did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+            ))
+        }
+    })
+    .await;
+}
+
 pub(in super::super) async fn wait_sandbox_lifecycle_counts(
     overrides: &sandbox_mock::MockSandboxOverrides,
     expected_park: u32,

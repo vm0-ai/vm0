@@ -1,4 +1,5 @@
 use super::super::super::*;
+use super::TEST_SESSION_LAST_COMPLETED_AT;
 
 use crate::idle_pool::{ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts};
 use crate::resource_budget::BudgetLease;
@@ -40,6 +41,11 @@ pub(in super::super) async fn seed_idle_pool(
     let mut guard = pool.lock().await;
     let result = guard.park(candidate);
     assert!(matches!(result, ParkResult::Parked));
+    assert!(guard.set_last_completed_at(
+        session_id,
+        sandbox_id,
+        TEST_SESSION_LAST_COMPLETED_AT.to_string(),
+    ));
     sandbox_id
 }
 
@@ -95,6 +101,11 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
         },
     ));
     assert!(matches!(result, ParkResult::Parked));
+    assert!(guard.set_last_completed_at(
+        session_id,
+        sandbox_id,
+        TEST_SESSION_LAST_COMPLETED_AT.to_string(),
+    ));
     sandbox_id
 }
 

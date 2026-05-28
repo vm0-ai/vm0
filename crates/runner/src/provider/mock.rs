@@ -298,7 +298,7 @@ impl JobProvider for MockJobProvider {
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
         _completion_auth: CompletionAuth,
-    ) {
+    ) -> Option<String> {
         self.completions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -312,6 +312,7 @@ impl JobProvider for MockJobProvider {
         // Wake all pending `wait_completion` waiters — they re-scan the vec
         // and return if their run_id is now present.
         self.completion_notify.notify_waiters();
+        Some("2026-05-28T00:00:00.000Z".to_string())
     }
 
     async fn heartbeat(&self, state: &HeartbeatState) {

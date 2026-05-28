@@ -38,6 +38,8 @@ const store = createStore();
 
 const OFFICIAL_RUNNER_TOKEN =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+const SESSION_LAST_COMPLETED_AT = "2026-05-28T00:00:00.000Z";
+const SESSION_LAST_COMPLETED_AT_OFFSET = "2026-05-28T08:00:00+08:00";
 
 interface PatFixture {
   readonly token: string;
@@ -62,7 +64,12 @@ function runnerHeartbeatBody(runnerId: string) {
     allocatedVcpu: 2,
     allocatedMemoryMb: 4096,
     runningCount: 1,
-    heldSessions: ["session-1"],
+    heldSessionStates: [
+      {
+        sessionId: "session-1",
+        lastCompletedAt: SESSION_LAST_COMPLETED_AT_OFFSET,
+      },
+    ],
     mode: "running" as const,
   };
 }
@@ -301,7 +308,7 @@ describe("POST /api/runners/*", () => {
       allocatedVcpu: 0,
       allocatedMemoryMb: 0,
       runningCount: 0,
-      heldSessions: [],
+      heldSessionStates: [],
       mode: "running",
       lastSeenAt: new Date(now() - 6 * 60 * 1000),
     });
@@ -321,6 +328,7 @@ describe("POST /api/runners/*", () => {
         runnerId: runnerState.runnerId,
         runnerName: runnerState.runnerName,
         runningCount: runnerState.runningCount,
+        heldSessionStates: runnerState.heldSessionStates,
       })
       .from(runnerState)
       .where(inArray(runnerState.runnerId, [staleRunnerId, activeRunnerId]));
@@ -329,6 +337,12 @@ describe("POST /api/runners/*", () => {
         runnerId: activeRunnerId,
         runnerName: "test-runner",
         runningCount: 1,
+        heldSessionStates: [
+          {
+            sessionId: "session-1",
+            lastCompletedAt: SESSION_LAST_COMPLETED_AT,
+          },
+        ],
       },
     ]);
   });
@@ -350,7 +364,12 @@ describe("POST /api/runners/*", () => {
         body: {
           group: "vm0/test",
           profiles: ["vm0/default"],
-          heldSessions: ["session-a"],
+          heldSessionStates: [
+            {
+              sessionId: "session-a",
+              lastCompletedAt: SESSION_LAST_COMPLETED_AT,
+            },
+          ],
         },
         headers: { authorization: `Bearer ${pat.token}` },
       }),
@@ -370,7 +389,7 @@ describe("POST /api/runners/*", () => {
     });
   });
 
-  it("returns an affinity-matching poll job first when heldSessions is provided", async () => {
+  it("returns an affinity-matching poll job first when heldSessionStates is provided", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -387,7 +406,12 @@ describe("POST /api/runners/*", () => {
       client.poll({
         body: {
           group: runnerGroup,
-          heldSessions: ["session-X"],
+          heldSessionStates: [
+            {
+              sessionId: "session-X",
+              lastCompletedAt: SESSION_LAST_COMPLETED_AT_OFFSET,
+            },
+          ],
         },
         headers: { authorization: OFFICIAL_RUNNER_TOKEN },
       }),
@@ -397,7 +421,7 @@ describe("POST /api/runners/*", () => {
     expect(response.body.job?.runId).toBe(affinityJob.runId);
   });
 
-  it("returns a poll job when heldSessions has no match", async () => {
+  it("returns a poll job when heldSessionStates has no match", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -409,7 +433,12 @@ describe("POST /api/runners/*", () => {
       client.poll({
         body: {
           group: runnerGroup,
-          heldSessions: ["session-no-match"],
+          heldSessionStates: [
+            {
+              sessionId: "session-no-match",
+              lastCompletedAt: SESSION_LAST_COMPLETED_AT,
+            },
+          ],
         },
         headers: { authorization: OFFICIAL_RUNNER_TOKEN },
       }),
@@ -419,7 +448,7 @@ describe("POST /api/runners/*", () => {
     expect(response.body.job?.runId).toBe(queued.runId);
   });
 
-  it("returns a poll job when heldSessions is empty", async () => {
+  it("returns a poll job when heldSessionStates is empty", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -431,7 +460,7 @@ describe("POST /api/runners/*", () => {
       client.poll({
         body: {
           group: runnerGroup,
-          heldSessions: [],
+          heldSessionStates: [],
         },
         headers: { authorization: OFFICIAL_RUNNER_TOKEN },
       }),
@@ -441,7 +470,7 @@ describe("POST /api/runners/*", () => {
     expect(response.body.job?.runId).toBe(queued.runId);
   });
 
-  it("returns a poll job when heldSessions is omitted", async () => {
+  it("returns a poll job when heldSessionStates is omitted", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -466,7 +495,12 @@ describe("POST /api/runners/*", () => {
       client.poll({
         body: {
           group: `vm0/poll-${randomUUID()}`,
-          heldSessions: ["session-X"],
+          heldSessionStates: [
+            {
+              sessionId: "session-X",
+              lastCompletedAt: SESSION_LAST_COMPLETED_AT,
+            },
+          ],
         },
         headers: { authorization: OFFICIAL_RUNNER_TOKEN },
       }),

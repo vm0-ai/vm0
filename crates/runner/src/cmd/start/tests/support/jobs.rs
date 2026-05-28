@@ -2,6 +2,8 @@ use super::super::super::*;
 use super::env::MockRunEnv;
 use crate::provider::JobCandidate;
 
+pub(in super::super) const TEST_SESSION_LAST_COMPLETED_AT: &str = "2026-05-28T00:00:00.000Z";
+
 pub(in super::super) fn minimal_context(run_id: RunId) -> crate::types::ExecutionContext {
     crate::types::ExecutionContext {
         run_id,

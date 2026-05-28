@@ -17,7 +17,8 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
+    CompleteRequest, CompleteResponse, ExecutionContext, HeartbeatState, HeldSessionState, Job,
+    PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -54,8 +55,8 @@ pub struct ApiProvider {
     poll_wakeups: Arc<PollWakeups>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
-    /// Session IDs held in the idle pool, sent in poll requests for affinity ordering.
-    held_sessions: tokio::sync::Mutex<Vec<String>>,
+    /// Session generations held in the idle pool, sent in poll requests for affinity ordering.
+    held_session_states: tokio::sync::Mutex<Vec<HeldSessionState>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -88,7 +89,7 @@ impl ApiProvider {
             profiles,
             poll_wakeups,
             ably_supervisor,
-            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -104,13 +105,13 @@ impl JobProvider for ApiProvider {
                 .await?;
             let reason = due.reason();
 
-            let sessions = self.held_sessions.lock().await.clone();
+            let held_session_states = self.held_session_states.lock().await.clone();
             let poll_result = tokio::select! {
                 biased;
                 () = self.cancel.cancelled() => {
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, &sessions) => result,
+                result = self.api.poll(&self.group, &self.profiles, &held_session_states) => result,
             };
 
             match poll_result {
@@ -188,8 +189,8 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn set_held_sessions(&self, sessions: Vec<String>) {
-        *self.held_sessions.lock().await = sessions;
+    async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
+        *self.held_session_states.lock().await = states;
     }
 
     async fn shutdown(&self) {
@@ -204,12 +205,12 @@ impl JobProvider for ApiProvider {
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
         completion_auth: CompletionAuth,
-    ) {
+    ) -> Option<String> {
         let token = match completion_auth.into_sandbox_token(run_id) {
             Ok(token) => token,
             Err(CompletionAuthError::NotSandbox) => {
                 error!(run_id = %run_id, "completion auth missing sandbox token");
-                return;
+                return None;
             }
             Err(CompletionAuthError::RunIdMismatch { auth_run_id }) => {
                 error!(
@@ -217,7 +218,7 @@ impl JobProvider for ApiProvider {
                     auth_run_id = %auth_run_id,
                     "completion auth run_id mismatch"
                 );
-                return;
+                return None;
             }
         };
 
@@ -230,7 +231,7 @@ impl JobProvider for ApiProvider {
                 .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
                 .await
             {
-                Ok(()) => return,
+                Ok(completed_at) => return Some(completed_at),
                 Err(e) if attempt < MAX_ATTEMPTS => {
                     warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
                     tokio::time::sleep(RETRY_DELAY).await;
@@ -240,6 +241,7 @@ impl JobProvider for ApiProvider {
                 }
             }
         }
+        None
     }
 }
 
@@ -264,13 +266,16 @@ impl ApiClient {
         &self,
         group: &str,
         profiles: &[String],
-        held_sessions: &[String],
+        held_session_states: &[HeldSessionState],
     ) -> RunnerResult<Option<Job>> {
         let mut body = serde_json::json!({ "group": group, "profiles": profiles });
-        if !held_sessions.is_empty()
+        if !held_session_states.is_empty()
             && let Some(obj) = body.as_object_mut()
         {
-            obj.insert("heldSessions".to_string(), serde_json::json!(held_sessions));
+            obj.insert(
+                "heldSessionStates".to_string(),
+                serde_json::json!(held_session_states),
+            );
         }
         let resp = send_api(
             self.http
@@ -344,7 +349,7 @@ impl ApiClient {
         error: Option<&str>,
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
-    ) -> RunnerResult<()> {
+    ) -> RunnerResult<String> {
         let body = CompleteRequest {
             run_id,
             exit_code,
@@ -367,7 +372,9 @@ impl ApiClient {
             return Err(api_status_error("complete", status, &body));
         }
 
-        Ok(())
+        let complete: CompleteResponse = decode_api_json(resp, "complete").await?;
+
+        Ok(complete.completed_at)
     }
 
     /// Fetch an Ably token for subscribing to runner group notifications.
@@ -461,7 +468,7 @@ mod tests {
             profiles: Vec::new(),
             poll_wakeups,
             ably_supervisor: AblySupervisor::disabled(),
-            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -519,7 +526,11 @@ mod tests {
             500 => "Internal Server Error",
             _ => "Unknown",
         };
-        let body = if status == 200 { "ok" } else { "failed" };
+        let body = if status == 200 {
+            r#"{"success":true,"status":"completed","completedAt":"2026-05-28T00:00:00.000Z"}"#
+        } else {
+            "failed"
+        };
         let response = format!(
             "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(),
@@ -560,6 +571,14 @@ mod tests {
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
         );
+    }
+
+    fn complete_success_body() -> serde_json::Value {
+        serde_json::json!({
+            "success": true,
+            "status": "completed",
+            "completedAt": "2026-05-28T00:00:00.000Z"
+        })
     }
 
     async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
@@ -835,7 +854,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::webhooks::agent::complete::COMPLETE.path)
                     .header("authorization", "Bearer claim-sandbox-token");
-                then.status(200);
+                then.status(200).json_body(complete_success_body());
             })
             .await;
         let provider = api_provider_for_test(
@@ -904,7 +923,7 @@ mod tests {
                         "runId": run_id_a,
                         "exitCode": 0
                     }));
-                then.status(200);
+                then.status(200).json_body(complete_success_body());
             })
             .await;
         let complete_mock_b = server
@@ -916,7 +935,7 @@ mod tests {
                         "runId": run_id_b,
                         "exitCode": 0
                     }));
-                then.status(200);
+                then.status(200).json_body(complete_success_body());
             })
             .await;
         let provider = api_provider_for_test(
@@ -964,7 +983,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::webhooks::agent::complete::COMPLETE.path)
                     .header("authorization", "Bearer sandbox-token");
-                then.status(200);
+                then.status(200).json_body(complete_success_body());
             })
             .await;
         let provider = api_provider_for_test(

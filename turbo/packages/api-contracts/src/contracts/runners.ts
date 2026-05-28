@@ -55,6 +55,11 @@ export const jobSchema = z.object({
   experimentalProfile: z.string().optional(),
 });
 
+export const heldSessionStateSchema = z.object({
+  sessionId: z.string(),
+  lastCompletedAt: z.string().datetime({ offset: true }),
+});
+
 /**
  * Runners poll contract - POST /api/runners/poll
  * Long-polling endpoint to fetch pending jobs for a runner group
@@ -70,7 +75,7 @@ export const runnersPollContract = c.router({
     body: z.object({
       group: runnerGroupSchema,
       profiles: z.array(z.string()).optional(),
-      heldSessions: z.array(z.string()).max(100).optional(),
+      heldSessionStates: z.array(heldSessionStateSchema).max(100).optional(),
     }),
     responses: {
       200: z.object({
@@ -278,7 +283,7 @@ export const heartbeatBodySchema = z.object({
   allocatedVcpu: z.number().int().nonnegative(),
   allocatedMemoryMb: z.number().int().nonnegative(),
   runningCount: z.number().int().nonnegative(),
-  heldSessions: z.array(z.string()),
+  heldSessionStates: z.array(heldSessionStateSchema),
   mode: z.enum(["running", "draining", "stopping"]),
 });
 
@@ -306,6 +311,7 @@ export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
+export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema

@@ -268,7 +268,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         .publish_idle_status_after_pool_transfer(snapshot)
                         .await;
                     park_notify.notify_one();
-                    BudgetOwnership::idle_owned()
+                    BudgetOwnership::idle_owned(session_id.clone(), sandbox_id)
                 }
                 ParkResult::Replaced(evicted) => {
                     info!(run_id = %run_id, session_id, "VM parked, evicting previous");
@@ -293,7 +293,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     // aborts any leftover handles and the FC process is
                     // killed regardless of balloon state.
                     destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await;
-                    BudgetOwnership::idle_owned()
+                    BudgetOwnership::idle_owned(session_id.clone(), sandbox_id)
                 }
                 ParkResult::Rejected(rejected) => {
                     info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");

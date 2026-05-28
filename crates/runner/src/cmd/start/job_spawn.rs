@@ -249,6 +249,8 @@ pub(super) fn spawn_job(
                 reuse_result,
                 completion_auth,
             );
+            let idle_pool_for_generation_update = Arc::clone(&idle_pool);
+            let park_notify_for_generation_update = Arc::clone(&park_notify);
             // Cancellation can arrive after terminal logging or while
             // `sandbox.park()` is in flight. Pass the live token so finalization
             // can re-check immediately before idle-pool ownership transfer.
@@ -291,9 +293,26 @@ pub(super) fn spawn_job(
                 }
             }
             let ownership = OwnershipTransitions::new(status.as_ref());
-            completion_ready
+            let completion_outcome = completion_ready
                 .complete_and_release(provider.as_ref(), &ownership, &cleanup_state_for_body)
                 .await;
+            if let Some(update) = completion_outcome.idle_generation_update {
+                let mut pool = idle_pool_for_generation_update.lock().await;
+                if pool.set_last_completed_at(
+                    &update.session_id,
+                    update.sandbox_id,
+                    update.last_completed_at,
+                ) {
+                    park_notify_for_generation_update.notify_one();
+                } else {
+                    warn!(
+                        run_id = %run_id,
+                        session_id = %update.session_id,
+                        sandbox_id = %update.sandbox_id,
+                        "idle VM generation update skipped because the VM is no longer parked"
+                    );
+                }
+            }
 
             // Best-effort telemetry, deferred past `provider.complete` so the
             // user-visible run-complete signal isn't blocked on these uploads.

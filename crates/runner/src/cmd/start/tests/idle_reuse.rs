@@ -1,11 +1,12 @@
 use super::super::*;
 use super::support::{
-    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
+    TEST_SESSION_LAST_COMPLETED_AT, assert_run_exits_within, context_with_session, minimal_context,
+    mock_run_config, mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
     seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles, two_profiles,
     wait_budget_count, wait_cancel_token, wait_discover_entered, wait_idle_pool_len,
-    wait_idle_pool_sessions, wait_parking_state, wait_sandbox_lifecycle_counts,
-    wait_status_idle_empty_with_active_run, wait_status_idle_sessions_and_active_runs,
+    wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
+    wait_sandbox_lifecycle_counts, wait_status_idle_empty_with_active_run,
+    wait_status_idle_sessions_and_active_runs,
 };
 
 use crate::idle_pool::ParkingState;
@@ -999,7 +1000,12 @@ async fn sequential_same_session_reuse_cycle() {
         .wait_completion(id1, Duration::from_secs(5))
         .await;
     assert!(c1.is_some(), "job 1 should complete");
-    wait_idle_pool_sessions(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
+    wait_idle_pool_session_states(
+        &idle_pool,
+        &[("sess-seq", TEST_SESSION_LAST_COMPLETED_AT)],
+        Duration::from_secs(5),
+    )
+    .await;
     assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
 
     // Job 2: same session → take → reuse → re-park.
@@ -1116,6 +1122,12 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
             .is_some()
     );
     wait_sandbox_lifecycle_counts(&counter, 1, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_session_states(
+        &idle_pool,
+        &[("sess-reuse-cycle", TEST_SESSION_LAST_COMPLETED_AT)],
+        Duration::from_secs(5),
+    )
+    .await;
 
     // Job 2: same session → take (unpark) → run → re-park.
     let id2 = RunId::new_v4();

@@ -5,6 +5,7 @@ import {
   runnersJobClaimContract,
   runnersPollContract,
   storedExecutionContextSchema,
+  type HeldSessionState,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -73,6 +74,17 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
+function canonicalizeHeldSessionStates(
+  states: readonly HeldSessionState[] | undefined,
+): HeldSessionState[] | undefined {
+  return states?.map((state) => {
+    return {
+      sessionId: state.sessionId,
+      lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+    };
+  });
+}
+
 const heartbeatBody$ = bodyResultOf(runnersHeartbeatContract.heartbeat);
 
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -92,6 +104,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
+  const heldSessionStates =
+    canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -107,7 +121,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      heldSessions: body.data.heldSessions,
+      heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
     })
@@ -123,7 +137,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        heldSessions: body.data.heldSessions,
+        heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
       },
@@ -145,6 +159,18 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const pollBody$ = bodyResultOf(runnersPollContract.poll);
 
+function heldSessionIds(
+  states: readonly HeldSessionState[] | undefined,
+): string[] {
+  return [
+    ...new Set(
+      states?.map((state) => {
+        return state.sessionId;
+      }) ?? [],
+    ),
+  ];
+}
+
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
@@ -158,7 +184,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const { group, profiles, heldSessions } = body.data;
+  const { group, profiles } = body.data;
+  const heldSessionStates = canonicalizeHeldSessionStates(
+    body.data.heldSessionStates,
+  );
+  const heldSessions = heldSessionIds(heldSessionStates);
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
@@ -182,11 +212,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const orderClauses =
-    heldSessions && heldSessions.length > 0
+    heldSessions.length > 0
       ? [
           sql`CASE WHEN ${runnerJobQueue.sessionId} IN (${sql.join(
-            heldSessions.map((session) => {
-              return sql`${session}`;
+            heldSessions.map((sessionId) => {
+              return sql`${sessionId}`;
             }),
             sql`, `,
           )}) THEN 0 ELSE 1 END`,

@@ -91,7 +91,10 @@ impl ActiveBudgetLease {
 #[must_use]
 pub(super) enum BudgetOwnership {
     Active(ActiveBudgetLease),
-    IdleOwned,
+    IdleOwned {
+        session_id: String,
+        sandbox_id: SandboxId,
+    },
 }
 
 impl BudgetOwnership {
@@ -99,16 +102,29 @@ impl BudgetOwnership {
         Self::Active(lease)
     }
 
-    pub(super) fn idle_owned() -> Self {
-        Self::IdleOwned
+    pub(super) fn idle_owned(session_id: String, sandbox_id: SandboxId) -> Self {
+        Self::IdleOwned {
+            session_id,
+            sandbox_id,
+        }
     }
 
     fn release(self) {
         match self {
             Self::Active(lease) => drop(lease),
-            Self::IdleOwned => {}
+            Self::IdleOwned { .. } => {}
         }
     }
+}
+
+pub(super) struct IdleGenerationUpdate {
+    pub(super) session_id: String,
+    pub(super) sandbox_id: SandboxId,
+    pub(super) last_completed_at: String,
+}
+
+pub(super) struct CompletionReleaseOutcome {
+    pub(super) idle_generation_update: Option<IdleGenerationUpdate>,
 }
 
 /// Data required for the provider completion call.
@@ -158,7 +174,7 @@ impl CompletionReady {
         provider: &dyn JobProvider,
         ownership: &OwnershipTransitions<'_>,
         cleanup_state: &RunCleanupState,
-    ) {
+    ) -> CompletionReleaseOutcome {
         let Self { payload, budget } = self;
         let CompletionPayload {
             run_id,
@@ -169,7 +185,7 @@ impl CompletionReady {
             completion_auth,
         } = payload;
 
-        provider
+        let completed_at = provider
             .complete(
                 run_id,
                 exit_code,
@@ -179,11 +195,28 @@ impl CompletionReady {
                 completion_auth,
             )
             .await;
+        let idle_generation_update = match (&budget, completed_at) {
+            (
+                BudgetOwnership::IdleOwned {
+                    session_id,
+                    sandbox_id,
+                },
+                Some(last_completed_at),
+            ) => Some(IdleGenerationUpdate {
+                session_id: session_id.clone(),
+                sandbox_id: *sandbox_id,
+                last_completed_at,
+            }),
+            _ => None,
+        };
         ownership
             .active_completed(RunSandbox::new(run_id, sandbox_id))
             .await;
         cleanup_state.mark_status_removed();
         budget.release();
+        CompletionReleaseOutcome {
+            idle_generation_update,
+        }
     }
 }
 
@@ -271,13 +304,14 @@ mod tests {
             _sandbox_id: Option<SandboxId>,
             _reuse_result: Option<SandboxReuseResult>,
             _completion_auth: CompletionAuth,
-        ) {
+        ) -> Option<String> {
             self.budget_count_at_complete
                 .store(self.budget.allocated().2, Ordering::SeqCst);
             self.active_runs_at_complete.store(
                 status_active_run_count(&self.status_path).await,
                 Ordering::SeqCst,
             );
+            None
         }
 
         async fn heartbeat(&self, _state: &HeartbeatState) {}
@@ -303,11 +337,12 @@ mod tests {
             _sandbox_id: Option<SandboxId>,
             _reuse_result: Option<SandboxReuseResult>,
             completion_auth: CompletionAuth,
-        ) {
+        ) -> Option<String> {
             self.auth_matches.store(
                 completion_auth.matches_sandbox_token_for_test(run_id, "completion-token"),
                 Ordering::SeqCst,
             );
+            None
         }
 
         async fn heartbeat(&self, _state: &HeartbeatState) {}
@@ -422,7 +457,7 @@ mod tests {
 
         CompletionReady::new(
             test_completion_payload(run_id, sandbox_id),
-            BudgetOwnership::idle_owned(),
+            BudgetOwnership::idle_owned("session-id".to_string(), sandbox_id),
         )
         .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;

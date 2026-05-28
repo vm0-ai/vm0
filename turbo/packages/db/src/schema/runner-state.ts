@@ -8,6 +8,11 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
+export interface RunnerHeldSessionState {
+  readonly sessionId: string;
+  readonly lastCompletedAt: string;
+}
+
 export const runnerState = pgTable(
   "runner_state",
   {
@@ -21,7 +26,10 @@ export const runnerState = pgTable(
     allocatedVcpu: integer("allocated_vcpu").notNull().default(0),
     allocatedMemoryMb: integer("allocated_memory_mb").notNull().default(0),
     runningCount: integer("running_count").notNull().default(0),
-    heldSessions: jsonb("held_sessions").$type<string[]>().notNull(),
+    heldSessionStates: jsonb("held_session_states")
+      .$type<RunnerHeldSessionState[]>()
+      .default([])
+      .notNull(),
     mode: varchar("mode", { length: 20 }).notNull().default("running"),
     lastSeenAt: timestamp("last_seen_at").notNull(),
   },

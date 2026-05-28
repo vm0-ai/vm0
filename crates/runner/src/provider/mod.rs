@@ -222,7 +222,7 @@ pub trait JobProvider: Send + Sync {
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
         completion_auth: CompletionAuth,
-    );
+    ) -> Option<String>;
 
     /// Report runner state to the server. Fire-and-forget — failures are
     /// logged but do not affect runner operation.
@@ -231,7 +231,7 @@ pub trait JobProvider: Send + Sync {
     /// Update held sessions for poll affinity. Called by the main loop at
     /// heartbeat time so the provider can include them in poll requests.
     /// Default no-op — only relevant for API-backed providers.
-    async fn set_held_sessions(&self, _sessions: Vec<String>) {}
+    async fn set_held_session_states(&self, _states: Vec<crate::types::HeldSessionState>) {}
 
     /// Release discovery resources (subscriptions, background tasks).
     ///

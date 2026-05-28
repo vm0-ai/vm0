@@ -102,7 +102,14 @@ async function seedFixture(
   );
   const { runId } = await store.set(
     seedRun$,
-    { orgId: base.orgId, userId: base.userId, composeId, status },
+    {
+      orgId: base.orgId,
+      userId: base.userId,
+      composeId,
+      status,
+      completedAt:
+        status === "completed" || status === "failed" ? nowDate() : undefined,
+    },
     context.signal,
   );
   return { ...base, composeId, runId };
@@ -375,6 +382,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "completed",
+      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -418,6 +426,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "completed",
+      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -490,6 +499,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "failed",
+      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -519,6 +529,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "completed",
+      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -541,6 +552,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "failed",
+      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -593,6 +605,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "failed",
+      completedAt: expect.any(String),
     });
     const run = await runById(fixture.runId);
     expect(run?.status).toBe("cancelled");
