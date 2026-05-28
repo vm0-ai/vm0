@@ -128,7 +128,34 @@ pub fn decode_msg(data: &[u8]) -> Result<ProtocolMessage, Error> {
         code: error_code::BAD_REQUEST,
         message: format!("msgpack decode error: {e}"),
     })?;
-    let json = rmpv_to_json(value);
+    if cursor.position() != data.len() as u64 {
+        return Err(Error::Protocol {
+            code: error_code::BAD_REQUEST,
+            message: "msgpack frame has trailing bytes".to_string(),
+        });
+    }
+
+    let map = match value {
+        rmpv::Value::Map(map) => map,
+        _ => {
+            return Err(Error::Protocol {
+                code: error_code::BAD_REQUEST,
+                message: "protocol message must be a map".to_string(),
+            });
+        }
+    };
+
+    if !map
+        .iter()
+        .any(|(key, _)| matches!(key, rmpv::Value::String(key) if key.as_str() == Some("action")))
+    {
+        return Err(Error::Protocol {
+            code: error_code::BAD_REQUEST,
+            message: "protocol message missing action".to_string(),
+        });
+    }
+
+    let json = rmpv_to_json(rmpv::Value::Map(map));
     serde_json::from_value(json).map_err(|e| Error::Protocol {
         code: error_code::BAD_REQUEST,
         message: format!("message decode error: {e}"),
