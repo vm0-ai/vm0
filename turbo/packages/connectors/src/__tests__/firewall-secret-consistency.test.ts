@@ -137,17 +137,14 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
 
   if (hasEnvBindings) {
     for (const [envName, valueRef] of Object.entries(envBindings)) {
-      placeholderKeys.add(envName);
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        placeholderKeys.add(envName);
         placeholderKeys.add(valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length));
       }
     }
   } else {
     const manualFields = getConnectorManualGrantFieldNames(connectorType);
     manualFields?.secrets.forEach((name) => {
-      placeholderKeys.add(name);
-    });
-    manualFields?.variables.forEach((name) => {
       placeholderKeys.add(name);
     });
   }
@@ -160,12 +157,12 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
 }
 
 /**
- * Verify that every builtin firewall's placeholder names match
- * the environment names exposed by the connector that references it.
+ * Verify that every builtin firewall's placeholder names match the
+ * secret-backed environment names exposed by the connector that references it.
  *
  * OAuth connectors expose environment names via derived env bindings (e.g. SLACK_TOKEN).
  * API-token connectors expose manual grant fields.
- * The firewall's `placeholders` keys must be a subset of these names,
+ * The firewall's `placeholders` keys must be a subset of these secret names,
  * otherwise the proxy won't find the secret to inject.
  */
 describe("firewall secret name consistency", () => {
@@ -174,7 +171,7 @@ describe("firewall secret name consistency", () => {
   for (const connectorType of connectorTypes) {
     if (!isFirewallConnectorType(connectorType)) continue;
 
-    it(`${connectorType} → firewall placeholder keys match connector fields`, () => {
+    it(`${connectorType} → firewall placeholder keys match connector secrets`, () => {
       const validPlaceholderKeys = connectorPlaceholderKeys(connectorType);
 
       const firewall = getConnectorFirewall(connectorType);
@@ -182,7 +179,7 @@ describe("firewall secret name consistency", () => {
       for (const key of placeholderKeys) {
         expect(
           validPlaceholderKeys.has(key),
-          `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector fields: [${[...validPlaceholderKeys].join(", ")}]`,
+          `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector secrets: [${[...validPlaceholderKeys].join(", ")}]`,
         ).toBe(true);
       }
     });
