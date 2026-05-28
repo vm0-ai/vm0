@@ -73,7 +73,7 @@ export default async function GalleryPage({ params }: PageProps) {
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(itemListJsonLd)}
       </script>
-      <WebDesignClient locale={locale} />
+      <WebDesignClient />
     </>
   );
 }

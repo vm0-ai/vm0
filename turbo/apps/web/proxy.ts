@@ -37,8 +37,6 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/rankings",
   "/web-design",
   "/:locale/web-design",
-  "/showcase",
-  "/:locale/showcase",
   "/terms-of-use",
   "/privacy-policy",
   "/support",

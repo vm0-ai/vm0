@@ -3599,11 +3599,11 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
   },
 ];
 
-export function buildGalleryPromptHref(
+export function buildGalleryRemixHref(
   item: GalleryItem,
-  locale: string,
+  appUrl: string,
 ): string {
-  const url = new URL(`/${locale}/showcase`, "https://www.vm0.ai");
+  const url = new URL("/onboarding", appUrl);
   const hintText =
     item.resourceHints && item.resourceHints.length > 0
       ? `\n\nResource hints: ${item.resourceHints.join(", ")}`
@@ -3613,8 +3613,5 @@ export function buildGalleryPromptHref(
     "prompt",
     item.artifactUrl ? item.prompt : `${item.prompt}${hintText}`,
   );
-  if (item.artifactUrl) {
-    url.searchParams.set("website", item.artifactUrl);
-  }
-  return `${url.pathname}${url.search}`;
+  return url.toString();
 }

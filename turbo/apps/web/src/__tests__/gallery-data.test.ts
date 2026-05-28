@@ -3,7 +3,7 @@ import {
   GALLERY_CATEGORIES,
   GALLERY_CATEGORY_LABELS,
   GALLERY_ITEMS,
-  buildGalleryPromptHref,
+  buildGalleryRemixHref,
   type GalleryCategory,
 } from "../../app/[locale]/web-design/data";
 
@@ -37,7 +37,7 @@ describe("generation gallery data", () => {
     ).toBe(true);
   });
 
-  it("builds web showcase URLs for hosted website items", () => {
+  it("builds onboarding remix URLs for hosted website items", () => {
     const item = GALLERY_ITEMS.find((candidate) => {
       return candidate.artifactUrl;
     });
@@ -45,12 +45,12 @@ describe("generation gallery data", () => {
       throw new Error("Expected at least one hosted gallery website");
     }
 
-    const href = buildGalleryPromptHref(item, "en");
-    const url = new URL(href, "https://www.vm0.ai");
+    const href = buildGalleryRemixHref(item, "https://app.vm0.ai");
+    const url = new URL(href);
 
-    expect(href.startsWith("/en/showcase?")).toBe(true);
-    expect(url.pathname).toBe("/en/showcase");
+    expect(url.origin).toBe("https://app.vm0.ai");
+    expect(url.pathname).toBe("/onboarding");
     expect(url.searchParams.get("prompt")).toContain(item.prompt);
-    expect(url.searchParams.get("website")).toBe(item.artifactUrl);
+    expect(url.searchParams.has("website")).toBe(false);
   });
 });
