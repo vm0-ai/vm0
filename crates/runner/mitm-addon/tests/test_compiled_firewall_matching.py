@@ -1090,6 +1090,7 @@ class TestCompiledFirewallMatching:
     @pytest.mark.parametrize(
         "permissions",
         [
+            None,
             "repo-read",
             [None],
             [{"name": "", "rules": ["GET /repos/{owner}/{repo}"]}],
@@ -1183,6 +1184,8 @@ class TestCompiledFirewallMatching:
         [
             {"github": None},
             {"github": "denied"},
+            {"github": {"allow": "repo-read", "deny": [], "ask": [], "unknownPolicy": "allow"}},
+            {"github": {"allow": [123], "deny": [], "ask": [], "unknownPolicy": "allow"}},
             {"github": {"deny": "repo-read", "ask": [], "unknownPolicy": "allow"}},
             {"github": {"deny": [], "ask": "repo-read", "unknownPolicy": "allow"}},
             {"github": {"deny": [123], "ask": [], "unknownPolicy": "allow"}},

@@ -875,6 +875,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
             has_malformed_rules = name_malformed
             seen_permission_names: set[str] = set()
             permissions = api_entry.get("permissions")
+            permissions_present = "permissions" in api_entry
             if isinstance(permissions, list):
                 for perm in permissions:
                     if not isinstance(perm, dict):
@@ -912,7 +913,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                     compiled_permissions.append(
                         _CompiledPermission(raw_name, tuple(compiled_rules))
                     )
-            elif permissions is not None:
+            elif permissions_present:
                 has_malformed_rules = True
 
             compiled_apis.append(
@@ -967,6 +968,7 @@ def compile_network_policies(raw_network_policies: object | None) -> CompiledNet
             )
             continue
 
+        _allow, allow_malformed = _compile_permission_set(grant.get("allow"))
         deny, deny_malformed = _compile_permission_set(grant.get("deny"))
         ask, ask_malformed = _compile_permission_set(grant.get("ask"))
 
@@ -983,7 +985,7 @@ def compile_network_policies(raw_network_policies: object | None) -> CompiledNet
         compiled[fw_name] = _CompiledNetworkPolicy(
             deny | ask,
             unknown_policy,
-            deny_malformed or ask_malformed,
+            allow_malformed or deny_malformed or ask_malformed,
             unknown_policy_malformed,
         )
 
