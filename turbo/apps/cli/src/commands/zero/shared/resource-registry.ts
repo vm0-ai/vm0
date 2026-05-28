@@ -3303,6 +3303,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     },
   },
   {
+    id: "image-style:crowd-ink",
+    kind: "image-style",
+    name: "Crowd Ink",
+    description:
+      "Hand-drawn editorial crowd illustration — sketchy black ink contours over flat 3-color spot fills on pure white, scene-as-metaphor composition.",
+    desc: 'Hand-drawn editorial crowd illustration style — confident sketchy black ink contour lines with slightly irregular weight, flat 3-color spot fills sitting under or beside the ink lines (edges allowed to misregister slightly), on a PURE WHITE background (never cream). Fine-line backdrop drawn lighter than the foreground figures, scattered atmospheric marks in negative space (birds / leaves / steam / confetti / dots), and a scene-as-metaphor composition with a cast that varies per piece. Six dials per brief — palette (tested families: urban editorial / cool transit / warm natural / cozy interior), scene metaphor, complexity (L2 small group of 3–5 / L3 full crowd of 8–10), cast, backdrop, atmospheric motif. Trigger when the user says /crowd-ink, asks for a "crowd-ink illustration", "editorial crowd scene", "hand-drawn ink-and-spot-color illustration", "New-Yorker-style crowd vignette", or briefs with palette + scene metaphor + complexity level.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/crowd-ink",
+    },
+  },
+  {
     id: "image-style:ink-storefront",
     kind: "image-style",
     name: "Ink Storefront",
