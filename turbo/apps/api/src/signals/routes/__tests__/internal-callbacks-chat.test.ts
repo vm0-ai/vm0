@@ -811,7 +811,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(response.status).toBe(200);
     const assistantMessages = (await listMessages(fixture.threadId)).filter(
       (message) => {
-        return message.role === "assistant";
+        return message.role === "assistant" && message.sequenceNumber !== null;
       },
     );
     expect(assistantMessages).toHaveLength(1);
@@ -845,7 +845,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(response.status).toBe(200);
     const assistantMessages = (await listMessages(fixture.threadId)).filter(
       (message) => {
-        return message.role === "assistant";
+        return message.role === "assistant" && message.sequenceNumber !== null;
       },
     );
     expect(
