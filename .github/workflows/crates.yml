@@ -316,6 +316,7 @@ jobs:
 
   mitm-addon-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect]
     if: |
       needs.detect.outputs.any-changed == 'true' ||
