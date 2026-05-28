@@ -609,6 +609,54 @@ describe("computer use desktop runtime", () => {
     });
   });
 
+  it("lists app records with bundle identifiers", async () => {
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "apps.list", payload: {} },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          listApps: async () => [
+            {
+              name: "TextEdit",
+              bundleId: "com.apple.TextEdit",
+              appPath: "/System/Applications/TextEdit.app",
+              running: true,
+              pid: 42,
+            },
+            {
+              name: "Safari",
+              bundleId: "com.apple.Safari",
+              appPath: "/Applications/Safari.app",
+              running: false,
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "succeeded",
+      result: {
+        apps: [
+          {
+            name: "Safari",
+            bundleId: "com.apple.Safari",
+            appPath: "/Applications/Safari.app",
+            running: false,
+          },
+          {
+            name: "TextEdit",
+            bundleId: "com.apple.TextEdit",
+            appPath: "/System/Applications/TextEdit.app",
+            running: true,
+            pid: 42,
+          },
+        ],
+      },
+    });
+  });
+
   it("reports app open as a background launch without target preparation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     openApp.mockResolvedValue({
@@ -968,6 +1016,91 @@ describe("computer use desktop runtime", () => {
     expect(text).toContain("\t\t\t4 text release-notify");
   });
 
+  it("renders browser table row and cell content for model targeting", () => {
+    const snapshot = normalizeAccessibilitySnapshot({
+      app: "Google Chrome",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Members | VM0 | Cloudflare",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXWebArea",
+              roleDescription: "HTML content",
+              name: "Members | VM0 | Cloudflare",
+              children: [
+                {
+                  id: "w0.e0.e0",
+                  role: "AXTable",
+                  children: [
+                    {
+                      id: "w0.e0.e0.r0",
+                      role: "AXRow",
+                      children: [
+                        {
+                          id: "w0.e0.e0.r0.c0",
+                          role: "AXCell",
+                          children: [
+                            {
+                              id: "w0.e0.e0.r0.c0.t0",
+                              role: "AXStaticText",
+                              value: "Individual Domains",
+                            },
+                          ],
+                        },
+                        {
+                          id: "w0.e0.e0.r0.c1",
+                          role: "AXCell",
+                          children: [
+                            {
+                              id: "w0.e0.e0.r0.c1.t0",
+                              role: "AXStaticText",
+                              value: "Domain DNS",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      id: "w0.e0.e0.r1",
+                      role: "AXRow",
+                      children: [
+                        {
+                          id: "w0.e0.e0.r1.c0",
+                          role: "AXCell",
+                          children: [
+                            {
+                              id: "w0.e0.e0.r1.c0.t0",
+                              role: "AXStaticText",
+                              value:
+                                "Cloudflare Zero Trust; Load Balancer; Cloudflare Access",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const text = renderAccessibilityTree(snapshot);
+
+    expect(text).toContain("table");
+    expect(text).toContain("row");
+    expect(text).toContain("cell");
+    expect(text).toContain("Individual Domains");
+    expect(text).toContain("Domain DNS");
+    expect(text).toContain("Cloudflare Zero Trust; Load Balancer");
+  });
+
   it("marks accessibility snapshots truncated at the output node budget", () => {
     const snapshot = {
       app: "Slack",
@@ -1288,7 +1421,7 @@ describe("computer use desktop runtime", () => {
     expect(result.result.visibleText).toContain("Can you see this?");
   });
 
-  it("passes model-facing element indexes to the native runtime session", async () => {
+  it("resolves normalized element indexes to native element ids", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
     clickElement.mockResolvedValue(
@@ -1315,13 +1448,20 @@ describe("computer use desktop runtime", () => {
               children: [
                 {
                   id: "w0.e0",
-                  role: "AXButton",
-                  name: "Open",
-                  actions: ["AXPress"],
+                  role: "AXGroup",
+                  children: [
+                    {
+                      id: "w0.e0.e0",
+                      role: "AXButton",
+                      name: "Open",
+                      actions: ["AXPress"],
+                    },
+                  ],
                 },
               ],
             },
           ],
+          elementIdsByIndex: ["w0", "w0.e0", "w0.e0.e0"],
         };
       },
     });
@@ -1378,6 +1518,7 @@ describe("computer use desktop runtime", () => {
     expect(click.status).toBe("succeeded");
     expect(clickElement).toHaveBeenCalledWith({
       app: "Safari",
+      elementId: "w0.e0.e0",
       snapshotId,
       elementIndex: 1,
       button: "left",
@@ -1740,6 +1881,22 @@ describe("computer use desktop runtime", () => {
         key: "Command+Shift+S",
         normalizedKey: "Command+Shift+S",
       },
+      {
+        key: "shift+semicolon",
+        normalizedKey: "Shift+Semicolon",
+      },
+      {
+        key: "Control_L+J",
+        normalizedKey: "Control+J",
+      },
+      {
+        key: "ctrl+alt+n",
+        normalizedKey: "Control+Option+N",
+      },
+      {
+        key: "Shift+;",
+        normalizedKey: "Shift+Semicolon",
+      },
     ];
 
     for (const testCase of cases) {
@@ -1838,7 +1995,7 @@ describe("computer use desktop runtime", () => {
     pressKey.mockRejectedValue(
       new ComputerUseNativeHelperError(
         "unsupported_command",
-        "Unsupported key specification: Launchpad",
+        "Unsupported key specification: Launchpad. Use xdotool-style names such as shift+semicolon, Control_L+J, ctrl+alt+n, or BackSpace.",
       ),
     );
     const result = await executeComputerUseCommand(
@@ -1858,7 +2015,8 @@ describe("computer use desktop runtime", () => {
       status: "failed",
       error: {
         code: "unsupported_command",
-        message: "Unsupported key specification: Launchpad",
+        message:
+          "Unsupported key specification: Launchpad. Use xdotool-style names such as shift+semicolon, Control_L+J, ctrl+alt+n, or BackSpace.",
       },
     });
     expect(pressKey).toHaveBeenCalledWith({

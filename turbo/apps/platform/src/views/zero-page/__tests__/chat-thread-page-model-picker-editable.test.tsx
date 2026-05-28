@@ -42,6 +42,7 @@ const mockApi = createMockApi(context);
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-editable-1";
+const FIXTURE_RUN_ID = "run-history-1";
 
 function makeThreadDetail(
   overrides: Partial<{
@@ -72,6 +73,7 @@ function makeUserMessage(): PagedChatMessage {
     id: "msg-user-1",
     role: "user",
     content: "Hello",
+    runId: FIXTURE_RUN_ID,
     createdAt: "2026-03-10T00:01:00Z",
   };
 }
@@ -81,7 +83,19 @@ function makeAssistantMessage(): PagedChatMessage {
     id: "msg-assistant-1",
     role: "assistant",
     content: "Hi there",
+    runId: FIXTURE_RUN_ID,
     createdAt: "2026-03-10T00:02:00Z",
+  };
+}
+
+function makeCompletionMarker(): PagedChatMessage {
+  return {
+    id: "msg-marker-1",
+    role: "assistant",
+    content: null,
+    runId: FIXTURE_RUN_ID,
+    runLifecycleEvent: "completed",
+    createdAt: "2026-03-10T00:03:00Z",
   };
 }
 
@@ -162,7 +176,7 @@ describe("chat thread page — model picker editable", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
-    setupMocks([makeUserMessage()], {
+    setupMocks([makeUserMessage(), makeCompletionMarker()], {
       selectedModel: "glm-5.1",
     });
 
@@ -201,7 +215,7 @@ describe("chat thread page — model picker editable", () => {
         }
       | undefined;
 
-    setupMocks([makeUserMessage()], {
+    setupMocks([makeUserMessage(), makeCompletionMarker()], {
       selectedModel: "claude-sonnet-4-6",
     });
     server.use(
@@ -257,7 +271,14 @@ describe("chat thread page — model picker editable", () => {
         }
       | undefined;
 
-    setupMocks([makeUserMessage()], {
+    const activeUserMessage: PagedChatMessage = {
+      id: "msg-active-user-1",
+      role: "user",
+      content: "still running",
+      runId: "run-active-1",
+      createdAt: "2026-03-10T00:04:00Z",
+    };
+    setupMocks([makeUserMessage(), makeCompletionMarker(), activeUserMessage], {
       activeRunIds: ["run-active-1"],
       selectedModel: "claude-sonnet-4-6",
     });

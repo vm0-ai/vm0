@@ -328,6 +328,46 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("reads structured app records from the native helper", async () => {
+    const helper = await createHelper({
+      status: "succeeded",
+      result: {
+        apps: [
+          {
+            name: "TextEdit",
+            bundleId: "com.apple.TextEdit",
+            appPath: "/System/Applications/TextEdit.app",
+            running: true,
+            pid: 42,
+          },
+          "Safari",
+        ],
+      },
+    });
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        mode: "oneshot",
+      });
+
+      await expect(backend.listApps()).resolves.toEqual([
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+        {
+          name: "Safari",
+        },
+      ]);
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("reads normalized key names from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",
@@ -482,7 +522,9 @@ describe("computer use native backend", () => {
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
-        appState: expect.stringContaining("<app_state>"),
+        appState: expect.stringMatching(
+          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
+        ),
         screenshot: expect.stringMatching(
           /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
         ),
@@ -490,7 +532,11 @@ describe("computer use native backend", () => {
       expect(output.result).toBeUndefined();
       expect(output.elements).toBeUndefined();
       expect(output.elementIdsByIndex).toBeUndefined();
+      expect(stdout).not.toContain("<app_state>");
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
+      await expect(
+        readFile(String(output.appState), "utf8"),
+      ).resolves.toContain("<app_state>");
       expect(await readFile(String(output.screenshot))).toStrictEqual(
         screenshotBytes,
       );
@@ -530,7 +576,9 @@ describe("computer use native backend", () => {
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
-        appState: expect.stringContaining("<app_state>"),
+        appState: expect.stringMatching(
+          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
+        ),
         screenshot: expect.stringMatching(
           /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
         ),
@@ -543,6 +591,10 @@ describe("computer use native backend", () => {
         },
       });
       expect(output.result).toBeUndefined();
+      expect(stdout).not.toContain("<app_state>");
+      await expect(
+        readFile(String(output.appState), "utf8"),
+      ).resolves.toContain("<app_state>");
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
     } finally {
       await stopDaemon(daemonDir);
@@ -599,7 +651,7 @@ describe("computer use native backend", () => {
         "AXShowMenu",
       ],
       ["type-text", "--app", "Safari", "--text", "hello"],
-      ["press-key", "--app", "Safari", "--key", "Escape"],
+      ["press-key", "--app", "Safari", "--key", "shift+semicolon"],
     ];
 
     try {
@@ -658,7 +710,7 @@ describe("computer use native backend", () => {
         text: "hello",
       });
       expect(publicCommandRequests[7]?.payload).toMatchObject({
-        key: "Escape",
+        key: "shift+semicolon",
       });
     } finally {
       await stopDaemon(daemonDir);

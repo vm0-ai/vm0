@@ -41,8 +41,8 @@ async function appRequest(
 }
 
 function mockSlackEnv(): void {
-  mockEnv("SLACK_CLIENT_ID", "test-slack-client-id");
-  mockOptionalEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
+  mockEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
 }
 
 function mockOAuthSuccess(
@@ -262,7 +262,7 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("returns 503 when Slack client ID is not configured", async () => {
-      mockEnv("SLACK_CLIENT_ID", "");
+      mockEnv("SLACK_OAUTH_CLIENT_ID", "");
 
       const response = await appRequest("/api/zero/slack/oauth/install");
 
@@ -440,7 +440,7 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("returns 503 when Slack client ID is not configured", async () => {
-      mockEnv("SLACK_CLIENT_ID", "");
+      mockEnv("SLACK_OAUTH_CLIENT_ID", "");
 
       const response = await appRequest(
         "/api/zero/slack/oauth/connect?orgId=org_1&vm0UserId=user_1",

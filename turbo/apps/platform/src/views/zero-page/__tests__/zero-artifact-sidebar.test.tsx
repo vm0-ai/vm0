@@ -180,20 +180,25 @@ describe("chatArtifactSidebar: sidebar slot rendering", () => {
   });
 
   it("clears the artifact pane state", () => {
-    setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt");
+    setup(
+      "/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt&artifact-fullscreen=1",
+    );
 
     expect(context.store.get(currentArtifactRef$)).not.toBeNull();
+    expect(context.store.get(artifactFullscreen$)).toBeTruthy();
 
     context.store.set(clearArtifactPreview$);
 
     expect(context.store.get(currentArtifactRef$)).toBeNull();
+    expect(context.store.get(artifactFullscreen$)).toBeFalsy();
     expect(search()).not.toContain("artifact=");
+    expect(search()).not.toContain("artifact-fullscreen=");
   });
 });
 
 describe("chatArtifactSidebar: fullscreen toggle", () => {
   it("toggles fullscreen state when the fullscreen button is clicked", () => {
-    setup();
+    setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt");
     renderWithStore(
       <ArtifactSidebar
         artifactRef={{
@@ -209,8 +214,10 @@ describe("chatArtifactSidebar: fullscreen toggle", () => {
 
     fireEvent.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
     expect(context.store.get(artifactFullscreen$)).toBeTruthy();
+    expect(search()).toContain("artifact-fullscreen=1");
 
     fireEvent.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
     expect(context.store.get(artifactFullscreen$)).toBeFalsy();
+    expect(search()).not.toContain("artifact-fullscreen=");
   });
 });

@@ -212,7 +212,7 @@ ${config.examples}
 
 Output:
   Prints the generated /f/ image file URL and metadata. With --style <id>,
-  prints an Open Design resource-selection packet for the current agent
+  prints a source-selection packet for the current agent
   with the selected style locked in.
 
 Notes:

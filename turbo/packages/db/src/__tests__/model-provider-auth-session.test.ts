@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { schema } from "../index";
-import {
-  legacyConnectorCliAuthSessionsView,
-  modelProviderAuthSessions,
-} from "../schema/model-provider-auth-session";
+import { modelProviderAuthSessions } from "../schema/model-provider-auth-session";
 
 function getExtraConfigNames(table: object): string[] {
   const symbols = Object.getOwnPropertySymbols(table);
@@ -35,12 +32,6 @@ function getExtraConfigNames(table: object): string[] {
 describe("modelProviderAuthSessions schema", () => {
   it("exports the model provider auth session table through the shared schema", () => {
     expect(schema.modelProviderAuthSessions).toBe(modelProviderAuthSessions);
-  });
-
-  it("exports the legacy CLI auth compatibility view through the shared schema", () => {
-    expect(schema.legacyConnectorCliAuthSessionsView).toBe(
-      legacyConnectorCliAuthSessionsView,
-    );
   });
 
   it("keeps the expected column names stable", () => {

@@ -42,8 +42,8 @@ const resetEnv = vi.hoisted(() => {
     );
     vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
     // Slack integration test vars
-    vi.stubEnv("SLACK_CLIENT_ID", "test-slack-client-id");
-    vi.stubEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
+    vi.stubEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
+    vi.stubEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
     vi.stubEnv("SLACK_SIGNING_SECRET", "test-slack-signing-secret");
     // 64 hex chars = 32 bytes encryption key for sandbox token signing
     vi.stubEnv(

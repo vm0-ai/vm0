@@ -17,7 +17,7 @@ interface HtmlArtifactAuthoringOptions {
 }
 
 interface HtmlArtifactAuthoringPacket {
-  readonly type: "open-design-resource-selection";
+  readonly type: "generation-source-selection";
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
   readonly registryVersion: string;
@@ -86,7 +86,7 @@ function titleForKind(kind: HtmlArtifactKind): string {
 }
 
 function outputDirForSite(site: string): string {
-  return `./opendesign/mockups/${site}`;
+  return `./generated/mockups/${site}`;
 }
 
 export function createHtmlArtifactAuthoringPacket(
@@ -143,7 +143,7 @@ export function createHtmlArtifactAuthoringPacket(
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
-    "This is a federated generation resource-selection packet for the current agent.",
+    "This is a federated generation source-selection packet for the current agent.",
     `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
@@ -200,7 +200,7 @@ export function createHtmlArtifactAuthoringPacket(
       return `- ${detail}`;
     }),
     "",
-    "## Open Design Authoring Rules",
+    "## Authoring Rules",
     "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.",
     "- Read the local codebase, brand assets, and existing design systems when the prompt depends on this repository.",
     "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
@@ -228,7 +228,7 @@ export function createHtmlArtifactAuthoringPacket(
   ].join("\n");
 
   return {
-    type: "open-design-resource-selection",
+    type: "generation-source-selection",
     kind: options.kind,
     prompt: options.prompt,
     registryVersion: candidateSlice.registryVersion,

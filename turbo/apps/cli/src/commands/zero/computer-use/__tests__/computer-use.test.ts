@@ -174,6 +174,8 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
     expect(helpOutput).toContain("/tmp/vm0/computer-use");
     expect(helpOutput).toContain("overwrites the same files");
+    expect(helpOutput).toContain("shift+semicolon");
+    expect(helpOutput).toContain("Control_L+J");
   });
 
   it("should write screenshot and app state data to local files in command result console output", async () => {
@@ -200,6 +202,33 @@ describe("computer-use command visibility", () => {
       screenshotBytes,
     );
     await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
+  });
+
+  it("should print app bundle identifiers in list-apps output", async () => {
+    const text = await formatComputerUseResultForConsole({
+      apps: [
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+      ],
+    });
+
+    expect(JSON.parse(text)).toStrictEqual({
+      status: "succeeded",
+      apps: [
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+      ],
+    });
   });
 
   it("should print screenshot and app state file paths for get-app-state", async () => {

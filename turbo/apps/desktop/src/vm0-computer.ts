@@ -101,7 +101,7 @@ const zeroCommands = new Map<string, string>([
   ["press-key", "keyboard.press_key"],
 ]);
 
-const COMPUTER_USE_SCREENSHOT_DIR = "/tmp/vm0/computer-use";
+const COMPUTER_USE_OUTPUT_DIR = "/tmp/vm0/computer-use";
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 
 function usage(): string {
@@ -392,12 +392,28 @@ async function writeScreenshotDataUrl(
   const appName = sanitizeFilenamePart(result.app, "app");
   const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
   const outputPath = path.join(
-    COMPUTER_USE_SCREENSHOT_DIR,
+    COMPUTER_USE_OUTPUT_DIR,
     `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
   );
 
-  await mkdir(COMPUTER_USE_SCREENSHOT_DIR, { recursive: true });
+  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
   await writeFile(outputPath, Buffer.from(base64Data, "base64"));
+  return outputPath;
+}
+
+async function writeAppStateText(
+  result: Record<string, unknown>,
+  appState: string,
+): Promise<string> {
+  const appName = sanitizeFilenamePart(result.app, "app");
+  const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
+  const outputPath = path.join(
+    COMPUTER_USE_OUTPUT_DIR,
+    `${appName}-${snapshotId}.appState.txt`,
+  );
+
+  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
+  await writeFile(outputPath, appState, "utf8");
   return outputPath;
 }
 
@@ -431,7 +447,7 @@ async function formatComputerUseResultForConsole(
   }
   const appState = stringField(result, "appState");
   if (appState) {
-    printable.appState = appState;
+    printable.appState = await writeAppStateText(result, appState);
   }
   const screenshot = stringField(result, "screenshot");
   if (screenshot) {

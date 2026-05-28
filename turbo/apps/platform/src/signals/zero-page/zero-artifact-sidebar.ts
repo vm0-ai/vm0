@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
@@ -21,9 +21,17 @@ import {
 // attachment next to the chat thread area. Gated behind
 // FeatureSwitchKey.ChatArtifactSidebar; the OFF path keeps the old modal
 // lightbox in place.
+//
+// Every piece of sidebar state lives in `?artifact=` (plus the optional
+// `?artifact-fullscreen=1` flag). There is no in-memory state — opening
+// is a search-param write, closing is a search-param delete, and the
+// fullscreen toggle is just another search-param flip. Components read
+// the state through `currentArtifactRef$` / `artifactFullscreen$`, which
+// are pure computeds over `searchParams$`.
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_QUERY_PARAM = "artifact";
+const ARTIFACT_FULLSCREEN_PARAM = "artifact-fullscreen";
 const IMAGE_ID_PREFIX = "image:";
 
 export type ArtifactPreviewKind =
@@ -89,43 +97,41 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
 const openArtifact$ = command(({ get, set }, url: string) => {
   const params = new URLSearchParams(get(searchParams$));
   params.set(ARTIFACT_QUERY_PARAM, url);
+  // Don't carry a previous artifact's fullscreen flag onto a fresh open;
+  // a new artifact starts at the default 50/50 size.
+  params.delete(ARTIFACT_FULLSCREEN_PARAM);
   set(updateSearchParams$, params);
 });
 
 export const closeArtifact$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
-  if (!params.has(ARTIFACT_QUERY_PARAM)) {
+  if (
+    !params.has(ARTIFACT_QUERY_PARAM) &&
+    !params.has(ARTIFACT_FULLSCREEN_PARAM)
+  ) {
     return;
   }
   params.delete(ARTIFACT_QUERY_PARAM);
-  set(replaceSearchParams$, params);
-  set(internalArtifactFullscreen$, false);
-});
-
-export const clearArtifactPreview$ = command(({ get, set }) => {
-  const params = new URLSearchParams(get(searchParams$));
-  set(internalArtifactFullscreen$, false);
-  if (!params.has(ARTIFACT_QUERY_PARAM)) {
-    return;
-  }
-  params.delete(ARTIFACT_QUERY_PARAM);
+  params.delete(ARTIFACT_FULLSCREEN_PARAM);
   set(replaceSearchParams$, params);
 });
 
-// ---------------------------------------------------------------------------
-// Fullscreen toggle — the sidebar fills the viewport on demand. Lives in
-// memory (intentionally not URL-routed) so deep links open at the default
-// 50/50 size.
-// ---------------------------------------------------------------------------
-
-const internalArtifactFullscreen$ = state<boolean>(false);
+export const clearArtifactPreview$ = command(({ set }) => {
+  set(closeArtifact$);
+});
 
 export const artifactFullscreen$ = computed((get) => {
-  return get(internalArtifactFullscreen$);
+  return get(searchParams$).get(ARTIFACT_FULLSCREEN_PARAM) === "1";
 });
 
 export const toggleArtifactFullscreen$ = command(({ get, set }) => {
-  set(internalArtifactFullscreen$, !get(internalArtifactFullscreen$));
+  const params = new URLSearchParams(get(searchParams$));
+  if (params.get(ARTIFACT_FULLSCREEN_PARAM) === "1") {
+    params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  } else {
+    params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
+  }
+  set(updateSearchParams$, params);
 });
 
 // ---------------------------------------------------------------------------

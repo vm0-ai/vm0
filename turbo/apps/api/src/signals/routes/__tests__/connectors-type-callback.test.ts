@@ -185,8 +185,8 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-client-secret");
   mockOptionalEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-client-id");
   mockOptionalEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-client-secret");
-  mockOptionalEnv("SLACK_CLIENT_ID", "slack-client-id");
-  mockOptionalEnv("SLACK_CLIENT_SECRET", "slack-client-secret");
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "slack-client-id");
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-client-secret");
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_ID", "strava-client-id");
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-client-secret");
   mockOptionalEnv("VERCEL_INTEGRATION_SLUG", "vm0-test");

@@ -96,7 +96,7 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints an Open Design registry-selection packet for the current agent.
+  Prints a source-selection packet for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN

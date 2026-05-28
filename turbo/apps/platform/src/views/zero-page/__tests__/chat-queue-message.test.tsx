@@ -308,6 +308,40 @@ describe("chat queued user messages", () => {
     await expectNoRecalledMessages();
   });
 
+  it("stops an active run when its user message is outside the loaded page", async () => {
+    const interruptedRuns: string[] = [];
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          id: "msg-active-assistant",
+          role: "assistant",
+          content: "Still working...",
+          runId: "run-offscreen-user",
+          status: "running",
+          createdAt: "2026-03-10T00:00:10Z",
+        },
+      ],
+      onInterruptMessageAppend: (body) => {
+        interruptedRuns.push(body.interruptsRunId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Stop"));
+
+    await waitFor(() => {
+      expect(interruptedRuns).toStrictEqual(["run-offscreen-user"]);
+    });
+  });
+
   it("stops the active run and recalls three queued messages without showing a thinking indicator", async () => {
     const user = userEvent.setup({ delay: null });
     const interruptedRuns: string[] = [];

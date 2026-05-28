@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -40,6 +41,10 @@ export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
  * `(run_id, sequence_number)` for idempotent, lock-free inserts from both the
  * event consumer and the callback's final sweep.
  *
+ * Terminal-state assistant rows carry `run_lifecycle_event` set to one of
+ * `completed | failed | cancelled`. Exactly one such row exists per `run_id`;
+ * the indicator and dim finish line are derived from this row.
+ *
  * Summaries (tool-use activity) are NOT stored here — the client fetches
  * them in real-time from the telemetry/logs endpoint for active runs.
  */
@@ -76,6 +81,8 @@ export const chatMessages = pgTable(
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     error: text("error"),
+    /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
+    runLifecycleEvent: text("run_lifecycle_event"),
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
@@ -101,6 +108,9 @@ export const chatMessages = pgTable(
         table.runId,
         table.sequenceNumber,
       ),
+      uniqueIndex("chat_messages_run_lifecycle_unique")
+        .on(table.runId)
+        .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
     ];
   },
 );

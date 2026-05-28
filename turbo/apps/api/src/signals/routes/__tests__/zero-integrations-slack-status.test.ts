@@ -28,7 +28,7 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   beforeEach(() => {
-    mockEnv("SLACK_CLIENT_ID", "test-slack-client-id");
+    mockEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   });
 

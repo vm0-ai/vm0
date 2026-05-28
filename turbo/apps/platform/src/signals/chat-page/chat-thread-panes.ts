@@ -205,6 +205,10 @@ export const loadLeftThread$ = command(
     }
 
     if (get(currentChatThreadId$) !== threadId) {
+      // Drop the artifact sidebar before switching threads — the open
+      // artifact is anchored to the previous thread's messages, so
+      // preserving `?artifact=` (which `pushPathSilently$` does by design)
+      // would carry over a stale preview.
       set(clearArtifactPreview$);
       set(pushPathSilently$, "/chats/:threadId", { threadId });
     }

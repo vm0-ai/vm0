@@ -14,7 +14,7 @@ export const reportCommand = createOpenDesignArtifactGenerateCommand({
   name: "report",
   generationType: "report",
   target: "report",
-  description: "Generate an Open Design HTML report from a prompt",
+  description: "Generate an HTML report from a prompt",
   usageCommand: "zero generate report",
   examples: `  Generate report:      zero generate report --prompt "A Q2 usage report for the API team"
   Stable hosted slug:    zero generate report --site api-usage-q2 --prompt "A Q2 usage report"
@@ -32,10 +32,10 @@ export const docsDesignCommand = createOpenDesignArtifactGenerateCommand({
   name: "docs-design",
   generationType: "docs-design",
   target: "docs-design",
-  description: "Generate an Open Design documentation design from a prompt",
+  description: "Generate a documentation design from a prompt",
   usageCommand: "zero generate docs-design",
-  examples: `  Generate docs design: zero generate docs-design --prompt "Docs for adding OpenDesign artifact targets"
-  Stable hosted slug:    zero generate docs-design --site opendesign-target-docs --prompt "OpenDesign target docs"
+  examples: `  Generate docs design: zero generate docs-design --prompt "Docs for adding artifact targets"
+  Stable hosted slug:    zero generate docs-design --site artifact-target-docs --prompt "Artifact target docs"
   List providers:        zero generate docs-design`,
   details: standardDetails("docs-design"),
   artifactRules: [
@@ -50,10 +50,10 @@ export const posterCommand = createOpenDesignArtifactGenerateCommand({
   name: "poster",
   generationType: "poster",
   target: "poster",
-  description: "Generate an Open Design HTML poster from a prompt",
+  description: "Generate an HTML poster from a prompt",
   usageCommand: "zero generate poster",
-  examples: `  Generate poster:      zero generate poster --prompt "A launch poster for OpenDesign artifact targets"
-  Stable hosted slug:    zero generate poster --site opendesign-poster --prompt "A launch poster"
+  examples: `  Generate poster:      zero generate poster --prompt "A launch poster for artifact targets"
+  Stable hosted slug:    zero generate poster --site artifact-poster --prompt "A launch poster"
   List providers:        zero generate poster`,
   details: standardDetails("poster"),
   artifactRules: [
@@ -68,7 +68,7 @@ export const dashboardDesignCommand = createOpenDesignArtifactGenerateCommand({
   name: "dashboard-design",
   generationType: "dashboard-design",
   target: "dashboard-design",
-  description: "Generate an Open Design dashboard design from a prompt",
+  description: "Generate a dashboard design from a prompt",
   usageCommand: "zero generate dashboard-design",
   examples: `  Generate dash design: zero generate dashboard-design --prompt "An ops dashboard for generation runs"
   Stable hosted slug:    zero generate dashboard-design --site generation-ops --prompt "A generation ops dashboard"
@@ -86,8 +86,7 @@ export const mobileAppDesignCommand = createOpenDesignArtifactGenerateCommand({
   name: "mobile-app-design",
   generationType: "mobile-app-design",
   target: "mobile-app-design",
-  description:
-    "Generate an Open Design mobile app design prototype from a prompt",
+  description: "Generate a mobile app design prototype from a prompt",
   usageCommand: "zero generate mobile-app-design",
   examples: `  Generate mobile UI:   zero generate mobile-app-design --prompt "A mobile review screen for generation artifacts"
   Stable hosted slug:    zero generate mobile-app-design --site generation-mobile-review --prompt "A mobile review screen"
