@@ -15,6 +15,7 @@
     "build:native": "node scripts/build-native-helper.js",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "check-types": "tsc --noEmit",
+    "computer-use:eval": "pnpm build:native && pnpm build:cli && pnpm exec tsx scripts/computer-use-eval.ts",
     "dev": "pnpm build && electron-forge start",
     "dev:packaged": "pnpm package && node scripts/run-packaged-app.js",
     "lint": "oxlint src --deny-warnings",

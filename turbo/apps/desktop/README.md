@@ -65,6 +65,45 @@ The desktop app does not start platform/web/api/proxy services itself. Start the
 target platform surface separately, then pass its URL through
 `VM0_DESKTOP_PLATFORM_URL`.
 
+## Manual Computer Use driver eval
+
+Run the manual `vm0-computer` driver eval suite from the monorepo root with:
+
+```bash
+pnpm desktop:eval
+```
+
+This command is intentionally outside the default CI path. It builds the native
+helper and `vm0-computer` CLI, launches a local HTML fixture in Electron,
+starts a private `vm0-computer` daemon, and executes deterministic driver
+commands against the fixture. The fixture reports its own state through a local
+HTTP oracle, so the eval does not rely on `vm0-computer` to verify itself.
+
+Useful focused runs:
+
+```bash
+pnpm desktop:eval -- --case click-element-index
+pnpm desktop:eval -- --case click-coordinates
+pnpm desktop:eval -- --repeat 5
+```
+
+The eval records command output, app-state artifact paths, screenshot artifact
+paths, oracle state, and a summary JSON file under
+`/tmp/vm0/computer-use-evals/<run-id>`.
+
+The initial suite covers the supported driver operations: app listing, app
+opening, app-state capture, element-index clicking, screenshot-coordinate
+clicking, text typing, key presses, scrolling, value setting, accessibility
+actions, and fresh post-action state capture. Operations with observable fixture
+side effects are checked against the HTTP oracle; operations that Chromium does
+not expose as DOM side effects are checked for command dispatch metadata and
+fresh post-action artifacts.
+
+When fixing a Computer Use driver bug or corner case, add the smallest
+deterministic case that reproduces it to
+`scripts/computer-use-eval.ts`. Keep the task steps fixed and keep the success
+oracle independent from `vm0-computer` output.
+
 ## Internal macOS artifacts
 
 The `Desktop` GitHub Actions workflow builds unsigned macOS artifacts for

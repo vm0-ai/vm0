@@ -8,6 +8,7 @@
     "dev:auth": "bash ../scripts/dev-auth.sh",
     "desktop:dev": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged",
     "desktop:dev:forge": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev",
+    "desktop:eval": "pnpm -F @vm0/desktop computer-use:eval",
     "desktop:make": "pnpm -F @vm0/desktop make",
     "lint": "turbo run lint --concurrency=1",
     "format": "prettier --write --ignore-unknown .",
