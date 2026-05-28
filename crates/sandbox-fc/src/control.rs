@@ -22,7 +22,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError};
+use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError, SandboxId};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -616,6 +616,20 @@ fn resolve_control_socket_in(
     sock_parent: &Path,
     input: &str,
 ) -> Result<PathBuf, SandboxControlError> {
+    if let Ok(sandbox_id) = input.parse::<SandboxId>() {
+        let control_sock = SockPaths::new(sock_parent.join(sandbox_id.to_string())).control_sock();
+        return match control_sock.try_exists() {
+            Ok(true) => Ok(control_sock),
+            Ok(false) => Err(SandboxControlError::NotFound(format!(
+                "no running sandbox matches '{input}' (no control.sock found)"
+            ))),
+            Err(e) => Err(SandboxControlError::Connection(format!(
+                "cannot check {}: {e}",
+                control_sock.display()
+            ))),
+        };
+    }
+
     let entries = std::fs::read_dir(sock_parent).map_err(|e| {
         SandboxControlError::Connection(format!(
             "cannot read {}: {e} (is a sandbox running?)",
@@ -624,7 +638,13 @@ fn resolve_control_socket_in(
     })?;
 
     let mut matches: Vec<(String, PathBuf)> = Vec::new();
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            SandboxControlError::Connection(format!(
+                "cannot read entry in {}: {e}",
+                sock_parent.display()
+            ))
+        })?;
         let name = entry.file_name();
         let Some(name_str) = name.to_str() else {
             continue;
@@ -633,8 +653,15 @@ fn resolve_control_socket_in(
             continue;
         }
         let control_sock = SockPaths::new(entry.path()).control_sock();
-        if control_sock.exists() {
-            matches.push((name_str.to_owned(), control_sock));
+        match control_sock.try_exists() {
+            Ok(true) => matches.push((name_str.to_owned(), control_sock)),
+            Ok(false) => {}
+            Err(e) => {
+                return Err(SandboxControlError::Connection(format!(
+                    "cannot check {}: {e}",
+                    control_sock.display()
+                )));
+            }
         }
     }
 
@@ -656,6 +683,7 @@ fn resolve_control_socket_in(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
     use std::os::unix::net::UnixListener as StdUnixListener;
 
     use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
@@ -1365,6 +1393,34 @@ mod tests {
     }
 
     #[test]
+    fn resolve_control_socket_full_id_returns_exact_socket_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_id = SandboxId::new_v4();
+
+        let (control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join(sandbox_id.to_string()));
+        let (_sibling_control_sock, _sibling_listener) =
+            bind_control_socket_for_test(&sock_parent.join(format!("{sandbox_id}-suffix")));
+
+        let resolved = resolve_control_socket_in(&sock_parent, &sandbox_id.to_string()).unwrap();
+
+        assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
+    fn resolve_control_socket_full_id_without_socket_returns_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_id = SandboxId::new_v4();
+        std::fs::create_dir_all(sock_parent.join(sandbox_id.to_string())).unwrap();
+
+        let err = resolve_control_socket_in(&sock_parent, &sandbox_id.to_string()).unwrap_err();
+
+        assert!(matches!(err, SandboxControlError::NotFound(_)));
+    }
+
+    #[test]
     fn resolve_control_socket_single_match_returns_socket_path() {
         let dir = tempfile::tempdir().unwrap();
         let sock_parent = dir.path().join("sock");
@@ -1380,6 +1436,23 @@ mod tests {
         let resolved = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap();
 
         assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
+    fn resolve_control_socket_prefix_socket_check_error_returns_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_dir = sock_parent.join("sandbox-aa-loop");
+        std::fs::create_dir_all(&sandbox_dir).unwrap();
+        let control_sock = SockPaths::new(sandbox_dir).control_sock();
+        symlink("control.sock", &control_sock).unwrap();
+
+        let err = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap_err();
+
+        let SandboxControlError::Connection(message) = err else {
+            panic!("expected connection error");
+        };
+        assert!(message.contains(&control_sock.display().to_string()));
     }
 
     #[test]
