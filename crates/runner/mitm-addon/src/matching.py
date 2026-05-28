@@ -68,6 +68,7 @@ class _CompiledBase(NamedTuple):
     raw: str
     parts: _BaseUrlParts
     has_params: bool
+    has_query_or_fragment: bool
     host_segments: tuple[ParsedSegment, ...]
     path_segments: tuple[ParsedSegment, ...]
 
@@ -760,7 +761,13 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         return None
 
     has_params = "{" in base
-    parts = _split_base_match_url(base, allow_query_fragment=False)
+    try:
+        parsed = urlsplit(base)
+    except ValueError:
+        return None
+
+    has_query_or_fragment = bool(parsed.query or parsed.fragment)
+    parts = _split_base_match_url(base)
     if parts is None:
         return None
 
@@ -776,7 +783,14 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
             return None
         path_segments = compiled_path
 
-    return _CompiledBase(base, parts, has_params, host_segments, path_segments)
+    return _CompiledBase(
+        base,
+        parts,
+        has_params,
+        has_query_or_fragment,
+        host_segments,
+        path_segments,
+    )
 
 
 def _match_compiled_base_url_parts(
@@ -868,7 +882,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
             base = _compile_base(raw_base)
             if base is None:
                 continue
-            base_malformed = not _compiled_base_params_are_valid(base)
+            base_malformed = base.has_query_or_fragment or not _compiled_base_params_are_valid(base)
             auth_malformed = not _auth_config_is_valid(api_entry)
 
             compiled_permissions: list[_CompiledPermission] = []
