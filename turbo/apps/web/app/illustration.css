@@ -17,10 +17,12 @@
   }
 }
 
-
 .illu-meta-grid {
   display: grid;
-  grid-template-columns: minmax(120px, max-content) minmax(160px, max-content) minmax(160px, max-content);
+  grid-template-columns: minmax(120px, max-content) minmax(
+      160px,
+      max-content
+    ) minmax(160px, max-content);
   gap: 28px 48px;
   margin: 28px 0 0;
   padding-top: 24px;
