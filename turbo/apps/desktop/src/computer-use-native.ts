@@ -120,6 +120,7 @@ interface ComputerUseNativeFailureResponse {
   readonly error?: {
     readonly code?: unknown;
     readonly message?: unknown;
+    readonly details?: unknown;
   };
 }
 
@@ -142,6 +143,7 @@ export class ComputerUseNativeHelperError extends Error {
   constructor(
     readonly code: ComputerUseNativeErrorCode,
     message: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ComputerUseNativeHelperError";
@@ -172,6 +174,12 @@ function responseErrorMessage(value: unknown): string {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : "Native Computer Use helper failed";
+}
+
+function responseErrorDetails(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function parseHelperResponse(output: string): ComputerUseNativeResponse {
@@ -389,6 +397,7 @@ async function runComputerUseHelper(
           throw new ComputerUseNativeHelperError(
             responseErrorCode(response.error?.code),
             responseErrorMessage(response.error?.message),
+            responseErrorDetails(response.error?.details),
           );
         }
         resolve(resultRecord(response.result ?? {}, request.kind));
@@ -549,6 +558,7 @@ class ComputerUseNativeRuntimeClient {
           new ComputerUseNativeHelperError(
             responseErrorCode(response.error?.code),
             responseErrorMessage(response.error?.message),
+            responseErrorDetails(response.error?.details),
           ),
         );
         return;

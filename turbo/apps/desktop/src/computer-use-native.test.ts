@@ -75,6 +75,15 @@ function responseFor(request) {
       result: {
         app: request.payload.app,
         snapshotId: request.payload.snapshotId,
+        appResolution: {
+          requested: request.payload.app,
+          matchedBy: "localized_name_exact",
+          name: "Safari",
+          bundleId: "com.apple.Safari",
+          appPath: "/Applications/Safari.app",
+          running: true,
+          pid: 42
+        },
         elements: [
           {
             index: 0,
@@ -121,6 +130,24 @@ function responseFor(request) {
       status: "succeeded",
       result: {
         normalizedKey: request.payload.key
+      }
+    };
+  }
+  if (request.kind === "app.open") {
+    return {
+      id: request.id,
+      status: "succeeded",
+      result: {
+        appResolution: {
+          requested: request.payload.app,
+          matchedBy: "localized_name_exact",
+          name: "Safari",
+          bundleId: "com.apple.Safari",
+          appPath: "/Applications/Safari.app",
+          running: true,
+          pid: 42
+        },
+        windowReady: true
       }
     };
   }
@@ -368,6 +395,49 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("preserves native error details", async () => {
+    const helper = await createHelper({
+      status: "failed",
+      error: {
+        code: "window_unavailable",
+        message:
+          "Unable to resolve a background window target for Google Chrome",
+        details: {
+          appResolution: {
+            requested: "Google Chrome",
+            matchedBy: "localized_name_exact",
+            name: "Google Chrome",
+            bundleId: "com.google.Chrome",
+            appPath: "/Applications/Google Chrome.app",
+            running: true,
+            pid: 42,
+          },
+        },
+      },
+    });
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        mode: "oneshot",
+      });
+
+      await expect(
+        backend.getAppState("Google Chrome", "desktop_test"),
+      ).rejects.toMatchObject({
+        code: "window_unavailable",
+        details: {
+          appResolution: {
+            requested: "Google Chrome",
+            bundleId: "com.google.Chrome",
+          },
+        },
+      });
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("reads normalized key names from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",
@@ -522,6 +592,11 @@ describe("computer use native backend", () => {
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
+        appResolution: {
+          requested: "Safari",
+          matchedBy: "localized_name_exact",
+          bundleId: "com.apple.Safari",
+        },
         appState: expect.stringMatching(
           /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
         ),
@@ -689,6 +764,13 @@ describe("computer use native backend", () => {
         "keyboard.type_text",
         "keyboard.press_key",
       ]);
+      const openRequestIndex = requests.findIndex((request) => {
+        return request.kind === "app.open";
+      });
+      expect(requests[openRequestIndex + 1]).toMatchObject({
+        kind: "app.state",
+        payload: { app: "com.apple.Safari" },
+      });
       expect(publicCommandRequests[2]?.payload).toMatchObject({
         app: "Safari",
         elementId: "w0.e0",

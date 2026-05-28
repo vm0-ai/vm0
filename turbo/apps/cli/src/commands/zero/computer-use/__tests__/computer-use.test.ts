@@ -171,6 +171,10 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("Workflow:");
     expect(helpOutput).toContain("zero computer-use list-apps");
     expect(helpOutput).toContain("zero computer-use get-app-state --app <app>");
+    expect(helpOutput).toContain("bundle id");
+    expect(helpOutput).toContain("app path");
+    expect(helpOutput).toContain("com.apple.Safari");
+    expect(helpOutput).toContain("/Applications/Safari.app");
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
     expect(helpOutput).toContain("/tmp/vm0/computer-use");
     expect(helpOutput).toContain("overwrites the same files");
@@ -185,6 +189,15 @@ describe("computer-use command visibility", () => {
     const text = await formatComputerUseResultForConsole({
       app: "Slack/Test App",
       snapshotId: "desktop_test_snapshot",
+      appResolution: {
+        requested: "Slack/Test App",
+        matchedBy: "localized_name_exact",
+        name: "Slack/Test App",
+        bundleId: "com.tinyspeck.slackmacgap",
+        appPath: "/Applications/Slack.app",
+        running: true,
+        pid: 42,
+      },
       appState,
       screenshot: `data:image/png;base64,${screenshotBase64}`,
       screenshotSource: "window",
@@ -193,6 +206,15 @@ describe("computer-use command visibility", () => {
     const parsed = JSON.parse(text) as Record<string, unknown>;
     expect(parsed.status).toBe("succeeded");
     expect(parsed.snapshotId).toBe("desktop_test_snapshot");
+    expect(parsed.appResolution).toStrictEqual({
+      requested: "Slack/Test App",
+      matchedBy: "localized_name_exact",
+      name: "Slack/Test App",
+      bundleId: "com.tinyspeck.slackmacgap",
+      appPath: "/Applications/Slack.app",
+      running: true,
+      pid: 42,
+    });
     expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
     expect(parsed.appState).toBe(TEST_APP_STATE_PATH);
     expect(text).not.toContain("screenshotSource");

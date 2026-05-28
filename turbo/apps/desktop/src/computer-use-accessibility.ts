@@ -101,6 +101,7 @@ export interface AccessibilityAppStateSnapshot {
   readonly bundleId?: string;
   readonly pid?: number;
   readonly appPath?: string;
+  readonly appResolution?: Record<string, unknown>;
   readonly windowTitle?: string;
   readonly windowId?: number;
   readonly windowFrame?: ComputerUseCoordinateBounds;
@@ -163,6 +164,7 @@ export interface ComputerUseCommandFailure {
       | "app_open_failed"
       | "unsupported_command";
     readonly message: string;
+    readonly details?: Record<string, unknown>;
   };
 }
 
@@ -1295,8 +1297,9 @@ async function withPostActionAppState(args: {
   readonly nativeBackend: ComputerUseNativeBackend;
   readonly snapshotStore: ComputerUseSnapshotStore;
 }): Promise<ComputerUseCommandExecutionResult> {
+  const resolvedApp = appSelectorFromActionResult(args.actionResult.result);
   const appStateResult = await getAppState(
-    args.app,
+    resolvedApp ?? args.app,
     args.nativeBackend,
     args.snapshotStore,
   );
@@ -1310,6 +1313,32 @@ async function withPostActionAppState(args: {
       action: args.actionResult.result,
     },
   };
+}
+
+function appSelectorFromActionResult(
+  result: Record<string, unknown>,
+): string | null {
+  const resolution = result.appResolution;
+  if (!isRecordValue(resolution)) {
+    return null;
+  }
+  const bundleId = resolution.bundleId;
+  if (typeof bundleId === "string" && bundleId.trim().length > 0) {
+    return bundleId;
+  }
+  const appPath = resolution.appPath;
+  if (typeof appPath === "string" && appPath.trim().length > 0) {
+    return appPath;
+  }
+  const name = resolution.name;
+  if (typeof name === "string" && name.trim().length > 0) {
+    return name;
+  }
+  return null;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function executeWriteActionWithPostActionState(args: {
@@ -1862,6 +1891,7 @@ export async function executeComputerUseCommand(
         error: {
           code: error.code,
           message: error.message,
+          ...(error.details ? { details: error.details } : {}),
         },
       };
     }

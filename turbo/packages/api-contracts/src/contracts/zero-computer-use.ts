@@ -265,6 +265,7 @@ const computerUseWriteCommandCreateBodySchema =
 const computerUseCommandErrorSchema = z.object({
   code: computerUseCommandErrorCodeSchema,
   message: z.string(),
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 
 const computerUseCommandResultSchema = z.record(z.string(), z.unknown());

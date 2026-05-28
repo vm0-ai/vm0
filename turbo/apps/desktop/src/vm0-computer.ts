@@ -117,7 +117,10 @@ function usage(): string {
   vm0-computer set-value --app APP (--element-index N | --element ID) --value VALUE [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer perform-action --app APP (--element-index N | --element ID) --action ACTION [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer type-text --app APP --text TEXT [--timeout SECONDS] [--daemon-dir DIR]
-  vm0-computer press-key --app APP --key KEY [--timeout SECONDS] [--daemon-dir DIR]`;
+  vm0-computer press-key --app APP --key KEY [--timeout SECONDS] [--daemon-dir DIR]
+
+APP accepts an app name, bundle id, or app path. Use list-apps to inspect all
+available selectors, and prefer bundle id when app-name matching is ambiguous.`;
 }
 
 function fail(message: string, code = 1): never {
@@ -428,9 +431,18 @@ function compactActionResult(
       typeof value === "boolean"
     ) {
       compact[key] = value;
+    } else if (key === "appResolution" && isJsonObject(value)) {
+      compact[key] = value;
     }
   }
   return compact;
+}
+
+function errorDetailsText(details: unknown): string {
+  if (!isJsonObject(details)) {
+    return "";
+  }
+  return `\n${JSON.stringify({ details }, null, 2)}`;
 }
 
 async function formatComputerUseResultForConsole(
@@ -453,6 +465,10 @@ async function formatComputerUseResultForConsole(
   if (screenshot) {
     const screenshotPath = await writeScreenshotDataUrl(result, screenshot);
     printable.screenshot = screenshotPath ?? screenshot;
+  }
+  const appResolution = result.appResolution;
+  if (isJsonObject(appResolution)) {
+    printable.appResolution = appResolution;
   }
   const action = result.action;
   if (isJsonObject(action)) {
@@ -625,7 +641,9 @@ async function runCommandThroughDaemon(
         typeof error.code === "string" &&
         typeof error.message === "string"
       ) {
-        fail(`${error.code}: ${error.message}`);
+        fail(
+          `${error.code}: ${error.message}${errorDetailsText(error.details)}`,
+        );
       }
       fail("Computer-use command failed");
     }

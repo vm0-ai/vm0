@@ -66,7 +66,8 @@ const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 const COMPUTER_USE_HELP_TEXT = `
 Workflow:
   1. Start the Zero Desktop app and make sure Computer Use is online.
-  2. Run "zero computer-use list-apps" to find the target app name or bundle id.
+  2. Run "zero computer-use list-apps" to find the target app name, bundle id,
+     or app path. Prefer bundle id when app-name matching is ambiguous.
   3. Run "zero computer-use get-app-state --app <app>" to get a screenshot,
      snapshotId, visible element indexes, and accessibility state.
   4. Prefer element actions with --snapshot-id and --element-index. Use --x/--y
@@ -78,6 +79,8 @@ Workflow:
      overwrites the same files.
 
 Notes:
+  APP accepts an app name such as Safari, a bundle id such as com.apple.Safari,
+  or an app path such as /Applications/Safari.app.
   Write commands are sent to the connected Desktop host and may wait for local
   approval before they run. Coordinate fallbacks use screenshot coordinates from
   get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
@@ -279,9 +282,20 @@ function compactActionResult(
       typeof value === "boolean"
     ) {
       compact[key] = value;
+    } else if (key === "appResolution" && isRecord(value)) {
+      compact[key] = value;
     }
   }
   return compact;
+}
+
+function errorDetailsText(
+  details: Record<string, unknown> | undefined,
+): string {
+  if (!details) {
+    return "";
+  }
+  return `\n${JSON.stringify({ details }, null, 2)}`;
 }
 
 export async function formatComputerUseResultForConsole(
@@ -304,6 +318,10 @@ export async function formatComputerUseResultForConsole(
   if (screenshot) {
     const screenshotPath = await writeScreenshotDataUrl(result, screenshot);
     printable.screenshot = screenshotPath ?? screenshot;
+  }
+  const appResolution = result.appResolution;
+  if (isRecord(appResolution)) {
+    printable.appResolution = appResolution;
   }
   const action = result.action;
   if (isRecord(action)) {
@@ -347,7 +365,7 @@ async function waitForCommand(
     if (command.status === "failed") {
       throw new Error(
         command.error
-          ? `${command.error.code}: ${command.error.message}`
+          ? `${command.error.code}: ${command.error.message}${errorDetailsText(command.error.details)}`
           : "Computer-use command failed",
       );
     }
@@ -410,7 +428,10 @@ function addTargetOptions(command: Command): Command {
 }
 
 function appOption(command: Command): Command {
-  return command.requiredOption("--app <name>", "Target app name or bundle id");
+  return command.requiredOption(
+    "--app <app>",
+    "Target app name, bundle id, or app path",
+  );
 }
 
 const listAppsCommand = addTargetOptions(

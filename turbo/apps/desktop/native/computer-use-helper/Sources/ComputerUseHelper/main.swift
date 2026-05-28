@@ -3,9 +3,16 @@ import ApplicationServices
 import Darwin
 import Foundation
 
-struct HelperFailure: Error {
+struct HelperFailure: Error, @unchecked Sendable {
     let code: String
     let message: String
+    let details: [String: Any]?
+
+    init(code: String, message: String, details: [String: Any]? = nil) {
+        self.code = code
+        self.message = message
+        self.details = details
+    }
 }
 
 struct SnapshotLimits {
@@ -407,6 +414,11 @@ struct WindowTarget {
     let windowNumber: Int
     let title: String?
     let frame: CGRect
+}
+
+struct RunningAppResolution {
+    let app: NSRunningApplication
+    let matchedBy: String
 }
 
 struct WindowScreenshot {
@@ -1413,7 +1425,43 @@ func optionalRectPayload(_ request: [String: Any], _ key: String) throws -> CGRe
     return try rectPayload(request, key)
 }
 
-func findRunningApp(named appName: String) -> NSRunningApplication? {
+func standardizedApplicationPath(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.hasPrefix("/") || trimmed.hasPrefix("~") else {
+        return nil
+    }
+    let expanded = (trimmed as NSString).expandingTildeInPath
+    return URL(fileURLWithPath: expanded).standardizedFileURL.path
+}
+
+func runningApplicationPath(_ app: NSRunningApplication) -> String? {
+    return app.bundleURL?.standardizedFileURL.path
+}
+
+func appResolutionRecord(requested appName: String, app: NSRunningApplication, matchedBy: String) -> [String: Any] {
+    var record: [String: Any] = [
+        "requested": appName,
+        "matchedBy": matchedBy,
+        "running": true,
+        "pid": Int(app.processIdentifier),
+    ]
+    if let name = app.localizedName, !name.isEmpty {
+        record["name"] = name
+    }
+    if let bundleId = app.bundleIdentifier, !bundleId.isEmpty {
+        record["bundleId"] = bundleId
+    }
+    if let appPath = runningApplicationPath(app), !appPath.isEmpty {
+        record["appPath"] = appPath
+    }
+    return record
+}
+
+func appResolutionRecord(requested appName: String, resolution: RunningAppResolution) -> [String: Any] {
+    return appResolutionRecord(requested: appName, app: resolution.app, matchedBy: resolution.matchedBy)
+}
+
+func runningAppResolution(named appName: String) -> RunningAppResolution? {
     let apps = NSWorkspace.shared.runningApplications.filter { app in
         !app.isTerminated
     }
@@ -1421,25 +1469,46 @@ func findRunningApp(named appName: String) -> NSRunningApplication? {
     if let exactBundle = apps.first(where: { app in
         app.bundleIdentifier == appName
     }) {
-        return exactBundle
+        return RunningAppResolution(app: exactBundle, matchedBy: "bundle_id_exact")
     }
 
     let normalized = appName.lowercased()
     if let bundleMatch = apps.first(where: { app in
         app.bundleIdentifier?.lowercased() == normalized
     }) {
-        return bundleMatch
+        return RunningAppResolution(app: bundleMatch, matchedBy: "bundle_id_case_insensitive")
+    }
+
+    if let requestedPath = standardizedApplicationPath(appName) {
+        if let exactPath = apps.first(where: { app in
+            runningApplicationPath(app) == requestedPath
+        }) {
+            return RunningAppResolution(app: exactPath, matchedBy: "app_path_exact")
+        }
+        let normalizedPath = requestedPath.lowercased()
+        if let pathMatch = apps.first(where: { app in
+            runningApplicationPath(app)?.lowercased() == normalizedPath
+        }) {
+            return RunningAppResolution(app: pathMatch, matchedBy: "app_path_case_insensitive")
+        }
     }
 
     if let exactName = apps.first(where: { app in
         app.localizedName == appName
     }) {
-        return exactName
+        return RunningAppResolution(app: exactName, matchedBy: "localized_name_exact")
     }
 
-    return apps.first { app in
+    guard let nameMatch = apps.first(where: { app in
         app.localizedName?.lowercased() == normalized
+    }) else {
+        return nil
     }
+    return RunningAppResolution(app: nameMatch, matchedBy: "localized_name_case_insensitive")
+}
+
+func findRunningApp(named appName: String) -> NSRunningApplication? {
+    return runningAppResolution(named: appName)?.app
 }
 
 func resolveRunningApp(named appName: String) throws -> NSRunningApplication {
@@ -1963,14 +2032,27 @@ func waitForWindowTarget(app: NSRunningApplication, timeout: TimeInterval = 3) -
     return resolveWindowTarget(app: app)
 }
 
-func backgroundTargetUnavailableMessage(appName: String) -> String {
-    return "Unable to resolve a background window target for \(appName)"
+func backgroundTargetUnavailableMessage(appName: String, appResolution: [String: Any]? = nil) -> String {
+    guard let appResolution else {
+        return "Unable to resolve a background window target for \(appName)"
+    }
+    let matchedBy = appResolution["matchedBy"] as? String ?? "unknown"
+    let target = (appResolution["bundleId"] as? String) ??
+        (appResolution["appPath"] as? String) ??
+        (appResolution["name"] as? String) ??
+        appName
+    if let pid = appResolution["pid"] as? Int {
+        return "Unable to resolve a background window target for \(appName) (resolved by \(matchedBy) to \(target), pid \(pid))"
+    }
+    return "Unable to resolve a background window target for \(appName) (resolved by \(matchedBy) to \(target))"
 }
 
-func windowTargetUnavailableFailure(appName: String) -> HelperFailure {
+func windowTargetUnavailableFailure(appName: String, appResolution: [String: Any]? = nil) -> HelperFailure {
+    let details = appResolution.map { ["appResolution": $0] }
     return HelperFailure(
         code: "window_unavailable",
-        message: backgroundTargetUnavailableMessage(appName: appName)
+        message: backgroundTargetUnavailableMessage(appName: appName, appResolution: appResolution),
+        details: details
     )
 }
 
@@ -2892,12 +2974,14 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     let appName = try requiredString(request, "app")
     let snapshotId = optionalString(request, "snapshotId") ?? UUID().uuidString.lowercased()
 
-    guard let runningApp = findRunningApp(named: appName) else {
+    guard let resolution = runningAppResolution(named: appName) else {
         throw HelperFailure(
             code: "app_not_found",
             message: "App is not running: \(appName)"
         )
     }
+    let runningApp = resolution.app
+    let appResolution = appResolutionRecord(requested: appName, resolution: resolution)
 
     let root = AXUIElementCreateApplication(runningApp.processIdentifier)
     enableBestEffortAccessibilityModes(root)
@@ -2942,6 +3026,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
         "nodeCount": nodeCount,
         "truncated": !truncationReasons.isEmpty,
         "truncationReasons": truncationReasons,
+        "appResolution": appResolution,
     ]
     if let focusedElementIndex = indexed.focusedElementIndex {
         response["focusedElementIndex"] = focusedElementIndex
@@ -2956,7 +3041,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
         response["windowTitle"] = windowTitle
     }
     guard let target = resolveWindowTarget(app: runningApp, root: root) else {
-        throw windowTargetUnavailableFailure(appName: appName)
+        throw windowTargetUnavailableFailure(appName: appName, appResolution: appResolution)
     }
     let screenshot = try BackgroundWindowScreenshot.capture(windowNumber: target.windowNumber)
     let sourceName = target.title ??
@@ -2984,9 +3069,20 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
         dispatchTarget: "target_app",
         inputRisk: "background_app_launch"
     ) {
-        let runningApp = findRunningApp(named: appName)
+        let runningResolution = runningAppResolution(named: appName)
+        let runningApp = runningResolution?.app
         if let runningApp, resolveWindowTarget(app: runningApp) != nil {
-            return (targetPID: runningApp.processIdentifier, result: ["windowReady": true])
+            return (
+                targetPID: runningApp.processIdentifier,
+                result: [
+                    "windowReady": true,
+                    "appResolution": appResolutionRecord(
+                        requested: appName,
+                        app: runningApp,
+                        matchedBy: runningResolution?.matchedBy ?? "running_app"
+                    ),
+                ]
+            )
         }
 
         let appURL = runningApp.flatMap { app in
@@ -3007,6 +3103,8 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
             throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
         }
 
+        var appResolution = appResolutionRecord(requested: appName, app: launchedApp, matchedBy: "launch_result")
+
         if waitForWindowTarget(app: launchedApp, timeout: 2) == nil {
             if let appURL {
                 targetApp = try openApplication(at: appURL, named: appName, activates: true) ?? launchedApp
@@ -3015,13 +3113,22 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
             }
         }
 
-        guard let appWithWindow = targetApp,
-              waitForWindowTarget(app: appWithWindow, timeout: 3) != nil
-        else {
-            throw windowTargetUnavailableFailure(appName: appName)
+        guard let appWithWindow = targetApp else {
+            throw windowTargetUnavailableFailure(appName: appName, appResolution: appResolution)
         }
 
-        return (targetPID: appWithWindow.processIdentifier, result: ["windowReady": true])
+        appResolution = appResolutionRecord(requested: appName, app: appWithWindow, matchedBy: "launch_result")
+        guard waitForWindowTarget(app: appWithWindow, timeout: 3) != nil else {
+            throw windowTargetUnavailableFailure(appName: appName, appResolution: appResolution)
+        }
+
+        return (
+            targetPID: appWithWindow.processIdentifier,
+            result: [
+                "windowReady": true,
+                "appResolution": appResolution,
+            ]
+        )
     }
 }
 
@@ -3680,6 +3787,17 @@ func writeJSONObject(_ object: [String: Any]) throws {
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
+func errorResponseObject(for failure: HelperFailure) -> [String: Any] {
+    var error: [String: Any] = [
+        "code": failure.code,
+        "message": failure.message,
+    ]
+    if let details = failure.details {
+        error["details"] = details
+    }
+    return error
+}
+
 func responseObject(for request: [String: Any], session: ComputerUseRuntimeSession?) -> [String: Any] {
     var response: [String: Any]
     do {
@@ -3692,10 +3810,7 @@ func responseObject(for request: [String: Any], session: ComputerUseRuntimeSessi
     } catch let failure as HelperFailure {
         response = [
             "status": "failed",
-            "error": [
-                "code": failure.code,
-                "message": failure.message,
-            ],
+            "error": errorResponseObject(for: failure),
         ]
     } catch {
         response = [
@@ -3732,10 +3847,7 @@ func runOneShot() {
     } catch let failure as HelperFailure {
         try? writeJSONObject([
             "status": "failed",
-            "error": [
-                "code": failure.code,
-                "message": failure.message,
-            ],
+            "error": errorResponseObject(for: failure),
         ])
     } catch {
         try? writeJSONObject([
@@ -3766,10 +3878,7 @@ func runStdioSession() {
             } catch let failure as HelperFailure {
                 try? writeJSONObject([
                     "status": "failed",
-                    "error": [
-                        "code": failure.code,
-                        "message": failure.message,
-                    ],
+                    "error": errorResponseObject(for: failure),
                 ])
             } catch {
                 try? writeJSONObject([
