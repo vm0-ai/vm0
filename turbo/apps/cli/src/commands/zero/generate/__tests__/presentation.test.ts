@@ -3,7 +3,7 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): none for the OpenDesign path
+ * - Mock (external): none for the source-selection path
  * - Real (internal): prompt parsing and authoring packet generation
  */
 
@@ -34,7 +34,7 @@ describe("zero generate presentation command", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should print Open Design resource selection instructions for presentation", async () => {
+  it("should print source selection instructions for presentation", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -59,17 +59,17 @@ describe("zero generate presentation command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate presentation");
-    expect(stdout).toContain("federated generation resource-selection packet");
+    expect(stdout).toContain("federated generation source-selection packet");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
     expect(stdout).toContain("od:skill:article-magazine");
     expect(stdout).toContain("od:template:html-ppt-graphify-dark-graph");
     expect(stdout).toContain(
-      "Write the artifact under `./opendesign/mockups/api-migration-plan/`.",
+      "Write the artifact under `./generated/mockups/api-migration-plan/`.",
     );
     expect(stdout).toContain(
-      "zero host ./opendesign/mockups/api-migration-plan --site api-migration-plan",
+      "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
     );
     expect(stdout).toContain("Style: swiss");
     expect(stdout).toContain("Slide count: 10");
@@ -93,13 +93,13 @@ describe("zero generate presentation command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      type: "open-design-resource-selection",
+      type: "generation-source-selection",
       kind: "presentation",
       prompt: "JSON please",
-      outputDir: "./opendesign/mockups/api-migration-plan",
+      outputDir: "./generated/mockups/api-migration-plan",
       site: "api-migration-plan",
       hostCommand:
-        "zero host ./opendesign/mockups/api-migration-plan --site api-migration-plan",
+        "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
     });
     expect(parsed.registryVersion).toEqual(
       expect.stringContaining("nexu-io/open-design@"),

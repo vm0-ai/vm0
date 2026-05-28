@@ -3,7 +3,7 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): none for the OpenDesign path
+ * - Mock (external): none for the source-selection path
  * - Real (internal): prompt parsing and authoring packet generation
  */
 
@@ -33,7 +33,7 @@ describe("zero generate website command", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should print Open Design resource selection instructions for website", async () => {
+  it("should print source selection instructions for website", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -52,16 +52,16 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate website");
-    expect(stdout).toContain("federated generation resource-selection packet");
+    expect(stdout).toContain("federated generation source-selection packet");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain("od:template:web-prototype-taste-editorial");
     expect(stdout).toContain(
-      "Write the artifact under `./opendesign/mockups/clearpath-demo/`.",
+      "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(
-      "zero host ./opendesign/mockups/clearpath-demo --site clearpath-demo --spa",
+      "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
     );
     expect(stdout).toContain("Template direction: launch");
     expect(stdout).toContain("Audience: small engineering teams");
@@ -82,13 +82,13 @@ describe("zero generate website command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
     expect(parsed).toMatchObject({
-      type: "open-design-resource-selection",
+      type: "generation-source-selection",
       kind: "website",
       prompt: "observability launch site",
-      outputDir: "./opendesign/mockups/clearpath-demo",
+      outputDir: "./generated/mockups/clearpath-demo",
       site: "clearpath-demo",
       hostCommand:
-        "zero host ./opendesign/mockups/clearpath-demo --site clearpath-demo --spa",
+        "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
     });
     expect(parsed.selection).toEqual(
       expect.objectContaining({

@@ -670,7 +670,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     kind: "skill",
     name: "UI UX Pro Max",
     description:
-      "Catalog-only UI/UX Pro Max entry. The full upstream templates, data, and search workflow are not bundled in Open Design.",
+      "Catalog-only UI/UX Pro Max entry. The full upstream templates, data, and search workflow are not bundled in this registry.",
     source: { path: "skills/ui-ux-pro-max/SKILL.md" },
   },
   {
@@ -1342,7 +1342,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     kind: "template",
     name: "Live Artifact",
     description:
-      "Create refreshable, auditable Open Design artifacts backed by connector or local data. Trigger when the user asks for live dashboards, refreshable reports, synced views, or reusable data-backed artifacts.",
+      "Create refreshable, auditable artifacts backed by connector or local data. Trigger when the user asks for live dashboards, refreshable reports, synced views, or reusable data-backed artifacts.",
     source: { path: "design-templates/live-artifact" },
   },
   {
@@ -1388,7 +1388,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
   {
     id: "od:template:open-design-landing",
     kind: "template",
-    name: "Open Design Landing",
+    name: "Editorial Landing",
     description:
       "Single-page editorial landing site in the Atelier Zero visual language (Monocle / Apartamento / Études collage). Composes from a typed inputs.json with optional gpt-image-2 assets.",
     source: { path: "design-templates/open-design-landing" },
@@ -1396,7 +1396,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
   {
     id: "od:template:open-design-landing-deck",
     kind: "template",
-    name: "Open Design Landing Deck",
+    name: "Editorial Landing Deck",
     description:
       "Single-file slide deck in the Atelier Zero visual language — warm-paper, italic-serif emphasis, coral terminating dots, surreal collage. Horizontal swipe + ESC overview grid.",
     source: { path: "design-templates/open-design-landing-deck" },

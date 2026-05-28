@@ -90,7 +90,7 @@ Examples:
   List providers:        zero generate website
 
 Output:
-  Prints an Open Design registry-selection packet for the current agent.
+  Prints a source-selection packet for the current agent.
   With no --prompt and no piped input, prints the provider menu instead.
 
 Notes:

@@ -742,7 +742,7 @@ describe("zero generate feature switch visibility", () => {
     expect(visibleCommandNames(generateCommand)).toContain("website");
   });
 
-  it("should show Open Design artifact generation", async () => {
+  it("should show source-backed artifact generation", async () => {
     const token = buildZeroToken({
       userId: "user-non-staff",
       orgId: "org-non-staff",
