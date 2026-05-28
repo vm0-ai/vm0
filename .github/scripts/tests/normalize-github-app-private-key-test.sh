@@ -74,6 +74,11 @@ collapsed_output="${TMPDIR}/collapsed-output"
 run_normalizer "$collapsed_private_key" "$collapsed_output"
 assert_valid_output_key "$collapsed_output" "${TMPDIR}/collapsed-key.pem"
 
+compact_private_key="$(tr -d '\n' < "$private_key_file")"
+compact_output="${TMPDIR}/compact-output"
+run_normalizer "$compact_private_key" "$compact_output"
+assert_valid_output_key "$compact_output" "${TMPDIR}/compact-key.pem"
+
 status=0
 missing_secret_output="$(
   env -i \
@@ -94,5 +99,16 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected invalid private key case to fail"
 fi
 assert_contains "$invalid_secret_output" "must be PEM or base64-encoded PEM"
+
+status=0
+invalid_pem_output="$(
+  run_normalizer \
+    "-----BEGIN RSA PRIVATE KEY-----not-a-valid-key-----END RSA PRIVATE KEY-----" \
+    "${TMPDIR}/invalid-pem-output" 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected invalid PEM private key case to fail"
+fi
+assert_contains "$invalid_pem_output" "is not a valid PEM private key"
 
 echo "normalize-github-app-private-key-test: ok"

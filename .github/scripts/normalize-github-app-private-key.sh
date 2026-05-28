@@ -6,6 +6,13 @@ error() {
   echo "::error::$*"
 }
 
+require_tool() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    error "$2"
+    exit 1
+  fi
+}
+
 mask_value() {
   if [[ "${GITHUB_ACTIONS:-}" != "true" || -z "$1" ]]; then
     return
@@ -27,6 +34,9 @@ if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
   error "GITHUB_OUTPUT is required"
   exit 1
 fi
+
+require_tool python3 "python3 is not installed"
+require_tool openssl "OpenSSL is not installed"
 
 private_key="$(
   python3 <<'PY'
@@ -51,7 +61,7 @@ if "-----BEGIN " not in key:
     key = key.replace("\\n", "\n").replace("\r", "")
 
 match = re.search(
-    r"(-----BEGIN [^-]+-----)\s+(.+?)\s+(-----END [^-]+-----)",
+    r"(-----BEGIN [^-]+-----)\s*(.+?)\s*(-----END [^-]+-----)",
     key,
     re.DOTALL,
 )
