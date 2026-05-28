@@ -1259,7 +1259,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.searchParams.get("message")).toBe("Unknown connector type");
   });
 
-  it("redirects callbacks without an auth-code or device-auth grant to the connector error page", async () => {
+  it("redirects callbacks without an auth-code grant to the connector error page", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -1278,7 +1278,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.pathname).toBe("/connector/error");
     expect(url.searchParams.get("type")).toBe("cloudinary");
     expect(url.searchParams.get("message")).toBe(
-      "cloudinary connector does not use an auth-code or device-auth grant",
+      "cloudinary connector does not use an auth-code grant",
     );
   });
 

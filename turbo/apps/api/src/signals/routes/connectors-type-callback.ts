@@ -6,7 +6,6 @@ import {
   hasConnectorAuthCodeGrant,
   getConnectorOAuthClient,
   getConnectorAuthCodeGrantConfig,
-  hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -213,12 +212,13 @@ function resolveOAuthConnectorType(
 
   const connectorType = typeResult.data;
   if (!hasConnectorAuthCodeGrant(connectorType)) {
-    const message = hasConnectorDeviceAuthGrant(connectorType)
-      ? `${type} connector does not use an auth-code grant`
-      : `${type} connector does not use an auth-code or device-auth grant`;
     return {
       ok: false,
-      response: redirectWithError(origin, type, message),
+      response: redirectWithError(
+        origin,
+        type,
+        `${type} connector does not use an auth-code grant`,
+      ),
     };
   }
 
