@@ -1305,6 +1305,15 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
         ProtocolError::InvalidPayload("exec_control target_seq must be non-zero")
     ));
 
+    let mut zero_target_seq = payload.clone();
+    zero_target_seq[..4].copy_from_slice(&0u32.to_be_bytes());
+    assert!(matches!(
+        decode_exec_control(&zero_target_seq),
+        Err(ProtocolError::InvalidPayload(
+            "exec_control target_seq must be non-zero"
+        ))
+    ));
+
     let err = encode_exec_control(7, NONCE, "", b"body", 5000).unwrap_err();
     assert_invalid_payload(err, "exec_control message_id empty");
 
@@ -1347,6 +1356,24 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     assert!(matches!(
         decode_exec_control(&trailing),
         Err(ProtocolError::InvalidPayload("exec_control trailing bytes"))
+    ));
+}
+
+#[test]
+fn exec_control_rejects_too_long_message_id() {
+    let message_id = "x".repeat(u16::MAX as usize + 1);
+
+    let err = encode_exec_control(7, NONCE, &message_id, b"body", 5000).unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("message_id", size) if size == message_id.len()
+    ));
+
+    let err = encode_exec_control_result(7, NONCE, &message_id, ExecControlStatus::Delivered, "")
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("message_id", size) if size == message_id.len()
     ));
 }
 
@@ -1407,6 +1434,15 @@ fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
     assert!(matches!(
         err,
         ProtocolError::InvalidPayload("exec_control_result target_seq must be non-zero")
+    ));
+
+    let mut zero_target_seq = payload.clone();
+    zero_target_seq[..4].copy_from_slice(&0u32.to_be_bytes());
+    assert!(matches!(
+        decode_exec_control_result(&zero_target_seq),
+        Err(ProtocolError::InvalidPayload(
+            "exec_control_result target_seq must be non-zero"
+        ))
     ));
 
     let err =
