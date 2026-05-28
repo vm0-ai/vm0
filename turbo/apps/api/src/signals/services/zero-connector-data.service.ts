@@ -102,6 +102,12 @@ interface EncryptedApiTokenSecret {
   readonly encryptedValue: string;
 }
 
+interface EncryptedOAuthConnectorSecret {
+  readonly name: string;
+  readonly encryptedValue: string;
+  readonly description: string;
+}
+
 interface PendingOAuthRevoke {
   readonly type: OAuthGrantConnectorType;
   readonly encryptedAccessToken: string;
@@ -1022,27 +1028,38 @@ export const connectApiTokenConnector$ = command(
   },
 );
 
-async function upsertConnectorSecret(
+async function encryptedOAuthConnectorSecret(args: {
+  readonly name: string;
+  readonly value: string;
+  readonly description: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<EncryptedOAuthConnectorSecret> {
+  return {
+    name: args.name,
+    encryptedValue: await encryptStoredSecretValue(
+      args.value,
+      args.featureSwitchContext,
+    ),
+    description: args.description,
+  };
+}
+
+async function upsertConnectorEncryptedSecret(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly name: string;
-    readonly value: string;
+    readonly encryptedValue: string;
     readonly description: string;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(
-    args.value,
-    args.featureSwitchContext,
-  );
   await db
     .insert(secrets)
     .values({
       userId: args.userId,
       name: args.name,
-      encryptedValue,
+      encryptedValue: args.encryptedValue,
       type: "connector",
       description: args.description,
       orgId: args.orgId,
@@ -1050,7 +1067,7 @@ async function upsertConnectorSecret(
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: {
-        encryptedValue,
+        encryptedValue: args.encryptedValue,
         description: args.description,
         updatedAt: nowDate(),
       },
@@ -1120,27 +1137,45 @@ function validateExtraOAuthConnectorSecrets(args: {
   return extraSecrets;
 }
 
-async function upsertExtraOAuthConnectorSecrets(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
+async function encryptExtraOAuthConnectorSecrets(args: {
   readonly type: OAuthGrantConnectorType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
+}): Promise<readonly EncryptedOAuthConnectorSecret[]> {
+  const encryptedSecrets: EncryptedOAuthConnectorSecret[] = [];
+  for (const [name, value] of args.extraSecrets) {
+    encryptedSecrets.push(
+      await encryptedOAuthConnectorSecret({
+        name,
+        value,
+        description: `OAuth connector secret for ${args.type}: ${name}`,
+        featureSwitchContext: args.featureSwitchContext,
+      }),
+    );
+    args.signal.throwIfAborted();
+  }
+  return encryptedSecrets;
+}
+
+async function upsertOAuthConnectorSecrets(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly secrets: readonly EncryptedOAuthConnectorSecret[];
+  readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.extraSecrets.length === 0) {
+  if (args.secrets.length === 0) {
     return;
   }
 
-  for (const [name, value] of args.extraSecrets) {
-    await upsertConnectorSecret(args.db, {
+  for (const secret of args.secrets) {
+    await upsertConnectorEncryptedSecret(args.db, {
       orgId: args.orgId,
       userId: args.userId,
-      name,
-      value,
-      description: `OAuth connector secret for ${args.type}: ${name}`,
-      featureSwitchContext: args.featureSwitchContext,
+      name: secret.name,
+      encryptedValue: secret.encryptedValue,
+      description: secret.description,
     });
     args.signal.throwIfAborted();
   }
@@ -1312,6 +1347,37 @@ export const upsertOAuthConnector$ = command(
     );
     signal.throwIfAborted();
 
+    const encryptedOAuthSecrets: EncryptedOAuthConnectorSecret[] = [
+      await encryptedOAuthConnectorSecret({
+        name: secretMetadata.accessSecretName,
+        value: args.accessToken,
+        description: `OAuth token for ${args.type} connector`,
+        featureSwitchContext,
+      }),
+    ];
+    signal.throwIfAborted();
+
+    if (args.refreshToken && args.refreshSecretName) {
+      encryptedOAuthSecrets.push(
+        await encryptedOAuthConnectorSecret({
+          name: args.refreshSecretName,
+          value: args.refreshToken,
+          description: `OAuth refresh token for ${args.type} connector`,
+          featureSwitchContext,
+        }),
+      );
+      signal.throwIfAborted();
+    }
+
+    encryptedOAuthSecrets.push(
+      ...(await encryptExtraOAuthConnectorSecrets({
+        type: args.type,
+        extraSecrets,
+        featureSwitchContext,
+        signal,
+      })),
+    );
+
     const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
     const connectorRow = await writeDb.transaction(async (tx) => {
       await lockConnectorState(tx, {
@@ -1328,35 +1394,11 @@ export const upsertOAuthConnector$ = command(
         signal,
       });
 
-      await upsertConnectorSecret(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        name: secretMetadata.accessSecretName,
-        value: args.accessToken,
-        description: `OAuth token for ${args.type} connector`,
-        featureSwitchContext,
-      });
-      signal.throwIfAborted();
-
-      if (args.refreshToken && args.refreshSecretName) {
-        await upsertConnectorSecret(tx, {
-          orgId: args.orgId,
-          userId: args.userId,
-          name: args.refreshSecretName,
-          value: args.refreshToken,
-          description: `OAuth refresh token for ${args.type} connector`,
-          featureSwitchContext,
-        });
-        signal.throwIfAborted();
-      }
-
-      await upsertExtraOAuthConnectorSecrets({
+      await upsertOAuthConnectorSecrets({
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        type: args.type,
-        extraSecrets,
-        featureSwitchContext,
+        secrets: encryptedOAuthSecrets,
         signal,
       });
       signal.throwIfAborted();

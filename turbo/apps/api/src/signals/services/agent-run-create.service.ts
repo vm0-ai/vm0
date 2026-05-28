@@ -666,22 +666,28 @@ function isOfficialRunnerGroup(group: string): boolean {
   return group.split("/")[0] === "vm0";
 }
 
-function addConnectorEnvironmentTemplates(
-  environment: Record<string, string>,
-  envBindings: Record<string, string>,
-): void {
-  for (const [envName, valueRef] of Object.entries(envBindings)) {
-    if (envName in environment) {
-      continue;
-    }
-    if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-      environment[envName] = `\${{ secrets.${envName} }}`;
-    } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
-      environment[envName] = `\${{ vars.${envName} }}`;
-    } else {
-      environment[envName] = valueRef;
-    }
+function connectorEnvironmentTemplate(
+  envName: string,
+  valueRef: string,
+): string {
+  if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+    return `\${{ secrets.${envName} }}`;
   }
+  if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+    return `\${{ vars.${envName} }}`;
+  }
+  return valueRef;
+}
+
+function addConnectorEnvironmentTemplate(
+  environment: Record<string, string>,
+  envName: string,
+  valueRef: string,
+): void {
+  if (envName in environment) {
+    return;
+  }
+  environment[envName] = connectorEnvironmentTemplate(envName, valueRef);
 }
 
 function environmentTemplates(args: {
@@ -1554,10 +1560,11 @@ interface StoredConnectorRuntimeRow {
 interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly envBindings: Record<string, string>;
+  readonly optionalSecretNames: ReadonlySet<string>;
+  readonly optionalVariableNames: ReadonlySet<string>;
 }
 
 interface StoredConnectorRequirements {
-  readonly environment: Record<string, string>;
   readonly secretNames: Set<string>;
   readonly variableNames: Set<string>;
 }
@@ -1566,6 +1573,7 @@ interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
+  readonly environment: Record<string, string>;
 }
 
 function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
@@ -1606,12 +1614,28 @@ function connectorEnvBindingSets(
         `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
       );
     }
+    const optionalSecretNames = new Set<string>();
+    const optionalVariableNames = new Set<string>();
+    if (method.grant.kind === "manual") {
+      for (const [name, field] of Object.entries(method.grant.fields)) {
+        if (field.required !== false) {
+          continue;
+        }
+        if (field.storage === "variable") {
+          optionalVariableNames.add(name);
+        } else {
+          optionalSecretNames.add(name);
+        }
+      }
+    }
     return {
       connectorType: row.connectorType,
       envBindings: getConnectorAuthMethodEnvBindings(
         row.connectorType,
         row.authMethod,
       ),
+      optionalSecretNames,
+      optionalVariableNames,
     };
   });
 }
@@ -1619,12 +1643,10 @@ function connectorEnvBindingSets(
 function collectStoredConnectorRequirements(
   bindingSets: readonly ConnectorEnvBindingSet[],
 ): StoredConnectorRequirements {
-  const environment: Record<string, string> = {};
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
 
   for (const { envBindings } of bindingSets) {
-    addConnectorEnvironmentTemplates(environment, envBindings);
     for (const valueRef of Object.values(envBindings)) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         secretNames.add(valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length));
@@ -1634,7 +1656,7 @@ function collectStoredConnectorRequirements(
     }
   }
 
-  return { environment, secretNames, variableNames };
+  return { secretNames, variableNames };
 }
 
 async function loadStoredConnectorSecrets(
@@ -1715,21 +1737,35 @@ function resolveStoredConnectorState(
   const secrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
+  const environment: Record<string, string> = {};
 
-  for (const { connectorType, envBindings } of bindingSets) {
+  for (const {
+    connectorType,
+    envBindings,
+    optionalSecretNames,
+    optionalVariableNames,
+  } of bindingSets) {
     for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
         const secretValue = connectorSecrets[secretName];
         if (secretValue !== undefined) {
           secrets[envName] = secretValue;
+          addConnectorEnvironmentTemplate(environment, envName, valueRef);
+        } else if (!optionalSecretNames.has(secretName)) {
+          addConnectorEnvironmentTemplate(environment, envName, valueRef);
         }
       } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
         const variableName = valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length);
         const variableValue = connectorVariables[variableName];
         if (variableValue !== undefined) {
           vars[envName] = variableValue;
+          addConnectorEnvironmentTemplate(environment, envName, valueRef);
+        } else if (!optionalVariableNames.has(variableName)) {
+          addConnectorEnvironmentTemplate(environment, envName, valueRef);
         }
+      } else {
+        addConnectorEnvironmentTemplate(environment, envName, valueRef);
       }
     }
 
@@ -1746,7 +1782,7 @@ function resolveStoredConnectorState(
     }
   }
 
-  return { secrets, vars, secretConnectorMap };
+  return { secrets, vars, secretConnectorMap, environment };
 }
 
 async function loadStoredConnectorContext(
@@ -1804,7 +1840,7 @@ async function loadStoredConnectorContext(
     connectorTypes: allowedConnectorRows.map((row) => {
       return row.connectorType;
     }),
-    storedEnvironment: compactRecord(requirements.environment),
+    storedEnvironment: compactRecord(resolved.environment),
   };
 }
 
