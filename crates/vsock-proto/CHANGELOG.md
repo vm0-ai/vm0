@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.9](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.8...vsock-proto-v0.18.9) (2026-05-28)
+
+
+### Refactoring
+
+* share exec control identity codec helpers ([#15288](https://github.com/vm0-ai/vm0/issues/15288)) ([040e4eb](https://github.com/vm0-ai/vm0/commit/040e4eb3bfc19cd289a5866aec2f2dc1ceb48dc6))
+
 ## [0.18.8](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.7...vsock-proto-v0.18.8) (2026-05-27)
 
 

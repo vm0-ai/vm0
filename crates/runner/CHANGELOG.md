@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.105.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.0...runner-rs-v0.105.1) (2026-05-28)
+
+
+### Refactoring
+
+* make runner http client config explicit ([#15299](https://github.com/vm0-ai/vm0/issues/15299)) ([28c9d4f](https://github.com/vm0-ai/vm0/commit/28c9d4f7a3ee8be6e23291ec8d4abc28545b4036))
+
 ## [0.105.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.17...runner-rs-v0.105.0) (2026-05-28)
 
 

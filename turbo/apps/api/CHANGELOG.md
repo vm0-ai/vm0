@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.84.1](https://github.com/vm0-ai/vm0/compare/api-v1.84.0...api-v1.84.1) (2026-05-28)
+
+
+### Refactoring
+
+* cut over api-token connectors to connector state ([#15232](https://github.com/vm0-ai/vm0/issues/15232)) ([2e949a2](https://github.com/vm0-ai/vm0/commit/2e949a2c49ff35851b5441514d864b9d5c4c7efd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.45.1
+    * @vm0/connectors bumped to 1.37.5
+    * @vm0/core bumped to 8.301.2
+    * @vm0/db bumped to 1.22.1
+
 ## [1.84.0](https://github.com/vm0-ai/vm0/compare/api-v1.83.2...api-v1.84.0) (2026-05-28)
 
 
