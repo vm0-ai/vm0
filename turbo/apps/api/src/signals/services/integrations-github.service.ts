@@ -9,7 +9,6 @@ import type {
   UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
-import { getConnectorProvidedEnvNames } from "@vm0/connectors/connector-utils";
 import {
   agentComposes,
   agentComposeVersions,
@@ -1079,16 +1078,11 @@ export const getGithubInstallation$ = command(
       ]);
     signal.throwIfAborted();
 
-    const connectorProvidedEnvNames = getConnectorProvidedEnvNames(
-      connectorList.connectors.map((connector) => {
-        return connector.type;
-      }),
-    );
     const existingSecretNames = new Set([
       ...secretList.secrets.map((secret) => {
         return secret.name;
       }),
-      ...connectorProvidedEnvNames,
+      ...connectorList.connectorProvidedEnvNames,
     ]);
     const existingVarNames = new Set(
       variableList.variables.map((variable) => {

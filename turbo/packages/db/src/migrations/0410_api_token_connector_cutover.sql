@@ -286,6 +286,7 @@ legacy_field_presence AS (
     ON fields.storage = 'secret'
    AND user_secrets.type = 'user'
    AND user_secrets.name = fields.field_name
+   AND user_secrets.user_id <> '__org__'
 
   UNION ALL
 
@@ -301,6 +302,7 @@ legacy_field_presence AS (
     ON fields.storage = 'variable'
    AND user_variables.type = 'user'
    AND user_variables.name = fields.field_name
+   AND user_variables.user_id <> '__org__'
 ),
 eligible_legacy_connectors AS (
   SELECT
@@ -436,4 +438,3 @@ deleted_legacy_variables AS (
   RETURNING legacy.id
 )
 SELECT 1;
-

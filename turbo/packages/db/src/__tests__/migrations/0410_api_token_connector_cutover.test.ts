@@ -5,6 +5,8 @@ import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { db, uniqueId } from "../test-db";
 
+const ORG_SENTINEL_USER_ID = "__org__";
+
 async function runScopedApiTokenConnectorCutover(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -42,6 +44,7 @@ async function runScopedApiTokenConnectorCutover(args: {
        AND user_secrets.name = fields.field_name
        AND user_secrets.org_id = ${args.orgId}
        AND user_secrets.user_id = ${args.userId}
+       AND user_secrets.user_id <> ${ORG_SENTINEL_USER_ID}
 
       UNION ALL
 
@@ -59,6 +62,7 @@ async function runScopedApiTokenConnectorCutover(args: {
        AND user_variables.name = fields.field_name
        AND user_variables.org_id = ${args.orgId}
        AND user_variables.user_id = ${args.userId}
+       AND user_variables.user_id <> ${ORG_SENTINEL_USER_ID}
     ),
     eligible_legacy_connectors AS (
       SELECT
@@ -420,6 +424,47 @@ describe("migration 0408 api-token connector cutover", () => {
 
     expect(await readConnectorTypes({ orgId, userId })).toStrictEqual([]);
     expect(await readVariableState({ orgId, userId })).toStrictEqual([
+      { name: "GITLAB_HOST", value: "gitlab.example.com", type: "user" },
+    ]);
+  });
+
+  it("preserves org-level credential rows with connector field names", async () => {
+    const orgId = uniqueId("org");
+    await db.insert(secrets).values({
+      orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      name: "GITLAB_TOKEN",
+      encryptedValue: "encrypted-org-gitlab",
+      type: "user",
+    });
+    await db.insert(variables).values({
+      orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      name: "GITLAB_HOST",
+      value: "gitlab.example.com",
+      type: "user",
+    });
+
+    await runScopedApiTokenConnectorCutover({
+      orgId,
+      userId: ORG_SENTINEL_USER_ID,
+    });
+
+    expect(
+      await readConnectorTypes({ orgId, userId: ORG_SENTINEL_USER_ID }),
+    ).toStrictEqual([]);
+    expect(
+      await readSecretState({ orgId, userId: ORG_SENTINEL_USER_ID }),
+    ).toStrictEqual([
+      {
+        name: "GITLAB_TOKEN",
+        encryptedValue: "encrypted-org-gitlab",
+        type: "user",
+      },
+    ]);
+    expect(
+      await readVariableState({ orgId, userId: ORG_SENTINEL_USER_ID }),
+    ).toStrictEqual([
       { name: "GITLAB_HOST", value: "gitlab.example.com", type: "user" },
     ]);
   });
