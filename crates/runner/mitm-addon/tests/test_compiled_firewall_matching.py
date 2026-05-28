@@ -1718,6 +1718,38 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "malformed_firewall_config"
 
+    def test_malformed_config_takes_priority_over_malformed_unknown_policy(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "bad-read", "rules": ["GET /items/{a}literal{b}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {
+            "example": {
+                "allow": ["bad-read"],
+                "deny": [],
+                "unknownPolicy": "broken",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies(policies),
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
     def test_valid_later_permission_can_still_allow_after_malformed_base(self):
         fws = [
             {
