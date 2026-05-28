@@ -227,7 +227,14 @@ function deriveRunIndicatorState(
   messages: readonly EnrichedChatMessage[],
 ): string | null {
   const terminatedRunIds = new Set<string>();
+  const revokedMessageIds = new Set<string>();
   for (const message of messages) {
+    if (message.revokesMessageId !== undefined) {
+      revokedMessageIds.add(message.revokesMessageId);
+    }
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
     if (
       message.role === "assistant" &&
       message.runId !== undefined &&
@@ -239,6 +246,9 @@ function deriveRunIndicatorState(
 
   let hasQueued = false;
   for (const message of messages) {
+    if (revokedMessageIds.has(message.id)) {
+      continue;
+    }
     if (message.role === "assistant") {
       if (isQueueMarkerMessage(message)) {
         hasQueued = true;
@@ -299,6 +309,9 @@ function terminatedRunIdsFromMessages(
 ): Set<string> {
   const terminatedRunIds = new Set<string>();
   for (const message of messages) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
     if (
       message.role === "assistant" &&
       message.runId !== undefined &&
@@ -1432,11 +1445,17 @@ function createRunTracking({
 
   const allFinished$ = computed(async (get) => {
     const messages = await get(allMessages$);
-    if (deriveRunIndicatorState(messages) !== null) {
+    const state = deriveRunIndicatorState(messages);
+    if (state !== null) {
       return false;
     }
     const thread = await get(threadData$);
-    return (thread?.activeRunIds.length ?? 0) === 0;
+    const terminatedRunIds = terminatedRunIdsFromMessages(messages);
+    return (
+      thread?.activeRunIds.every((runId) => {
+        return terminatedRunIds.has(runId);
+      }) ?? true
+    );
   });
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({

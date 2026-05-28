@@ -2187,8 +2187,17 @@ function ChatThreadComposer({
     modelSelection,
   } = useChatComposerModel(thread, pageSignal);
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const lastGroup = groups[groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const composerSending = sending && !lastAssistantCancelled;
   const queueWhileSending = canQueueMessage({
-    sending,
+    sending: composerSending,
   });
 
   const handleInputChange = (text: string) => {
@@ -2227,7 +2236,7 @@ function ChatThreadComposer({
             onInputChange={handleInputChange}
             onSend={handleSend}
             onQueue={handleQueue}
-            sending={sending}
+            sending={composerSending}
             queueWhileSending={queueWhileSending}
             onCancel={
               allFinishedResolved
@@ -2372,7 +2381,6 @@ function ThinkingIndicator({
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinishedResolved = allFinishedLoadable.state === "hasData";
   const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
-  const runActive = allFinishedResolved && !allFinished;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -2388,6 +2396,8 @@ function ThinkingIndicator({
       : undefined;
   const lastAssistantCancelled =
     isCancelledAssistantMessage(lastAssistantMessage);
+  const runActive =
+    allFinishedResolved && !allFinished && !lastAssistantCancelled;
   const waitingForAssistant =
     lastGroup?.role === "user" &&
     lastGroup.messages.length > 0 &&

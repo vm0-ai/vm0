@@ -6,7 +6,7 @@ import type { Db } from "../external/db";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-export const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
+const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 const QUEUED_RUN_MARKER_REVOKE_EVENT_ID = "queue:dequeued";
