@@ -510,6 +510,7 @@ mod tests {
 
         async fn assert_orphan_count(&self, expected: usize) {
             assert_eq!(self.orphans.len(), expected);
+            assert_eq!(self.orphans.is_empty(), expected == 0);
         }
 
         async fn status_idle_vms_and_active_runs(
