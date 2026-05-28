@@ -2988,6 +2988,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
+    id: "vm0:image-style:soft-vector",
+    kind: "image-style",
+    name: "Soft Vector",
+    description:
+      "Airy flat-vector spot illustration — square pale-blue canvas, thin ~1.5-2px dark-navy linework with intentionally open / unclosed outlines, flat fills, one muted accent hue, centered subject with breathing room.",
+    desc: 'Soft Vector — an airy flat-vector spot illustration style for in-app onboarding art, empty states, billing cards, and friendly UI moments. Square 1:1 canvas on a single flat pale-blue field #EEF1F5; thin uniform dark-navy outlines (~1.5-2px, rounded caps, NOT chunky); the signature lift comes from several intentionally OPEN / unclosed outlines per piece (mug rim gap, handle that doesn\'t close, ground line ending in mid-air, cloud silhouette break, lamp arm fade, pot rim gap); strictly flat colour fills with no gradients or shading; one muted lead accent (mustard / lime-sage / warm-orange / violet) plus neutrals; subject centered at ~60-75% of canvas with generous breathing room; scattered thin-navy micro-marks (dots, plus signs, sparkles, or motion ticks). Six dials per brief: palette accent, scene metaphor, complexity (L1/L2/L3), cast, accent marks, action/mood. Trigger when user says /soft-vector, asks for a "soft-vector illustration", a "friendly UI onboarding illustration", a "thin-line flat spot illustration", or briefs a scene metaphor + palette + complexity in this house style.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/soft-vector",
+    },
+  },
+  {
     id: "vm0:image-style:mellow-pop",
     kind: "image-style",
     name: "Mellow Pop",
