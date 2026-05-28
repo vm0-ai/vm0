@@ -33,6 +33,7 @@ _VALID_RULE_METHODS = frozenset(
         "ANY",
     )
 )
+_DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 
 
 class _BaseUrlParts(NamedTuple):
@@ -146,9 +147,19 @@ def _split_base_match_url(
     if not allow_query_fragment and (parts.query or parts.fragment):
         return None
 
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    authority = parts.netloc
+    if port == _DEFAULT_SCHEME_PORTS.get(parts.scheme.lower()):
+        host, separator, _raw_port = authority.rpartition(":")
+        if separator and host:
+            authority = host
+
     return _BaseUrlParts(
         scheme=parts.scheme,
-        authority=parts.netloc,
+        authority=authority,
         path=parts.path,
     )
 

@@ -1,5 +1,7 @@
 """Tests for low-level firewall URL and pattern matching."""
 
+import pytest
+
 import matching
 
 
@@ -220,6 +222,22 @@ class TestMatchBaseUrl:
         )
         assert result is None
 
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://api.github.com/repos", "https://api.github.com:443"),
+            ("https://api.github.com:443/repos", "https://api.github.com"),
+            ("https://api.github.com/repos", "https://api.github.com:0443"),
+            ("http://api.github.com/repos", "http://api.github.com:80"),
+            ("http://api.github.com:80/repos", "http://api.github.com"),
+            ("http://api.github.com/repos", "http://api.github.com:0080"),
+            ("https://[2001:db8::1]/repos", "https://[2001:db8::1]:443"),
+        ],
+    )
+    def test_static_base_default_ports_match_omitted_ports(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result == ("/repos", {})
+
     def test_static_base_with_query_is_rejected(self):
         result = matching.match_base_url(
             "https://api.github.com/repos", "https://api.github.com?token=1"
@@ -320,6 +338,19 @@ class TestMatchBaseUrl:
             "https://{sub}.zendesk.com",
         )
         assert result is None
+
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://acme.zendesk.com/api", "https://{sub}.zendesk.com:443"),
+            ("https://acme.zendesk.com:443/api", "https://{sub}.zendesk.com"),
+            ("http://acme.zendesk.com/api", "http://{sub}.zendesk.com:80"),
+            ("http://acme.zendesk.com:80/api", "http://{sub}.zendesk.com"),
+        ],
+    )
+    def test_parameterized_base_default_ports_match_omitted_ports(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result == ("/api", {"sub": "acme"})
 
     def test_base_with_port_matches_url_with_same_port(self):
         """Base with explicit port matches URL with same port."""
