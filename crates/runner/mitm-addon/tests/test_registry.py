@@ -585,6 +585,29 @@ class TestGetVmContext:
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "malformed_network_policy"
 
+    def test_malformed_firewall_config_compiles_without_load_failure(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["firewalls"][0]["apis"][0]["permissions"][0]["rules"] = [
+            "GET /items/{a}literal{b}"
+        ]
+        path.write_text(json.dumps(data))
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        _, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is not None
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_firewall_config"
+
 
 class TestLogNetworkEntry:
     def test_writes_jsonl(self, tmp_path):
