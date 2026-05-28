@@ -251,6 +251,30 @@ class TestMatchBaseUrl:
         result = matching.match_base_url(url, base)
         assert result == ("/repos", {})
 
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://xn--fsqu00a.xn--0zwm56d/repos", "https://例子.测试"),
+            ("https://例子.测试/repos", "https://xn--fsqu00a.xn--0zwm56d"),
+        ],
+    )
+    def test_static_base_idna_authority_matches_runtime_host(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result == ("/repos", {})
+
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://user@api.github.com",
+            "https://user:pass@api.github.com",
+            "https://api.github.com:bad",
+            "https://api.github.com:99999",
+        ],
+    )
+    def test_static_base_malformed_authority_returns_none(self, base):
+        result = matching.match_base_url("https://api.github.com/repos", base)
+        assert result is None
+
     def test_static_base_with_query_is_rejected(self):
         result = matching.match_base_url(
             "https://api.github.com/repos", "https://api.github.com?token=1"
@@ -381,6 +405,30 @@ class TestMatchBaseUrl:
     ):
         result = matching.match_base_url(url, base)
         assert result == ("/api", {"sub": "acme"})
+
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://acme.xn--fsqu00a.xn--0zwm56d/api", "https://{sub}.例子.测试"),
+            ("https://acme.例子.测试/api", "https://{sub}.xn--fsqu00a.xn--0zwm56d"),
+        ],
+    )
+    def test_parameterized_base_idna_authority_matches_runtime_host(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result == ("/api", {"sub": "acme"})
+
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://user@{sub}.zendesk.com",
+            "https://user:pass@{sub}.zendesk.com",
+            "https://{sub}.zendesk.com:bad",
+            "https://{sub}.zendesk.com:99999",
+        ],
+    )
+    def test_parameterized_base_malformed_authority_returns_none(self, base):
+        result = matching.match_base_url("https://acme.zendesk.com/api", base)
+        assert result is None
 
     def test_base_with_port_matches_url_with_same_port(self):
         """Base with explicit port matches URL with same port."""

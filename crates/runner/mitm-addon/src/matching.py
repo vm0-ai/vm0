@@ -40,6 +40,8 @@ class _BaseUrlParts(NamedTuple):
     scheme: str
     authority: str
     path: str
+    has_userinfo: bool
+    port_malformed: bool
 
 
 class SegmentLiteral(NamedTuple):
@@ -131,6 +133,7 @@ def _split_base_match_url(
     value: str,
     *,
     allow_query_fragment: bool = True,
+    allow_malformed_authority: bool = False,
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
@@ -149,34 +152,49 @@ def _split_base_match_url(
     if not allow_query_fragment and (parts.query or parts.fragment):
         return None
 
+    has_userinfo = parts.username is not None or parts.password is not None
     try:
         port = parts.port
     except ValueError:
+        if not allow_malformed_authority:
+            return None
+        port_malformed = True
         port = None
-    authority = _normalize_authority(parts.scheme, parts.netloc, port)
+    else:
+        port_malformed = False
+    if has_userinfo and not allow_malformed_authority:
+        return None
+
+    authority = _normalize_authority(parts.scheme, parts.hostname, port)
+    if authority is None:
+        return None
 
     return _BaseUrlParts(
         scheme=parts.scheme,
         authority=authority,
         path=parts.path,
+        has_userinfo=has_userinfo,
+        port_malformed=port_malformed,
     )
 
 
-def _strip_trailing_host_dot(authority_host: str) -> str:
-    if authority_host.endswith("."):
-        return authority_host[:-1]
-    return authority_host
+def _normalize_authority_host(host: str) -> str:
+    normalized = host.rstrip(".")
+    if ":" in normalized:
+        return f"[{normalized}]"
+    try:
+        return normalized.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return normalized.lower()
 
 
-def _normalize_authority(scheme: str, authority: str, port: int | None) -> str:
+def _normalize_authority(scheme: str, host: str | None, port: int | None) -> str | None:
+    if host is None:
+        return None
+    normalized_host = _normalize_authority_host(host)
     if port is None:
-        return _strip_trailing_host_dot(authority)
+        return normalized_host
 
-    host, separator, _raw_port = authority.rpartition(":")
-    if not separator or not host:
-        return _strip_trailing_host_dot(authority)
-
-    normalized_host = _strip_trailing_host_dot(host)
     if port == _DEFAULT_SCHEME_PORTS.get(scheme.lower()):
         return normalized_host
     return f"{normalized_host}:{port}"
@@ -795,7 +813,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         return None
 
     has_query_or_fragment = bool(parsed.query or parsed.fragment)
-    parts = _split_base_match_url(base)
+    parts = _split_base_match_url(base, allow_malformed_authority=True)
     if parts is None:
         return None
 
@@ -910,7 +928,12 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
             base = _compile_base(raw_base)
             if base is None:
                 continue
-            base_malformed = base.has_query_or_fragment or not _compiled_base_params_are_valid(base)
+            base_malformed = (
+                base.has_query_or_fragment
+                or base.parts.has_userinfo
+                or base.parts.port_malformed
+                or not _compiled_base_params_are_valid(base)
+            )
             auth_malformed = not _auth_config_is_valid(api_entry)
 
             compiled_permissions: list[_CompiledPermission] = []
