@@ -3289,6 +3289,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       path: "illustration-template/iberian-vignette",
     },
   },
+  {
+    id: "image-style:ink-storefront",
+    kind: "image-style",
+    name: "Ink Storefront",
+    description:
+      "Single-color hand-drawn ink fineliner illustration of a small storefront on warm cream paper — hand-lettered shop sign, foliage, and street props.",
+    desc: 'Boutique-poster illustration style — a single-color hand-drawn ink line drawing of a small storefront (café, boulangerie, florist, bookshop, ramen, wine bar, barber, record store, etc.) seen from street level on warm cream paper #f4ecd8. Locked frame: portrait 1024x1536, monochromatic ink with occasional double-stroke shadow under awnings and signs, a hand-lettered shop sign baked into the building, foliage and at least one small street prop (bike, A-frame chalkboard, planters, lanterns, café tables, dog/cat at the door), and a faint horizontal sidewalk line across the bottom. No solid color fills, no shading, no gradients. Seven dials per brief — ink color, shop name + subtitle, archetype, perspective (flat facade vs 3/4 corner), foreground props, foliage density, and complexity (L1 single facade / L2 small scene / L3 full vignette). Trigger when user says /ink-storefront, asks for a "shopfront illustration", "storefront poster", "boutique fineliner illustration", "café line drawing", or briefs with a shop name + ink color + archetype in this house style.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/ink-storefront",
+    },
+  },
 ];
 
 function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {
