@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.7](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.6...guest-mock-claude-v0.17.7) (2026-05-28)
+
+
+### Refactoring
+
+* clarify guest mock claude scenarios ([#15198](https://github.com/vm0-ai/vm0/issues/15198)) ([dd4d10b](https://github.com/vm0-ai/vm0/commit/dd4d10bb2f0da244c17a30a49fb1bd2c410af708))
+
 ## [0.17.6](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.5...guest-mock-claude-v0.17.6) (2026-05-12)
 
 

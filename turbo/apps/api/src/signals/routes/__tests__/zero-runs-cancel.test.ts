@@ -164,6 +164,70 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     );
   });
 
+  it("emits cancel side effects once for concurrent cancels", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .update(agentRuns)
+      .set({ runnerGroup: "vm0/test" })
+      .where(eq(agentRuns.id, runId));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    const responses = await Promise.all(
+      [0, 1].map(() => {
+        return accept(
+          client.cancel({
+            params: { id: runId },
+            headers: { authorization: "Bearer clerk-session" },
+          }),
+          [200],
+        );
+      }),
+    );
+    expect(responses).toHaveLength(2);
+
+    await clearAllDetached();
+    const cancelPublishes = context.mocks.ably.publish.mock.calls.filter(
+      ([topic, payload]) => {
+        const runIdValue =
+          payload && typeof payload === "object" && "runId" in payload
+            ? (payload as { readonly runId?: unknown }).runId
+            : undefined;
+        return topic === "cancel" && runIdValue === runId;
+      },
+    );
+    expect(cancelPublishes).toHaveLength(1);
+
+    const runChangedPublishes = context.mocks.ably.publish.mock.calls.filter(
+      ([topic, payload]) => {
+        const status =
+          payload && typeof payload === "object" && "status" in payload
+            ? (payload as { readonly status?: unknown }).status
+            : undefined;
+        return topic === `runChanged:${runId}` && status === "cancelled";
+      },
+    );
+    expect(runChangedPublishes).toHaveLength(1);
+  });
+
   it("returns 400 RUN_NOT_CANCELLABLE when run already completed", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
@@ -248,6 +312,57 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, runId));
     expect(remainingJobs).toHaveLength(0);
+  });
+
+  it("deletes a queued run queue entry when cancelling before drain", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "queued",
+      },
+      context.signal,
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(agentRunQueue).values({
+      runId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      createdAt: nowDate(),
+      expiresAt: new Date(now() + 60_000),
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroRunsCancelContract);
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const [run] = await writeDb
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId));
+    expect(run?.status).toBe("cancelled");
+
+    const queueRows = await writeDb
+      .select({ runId: agentRunQueue.runId })
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.runId, runId));
+    expect(queueRows).toHaveLength(0);
   });
 
   it("returns 200 when run is already cancelled (idempotent; no side effects)", async () => {
