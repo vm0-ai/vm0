@@ -3143,6 +3143,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       path: "illustration-template/tiny-wanderer",
     },
   },
+  {
+    id: "vm0:image-style:iberian-vignette",
+    kind: "image-style",
+    name: "Iberian Vignette",
+    description:
+      "Hand-drawn editorial vignette style — loose wobble ink, flat muted cream + burgundy + one accent (sage / mustard / dusty blue / terracotta), minimal abstract faces, observed Mediterranean composition with a serif Spanish wordmark at the bottom.",
+    desc: 'Iberian-vignette hand-drawn editorial illustration: loose hand-drawn ink linework with visible wobble and varied weight, flat muted color fills (no gradients, no shading, no texture) on a warm cream off-white background, burgundy/wine always present as the anchor color somewhere in the scene, exactly one secondary accent per piece (sage green / mustard yellow / dusty muted blue / terracotta-rust), minimal abstract faces (tiny dot or short-mark eyes, soft nose hint, almost no mouth), hair as flat color masses, warm sand skin tones, casually-observed body language (leaning, holding, mid-action, never stiffly posed), and a short Spanish serif lowercase wordmark anchored at the bottom center of the canvas. Always grounded by an architectural / scenic prop (stone arched doorway, tall arched window, balcony, sunlit courtyard, wooden counter, archway, stoop, open terrace). Six dials per brief: scene metaphor (trade shop, domestic moment, leisure ritual), cast (solo L1 / pair L2 / 3-4 figures L3), architectural prop, secondary accent (one only), wordmark (Spanish noun), complexity (L1/L2/L3). Trained on nano-banana-2 image-to-image with one of three locked anchor references (mañana / ritmo / familia). Trigger when user says /iberian-vignette, asks for an "Iberian vignette illustration", a "Spanish editorial illustration", a "Mediterranean observed-moment scene", or briefs a scene metaphor + cast + complexity in this hand-drawn editorial style.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/iberian-vignette",
+    },
+  },
 ];
 
 function filterByKind(
