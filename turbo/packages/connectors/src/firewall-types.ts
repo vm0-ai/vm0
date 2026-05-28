@@ -212,6 +212,8 @@ interface ParsedBasicTemplate {
 
 interface BasicAuthTemplateParserContext {
   readonly nextQuoteIndexes: Int32Array;
+  readonly nextBackslashIndexes: Int32Array;
+  readonly nextTemplateIndexes: Int32Array;
 }
 
 function isTemplateWhitespace(char: string): boolean {
@@ -273,17 +275,31 @@ function createBasicAuthTemplateParserContext(
   template: string,
 ): BasicAuthTemplateParserContext {
   const nextQuoteIndexes = new Int32Array(template.length + 1);
+  const nextBackslashIndexes = new Int32Array(template.length + 1);
+  const nextTemplateIndexes = new Int32Array(template.length + 1);
   let nextQuoteIndex = -1;
+  let nextBackslashIndex = -1;
+  let nextTemplateIndex = -1;
   nextQuoteIndexes[template.length] = nextQuoteIndex;
+  nextBackslashIndexes[template.length] = nextBackslashIndex;
+  nextTemplateIndexes[template.length] = nextTemplateIndex;
 
   for (let index = template.length - 1; index >= 0; index -= 1) {
     if (template[index] === '"') {
       nextQuoteIndex = index;
     }
+    if (template[index] === "\\") {
+      nextBackslashIndex = index;
+    }
+    if (template.startsWith("${{", index)) {
+      nextTemplateIndex = index;
+    }
     nextQuoteIndexes[index] = nextQuoteIndex;
+    nextBackslashIndexes[index] = nextBackslashIndex;
+    nextTemplateIndexes[index] = nextTemplateIndex;
   }
 
-  return { nextQuoteIndexes };
+  return { nextQuoteIndexes, nextBackslashIndexes, nextTemplateIndexes };
 }
 
 function parseBasicAuthTemplateArg(
@@ -301,16 +317,25 @@ function parseBasicAuthTemplateArg(
     const literalStart = nextIndex + 1;
     const quoteIndex = context.nextQuoteIndexes[literalStart] ?? -1;
     if (quoteIndex === -1) {
-      const nestedTemplateStart = template.indexOf("${{", literalStart);
+      const nestedTemplateStart =
+        context.nextTemplateIndexes[literalStart] ?? -1;
       return {
         arg: null,
         index:
           nestedTemplateStart === -1 ? template.length : nestedTemplateStart,
       };
     }
-    const escapeIndex = template.indexOf("\\", literalStart);
+    const escapeIndex = context.nextBackslashIndexes[literalStart] ?? -1;
     if (escapeIndex !== -1 && escapeIndex < quoteIndex) {
-      return { arg: null, index: escapeIndex + 1 };
+      const nestedTemplateStart =
+        context.nextTemplateIndexes[literalStart] ?? -1;
+      return {
+        arg: null,
+        index:
+          nestedTemplateStart !== -1 && nestedTemplateStart < escapeIndex
+            ? nestedTemplateStart
+            : escapeIndex + 1,
+      };
     }
     return {
       arg: { literal: template.slice(literalStart, quoteIndex) },

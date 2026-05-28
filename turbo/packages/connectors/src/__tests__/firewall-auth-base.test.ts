@@ -267,6 +267,26 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     });
   });
 
+  it("continues after escaped malformed basic templates", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization:
+              'prefix ${{ basic("bad ${{ basic(secrets.USER, secrets.PASS) }}\\", secrets.SKIP) }}',
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual(["USER", "PASS"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["USER", "PASS"],
+      vars: [],
+    });
+  });
+
   it("extracts source-aware auth references by namespace", () => {
     const apis = [
       {
