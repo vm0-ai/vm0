@@ -23,7 +23,6 @@ use sandbox::SandboxId;
 
 /// Poll interval for discovering new job files and local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
-
 /// Job request written by `submit` as a `{job_id}.job` file.
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(crate) struct JobRequest {
@@ -682,10 +681,13 @@ impl JobProvider for LocalProvider {
             working_dir: req.working_dir,
             storage_manifest: None,
             environment: req.environment,
-            resume_session: req.session_id.map(|id| crate::types::ResumeSession {
-                session_id: id,
-                session_history: String::new(),
-            }),
+            resume_session: req
+                .session_id
+                .as_ref()
+                .map(|id| crate::types::ResumeSession {
+                    session_id: id.clone(),
+                    session_history: String::new(),
+                }),
             secret_values: None,
             encrypted_secrets: None,
             secret_connector_map: None,

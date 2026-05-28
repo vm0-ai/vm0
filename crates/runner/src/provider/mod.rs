@@ -228,10 +228,11 @@ pub trait JobProvider: Send + Sync {
     /// logged but do not affect runner operation.
     async fn heartbeat(&self, state: &HeartbeatState);
 
-    /// Update held sessions for poll affinity. Called by the main loop at
-    /// heartbeat time so the provider can include them in poll requests.
+    /// Update held sessions for poll affinity. Called when the idle-pool view
+    /// changes so the provider can include current session state in poll
+    /// requests.
     /// Default no-op — only relevant for API-backed providers.
-    async fn set_held_sessions(&self, _sessions: Vec<String>) {}
+    async fn set_held_session_states(&self, _states: Vec<crate::types::HeldSessionState>) {}
 
     /// Release discovery resources (subscriptions, background tasks).
     ///

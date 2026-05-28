@@ -102,7 +102,14 @@ async function seedFixture(
   );
   const { runId } = await store.set(
     seedRun$,
-    { orgId: base.orgId, userId: base.userId, composeId, status },
+    {
+      orgId: base.orgId,
+      userId: base.userId,
+      composeId,
+      status,
+      completedAt:
+        status === "completed" || status === "failed" ? nowDate() : undefined,
+    },
     context.signal,
   );
   return { ...base, composeId, runId };

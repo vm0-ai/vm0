@@ -54,9 +54,17 @@ class _XFirewallExport(NamedTuple):
     permissions: tuple[_FirewallPermission, ...]
 
 
+class _XFirewallExportTimeout(NamedTuple):
+    timeout_seconds: int
+
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
 _TURBO_DIR = _REPO_ROOT / "turbo"
 _X_FIREWALL_PATH = _TURBO_DIR / "packages" / "connectors" / "src" / "firewalls" / "x.generated.ts"
+_X_FIREWALL_EXPORT_TIMEOUT_SECONDS = 30
+_X_FIREWALL_TSX_COMMAND = "node_modules/.bin/tsx"
+_X_FIREWALL_TSX_DISPLAY = f"{_X_FIREWALL_TSX_COMMAND} -e <script>"
+_X_FIREWALL_TSX_PATH = _TURBO_DIR / "node_modules" / ".bin" / "tsx"
 _PATH_PARAM_RE = re.compile(r"^(?P<prefix>[^{}]*)\{(?P<name>[^{}]+)\}(?P<suffix>[^{}]*)$")
 _SIMPLE_PATH_PARAM_SEGMENT_RE = re.compile(r"^\{[^{}+*]+\}$")
 _X_FIREWALL_EXPORT_SCRIPT = """
@@ -232,6 +240,23 @@ def _parse_x_firewall_export(raw: object) -> _XFirewallExport:
 
 
 @functools.cache
+def _run_x_firewall_export() -> subprocess.CompletedProcess[str] | _XFirewallExportTimeout:
+    command = [_X_FIREWALL_TSX_COMMAND, "-e", _X_FIREWALL_EXPORT_SCRIPT]
+    # Trusted workspace tooling with constant argv; no user-controlled shell input.
+    try:
+        return subprocess.run(  # noqa: S603
+            command,
+            cwd=_TURBO_DIR,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=_X_FIREWALL_EXPORT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return _XFirewallExportTimeout(timeout_seconds=_X_FIREWALL_EXPORT_TIMEOUT_SECONDS)
+
+
+@functools.cache
 def _load_x_firewall_export() -> _XFirewallExport:
     if not _X_FIREWALL_PATH.exists():
         pytest.fail(
@@ -243,19 +268,23 @@ def _load_x_firewall_export() -> _XFirewallExport:
             "likely moved; update this test's path computation."
         )
 
-    command = ["pnpm", "exec", "tsx", "-e", _X_FIREWALL_EXPORT_SCRIPT]
-    # Trusted workspace tooling with constant argv; no user-controlled shell input.
-    completed = subprocess.run(  # noqa: S603
-        command,
-        cwd=_TURBO_DIR,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    if not _X_FIREWALL_TSX_PATH.exists():
+        pytest.fail(
+            f"tsx executable not found at {_X_FIREWALL_TSX_PATH}.\n"
+            "Run `cd turbo && pnpm install` before running these tests."
+        )
+
+    completed = _run_x_firewall_export()
+    if isinstance(completed, _XFirewallExportTimeout):
+        _fail_x_firewall_load(
+            "Timed out loading xFirewall from x.generated.ts with "
+            f"`{_X_FIREWALL_TSX_DISPLAY}` after {completed.timeout_seconds}s."
+        )
+
     if completed.returncode != 0:
         _fail_x_firewall_load(
             "Failed to load xFirewall from x.generated.ts with "
-            f"`{' '.join(command[:3])} -e <script>` "
+            f"`{_X_FIREWALL_TSX_DISPLAY}` "
             f"(exit code {completed.returncode}).",
             stdout=completed.stdout,
             stderr=completed.stderr,

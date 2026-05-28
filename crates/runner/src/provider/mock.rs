@@ -25,7 +25,7 @@ use tracing::warn;
 
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, HeldSessionState, SandboxReuseResult};
 use sandbox::SandboxId;
 
 /// Recorded completion from [`JobProvider::complete`].
@@ -56,6 +56,7 @@ pub struct MockJobProvider {
     claim_results: StdMutex<HashMap<RunId, Option<ExecutionContext>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
+    held_session_state_updates: Arc<StdMutex<Vec<Vec<HeldSessionState>>>>,
     cancel: CancellationToken,
     /// Fired each time `discover()` has reached its inner `select!` await
     /// point (lock + optional `poll_delay` complete, about to park on
@@ -87,6 +88,7 @@ pub struct MockProviderHandle {
     pub discover_tx: mpsc::UnboundedSender<JobCandidate>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
+    held_session_state_updates: Arc<StdMutex<Vec<Vec<HeldSessionState>>>>,
     /// See [`Self::wait_discover_entered`].
     discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
@@ -119,6 +121,7 @@ impl MockJobProvider {
         let (tx, rx) = mpsc::unbounded_channel();
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
+        let held_session_state_updates = Arc::new(StdMutex::new(Vec::new()));
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
         let discover_poll_started = Arc::new(Notify::new());
@@ -129,6 +132,7 @@ impl MockJobProvider {
             claim_results: StdMutex::new(HashMap::new()),
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
+            held_session_state_updates: Arc::clone(&held_session_state_updates),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
@@ -139,6 +143,7 @@ impl MockJobProvider {
             discover_tx: tx,
             completions,
             heartbeats,
+            held_session_state_updates,
             discover_entered,
             completion_notify,
             discover_poll_started,
@@ -210,6 +215,13 @@ impl MockProviderHandle {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .len()
+    }
+
+    pub fn held_session_state_updates(&self) -> Vec<Vec<HeldSessionState>> {
+        self.held_session_state_updates
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Wait until `heartbeat_count()` exceeds `baseline`, or return false on
@@ -320,6 +332,13 @@ impl JobProvider for MockJobProvider {
             .unwrap_or_else(|e| e.into_inner())
             .push(state.clone());
         self.heartbeat_notify.notify_waiters();
+    }
+
+    async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
+        self.held_session_state_updates
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(states);
     }
 
     /// Acquire the discovery Mutex to preserve the shutdown deadlock regression shape.

@@ -240,12 +240,13 @@ async function handleMissingCheckpoint(
   signal: AbortSignal,
 ): Promise<CompletionResponse> {
   const error = "Checkpoint for run not found";
+  const completedAt = nowDate();
   const transitioned = await transitionRunStatus(
     db,
     input.body.runId,
     {
       status: "failed",
-      completedAt: nowDate(),
+      completedAt,
       error,
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
@@ -305,12 +306,13 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   const result = buildRunResult(checkpoint, session?.id);
+  const completedAt = nowDate();
   const transitioned = await transitionRunStatus(
     db,
     input.body.runId,
     {
       status: "completed",
-      completedAt: nowDate(),
+      completedAt,
       result,
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
@@ -339,12 +341,13 @@ async function handleFailedCompletion(
   signal: AbortSignal,
 ): Promise<CompletionResponse> {
   const error = input.body.error?.trim() || "Run failed without error message";
+  const completedAt = nowDate();
   const transitioned = await transitionRunStatus(
     db,
     input.body.runId,
     {
       status: "failed",
-      completedAt: nowDate(),
+      completedAt,
       error,
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
@@ -460,7 +463,7 @@ export const completeAgentRun$ = command(
         status: 200,
         body: {
           success: true,
-          status: run.status,
+          status: run.status === "completed" ? "completed" : "failed",
         },
       };
     }

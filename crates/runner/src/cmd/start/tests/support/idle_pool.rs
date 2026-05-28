@@ -1,4 +1,5 @@
 use super::super::super::*;
+use super::TEST_SESSION_LAST_COMPLETED_AT;
 
 use crate::idle_pool::{ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts};
 use crate::resource_budget::BudgetLease;
@@ -35,7 +36,8 @@ pub(in super::super) async fn seed_idle_pool(
     memory_mb: u32,
 ) -> SandboxId {
     let budget_lease = ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).unwrap();
-    let candidate = make_synthetic_parked_candidate(session_id, profile_name, budget_lease);
+    let candidate = make_synthetic_parked_candidate(session_id, profile_name, budget_lease)
+        .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string());
     let sandbox_id = candidate.sandbox_id();
     let mut guard = pool.lock().await;
     let result = guard.park(candidate);
@@ -81,8 +83,8 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
         ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).expect("reserve budget");
 
     let mut guard = pool.lock().await;
-    let result = guard.park(ParkedIdleCandidate::synthetic_for_test(
-        SyntheticParkedIdleCandidateParts {
+    let result = guard.park(
+        ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox,
             factory: factory_arc,
             session_id: session_id.to_string(),
@@ -92,8 +94,9 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        },
-    ));
+        })
+        .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string()),
+    );
     assert!(matches!(result, ParkResult::Parked));
     sandbox_id
 }

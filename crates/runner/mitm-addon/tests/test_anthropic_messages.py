@@ -7,6 +7,16 @@ from usage import (
 )
 
 
+def _create_parser_with_parse_errors():
+    parse_errors: list[tuple[str, str]] = []
+
+    def record_parse_error(event: str, error: str) -> None:
+        parse_errors.append((event, error))
+
+    parse, usage = create_anthropic_messages_sse_usage_extractor(on_parse_error=record_parse_error)
+    return parse, usage, parse_errors
+
+
 class TestAnthropicSseUsageExtractor:
     """Tests for the incremental SSE usage parser."""
 
@@ -152,6 +162,58 @@ class TestAnthropicSseUsageExtractor:
         parse(b'data: {"type":"message_delta","usage":{"output_tokens":250}}\n\n')
         assert usage["tokens.input"] == 40
         assert usage["tokens.output"] == 250
+
+    @pytest.mark.parametrize("event_type", ["message_start", "message_delta"])
+    def test_data_only_malformed_usage_event_reports_parse_error(self, event_type):
+        parse, usage, parse_errors = _create_parser_with_parse_errors()
+
+        parse(
+            b'data: {"type":"' + event_type.encode("utf-8") + b'","message":{"id":"msg_1","mod\n\n'
+        )
+
+        assert usage == {}
+        assert len(parse_errors) == 1
+        event, error = parse_errors[0]
+        assert event == event_type
+        assert isinstance(error, str)
+        assert error
+
+    def test_data_only_malformed_usage_event_recovers_for_next_event(self):
+        parse, usage, parse_errors = _create_parser_with_parse_errors()
+
+        parse(b'data: {"type":"message_start","message":{"id":"msg_1","mod\n\n')
+        parse(
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":58}}}\n\n'
+        )
+
+        assert len(parse_errors) == 1
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 58
+
+    def test_data_only_malformed_event_without_completed_type_stays_quiet(self):
+        parse, usage, parse_errors = _create_parser_with_parse_errors()
+
+        parse(b'data: {"type":"message_start\n\n')
+
+        assert parse_errors == []
+        assert usage == {}
+
+    def test_data_only_malformed_non_usage_event_stays_quiet(self):
+        parse, usage, parse_errors = _create_parser_with_parse_errors()
+
+        parse(b'data: {"type":"content_block_delta","delta":{"text":\n\n')
+
+        assert parse_errors == []
+        assert usage == {}
+
+    def test_data_only_malformed_duplicate_type_does_not_use_stale_type(self):
+        parse, usage, parse_errors = _create_parser_with_parse_errors()
+
+        parse(b'data: {"type":"message_start","type":"message_delta\n\n')
+
+        assert parse_errors == []
+        assert usage == {}
 
     def test_empty_chunks(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()

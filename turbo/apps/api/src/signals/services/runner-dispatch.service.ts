@@ -1,4 +1,7 @@
-import { runnerState } from "@vm0/db/schema/runner-state";
+import {
+  runnerState,
+  type RunnerHeldSessionState,
+} from "@vm0/db/schema/runner-state";
 import { and, eq, gt } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -10,6 +13,22 @@ import { logger } from "../../lib/log";
 const L = logger("RunnerDispatch");
 
 const STALE_THRESHOLD_MS = 60_000;
+
+function newestHeldSessionAt(
+  states: readonly RunnerHeldSessionState[],
+  sessionId: string,
+): string | null {
+  let newest: string | null = null;
+  for (const state of states) {
+    if (state.sessionId !== sessionId) {
+      continue;
+    }
+    if (!newest || state.lastCompletedAt > newest) {
+      newest = state.lastCompletedAt;
+    }
+  }
+  return newest;
+}
 
 async function findBestRunner(
   db: ReadonlyDb,
@@ -27,7 +46,7 @@ async function findBestRunner(
       runnerId: runnerState.runnerId,
       maxConcurrent: runnerState.maxConcurrent,
       runningCount: runnerState.runningCount,
-      heldSessions: runnerState.heldSessions,
+      heldSessionStates: runnerState.heldSessionStates,
       profiles: runnerState.profiles,
     })
     .from(runnerState)
@@ -45,11 +64,24 @@ async function findBestRunner(
     return hasCapacity && runner.profiles.includes(profile);
   });
 
-  const affinityRunner = candidates.find((runner) => {
-    return runner.heldSessions.includes(sessionId);
-  });
+  let best: {
+    readonly runnerId: string;
+    readonly lastCompletedAt: string;
+  } | null = null;
+  for (const runner of candidates) {
+    const lastCompletedAt = newestHeldSessionAt(
+      runner.heldSessionStates,
+      sessionId,
+    );
+    if (!lastCompletedAt) {
+      continue;
+    }
+    if (!best || lastCompletedAt > best.lastCompletedAt) {
+      best = { runnerId: runner.runnerId, lastCompletedAt };
+    }
+  }
 
-  return affinityRunner ? { runnerId: affinityRunner.runnerId } : null;
+  return best ? { runnerId: best.runnerId } : null;
 }
 
 export async function notifyRunnerJob(

@@ -272,6 +272,13 @@ impl ExecutionContext {
 // ---------------------------------------------------------------------------
 
 /// Runner state snapshot sent to the server via heartbeat.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldSessionState {
+    pub session_id: String,
+    pub last_completed_at: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HeartbeatState {
@@ -285,7 +292,7 @@ pub struct HeartbeatState {
     pub allocated_vcpu: u32,
     pub allocated_memory_mb: u32,
     pub running_count: usize,
-    pub held_sessions: Vec<String>,
+    pub held_session_states: Vec<HeldSessionState>,
     pub mode: String,
 }
 
@@ -814,7 +821,10 @@ mod tests {
             allocated_vcpu: 6,
             allocated_memory_mb: 6144,
             running_count: 2,
-            held_sessions: vec!["session-abc".into()],
+            held_session_states: vec![HeldSessionState {
+                session_id: "session-abc".into(),
+                last_completed_at: "2026-05-28T00:00:00.000Z".into(),
+            }],
             mode: "running".into(),
         };
         let json: serde_json::Value = serde_json::to_value(&state).unwrap();
@@ -826,7 +836,13 @@ mod tests {
         assert_eq!(json["allocatedVcpu"], 6);
         assert_eq!(json["allocatedMemoryMb"], 6144);
         assert_eq!(json["runningCount"], 2);
-        assert_eq!(json["heldSessions"], json!(["session-abc"]));
+        assert_eq!(
+            json["heldSessionStates"],
+            json!([{
+                "sessionId": "session-abc",
+                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+            }])
+        );
         assert_eq!(json["mode"], "running");
     }
 }

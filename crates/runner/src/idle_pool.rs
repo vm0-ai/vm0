@@ -12,6 +12,7 @@ use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
+use crate::types::HeldSessionState;
 
 /// Default idle timeout for kept-alive VMs (30 minutes).
 ///
@@ -189,6 +190,11 @@ pub struct ParkedIdleCandidate {
     /// Version fingerprints of storages downloaded in the previous turn.
     /// Used to skip re-downloading unchanged entries on reuse.
     storage_fingerprints: StorageFingerprints,
+    /// Local terminal timestamp for this parked session.
+    ///
+    /// `None` is reserved for synthetic test entries and means the VM is not
+    /// advertised for reuse affinity.
+    last_completed_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -254,6 +260,7 @@ impl IdleParkRequest {
                 budget_lease,
                 source_ip,
                 storage_fingerprints,
+                last_completed_at: None,
             }),
             Ok(Err(e)) => Err(IdleParkFailure {
                 sandbox,
@@ -305,6 +312,7 @@ impl ParkedIdleCandidate {
             budget_lease: parts.budget_lease,
             source_ip: parts.source_ip,
             storage_fingerprints: parts.storage_fingerprints,
+            last_completed_at: None,
         }
     }
 
@@ -315,6 +323,11 @@ impl ParkedIdleCandidate {
     #[cfg(test)]
     pub(crate) fn sandbox_id(&self) -> SandboxId {
         self.sandbox_id
+    }
+
+    pub(crate) fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
+        self.last_completed_at = Some(last_completed_at);
+        self
     }
 
     fn into_idle_entry(self, parked_at: Instant, idle_timeout: Duration) -> IdleEntry {
@@ -328,6 +341,7 @@ impl ParkedIdleCandidate {
             budget_lease,
             source_ip,
             storage_fingerprints,
+            last_completed_at,
         } = self;
 
         IdleEntry {
@@ -342,6 +356,7 @@ impl ParkedIdleCandidate {
             parked_at,
             idle_timeout,
             storage_fingerprints,
+            last_completed_at,
         }
     }
 
@@ -392,6 +407,7 @@ pub struct IdleEntry {
     /// Version fingerprints of storages downloaded in the previous turn.
     /// Used to skip re-downloading unchanged entries on reuse.
     storage_fingerprints: StorageFingerprints,
+    last_completed_at: Option<String>,
 }
 
 /// Idle pool status snapshot paired with a monotonic mutation revision.
@@ -713,8 +729,6 @@ impl IdlePool {
         result
     }
 
-    /// Take a sandbox from the pool for reuse. Returns `None` if no
-    /// sandbox is parked for this session.
     pub fn take(&mut self, session_id: &str) -> Option<IdleEntry> {
         let entry = self.entries.remove(session_id);
         if entry.is_some() {
@@ -797,11 +811,30 @@ impl IdlePool {
         self.status_snapshot().idle_vms
     }
 
-    /// Return the list of session IDs currently held in the pool, sorted
-    /// lexicographically for deterministic heartbeat output.
+    /// Return the list of session generations currently held in the pool,
+    /// sorted lexicographically for deterministic heartbeat output.
     ///
     /// Prefer [`status_snapshot`](Self::status_snapshot) when pairing with
     /// sandbox IDs — it produces both views from a single iteration.
+    pub fn held_session_states(&self) -> Vec<HeldSessionState> {
+        let mut states: Vec<HeldSessionState> = self
+            .entries
+            .iter()
+            .filter_map(|(session_id, entry)| {
+                entry
+                    .last_completed_at
+                    .as_ref()
+                    .map(|last_completed_at| HeldSessionState {
+                        session_id: session_id.clone(),
+                        last_completed_at: last_completed_at.clone(),
+                    })
+            })
+            .collect();
+        states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+        states
+    }
+
+    #[cfg(test)]
     pub fn held_sessions(&self) -> Vec<String> {
         let mut sessions: Vec<String> = self.entries.keys().cloned().collect();
         sessions.sort_unstable();
@@ -1308,6 +1341,34 @@ mod tests {
 
         let sessions = pool.held_sessions();
         assert_eq!(sessions, vec!["s1", "s2"]);
+    }
+
+    #[test]
+    fn held_session_states_include_only_entries_with_timestamps() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let unconfirmed = make_candidate_for("sess-unconfirmed", 2, 2048);
+        let confirmed_b = make_candidate_for("sess-b", 2, 2048)
+            .with_last_completed_at("2026-05-28T00:00:01.000Z".to_string());
+        let confirmed_a = make_candidate_for("sess-a", 2, 2048)
+            .with_last_completed_at("2026-05-28T00:00:00.000Z".to_string());
+
+        let _ = pool.park(unconfirmed);
+        let _ = pool.park(confirmed_b);
+        let _ = pool.park(confirmed_a);
+
+        assert_eq!(
+            pool.held_session_states(),
+            vec![
+                HeldSessionState {
+                    session_id: "sess-a".to_string(),
+                    last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
+                },
+                HeldSessionState {
+                    session_id: "sess-b".to_string(),
+                    last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
+                },
+            ],
+        );
     }
 
     #[test]

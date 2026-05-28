@@ -67,12 +67,12 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
     info!(
         mode = ?mode,
         running = state.running_count,
-        sessions = state.held_sessions.len(),
+        sessions = state.held_session_states.len(),
         "heartbeat"
     );
-    debug!(held_sessions = ?state.held_sessions);
+    debug!(held_session_states = ?state.held_session_states);
     hb.provider
-        .set_held_sessions(state.held_sessions.clone())
+        .set_held_session_states(state.held_session_states.clone())
         .await;
     hb.provider.heartbeat(&state).await;
 }
@@ -114,7 +114,7 @@ pub(super) fn collect_heartbeat_state(
         allocated_vcpu,
         allocated_memory_mb,
         running_count,
-        held_sessions: idle_pool.held_sessions(),
+        held_session_states: idle_pool.held_session_states(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
             RunnerMode::Draining => "draining".to_string(),
@@ -217,7 +217,7 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
-        assert_eq!(state.held_sessions, vec!["sess-1"]);
+        assert!(state.held_session_states.is_empty());
     }
 
     #[test]

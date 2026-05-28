@@ -35,7 +35,7 @@ function GalleryCard({ item, locale }: { item: GalleryItem; locale: string }) {
               src={item.previewImage}
               alt={item.title}
               fill
-              sizes="(min-width: 1024px) 378px, (min-width: 768px) calc(50vw + 18px), calc(100vw + 18px)"
+              sizes="(min-width: 1200px) 600px, (min-width: 768px) calc(50vw + 18px), calc(100vw + 18px)"
               className="object-cover object-top"
             />
           </div>
@@ -79,7 +79,7 @@ export function WebDesignClient({ locale }: { locale: string }) {
             margin: "0 auto",
             padding: `0 ${PAGE_PADDING}px`,
           }}
-          className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 lg:grid-cols-3"
+          className="grid grid-cols-1 items-start gap-5 md:grid-cols-2"
         >
           {GALLERY_ITEMS.map((item) => {
             return <GalleryCard key={item.slug} item={item} locale={locale} />;

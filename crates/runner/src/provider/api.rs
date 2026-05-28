@@ -1,5 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,7 +18,8 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job, PollResponse,
+    SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -31,6 +33,23 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
+/// Keep in sync with the API poll contract's `heldSessionStates.max(100)`.
+const MAX_POLL_HELD_SESSION_STATES: usize = 100;
+
+fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSessionState]> {
+    if states.len() <= MAX_POLL_HELD_SESSION_STATES {
+        return Cow::Borrowed(states);
+    }
+
+    let mut capped = states.to_vec();
+    capped.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    capped.truncate(MAX_POLL_HELD_SESSION_STATES);
+    Cow::Owned(capped)
+}
 
 // ---------------------------------------------------------------------------
 // ApiProvider
@@ -54,8 +73,8 @@ pub struct ApiProvider {
     poll_wakeups: Arc<PollWakeups>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
-    /// Session IDs held in the idle pool, sent in poll requests for affinity ordering.
-    held_sessions: tokio::sync::Mutex<Vec<String>>,
+    /// Session generations held in the idle pool, sent in poll requests for affinity ordering.
+    held_session_states: tokio::sync::Mutex<Vec<HeldSessionState>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -88,7 +107,7 @@ impl ApiProvider {
             profiles,
             poll_wakeups,
             ably_supervisor,
-            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -104,13 +123,13 @@ impl JobProvider for ApiProvider {
                 .await?;
             let reason = due.reason();
 
-            let sessions = self.held_sessions.lock().await.clone();
+            let held_session_states = self.held_session_states.lock().await.clone();
             let poll_result = tokio::select! {
                 biased;
                 () = self.cancel.cancelled() => {
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, &sessions) => result,
+                result = self.api.poll(&self.group, &self.profiles, &held_session_states) => result,
             };
 
             match poll_result {
@@ -188,8 +207,8 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn set_held_sessions(&self, sessions: Vec<String>) {
-        *self.held_sessions.lock().await = sessions;
+    async fn set_held_session_states(&self, states: Vec<HeldSessionState>) {
+        *self.held_session_states.lock().await = states;
     }
 
     async fn shutdown(&self) {
@@ -264,13 +283,17 @@ impl ApiClient {
         &self,
         group: &str,
         profiles: &[String],
-        held_sessions: &[String],
+        held_session_states: &[HeldSessionState],
     ) -> RunnerResult<Option<Job>> {
         let mut body = serde_json::json!({ "group": group, "profiles": profiles });
-        if !held_sessions.is_empty()
+        let held_session_states = poll_held_session_states(held_session_states);
+        if !held_session_states.is_empty()
             && let Some(obj) = body.as_object_mut()
         {
-            obj.insert("heldSessions".to_string(), serde_json::json!(held_sessions));
+            obj.insert(
+                "heldSessionStates".to_string(),
+                serde_json::json!(&*held_session_states),
+            );
         }
         let resp = send_api(
             self.http
@@ -461,7 +484,7 @@ mod tests {
             profiles: Vec::new(),
             poll_wakeups,
             ably_supervisor: AblySupervisor::disabled(),
-            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            held_session_states: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -732,6 +755,67 @@ mod tests {
             other => panic!("expected RunnerError::Api, got {other:?}"),
         }
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_sends_held_session_states() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "group": "default",
+                        "profiles": ["vm0/default"],
+                        "heldSessionStates": [
+                            {
+                                "sessionId": "sess-a",
+                                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+                            }
+                        ]
+                    }));
+                then.status(200)
+                    .json_body(serde_json::json!({ "job": null }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let profiles = vec!["vm0/default".to_string()];
+        let held_session_states = vec![HeldSessionState {
+            session_id: "sess-a".to_string(),
+            last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
+        }];
+
+        let job = api
+            .poll("default", &profiles, &held_session_states)
+            .await
+            .unwrap();
+
+        assert!(job.is_none());
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn poll_held_session_states_caps_to_newest_contract_limit() {
+        let states: Vec<HeldSessionState> = (0..=MAX_POLL_HELD_SESSION_STATES)
+            .map(|index| HeldSessionState {
+                session_id: format!("sess-{index:03}"),
+                last_completed_at: format!(
+                    "2026-05-28T00:{:02}:{:02}.000Z",
+                    index / 60,
+                    index % 60
+                ),
+            })
+            .collect();
+
+        let capped = poll_held_session_states(&states);
+        let capped_sessions: Vec<&str> = capped
+            .iter()
+            .map(|state| state.session_id.as_str())
+            .collect();
+
+        assert_eq!(capped_sessions.len(), MAX_POLL_HELD_SESSION_STATES);
+        assert!(!capped_sessions.contains(&"sess-000"));
+        assert!(capped_sessions.contains(&"sess-100"));
     }
 
     #[tokio::test]

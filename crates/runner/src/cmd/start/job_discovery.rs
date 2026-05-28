@@ -171,12 +171,17 @@ async fn try_reuse_from_pool(
 
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let (taken, snapshot) = {
+    let (taken, snapshot, held_session_states) = {
         let mut pool = ctx.idle_pool.lock().await;
         let taken = pool.take(session_id);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
-        (taken, snapshot)
+        let held_session_states = pool.held_session_states();
+        (taken, snapshot, held_session_states)
     };
+    ctx.spawn_ctx
+        .provider
+        .set_held_session_states(held_session_states)
+        .await;
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name

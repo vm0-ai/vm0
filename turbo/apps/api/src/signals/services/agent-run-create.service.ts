@@ -3284,10 +3284,11 @@ async function buildRunnerJobPayload(
     builtContext,
   });
   const storedContext = builtContext.context;
+  const sessionId = storedContext.resumeSession?.sessionId ?? null;
   return queuedRunnerJobPayload({
     runnerGroup: group,
     profile,
-    sessionId: storedContext.resumeSession?.sessionId ?? null,
+    sessionId,
     executionContext: storedContext,
   });
 }
