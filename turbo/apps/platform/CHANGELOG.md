@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.388.4](https://github.com/vm0-ai/vm0/compare/app-v0.388.3...app-v0.388.4) (2026-05-28)
+
+
+### Bug Fixes
+
+* disable single-dollar inline math to keep currency literal ([#15202](https://github.com/vm0-ai/vm0/issues/15202)) ([533a4b7](https://github.com/vm0-ai/vm0/commit/533a4b7b8b3a232ef19fc481a218328774ab7ac8))
+
 ## [0.388.3](https://github.com/vm0-ai/vm0/compare/app-v0.388.2...app-v0.388.3) (2026-05-27)
 
 

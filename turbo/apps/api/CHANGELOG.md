@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.82.0](https://github.com/vm0-ai/vm0/compare/api-v1.81.0...api-v1.82.0) (2026-05-28)
+
+
+### Features
+
+* add run-based web chat context ([#15207](https://github.com/vm0-ai/vm0/issues/15207)) ([4d1a9ca](https://github.com/vm0-ai/vm0/commit/4d1a9ca3482cdbdcb3f0e6970b536ad7f41b18bd))
+
 ## [1.81.0](https://github.com/vm0-ai/vm0/compare/api-v1.80.1...api-v1.81.0) (2026-05-27)
 
 
