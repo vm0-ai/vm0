@@ -76,14 +76,12 @@ impl<'a> OwnershipTransitions<'a> {
     }
 
     /// Ownership is uncertain after panic; keep active status visible and track as orphan.
-    pub(super) async fn active_ownership_unknown(
+    pub(super) fn active_ownership_unknown(
         &self,
         orphaned_active_runs: &OrphanedActiveRuns,
         run: RunSandbox,
     ) {
-        orphaned_active_runs
-            .insert(run.run_id, run.sandbox_id)
-            .await;
+        orphaned_active_runs.insert(run.run_id, run.sandbox_id);
     }
 
     /// Idle pool now proves ownership for these orphan records.
@@ -103,10 +101,7 @@ impl<'a> OwnershipTransitions<'a> {
             if !idle_snapshot_contains_sandbox_id(&idle_snapshot, run.sandbox_id) {
                 continue;
             }
-            if !orphaned_active_runs
-                .remove_if_matching(run.run_id, run.sandbox_id)
-                .await
-            {
+            if !orphaned_active_runs.remove_if_matching(run.run_id, run.sandbox_id) {
                 continue;
             }
             if !refreshed_idle_status {
@@ -129,10 +124,7 @@ impl<'a> OwnershipTransitions<'a> {
         orphaned_active_runs: &OrphanedActiveRuns,
         run: RunSandbox,
     ) -> bool {
-        if !orphaned_active_runs
-            .remove_if_matching(run.run_id, run.sandbox_id)
-            .await
-        {
+        if !orphaned_active_runs.remove_if_matching(run.run_id, run.sandbox_id) {
             return false;
         }
         self.remove_matching_active(run).await
@@ -269,9 +261,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        transitions
-            .active_ownership_unknown(&orphans, RunSandbox::new(run_id, sandbox_id))
-            .await;
+        transitions.active_ownership_unknown(&orphans, RunSandbox::new(run_id, sandbox_id));
 
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&status_path).await;
@@ -279,7 +269,7 @@ mod tests {
             active_runs,
             vec![(run_id.to_string(), sandbox_id.to_string())]
         );
-        assert_eq!(orphans.len().await, 1);
+        assert_eq!(orphans.len(), 1);
     }
 
     #[tokio::test]
@@ -293,9 +283,9 @@ mod tests {
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, stale_sandbox_id).await;
-        orphans.insert(run_id, stale_sandbox_id).await;
+        orphans.insert(run_id, stale_sandbox_id);
         status.add_run(run_id, current_sandbox_id).await;
-        orphans.insert(run_id, current_sandbox_id).await;
+        orphans.insert(run_id, current_sandbox_id);
 
         let reconciled = transitions
             .orphan_reconciled_idle_owned(
@@ -312,7 +302,7 @@ mod tests {
             active_runs,
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
         );
-        assert_eq!(orphans.len().await, 1);
+        assert_eq!(orphans.len(), 1);
     }
 
     #[tokio::test]
@@ -326,7 +316,7 @@ mod tests {
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, stale_sandbox_id).await;
-        orphans.insert(run_id, stale_sandbox_id).await;
+        orphans.insert(run_id, stale_sandbox_id);
         status.add_run(run_id, current_sandbox_id).await;
 
         assert!(
@@ -341,7 +331,7 @@ mod tests {
             active_runs,
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
         );
-        assert_eq!(orphans.len().await, 0);
+        assert_eq!(orphans.len(), 0);
     }
 
     #[tokio::test]
@@ -355,7 +345,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let idle_sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
-        orphans.insert(run_id, sandbox_id).await;
+        orphans.insert(run_id, sandbox_id);
 
         let reconciled = transitions
             .orphan_reconciled_idle_owned(
@@ -372,6 +362,6 @@ mod tests {
             active_runs,
             vec![(run_id.to_string(), sandbox_id.to_string())]
         );
-        assert_eq!(orphans.len().await, 1);
+        assert_eq!(orphans.len(), 1);
     }
 }

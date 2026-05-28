@@ -432,9 +432,7 @@ pub(super) async fn cleanup_panicked_job(
                 sandbox_id = %sandbox_id,
                 "outer job task panicked before sandbox ownership was proven; leaving active run visible for orphan reconciliation"
             );
-            ownership
-                .active_ownership_unknown(&orphaned_active_runs, run)
-                .await;
+            ownership.active_ownership_unknown(&orphaned_active_runs, run);
         }
     }
 }
@@ -819,7 +817,7 @@ mod tests {
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
-        assert_eq!(fixture.orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len(), 0);
     }
 
     #[tokio::test]
@@ -842,7 +840,7 @@ mod tests {
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert_eq!(active_runs, vec![run_id.to_string()]);
-        assert_eq!(fixture.orphans.len().await, 1);
+        assert_eq!(fixture.orphans.len(), 1);
     }
 
     #[tokio::test]
@@ -865,7 +863,7 @@ mod tests {
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
-        assert_eq!(fixture.orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len(), 0);
     }
 
     #[tokio::test]
@@ -893,7 +891,7 @@ mod tests {
             status_active_run_records(&fixture.status_path).await,
             vec![(run_id.to_string(), current_sandbox_id.to_string())],
         );
-        assert_eq!(fixture.orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len(), 0);
     }
 
     #[tokio::test]
@@ -935,6 +933,6 @@ mod tests {
             status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
         assert!(active_runs.is_empty());
-        assert_eq!(fixture.orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len(), 0);
     }
 }

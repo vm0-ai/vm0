@@ -1,7 +1,7 @@
 //! Orphan active-run reconciliation for `runner start`.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use sandbox::SandboxId;
 use tracing::{info, warn};
@@ -29,52 +29,40 @@ struct OrphanedActiveRunState {
 /// Claimed runs whose outer task is gone but whose VM ownership is uncertain.
 #[derive(Clone)]
 pub(super) struct OrphanedActiveRuns {
-    inner: Arc<tokio::sync::Mutex<BTreeMap<RunId, OrphanedActiveRunState>>>,
-    len: Arc<std::sync::atomic::AtomicUsize>,
+    inner: Arc<Mutex<BTreeMap<RunId, OrphanedActiveRunState>>>,
 }
 
 impl OrphanedActiveRuns {
     pub(super) fn new() -> Self {
         Self {
-            inner: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
-            len: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            inner: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        self.len.load(std::sync::atomic::Ordering::Acquire) == 0
+        self.lock().is_empty()
     }
 
-    pub(super) async fn insert(&self, run_id: RunId, sandbox_id: SandboxId) {
+    pub(super) fn insert(&self, run_id: RunId, sandbox_id: SandboxId) {
         let state = OrphanedActiveRunState {
             sandbox_id,
             absent_scans: 0,
         };
-        let mut runs = self.inner.lock().await;
-        match runs.entry(run_id) {
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(state);
-                self.len.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-            }
-            std::collections::btree_map::Entry::Occupied(mut entry) => {
-                entry.insert(state);
-            }
-        }
+        self.lock().insert(run_id, state);
     }
 
-    pub(super) async fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
-        let mut runs = self.inner.lock().await;
+    pub(super) fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
+        let mut runs = self.lock();
         let removed =
             matches!(runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
         if removed {
             runs.remove(&run_id);
-            self.len.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
         }
         removed
     }
 
-    async fn reset_absent_scans_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) {
-        let mut runs = self.inner.lock().await;
+    fn reset_absent_scans_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) {
+        let mut runs = self.lock();
         if let Some(current) = runs.get_mut(&run_id)
             && current.sandbox_id == sandbox_id
         {
@@ -82,8 +70,8 @@ impl OrphanedActiveRuns {
         }
     }
 
-    async fn mark_absent_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> Option<u8> {
-        let mut runs = self.inner.lock().await;
+    fn mark_absent_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> Option<u8> {
+        let mut runs = self.lock();
         let current = runs.get_mut(&run_id)?;
         if current.sandbox_id != sandbox_id {
             return None;
@@ -92,10 +80,8 @@ impl OrphanedActiveRuns {
         Some(current.absent_scans)
     }
 
-    async fn snapshot(&self) -> Vec<OrphanedActiveRun> {
-        self.inner
-            .lock()
-            .await
+    fn snapshot(&self) -> Vec<OrphanedActiveRun> {
+        self.lock()
             .iter()
             .map(|(&run_id, state)| OrphanedActiveRun {
                 run_id,
@@ -105,8 +91,14 @@ impl OrphanedActiveRuns {
     }
 
     #[cfg(test)]
-    pub(super) async fn len(&self) -> usize {
-        self.inner.lock().await.len()
+    pub(super) fn len(&self) -> usize {
+        self.lock().len()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<RunId, OrphanedActiveRunState>> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -135,7 +127,7 @@ pub(super) async fn reap_orphaned_active_runs(
     mode: OrphanReapMode,
     process_discovery_override: Option<&OrphanReapProcessDiscovery>,
 ) {
-    let records = orphaned_active_runs.snapshot().await;
+    let records = orphaned_active_runs.snapshot();
     if records.is_empty() {
         return;
     }
@@ -265,9 +257,7 @@ async fn reap_orphaned_active_runs_with_firecrackers(
     for record in records {
         let sandbox_id = record.sandbox_id.to_string();
         if process::firecracker_process_exists_for_sandbox_id(firecrackers, &sandbox_id) {
-            orphaned_active_runs
-                .reset_absent_scans_if_matching(record.run_id, record.sandbox_id)
-                .await;
+            orphaned_active_runs.reset_absent_scans_if_matching(record.run_id, record.sandbox_id);
             warn!(
                 run_id = %record.run_id,
                 sandbox_id = %record.sandbox_id,
@@ -285,9 +275,8 @@ async fn reap_orphaned_active_runs_with_firecrackers(
             continue;
         }
 
-        let Some(absent_scans) = orphaned_active_runs
-            .mark_absent_if_matching(record.run_id, record.sandbox_id)
-            .await
+        let Some(absent_scans) =
+            orphaned_active_runs.mark_absent_if_matching(record.run_id, record.sandbox_id)
         else {
             continue;
         };
@@ -362,7 +351,7 @@ mod tests {
 
         async fn add_active_orphan(&self, run_id: RunId, sandbox_id: SandboxId) {
             self.status.add_run(run_id, sandbox_id).await;
-            self.orphans.insert(run_id, sandbox_id).await;
+            self.orphans.insert(run_id, sandbox_id);
         }
 
         async fn park_idle_candidate(
@@ -457,7 +446,7 @@ mod tests {
             absent_scans_before_remove: u8,
         ) {
             self.reap_records_with_firecrackers(
-                self.orphans.snapshot().await,
+                self.orphans.snapshot(),
                 firecrackers,
                 discovery_incomplete_for_current_runner,
                 absent_scans_before_remove,
@@ -505,7 +494,7 @@ mod tests {
         }
 
         async fn assert_orphans(&self, expected: &[(RunId, SandboxId)]) {
-            let remaining = self.orphans.snapshot().await;
+            let remaining = self.orphans.snapshot();
             let mut remaining = remaining
                 .iter()
                 .map(|record| (record.run_id.to_string(), record.sandbox_id.to_string()))
@@ -520,7 +509,7 @@ mod tests {
         }
 
         async fn assert_orphan_count(&self, expected: usize) {
-            assert_eq!(self.orphans.len().await, expected);
+            assert_eq!(self.orphans.len(), expected);
         }
 
         async fn status_idle_vms_and_active_runs(
@@ -577,7 +566,7 @@ mod tests {
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
         fixture.add_active_orphan(run_id, stale_sandbox_id).await;
-        let stale_records = fixture.orphans.snapshot().await;
+        let stale_records = fixture.orphans.snapshot();
 
         fixture.add_active_orphan(run_id, current_sandbox_id).await;
 
@@ -612,7 +601,7 @@ mod tests {
             )
             .await;
         fixture.add_active_orphan(run_id, stale_sandbox_id).await;
-        let stale_records = fixture.orphans.snapshot().await;
+        let stale_records = fixture.orphans.snapshot();
 
         fixture.add_active_orphan(run_id, current_sandbox_id).await;
 
