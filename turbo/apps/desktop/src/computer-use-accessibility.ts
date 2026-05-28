@@ -739,14 +739,19 @@ function indexAccessibilitySnapshot(
 ): IndexedAccessibilitySnapshot {
   let nextIndex = 0;
   const elementIdsByIndex: string[] = [];
-  let focusedElementIndex = snapshot.focusedElementIndex;
+  let focusedElementIndex: number | undefined;
 
   const indexElement = (
     element: AccessibilityElementSnapshot,
   ): AccessibilityElementSnapshot => {
     const index = nextIndex;
     nextIndex += 1;
-    elementIdsByIndex[index] = element.id;
+    const elementId =
+      element.id ??
+      (element.index !== undefined
+        ? snapshot.elementIdsByIndex?.[element.index]
+        : undefined);
+    elementIdsByIndex[index] = elementId ?? "";
     if (focusedElementIndex === undefined && element.focused === true) {
       focusedElementIndex = index;
     }
@@ -769,6 +774,7 @@ function indexAccessibilitySnapshot(
     snapshot: {
       ...snapshot,
       elements,
+      elementIdsByIndex,
       ...(focusedElementIndex !== undefined ? { focusedElementIndex } : {}),
     },
     elementIdsByIndex,
@@ -776,28 +782,10 @@ function indexAccessibilitySnapshot(
   };
 }
 
-function nativeIndexedAccessibilitySnapshot(
-  snapshot: AccessibilityAppStateSnapshot,
-): IndexedAccessibilitySnapshot | null {
-  if (!snapshot.elementIdsByIndex) {
-    return null;
-  }
-  return {
-    snapshot,
-    elementIdsByIndex: snapshot.elementIdsByIndex,
-    ...(snapshot.focusedElementIndex !== undefined
-      ? { focusedElementIndex: snapshot.focusedElementIndex }
-      : {}),
-  };
-}
-
 function indexedAccessibilitySnapshot(
   snapshot: AccessibilityAppStateSnapshot,
 ): IndexedAccessibilitySnapshot {
-  return (
-    nativeIndexedAccessibilitySnapshot(snapshot) ??
-    indexAccessibilitySnapshot(snapshot)
-  );
+  return indexAccessibilitySnapshot(snapshot);
 }
 
 const ROLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
@@ -1410,7 +1398,14 @@ function resolveElementTarget(args: {
   if ("status" in snapshot) {
     return snapshot;
   }
+  const elementId = snapshot.elementIdsByIndex?.[args.elementIndex];
+  if (!elementId) {
+    return unsupportedCommand(
+      `Element index ${args.elementIndex.toString()} was not found in snapshot ${snapshot.snapshotId}`,
+    );
+  }
   return {
+    elementId,
     elementIndex: args.elementIndex,
     snapshotId: snapshot.snapshotId,
   };

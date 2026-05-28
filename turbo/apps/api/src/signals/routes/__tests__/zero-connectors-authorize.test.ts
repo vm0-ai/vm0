@@ -77,8 +77,8 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
   mockOptionalEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
   mockOptionalEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
-  mockOptionalEnv("SLACK_CLIENT_ID", "test-slack-client-id");
-  mockOptionalEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_ID", "strava-test-client-id");
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
   mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");

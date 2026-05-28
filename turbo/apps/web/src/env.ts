@@ -57,8 +57,8 @@ function initEnv() {
       // Google Search Console verification
       GOOGLE_SITE_VERIFICATION: z.string().min(1).optional(),
       SLACK_INTEGRATION_ENABLED: z.enum(["true", "false"]).optional(),
-      SLACK_CLIENT_ID: z.string().min(1).optional(),
-      SLACK_CLIENT_SECRET: z.string().min(1).optional(),
+      SLACK_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      SLACK_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
       SLACK_API_URL: z.url().optional(),
       E2E_SLACK_MOCK_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
@@ -320,8 +320,8 @@ function initEnv() {
       GITHUB_SKILL_DOWNLOAD_TOKEN: process.env.GITHUB_SKILL_DOWNLOAD_TOKEN,
       GOOGLE_SITE_VERIFICATION: process.env.GOOGLE_SITE_VERIFICATION,
       SLACK_INTEGRATION_ENABLED: process.env.SLACK_INTEGRATION_ENABLED,
-      SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
-      SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
+      SLACK_OAUTH_CLIENT_ID: process.env.SLACK_OAUTH_CLIENT_ID,
+      SLACK_OAUTH_CLIENT_SECRET: process.env.SLACK_OAUTH_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       SLACK_API_URL: process.env.SLACK_API_URL,
       E2E_SLACK_MOCK_ENABLED: process.env.E2E_SLACK_MOCK_ENABLED,
@@ -474,14 +474,14 @@ function initEnv() {
     // Slack integration validation
     const slackEnabled = env.SLACK_INTEGRATION_ENABLED === "true";
     if (slackEnabled) {
-      if (!env.SLACK_CLIENT_ID) {
+      if (!env.SLACK_OAUTH_CLIENT_ID) {
         throw new Error(
-          "SLACK_CLIENT_ID is required when SLACK_INTEGRATION_ENABLED=true",
+          "SLACK_OAUTH_CLIENT_ID is required when SLACK_INTEGRATION_ENABLED=true",
         );
       }
-      if (!env.SLACK_CLIENT_SECRET) {
+      if (!env.SLACK_OAUTH_CLIENT_SECRET) {
         throw new Error(
-          "SLACK_CLIENT_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
+          "SLACK_OAUTH_CLIENT_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
         );
       }
       if (!env.SLACK_SIGNING_SECRET) {

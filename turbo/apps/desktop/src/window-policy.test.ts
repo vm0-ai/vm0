@@ -1016,6 +1016,91 @@ describe("computer use desktop runtime", () => {
     expect(text).toContain("\t\t\t4 text release-notify");
   });
 
+  it("renders browser table row and cell content for model targeting", () => {
+    const snapshot = normalizeAccessibilitySnapshot({
+      app: "Google Chrome",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Members | VM0 | Cloudflare",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXWebArea",
+              roleDescription: "HTML content",
+              name: "Members | VM0 | Cloudflare",
+              children: [
+                {
+                  id: "w0.e0.e0",
+                  role: "AXTable",
+                  children: [
+                    {
+                      id: "w0.e0.e0.r0",
+                      role: "AXRow",
+                      children: [
+                        {
+                          id: "w0.e0.e0.r0.c0",
+                          role: "AXCell",
+                          children: [
+                            {
+                              id: "w0.e0.e0.r0.c0.t0",
+                              role: "AXStaticText",
+                              value: "Individual Domains",
+                            },
+                          ],
+                        },
+                        {
+                          id: "w0.e0.e0.r0.c1",
+                          role: "AXCell",
+                          children: [
+                            {
+                              id: "w0.e0.e0.r0.c1.t0",
+                              role: "AXStaticText",
+                              value: "Domain DNS",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      id: "w0.e0.e0.r1",
+                      role: "AXRow",
+                      children: [
+                        {
+                          id: "w0.e0.e0.r1.c0",
+                          role: "AXCell",
+                          children: [
+                            {
+                              id: "w0.e0.e0.r1.c0.t0",
+                              role: "AXStaticText",
+                              value:
+                                "Cloudflare Zero Trust; Load Balancer; Cloudflare Access",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const text = renderAccessibilityTree(snapshot);
+
+    expect(text).toContain("table");
+    expect(text).toContain("row");
+    expect(text).toContain("cell");
+    expect(text).toContain("Individual Domains");
+    expect(text).toContain("Domain DNS");
+    expect(text).toContain("Cloudflare Zero Trust; Load Balancer");
+  });
+
   it("marks accessibility snapshots truncated at the output node budget", () => {
     const snapshot = {
       app: "Slack",
@@ -1336,7 +1421,7 @@ describe("computer use desktop runtime", () => {
     expect(result.result.visibleText).toContain("Can you see this?");
   });
 
-  it("passes model-facing element indexes to the native runtime session", async () => {
+  it("resolves normalized element indexes to native element ids", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();
     clickElement.mockResolvedValue(
@@ -1363,13 +1448,20 @@ describe("computer use desktop runtime", () => {
               children: [
                 {
                   id: "w0.e0",
-                  role: "AXButton",
-                  name: "Open",
-                  actions: ["AXPress"],
+                  role: "AXGroup",
+                  children: [
+                    {
+                      id: "w0.e0.e0",
+                      role: "AXButton",
+                      name: "Open",
+                      actions: ["AXPress"],
+                    },
+                  ],
                 },
               ],
             },
           ],
+          elementIdsByIndex: ["w0", "w0.e0", "w0.e0.e0"],
         };
       },
     });
@@ -1426,6 +1518,7 @@ describe("computer use desktop runtime", () => {
     expect(click.status).toBe("succeeded");
     expect(clickElement).toHaveBeenCalledWith({
       app: "Safari",
+      elementId: "w0.e0.e0",
       snapshotId,
       elementIndex: 1,
       button: "left",

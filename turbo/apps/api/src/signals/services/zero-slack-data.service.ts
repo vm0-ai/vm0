@@ -47,7 +47,7 @@ function buildSlackInstallUrl(args: {
   readonly userId: string;
   readonly reinstall: boolean;
 }): string | null {
-  const clientId = env("SLACK_CLIENT_ID");
+  const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return null;
   }
@@ -64,7 +64,7 @@ function buildSlackConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string | null {
-  const clientId = env("SLACK_CLIENT_ID");
+  const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return null;
   }

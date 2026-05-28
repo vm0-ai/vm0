@@ -28,7 +28,7 @@ struct ChildSource: Sendable {
 
 let limits = SnapshotLimits()
 
-let childSources = [
+let resolvableChildSources = [
     ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
     ChildSource(attribute: "AXRows", prefix: "r"),
     ChildSource(attribute: "AXContents", prefix: "c"),
@@ -41,15 +41,29 @@ let childSources = [
     ChildSource(attribute: "AXSelectedCells", prefix: "l"),
 ]
 
-let visibleCollectionChildSources = [
-    ChildSource(attribute: "AXVisibleRows", prefix: "a"),
-    ChildSource(attribute: "AXVisibleCells", prefix: "b"),
-    ChildSource(attribute: "AXVisibleColumns", prefix: "d"),
-    ChildSource(attribute: "AXSelectedRows", prefix: "q"),
-    ChildSource(attribute: "AXSelectedCells", prefix: "l"),
-    ChildSource(attribute: "AXSelectedChildren", prefix: "s"),
-    ChildSource(attribute: "AXVisibleChildren", prefix: "v"),
+let defaultTraversalChildSources = [
+    ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
     ChildSource(attribute: "AXContents", prefix: "c"),
+    ChildSource(attribute: "AXVisibleChildren", prefix: "v"),
+]
+
+let tableVisibleRowChildSources = [
+    ChildSource(attribute: "AXVisibleRows", prefix: "a"),
+]
+
+let tableRowFallbackChildSources = [
+    ChildSource(attribute: "AXRows", prefix: "r"),
+]
+
+let tableCellFallbackChildSources = [
+    ChildSource(attribute: "AXVisibleCells", prefix: "b"),
+]
+
+let collectionTraversalChildSources = [
+    ChildSource(attribute: "AXVisibleRows", prefix: "a"),
+    ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
+    ChildSource(attribute: "AXContents", prefix: "c"),
+    ChildSource(attribute: "AXVisibleChildren", prefix: "v"),
 ]
 
 func appSnapshotKey(_ appName: String) -> String {
@@ -2366,27 +2380,52 @@ func prefixedChildren(
         }
 }
 
-func elementUsesVisibleCollectionSources(_ element: AXUIElement) -> Bool {
-    guard let role = role(element),
-          role == "AXList" || role == "AXOutline" || role == "AXTable"
-    else {
-        return false
+func candidates(from element: AXUIElement, sources: [ChildSource]) -> [ChildEntry] {
+    return sources.flatMap { source in
+        prefixedChildren(element, source.attribute as CFString, source.prefix)
     }
-    return !attributeArray(element, "AXVisibleRows" as CFString).isEmpty ||
-        !attributeArray(element, "AXVisibleCells" as CFString).isEmpty ||
-        !attributeArray(element, "AXVisibleColumns" as CFString).isEmpty ||
-        !attributeArray(element, "AXSelectedChildren" as CFString).isEmpty ||
-        !attributeArray(element, "AXSelectedRows" as CFString).isEmpty ||
-        !attributeArray(element, "AXSelectedCells" as CFString).isEmpty
+}
+
+func firstAvailableCandidates(from element: AXUIElement, sourceGroups: [[ChildSource]]) -> [ChildEntry] {
+    for sources in sourceGroups {
+        let children = candidates(from: element, sources: sources)
+        if !children.isEmpty {
+            return children
+        }
+    }
+    return []
+}
+
+func traversalChildCandidates(_ element: AXUIElement) -> [ChildEntry] {
+    switch role(element) {
+    case "AXTable":
+        return firstAvailableCandidates(
+            from: element,
+            sourceGroups: [
+                tableVisibleRowChildSources,
+                tableRowFallbackChildSources,
+                tableCellFallbackChildSources,
+                defaultTraversalChildSources,
+            ]
+        )
+    case "AXList", "AXOutline":
+        return firstAvailableCandidates(
+            from: element,
+            sourceGroups: collectionTraversalChildSources.map { source in [source] }
+        )
+    default:
+        return firstAvailableCandidates(
+            from: element,
+            sourceGroups: [
+                Array(defaultTraversalChildSources.prefix(2)),
+                Array(defaultTraversalChildSources.suffix(1)),
+            ]
+        )
+    }
 }
 
 func collectChildren(_ element: AXUIElement) -> [ChildEntry] {
-    let sources = elementUsesVisibleCollectionSources(element)
-        ? visibleCollectionChildSources
-        : childSources
-    let candidates = sources.flatMap { source in
-        prefixedChildren(element, source.attribute as CFString, source.prefix)
-    }
+    let candidates = traversalChildCandidates(element)
 
     var seenElements = Set<CFHashCode>()
     var seen = Set<String>()
@@ -2421,8 +2460,13 @@ func describe(
     id: String,
     depth: Int,
     nodeCount: inout Int,
-    truncationReasons: inout [String]
+    truncationReasons: inout [String],
+    ancestry: Set<CFHashCode> = []
 ) -> [String: Any]? {
+    let elementHash = CFHash(element)
+    if ancestry.contains(elementHash) {
+        return nil
+    }
     if nodeCount >= limits.maxNodes {
         markTruncated(&truncationReasons, "max_nodes")
         return nil
@@ -2514,13 +2558,16 @@ func describe(
         return node
     }
 
+    var childAncestry = ancestry
+    childAncestry.insert(elementHash)
     let children = collectChildren(element).compactMap { child in
         describe(
             child.element,
             id: "\(id).\(child.segment)",
             depth: depth + 1,
             nodeCount: &nodeCount,
-            truncationReasons: &truncationReasons
+            truncationReasons: &truncationReasons,
+            ancestry: childAncestry
         )
     }
     if !children.isEmpty {
@@ -2547,7 +2594,7 @@ func resolveIndex(_ segment: Substring) throws -> Int {
 
 func childForSegment(_ element: AXUIElement, _ segment: Substring) throws -> AXUIElement {
     let index = try resolveIndex(segment)
-    guard let source = childSources.first(where: { source in
+    guard let source = resolvableChildSources.first(where: { source in
         segment.hasPrefix(source.prefix)
     }) else {
         throw HelperFailure(
@@ -3665,7 +3712,10 @@ func runStdioSession() {
             }
             do {
                 let request = try parseRequestData(Data(trimmed.utf8))
-                try writeJSONObject(responseObject(for: request, session: session))
+                let response = DispatchQueue.main.sync {
+                    responseObject(for: request, session: session)
+                }
+                try writeJSONObject(response)
             } catch let failure as HelperFailure {
                 try? writeJSONObject([
                     "status": "failed",
