@@ -1794,54 +1794,60 @@ async function loadStoredConnectorContext(
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<ConnectorRuntimeContext> {
-  const connectorRows = await db
-    .select({ type: connectors.type, authMethod: connectors.authMethod })
-    .from(connectors)
-    .where(
-      and(eq(connectors.orgId, args.orgId), eq(connectors.userId, args.userId)),
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
     );
-  if (connectorRows.length === 0) {
-    return emptyConnectorRuntimeContext();
-  }
+    const connectorRows = await tx
+      .select({ type: connectors.type, authMethod: connectors.authMethod })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+        ),
+      );
+    if (connectorRows.length === 0) {
+      return emptyConnectorRuntimeContext();
+    }
 
-  const allowedConnectorRows = allowedStoredConnectorRows(
-    connectorRows,
-    args.allowedConnectorTypes,
-  );
-  if (allowedConnectorRows.length === 0) {
-    return emptyConnectorRuntimeContext();
-  }
+    const allowedConnectorRows = allowedStoredConnectorRows(
+      connectorRows,
+      args.allowedConnectorTypes,
+    );
+    if (allowedConnectorRows.length === 0) {
+      return emptyConnectorRuntimeContext();
+    }
 
-  const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
-  const requirements = collectStoredConnectorRequirements(bindingSets);
-  const [connectorSecrets, connectorVariables] = await Promise.all([
-    loadStoredConnectorSecrets(db, {
+    const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
+    const requirements = collectStoredConnectorRequirements(bindingSets);
+    const connectorSecrets = await loadStoredConnectorSecrets(tx, {
       orgId: args.orgId,
       userId: args.userId,
       names: requirements.secretNames,
       featureSwitchContext: args.featureSwitchContext,
-    }),
-    loadStoredConnectorVariables(db, {
+    });
+    const connectorVariables = await loadStoredConnectorVariables(tx, {
       orgId: args.orgId,
       userId: args.userId,
       names: requirements.variableNames,
-    }),
-  ]);
-  const resolved = resolveStoredConnectorState(
-    bindingSets,
-    connectorSecrets,
-    connectorVariables,
-  );
+    });
+    const resolved = resolveStoredConnectorState(
+      bindingSets,
+      connectorSecrets,
+      connectorVariables,
+    );
 
-  return {
-    secrets: compactRecord(resolved.secrets),
-    vars: compactRecord(resolved.vars),
-    secretConnectorMap: compactRecord(resolved.secretConnectorMap),
-    connectorTypes: allowedConnectorRows.map((row) => {
-      return row.connectorType;
-    }),
-    storedEnvironment: compactRecord(resolved.environment),
-  };
+    return {
+      secrets: compactRecord(resolved.secrets),
+      vars: compactRecord(resolved.vars),
+      secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+      connectorTypes: allowedConnectorRows.map((row) => {
+        return row.connectorType;
+      }),
+      storedEnvironment: compactRecord(resolved.environment),
+    };
+  });
 }
 
 function injectPlatformEnvSecrets(
