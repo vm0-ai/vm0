@@ -3,7 +3,6 @@ import {
   index,
   pgEnum,
   pgTable,
-  pgView,
   text,
   timestamp,
   uuid,
@@ -64,44 +63,3 @@ export const modelProviderAuthSessions = pgTable(
     ];
   },
 );
-
-export const legacyConnectorCliAuthSessionsView = pgView(
-  "connector_cli_auth_sessions",
-  {
-    id: uuid("id"),
-    orgId: text("org_id"),
-    userId: text("user_id"),
-    connectorType: varchar("connector_type", { length: 50 }),
-    source: varchar("source", { length: 50 }),
-    status: modelProviderAuthSessionStatusEnum("status"),
-    sandboxId: varchar("sandbox_id", { length: 255 }),
-    approvalUrl: text("approval_url"),
-    verificationCode: varchar("verification_code", { length: 128 }),
-    encryptedProviderState: text("encrypted_provider_state"),
-    errorMessage: text("error_message"),
-    createdAt: timestamp("created_at"),
-    updatedAt: timestamp("updated_at"),
-    expiresAt: timestamp("expires_at"),
-    completedAt: timestamp("completed_at"),
-    cancelledAt: timestamp("cancelled_at"),
-  },
-).as(sql`
-  SELECT
-    "id",
-    "org_id",
-    "user_id",
-    "connector_type",
-    "source",
-    "status",
-    "sandbox_id",
-    "approval_url",
-    "verification_code",
-    "encrypted_provider_state",
-    "error_message",
-    "created_at",
-    "updated_at",
-    "expires_at",
-    "completed_at",
-    "cancelled_at"
-  FROM "model_provider_auth_sessions"
-`);
