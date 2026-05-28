@@ -319,12 +319,6 @@ pub struct CompleteRequest {
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompleteResponse {
-    pub completed_at: String,
-}
-
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
 /// means the VM was unparked from the idle pool; the other variants name the
 /// branch that caused a fresh create. Wire name: `sandboxReuseResult`.

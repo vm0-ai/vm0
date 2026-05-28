@@ -382,7 +382,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "completed",
-      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -426,7 +425,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "completed",
-      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -499,7 +497,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "failed",
-      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -529,7 +526,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "completed",
-      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -552,7 +548,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "failed",
-      completedAt: expect.any(String),
     });
 
     const run = await runById(fixture.runId);
@@ -605,7 +600,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(response.body).toStrictEqual({
       success: true,
       status: "failed",
-      completedAt: expect.any(String),
     });
     const run = await runById(fixture.runId);
     expect(run?.status).toBe("cancelled");

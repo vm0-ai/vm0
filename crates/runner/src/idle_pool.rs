@@ -190,10 +190,10 @@ pub struct ParkedIdleCandidate {
     /// Version fingerprints of storages downloaded in the previous turn.
     /// Used to skip re-downloading unchanged entries on reuse.
     storage_fingerprints: StorageFingerprints,
-    /// API-confirmed terminal generation for this parked session.
+    /// Local terminal timestamp for this parked session.
     ///
-    /// `None` means the VM must not be advertised for reuse. This is expected
-    /// before the complete webhook response arrives.
+    /// `None` is reserved for synthetic test entries and means the VM is not
+    /// advertised for reuse affinity.
     last_completed_at: Option<String>,
 }
 
@@ -323,6 +323,11 @@ impl ParkedIdleCandidate {
     #[cfg(test)]
     pub(crate) fn sandbox_id(&self) -> SandboxId {
         self.sandbox_id
+    }
+
+    pub(crate) fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
+        self.last_completed_at = Some(last_completed_at);
+        self
     }
 
     fn into_idle_entry(self, parked_at: Instant, idle_timeout: Duration) -> IdleEntry {
@@ -730,28 +735,6 @@ impl IdlePool {
             self.bump_revision();
         }
         entry
-    }
-
-    /// Record the API-confirmed terminal generation for a sandbox the idle
-    /// pool already owns. Returns false if the VM is no longer parked there.
-    pub fn set_last_completed_at(
-        &mut self,
-        session_id: &str,
-        sandbox_id: SandboxId,
-        last_completed_at: String,
-    ) -> bool {
-        let Some(entry) = self.entries.get_mut(session_id) else {
-            return false;
-        };
-        if entry.sandbox_id != sandbox_id {
-            return false;
-        }
-        if entry.last_completed_at.as_deref() == Some(last_completed_at.as_str()) {
-            return true;
-        }
-        entry.last_completed_at = Some(last_completed_at);
-        self.bump_revision();
-        true
     }
 
     /// Remove and return all entries that have exceeded their idle timeout.
@@ -1361,27 +1344,17 @@ mod tests {
     }
 
     #[test]
-    fn held_session_states_include_only_confirmed_generations() {
+    fn held_session_states_include_only_entries_with_timestamps() {
         let mut pool = IdlePool::new(pool_config(0));
         let unconfirmed = make_candidate_for("sess-unconfirmed", 2, 2048);
-        let confirmed_b = make_candidate_for("sess-b", 2, 2048);
-        let sandbox_b = confirmed_b.sandbox_id;
-        let confirmed_a = make_candidate_for("sess-a", 2, 2048);
-        let sandbox_a = confirmed_a.sandbox_id;
+        let confirmed_b = make_candidate_for("sess-b", 2, 2048)
+            .with_last_completed_at("2026-05-28T00:00:01.000Z".to_string());
+        let confirmed_a = make_candidate_for("sess-a", 2, 2048)
+            .with_last_completed_at("2026-05-28T00:00:00.000Z".to_string());
 
         let _ = pool.park(unconfirmed);
         let _ = pool.park(confirmed_b);
         let _ = pool.park(confirmed_a);
-        assert!(pool.set_last_completed_at(
-            "sess-b",
-            sandbox_b,
-            "2026-05-28T00:00:01.000Z".to_string(),
-        ));
-        assert!(pool.set_last_completed_at(
-            "sess-a",
-            sandbox_a,
-            "2026-05-28T00:00:00.000Z".to_string(),
-        ));
 
         assert_eq!(
             pool.held_session_states(),

@@ -17,8 +17,8 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::types::{
-    CompleteRequest, CompleteResponse, ExecutionContext, HeartbeatState, HeldSessionState, Job,
-    PollResponse, SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job, PollResponse,
+    SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -205,12 +205,12 @@ impl JobProvider for ApiProvider {
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
         completion_auth: CompletionAuth,
-    ) -> Option<String> {
+    ) {
         let token = match completion_auth.into_sandbox_token(run_id) {
             Ok(token) => token,
             Err(CompletionAuthError::NotSandbox) => {
                 error!(run_id = %run_id, "completion auth missing sandbox token");
-                return None;
+                return;
             }
             Err(CompletionAuthError::RunIdMismatch { auth_run_id }) => {
                 error!(
@@ -218,7 +218,7 @@ impl JobProvider for ApiProvider {
                     auth_run_id = %auth_run_id,
                     "completion auth run_id mismatch"
                 );
-                return None;
+                return;
             }
         };
 
@@ -231,7 +231,7 @@ impl JobProvider for ApiProvider {
                 .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
                 .await
             {
-                Ok(completed_at) => return Some(completed_at),
+                Ok(()) => return,
                 Err(e) if attempt < MAX_ATTEMPTS => {
                     warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
                     tokio::time::sleep(RETRY_DELAY).await;
@@ -241,7 +241,6 @@ impl JobProvider for ApiProvider {
                 }
             }
         }
-        None
     }
 }
 
@@ -349,7 +348,7 @@ impl ApiClient {
         error: Option<&str>,
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
-    ) -> RunnerResult<String> {
+    ) -> RunnerResult<()> {
         let body = CompleteRequest {
             run_id,
             exit_code,
@@ -372,9 +371,7 @@ impl ApiClient {
             return Err(api_status_error("complete", status, &body));
         }
 
-        let complete: CompleteResponse = decode_api_json(resp, "complete").await?;
-
-        Ok(complete.completed_at)
+        Ok(())
     }
 
     /// Fetch an Ably token for subscribing to runner group notifications.
@@ -526,11 +523,7 @@ mod tests {
             500 => "Internal Server Error",
             _ => "Unknown",
         };
-        let body = if status == 200 {
-            r#"{"success":true,"status":"completed","completedAt":"2026-05-28T00:00:00.000Z"}"#
-        } else {
-            "failed"
-        };
+        let body = if status == 200 { "ok" } else { "failed" };
         let response = format!(
             "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(),
@@ -571,14 +564,6 @@ mod tests {
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
         );
-    }
-
-    fn complete_success_body() -> serde_json::Value {
-        serde_json::json!({
-            "success": true,
-            "status": "completed",
-            "completedAt": "2026-05-28T00:00:00.000Z"
-        })
     }
 
     async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
@@ -854,7 +839,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::webhooks::agent::complete::COMPLETE.path)
                     .header("authorization", "Bearer claim-sandbox-token");
-                then.status(200).json_body(complete_success_body());
+                then.status(200);
             })
             .await;
         let provider = api_provider_for_test(
@@ -923,7 +908,7 @@ mod tests {
                         "runId": run_id_a,
                         "exitCode": 0
                     }));
-                then.status(200).json_body(complete_success_body());
+                then.status(200);
             })
             .await;
         let complete_mock_b = server
@@ -935,7 +920,7 @@ mod tests {
                         "runId": run_id_b,
                         "exitCode": 0
                     }));
-                then.status(200).json_body(complete_success_body());
+                then.status(200);
             })
             .await;
         let provider = api_provider_for_test(
@@ -983,7 +968,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::webhooks::agent::complete::COMPLETE.path)
                     .header("authorization", "Bearer sandbox-token");
-                then.status(200).json_body(complete_success_body());
+                then.status(200);
             })
             .await;
         let provider = api_provider_for_test(

@@ -222,7 +222,7 @@ pub trait JobProvider: Send + Sync {
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
         completion_auth: CompletionAuth,
-    ) -> Option<String>;
+    );
 
     /// Report runner state to the server. Fire-and-forget — failures are
     /// logged but do not affect runner operation.

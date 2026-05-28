@@ -41,7 +41,6 @@ interface CompletionResponse {
     | {
         readonly success: true;
         readonly status: TerminalStatus;
-        readonly completedAt: string;
       }
     | {
         readonly error: {
@@ -156,28 +155,18 @@ async function persistLastEventSequence(
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }
 
-async function readCompletionResponseState(
+async function readCompletionResponseStatus(
   db: Db,
   runId: string,
   userId: string,
-): Promise<{
-  readonly status: TerminalStatus;
-  readonly completedAt: Date;
-}> {
+): Promise<TerminalStatus> {
   const [currentRun] = await db
-    .select({ status: agentRuns.status, completedAt: agentRuns.completedAt })
+    .select({ status: agentRuns.status })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
     .limit(1);
 
-  if (!currentRun?.completedAt) {
-    throw new Error("Terminal run is missing completedAt");
-  }
-
-  return {
-    status: currentRun.status === "completed" ? "completed" : "failed",
-    completedAt: currentRun.completedAt,
-  };
+  return currentRun?.status === "completed" ? "completed" : "failed";
 }
 
 async function transitionRunStatus(
@@ -210,7 +199,6 @@ function successResponse(
   runId: string,
   orgId: string,
   status: TerminalStatus,
-  completedAt: Date,
   error?: string,
 ): CompletionResponse {
   return {
@@ -218,7 +206,6 @@ function successResponse(
     body: {
       success: true,
       status,
-      completedAt: completedAt.toISOString(),
     },
     sideEffects: {
       runId,
@@ -233,17 +220,15 @@ async function currentStatusResponse(
   db: Db,
   input: CompleteAgentRunInput,
 ): Promise<CompletionResponse> {
-  const currentState = await readCompletionResponseState(
-    db,
-    input.body.runId,
-    input.auth.userId,
-  );
   return {
     status: 200,
     body: {
       success: true,
-      status: currentState.status,
-      completedAt: currentState.completedAt.toISOString(),
+      status: await readCompletionResponseStatus(
+        db,
+        input.body.runId,
+        input.auth.userId,
+      ),
     },
   };
 }
@@ -346,7 +331,7 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   L.debug("Run completed successfully", { runId: input.body.runId });
-  return successResponse(input.body.runId, run.orgId, "completed", completedAt);
+  return successResponse(input.body.runId, run.orgId, "completed");
 }
 
 async function handleFailedCompletion(
@@ -385,13 +370,7 @@ async function handleFailedCompletion(
     exitCode: input.body.exitCode,
     error,
   });
-  return successResponse(
-    input.body.runId,
-    run.orgId,
-    "failed",
-    completedAt,
-    error,
-  );
+  return successResponse(input.body.runId, run.orgId, "failed", error);
 }
 
 export const dispatchCompleteSideEffects$ = command(
@@ -480,18 +459,11 @@ export const completeAgentRun$ = command(
         runId: input.body.runId,
         status: run.status,
       });
-      const currentState = await readCompletionResponseState(
-        db,
-        input.body.runId,
-        input.auth.userId,
-      );
-      signal.throwIfAborted();
       return {
         status: 200,
         body: {
           success: true,
-          status: currentState.status,
-          completedAt: currentState.completedAt.toISOString(),
+          status: run.status === "completed" ? "completed" : "failed",
         },
       };
     }

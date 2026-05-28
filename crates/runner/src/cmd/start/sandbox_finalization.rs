@@ -7,6 +7,7 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
+use chrono::SecondsFormat;
 use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
@@ -31,6 +32,10 @@ use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::status::StatusTracker;
+
+fn local_completed_at() -> String {
+    chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
 
 pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
@@ -244,6 +249,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
                 );
             }
+            let candidate = candidate.with_last_completed_at(local_completed_at());
             match pool.park(candidate) {
                 ParkResult::Parked => {
                     info!(run_id = %run_id, session_id, "VM parked for reuse");
@@ -268,7 +274,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         .publish_idle_status_after_pool_transfer(snapshot)
                         .await;
                     park_notify.notify_one();
-                    BudgetOwnership::idle_owned(session_id.clone(), sandbox_id)
+                    BudgetOwnership::idle_owned()
                 }
                 ParkResult::Replaced(evicted) => {
                     info!(run_id = %run_id, session_id, "VM parked, evicting previous");
@@ -293,7 +299,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     // aborts any leftover handles and the FC process is
                     // killed regardless of balloon state.
                     destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await;
-                    BudgetOwnership::idle_owned(session_id.clone(), sandbox_id)
+                    BudgetOwnership::idle_owned()
                 }
                 ParkResult::Rejected(rejected) => {
                     info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");

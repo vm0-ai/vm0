@@ -23,8 +23,6 @@ use sandbox::SandboxId;
 
 /// Poll interval for discovering new job files and local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
-const LOCAL_SESSION_LAST_COMPLETED_AT: &str = "2026-05-28T00:00:00.000Z";
-
 /// Job request written by `submit` as a `{job_id}.job` file.
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(crate) struct JobRequest {
@@ -737,20 +735,19 @@ impl JobProvider for LocalProvider {
         _sandbox_id: Option<SandboxId>,
         _reuse_result: Option<SandboxReuseResult>,
         _completion_auth: CompletionAuth,
-    ) -> Option<String> {
+    ) {
         self.cancel_scanner.remove_owned_claim(run_id).await;
         if !self.write_result(run_id, exit_code, error) {
             if self.remove_job_file_if_present(run_id) {
                 let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
                 let _ = std::fs::remove_file(local_queue::claim_path(&self.group_dir, run_id));
             }
-            return None;
+            return;
         }
         // Best-effort cleanup of cancel file (may have been written after the
         // last discover() scan but before the job actually finished).
         let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
         let _ = std::fs::remove_file(local_queue::claim_path(&self.group_dir, run_id));
-        Some(LOCAL_SESSION_LAST_COMPLETED_AT.to_string())
     }
 
     async fn heartbeat(&self, _state: &HeartbeatState) {}
