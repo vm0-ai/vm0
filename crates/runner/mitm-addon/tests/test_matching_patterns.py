@@ -344,6 +344,33 @@ class TestMatchBaseUrl:
         assert rel_path == "/projects/123"
         assert params == {"org": "acme"}
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com//v1//acme/projects",
+            "https://api.example.com/v1//acme/projects",
+        ],
+    )
+    def test_parameterized_path_does_not_collapse_empty_segments_inside_base(self, url):
+        result = matching.match_base_url(url, "https://api.example.com/v1/{org}")
+        assert result is None
+
+    def test_parameterized_path_preserves_empty_segments_after_base(self):
+        result = matching.match_base_url(
+            "https://api.example.com/v1/acme//projects",
+            "https://api.example.com/v1/{org}",
+        )
+        assert result == ("//projects", {"org": "acme"})
+
+    def test_parameterized_base_path_can_require_empty_segments(self):
+        base = "https://api.example.com/v1//{org}"
+
+        result = matching.match_base_url("https://api.example.com/v1//acme/projects", base)
+        assert result == ("/projects", {"org": "acme"})
+
+        result = matching.match_base_url("https://api.example.com/v1/acme/projects", base)
+        assert result is None
+
     def test_parameterized_host_and_path(self):
         result = matching.match_base_url(
             "https://us.api.example.com/v1/acme/data",

@@ -401,6 +401,8 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
         suffix = parsed["suffix"]
         runtime = path_segs[pi]
         if prefix == "" and suffix == "":
+            if runtime == "":
+                return None
             params[name] = runtime
         else:
             captured = _match_segment_literal(runtime, prefix, suffix)
@@ -410,6 +412,16 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
         pi += 1
 
     return params, pi
+
+
+def _split_base_path_segments(path: str) -> list[str]:
+    """Split base-scope paths without normalizing repeated slashes."""
+    if path in ("", "/"):
+        return []
+    path_without_leading_slash = path[1:] if path.startswith("/") else path
+    if path_without_leading_slash == "":
+        return []
+    return path_without_leading_slash.split("/")
 
 
 def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
@@ -445,7 +457,7 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
         return rel_path, {}
 
     # Parameterized base URL: parse into scheme, host pattern, path pattern
-    base_parts = _split_base_match_url(base, allow_query_fragment=False)
+    base_parts = _split_base_match_url(base.rstrip("/"), allow_query_fragment=False)
     if base_parts is None:
         return None
 
@@ -465,8 +477,8 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     base_path = base_parts.path
     clean_url_path = url_parts.path
     if base_path and base_path != "/":
-        base_path_segs = [s for s in base_path.split("/") if s]
-        url_path_segs = [s for s in clean_url_path.split("/") if s]
+        base_path_segs = _split_base_path_segments(base_path)
+        url_path_segs = _split_base_path_segments(clean_url_path)
         path_result = match_path_prefix(url_path_segs, base_path_segs)
         if path_result is None:
             return None
@@ -711,6 +723,8 @@ def _match_compiled_path_segments(
 
         runtime = path_segs[pi]
         if parsed.prefix == "" and parsed.suffix == "":
+            if runtime == "":
+                return None
             params[parsed.name] = runtime
         else:
             captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
@@ -750,6 +764,8 @@ def _match_compiled_path_prefix(
 
         runtime = path_segs[pi]
         if parsed.prefix == "" and parsed.suffix == "":
+            if runtime == "":
+                return None
             params[parsed.name] = runtime
         else:
             captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
@@ -835,7 +851,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         if compiled_host is None:
             return None
         host_segments = compiled_host
-        compiled_path = _compile_segments(tuple(s for s in parts.path.split("/") if s))
+        compiled_path = _compile_segments(tuple(_split_base_path_segments(parts.path)))
         if compiled_path is None:
             return None
         path_segments = compiled_path
@@ -879,7 +895,7 @@ def _match_compiled_base_url_parts(
     base_path = base.parts.path
     clean_url_path = url_parts.path
     if base_path and base_path != "/":
-        url_path_segs = [s for s in clean_url_path.split("/") if s]
+        url_path_segs = _split_base_path_segments(clean_url_path)
         path_result = _match_compiled_path_prefix(url_path_segs, base.path_segments)
         if path_result is None:
             return None

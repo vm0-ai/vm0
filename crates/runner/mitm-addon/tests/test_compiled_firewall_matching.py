@@ -56,6 +56,99 @@ class TestCompiledFirewallMatching:
             "path": "a/b/c",
         }
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com//v1//acme/projects",
+            "https://api.example.com/v1//acme/projects",
+        ],
+    )
+    def test_compiled_parameterized_base_does_not_collapse_empty_segments_inside_base(
+        self,
+        url,
+    ):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /projects"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert result is None
+
+    def test_compiled_parameterized_base_preserves_empty_segments_after_base(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /projects"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme//projects",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.rel_path == "//projects"
+        assert result.params == {"org": "acme"}
+
+    def test_compiled_parameterized_base_path_can_require_empty_segments(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1//{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /projects"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+        compiled_firewalls = self._compiled(fws)
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1//acme/projects",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"org": "acme"}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme/projects",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        assert result is None
+
     def test_compiled_matches_greedy_host_base_params(self):
         fws = wrap_firewalls(
             [
