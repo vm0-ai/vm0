@@ -344,6 +344,13 @@ class TestMatchBaseUrl:
         assert rel_path == "/projects/123"
         assert params == {"org": "acme"}
 
+    def test_parameterized_path_treats_encoded_slash_as_segment_content(self):
+        result = matching.match_base_url(
+            "https://api.example.com/v1/acme%2Fteam/projects/123",
+            "https://api.example.com/v1/{org}",
+        )
+        assert result == ("/projects/123", {"org": "acme%2Fteam"})
+
     @pytest.mark.parametrize(
         "url",
         [

@@ -56,6 +56,117 @@ class TestCompiledFirewallMatching:
             "path": "a/b/c",
         }
 
+    def test_compiled_mixed_base_path_rejects_empty_capture(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://github.com/{owner}/{repo}.git",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "git-read", "rules": ["GET /{path*}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["git-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        matched = matching.match_compiled_firewall_request(
+            "https://github.com/octocat/hello.git/info/refs",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        empty_capture = matching.match_compiled_firewall_request(
+            "https://github.com/octocat/.git/info/refs",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert isinstance(matched, matching.FirewallAllow)
+        assert matched.params == {
+            "owner": "octocat",
+            "repo": "hello",
+            "path": "info/refs",
+        }
+        assert empty_capture is None
+
+    def test_compiled_mixed_base_host_rejects_empty_capture(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api-{region}.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api-.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert result is None
+
+    def test_compiled_parameterized_base_treats_encoded_slash_as_segment_content(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /projects/{id}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme%2Fteam/projects/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"org": "acme%2Fteam", "id": "123"}
+
+    def test_compiled_rule_treats_encoded_slash_as_segment_content(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/repos/acme%2Fteam/project",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"owner": "acme%2Fteam", "repo": "project"}
+
     @pytest.mark.parametrize(
         "url",
         [
