@@ -40,9 +40,6 @@ import {
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
   justConnectedTypes$,
-  LOCAL_AGENT_CONNECTOR_TYPE,
-  LOCAL_BROWSER_CONNECTOR_TYPE,
-  getLocalBrowserOnlineHosts,
   scopeReviewType$,
   setScopeReviewType$,
   permissionDialogType$,
@@ -299,60 +296,6 @@ function ConnectorCategoryGroupSection({
   );
 }
 
-type HostStatusInfo = {
-  readonly names: readonly string[];
-  readonly emptyLabel: string;
-};
-
-function getHostStatusInfo(
-  connector: ConnectorTypeWithStatus,
-): HostStatusInfo | null {
-  if (connector.type === LOCAL_AGENT_CONNECTOR_TYPE) {
-    return {
-      names: (connector.localAgentHosts ?? []).map((host) => {
-        return host.displayName;
-      }),
-      emptyLabel: "No online hosts",
-    };
-  }
-
-  if (connector.type === LOCAL_BROWSER_CONNECTOR_TYPE) {
-    return {
-      names: getLocalBrowserOnlineHosts(connector.localBrowserHosts ?? []).map(
-        (host) => {
-          return `${host.displayName} (${host.browser})`;
-        },
-      ),
-      emptyLabel: "No browser online",
-    };
-  }
-
-  return null;
-}
-
-function HostBackedConnectorStatus({ info }: { info: HostStatusInfo }) {
-  const visibleNames = info.names.slice(0, 2).join(", ");
-  const extra = info.names.length > 2 ? ` +${info.names.length - 2}` : "";
-  const hasOnlineHosts = info.names.length > 0;
-  const label = !hasOnlineHosts
-    ? info.emptyLabel
-    : `${visibleNames}${extra} online`;
-
-  return (
-    <span
-      className="flex items-center gap-2 text-xs text-muted-foreground truncate"
-      title={hasOnlineHosts ? info.names.join(", ") : info.emptyLabel}
-    >
-      <span
-        className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-          hasOnlineHosts ? "bg-emerald-500" : "bg-muted-foreground/40"
-        }`}
-      />
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
 function GlobalConnectorCard({
   connector,
   isPolling,
@@ -415,10 +358,6 @@ function GlobalConnectorCard({
       );
     }
     if (connector.connected) {
-      const hostStatusInfo = getHostStatusInfo(connector);
-      if (hostStatusInfo) {
-        return <HostBackedConnectorStatus info={hostStatusInfo} />;
-      }
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />

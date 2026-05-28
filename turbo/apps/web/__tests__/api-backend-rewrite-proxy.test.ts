@@ -749,9 +749,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/connectors/search")).toBe(
       true,
     );
-    expect(
-      matchesApiBackendRewritePath("/api/zero/connectors/local-agent"),
-    ).toBe(true);
   });
 
   it("matches the zero connector API-token rewrite path exactly", () => {

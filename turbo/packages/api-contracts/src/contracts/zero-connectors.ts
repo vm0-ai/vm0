@@ -271,48 +271,6 @@ export const zeroConnectorSessionByIdContract = c.router({
   },
 });
 
-/**
- * Zero contract for POST /api/zero/connectors/local-agent
- * Creates the local-agent connector once the user has at least one online host.
- */
-export const zeroLocalAgentConnectorContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/zero/connectors/local-agent",
-    headers: authHeadersSchema,
-    body: z.object({}).optional(),
-    responses: {
-      200: connectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Connect local-agent connector",
-  },
-});
-
-/**
- * Zero contract for POST /api/zero/connectors/local-browser
- * Creates the local-browser connector once the user has at least one online host.
- */
-export const zeroLocalBrowserConnectorContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/zero/connectors/local-browser",
-    headers: authHeadersSchema,
-    body: z.object({}).optional(),
-    responses: {
-      200: connectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Connect local-browser connector",
-  },
-});
-
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
 export type ZeroConnectorScopeDiffContract =
@@ -328,7 +286,3 @@ export type ZeroConnectorSessionsContract =
   typeof zeroConnectorSessionsContract;
 export type ZeroConnectorSessionByIdContract =
   typeof zeroConnectorSessionByIdContract;
-export type ZeroLocalAgentConnectorContract =
-  typeof zeroLocalAgentConnectorContract;
-export type ZeroLocalBrowserConnectorContract =
-  typeof zeroLocalBrowserConnectorContract;

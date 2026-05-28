@@ -66,8 +66,6 @@ import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
-import * as localBrowserSchema from "./schema/local-browser";
-import * as localAgentSchema from "./schema/local-agent";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
@@ -146,8 +144,6 @@ export const schema = {
   ...vm0ApiKeySchema,
   ...zeroSkillSchema,
   ...computerUseHostSchema,
-  ...localBrowserSchema,
-  ...localAgentSchema,
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,

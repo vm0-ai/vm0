@@ -1836,24 +1836,24 @@ describe("CLI auth routes", () => {
         client.create({
           query: {},
           body: {
-            connectorName: "local-agent",
-            accessToken: "local-agent-access-token",
+            connectorName: "cloudinary",
+            accessToken: "cloudinary-access-token",
           },
         }),
         400,
       );
 
       expect(response.body).toStrictEqual({
-        error: "local-agent connector does not use OAuth",
+        error: "cloudinary connector does not use OAuth",
       });
       await expect(
-        readConnectorState({ orgId, userId, type: "local-agent" }),
+        readConnectorState({ orgId, userId, type: "cloudinary" }),
       ).resolves.toBeNull();
       await expect(
         findConnectorSecret({
           orgId,
           userId,
-          name: "LOCAL_AGENT_ACCESS_TOKEN",
+          name: "CLOUDINARY_ACCESS_TOKEN",
         }),
       ).resolves.toBeUndefined();
     });

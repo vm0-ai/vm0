@@ -34,8 +34,6 @@ function buildCommands(): Command[] {
     new Command("web"),
     new Command("host"),
     new Command("maps"),
-    new Command("local-agent"),
-    new Command("local-browser"),
   ];
 }
 
@@ -165,8 +163,6 @@ describe("registerZeroCommands", () => {
       "generate",
       "host",
       "maps",
-      "local-agent",
-      "local-browser",
     ]);
   });
 
@@ -556,32 +552,6 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should show local-agent when local-agent:read capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["local-agent:read"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("local-agent");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
-  it("should show local-agent when local-agent:write capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["local-agent:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("local-agent");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
   it("should hide logs when agent-run:read capability is missing", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -604,56 +574,6 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("run");
-  });
-
-  it("should hide local-agent when local-agent capabilities are missing", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent-run:read", "agent-run:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("local-agent");
-  });
-
-  it("should show local-browser when local-browser:read capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["local-browser:read"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("local-browser");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
-  it("should show local-browser when local-browser:write capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["local-browser:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("local-browser");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
-  it("should hide local-browser when local-browser capabilities are missing", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent-run:read", "agent-run:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("local-browser");
   });
 
   it("should hide agent when agent:read capability is missing", () => {

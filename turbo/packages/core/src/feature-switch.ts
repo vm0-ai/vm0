@@ -189,18 +189,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Lark connector while tenant access-token exchange is being repaired.",
     enabled: false,
   },
-  [FeatureSwitchKey.LocalBrowserUse]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the Local Browser connector and user-authorized browser host lifecycle. Off by default; individuals opt in via the feature-switch overrides API.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.LocalAgentConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Local Agent connector entry on the Connectors settings page. Off by default; individuals opt in via the feature-switch overrides API.",
-    enabled: false,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
