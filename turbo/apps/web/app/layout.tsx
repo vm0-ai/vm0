@@ -22,6 +22,7 @@ import "./landing.css";
 import "./blog.css";
 import "./docs.css";
 import "./use-cases.css";
+import "./illustration.css";
 
 const GOOGLE_ADS_ID = "AW-18144854014";
 const LINKEDIN_PARTNER_ID = "9378804";
