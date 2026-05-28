@@ -804,13 +804,22 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment.MERCURY_TOKEN).toBe(
       "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    const decryptedSecrets = decryptSecretsMap(
+      executionContext.encryptedSecrets,
+    );
+    expect(decryptedSecrets).toMatchObject({
       ZENDESK_API_TOKEN: "zendesk-real-token",
       MERCURY_TOKEN: "mercury-real-token",
     });
-    expect(
-      decryptSecretsMap(executionContext.encryptedSecrets),
-    ).not.toHaveProperty("MERCURY_ACCESS_TOKEN");
+    expect(decryptedSecrets).not.toHaveProperty("MERCURY_ACCESS_TOKEN");
+    expect(decryptedSecrets).not.toHaveProperty("ZENDESK_EMAIL");
+    expect(decryptedSecrets).not.toHaveProperty("ZENDESK_SUBDOMAIN");
+    expect(Object.values(decryptedSecrets ?? {})).not.toContain(
+      "$vars.ZENDESK_EMAIL",
+    );
+    expect(Object.values(decryptedSecrets ?? {})).not.toContain(
+      "$vars.ZENDESK_SUBDOMAIN",
+    );
     const zendesk = executionContext.firewalls.find((firewall) => {
       return firewall.name === "zendesk";
     });

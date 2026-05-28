@@ -581,6 +581,35 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       [424],
     );
     expect(missingVar.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    const inheritedSecretName = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("constructor")}`,
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+    expect(inheritedSecretName.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+
+    const inheritedVarName = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "token" }),
+          authHeaders: { "X-Workspace": varTemplate("constructor") },
+          vars: {},
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+    expect(inheritedVarName.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
   it("resolves simple and basic auth templates", async () => {
@@ -630,6 +659,48 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       },
       expiresAt: null,
       resolvedSecrets: ["API_TOKEN", "BASIC_PASSWORD"],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+  });
+
+  it("resolves same-name secrets and vars by namespace", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_KEY: "secret-value" }),
+          authHeaders: {
+            "X-Secret": secretTemplate("API_KEY"),
+            "X-Var": varTemplate("API_KEY"),
+          },
+          authBase: `https://${varTemplate("API_KEY")}.example.com/${secretTemplate("API_KEY")}`,
+          authQuery: {
+            secret: secretTemplate("API_KEY"),
+            variable: varTemplate("API_KEY"),
+          },
+          vars: {
+            API_KEY: "var-value",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      headers: {
+        "X-Secret": "secret-value",
+        "X-Var": "var-value",
+      },
+      base: "https://var-value.example.com/secret-value",
+      query: {
+        secret: "secret-value",
+        variable: "var-value",
+      },
+      expiresAt: null,
+      resolvedSecrets: ["API_KEY"],
       refreshedConnectors: [],
       refreshedSecrets: [],
     });
@@ -726,6 +797,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       return `Basic ${Buffer.from(value).toString("base64")}`;
     };
     const literalSecretTemplate = `\${{ secrets.USER }}`;
+    const literalVarTemplate = `\${{ vars.USER }}`;
     const malformedBasicTemplate = `\${{ basic("oops"quoted", secrets.X) }}`;
     type BasicAuthCase = {
       readonly template: string;
@@ -814,9 +886,16 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       },
       {
         template: basicTemplate(`"${literalSecretTemplate}"`, "secrets.PASS"),
-        secrets: { PASS: "pass", USER: "must-not-use" },
+        secrets: { PASS: "pass" },
         vars: {},
         expectedHeader: encode(`${literalSecretTemplate}:pass`),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: basicTemplate(`"${literalVarTemplate}"`, "secrets.PASS"),
+        secrets: { PASS: "pass" },
+        vars: {},
+        expectedHeader: encode(`${literalVarTemplate}:pass`),
         expectedSecrets: ["PASS"],
       },
       {

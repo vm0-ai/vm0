@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { extractSecretNamesFromApis } from "../firewall-types";
+import {
+  extractFirewallTemplateReferences,
+  extractSecretNamesFromApis,
+} from "../firewall-types";
 
 describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
   it("extracts secrets from auth.headers only", () => {
@@ -202,5 +205,117 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
       },
     ];
     expect(extractSecretNamesFromApis(apis)).toEqual(["REAL"]);
+  });
+
+  it("does not extract simple templates inside basic literals", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: '${{ basic("${{ secrets.FAKE }}", secrets.REAL) }}',
+            "X-Var": '${{ basic("${{ vars.FAKE }}", secrets.REAL) }}',
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual(["REAL"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["REAL"],
+      vars: [],
+    });
+  });
+
+  it("ignores malformed basic templates with long whitespace runs", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: "${{ basic(" + "\t".repeat(20_000),
+            Repeated: ('${{ basic("' + "\t".repeat(20)).repeat(1_000),
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual([]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: [],
+      vars: [],
+    });
+  });
+
+  it("continues after malformed basic templates", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization:
+              'prefix ${{ basic("unterminated ${{ basic(secrets.USER, secrets.PASS) }}',
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual(["USER", "PASS"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["USER", "PASS"],
+      vars: [],
+    });
+  });
+
+  it("continues after escaped malformed basic templates", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization:
+              'prefix ${{ basic("bad ${{ basic(secrets.USER, secrets.PASS) }}\\", secrets.SKIP) }}',
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual(["USER", "PASS"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["USER", "PASS"],
+      vars: [],
+    });
+  });
+
+  it("extracts source-aware auth references by namespace", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: "${{ basic(vars.USER, secrets.PASS) }}",
+            "X-Collision-Secret": "${{ secrets.API_KEY }}",
+            "X-Collision-Var": "${{ vars.API_KEY }}",
+            "X-Literal": '${{ basic("secrets.FAKE", "vars.FAKE") }}',
+          },
+          base: "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK }}",
+          query: {
+            secret: "${{ secrets.QUERY_SECRET }}",
+            variable: "${{ vars.QUERY_VAR }}",
+          },
+        },
+      },
+    ];
+
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["PASS", "API_KEY", "WEBHOOK", "QUERY_SECRET"],
+      vars: ["USER", "API_KEY", "WEBHOOK_HOST", "QUERY_VAR"],
+    });
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual([
+      "PASS",
+      "API_KEY",
+      "WEBHOOK",
+      "QUERY_SECRET",
+    ]);
   });
 });

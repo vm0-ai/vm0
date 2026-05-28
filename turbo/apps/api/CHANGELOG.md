@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.83.0](https://github.com/vm0-ai/vm0/compare/api-v1.82.0...api-v1.83.0) (2026-05-28)
+
+
+### Features
+
+* add chat run lifecycle markers ([#15210](https://github.com/vm0-ai/vm0/issues/15210)) ([9c9b4b9](https://github.com/vm0-ai/vm0/commit/9c9b4b9a765810d5868cdafd9dbddd4d1b3f16f3))
+
+
+### Bug Fixes
+
+* make zero run cancellation race-safe ([#15200](https://github.com/vm0-ai/vm0/issues/15200)) ([13f8903](https://github.com/vm0-ai/vm0/commit/13f890374a8712c4faf9177608dd51a6c70b5eb0))
+
+
+### Refactoring
+
+* rename slack oauth client env vars ([#15238](https://github.com/vm0-ai/vm0/issues/15238)) ([7e34661](https://github.com/vm0-ai/vm0/commit/7e346611c003d45b9e6cea5fe63b13e067becf9d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.44.0
+    * @vm0/connectors bumped to 1.37.4
+    * @vm0/core bumped to 8.301.0
+    * @vm0/db bumped to 1.21.0
+
 ## [1.82.0](https://github.com/vm0-ai/vm0/compare/api-v1.81.0...api-v1.82.0) (2026-05-28)
 
 

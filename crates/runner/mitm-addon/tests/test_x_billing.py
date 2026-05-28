@@ -625,15 +625,11 @@ class TestFirewallConsistency:
             "runtime first-match permission changed, or the override has a typo."
         )
 
-    def test_runtime_firewall_shadowing_is_limited_to_acknowledged_paths(self):
+    def test_runtime_firewall_rules_match_their_generated_permission(self):
         """Static drift checks read generated rule ownership, but runtime
-        firewall matching is first-match-wins.  A broader earlier generated
-        rule can capture a later literal path under a different permission.
-
-        Keep the known overlap explicit while the matcher/generator
-        specificity fix is tracked separately in #15117.  New shadowing
-        would affect authorization metadata, network policies, and billing
-        attribution, so it should not appear silently.
+        firewall matching decides authorization metadata, network policy, and
+        billing attribution.  A broader generated rule must not capture a
+        later, more specific generated rule under another permission.
         """
         compiled_firewall = _compile_generated_x_firewall()
         shadows: list[tuple[str, str, str, str, str]] = []
@@ -655,19 +651,10 @@ class TestFirewallConsistency:
                         (permission.name, runtime_permission, method, pattern, sample_path)
                     )
 
-        assert shadows == [
-            (
-                "users.read",
-                "list.read",
-                "GET",
-                "/2/communities/search",
-                "/2/communities/search",
-            )
-        ], (
-            "Generated X firewall rules have unexpected runtime first-match "
-            f"shadowing: {shadows}.  Literal-vs-parameter overlap is a known "
-            "problem only for `/2/communities/search`; see #15117 before "
-            "expanding this acknowledgement."
+        assert not shadows, (
+            "Generated X firewall rules are shadowed by another runtime "
+            f"permission: {shadows}.  Check path specificity handling before "
+            "expanding X firewall output."
         )
 
     # Firewall paths that deliberately take their scope's default bucket.
