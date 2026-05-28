@@ -71,6 +71,49 @@ describe("zeroConnectorList", () => {
     expect(list.connectorProvidedEnvNames).not.toContain("OPENAI_TOKEN");
   });
 
+  it("returns OAuth connector env names only when the access secret exists", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userWithoutSecret = `user_${randomUUID()}`;
+    const userWithSecret = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values([
+      {
+        orgId,
+        userId: userWithoutSecret,
+        type: "github",
+        authMethod: "oauth",
+      },
+      {
+        orgId,
+        userId: userWithSecret,
+        type: "github",
+        authMethod: "oauth",
+      },
+    ]);
+    await writeDb.insert(secrets).values({
+      orgId,
+      userId: userWithSecret,
+      name: "GITHUB_ACCESS_TOKEN",
+      encryptedValue: "encrypted_github_access_token",
+      type: "connector",
+    });
+
+    const withoutSecret = await store.get(
+      zeroConnectorList({ orgId, userId: userWithoutSecret }),
+    );
+    const withSecret = await store.get(
+      zeroConnectorList({ orgId, userId: userWithSecret }),
+    );
+
+    expect(withoutSecret.connectorProvidedEnvNames).not.toContain("GH_TOKEN");
+    expect(withoutSecret.connectorProvidedEnvNames).not.toContain(
+      "GITHUB_TOKEN",
+    );
+    expect(withSecret.connectorProvidedEnvNames).toEqual(
+      expect.arrayContaining(["GH_TOKEN", "GITHUB_TOKEN"]),
+    );
+  });
+
   it("does not report variable-backed connector env names as provided secrets", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

@@ -435,6 +435,44 @@ describe("migration 0408 api-token connector cutover", () => {
     ]);
   });
 
+  it("skips connectors when a required variable is absent", async () => {
+    const orgId = uniqueId("org");
+    const userId = uniqueId("user");
+    await db.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "AGORA_CUSTOMER_ID",
+        encryptedValue: "encrypted-customer-id",
+        type: "user",
+      },
+      {
+        orgId,
+        userId,
+        name: "AGORA_CUSTOMER_SECRET",
+        encryptedValue: "encrypted-customer-secret",
+        type: "user",
+      },
+    ]);
+
+    await runScopedApiTokenConnectorCutover({ orgId, userId });
+
+    expect(await readConnectorTypes({ orgId, userId })).toStrictEqual([]);
+    expect(await readSecretState({ orgId, userId })).toStrictEqual([
+      {
+        name: "AGORA_CUSTOMER_ID",
+        encryptedValue: "encrypted-customer-id",
+        type: "user",
+      },
+      {
+        name: "AGORA_CUSTOMER_SECRET",
+        encryptedValue: "encrypted-customer-secret",
+        type: "user",
+      },
+    ]);
+    expect(await readVariableState({ orgId, userId })).toStrictEqual([]);
+  });
+
   it("skips incomplete required fields", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");
