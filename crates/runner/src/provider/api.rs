@@ -1,5 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,6 +33,23 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
+/// Keep in sync with the API poll contract's `heldSessionStates.max(100)`.
+const MAX_POLL_HELD_SESSION_STATES: usize = 100;
+
+fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSessionState]> {
+    if states.len() <= MAX_POLL_HELD_SESSION_STATES {
+        return Cow::Borrowed(states);
+    }
+
+    let mut capped = states.to_vec();
+    capped.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    capped.truncate(MAX_POLL_HELD_SESSION_STATES);
+    Cow::Owned(capped)
+}
 
 // ---------------------------------------------------------------------------
 // ApiProvider
@@ -268,12 +286,13 @@ impl ApiClient {
         held_session_states: &[HeldSessionState],
     ) -> RunnerResult<Option<Job>> {
         let mut body = serde_json::json!({ "group": group, "profiles": profiles });
+        let held_session_states = poll_held_session_states(held_session_states);
         if !held_session_states.is_empty()
             && let Some(obj) = body.as_object_mut()
         {
             obj.insert(
                 "heldSessionStates".to_string(),
-                serde_json::json!(held_session_states),
+                serde_json::json!(&*held_session_states),
             );
         }
         let resp = send_api(
@@ -773,6 +792,30 @@ mod tests {
 
         assert!(job.is_none());
         mock.assert_async().await;
+    }
+
+    #[test]
+    fn poll_held_session_states_caps_to_newest_contract_limit() {
+        let states: Vec<HeldSessionState> = (0..=MAX_POLL_HELD_SESSION_STATES)
+            .map(|index| HeldSessionState {
+                session_id: format!("sess-{index:03}"),
+                last_completed_at: format!(
+                    "2026-05-28T00:{:02}:{:02}.000Z",
+                    index / 60,
+                    index % 60
+                ),
+            })
+            .collect();
+
+        let capped = poll_held_session_states(&states);
+        let capped_sessions: Vec<&str> = capped
+            .iter()
+            .map(|state| state.session_id.as_str())
+            .collect();
+
+        assert_eq!(capped_sessions.len(), MAX_POLL_HELD_SESSION_STATES);
+        assert!(!capped_sessions.contains(&"sess-000"));
+        assert!(capped_sessions.contains(&"sess-100"));
     }
 
     #[tokio::test]
