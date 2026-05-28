@@ -2857,6 +2857,13 @@
       "when": 1779941871127,
       "tag": "0407_fast_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 408,
+      "version": "7",
+      "when": 1779947075307,
+      "tag": "0408_backfill_chat_run_lifecycle_markers",
+      "breakpoints": true
     }
   ]
 }
