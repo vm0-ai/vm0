@@ -788,7 +788,7 @@ class TestCompiledFirewallMatching:
         assert compiled.permissions == ("repo-read",)
         assert compiled.reason == "permission_denied"
 
-    @pytest.mark.parametrize("broad_unknown_policy", ["deny", "allow"])
+    @pytest.mark.parametrize("broad_unknown_policy", ["deny", "allow", "broken"])
     def test_later_allowed_firewall_wins_after_earlier_unknown_match(
         self,
         broad_unknown_policy,
