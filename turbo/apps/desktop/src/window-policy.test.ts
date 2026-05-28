@@ -1448,6 +1448,68 @@ describe("computer use desktop runtime", () => {
     expect(result.result.visibleText).toContain("Can you see this?");
   });
 
+  it("requests a settled snapshot after write actions but not for explicit app state", async () => {
+    const postActionGetAppState = vi.fn<
+      ComputerUseNativeBackend["getAppState"]
+    >(async (app, snapshotId) => {
+      return {
+        app,
+        snapshotId,
+        ...nativeScreenshotFields({ screenshotSourceName: "Inbox" }),
+        windowTitle: "Inbox",
+        elements: [{ id: "w0", role: "AXWindow", name: "Inbox" }],
+      };
+    });
+    const clickResult = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: { app: "Things", elementId: "sidebar.inbox" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          getAppState: postActionGetAppState,
+        }),
+      },
+    );
+    expect(clickResult.status).toBe("succeeded");
+    expect(postActionGetAppState).toHaveBeenCalledWith(
+      "Things",
+      expect.any(String),
+      true,
+    );
+
+    const explicitGetAppState = vi.fn<ComputerUseNativeBackend["getAppState"]>(
+      async (app, snapshotId) => {
+        return {
+          app,
+          snapshotId,
+          ...nativeScreenshotFields({ screenshotSourceName: "Inbox" }),
+          windowTitle: "Inbox",
+          elements: [{ id: "w0", role: "AXWindow", name: "Inbox" }],
+        };
+      },
+    );
+    const stateResult = await executeComputerUseCommand(
+      { id: "cmd_2", kind: "app.state", payload: { app: "Things" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          getAppState: explicitGetAppState,
+        }),
+      },
+    );
+    expect(stateResult.status).toBe("succeeded");
+    expect(explicitGetAppState).toHaveBeenCalledWith(
+      "Things",
+      expect.any(String),
+      false,
+    );
+  });
+
   it("resolves normalized element indexes to native element ids", async () => {
     const snapshotStore = new ComputerUseSnapshotStore();
     const clickElement = vi.fn<ComputerUseNativeBackend["clickElement"]>();

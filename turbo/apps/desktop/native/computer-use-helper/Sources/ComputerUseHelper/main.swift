@@ -1587,6 +1587,10 @@ func foregroundRecoveryPolicy(_ request: [String: Any]) throws -> ForegroundReco
     return policy
 }
 
+func optionalBool(_ request: [String: Any], _ key: String) -> Bool {
+    return (request[key] as? NSNumber)?.boolValue ?? false
+}
+
 func rectPayload(_ request: [String: Any], _ key: String) throws -> CGRect {
     guard let record = request[key] as? [String: Any],
           let x = record["x"] as? NSNumber,
@@ -3471,20 +3475,9 @@ func handlePermissionsRequestScreenRecording() -> [String: Any] {
     return computerUsePermissionState()
 }
 
-func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
-    let appName = try requiredString(request, "app")
-    let snapshotId = optionalString(request, "snapshotId") ?? UUID().uuidString.lowercased()
-
-    guard let runningApp = findRunningApp(named: appName) else {
-        throw HelperFailure(
-            code: "app_not_found",
-            message: "App is not running: \(appName)"
-        )
-    }
-
-    let root = AXUIElementCreateApplication(runningApp.processIdentifier)
-    enableBestEffortAccessibilityModes(root)
-
+func captureAccessibilityElements(
+    _ root: AXUIElement
+) -> (elements: [[String: Any]], nodeCount: Int, truncationReasons: [String]) {
     var nodeCount = 0
     var truncationReasons: [String] = []
     let windows = attributeArray(root, kAXWindowsAttribute as CFString)
@@ -3512,6 +3505,80 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     {
         elements.append(menuBarSnapshot)
     }
+    return (elements, nodeCount, truncationReasons)
+}
+
+func appendAccessibilityFingerprint(_ node: [String: Any], into out: inout String) {
+    out += (node["id"] as? String) ?? ""
+    out += "|"
+    out += (node["role"] as? String) ?? ""
+    if let bounds = node["bounds"] as? [String: Double] {
+        out += "|\(Int(bounds["x"] ?? 0)),\(Int(bounds["y"] ?? 0)),"
+        out += "\(Int(bounds["width"] ?? 0)),\(Int(bounds["height"] ?? 0))"
+    }
+    out += ";"
+    if let children = node["children"] as? [[String: Any]] {
+        for child in children {
+            appendAccessibilityFingerprint(child, into: &out)
+        }
+    }
+}
+
+func accessibilityElementsFingerprint(_ elements: [[String: Any]]) -> String {
+    var out = ""
+    for element in elements {
+        appendAccessibilityFingerprint(element, into: &out)
+    }
+    return out
+}
+
+// Re-capture the accessibility tree until its structure stabilizes. Element ids
+// are positional tree paths, so a snapshot taken while a menu is still animating
+// open returns ids that shift before the agent can act on them. Polling until the
+// fingerprint stops changing keeps post-action snapshots actionable.
+func settledAccessibilityElements(
+    _ root: AXUIElement
+) -> (elements: [[String: Any]], nodeCount: Int, truncationReasons: [String]) {
+    let requiredStablePasses = 3
+    let pollInterval: useconds_t = 120_000
+    let deadline = Date().addingTimeInterval(1.6)
+    var latest = captureAccessibilityElements(root)
+    var previousFingerprint = accessibilityElementsFingerprint(latest.elements)
+    var stablePasses = 1
+    while stablePasses < requiredStablePasses, Date() < deadline {
+        usleep(pollInterval)
+        latest = captureAccessibilityElements(root)
+        let fingerprint = accessibilityElementsFingerprint(latest.elements)
+        if fingerprint == previousFingerprint {
+            stablePasses += 1
+        } else {
+            stablePasses = 1
+            previousFingerprint = fingerprint
+        }
+    }
+    return latest
+}
+
+func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
+    let appName = try requiredString(request, "app")
+    let snapshotId = optionalString(request, "snapshotId") ?? UUID().uuidString.lowercased()
+
+    guard let runningApp = findRunningApp(named: appName) else {
+        throw HelperFailure(
+            code: "app_not_found",
+            message: "App is not running: \(appName)"
+        )
+    }
+
+    let root = AXUIElementCreateApplication(runningApp.processIdentifier)
+    enableBestEffortAccessibilityModes(root)
+
+    let captured = optionalBool(request, "settle")
+        ? settledAccessibilityElements(root)
+        : captureAccessibilityElements(root)
+    let nodeCount = captured.nodeCount
+    let truncationReasons = captured.truncationReasons
+    var elements = captured.elements
     let indexed = indexedSnapshotElements(elements)
     elements = indexed.elements
 

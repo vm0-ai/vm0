@@ -67,6 +67,7 @@ export interface ComputerUseNativeBackend {
   readonly getAppState: (
     app: string,
     snapshotId: string,
+    settle?: boolean,
   ) => Promise<AccessibilityAppStateSnapshot>;
   readonly openApp: (app: string) => Promise<ComputerUseNativeActionResult>;
   readonly clickElement: (args: {
@@ -621,8 +622,13 @@ export function createComputerUseNativeBackend(
       const result = await run({ kind: "apps.list" });
       return resultAppRecords(result);
     },
-    getAppState: async (app, snapshotId) => {
-      const result = await run({ kind: "app.state", app, snapshotId });
+    getAppState: async (app, snapshotId, settle) => {
+      const result = await run({
+        kind: "app.state",
+        app,
+        snapshotId,
+        ...(settle ? { settle: true } : {}),
+      });
       return result as unknown as AccessibilityAppStateSnapshot;
     },
     openApp: async (app) => {

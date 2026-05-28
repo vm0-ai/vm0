@@ -1299,10 +1299,11 @@ async function getAppState(
   app: string,
   nativeBackend: ComputerUseNativeBackend,
   snapshotStore: ComputerUseSnapshotStore,
+  settle = false,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
   const snapshot = normalizeAccessibilitySnapshot(
-    await nativeBackend.getAppState(app, id),
+    await nativeBackend.getAppState(app, id, settle),
   );
   const indexed = indexedAccessibilitySnapshot(snapshot);
   const screenshot = nativeAppStateScreenshot(indexed.snapshot);
@@ -1346,6 +1347,7 @@ async function withPostActionAppState(args: {
     args.app,
     args.nativeBackend,
     args.snapshotStore,
+    true,
   );
   if (appStateResult.status === "failed") {
     return appStateResult;
