@@ -723,6 +723,33 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission is None
 
+    def test_compiled_unknown_policy_allow_preserves_base_params(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://{workspace}.example.com/api/{tenant}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [],
+                }
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://acme.example.com/api/customer-1/users",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission is None
+        assert result.rule is None
+        assert result.rel_path == "/users"
+        assert result.params == {"workspace": "acme", "tenant": "customer-1"}
+
     def test_compiled_matches_ask_permission_block(self):
         fws = wrap_firewalls(
             [
