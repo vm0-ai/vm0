@@ -240,6 +240,88 @@ function isInterruptMessageBody(body: { interruptsRunId?: string }): body is {
   return body.interruptsRunId !== undefined;
 }
 
+function appendSeedChatMessages(args: {
+  pagedMessages: (MockPagedMessage & { id: string })[];
+  chatMessages: MockPagedMessage[];
+  terminalStatuses: Set<string>;
+}) {
+  const defaultedRunIds = new Set<string>();
+  const terminalRunIds = new Set<string>();
+  const activeRunIds = new Set<string>();
+  for (let i = 0; i < args.chatMessages.length; i++) {
+    const seed = args.chatMessages[i]!;
+    const runId = "runId" in seed ? seed.runId : MOCK_RUN_ID;
+    collectSeedRunState({
+      seed,
+      runId,
+      defaultedRunIds,
+      terminalRunIds,
+      activeRunIds,
+      terminalStatuses: args.terminalStatuses,
+    });
+    args.pagedMessages.push({
+      ...seed,
+      id: seed.id ?? `msg-seed-${i}`,
+      runId,
+    });
+  }
+  appendDefaultCompletionMarkers({
+    pagedMessages: args.pagedMessages,
+    defaultedRunIds,
+    terminalRunIds,
+    activeRunIds,
+  });
+}
+
+function collectSeedRunState(args: {
+  seed: MockPagedMessage;
+  runId: string | undefined;
+  defaultedRunIds: Set<string>;
+  terminalRunIds: Set<string>;
+  activeRunIds: Set<string>;
+  terminalStatuses: Set<string>;
+}) {
+  if (!("runId" in args.seed) && args.runId !== undefined) {
+    args.defaultedRunIds.add(args.runId);
+  }
+  if (
+    args.seed.role === "assistant" &&
+    args.seed.runId !== undefined &&
+    args.seed.runLifecycleEvent !== undefined
+  ) {
+    args.terminalRunIds.add(args.seed.runId);
+  }
+  if (
+    args.seed.role === "assistant" &&
+    args.seed.runId !== undefined &&
+    args.seed.status !== undefined &&
+    !args.terminalStatuses.has(args.seed.status)
+  ) {
+    args.activeRunIds.add(args.seed.runId);
+  }
+}
+
+function appendDefaultCompletionMarkers(args: {
+  pagedMessages: (MockPagedMessage & { id: string })[];
+  defaultedRunIds: Set<string>;
+  terminalRunIds: Set<string>;
+  activeRunIds: Set<string>;
+}) {
+  for (const runId of args.defaultedRunIds) {
+    if (args.terminalRunIds.has(runId) || args.activeRunIds.has(runId)) {
+      continue;
+    }
+    args.pagedMessages.push({
+      id: `msg-seed-marker-${runId}`,
+      role: "assistant",
+      content: null,
+      runId,
+      runLifecycleEvent: "completed",
+      createdAt: "2026-03-10T00:00:59Z",
+    });
+  }
+}
+
 export function mockChatLifecycle(options?: {
   threadId?: string;
   historyMessages?: MockPagedMessage[];
@@ -449,14 +531,11 @@ export function mockChatLifecycle(options?: {
       // would look "unassociated" (runId === undefined) and be treated as
       // queued. Tests that *want* a queued seed should explicitly pass
       // `runId: undefined`, which we respect via the `in` check.
-      for (let i = 0; i < chatMessages.length; i++) {
-        const seed = chatMessages[i]!;
-        pagedMessages.push({
-          ...seed,
-          id: seed.id ?? `msg-seed-${i}`,
-          runId: "runId" in seed ? seed.runId : MOCK_RUN_ID,
-        });
-      }
+      appendSeedChatMessages({
+        pagedMessages,
+        chatMessages,
+        terminalStatuses: terminal,
+      });
 
       for (const message of queuedMessages) {
         pagedMessages.push({
@@ -481,8 +560,22 @@ export function mockChatLifecycle(options?: {
           runId: MOCK_RUN_ID,
           error: runError ?? undefined,
           status: runStatus,
+          runLifecycleEvent:
+            runStatus === "failed" || runStatus === "cancelled"
+              ? runStatus
+              : undefined,
           createdAt: "2026-03-10T00:00:02Z",
         });
+        if (runStatus === "completed") {
+          pagedMessages.push({
+            id: `msg-assistant-run-marker-v${assistantVersion}`,
+            role: "assistant",
+            content: null,
+            runId: MOCK_RUN_ID,
+            runLifecycleEvent: "completed",
+            createdAt: "2026-03-10T00:00:03Z",
+          });
+        }
       }
 
       if (beforeId) {
@@ -508,9 +601,12 @@ export function mockChatLifecycle(options?: {
         // empty to avoid duplicate keys.
         if (assistantVersion > lastDeliveredVersion && runAssociated) {
           lastDeliveredVersion = assistantVersion;
-          const lastMsg = pagedMessages[pagedMessages.length - 1]!;
+          const messages =
+            runStatus === "completed"
+              ? pagedMessages.slice(Math.max(0, pagedMessages.length - 2))
+              : [pagedMessages[pagedMessages.length - 1]!];
           return respond(200, {
-            messages: [lastMsg],
+            messages,
           });
         }
         return respond(200, { messages: [] });

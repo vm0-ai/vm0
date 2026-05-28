@@ -147,6 +147,7 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
   pagedChatMessageBaseSchema.extend({
     role: z.literal("assistant"),
     status: z.string().optional(),
+    runLifecycleEvent: z.enum(["completed", "failed", "cancelled"]).optional(),
   }),
 ]);
 

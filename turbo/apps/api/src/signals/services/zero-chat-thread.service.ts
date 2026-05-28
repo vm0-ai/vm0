@@ -97,6 +97,7 @@ type ChatMessageRow = {
   readonly content: string | null;
   readonly runId: string | null;
   readonly error: string | null;
+  readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
   readonly runStatus: string | null;
@@ -187,6 +188,7 @@ const messageColumns = {
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
   error: chatMessages.error,
+  runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
   createdAt: chatMessages.createdAt,
   runStatus: agentRuns.status,
@@ -492,14 +494,27 @@ function chatMessageStatus(row: ChatMessageRow): string | undefined {
   return row.runStatus ?? undefined;
 }
 
+function lifecycleEventOrUndefined(
+  value: string | null,
+): "completed" | "failed" | "cancelled" | undefined {
+  if (value === "completed" || value === "failed" || value === "cancelled") {
+    return value;
+  }
+  return undefined;
+}
+
 function toPagedMessage(
   threadId: string,
   userId: string,
   row: ChatMessageRow,
 ): Computed<Promise<PagedChatMessage>> {
   return computed(async (get): Promise<PagedChatMessage> => {
+    const isLifecycleMarker = row.runLifecycleEvent !== null;
     const isLegacyPlaceholder =
-      row.sequenceNumber === null && row.content === null && !row.error;
+      !isLifecycleMarker &&
+      row.sequenceNumber === null &&
+      row.content === null &&
+      !row.error;
     const rawEffectiveError = isLegacyPlaceholder
       ? (row.runError ?? undefined)
       : (row.error ?? undefined);
@@ -537,6 +552,7 @@ function toPagedMessage(
       ...message,
       role: "assistant" as const,
       status: chatMessageStatus(row),
+      runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
     };
   });
 }

@@ -2843,6 +2843,13 @@
       "when": 1779936131086,
       "tag": "0405_drop_connector_cli_auth_sessions_view",
       "breakpoints": true
+    },
+    {
+      "idx": 406,
+      "version": "7",
+      "when": 1779939197609,
+      "tag": "0406_nostalgic_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

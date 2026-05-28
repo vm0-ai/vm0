@@ -2296,7 +2296,8 @@ function isCancelledAssistantMessage(
 ): boolean {
   return (
     message?.role === "assistant" &&
-    message.error?.trim().toLowerCase() === "run cancelled"
+    (message.runLifecycleEvent === "cancelled" ||
+      message.error?.trim().toLowerCase() === "run cancelled")
   );
 }
 
