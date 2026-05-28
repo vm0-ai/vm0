@@ -1582,6 +1582,25 @@ mod tests {
     }
 
     #[test]
+    fn resolve_control_socket_prefix_ignores_matching_symlinked_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let (control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
+        let (_linked_control_sock, _linked_listener) =
+            bind_control_socket_for_test(&dir.path().join("linked-target"));
+        symlink(
+            dir.path().join("linked-target"),
+            sock_parent.join("sandbox-aa-link"),
+        )
+        .unwrap();
+
+        let resolved = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap();
+
+        assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
     fn resolve_control_socket_multiple_matches_returns_ambiguous() {
         let dir = tempfile::tempdir().unwrap();
         let sock_parent = dir.path().join("sock");
