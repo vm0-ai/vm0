@@ -3104,6 +3104,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       path: "illustration-template/loose-contour",
     },
   },
+  {
+    id: "vm0:image-style:jade-blockprint",
+    kind: "image-style",
+    name: "Jade Blockprint",
+    description:
+      "Two-tone hand-drawn block-print spot illustration — accent color painted as free-floating shapes on white, with chunky black ink layered on top. Eight palettes.",
+    desc: 'Jade-blockprint two-pass hand-drawn block-print spot illustration: one accent color painted FIRST as free-floating shapes on pure white, then chunky black ink line art layered ON TOP. Color blobs have no perimeter outline — ink draws detail, hatching, and motion marks, never traces the colored shape. Wobbly variable-weight linework with occasional flooded black masses; tiny linocut speckle grain inside color fills. Eight named palettes (jade, coral, cobalt, plum, sage, rose, slate, terracotta) plus custom-hex override. Resolves vague briefs (growth, trust, freedom, fairness) into concrete scene metaphors via an internal synthesizer table before generating. Five dials per piece: palette, scene metaphor, complexity (L1 single object / L2 mini-scene / L3 vignette), motion marks, speckle density. Trigger when the user says /jade-blockprint, asks for a "block-print illustration", "linocut spot illustration", "two-tone screen-print", or briefs a metaphor for a blog cover or marketing card in this style.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/jade-blockprint",
+    },
+  },
 ];
 
 function filterByKind(
