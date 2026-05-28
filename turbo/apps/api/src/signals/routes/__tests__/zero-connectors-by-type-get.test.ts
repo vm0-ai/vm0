@@ -128,7 +128,7 @@ describe("GET /api/zero/connectors/:type", () => {
     expect(response.body.type).toBe("github");
   });
 
-  it("returns a connector inferred from manual credential secrets", async () => {
+  it("returns 404 for legacy user-owned credential secrets without a connector row", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFixtures.push(
@@ -150,15 +150,11 @@ describe("GET /api/zero/connectors/:type", () => {
         params: { type: "openai" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [200],
+      [404],
     );
 
-    expect(response.body).toMatchObject({
-      id: null,
-      type: "openai",
-      authMethod: "api-token",
-      createdAt: "1970-01-01T00:00:00.000Z",
-      updatedAt: "1970-01-01T00:00:00.000Z",
+    expect(response.body).toStrictEqual({
+      error: { message: "Connector not found", code: "NOT_FOUND" },
     });
   });
 

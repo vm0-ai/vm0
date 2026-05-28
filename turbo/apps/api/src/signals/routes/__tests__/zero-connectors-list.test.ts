@@ -100,7 +100,7 @@ describe("GET /api/zero/connectors", () => {
     ).toBeTruthy();
   });
 
-  it("returns connectors inferred from manual credential secrets", async () => {
+  it("does not infer connectors from legacy user-owned credential secrets", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFixtures.push(
@@ -125,13 +125,7 @@ describe("GET /api/zero/connectors", () => {
     const openai = response.body.connectors.find((connector) => {
       return connector.type === "openai";
     });
-    expect(openai).toMatchObject({
-      id: null,
-      type: "openai",
-      authMethod: "api-token",
-      createdAt: "1970-01-01T00:00:00.000Z",
-      updatedAt: "1970-01-01T00:00:00.000Z",
-    });
+    expect(openai).toBeUndefined();
   });
 
   it("returns 401 when not authenticated", async () => {

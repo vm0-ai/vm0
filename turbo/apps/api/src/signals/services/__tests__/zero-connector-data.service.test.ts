@@ -17,11 +17,10 @@ const store = createStore();
 const writeDb = store.set(writeDb$);
 
 describe("zeroConnectorList", () => {
-  it("assigns fixed sentinel timestamps to derived api-token connectors", async () => {
+  it("does not derive api-token connectors from user-owned secrets", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    // Seed OPENAI_TOKEN so openai is derived as a connected api-token connector
     await writeDb.insert(secrets).values({
       orgId,
       userId,
@@ -35,11 +34,7 @@ describe("zeroConnectorList", () => {
       return c.type === "openai";
     });
 
-    expect(openai).toBeDefined();
-    if (openai) {
-      expect(openai.createdAt).toBe("1970-01-01T00:00:00.000Z");
-      expect(openai.updatedAt).toBe("1970-01-01T00:00:00.000Z");
-    }
+    expect(openai).toBeUndefined();
   });
 
   it("returns configuredTypes in sorted order", async () => {

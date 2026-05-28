@@ -1268,12 +1268,18 @@ describe("POST /api/zero/runs", () => {
       agentId: agent.agentId,
       connectorType: "axiom",
     });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "axiom",
+      authMethod: "api-token",
+    });
     await db.insert(secrets).values({
       orgId: fx.orgId,
       userId: fx.userId,
       name: "AXIOM_TOKEN",
       encryptedValue: encryptSecretForTests("xaat-approved"),
-      type: "user",
+      type: "connector",
     });
 
     const response = await accept(

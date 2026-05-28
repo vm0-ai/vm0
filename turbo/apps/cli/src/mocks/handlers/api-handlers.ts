@@ -25,7 +25,7 @@ function defaultAvailableConnectors() {
 
 function connectorApiTokenResponse(type: string) {
   return {
-    id: null,
+    id: "00000000-0000-4000-8000-000000000001",
     type,
     authMethod: "api-token",
     externalId: null,
@@ -33,8 +33,8 @@ function connectorApiTokenResponse(type: string) {
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
-    createdAt: "1970-01-01T00:00:00.000Z",
-    updatedAt: "1970-01-01T00:00:00.000Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
   };
 }
 

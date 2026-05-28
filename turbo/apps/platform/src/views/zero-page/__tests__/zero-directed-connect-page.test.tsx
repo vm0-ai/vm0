@@ -61,7 +61,7 @@ function mockConnectors(
 
 function apiTokenConnectorResponse(type: ConnectorType) {
   return {
-    id: null,
+    id: crypto.randomUUID(),
     type,
     authMethod: "api-token" as const,
     externalId: null,
@@ -69,8 +69,8 @@ function apiTokenConnectorResponse(type: ConnectorType) {
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
-    createdAt: "1970-01-01T00:00:00.000Z",
-    updatedAt: "1970-01-01T00:00:00.000Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
   };
 }
 

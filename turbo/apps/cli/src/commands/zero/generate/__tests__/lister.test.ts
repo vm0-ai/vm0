@@ -11,7 +11,7 @@ function connector(
   externalUsername: string | null = `${type}-user`,
 ) {
   return {
-    id: null,
+    id: "00000000-0000-4000-8000-000000000001",
     type,
     authMethod: "api-token",
     externalId: `${type}-external-id`,

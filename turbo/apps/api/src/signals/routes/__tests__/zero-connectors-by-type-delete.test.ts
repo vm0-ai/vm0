@@ -88,6 +88,67 @@ async function seedAtlassianApiTokenState(
   fixture: OrgMembershipFixture,
 ): Promise<void> {
   const writeDb = store.set(writeDb$);
+  await writeDb.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "atlassian",
+    authMethod: "api-token",
+  });
+  await writeDb.insert(secrets).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "ATLASSIAN_TOKEN",
+    encryptedValue: "encrypted_atlassian_token",
+    type: "connector",
+  });
+  await writeDb.insert(variables).values([
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "ATLASSIAN_EMAIL",
+      value: "test@example.com",
+      type: "connector",
+    },
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "ATLASSIAN_DOMAIN",
+      value: "example",
+      type: "connector",
+    },
+  ]);
+}
+
+async function seedGitlabApiTokenState(
+  fixture: OrgMembershipFixture,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "gitlab",
+    authMethod: "api-token",
+  });
+  await writeDb.insert(secrets).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "GITLAB_TOKEN",
+    encryptedValue: "encrypted_gitlab_token",
+    type: "connector",
+  });
+  await writeDb.insert(variables).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "GITLAB_HOST",
+    value: "gitlab.example.com",
+    type: "connector",
+  });
+}
+
+async function seedLegacyAtlassianUserCredentialState(
+  fixture: OrgMembershipFixture,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
   await writeDb.insert(secrets).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
@@ -101,33 +162,16 @@ async function seedAtlassianApiTokenState(
       userId: fixture.userId,
       name: "ATLASSIAN_EMAIL",
       value: "test@example.com",
+      type: "user",
     },
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
       name: "ATLASSIAN_DOMAIN",
       value: "example",
+      type: "user",
     },
   ]);
-}
-
-async function seedGitlabApiTokenState(
-  fixture: OrgMembershipFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(secrets).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    name: "GITLAB_TOKEN",
-    encryptedValue: "encrypted_gitlab_token",
-    type: "user",
-  });
-  await writeDb.insert(variables).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    name: "GITLAB_HOST",
-    value: "gitlab.example.com",
-  });
 }
 
 async function remainingConnectorCount(
@@ -354,51 +398,32 @@ describe("DELETE /api/zero/connectors/:type", () => {
     });
   });
 
-  it("does not delete connector-owned variables while deleting legacy API-token state", async () => {
+  it("returns 404 and preserves legacy user-owned credential state without a connector row", async () => {
     const fixture = await track(seedFixture());
-    await seedAtlassianApiTokenState(fixture);
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(variables).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "ATLASSIAN_DOMAIN",
-      value: "connector.example",
-      type: "connector",
-    });
+    await seedLegacyAtlassianUserCredentialState(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    await accept(
+    const response = await accept(
       client.delete({
         params: { type: "atlassian" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [204],
+      [404],
     );
 
-    const remainingVariables = await writeDb
-      .select({
-        name: variables.name,
-        value: variables.value,
-        type: variables.type,
-      })
-      .from(variables)
-      .where(
-        and(
-          eq(variables.orgId, fixture.orgId),
-          eq(variables.userId, fixture.userId),
-        ),
-      );
-    expect(remainingVariables).toStrictEqual([
-      {
-        name: "ATLASSIAN_DOMAIN",
-        value: "connector.example",
-        type: "connector",
-      },
-    ]);
+    expect(response.body).toStrictEqual({
+      error: { message: "Connector not found", code: "NOT_FOUND" },
+    });
+    await expect(
+      remainingSecretAndVariableState(fixture),
+    ).resolves.toStrictEqual({
+      secrets: 1,
+      variables: 2,
+    });
   });
 
-  it("deletes optional manual grant variables", async () => {
+  it("deletes optional API-token connector variables", async () => {
     const fixture = await track(seedFixture());
     await seedGitlabApiTokenState(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);

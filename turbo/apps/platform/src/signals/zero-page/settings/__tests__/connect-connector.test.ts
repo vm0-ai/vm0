@@ -781,7 +781,7 @@ describe("submitManualCredentials$", () => {
       mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
         submitted = body.values;
         return respond(200, {
-          id: null,
+          id: crypto.randomUUID(),
           type: "strapi",
           authMethod: "api-token",
           externalId: null,
@@ -789,8 +789,8 @@ describe("submitManualCredentials$", () => {
           externalEmail: null,
           oauthScopes: null,
           needsReconnect: false,
-          createdAt: "1970-01-01T00:00:00.000Z",
-          updatedAt: "1970-01-01T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
         });
       }),
     );

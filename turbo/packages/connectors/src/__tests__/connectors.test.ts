@@ -25,7 +25,6 @@ import {
 import {
   getAvailableConnectorAuthMethods,
   getConfiguredConnectorAuthMethods,
-  deriveConnectedManualGrantMethods,
   hasRequiredScopes,
   getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethodEnvBindings,
@@ -308,30 +307,6 @@ describe("connector auth method config", () => {
       variables: ["GITLAB_HOST"],
     });
     expect(getConnectorManualGrantFieldNames("github")).toBeNull();
-  });
-
-  it("derives connected manual grant methods from required fields", () => {
-    expect(
-      deriveConnectedManualGrantMethods(
-        new Set(["ATLASSIAN_TOKEN"]),
-        new Set(["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"]),
-      ),
-    ).toContainEqual({ type: "atlassian", authMethod: "api-token" });
-    expect(
-      deriveConnectedManualGrantMethods(
-        new Set(["ATLASSIAN_TOKEN"]),
-        new Set(["ATLASSIAN_EMAIL"]),
-      ),
-    ).not.toContainEqual({ type: "atlassian", authMethod: "api-token" });
-    const connected = deriveConnectedManualGrantMethods(
-      new Set(["GITHUB_ACCESS_TOKEN"]),
-      new Set(),
-    );
-    expect(
-      connected.some((method) => {
-        return method.type === "github";
-      }),
-    ).toBe(false);
   });
 });
 

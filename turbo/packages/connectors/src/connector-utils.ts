@@ -51,8 +51,7 @@ export function getConfiguredConnectorAuthMethods(
  *   feature-switch filtering.
  * - Runtime available connector types are connector types the current server
  *   environment can offer as connection candidates.
- * - User connected connector types come from persisted rows or inferred manual
- *   credential state from user secrets and variables.
+ * - User connected connector types come from persisted connector rows.
  * - Runtime injection happens later when a run receives environment entries, secrets,
  *   variables, and firewall context.
  */
@@ -94,11 +93,6 @@ export interface ManualGrantFieldNames {
   readonly variables: readonly string[];
 }
 
-export interface ConnectedManualGrantMethod {
-  readonly type: ConnectorType;
-  readonly authMethod: ConnectorAuthMethodId;
-}
-
 function manualGrantFieldNames(
   fields: Record<string, ConnectorManualGrantFieldConfig>,
 ): ManualGrantFieldNames {
@@ -112,26 +106,6 @@ function manualGrantFieldNames(
     }
   }
   return { secrets: secretNames, variables: variableNames };
-}
-
-function requiredManualGrantFieldNames(
-  fields: Record<string, ConnectorManualGrantFieldConfig>,
-): ManualGrantFieldNames {
-  const secretNames: string[] = [];
-  const variableNames: string[] = [];
-  for (const [name, cfg] of Object.entries(fields)) {
-    if (!cfg.required) continue;
-    if (cfg.storage === "variable") {
-      variableNames.push(name);
-    } else {
-      secretNames.push(name);
-    }
-  }
-  return { secrets: secretNames, variables: variableNames };
-}
-
-function hasRequiredManualGrantFields(fields: ManualGrantFieldNames): boolean {
-  return fields.secrets.length > 0 || fields.variables.length > 0;
 }
 
 export function getConnectorManualGrantFieldNames(
@@ -157,59 +131,6 @@ export function getConnectorManualGrantFieldNames(
     return null;
   }
   return { secrets: [...secretNames], variables: [...variableNames] };
-}
-
-export function deriveConnectedManualGrantMethod(
-  type: ConnectorType,
-  userSecretNames: Set<string>,
-  userVariableNames?: Set<string>,
-): ConnectedManualGrantMethod | null {
-  const varNames = userVariableNames ?? new Set<string>();
-
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-    const method = getConnectorAuthMethod(type, authMethod);
-    if (method?.grant.kind !== "manual") {
-      continue;
-    }
-    const requiredFields = requiredManualGrantFieldNames(method.grant.fields);
-    if (!hasRequiredManualGrantFields(requiredFields)) {
-      continue;
-    }
-    const secretsOk = requiredFields.secrets.every((name) => {
-      return userSecretNames.has(name);
-    });
-    const variablesOk = requiredFields.variables.every((name) => {
-      return varNames.has(name);
-    });
-    if (secretsOk && variablesOk) {
-      return {
-        type,
-        authMethod,
-      };
-    }
-  }
-
-  return null;
-}
-
-export function deriveConnectedManualGrantMethods(
-  userSecretNames: Set<string>,
-  userVariableNames?: Set<string>,
-): ConnectedManualGrantMethod[] {
-  const connected: ConnectedManualGrantMethod[] = [];
-
-  for (const type of CONNECTOR_TYPE_KEYS) {
-    const method = deriveConnectedManualGrantMethod(
-      type,
-      userSecretNames,
-      userVariableNames,
-    );
-    if (method) {
-      connected.push(method);
-    }
-  }
-
-  return connected;
 }
 
 function connectorAccessEnvBindings(

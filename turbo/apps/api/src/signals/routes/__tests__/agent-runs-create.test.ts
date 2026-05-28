@@ -735,31 +735,47 @@ describe("POST /api/agent/runs", () => {
   it("expands api-token connector firewall vars and masks connector env secrets with placeholders", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
+    await db.insert(connectors).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "zendesk",
+        authMethod: "api-token",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "mercury",
+        authMethod: "api-token",
+      },
+    ]);
     await db.insert(variables).values({
       orgId: fx.orgId,
       userId: fx.userId,
       name: "ZENDESK_SUBDOMAIN",
       value: "acme",
+      type: "connector",
     });
     await db.insert(variables).values({
       orgId: fx.orgId,
       userId: fx.userId,
       name: "ZENDESK_EMAIL",
       value: "agent@example.com",
+      type: "connector",
     });
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
       name: "ZENDESK_API_TOKEN",
       encryptedValue: encryptSecretForTests("zendesk-real-token"),
-      type: "user",
+      type: "connector",
     });
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
       name: "MERCURY_TOKEN",
       encryptedValue: encryptSecretForTests("mercury-real-token"),
-      type: "user",
+      type: "connector",
     });
     const compose = await createCompose({
       fixture: fx,
@@ -1056,14 +1072,20 @@ describe("POST /api/agent/runs", () => {
     // WeRead's credential is consumed by the firewall auth header template
     // (Authorization: Bearer ${{ secrets.WEREAD_TOKEN }}), so the compose
     // environment never references it. Regression: loadReferencedSecrets used
-    // to drop any user secret not named in the compose environment, leaving
+    // to drop any connector secret not named in the compose environment, leaving
     // the weread firewall to fail with 424 CONNECTOR_NOT_CONFIGURED.
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "weread",
+      authMethod: "api-token",
+    });
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
       name: "WEREAD_TOKEN",
       encryptedValue: encryptSecretForTests("weread-real-token"),
-      type: "user",
+      type: "connector",
     });
     // A second secret IS referenced in the compose environment, so the
     // referenced-name set is non-empty (matching real agents).
@@ -1111,13 +1133,19 @@ describe("POST /api/agent/runs", () => {
   it("loads a firewall-only api-token connector secret without compose secret refs", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "weread",
+      authMethod: "api-token",
+    });
     await db.insert(secretsTable).values([
       {
         orgId: fx.orgId,
         userId: fx.userId,
         name: "WEREAD_TOKEN",
         encryptedValue: encryptSecretForTests("weread-real-token"),
-        type: "user",
+        type: "connector",
       },
       {
         orgId: fx.orgId,

@@ -154,7 +154,7 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("connects a first-time API-token connector without creating a connector row", async () => {
+  it("connects a first-time API-token connector with connector-owned state", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorApiTokenContract);
 
@@ -168,19 +168,22 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
     );
 
     expect(response.body).toMatchObject({
-      id: null,
       type: "openai",
       authMethod: "api-token",
-      createdAt: "1970-01-01T00:00:00.000Z",
-      updatedAt: "1970-01-01T00:00:00.000Z",
     });
-    await expect(connectorRows(fixture, "openai")).resolves.toHaveLength(0);
+    expect(typeof response.body.id).toBe("string");
+    expect(response.body.createdAt).not.toBe("1970-01-01T00:00:00.000Z");
+    expect(response.body.updatedAt).not.toBe("1970-01-01T00:00:00.000Z");
+    await expect(connectorRows(fixture, "openai")).resolves.toHaveLength(1);
+    await expect(
+      secretRows(fixture, "OPENAI_TOKEN", "connector"),
+    ).resolves.toHaveLength(1);
     await expect(
       secretRows(fixture, "OPENAI_TOKEN", "user"),
-    ).resolves.toHaveLength(1);
+    ).resolves.toHaveLength(0);
   });
 
-  it("stores Zendesk API-token fields as one user secret and two variables", async () => {
+  it("stores Zendesk API-token fields as one connector secret and two connector variables", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorApiTokenContract);
 
@@ -200,17 +203,17 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
     );
 
     await expect(
-      secretRows(fixture, "ZENDESK_API_TOKEN", "user"),
+      secretRows(fixture, "ZENDESK_API_TOKEN", "connector"),
     ).resolves.toHaveLength(1);
     await expect(variableRows(fixture, "ZENDESK_EMAIL")).resolves.toMatchObject(
-      [{ value: "support@example.com", type: "user" }],
+      [{ value: "support@example.com", type: "connector" }],
     );
     await expect(
       variableRows(fixture, "ZENDESK_SUBDOMAIN"),
-    ).resolves.toMatchObject([{ value: "example", type: "user" }]);
+    ).resolves.toMatchObject([{ value: "example", type: "connector" }]);
   });
 
-  it("replaces stored OAuth state with derived API-token state", async () => {
+  it("replaces stored OAuth state with stored API-token state", async () => {
     const fixture = await seedFixture();
     const db = store.set(writeDb$);
     await db.insert(connectors).values({
@@ -246,7 +249,9 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
       [200],
     );
 
-    await expect(connectorRows(fixture, "stripe")).resolves.toHaveLength(0);
+    await expect(connectorRows(fixture, "stripe")).resolves.toMatchObject([
+      { authMethod: "api-token" },
+    ]);
     await expect(
       secretRows(fixture, "STRIPE_ACCESS_TOKEN", "connector"),
     ).resolves.toHaveLength(0);
@@ -254,8 +259,11 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
       secretRows(fixture, "STRIPE_REFRESH_TOKEN", "connector"),
     ).resolves.toHaveLength(0);
     await expect(
-      secretRows(fixture, "STRIPE_TOKEN", "user"),
+      secretRows(fixture, "STRIPE_TOKEN", "connector"),
     ).resolves.toHaveLength(1);
+    await expect(
+      secretRows(fixture, "STRIPE_TOKEN", "user"),
+    ).resolves.toHaveLength(0);
 
     const getClient = setupApp({ context })(zeroConnectorsByTypeContract);
     const getResponse = await accept(
@@ -315,7 +323,9 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
     );
 
     expect(response.body.authMethod).toBe("api-token");
-    await expect(connectorRows(fixture, "stripe")).resolves.toHaveLength(0);
+    await expect(connectorRows(fixture, "stripe")).resolves.toMatchObject([
+      { authMethod: "api-token" },
+    ]);
     await expect(
       secretRows(fixture, "STRIPE_ACCESS_TOKEN", "connector"),
     ).resolves.toHaveLength(0);
@@ -323,25 +333,32 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
       secretRows(fixture, "STRIPE_REFRESH_TOKEN", "connector"),
     ).resolves.toHaveLength(0);
     await expect(
-      secretRows(fixture, "STRIPE_TOKEN", "user"),
+      secretRows(fixture, "STRIPE_TOKEN", "connector"),
     ).resolves.toHaveLength(1);
   });
 
   it("deletes omitted optional API-token fields on replacement", async () => {
     const fixture = await seedFixture();
     const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "gitlab",
+      authMethod: "api-token",
+    });
     await db.insert(secrets).values({
       orgId: fixture.orgId,
       userId: fixture.userId,
       name: "GITLAB_TOKEN",
       encryptedValue: "encrypted_gitlab_token",
-      type: "user",
+      type: "connector",
     });
     await db.insert(variables).values({
       orgId: fixture.orgId,
       userId: fixture.userId,
       name: "GITLAB_HOST",
       value: "gitlab.example.com",
+      type: "connector",
     });
 
     const client = setupApp({ context })(zeroConnectorApiTokenContract);
@@ -355,7 +372,7 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
     );
 
     await expect(
-      secretRows(fixture, "GITLAB_TOKEN", "user"),
+      secretRows(fixture, "GITLAB_TOKEN", "connector"),
     ).resolves.toHaveLength(1);
     await expect(variableRows(fixture, "GITLAB_HOST")).resolves.toHaveLength(0);
   });
