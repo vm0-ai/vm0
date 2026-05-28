@@ -3,7 +3,7 @@ import {
   type FirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 
-export type PermissionAction = "allow" | "deny";
+type PermissionAction = "allow" | "deny";
 
 export interface PermissionActionDescriptor {
   agentId: string;

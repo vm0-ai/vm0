@@ -160,6 +160,8 @@ import {
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
+  extractPermissions,
+  permissionExistingRequestByAction,
   saveAdminFocusedPolicy$,
   submitAccessRequest$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
@@ -2632,6 +2634,86 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   );
 }
 
+interface PermissionActionButtonState {
+  hasAgent: boolean;
+  hasPermission: boolean;
+  loading: boolean;
+  saving: boolean;
+  saveDone: boolean;
+  submitDone: boolean;
+  alreadyApplied: boolean;
+  canManagePermissions: boolean;
+  existingRequestStatus: "pending" | "approved" | "rejected" | null;
+}
+
+function permissionActionButtonLabel(
+  state: PermissionActionButtonState,
+  action: "allow" | "deny",
+): string {
+  if (state.loading) {
+    return "Checking permissions";
+  }
+  if (!state.hasPermission) {
+    return "Unknown permission";
+  }
+  if (state.saveDone || state.alreadyApplied) {
+    return action === "allow" ? "Permissions updated" : "Permission denied";
+  }
+  if (state.existingRequestStatus === "pending") {
+    return "Request sent";
+  }
+  if (state.existingRequestStatus === "approved") {
+    return "Permissions updated";
+  }
+  if (state.existingRequestStatus === "rejected") {
+    return "Request denied";
+  }
+  if (state.submitDone) {
+    return "Request sent";
+  }
+  if (state.saving) {
+    return state.canManagePermissions ? "Saving..." : "Requesting...";
+  }
+  return state.canManagePermissions ? "Confirm" : "Request approval";
+}
+
+function permissionActionButtonDisabled(
+  state: PermissionActionButtonState,
+): boolean {
+  return (
+    state.loading ||
+    state.saving ||
+    state.alreadyApplied ||
+    state.saveDone ||
+    state.submitDone ||
+    !state.hasAgent ||
+    !state.hasPermission ||
+    Boolean(state.existingRequestStatus)
+  );
+}
+
+function PermissionActionButton({
+  state,
+  action,
+  onClick,
+}: {
+  state: PermissionActionButtonState;
+  action: "allow" | "deny";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={permissionActionButtonDisabled(state)}
+      onClick={onClick}
+      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+    >
+      {state.saving && <IconLoader2 size={15} className="animate-spin" />}
+      {permissionActionButtonLabel(state, action)}
+    </button>
+  );
+}
+
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
@@ -2639,14 +2721,32 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const adminLoadable = useLoadable(isOrgAdmin$);
   const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
   const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
-  const actionLabel = block.action === "allow" ? "Allow" : "Deny";
-  const loading =
-    agentLoadable.state === "loading" || adminLoadable.state === "loading";
-  const saving =
-    saveLoadable.state === "loading" || submitLoadable.state === "loading";
   const canManagePermissions =
     adminLoadable.state === "hasData" && adminLoadable.data;
+  const existingRequestLoadable = useLoadable(
+    permissionExistingRequestByAction({
+      agentId: block.agentId,
+      connectorRef: block.connectorRef,
+      permission: block.permission,
+      action: block.action,
+      enabled: adminLoadable.state === "hasData" && !canManagePermissions,
+    }),
+  );
+  const focusedPermission = extractPermissions(block.connectorRef).find((p) => {
+    return p.name === block.permission;
+  });
+  const actionLabel = block.action === "allow" ? "Allow" : "Deny";
+  const loading =
+    agentLoadable.state === "loading" ||
+    adminLoadable.state === "loading" ||
+    existingRequestLoadable.state === "loading";
+  const saving =
+    saveLoadable.state === "loading" || submitLoadable.state === "loading";
   const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  const existingRequest =
+    existingRequestLoadable.state === "hasData"
+      ? existingRequestLoadable.data
+      : null;
   const resolved = agent
     ? resolveFirewallPolicies(agent.permissionPolicies, [block.connectorRef])
     : null;
@@ -2655,9 +2755,28 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const alreadyApplied = Boolean(agent) && effectivePolicy === block.action;
   const finished =
     saveLoadable.state === "hasData" || submitLoadable.state === "hasData";
+  const buttonState: PermissionActionButtonState = {
+    hasAgent: Boolean(agent),
+    hasPermission: Boolean(focusedPermission),
+    loading,
+    saving,
+    saveDone: saveLoadable.state === "hasData",
+    submitDone: submitLoadable.state === "hasData",
+    alreadyApplied,
+    canManagePermissions,
+    existingRequestStatus: existingRequest?.status ?? null,
+  };
 
   const handlePermissionAction = () => {
-    if (!agent || loading || saving || alreadyApplied || finished) {
+    if (
+      !agent ||
+      !focusedPermission ||
+      existingRequest ||
+      loading ||
+      saving ||
+      alreadyApplied ||
+      finished
+    ) {
       return;
     }
 
@@ -2667,7 +2786,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
           {
             agentId: block.agentId,
             ref: block.connectorRef,
-            permissionName: block.permission,
+            permissionName: focusedPermission.name,
             action: block.action,
             agentFirewallPolicies: agent.permissionPolicies,
           },
@@ -2683,7 +2802,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         {
           agentId: block.agentId,
           connectorRef: block.connectorRef,
-          permission: block.permission,
+          permission: focusedPermission.name,
           action: block.action,
           method: block.method ?? undefined,
           path: block.path ?? undefined,
@@ -2694,24 +2813,6 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       Reason.DomCallback,
     );
   };
-
-  const buttonLabel = (() => {
-    if (loading) {
-      return "Checking permissions";
-    }
-    if (saveLoadable.state === "hasData" || alreadyApplied) {
-      return block.action === "allow"
-        ? "Permissions updated"
-        : "Permission denied";
-    }
-    if (submitLoadable.state === "hasData") {
-      return "Request sent";
-    }
-    if (saving) {
-      return canManagePermissions ? "Saving..." : "Requesting...";
-    }
-    return canManagePermissions ? "Confirm" : "Request approval";
-  })();
 
   return (
     <div
@@ -2727,19 +2828,15 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
             {config.label} permissions
           </div>
           <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
-            {actionLabel} {block.permission}
+            {actionLabel} {focusedPermission?.name ?? block.permission}
           </div>
         </div>
       </div>
-      <button
-        type="button"
-        disabled={loading || saving || alreadyApplied || finished || !agent}
+      <PermissionActionButton
+        state={buttonState}
+        action={block.action}
         onClick={handlePermissionAction}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
-      >
-        {saving && <IconLoader2 size={15} className="animate-spin" />}
-        {buttonLabel}
-      </button>
+      />
     </div>
   );
 }
