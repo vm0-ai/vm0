@@ -166,16 +166,21 @@ function connectorOAuthStartRedirectResponse(args: {
   return response;
 }
 
-function connectorDoesNotUseOAuthResponse(type: string) {
-  return jsonResponse({ error: `${type} connector does not use OAuth` }, 400);
+function connectorMissingInteractiveGrantResponse(type: string) {
+  return jsonResponse(
+    {
+      error: `${type} connector does not use an auth-code or device-auth grant`,
+    },
+    400,
+  );
 }
 
-function unsupportedOAuthFlowMessage(type: string): string {
-  return `${type} connector does not use authorization-code OAuth`;
+function unsupportedAuthCodeGrantMessage(type: string): string {
+  return `${type} connector does not use an auth-code grant`;
 }
 
-function unsupportedOAuthFlowResponse(type: string) {
-  return jsonResponse({ error: unsupportedOAuthFlowMessage(type) }, 400);
+function unsupportedAuthCodeGrantResponse(type: string) {
+  return jsonResponse({ error: unsupportedAuthCodeGrantMessage(type) }, 400);
 }
 
 function internalServerError(message: string) {
@@ -356,10 +361,10 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const startType = resolveConnectorOAuthStartType(type);
     if (!startType.ok) {
-      if (startType.reason === "connector_does_not_use_oauth") {
-        return connectorDoesNotUseOAuthResponse(type);
+      if (startType.reason === "missing_auth_code_or_device_auth_grant") {
+        return connectorMissingInteractiveGrantResponse(type);
       }
-      return unsupportedOAuthFlowResponse(type);
+      return unsupportedAuthCodeGrantResponse(type);
     }
 
     if (!auth.orgId) {
@@ -429,10 +434,12 @@ const startConnectorOauthInner$ = command(
 
     const startType = resolveConnectorOAuthStartType(type);
     if (!startType.ok) {
-      if (startType.reason === "connector_does_not_use_oauth") {
-        return badRequestMessage(`${type} connector does not use OAuth`);
+      if (startType.reason === "missing_auth_code_or_device_auth_grant") {
+        return badRequestMessage(
+          `${type} connector does not use an auth-code or device-auth grant`,
+        );
       }
-      return badRequestMessage(unsupportedOAuthFlowMessage(type));
+      return badRequestMessage(unsupportedAuthCodeGrantMessage(type));
     }
 
     if (!auth.orgId) {

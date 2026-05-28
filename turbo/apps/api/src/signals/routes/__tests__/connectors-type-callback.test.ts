@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  AuthCodeGrantConnectorType,
   ConnectorOAuthClientConfig,
-  OAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
@@ -390,7 +390,7 @@ function mockSlackOAuth(options: {
 }
 
 interface ProviderMockOptions {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: AuthCodeGrantConnectorType;
   readonly accessToken?: string;
   readonly refreshToken?: string | null;
   readonly expiresIn?: number;
@@ -871,7 +871,7 @@ function mockXeroProvider(options: ResolvedProviderMockOptions): void {
 
 function mockProviderOAuth(options: ProviderMockOptions): void {
   const providerMockers: Partial<
-    Record<OAuthGrantConnectorType, ProviderMocker>
+    Record<AuthCodeGrantConnectorType, ProviderMocker>
   > = {
     github: (resolvedOptions) => {
       mockGitHubOAuth({
@@ -1020,7 +1020,7 @@ async function findDecryptedSecret(args: {
 }
 
 interface ProviderSuccessCase {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: AuthCodeGrantConnectorType;
   readonly externalId: string;
   readonly externalUsername: string;
   readonly externalEmail: string | null;
@@ -1161,7 +1161,7 @@ const providerSuccessCases = [
   },
 ] as const satisfies readonly ProviderSuccessCase[];
 
-function hasFetchableUserInfo(type: OAuthGrantConnectorType): boolean {
+function hasFetchableUserInfo(type: AuthCodeGrantConnectorType): boolean {
   return type !== "notion" && type !== "sentry" && type !== "intervals-icu";
 }
 
@@ -1259,7 +1259,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.searchParams.get("message")).toBe("Unknown connector type");
   });
 
-  it("redirects non-OAuth callbacks to the connector error page", async () => {
+  it("redirects callbacks without an auth-code or device-auth grant to the connector error page", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -1278,7 +1278,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.pathname).toBe("/connector/error");
     expect(url.searchParams.get("type")).toBe("cloudinary");
     expect(url.searchParams.get("message")).toBe(
-      "cloudinary connector does not use OAuth",
+      "cloudinary connector does not use an auth-code or device-auth grant",
     );
   });
 
@@ -1386,7 +1386,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.pathname).toBe("/connector/error");
     expect(url.searchParams.get("type")).toBe("test-oauth-device");
     expect(url.searchParams.get("message")).toBe(
-      "test-oauth-device connector does not use authorization-code OAuth",
+      "test-oauth-device connector does not use an auth-code grant",
     );
   });
 

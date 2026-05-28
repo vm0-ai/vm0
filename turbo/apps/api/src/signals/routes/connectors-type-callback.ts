@@ -214,8 +214,8 @@ function resolveOAuthConnectorType(
   const connectorType = typeResult.data;
   if (!hasConnectorAuthCodeGrant(connectorType)) {
     const message = hasConnectorDeviceAuthGrant(connectorType)
-      ? `${type} connector does not use authorization-code OAuth`
-      : `${type} connector does not use OAuth`;
+      ? `${type} connector does not use an auth-code grant`
+      : `${type} connector does not use an auth-code or device-auth grant`;
     return {
       ok: false,
       response: redirectWithError(origin, type, message),

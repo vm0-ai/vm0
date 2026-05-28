@@ -596,7 +596,7 @@ describe("OAuth device authorization connector routes", () => {
     });
   });
 
-  it("rejects authorization-code OAuth connectors", async () => {
+  it("rejects auth-code grant connectors", async () => {
     await setupUser();
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
@@ -612,11 +612,11 @@ describe("OAuth device authorization connector routes", () => {
     );
 
     expect(response.body.error.message).toBe(
-      "github connector does not support OAuth device authorization",
+      "github connector does not support a device-auth grant",
     );
   });
 
-  it("rejects non-OAuth connectors", async () => {
+  it("rejects connector without an auth-code or device-auth grants", async () => {
     await setupUser();
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
@@ -632,7 +632,7 @@ describe("OAuth device authorization connector routes", () => {
     );
 
     expect(response.body.error.message).toBe(
-      "cloudinary connector does not use OAuth",
+      "cloudinary connector does not use an auth-code or device-auth grant",
     );
   });
 

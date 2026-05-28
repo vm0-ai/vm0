@@ -1825,7 +1825,7 @@ describe("CLI auth routes", () => {
       });
     });
 
-    it("rejects connector types that do not use OAuth", async () => {
+    it("rejects connector types without an auth-code or device-auth grant", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-non-oauth" });
@@ -1844,7 +1844,8 @@ describe("CLI auth routes", () => {
       );
 
       expect(response.body).toStrictEqual({
-        error: "cloudinary connector does not use OAuth",
+        error:
+          "cloudinary connector does not use an auth-code or device-auth grant",
       });
       await expect(
         readConnectorState({ orgId, userId, type: "cloudinary" }),

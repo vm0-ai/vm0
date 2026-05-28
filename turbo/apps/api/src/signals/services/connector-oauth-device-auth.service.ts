@@ -183,10 +183,12 @@ function resolveDeviceAuthType(
   | ReturnType<typeof internalServerError> {
   if (!hasConnectorDeviceAuthGrant(type)) {
     if (!hasConnectorAuthCodeGrant(type)) {
-      return badRequestMessage(`${type} connector does not use OAuth`);
+      return badRequestMessage(
+        `${type} connector does not use an auth-code or device-auth grant`,
+      );
     }
     return badRequestMessage(
-      `${type} connector does not support OAuth device authorization`,
+      `${type} connector does not support a device-auth grant`,
     );
   }
   return type;

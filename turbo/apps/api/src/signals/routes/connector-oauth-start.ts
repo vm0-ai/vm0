@@ -36,8 +36,8 @@ type ResolveConnectorOAuthStartTypeResult =
   | {
       readonly ok: false;
       readonly reason:
-        | "connector_does_not_use_oauth"
-        | "unsupported_oauth_flow";
+        | "missing_auth_code_or_device_auth_grant"
+        | "unsupported_auth_code_grant";
     };
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
@@ -49,15 +49,15 @@ export function resolveConnectorOAuthStartType(
 ): ResolveConnectorOAuthStartTypeResult {
   if (!hasConnectorAuthCodeGrant(type)) {
     if (hasConnectorDeviceAuthGrant(type)) {
-      return { ok: false, reason: "unsupported_oauth_flow" };
+      return { ok: false, reason: "unsupported_auth_code_grant" };
     }
-    return { ok: false, reason: "connector_does_not_use_oauth" };
+    return { ok: false, reason: "missing_auth_code_or_device_auth_grant" };
   }
   return { ok: true, type };
 }
 
 // Prepare only synchronous OAuth start data. Callers must resolve the route's
-// ConnectorType first so non-OAuth connectors keep their route-specific errors,
+// ConnectorType first so connector without an auth-code or device-auth grants keep their route-specific errors,
 // then build the provider authorization URL at the normal async commit point.
 export function prepareResolvedConnectorOAuthStart(args: {
   readonly type: AuthCodeGrantConnectorType;
