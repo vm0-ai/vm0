@@ -3479,10 +3479,32 @@ mod tests {
         }
     }
 
-    fn assert_operation_reason(error: SandboxError, expected: SandboxOperationReason) {
+    fn assert_operation_error(
+        error: SandboxError,
+        expected_operation: SandboxOperation,
+        expected_reason: SandboxOperationReason,
+    ) {
         match error {
-            SandboxError::Operation { reason, .. } => assert_eq!(reason, expected),
+            SandboxError::Operation {
+                operation, reason, ..
+            } => {
+                assert_eq!(operation, expected_operation);
+                assert_eq!(reason, expected_reason);
+            }
             other => panic!("expected operation error, got {other:?}"),
+        }
+    }
+
+    fn assert_invalid_state_operation(error: SandboxError, expected_operation: SandboxOperation) {
+        match error {
+            SandboxError::InvalidState { context, state, .. } => {
+                assert_eq!(
+                    context,
+                    SandboxInvalidStateContext::Operation(expected_operation)
+                );
+                assert_eq!(state, "created");
+            }
+            other => panic!("expected invalid state error, got {other:?}"),
         }
     }
 
@@ -4526,7 +4548,11 @@ mod tests {
             false,
         );
 
-        assert_operation_reason(err, SandboxOperationReason::Timeout);
+        assert_operation_error(
+            err,
+            SandboxOperation::WaitProcess,
+            SandboxOperationReason::Timeout,
+        );
     }
 
     #[test]
@@ -4537,7 +4563,7 @@ mod tests {
             false,
         );
 
-        assert_operation_reason(err, SandboxOperationReason::Guest);
+        assert_operation_error(err, SandboxOperation::Exec, SandboxOperationReason::Guest);
     }
 
     #[test]
@@ -4835,7 +4861,7 @@ mod tests {
                 true,
             );
 
-            assert_operation_reason(err, SandboxOperationReason::BackendCrashed);
+            assert_operation_error(err, operation, SandboxOperationReason::BackendCrashed);
         }
     }
 
@@ -4853,7 +4879,17 @@ mod tests {
             let err =
                 FirecrackerSandbox::operation_unavailable_error(operation, SandboxState::Crashed);
 
-            assert_operation_reason(err, SandboxOperationReason::BackendCrashed);
+            assert_operation_error(err, operation, SandboxOperationReason::BackendCrashed);
+        }
+    }
+
+    #[test]
+    fn unavailable_guest_preserves_file_operation_context_for_not_running_state() {
+        for operation in [SandboxOperation::ReadFile, SandboxOperation::CopyFile] {
+            let err =
+                FirecrackerSandbox::operation_unavailable_error(operation, SandboxState::Created);
+
+            assert_invalid_state_operation(err, operation);
         }
     }
 
