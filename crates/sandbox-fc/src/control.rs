@@ -1459,6 +1459,19 @@ mod tests {
     }
 
     #[test]
+    fn resolve_control_socket_full_id_without_socket_ignores_prefix_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_id = SandboxId::new_v4();
+        let (_sibling_control_sock, _sibling_listener) =
+            bind_control_socket_for_test(&sock_parent.join(format!("{sandbox_id}-suffix")));
+
+        let err = resolve_control_socket_in(&sock_parent, &sandbox_id.to_string()).unwrap_err();
+
+        assert!(matches!(err, SandboxControlError::NotFound(_)));
+    }
+
+    #[test]
     fn resolve_control_socket_full_id_socket_check_error_returns_connection() {
         let dir = tempfile::tempdir().unwrap();
         let sock_parent = dir.path().join("sock");
