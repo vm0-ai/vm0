@@ -80,7 +80,7 @@ describe("chat composer — model picker", () => {
     expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: /Claude Opus 4\.7/ }),
+      screen.getByRole("option", { name: /Claude Opus 4\.8/ }),
     ).toBeInTheDocument();
   });
 
