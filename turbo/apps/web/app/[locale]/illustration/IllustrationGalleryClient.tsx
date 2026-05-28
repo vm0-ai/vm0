@@ -52,14 +52,28 @@ export function IllustrationGalleryClient() {
             register. Click any plate to see every AI variation the style can
             produce.
           </p>
-          <div className="illu-meta-row">
-            <span>
-              <span className="illu-meta-value">
-                {ILLUSTRATION_STYLES.length}
-              </span>{" "}
-              styles
-            </span>
-          </div>
+          <dl className="illu-meta-grid">
+            <div>
+              <dt>Pieces</dt>
+              <dd>{ILLUSTRATION_STYLES.length} styles</dd>
+            </div>
+            <div>
+              <dt>Source register</dt>
+              <dd>
+                <a
+                  href="https://github.com/vm0-ai/vm0-skills/pulls?q=is%3Apr+illustration-template"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  vm0-skills #201 – #229
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>Rendered with</dt>
+              <dd>gpt-image-2 · seedream 5 · nano-banana-2</dd>
+            </div>
+          </dl>
         </div>
       </section>
 

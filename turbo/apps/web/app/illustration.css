@@ -6,25 +6,57 @@
   padding: 0 24px;
 }
 
-.illu-meta-row {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-top: 4px;
+.illu-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) minmax(160px, max-content) minmax(160px, max-content);
+  gap: 28px 48px;
+  margin: 28px 0 0;
+  padding-top: 24px;
+  border-top: 0.7px solid hsl(var(--gray-200));
+}
+.illu-meta-grid > div {
+  min-width: 0;
+}
+.illu-meta-grid dt {
+  font-family: var(--font-noto-sans), "Noto Sans", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  margin: 0 0 6px;
+}
+.illu-meta-grid dd {
   font-family: var(--font-noto-sans), "Noto Sans", system-ui, sans-serif;
   font-size: 14px;
-  color: hsl(var(--muted-foreground));
-}
-.illu-meta-row .illu-meta-value {
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-style: italic;
   font-weight: 500;
-  font-size: 16px;
   color: hsl(var(--foreground));
-  margin-right: 2px;
+  margin: 0;
+  line-height: 1.4;
 }
-.illu-meta-row .illu-meta-dot {
-  color: hsl(var(--gray-300));
+.illu-meta-grid dd a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid hsl(var(--gray-200));
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.illu-meta-grid dd a:hover {
+  color: #ed4e01;
+  border-bottom-color: #ed4e01;
+}
+
+@media (max-width: 720px) {
+  .illu-meta-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 24px;
+  }
+}
+@media (max-width: 480px) {
+  .illu-meta-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Masonry of plates */
