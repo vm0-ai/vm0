@@ -71,7 +71,7 @@ describe("zeroConnectorList", () => {
     expect(list.connectorProvidedEnvNames).not.toContain("OPENAI_TOKEN");
   });
 
-  it("includes optional connector-provided env names when stored", async () => {
+  it("does not report variable-backed connector env names as provided secrets", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
@@ -99,7 +99,7 @@ describe("zeroConnectorList", () => {
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
     expect(list.connectorProvidedEnvNames).toContain("GITLAB_TOKEN");
-    expect(list.connectorProvidedEnvNames).toContain("GITLAB_HOST");
+    expect(list.connectorProvidedEnvNames).not.toContain("GITLAB_HOST");
   });
 
   it("returns configuredTypes in sorted order", async () => {

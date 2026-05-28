@@ -646,8 +646,9 @@ export function getConnectorEnvNamesForSecret(
 }
 
 /**
- * Get the set of environment names that connected connectors can provide.
- * Used by pre-run checks to exclude connector-provided secrets from "missing" lists.
+ * Get the set of secret-backed environment names that connected connectors can
+ * provide. Used by pre-run checks to exclude connector-provided secrets from
+ * "missing" lists.
  *
  * Example: getConnectorProvidedEnvNames(["github"])
  * → Set { "GH_TOKEN", "GITHUB_TOKEN" }
@@ -663,7 +664,10 @@ export function getConnectorProvidedEnvNames(
       continue;
     }
     const envBindings = getConnectorEnvBindings(parsed.data);
-    for (const envName of Object.keys(envBindings)) {
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
+      if (!valueRef.startsWith("$secrets.")) {
+        continue;
+      }
       provided.add(envName);
     }
   }

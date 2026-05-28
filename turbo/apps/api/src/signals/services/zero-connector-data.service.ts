@@ -75,7 +75,6 @@ interface ConnectorScopedCredentialNames {
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
-const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ExternalUserInfo {
@@ -441,20 +440,11 @@ function connectorProvidedEnvNamesForStoredConnectors(
       connector.authMethod,
     );
     for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (
-        valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX) &&
-        !connectorScopedCredentialNames.secretNames.has(
-          valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length),
-        )
-      ) {
+      if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         continue;
       }
-      if (
-        valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX) &&
-        !connectorScopedCredentialNames.variableNames.has(
-          valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length),
-        )
-      ) {
+      const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+      if (!connectorScopedCredentialNames.secretNames.has(secretName)) {
         continue;
       }
       provided.add(envName);
