@@ -640,6 +640,40 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
+    def test_malformed_firewall_config_fails_closed_only_after_base_match(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{a}literal{b}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        unrelated = matching.match_compiled_firewall_request(
+            "https://api.gitlab.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_firewall_config"
+
     def test_denied_match_takes_priority_over_malformed_config_reason(self):
         fws = wrap_firewalls(
             [
