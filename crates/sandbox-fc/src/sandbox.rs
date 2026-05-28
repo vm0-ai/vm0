@@ -3495,14 +3495,18 @@ mod tests {
         }
     }
 
-    fn assert_invalid_state_operation(error: SandboxError, expected_operation: SandboxOperation) {
+    fn assert_invalid_state_operation(
+        error: SandboxError,
+        expected_operation: SandboxOperation,
+        expected_state: &str,
+    ) {
         match error {
             SandboxError::InvalidState { context, state, .. } => {
                 assert_eq!(
                     context,
                     SandboxInvalidStateContext::Operation(expected_operation)
                 );
-                assert_eq!(state, "created");
+                assert_eq!(state, expected_state);
             }
             other => panic!("expected invalid state error, got {other:?}"),
         }
@@ -4889,8 +4893,31 @@ mod tests {
             let err =
                 FirecrackerSandbox::operation_unavailable_error(operation, SandboxState::Created);
 
-            assert_invalid_state_operation(err, operation);
+            assert_invalid_state_operation(err, operation, "created");
         }
+    }
+
+    #[test]
+    fn operation_gate_closed_preserves_file_operation_context() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("begin prepare park");
+        let gate_state = coordinator.state();
+
+        for operation in [SandboxOperation::ReadFile, SandboxOperation::CopyFile] {
+            let err =
+                FirecrackerSandbox::operation_gate_closed_error(operation, gate_state.clone());
+
+            assert_invalid_state_operation(
+                err,
+                operation,
+                "ClosingForPark { attempt_id: ParkAttemptId(1) }",
+            );
+        }
+        coordinator
+            .abort_prepare_park(&attempt)
+            .expect("abort prepare park");
     }
 
     #[tokio::test]
