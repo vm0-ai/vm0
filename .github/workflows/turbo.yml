@@ -824,9 +824,10 @@ jobs:
           if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e --arg name "$BRANCH_NAME" '.[] | select(.name == $name)' > /dev/null; then
             neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
 
-            for i in {1..30}; do
+            for attempt in {1..30}; do
               CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r --arg name "$BRANCH_NAME" '.[] | select(.name == $name) | .current_state')
               [ "$CURRENT_STATE" = "ready" ] && break
+              echo "Branch state: $CURRENT_STATE (attempt $attempt/30)"
               sleep 2
             done
           else
