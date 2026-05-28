@@ -33,10 +33,9 @@ function connectorAuthSources(
   if (hasEnvBindings) {
     for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+        // Firewall auth templates resolve against sandbox env names, not raw
+        // OAuth storage keys such as GITHUB_ACCESS_TOKEN.
         secretBackedKeys.add(envName);
-        secretBackedKeys.add(
-          valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length),
-        );
       } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
         variableBackedKeys.add(envName);
       }
