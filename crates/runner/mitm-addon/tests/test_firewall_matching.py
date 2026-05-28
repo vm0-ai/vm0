@@ -793,7 +793,7 @@ class TestCompiledFirewallRequest:
         assert result is None
 
 
-class TestMatchFirewallRequestMixedSegments:
+class TestCompiledFirewallRequestMixedSegments:
     def test_mixed_base_and_rule_round_trip(self):
         """End-to-end: base URL with mixed {repo}.git segment,
         followed by a permission rule that matches the remainder."""
