@@ -202,7 +202,11 @@ fn build_mock_run_config_with_runtime(
         exec_config: Arc::new(executor::ExecutorConfig {
             api_url: api_url.to_string(),
             registry,
-            http: crate::http::HttpClient::new(api_url.to_string()).unwrap(),
+            http: crate::http::HttpClient::new(crate::http::HttpClientConfig {
+                api_url: api_url.to_string(),
+                vercel_bypass: None,
+            })
+            .unwrap(),
             log_paths: crate::paths::LogPaths::new(log_dir),
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),

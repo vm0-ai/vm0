@@ -9,6 +9,13 @@ use crate::error::{RunnerError, RunnerResult};
 
 /// Default timeout for API requests (covers large claim payloads).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+const VERCEL_BYPASS_HEADER: &str = "x-vercel-protection-bypass";
+
+/// Configuration for the shared runner API HTTP client.
+pub struct HttpClientConfig {
+    pub api_url: String,
+    pub vercel_bypass: Option<String>,
+}
 
 /// Shared HTTP client for the vm0 API. Owns the connection pool, base URL,
 /// and Vercel bypass header. Clone is a cheap Arc refcount bump.
@@ -24,21 +31,23 @@ struct Inner {
 }
 
 impl HttpClient {
-    /// Create a shared API HTTP client using `api_url` as the base URL for generated routes.
+    /// Create a shared API HTTP client using `config.api_url` as the base URL for generated routes.
     ///
-    /// The client uses the runner's default request timeout and captures
-    /// `VERCEL_AUTOMATION_BYPASS_SECRET` at construction time. When present,
-    /// that value is attached as `x-vercel-protection-bypass` on authenticated
-    /// requests.
+    /// The client uses the runner's default request timeout. When
+    /// `config.vercel_bypass` is present, that value is attached as
+    /// `x-vercel-protection-bypass` on authenticated requests.
     ///
     /// Returns an error if the underlying HTTP client cannot be built.
-    pub fn new(api_url: String) -> RunnerResult<Self> {
+    pub fn new(config: HttpClientConfig) -> RunnerResult<Self> {
+        let HttpClientConfig {
+            api_url,
+            vercel_bypass,
+        } = config;
+
         let client = Client::builder()
             .timeout(DEFAULT_TIMEOUT)
             .build()
             .map_err(|e| RunnerError::Internal(format!("http client: {e}")))?;
-
-        let vercel_bypass = std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok();
 
         info!(
             api_url = %api_url,
@@ -86,7 +95,7 @@ impl HttpClient {
         let mut req = self.inner.client.request(method, url).bearer_auth(token);
 
         if let Some(bypass) = &self.inner.vercel_bypass {
-            req = req.header("x-vercel-protection-bypass", bypass);
+            req = req.header(VERCEL_BYPASS_HEADER, bypass);
         }
 
         req
@@ -112,9 +121,17 @@ mod tests {
 
     use super::*;
 
+    fn http_client(api_url: &str) -> HttpClient {
+        HttpClient::new(HttpClientConfig {
+            api_url: api_url.to_string(),
+            vercel_bypass: None,
+        })
+        .unwrap()
+    }
+
     #[test]
     fn request_route_builds_request_from_generated_route() {
-        let http = HttpClient::new("https://api.vm0.dev/".to_string()).unwrap();
+        let http = http_client("https://api.vm0.dev/");
 
         let request = http
             .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
@@ -139,7 +156,7 @@ mod tests {
 
     #[test]
     fn request_resolved_route_builds_request_from_generated_route() {
-        let http = HttpClient::new("https://api.vm0.dev/".to_string()).unwrap();
+        let http = http_client("https://api.vm0.dev/");
 
         let request = http
             .request_resolved_route(
@@ -158,5 +175,41 @@ mod tests {
             request.url().as_str(),
             "https://api.vm0.dev/api/runners/jobs/550e8400-e29b-41d4-a716-446655440000/claim"
         );
+    }
+
+    #[test]
+    fn request_includes_vercel_bypass_header_when_configured() {
+        let http = HttpClient::new(HttpClientConfig {
+            api_url: "https://api.vm0.dev/".to_string(),
+            vercel_bypass: Some("bypass-secret".to_string()),
+        })
+        .unwrap();
+
+        let request = http
+            .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            request
+                .headers()
+                .get(VERCEL_BYPASS_HEADER)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "bypass-secret"
+        );
+    }
+
+    #[test]
+    fn request_excludes_vercel_bypass_header_when_not_configured() {
+        let http = http_client("https://api.vm0.dev/");
+
+        let request = http
+            .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
+            .build()
+            .unwrap();
+
+        assert!(request.headers().get(VERCEL_BYPASS_HEADER).is_none());
     }
 }

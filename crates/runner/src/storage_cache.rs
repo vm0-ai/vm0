@@ -689,14 +689,18 @@ mod tests {
     use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
-    use crate::http::HttpClient;
+    use crate::http::{HttpClient, HttpClientConfig};
     use crate::ids::RunId;
     use crate::types::{
         GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
     };
 
     fn new_telemetry() -> JobTelemetry {
-        let http = HttpClient::new("http://localhost:0".to_string()).unwrap();
+        let http = HttpClient::new(HttpClientConfig {
+            api_url: "http://localhost:0".to_string(),
+            vercel_bypass: None,
+        })
+        .unwrap();
         JobTelemetry::new(http, RunId::nil(), "test-token".to_string())
     }
 

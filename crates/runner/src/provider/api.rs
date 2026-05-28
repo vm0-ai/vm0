@@ -456,9 +456,15 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
 
+    use crate::http::HttpClientConfig;
+
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         ApiClient::new(
-            HttpClient::new(server.base_url()).unwrap(),
+            HttpClient::new(HttpClientConfig {
+                api_url: server.base_url(),
+                vercel_bypass: None,
+            })
+            .unwrap(),
             "runner-token".to_string(),
         )
     }
@@ -477,7 +483,11 @@ mod tests {
     ) -> Arc<ApiProvider> {
         Arc::new(ApiProvider {
             api: ApiClient::new(
-                HttpClient::new(api_url).unwrap(),
+                HttpClient::new(HttpClientConfig {
+                    api_url,
+                    vercel_bypass: None,
+                })
+                .unwrap(),
                 "runner-token".to_string(),
             ),
             group: "default".to_string(),

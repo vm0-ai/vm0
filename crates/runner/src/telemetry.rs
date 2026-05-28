@@ -162,6 +162,15 @@ async fn send_telemetry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::HttpClientConfig;
+
+    fn http_client() -> HttpClient {
+        HttpClient::new(HttpClientConfig {
+            api_url: "http://localhost".to_string(),
+            vercel_bypass: None,
+        })
+        .unwrap()
+    }
 
     #[test]
     fn sandbox_op_serializes_correctly() {
@@ -199,7 +208,7 @@ mod tests {
 
     #[test]
     fn new_creates_empty_telemetry() {
-        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let http = http_client();
         let telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
         assert!(telemetry.pending_ops.is_empty());
         assert!(telemetry.oldest_pending.is_none());
@@ -207,7 +216,7 @@ mod tests {
 
     #[test]
     fn record_buffers_ops() {
-        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let http = http_client();
         let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
 
         telemetry.record("vm_create", Duration::from_millis(500), true, None);
@@ -231,7 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn record_within_threshold_does_not_flush() {
-        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let http = http_client();
         let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
 
         telemetry.record("op1", Duration::from_millis(10), true, None);
@@ -243,7 +252,7 @@ mod tests {
 
     #[tokio::test]
     async fn auto_flush_triggers_after_threshold() {
-        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let http = http_client();
         let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
 
         telemetry.record("op1", Duration::from_millis(10), true, None);

@@ -218,12 +218,18 @@ mod tests {
     use httpmock::prelude::*;
     use serde_json::json;
 
+    use crate::http::HttpClientConfig;
+
     use super::*;
 
     const SANDBOX_TOKEN: &str = "sandbox-token";
 
     fn http_for_server(server: &MockServer) -> HttpClient {
-        HttpClient::new(server.base_url()).unwrap()
+        HttpClient::new(HttpClientConfig {
+            api_url: server.base_url(),
+            vercel_bypass: None,
+        })
+        .unwrap()
     }
 
     fn network_log_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
@@ -612,7 +618,11 @@ mod tests {
             }
         });
 
-        let http = HttpClient::new(api_url).unwrap();
+        let http = HttpClient::new(HttpClientConfig {
+            api_url,
+            vercel_bypass: None,
+        })
+        .unwrap();
         upload_network_logs(&http, RunId::nil(), SANDBOX_TOKEN, &path).await;
 
         stop_accepting.notify_one();

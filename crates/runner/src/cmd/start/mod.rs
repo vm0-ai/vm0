@@ -46,7 +46,7 @@ use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::ExecutorConfig;
 use crate::host;
-use crate::http::HttpClient;
+use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
 use crate::kmsg_log;
 use crate::lock;
@@ -439,7 +439,10 @@ pub async fn run_start(
 
     // Create provider — handles discovery + claim + complete
     let cancel = CancellationToken::new();
-    let http = HttpClient::new(server.url.clone())?;
+    let http = HttpClient::new(HttpClientConfig {
+        api_url: server.url.clone(),
+        vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+    })?;
     let name = runner_config.name;
     let group = runner_config.group;
     let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =

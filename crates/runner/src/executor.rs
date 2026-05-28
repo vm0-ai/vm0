@@ -2248,6 +2248,7 @@ fn normalized_cli_agent_type(cli_agent_type: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::HttpClientConfig;
     use crate::ids::RunId;
     use crate::types::{
         GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry, ResumeSession,
@@ -4422,7 +4423,11 @@ mod tests {
         ExecutorConfig {
             api_url: "http://localhost:9999".into(),
             registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
-            http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
+            http: crate::http::HttpClient::new(HttpClientConfig {
+                api_url: "http://localhost:9999".into(),
+                vercel_bypass: None,
+            })
+            .unwrap(),
             log_paths: LogPaths::new(log_dir),
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
@@ -6185,7 +6190,11 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn new_telemetry() -> JobTelemetry {
-        let http = HttpClient::new("http://localhost".to_string()).unwrap();
+        let http = HttpClient::new(HttpClientConfig {
+            api_url: "http://localhost".to_string(),
+            vercel_bypass: None,
+        })
+        .unwrap();
         JobTelemetry::new(http, RunId::nil(), "tok".to_string())
     }
 
