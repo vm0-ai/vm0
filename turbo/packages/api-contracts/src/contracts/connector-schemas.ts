@@ -6,7 +6,7 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
  * Connector response schema
  */
 export const connectorResponseSchema = z.object({
-  id: z.uuid().nullable(),
+  id: z.uuid(),
   type: connectorTypeSchema,
   authMethod: z.string(),
   externalId: z.string().nullable(),
