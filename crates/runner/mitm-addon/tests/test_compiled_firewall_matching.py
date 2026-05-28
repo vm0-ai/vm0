@@ -731,6 +731,38 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
+    @pytest.mark.parametrize(
+        "permissions",
+        [
+            "repo-read",
+            [None],
+            [{"name": "repo-read", "rules": [123]}],
+        ],
+    )
+    def test_malformed_permission_shapes_fail_closed_after_base_match(self, permissions):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": permissions,
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
     def test_malformed_api_list_shape_is_skipped_without_compile_error(self):
         assert matching.compile_firewalls([{"name": "github", "apis": None}]) is None
 
