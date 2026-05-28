@@ -438,7 +438,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
         return policy.model;
       }),
     ).toStrictEqual([
-      "claude-opus-4-7",
+      "claude-opus-4-8",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
@@ -498,7 +498,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "claude-opus-4-7") {
+      if (policy.model !== "claude-opus-4-8") {
         return policy;
       }
       return {
@@ -517,7 +517,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const opus = response.body.policies.find((policy) => {
-      return policy.model === "claude-opus-4-7";
+      return policy.model === "claude-opus-4-8";
     });
 
     expect(opus).toMatchObject({
@@ -542,7 +542,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "claude-opus-4-7") {
+      if (policy.model !== "claude-opus-4-8") {
         return policy;
       }
       return {

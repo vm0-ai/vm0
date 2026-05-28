@@ -185,8 +185,8 @@ describe("org-providers-tab — stale banner reconnect", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText("Default model")).toBeInTheDocument();
     expect(
-      screen.getByTestId("org-model-policy-row-claude-opus-4-7"),
-    ).toHaveTextContent("Claude Opus 4.7");
+      screen.getByTestId("org-model-policy-row-claude-opus-4-8"),
+    ).toHaveTextContent("Claude Opus 4.8");
     expect(
       screen.queryByText("Workspace default when no model is selected"),
     ).not.toBeInTheDocument();
@@ -204,10 +204,10 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(within(defaultRow).getByRole("combobox"));
     const listbox = await screen.findByRole("listbox");
-    click(within(listbox).getByText("Claude Opus 4.7"));
+    click(within(listbox).getByText("Claude Opus 4.8"));
 
     await waitFor(() => {
-      expect(within(defaultRow).getByText("Claude Opus 4.7")).toBeDefined();
+      expect(within(defaultRow).getByText("Claude Opus 4.8")).toBeDefined();
     });
   });
 
@@ -217,15 +217,15 @@ describe("org-providers-tab — stale banner reconnect", () => {
     await openProvidersPage();
 
     expect(
-      screen.queryByTestId("org-model-policy-row-claude-opus-4-6"),
+      screen.queryByTestId("org-model-policy-row-claude-opus-4-7"),
     ).not.toBeInTheDocument();
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    expect(within(dialog).getByText("Claude Opus 4.6")).toBeInTheDocument();
+    expect(within(dialog).getByText("Claude Opus 4.7")).toBeInTheDocument();
     openLabeledSelect(dialog, "Model");
     const listbox = await screen.findByRole("listbox");
     expect(
-      within(listbox).queryByText("Claude Opus 4.7"),
+      within(listbox).queryByText("Claude Opus 4.8"),
     ).not.toBeInTheDocument();
     expect(
       within(listbox).queryByText("Claude Sonnet 4.6"),
@@ -233,12 +233,12 @@ describe("org-providers-tab — stale banner reconnect", () => {
     expect(
       within(listbox).queryByText("DeepSeek V4 Pro"),
     ).not.toBeInTheDocument();
-    expect(within(listbox).getByText("Claude Opus 4.6")).toBeInTheDocument();
-    click(within(listbox).getByText("Claude Opus 4.6"));
+    expect(within(listbox).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    click(within(listbox).getByText("Claude Opus 4.7"));
     clickDialogButton(dialog, "Add model");
 
     await expect(
-      screen.findByTestId("org-model-policy-row-claude-opus-4-6"),
+      screen.findByTestId("org-model-policy-row-claude-opus-4-7"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -312,7 +312,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       ).not.toBeInTheDocument();
     });
     await expect(
-      screen.findByTestId("org-model-policy-row-claude-opus-4-6"),
+      screen.findByTestId("org-model-policy-row-claude-opus-4-7"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -340,7 +340,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     await openProvidersPage();
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
     const dialog = await openModelPolicyDialog(row);
     clickRouteChoice(dialog, "Claude subscription");

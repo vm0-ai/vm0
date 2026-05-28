@@ -60,6 +60,7 @@ describe("model-first canonical catalog", () => {
 
   it("exposes the curated flat model list only", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
+      "claude-opus-4-8",
       "claude-opus-4-7",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
@@ -93,8 +94,8 @@ describe("model-first canonical catalog", () => {
   });
 
   it("surfaces display labels for canonical models", () => {
-    expect(getCanonicalModelDisplayName("claude-opus-4-7")).toBe(
-      "Claude Opus 4.7",
+    expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
+      "Claude Opus 4.8",
     );
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
@@ -107,7 +108,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("returns compatible provider types for canonical models", () => {
-    expect(getProvidersForModel("claude-opus-4-7")).toEqual([
+    expect(getProvidersForModel("claude-opus-4-8")).toEqual([
       "vm0",
       "claude-code-oauth-token",
       "anthropic-api-key",
@@ -137,7 +138,7 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("gpt-5.5", "anthropic-api-key")).toBe(
       false,
     );
-    expect(isModelSupportedByProvider("anthropic/claude-opus-4.7", "vm0")).toBe(
+    expect(isModelSupportedByProvider("anthropic/claude-opus-4.8", "vm0")).toBe(
       true,
     );
   });
@@ -153,8 +154,8 @@ describe("model-first canonical catalog", () => {
       "minimax/minimax-m2.7",
     );
     expect(
-      getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-7"),
-    ).toBe("claude-opus-4-7");
+      getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-8"),
+    ).toBe("claude-opus-4-8");
     expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
       "gpt-5.5",
@@ -166,7 +167,7 @@ describe("model-first canonical catalog", () => {
 
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
-      "claude-opus-4-7",
+      "claude-opus-4-8",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
       "gpt-5.5",
@@ -281,6 +282,7 @@ describe("model selection for Anthropic-native providers", () => {
       expect(models).toContain("claude-sonnet-4-6");
       expect(models).toContain("claude-opus-4-6");
       expect(models).toContain("claude-opus-4-7");
+      expect(models).toContain("claude-opus-4-8");
     },
   );
 
@@ -314,6 +316,7 @@ describe("model selection for Anthropic-native providers", () => {
 describe("getVm0VisibleModels", () => {
   it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
+    expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
@@ -326,6 +329,7 @@ describe("getVm0VisibleModels", () => {
 
 describe("normalizeVm0ModelId", () => {
   it.each([
+    ["anthropic/claude-opus-4.8", "claude-opus-4-8"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
     ["z-ai/glm-5.1", "glm-5.1"],
@@ -343,6 +347,7 @@ describe("normalizeVm0ModelId", () => {
 describe("model image input support", () => {
   it.each([
     "claude-sonnet-4-6",
+    "claude-opus-4-8",
     "claude-opus-4-7",
     "kimi-k2.6",
     "kimi-k2.5",

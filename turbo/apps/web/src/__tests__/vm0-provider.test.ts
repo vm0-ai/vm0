@@ -66,6 +66,7 @@ describe("VM0 managed model provider", () => {
 
     it("should have all VM0 provider models mapped", () => {
       expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toStrictEqual([
+        "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
