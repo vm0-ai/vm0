@@ -751,6 +751,56 @@ class TestCompiledFirewallMatching:
         assert matched.reason == "malformed_firewall_config"
 
     @pytest.mark.parametrize(
+        ("base", "url"),
+        [
+            ("https://{a}.{b}", "https://api.example/repos/org/repo"),
+            ("https://{sub}.{sub}.example.com", "https://a.b.example.com/repos/org/repo"),
+            ("https://{org}.example.com/{org}", "https://acme.example.com/acme/repos/org/repo"),
+            ("https://api.{sub+}.example.com", "https://api.us.example.com/repos/org/repo"),
+            ("https://api-{sub+}.example.com", "https://api-us.example.com/repos/org/repo"),
+            ("https://api.example.com/{path+}", "https://api.example.com/root/repos/org/repo"),
+            ("https://api.example.com/{path*}", "https://api.example.com/root/repos/org/repo"),
+            (
+                "https://api.example.com/{org}/{org}",
+                "https://api.example.com/acme/acme/repos/org/repo",
+            ),
+        ],
+    )
+    def test_malformed_base_params_fail_closed_after_base_match(self, base, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        unmatched = matching.match_compiled_firewall_request(
+            url.replace("https://", "http://", 1),
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unmatched is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
         "firewall",
         [
             {

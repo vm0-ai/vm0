@@ -20,6 +20,7 @@ _MULTI_PARAM_BRACE_COUNT = 2
 # Firewall rules are encoded as ``"METHOD path"`` — a single-whitespace-split
 # yields exactly two tokens.  Rows that fail this shape are malformed.
 _RULE_TOKEN_COUNT = 2
+_MIN_HOST_SEGMENTS = 2
 _VALID_RULE_METHODS = frozenset(
     (
         "GET",
@@ -87,6 +88,7 @@ class _CompiledApi(NamedTuple):
     raw_api_entry: dict
     base: _CompiledBase
     permissions: tuple[_CompiledPermission, ...]
+    base_malformed: bool
     # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
 
@@ -513,6 +515,51 @@ def _compiled_rule_path_is_valid(pattern: CompiledPathPattern) -> bool:
     return True
 
 
+def _compiled_base_params_are_valid(base: _CompiledBase) -> bool:
+    """Mirror connector validateBaseUrl() invariants for parameterized bases."""
+    if not base.has_params:
+        return True
+
+    host_segments = tuple(reversed(base.host_segments))
+    if len(host_segments) < _MIN_HOST_SEGMENTS:
+        return False
+
+    param_names: set[str] = set()
+    has_static_host_segment = False
+    for index, segment in enumerate(host_segments):
+        if isinstance(segment, SegmentLiteral):
+            has_static_host_segment = True
+            continue
+        if isinstance(segment, SegmentError):
+            return False
+
+        if segment.name in param_names:
+            return False
+        param_names.add(segment.name)
+
+        if segment.greedy and index != 0:
+            return False
+        if segment.greedy and (segment.prefix or segment.suffix):
+            return False
+
+    if not has_static_host_segment:
+        return False
+
+    for segment in base.path_segments:
+        if isinstance(segment, SegmentLiteral):
+            continue
+        if isinstance(segment, SegmentError):
+            return False
+
+        if segment.greedy:
+            return False
+        if segment.name in param_names:
+            return False
+        param_names.add(segment.name)
+
+    return True
+
+
 def _path_specificity(
     pattern: CompiledPathPattern,
 ) -> _PathSpecificity:
@@ -797,6 +844,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
             base = _compile_base(raw_base)
             if base is None:
                 continue
+            base_malformed = not _compiled_base_params_are_valid(base)
 
             compiled_permissions: list[_CompiledPermission] = []
             has_malformed_rules = name_malformed
@@ -843,7 +891,13 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                 has_malformed_rules = True
 
             compiled_apis.append(
-                _CompiledApi(api_entry, base, tuple(compiled_permissions), has_malformed_rules)
+                _CompiledApi(
+                    api_entry,
+                    base,
+                    tuple(compiled_permissions),
+                    base_malformed,
+                    has_malformed_rules,
+                )
             )
 
         if compiled_apis:
@@ -1073,9 +1127,11 @@ def match_compiled_firewall_request(
                     api_entry.raw_api_entry,
                     base_params,
                 )
-            if api_entry.has_malformed_rules and malformed_match is None:
+            if (
+                api_entry.base_malformed or api_entry.has_malformed_rules
+            ) and malformed_match is None:
                 malformed_match = (api_entry.base.raw, fw_entry.name, upper_method, rel_path)
-            if fw_entry.name_malformed:
+            if fw_entry.name_malformed or api_entry.base_malformed:
                 continue
             if compiled_network_policies.top_level_malformed or (
                 policy is not None and policy.permission_malformed
