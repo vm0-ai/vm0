@@ -164,13 +164,11 @@
   z-index: 1200;
 }
 .illu-lb-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 20px 32px 16px;
+  position: relative;
+  padding: 20px 64px 16px;
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
 }
 .illu-lb-title {
   font-family: var(--font-noto-sans), "Noto Sans", system-ui, sans-serif;
@@ -189,6 +187,9 @@
   letter-spacing: 0.01em;
 }
 .illu-lb-close {
+  position: absolute;
+  top: 16px;
+  right: 24px;
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #fff;
@@ -227,6 +228,7 @@
   padding: 14px 32px 24px;
   display: flex;
   gap: 10px;
+  justify-content: safe center;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
