@@ -3000,6 +3000,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       path: "illustration-template/mellow-pop",
     },
   },
+  {
+    id: "vm0:image-style:loose-contour",
+    kind: "image-style",
+    name: "Loose Contour",
+    description:
+      "Flat editorial spot illustration — open teal contour lines, offset color blobs (printing-misregistration look), one ribbon line on warm cream paper.",
+    desc: 'Loose-contour flat editorial spot illustration: confident open-contour ink drawings in dark teal-green (#1e4d4a) over flat offset color blobs (printing-misregistration look) on warm cream paper (#f0ebdc), with exactly one continuous looping ribbon line of the same teal weaving through the scene. Tight 5-color palette: cream + teal + mustard + soft blue + coral. Lines are deliberately broken at joints and edges. Five dials per brief: scene metaphor, cast, complexity (L1/L2/L3), accent lead, ribbon path. Trigger when user says /loose-contour, asks for a "loose-contour illustration", "offset-blob editorial illustration", or "cream paper ribbon-line scene".',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/loose-contour",
+    },
+  },
 ];
 
 function filterByKind(
