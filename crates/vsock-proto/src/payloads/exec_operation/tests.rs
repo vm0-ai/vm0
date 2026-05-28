@@ -1375,6 +1375,20 @@ fn exec_control_rejects_too_long_message_id() {
         err,
         ProtocolError::PayloadTooLarge("message_id", size) if size == message_id.len()
     ));
+
+    let diagnostic = "x".repeat(u16::MAX as usize + 1);
+    let err = encode_exec_control_result(
+        7,
+        NONCE,
+        "message",
+        ExecControlStatus::Delivered,
+        &diagnostic,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("diagnostic", size) if size == diagnostic.len()
+    ));
 }
 
 #[test]
@@ -1428,6 +1442,15 @@ fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
     assert_eq!(decoded.message_id, "message");
     assert_eq!(decoded.status, ExecControlStatus::Delivered);
     assert_eq!(decoded.diagnostic, "ok");
+
+    let empty_diagnostic =
+        encode_exec_control_result(7, NONCE, "message", ExecControlStatus::Delivered, "").unwrap();
+    assert_eq!(
+        decode_exec_control_result(&empty_diagnostic)
+            .unwrap()
+            .diagnostic,
+        ""
+    );
 
     let err = encode_exec_control_result(0, NONCE, "message", ExecControlStatus::Delivered, "")
         .unwrap_err();
