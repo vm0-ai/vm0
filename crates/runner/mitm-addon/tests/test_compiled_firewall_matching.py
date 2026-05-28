@@ -723,7 +723,14 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission is None
 
-    def test_compiled_unknown_policy_allow_preserves_base_params(self):
+    @pytest.mark.parametrize(
+        "network_policies",
+        [
+            None,
+            {"example": {"allow": [], "deny": [], "ask": [], "unknownPolicy": "allow"}},
+        ],
+    )
+    def test_compiled_unknown_allow_preserves_base_params(self, network_policies):
         fws = wrap_firewalls(
             [
                 {
@@ -735,13 +742,12 @@ class TestCompiledFirewallMatching:
             name="example",
         )
         compiled_firewalls = self._compiled(fws)
-        policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
 
         result = matching.match_compiled_firewall_request(
             "https://acme.example.com/api/customer-1/users",
             "GET",
             compiled_firewalls,
-            policies,
+            network_policies,
         )
 
         assert isinstance(result, matching.FirewallAllow)
