@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.301.0](https://github.com/vm0-ai/vm0/compare/core-v8.300.3...core-v8.301.0) (2026-05-28)
+
+
+### Features
+
+* add gen to seed skills ([#15233](https://github.com/vm0-ai/vm0/issues/15233)) ([69665d7](https://github.com/vm0-ai/vm0/commit/69665d76d06c3d927a68ec28aa1efb359014a5d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.44.0
+    * @vm0/connectors bumped to 1.37.4
+
 ## [8.300.3](https://github.com/vm0-ai/vm0/compare/core-v8.300.2...core-v8.300.3) (2026-05-27)
 
 

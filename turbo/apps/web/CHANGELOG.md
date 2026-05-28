@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.395.2](https://github.com/vm0-ai/vm0/compare/web-v12.395.1...web-v12.395.2) (2026-05-28)
+
+
+### Refactoring
+
+* rename slack oauth client env vars ([#15238](https://github.com/vm0-ai/vm0/issues/15238)) ([7e34661](https://github.com/vm0-ai/vm0/commit/7e346611c003d45b9e6cea5fe63b13e067becf9d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.44.0
+    * @vm0/core bumped to 8.301.0
+    * @vm0/db bumped to 1.21.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.4
+
 ## [12.395.1](https://github.com/vm0-ai/vm0/compare/web-v12.395.0...web-v12.395.1) (2026-05-27)
 
 

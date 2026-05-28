@@ -177,21 +177,347 @@ export type Firewalls = z.infer<typeof firewallsSchema>;
  */
 const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const AUTH_REFERENCE_PATTERN =
+  /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
+
+export interface FirewallTemplateReferences {
+  readonly secrets: readonly string[];
+  readonly vars: readonly string[];
+}
+
+export interface BasicAuthTemplateArg {
+  readonly namespace?: FirewallTemplateReferenceNamespace;
+  readonly key?: string;
+  readonly literal?: string;
+}
+
+export interface BasicAuthTemplateMatch {
+  readonly start: number;
+  readonly end: number;
+  readonly first: BasicAuthTemplateArg;
+  readonly second: BasicAuthTemplateArg;
+}
+
+interface ParsedBasicArg {
+  readonly arg: BasicAuthTemplateArg | null;
+  readonly index: number;
+}
+
+interface ParsedBasicTemplate {
+  readonly match: BasicAuthTemplateMatch | null;
+  readonly index: number;
+}
+
+interface BasicAuthTemplateParserContext {
+  readonly nextQuoteIndexes: Int32Array;
+  readonly nextBackslashIndexes: Int32Array;
+  readonly nextTemplateIndexes: Int32Array;
+}
+
+function isTemplateWhitespace(char: string): boolean {
+  return (
+    char === " " ||
+    char === "\t" ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\f" ||
+    char === "\v"
+  );
+}
+
+function skipTemplateWhitespace(template: string, index: number): number {
+  let nextIndex = index;
+  while (
+    nextIndex < template.length &&
+    isTemplateWhitespace(template[nextIndex]!)
+  ) {
+    nextIndex += 1;
+  }
+  return nextIndex;
+}
+
+function isIdentifierStart(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (
+    char === "_" || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+  );
+}
+
+function isIdentifierPart(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return isIdentifierStart(char) || (code >= 48 && code <= 57);
+}
+
+function parseTemplateIdentifier(
+  template: string,
+  index: number,
+): { readonly value: string; readonly index: number } | null {
+  if (index >= template.length || !isIdentifierStart(template[index]!)) {
+    return null;
+  }
+
+  let nextIndex = index + 1;
+  while (
+    nextIndex < template.length &&
+    isIdentifierPart(template[nextIndex]!)
+  ) {
+    nextIndex += 1;
+  }
+  return {
+    value: template.slice(index, nextIndex),
+    index: nextIndex,
+  };
+}
+
+function createBasicAuthTemplateParserContext(
+  template: string,
+): BasicAuthTemplateParserContext {
+  const nextQuoteIndexes = new Int32Array(template.length + 1);
+  const nextBackslashIndexes = new Int32Array(template.length + 1);
+  const nextTemplateIndexes = new Int32Array(template.length + 1);
+  let nextQuoteIndex = -1;
+  let nextBackslashIndex = -1;
+  let nextTemplateIndex = -1;
+  nextQuoteIndexes[template.length] = nextQuoteIndex;
+  nextBackslashIndexes[template.length] = nextBackslashIndex;
+  nextTemplateIndexes[template.length] = nextTemplateIndex;
+
+  for (let index = template.length - 1; index >= 0; index -= 1) {
+    if (template[index] === '"') {
+      nextQuoteIndex = index;
+    }
+    if (template[index] === "\\") {
+      nextBackslashIndex = index;
+    }
+    if (template.startsWith("${{", index)) {
+      nextTemplateIndex = index;
+    }
+    nextQuoteIndexes[index] = nextQuoteIndex;
+    nextBackslashIndexes[index] = nextBackslashIndex;
+    nextTemplateIndexes[index] = nextTemplateIndex;
+  }
+
+  return { nextQuoteIndexes, nextBackslashIndexes, nextTemplateIndexes };
+}
+
+function parseBasicAuthTemplateArg(
+  context: BasicAuthTemplateParserContext,
+  template: string,
+  index: number,
+): ParsedBasicArg {
+  let nextIndex = skipTemplateWhitespace(template, index);
+  const char = template[nextIndex];
+  if (char === "," || char === ")") {
+    return { arg: {}, index: nextIndex };
+  }
+
+  if (char === '"') {
+    const literalStart = nextIndex + 1;
+    const quoteIndex = context.nextQuoteIndexes[literalStart] ?? -1;
+    if (quoteIndex === -1) {
+      const nestedTemplateStart =
+        context.nextTemplateIndexes[literalStart] ?? -1;
+      return {
+        arg: null,
+        index:
+          nestedTemplateStart === -1 ? template.length : nestedTemplateStart,
+      };
+    }
+    const escapeIndex = context.nextBackslashIndexes[literalStart] ?? -1;
+    if (escapeIndex !== -1 && escapeIndex < quoteIndex) {
+      const nestedTemplateStart =
+        context.nextTemplateIndexes[literalStart] ?? -1;
+      return {
+        arg: null,
+        index:
+          nestedTemplateStart !== -1 && nestedTemplateStart < escapeIndex
+            ? nestedTemplateStart
+            : escapeIndex + 1,
+      };
+    }
+    return {
+      arg: { literal: template.slice(literalStart, quoteIndex) },
+      index: quoteIndex + 1,
+    };
+  }
+
+  let namespace: FirewallTemplateReferenceNamespace;
+  if (template.startsWith("secrets.", nextIndex)) {
+    namespace = "secrets";
+    nextIndex += "secrets.".length;
+  } else if (template.startsWith("vars.", nextIndex)) {
+    namespace = "vars";
+    nextIndex += "vars.".length;
+  } else {
+    return { arg: null, index: nextIndex };
+  }
+
+  const key = parseTemplateIdentifier(template, nextIndex);
+  if (!key) {
+    return { arg: null, index: nextIndex };
+  }
+  return {
+    arg: { namespace, key: key.value },
+    index: key.index,
+  };
+}
+
+function parseBasicAuthTemplateAt(
+  context: BasicAuthTemplateParserContext,
+  template: string,
+  start: number,
+): ParsedBasicTemplate {
+  let index = start + "${{".length;
+  index = skipTemplateWhitespace(template, index);
+  if (!template.startsWith("basic(", index)) {
+    return { match: null, index: start + "${{".length };
+  }
+  index += "basic(".length;
+
+  const first = parseBasicAuthTemplateArg(context, template, index);
+  if (!first.arg) {
+    return { match: null, index: first.index };
+  }
+  index = skipTemplateWhitespace(template, first.index);
+  if (template[index] !== ",") {
+    return { match: null, index: Math.max(index + 1, first.index) };
+  }
+  index += 1;
+
+  const second = parseBasicAuthTemplateArg(context, template, index);
+  if (!second.arg) {
+    return { match: null, index: second.index };
+  }
+  index = skipTemplateWhitespace(template, second.index);
+  if (template[index] !== ")") {
+    return { match: null, index: Math.max(index + 1, second.index) };
+  }
+  index += 1;
+  index = skipTemplateWhitespace(template, index);
+  if (!template.startsWith("}}", index)) {
+    return { match: null, index: Math.max(index + 1, second.index) };
+  }
+
+  const end = index + "}}".length;
+  return {
+    match: {
+      start,
+      end,
+      first: first.arg,
+      second: second.arg,
+    },
+    index: end,
+  };
+}
+
+function findNextBasicAuthTemplateStart(
+  template: string,
+  index: number,
+): number {
+  let basicIndex = template.indexOf("basic(", index);
+  while (basicIndex !== -1) {
+    let contentStart = basicIndex;
+    while (
+      contentStart > index &&
+      isTemplateWhitespace(template[contentStart - 1]!)
+    ) {
+      contentStart -= 1;
+    }
+
+    const start = contentStart - "${{".length;
+    if (start >= index && template.startsWith("${{", start)) {
+      return start;
+    }
+
+    basicIndex = template.indexOf("basic(", basicIndex + "basic(".length);
+  }
+  return -1;
+}
 
 /**
- * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
- * Each side is secrets.X, vars.X, "literal", or empty; comma is always required.
- * Returns a new instance each time to avoid `.lastIndex` state leaking
- * between callers when the `/g` flag is used.
- * Groups: (1) ns1, (2) key1, (3) lit1, (4) ns2, (5) key2, (6) lit2 — all optional.
- * Literal strings forbid `"` and `\` to keep the regex simple, and are
- * not subject to further template resolution (the resolver processes
- * basic() before simple templates so literals stay literal).
- *
- * Shared between build-time secret extraction and runtime template resolution.
+ * Parse `${{ basic(username, password) }}` templates in linear time.
+ * Each side is secrets.X, vars.X, "literal", or empty; comma is required.
+ * Literal strings forbid `"` and `\`, and are not subject to simple template
+ * resolution.
  */
-export function basicAuthTemplateRe(): RegExp {
-  return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*\)\s*\}\}/g;
+export function parseBasicAuthTemplates(
+  template: string,
+): readonly BasicAuthTemplateMatch[] {
+  const matches: BasicAuthTemplateMatch[] = [];
+  let start = findNextBasicAuthTemplateStart(template, 0);
+  if (start === -1) {
+    return matches;
+  }
+
+  const context = createBasicAuthTemplateParserContext(template);
+
+  while (start !== -1) {
+    const parsed = parseBasicAuthTemplateAt(context, template, start);
+    if (parsed.match) {
+      matches.push(parsed.match);
+      start = findNextBasicAuthTemplateStart(template, parsed.index);
+    } else {
+      start = findNextBasicAuthTemplateStart(
+        template,
+        Math.max(parsed.index, start + "${{".length),
+      );
+    }
+  }
+
+  return matches;
+}
+
+export function replaceBasicAuthTemplates(
+  template: string,
+  replacer: (match: BasicAuthTemplateMatch) => string,
+): string {
+  const matches = parseBasicAuthTemplates(template);
+  if (matches.length === 0) {
+    return template;
+  }
+
+  const parts: string[] = [];
+  let lastIndex = 0;
+  for (const match of matches) {
+    parts.push(template.slice(lastIndex, match.start), replacer(match));
+    lastIndex = match.end;
+  }
+  parts.push(template.slice(lastIndex));
+  return parts.join("");
+}
+
+function forEachSimpleAuthReference(
+  template: string,
+  basicMatches: readonly BasicAuthTemplateMatch[],
+  callback: (namespace: string, name: string) => void,
+): void {
+  let basicMatchIndex = 0;
+
+  for (const match of template.matchAll(AUTH_REFERENCE_PATTERN)) {
+    if (!match[1] || !match[2] || match.index === undefined) {
+      continue;
+    }
+
+    while (
+      basicMatchIndex < basicMatches.length &&
+      basicMatches[basicMatchIndex]!.end <= match.index
+    ) {
+      basicMatchIndex += 1;
+    }
+
+    const basicMatch = basicMatches[basicMatchIndex];
+    if (
+      basicMatch &&
+      match.index >= basicMatch.start &&
+      match.index < basicMatch.end
+    ) {
+      continue;
+    }
+
+    callback(match[1], match[2]);
+  }
 }
 
 /**
@@ -205,15 +531,22 @@ export function extractSecretNamesFromApis(
   const names = new Set<string>();
   for (const entry of apis) {
     for (const value of Object.values(entry.auth.headers ?? {})) {
-      for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
-        names.add(match[1]!);
-      }
+      const basicMatches = parseBasicAuthTemplates(value);
+      forEachSimpleAuthReference(value, basicMatches, (namespace, name) => {
+        if (namespace === "secrets") {
+          names.add(name);
+        }
+      });
       // basic() args may reference secrets, vars, or be string literals;
       // only collect secrets here (vars don't need placeholders, literals
       // are baked into the config).
-      for (const match of value.matchAll(basicAuthTemplateRe())) {
-        if (match[1] === "secrets" && match[2]) names.add(match[2]);
-        if (match[4] === "secrets" && match[5]) names.add(match[5]);
+      for (const match of basicMatches) {
+        if (match.first.namespace === "secrets" && match.first.key) {
+          names.add(match.first.key);
+        }
+        if (match.second.namespace === "secrets" && match.second.key) {
+          names.add(match.second.key);
+        }
       }
     }
     // Scan auth.base for secret references (webhook-url connectors).
@@ -234,6 +567,56 @@ export function extractSecretNamesFromApis(
     }
   }
   return [...names];
+}
+
+function collectFirewallTemplateReferencesFromValue(
+  template: string,
+  references: { secrets: Set<string>; vars: Set<string> },
+): void {
+  const basicMatches = parseBasicAuthTemplates(template);
+  const addReference = (namespace: string, name: string): void => {
+    if (namespace === "secrets") {
+      references.secrets.add(name);
+    } else if (namespace === "vars") {
+      references.vars.add(name);
+    }
+  };
+
+  forEachSimpleAuthReference(template, basicMatches, addReference);
+  for (const match of basicMatches) {
+    if (match.first.namespace && match.first.key) {
+      addReference(match.first.namespace, match.first.key);
+    }
+    if (match.second.namespace && match.second.key) {
+      addReference(match.second.namespace, match.second.key);
+    }
+  }
+}
+
+export function extractFirewallTemplateReferences(
+  apis: FirewallConfig["apis"],
+): FirewallTemplateReferences {
+  const references = {
+    secrets: new Set<string>(),
+    vars: new Set<string>(),
+  };
+
+  for (const entry of apis) {
+    for (const value of Object.values(entry.auth.headers ?? {})) {
+      collectFirewallTemplateReferencesFromValue(value, references);
+    }
+    if (entry.auth.base) {
+      collectFirewallTemplateReferencesFromValue(entry.auth.base, references);
+    }
+    for (const value of Object.values(entry.auth.query ?? {})) {
+      collectFirewallTemplateReferencesFromValue(value, references);
+    }
+  }
+
+  return {
+    secrets: [...references.secrets],
+    vars: [...references.vars],
+  };
 }
 
 /**

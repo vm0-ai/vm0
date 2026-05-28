@@ -42,6 +42,7 @@ class SegmentError(NamedTuple):
 
 
 ParsedSegment = SegmentLiteral | SegmentParam | SegmentError
+_PathSpecificity = tuple[int, int, int, int, int, int, int]
 
 
 class CompiledPathPattern(NamedTuple):
@@ -60,6 +61,7 @@ class _CompiledRule(NamedTuple):
     method: str
     raw: str
     path: CompiledPathPattern
+    specificity: _PathSpecificity
 
 
 class _CompiledPermission(NamedTuple):
@@ -97,6 +99,12 @@ class _CompiledNetworkPolicy(NamedTuple):
 class CompiledNetworkPolicies(NamedTuple):
     policies: Mapping[str, _CompiledNetworkPolicy]
     top_level_malformed: bool
+
+
+class _CompiledRuleCandidate(NamedTuple):
+    permission: str
+    rule: str
+    params: dict[str, str]
 
 
 def _split_base_match_url(
@@ -469,6 +477,45 @@ def compile_path_pattern(pattern: str) -> CompiledPathPattern | None:
     return CompiledPathPattern(segments)
 
 
+def _path_specificity(
+    pattern: CompiledPathPattern,
+) -> _PathSpecificity:
+    literal_segments = 0
+    mixed_param_segments = 0
+    plain_param_segments = 0
+    plus_greedy_segments = 0
+    star_greedy_segments = 0
+    literal_chars = 0
+
+    for segment in pattern.segments:
+        if isinstance(segment, SegmentLiteral):
+            literal_segments += 1
+            literal_chars += len(segment.value)
+            continue
+        if isinstance(segment, SegmentError):
+            continue
+
+        literal_chars += len(segment.prefix) + len(segment.suffix)
+        if segment.prefix or segment.suffix:
+            mixed_param_segments += 1
+        elif segment.greedy == "+":
+            plus_greedy_segments += 1
+        elif segment.greedy == "*":
+            star_greedy_segments += 1
+        else:
+            plain_param_segments += 1
+
+    return (
+        literal_segments,
+        mixed_param_segments,
+        plain_param_segments,
+        plus_greedy_segments,
+        -star_greedy_segments,
+        literal_chars,
+        len(pattern.segments),
+    )
+
+
 def _match_compiled_path_segments(
     path_segs: list[str],
     pattern_segs: tuple[ParsedSegment, ...],
@@ -676,7 +723,7 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     pattern = compile_path_pattern(parts[1])
     if pattern is None:
         return None
-    return _CompiledRule(parts[0].upper(), rule_str, pattern)
+    return _CompiledRule(parts[0].upper(), rule_str, pattern, _path_specificity(pattern))
 
 
 def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
@@ -848,6 +895,41 @@ def _unknown_allow(
     return FirewallAllow(api_entry, name, None, params, None, rel_path)
 
 
+def _best_compiled_rule_candidates(
+    api_entry: _CompiledApi,
+    *,
+    upper_method: str,
+    rel_path: str,
+    base_params: dict[str, str],
+) -> list[_CompiledRuleCandidate]:
+    rel_path_segs = [s for s in rel_path.split("/") if s]
+    best_specificity: _PathSpecificity | None = None
+    best_candidates: list[_CompiledRuleCandidate] = []
+
+    for perm in api_entry.permissions:
+        for rule in perm.rules:
+            if rule.method not in ("ANY", upper_method):
+                continue
+
+            params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
+            if params is None:
+                continue
+
+            if best_specificity is None or rule.specificity > best_specificity:
+                best_specificity = rule.specificity
+                best_candidates = []
+            if rule.specificity == best_specificity:
+                best_candidates.append(
+                    _CompiledRuleCandidate(
+                        perm.name,
+                        rule.raw,
+                        {**base_params, **params},
+                    )
+                )
+
+    return best_candidates
+
+
 FirewallBlockReason = Literal[
     "permission_denied",
     "unknown_endpoint",
@@ -936,34 +1018,39 @@ def match_compiled_firewall_request(
             if not api_entry.permissions:
                 continue
 
-            rel_path_segs = [s for s in rel_path.split("/") if s]
-            for perm in api_entry.permissions:
-                for rule in perm.rules:
-                    if rule.method not in ("ANY", upper_method):
-                        continue
+            candidates = _best_compiled_rule_candidates(
+                api_entry,
+                upper_method=upper_method,
+                rel_path=rel_path,
+                base_params=base_params,
+            )
+            if not candidates:
+                continue
 
-                    params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
-                    if params is not None:
-                        all_params = {**base_params, **params}
+            api_denied_perm_names: list[str] = []
+            for candidate in candidates:
+                if policy is None or candidate.permission not in policy.blocked_permissions:
+                    return _permission_allow(
+                        api_entry.raw_api_entry,
+                        name=fw_entry.name,
+                        permission=candidate.permission,
+                        params=candidate.params,
+                        rule=candidate.rule,
+                        rel_path=rel_path,
+                    )
+                if candidate.permission not in api_denied_perm_names:
+                    api_denied_perm_names.append(candidate.permission)
 
-                        if policy is None or perm.name not in policy.blocked_permissions:
-                            return _permission_allow(
-                                api_entry.raw_api_entry,
-                                name=fw_entry.name,
-                                permission=perm.name,
-                                params=all_params,
-                                rule=rule.raw,
-                                rel_path=rel_path,
-                            )
-                        if perm.name not in denied_perm_names:
-                            denied_perm_names.append(perm.name)
-                        if denied_match is None:
-                            denied_match = (
-                                api_entry.base.raw,
-                                fw_entry.name,
-                                upper_method,
-                                rel_path,
-                            )
+            for perm_name in api_denied_perm_names:
+                if perm_name not in denied_perm_names:
+                    denied_perm_names.append(perm_name)
+            if api_denied_perm_names and denied_match is None:
+                denied_match = (
+                    api_entry.base.raw,
+                    fw_entry.name,
+                    upper_method,
+                    rel_path,
+                )
 
     if blocked_match is not None:
         blocked_base, blocked_name, blocked_rel_path, first_matched_api_entry, base_params = (
