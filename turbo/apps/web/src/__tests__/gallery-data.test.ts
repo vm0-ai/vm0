@@ -51,6 +51,6 @@ describe("generation gallery data", () => {
     expect(url.origin).toBe("https://app.vm0.ai");
     expect(url.pathname).toBe("/onboarding");
     expect(url.searchParams.get("prompt")).toContain(item.prompt);
-    expect(url.searchParams.has("website")).toBe(false);
+    expect(url.searchParams.get("showcase")).toBe(item.artifactUrl);
   });
 });

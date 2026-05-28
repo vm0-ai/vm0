@@ -3613,5 +3613,8 @@ export function buildGalleryRemixHref(
     "prompt",
     item.artifactUrl ? item.prompt : `${item.prompt}${hintText}`,
   );
+  if (item.artifactUrl) {
+    url.searchParams.set("showcase", item.artifactUrl);
+  }
   return url.toString();
 }
