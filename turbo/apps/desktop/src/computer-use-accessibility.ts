@@ -128,8 +128,8 @@ interface AccessibilitySnapshotOutputLimits {
 
 export const ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS =
   Object.freeze<AccessibilitySnapshotOutputLimits>({
-    maxDepth: 24,
-    maxNodes: 700,
+    maxDepth: 32,
+    maxNodes: 1_200,
     maxChildrenPerNode: 120,
   });
 
