@@ -280,6 +280,23 @@ describe("POST /api/internal/event-consumers/chat-assistant", () => {
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
+  it("returns zero for blank assistant text events", async () => {
+    const fixture = await seedChatThreadRun();
+
+    const response = await postEventConsumer(CHAT_ASSISTANT_PATH, {
+      runId: fixture.runId,
+      events: [buildAssistantEvent(1, "")],
+      context: { userId: fixture.userId, orgId: fixture.orgId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ processed: 0 });
+    await expect(readAssistantMessages(fixture.runId)).resolves.toStrictEqual(
+      [],
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
   it("returns zero when the run is not tied to a chat thread", async () => {
     const fixture = await trackChatFixture(
       store.set(seedZeroChatThread$, {}, context.signal),
@@ -359,6 +376,22 @@ describe("POST /api/internal/event-consumers/chat-assistant", () => {
     const response = await postEventConsumer(CHAT_ASSISTANT_PATH, {
       runId: fixture.runId,
       events: [buildCodexCommandExecutionEvent(1)],
+      context: { userId: fixture.userId, orgId: fixture.orgId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ processed: 0 });
+    await expect(readAssistantMessages(fixture.runId)).resolves.toStrictEqual(
+      [],
+    );
+  });
+
+  it("ignores blank Codex agent_message item.completed events", async () => {
+    const fixture = await seedChatThreadRun();
+
+    const response = await postEventConsumer(CHAT_ASSISTANT_PATH, {
+      runId: fixture.runId,
+      events: [buildCodexAgentMessageEvent(1, "   ")],
       context: { userId: fixture.userId, orgId: fixture.orgId },
     });
 
