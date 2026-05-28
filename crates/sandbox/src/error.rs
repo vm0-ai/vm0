@@ -84,6 +84,10 @@ impl fmt::Display for SandboxInitializationPhase {
 pub enum SandboxOperation {
     /// [`Sandbox::exec`](crate::Sandbox::exec).
     Exec,
+    /// [`Sandbox::read_file`](crate::Sandbox::read_file).
+    ReadFile,
+    /// [`Sandbox::copy_file`](crate::Sandbox::copy_file).
+    CopyFile,
     /// [`Sandbox::write_file`](crate::Sandbox::write_file).
     WriteFile,
     /// [`Sandbox::start_process`](crate::Sandbox::start_process).
@@ -98,6 +102,8 @@ impl fmt::Display for SandboxOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Exec => f.write_str("exec"),
+            Self::ReadFile => f.write_str("read file"),
+            Self::CopyFile => f.write_str("copy file"),
             Self::WriteFile => f.write_str("write file"),
             Self::StartProcess => f.write_str("start process"),
             Self::ProcessControl => f.write_str("process control"),

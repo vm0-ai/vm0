@@ -906,7 +906,7 @@ impl Sandbox for MockSandbox {
             });
         if max_bytes == 0 {
             return Err(SandboxError::Operation {
-                operation: SandboxOperation::Exec,
+                operation: SandboxOperation::ReadFile,
                 reason: SandboxOperationReason::Other,
                 message: "mock read_file max_bytes must be positive".into(),
             });
@@ -921,7 +921,7 @@ impl Sandbox for MockSandbox {
             && bytes.len() as u64 > max_bytes
         {
             return Err(SandboxError::Operation {
-                operation: SandboxOperation::Exec,
+                operation: SandboxOperation::ReadFile,
                 reason: SandboxOperationReason::Other,
                 message: format!("mock read_file exceeded {max_bytes} bytes"),
             });
@@ -946,14 +946,14 @@ impl Sandbox for MockSandbox {
             });
         if options.max_bytes == 0 {
             return Err(SandboxError::Operation {
-                operation: SandboxOperation::Exec,
+                operation: SandboxOperation::CopyFile,
                 reason: SandboxOperationReason::Other,
                 message: "mock copy_file max_bytes must be positive".into(),
             });
         }
         if options.timeout.is_zero() {
             return Err(SandboxError::Operation {
-                operation: SandboxOperation::Exec,
+                operation: SandboxOperation::CopyFile,
                 reason: SandboxOperationReason::Other,
                 message: "mock copy_file timeout must be positive".into(),
             });
@@ -969,7 +969,7 @@ impl Sandbox for MockSandbox {
         };
         if bytes.len() as u64 > options.max_bytes {
             return Err(SandboxError::Operation {
-                operation: SandboxOperation::Exec,
+                operation: SandboxOperation::CopyFile,
                 reason: SandboxOperationReason::Other,
                 message: format!("mock copy_file exceeded {} bytes", options.max_bytes),
             });
@@ -1449,6 +1449,26 @@ mod tests {
         }
     }
 
+    fn assert_operation_error(
+        error: SandboxError,
+        expected_operation: SandboxOperation,
+        expected_reason: SandboxOperationReason,
+        expected_message: &str,
+    ) {
+        match error {
+            SandboxError::Operation {
+                operation,
+                reason,
+                message,
+            } => {
+                assert_eq!(operation, expected_operation);
+                assert_eq!(reason, expected_reason);
+                assert!(message.contains(expected_message), "got: {message}");
+            }
+            other => panic!("expected operation error, got {other:?}"),
+        }
+    }
+
     fn test_timeout() -> Duration {
         Duration::from_secs(5)
     }
@@ -1672,7 +1692,12 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(err.to_string().contains("exceeded 3 bytes"));
+        assert_operation_error(
+            err,
+            SandboxOperation::CopyFile,
+            SandboxOperationReason::Other,
+            "exceeded 3 bytes",
+        );
         assert!(!path.exists());
     }
 
@@ -1696,7 +1721,12 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("max_bytes must be positive"));
+        assert_operation_error(
+            err,
+            SandboxOperation::CopyFile,
+            SandboxOperationReason::Other,
+            "max_bytes must be positive",
+        );
         assert!(!path.exists());
 
         let err = sandbox
@@ -1711,7 +1741,12 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("timeout must be positive"));
+        assert_operation_error(
+            err,
+            SandboxOperation::CopyFile,
+            SandboxOperationReason::Other,
+            "timeout must be positive",
+        );
         assert!(!path.exists());
     }
 
@@ -1750,7 +1785,12 @@ mod tests {
 
         let err = sandbox.read_file("/tmp/system.log", 3).await.unwrap_err();
 
-        assert!(err.to_string().contains("exceeded 3 bytes"));
+        assert_operation_error(
+            err,
+            SandboxOperation::ReadFile,
+            SandboxOperationReason::Other,
+            "exceeded 3 bytes",
+        );
     }
 
     #[tokio::test]
@@ -1759,7 +1799,12 @@ mod tests {
 
         let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
 
-        assert!(err.to_string().contains("max_bytes must be positive"));
+        assert_operation_error(
+            err,
+            SandboxOperation::ReadFile,
+            SandboxOperationReason::Other,
+            "max_bytes must be positive",
+        );
     }
 
     #[tokio::test]

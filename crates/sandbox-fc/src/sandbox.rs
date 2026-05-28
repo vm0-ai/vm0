@@ -1898,7 +1898,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
-        let operation = SandboxOperation::Exec;
+        let operation = SandboxOperation::ReadFile;
 
         self.run_bounded_guest_operation(operation, |guest| async move {
             guest.read_file(path, max_bytes, 5000).await
@@ -1912,7 +1912,7 @@ impl Sandbox for FirecrackerSandbox {
         host_path: &Path,
         options: CopyFileOptions,
     ) -> sandbox::Result<CopyFileResult> {
-        let operation = SandboxOperation::Exec;
+        let operation = SandboxOperation::CopyFile;
         let timeout_ms = options.timeout_ms();
 
         self.run_bounded_guest_operation(operation, |guest| async move {
@@ -4822,6 +4822,8 @@ mod tests {
     fn operation_error_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
+            SandboxOperation::ReadFile,
+            SandboxOperation::CopyFile,
             SandboxOperation::WriteFile,
             SandboxOperation::StartProcess,
             SandboxOperation::ProcessControl,
@@ -4841,6 +4843,8 @@ mod tests {
     fn unavailable_guest_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
+            SandboxOperation::ReadFile,
+            SandboxOperation::CopyFile,
             SandboxOperation::WriteFile,
             SandboxOperation::StartProcess,
             SandboxOperation::ProcessControl,
