@@ -1291,9 +1291,16 @@ function resolveBasicArg(context: BasicArgContext): string {
   }
   if (context.namespace === "secrets") {
     context.resolvedKeys.add(context.key);
-    return context.secrets[context.key] ?? "";
+    return getOwnValue(context.secrets, context.key) ?? "";
   }
-  return context.vars[context.key] ?? "";
+  return getOwnValue(context.vars, context.key) ?? "";
+}
+
+function getOwnValue(
+  values: Record<string, string>,
+  key: string,
+): string | undefined {
+  return Object.hasOwn(values, key) ? values[key] : undefined;
 }
 
 function resolveTemplates(
@@ -1316,9 +1323,9 @@ function resolveTemplates(
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
           resolvedKeys.add(key);
-          return secrets[key] ?? "";
+          return getOwnValue(secrets, key) ?? "";
         }
-        return vars[key] ?? "";
+        return getOwnValue(vars, key) ?? "";
       },
     );
   };
@@ -1382,12 +1389,13 @@ export async function resolveFirewallAuth(
     body.authBase,
     body.authQuery,
   );
+  const vars = body.vars ?? {};
 
   const hasMissingSecrets = [...referenced.secrets].some((key) => {
-    return !(key in decryptedSecrets);
+    return !Object.hasOwn(decryptedSecrets, key);
   });
   const hasMissingVars = [...referenced.vars].some((key) => {
-    return !(key in (body.vars ?? {}));
+    return !Object.hasOwn(vars, key);
   });
   if (hasMissingSecrets || hasMissingVars) {
     return {
@@ -1467,7 +1475,7 @@ export async function resolveFirewallAuth(
   const resolved = resolveTemplates(
     body.authHeaders,
     decryptedSecrets,
-    body.vars ?? {},
+    vars,
     body.authBase,
     body.authQuery,
   );

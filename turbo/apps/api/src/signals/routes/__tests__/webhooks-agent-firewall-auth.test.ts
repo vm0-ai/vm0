@@ -581,6 +581,35 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       [424],
     );
     expect(missingVar.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    const inheritedSecretName = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("constructor")}`,
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+    expect(inheritedSecretName.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+
+    const inheritedVarName = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "token" }),
+          authHeaders: { "X-Workspace": varTemplate("constructor") },
+          vars: {},
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+    expect(inheritedVarName.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
   it("resolves simple and basic auth templates", async () => {
