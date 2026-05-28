@@ -16,7 +16,7 @@ import {
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 
-type PrepareResolvedConnectorOAuthStartResult =
+type PrepareResolvedConnectorAuthCodeStartResult =
   | {
       readonly ok: true;
       readonly state: string;
@@ -56,15 +56,15 @@ export function resolveConnectorAuthCodeStartType(
   return { ok: true, type };
 }
 
-// Prepare only synchronous OAuth start data. Callers must resolve the route's
+// Prepare only synchronous auth-code start data. Callers must resolve the route's
 // ConnectorType first so connectors without interactive grants keep their
 // route-specific errors, then build the provider authorization URL at the
 // normal async commit point.
-export function prepareResolvedConnectorOAuthStart(args: {
+export function prepareResolvedConnectorAuthCodeStart(args: {
   readonly type: AuthCodeGrantConnectorType;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
-}): PrepareResolvedConnectorOAuthStartResult {
+}): PrepareResolvedConnectorAuthCodeStartResult {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
   const oauthClient = getConnectorOAuthClient(args.type, args.readEnv);
@@ -80,7 +80,7 @@ export function prepareResolvedConnectorOAuthStart(args: {
   };
 }
 
-export async function buildResolvedConnectorOAuthAuthResult(args: {
+export async function buildResolvedConnectorAuthCodeAuthUrl(args: {
   readonly type: AuthCodeGrantConnectorType;
   readonly oauthClient: ConnectorOAuthClient;
   readonly redirectUri: string;

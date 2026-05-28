@@ -56,10 +56,10 @@ import {
   connectorOAuthRedirectResponse,
 } from "./connector-oauth-route-state";
 import {
-  buildResolvedConnectorOAuthAuthResult,
-  prepareResolvedConnectorOAuthStart,
+  buildResolvedConnectorAuthCodeAuthUrl,
+  prepareResolvedConnectorAuthCodeStart,
   resolveConnectorAuthCodeStartType,
-} from "./connector-oauth-start";
+} from "./connector-auth-code-start";
 
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
 const CONNECTOR_SESSION_POLL_INTERVAL_SECONDS = 5;
@@ -390,7 +390,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return jsonResponse({ error: `${type} connector is not available` }, 403);
     }
 
-    const prepared = prepareResolvedConnectorOAuthStart({
+    const prepared = prepareResolvedConnectorAuthCodeStart({
       type: authCodeStartType.type,
       origin,
       readEnv: optionalEnv,
@@ -398,7 +398,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     if (!prepared.ok) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
-    const authResult = await buildResolvedConnectorOAuthAuthResult({
+    const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
       oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
@@ -461,7 +461,7 @@ const startConnectorOauthInner$ = command(
     }
 
     const origin = getConnectorOAuthOrigin(request);
-    const prepared = prepareResolvedConnectorOAuthStart({
+    const prepared = prepareResolvedConnectorAuthCodeStart({
       type: authCodeStartType.type,
       origin,
       readEnv: optionalEnv,
@@ -469,7 +469,7 @@ const startConnectorOauthInner$ = command(
     if (!prepared.ok) {
       return internalServerError(`${type} OAuth not configured`);
     }
-    const authResult = await buildResolvedConnectorOAuthAuthResult({
+    const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
       oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
