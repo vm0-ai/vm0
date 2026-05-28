@@ -4,7 +4,11 @@ import {
   getConnectorEnvBindings,
   getConnectorManualGrantFieldNames,
 } from "../connector-utils";
-import { extractFirewallTemplateReferences } from "../firewall-types";
+import {
+  extractFirewallTemplateReferences,
+  parseBasicAuthTemplates,
+  type FirewallConfig,
+} from "../firewall-types";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
@@ -19,6 +23,74 @@ const PLATFORM_INJECTED_SECRET_NAMES: Partial<
 interface ConnectorAuthSources {
   readonly secretBackedKeys: ReadonlySet<string>;
   readonly variableBackedKeys: ReadonlySet<string>;
+}
+
+function isTemplateWhitespace(char: string): boolean {
+  return (
+    char === " " ||
+    char === "\t" ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\f" ||
+    char === "\v"
+  );
+}
+
+function basicTemplateStartIndexes(template: string): readonly number[] {
+  const starts: number[] = [];
+  let start = template.indexOf("${{");
+
+  while (start !== -1) {
+    let index = start + "${{".length;
+    while (index < template.length && isTemplateWhitespace(template[index]!)) {
+      index += 1;
+    }
+    if (template.startsWith("basic(", index)) {
+      starts.push(start);
+    }
+    start = template.indexOf("${{", start + "${{".length);
+  }
+
+  return starts;
+}
+
+function unparsedBasicTemplateStartIndexes(
+  template: string,
+): readonly number[] {
+  const matches = parseBasicAuthTemplates(template);
+  return basicTemplateStartIndexes(template).filter((start) => {
+    return !matches.some((match) => {
+      return start >= match.start && start < match.end;
+    });
+  });
+}
+
+function expectValidBasicAuthTemplates(
+  connectorType: ConnectorType,
+  apis: FirewallConfig["apis"],
+): void {
+  for (const entry of apis) {
+    for (const [name, value] of Object.entries(entry.auth.headers ?? {})) {
+      expect(
+        unparsedBasicTemplateStartIndexes(value),
+        `firewall "${connectorType}" auth header "${name}" has malformed basic() templates`,
+      ).toStrictEqual([]);
+    }
+
+    if (entry.auth.base) {
+      expect(
+        basicTemplateStartIndexes(entry.auth.base),
+        `firewall "${connectorType}" auth.base must not use basic() templates`,
+      ).toStrictEqual([]);
+    }
+
+    for (const [name, value] of Object.entries(entry.auth.query ?? {})) {
+      expect(
+        basicTemplateStartIndexes(value),
+        `firewall "${connectorType}" auth.query "${name}" must not use basic() templates`,
+      ).toStrictEqual([]);
+    }
+  }
 }
 
 function connectorAuthSources(
@@ -113,6 +185,11 @@ describe("firewall secret name consistency", () => {
           `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector fields: [${[...validPlaceholderKeys].join(", ")}]`,
         ).toBe(true);
       }
+    });
+
+    it(`${connectorType} → firewall basic auth templates are valid`, () => {
+      const firewall = getConnectorFirewall(connectorType);
+      expectValidBasicAuthTemplates(connectorType, firewall.apis);
     });
 
     it(`${connectorType} → firewall auth templates match connector value sources`, () => {
