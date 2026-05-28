@@ -10,6 +10,7 @@ import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
   type BasicAuthTemplateArg,
+  type BasicAuthTemplateMatch,
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
@@ -1209,40 +1210,76 @@ function collectReferencedKeys(
   };
 
   for (const template of Object.values(authHeaders)) {
-    for (const match of template.matchAll(TEMPLATE_RE)) {
-      if (match[1] && match[2]) {
-        addKey(match[1], match[2]);
-      }
-    }
-    for (const match of parseBasicAuthTemplates(template)) {
-      if (match.first.namespace && match.first.key) {
-        addKey(match.first.namespace, match.first.key);
-      }
-      if (match.second.namespace && match.second.key) {
-        addKey(match.second.namespace, match.second.key);
-      }
-    }
+    collectHeaderReferencedKeys(template, addKey);
   }
 
   if (authBase) {
-    for (const match of authBase.matchAll(TEMPLATE_RE)) {
-      if (match[1] && match[2]) {
-        addKey(match[1], match[2]);
-      }
-    }
+    collectSimpleReferencedKeys(authBase, addKey);
   }
 
   if (authQuery) {
     for (const template of Object.values(authQuery)) {
-      for (const match of template.matchAll(TEMPLATE_RE)) {
-        if (match[1] && match[2]) {
-          addKey(match[1], match[2]);
-        }
-      }
+      collectSimpleReferencedKeys(template, addKey);
     }
   }
 
   return { secrets: secretKeys, vars: varKeys };
+}
+
+function collectHeaderReferencedKeys(
+  template: string,
+  addKey: (namespace: string, key: string) => void,
+): void {
+  const basicMatches = parseBasicAuthTemplates(template);
+  collectSimpleReferencesOutsideBasicTemplates(template, basicMatches, addKey);
+
+  for (const match of basicMatches) {
+    if (match.first.namespace && match.first.key) {
+      addKey(match.first.namespace, match.first.key);
+    }
+    if (match.second.namespace && match.second.key) {
+      addKey(match.second.namespace, match.second.key);
+    }
+  }
+}
+
+function collectSimpleReferencesOutsideBasicTemplates(
+  template: string,
+  basicMatches: readonly BasicAuthTemplateMatch[],
+  addKey: (namespace: string, key: string) => void,
+): void {
+  let basicMatchIndex = 0;
+  for (const match of template.matchAll(TEMPLATE_RE)) {
+    if (!match[1] || !match[2] || match.index === undefined) {
+      continue;
+    }
+    while (
+      basicMatchIndex < basicMatches.length &&
+      basicMatches[basicMatchIndex]!.end <= match.index
+    ) {
+      basicMatchIndex += 1;
+    }
+    const basicMatch = basicMatches[basicMatchIndex];
+    if (
+      basicMatch &&
+      match.index >= basicMatch.start &&
+      match.index < basicMatch.end
+    ) {
+      continue;
+    }
+    addKey(match[1], match[2]);
+  }
+}
+
+function collectSimpleReferencedKeys(
+  template: string,
+  addKey: (namespace: string, key: string) => void,
+): void {
+  for (const match of template.matchAll(TEMPLATE_RE)) {
+    if (match[1] && match[2]) {
+      addKey(match[1], match[2]);
+    }
+  }
 }
 
 function resolveBasicArg(context: BasicArgContext): string {

@@ -768,6 +768,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       return `Basic ${Buffer.from(value).toString("base64")}`;
     };
     const literalSecretTemplate = `\${{ secrets.USER }}`;
+    const literalVarTemplate = `\${{ vars.USER }}`;
     const malformedBasicTemplate = `\${{ basic("oops"quoted", secrets.X) }}`;
     type BasicAuthCase = {
       readonly template: string;
@@ -856,9 +857,16 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       },
       {
         template: basicTemplate(`"${literalSecretTemplate}"`, "secrets.PASS"),
-        secrets: { PASS: "pass", USER: "must-not-use" },
+        secrets: { PASS: "pass" },
         vars: {},
         expectedHeader: encode(`${literalSecretTemplate}:pass`),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: basicTemplate(`"${literalVarTemplate}"`, "secrets.PASS"),
+        secrets: { PASS: "pass" },
+        vars: {},
+        expectedHeader: encode(`${literalVarTemplate}:pass`),
         expectedSecrets: ["PASS"],
       },
       {

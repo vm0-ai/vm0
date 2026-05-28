@@ -439,6 +439,38 @@ export function replaceBasicAuthTemplates(
   return parts.join("");
 }
 
+function forEachSimpleAuthReference(
+  template: string,
+  basicMatches: readonly BasicAuthTemplateMatch[],
+  callback: (namespace: string, name: string) => void,
+): void {
+  let basicMatchIndex = 0;
+
+  for (const match of template.matchAll(AUTH_REFERENCE_PATTERN)) {
+    if (!match[1] || !match[2] || match.index === undefined) {
+      continue;
+    }
+
+    while (
+      basicMatchIndex < basicMatches.length &&
+      basicMatches[basicMatchIndex]!.end <= match.index
+    ) {
+      basicMatchIndex += 1;
+    }
+
+    const basicMatch = basicMatches[basicMatchIndex];
+    if (
+      basicMatch &&
+      match.index >= basicMatch.start &&
+      match.index < basicMatch.end
+    ) {
+      continue;
+    }
+
+    callback(match[1], match[2]);
+  }
+}
+
 /**
  * Extract all secret names referenced in firewall rule auth header templates.
  * Handles both simple `${{ secrets.X }}` and `${{ basic(...) }}` templates.
@@ -450,13 +482,16 @@ export function extractSecretNamesFromApis(
   const names = new Set<string>();
   for (const entry of apis) {
     for (const value of Object.values(entry.auth.headers ?? {})) {
-      for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
-        names.add(match[1]!);
-      }
+      const basicMatches = parseBasicAuthTemplates(value);
+      forEachSimpleAuthReference(value, basicMatches, (namespace, name) => {
+        if (namespace === "secrets") {
+          names.add(name);
+        }
+      });
       // basic() args may reference secrets, vars, or be string literals;
       // only collect secrets here (vars don't need placeholders, literals
       // are baked into the config).
-      for (const match of parseBasicAuthTemplates(value)) {
+      for (const match of basicMatches) {
         if (match.first.namespace === "secrets" && match.first.key) {
           names.add(match.first.key);
         }
@@ -489,6 +524,7 @@ function collectFirewallTemplateReferencesFromValue(
   template: string,
   references: { secrets: Set<string>; vars: Set<string> },
 ): void {
+  const basicMatches = parseBasicAuthTemplates(template);
   const addReference = (namespace: string, name: string): void => {
     if (namespace === "secrets") {
       references.secrets.add(name);
@@ -497,12 +533,8 @@ function collectFirewallTemplateReferencesFromValue(
     }
   };
 
-  for (const match of template.matchAll(AUTH_REFERENCE_PATTERN)) {
-    if (match[1] && match[2]) {
-      addReference(match[1], match[2]);
-    }
-  }
-  for (const match of parseBasicAuthTemplates(template)) {
+  forEachSimpleAuthReference(template, basicMatches, addReference);
+  for (const match of basicMatches) {
     if (match.first.namespace && match.first.key) {
       addReference(match.first.namespace, match.first.key);
     }

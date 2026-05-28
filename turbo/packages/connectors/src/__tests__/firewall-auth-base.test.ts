@@ -207,6 +207,26 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     expect(extractSecretNamesFromApis(apis)).toEqual(["REAL"]);
   });
 
+  it("does not extract simple templates inside basic literals", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: '${{ basic("${{ secrets.FAKE }}", secrets.REAL) }}',
+            "X-Var": '${{ basic("${{ vars.FAKE }}", secrets.REAL) }}',
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toStrictEqual(["REAL"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["REAL"],
+      vars: [],
+    });
+  });
+
   it("ignores malformed basic templates with long whitespace runs", () => {
     const apis = [
       {
