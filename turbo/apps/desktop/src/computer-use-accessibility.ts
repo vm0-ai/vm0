@@ -1242,7 +1242,21 @@ function nativeAppStateScreenshot(
 async function listApps(
   nativeBackend: ComputerUseNativeBackend,
 ): Promise<ComputerUseCommandSuccess> {
-  const apps = [...(await nativeBackend.listApps())].sort();
+  const apps = [...(await nativeBackend.listApps())].sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name, undefined, {
+      sensitivity: "base",
+    });
+    if (nameOrder !== 0) {
+      return nameOrder;
+    }
+    return (left.bundleId ?? "").localeCompare(
+      right.bundleId ?? "",
+      undefined,
+      {
+        sensitivity: "base",
+      },
+    );
+  });
   return { status: "succeeded", result: { apps } };
 }
 

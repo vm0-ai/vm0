@@ -202,6 +202,33 @@ describe("computer-use command visibility", () => {
     await expect(readFile(TEST_APP_STATE_PATH, "utf8")).resolves.toBe(appState);
   });
 
+  it("should print app bundle identifiers in list-apps output", async () => {
+    const text = await formatComputerUseResultForConsole({
+      apps: [
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+      ],
+    });
+
+    expect(JSON.parse(text)).toStrictEqual({
+      status: "succeeded",
+      apps: [
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+      ],
+    });
+  });
+
   it("should print screenshot and app state file paths for get-app-state", async () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");

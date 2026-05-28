@@ -328,6 +328,46 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("reads structured app records from the native helper", async () => {
+    const helper = await createHelper({
+      status: "succeeded",
+      result: {
+        apps: [
+          {
+            name: "TextEdit",
+            bundleId: "com.apple.TextEdit",
+            appPath: "/System/Applications/TextEdit.app",
+            running: true,
+            pid: 42,
+          },
+          "Safari",
+        ],
+      },
+    });
+
+    try {
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        mode: "oneshot",
+      });
+
+      await expect(backend.listApps()).resolves.toEqual([
+        {
+          name: "TextEdit",
+          bundleId: "com.apple.TextEdit",
+          appPath: "/System/Applications/TextEdit.app",
+          running: true,
+          pid: 42,
+        },
+        {
+          name: "Safari",
+        },
+      ]);
+    } finally {
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("reads normalized key names from the native helper", async () => {
     const helper = await createHelper({
       status: "succeeded",

@@ -1347,16 +1347,27 @@ func findRunningApp(named appName: String) -> NSRunningApplication? {
         !app.isTerminated
     }
 
-    if let exact = apps.first(where: { app in
-        app.localizedName == appName || app.bundleIdentifier == appName
+    if let exactBundle = apps.first(where: { app in
+        app.bundleIdentifier == appName
     }) {
-        return exact
+        return exactBundle
     }
 
     let normalized = appName.lowercased()
+    if let bundleMatch = apps.first(where: { app in
+        app.bundleIdentifier?.lowercased() == normalized
+    }) {
+        return bundleMatch
+    }
+
+    if let exactName = apps.first(where: { app in
+        app.localizedName == appName
+    }) {
+        return exactName
+    }
+
     return apps.first { app in
-        app.localizedName?.lowercased() == normalized ||
-            app.bundleIdentifier?.lowercased() == normalized
+        app.localizedName?.lowercased() == normalized
     }
 }
 
@@ -2613,16 +2624,128 @@ func resolveElementId(
 }
 
 func handleAppsList() -> [String: Any] {
-    var names = Set<String>()
+    func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
+    }
+
+    func appRecordKey(
+        name: String,
+        bundleId: String?,
+        appPath: String?,
+        pid: pid_t?
+    ) -> String {
+        if let bundleId = nonEmpty(bundleId) {
+            return "bundle:\(bundleId.lowercased())"
+        }
+        if let appPath = nonEmpty(appPath) {
+            return "path:\(appPath.lowercased())"
+        }
+        if let pid {
+            return "pid:\(pid)"
+        }
+        return "name:\(name.lowercased())"
+    }
+
+    func mergeAppRecord(
+        _ record: [String: Any],
+        into recordsByKey: inout [String: [String: Any]],
+        key: String
+    ) {
+        guard var existing = recordsByKey[key] else {
+            recordsByKey[key] = record
+            return
+        }
+
+        if existing["bundleId"] == nil, let bundleId = record["bundleId"] {
+            existing["bundleId"] = bundleId
+        }
+        if existing["appPath"] == nil, let appPath = record["appPath"] {
+            existing["appPath"] = appPath
+        }
+        if record["running"] as? Bool == true {
+            existing["running"] = true
+            if let pid = record["pid"] {
+                existing["pid"] = pid
+            }
+            if let name = record["name"] {
+                existing["name"] = name
+            }
+        }
+        recordsByKey[key] = existing
+    }
+
+    var recordsByKey: [String: [String: Any]] = [:]
+
+    for url in discoveredApplicationURLs() {
+        guard let name = applicationNames(for: url).first else {
+            continue
+        }
+        let bundleId = nonEmpty(Bundle(url: url)?.bundleIdentifier)
+        let appPath = nonEmpty(url.standardizedFileURL.path)
+        var record: [String: Any] = [
+            "name": name,
+            "running": false,
+        ]
+        if let bundleId {
+            record["bundleId"] = bundleId
+        }
+        if let appPath {
+            record["appPath"] = appPath
+        }
+        mergeAppRecord(
+            record,
+            into: &recordsByKey,
+            key: appRecordKey(name: name, bundleId: bundleId, appPath: appPath, pid: nil)
+        )
+    }
+
     for app in NSWorkspace.shared.runningApplications {
         if app.activationPolicy == .regular,
-           let name = app.localizedName,
-           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+           let name = nonEmpty(app.localizedName)
         {
-            names.insert(name)
+            let bundleId = nonEmpty(app.bundleIdentifier)
+            let appPath = nonEmpty(app.bundleURL?.standardizedFileURL.path)
+            var record: [String: Any] = [
+                "name": name,
+                "running": true,
+                "pid": Int(app.processIdentifier),
+            ]
+            if let bundleId {
+                record["bundleId"] = bundleId
+            }
+            if let appPath {
+                record["appPath"] = appPath
+            }
+            mergeAppRecord(
+                record,
+                into: &recordsByKey,
+                key: appRecordKey(
+                    name: name,
+                    bundleId: bundleId,
+                    appPath: appPath,
+                    pid: app.processIdentifier
+                )
+            )
         }
     }
-    return ["apps": Array(names).sorted()]
+
+    let records = recordsByKey.values.sorted { lhs, rhs in
+        let leftName = (lhs["name"] as? String ?? "").localizedCaseInsensitiveCompare(
+            rhs["name"] as? String ?? ""
+        )
+        if leftName != .orderedSame {
+            return leftName == .orderedAscending
+        }
+        return (lhs["bundleId"] as? String ?? "").localizedCaseInsensitiveCompare(
+            rhs["bundleId"] as? String ?? ""
+        ) == .orderedAscending
+    }
+    return ["apps": records]
 }
 
 func computerUsePermissionState() -> [String: Any] {

@@ -609,6 +609,54 @@ describe("computer use desktop runtime", () => {
     });
   });
 
+  it("lists app records with bundle identifiers", async () => {
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "apps.list", payload: {} },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          listApps: async () => [
+            {
+              name: "TextEdit",
+              bundleId: "com.apple.TextEdit",
+              appPath: "/System/Applications/TextEdit.app",
+              running: true,
+              pid: 42,
+            },
+            {
+              name: "Safari",
+              bundleId: "com.apple.Safari",
+              appPath: "/Applications/Safari.app",
+              running: false,
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "succeeded",
+      result: {
+        apps: [
+          {
+            name: "Safari",
+            bundleId: "com.apple.Safari",
+            appPath: "/Applications/Safari.app",
+            running: false,
+          },
+          {
+            name: "TextEdit",
+            bundleId: "com.apple.TextEdit",
+            appPath: "/System/Applications/TextEdit.app",
+            running: true,
+            pid: 42,
+          },
+        ],
+      },
+    });
+  });
+
   it("reports app open as a background launch without target preparation", async () => {
     const openApp = vi.fn<ComputerUseNativeBackend["openApp"]>();
     openApp.mockResolvedValue({
