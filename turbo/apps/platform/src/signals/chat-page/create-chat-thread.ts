@@ -251,9 +251,9 @@ function deriveRunIndicatorState(
   return hasQueued ? "queued" : null;
 }
 
-function liveRunIdsFromMessages(
+function terminatedRunIdsFromMessages(
   messages: readonly EnrichedChatMessage[],
-): string[] {
+): Set<string> {
   const terminatedRunIds = new Set<string>();
   for (const message of messages) {
     if (
@@ -264,7 +264,13 @@ function liveRunIdsFromMessages(
       terminatedRunIds.add(message.runId);
     }
   }
+  return terminatedRunIds;
+}
 
+function liveRunIdsFromMessages(
+  messages: readonly EnrichedChatMessage[],
+): string[] {
+  const terminatedRunIds = terminatedRunIdsFromMessages(messages);
   const liveRunIds: string[] = [];
   const seenRunIds = new Set<string>();
   for (const message of messages) {
@@ -276,6 +282,22 @@ function liveRunIdsFromMessages(
     ) {
       liveRunIds.push(message.runId);
       seenRunIds.add(message.runId);
+    }
+  }
+  return liveRunIds;
+}
+
+function cancellableRunIdsFromThreadAndMessages(
+  thread: ChatThread,
+  messages: readonly EnrichedChatMessage[],
+): string[] {
+  const terminatedRunIds = terminatedRunIdsFromMessages(messages);
+  const liveRunIds = liveRunIdsFromMessages(messages);
+  const seenRunIds = new Set(liveRunIds);
+  for (const runId of thread.activeRunIds) {
+    if (!terminatedRunIds.has(runId) && !seenRunIds.has(runId)) {
+      liveRunIds.push(runId);
+      seenRunIds.add(runId);
     }
   }
   return liveRunIds;
@@ -1814,7 +1836,10 @@ function createCancelRunWithQueuedRecall({
       });
     });
 
-    const interruptRequests = liveRunIdsFromMessages(messages).map((runId) => {
+    const interruptRequests = cancellableRunIdsFromThreadAndMessages(
+      thread,
+      messages,
+    ).map((runId) => {
       const clientMessageId = crypto.randomUUID();
       set(appendOptimisticChatMessage$, {
         threadId,
