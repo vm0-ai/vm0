@@ -81,6 +81,8 @@ Notes:
   Write commands are sent to the connected Desktop host and may wait for local
   approval before they run. Coordinate fallbacks use screenshot coordinates from
   get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
+  type-text sends literal keyboard input to the target app's current focus. Use
+  set-value when you need deterministic accessibility value assignment.
 
 Examples:
   List available apps:
@@ -525,7 +527,7 @@ const typeTextCommand = appOption(
   addTargetOptions(
     new Command()
       .name("type-text")
-      .description("Type literal text into the target app")
+      .description("Type literal keyboard input into the target app")
       .requiredOption("--text <text>", "Text to type")
       .action(
         withErrorHandler(async (options: ComputerUseTypeTextOptions) => {

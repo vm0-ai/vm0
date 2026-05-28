@@ -1867,7 +1867,15 @@ describe("computer use desktop runtime", () => {
     });
   });
 
-  it("rejects type-text when the target app has no focused editable element", async () => {
+  it("types text through native keyboard input without requiring an editable AX focus", async () => {
+    const typeText = vi.fn<ComputerUseNativeBackend["typeText"]>();
+    typeText.mockResolvedValue(
+      nativeDispatchResult(
+        "background_keyboard_text",
+        "app_process",
+        "background_app_text",
+      ),
+    );
     const result = await executeComputerUseCommand(
       {
         id: "cmd_1",
@@ -1878,23 +1886,26 @@ describe("computer use desktop runtime", () => {
       {
         platform: "darwin",
         nativeBackend: createNativeBackend({
-          typeText: async () => {
-            throw new ComputerUseNativeHelperError(
-              "unsupported_command",
-              "keyboard.type_text requires a focused editable text element in Safari",
-            );
+          typeText,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
           },
         }),
       },
     );
 
-    expect(result).toStrictEqual({
-      status: "failed",
-      error: {
-        code: "unsupported_command",
-        message:
-          "keyboard.type_text requires a focused editable text element in Safari",
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        screenshot: "data:image/png;base64,abc123",
+        action: {
+          app: "Safari",
+          dispatchMode: "background_keyboard_text",
+          dispatchTarget: "app_process",
+          inputRisk: "background_app_text",
+        },
       },
     });
+    expect(typeText).toHaveBeenCalledWith({ app: "Safari", text: "hello" });
   });
 });

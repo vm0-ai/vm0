@@ -1006,6 +1006,45 @@ struct AddressedEventDispatcher {
         event.setWindowAddressingFields(windowNumber: target.windowNumber)
         event.postToPid(target.pid)
     }
+
+    func postText(_ text: String) throws {
+        for character in text {
+            try postTextCharacter(character)
+            usleep(5_000)
+        }
+    }
+
+    private func postTextCharacter(_ character: Character) throws {
+        let utf16 = Array(String(character).utf16)
+        guard !utf16.isEmpty else {
+            return
+        }
+
+        let keyDown = try textKeyboardEvent(keyDown: true, utf16: utf16)
+        keyDown.postToPid(target.pid)
+
+        let keyUp = try textKeyboardEvent(keyDown: false, utf16: utf16)
+        keyUp.postToPid(target.pid)
+    }
+
+    private func textKeyboardEvent(keyDown: Bool, utf16: [UInt16]) throws -> CGEvent {
+        guard let event = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: 0,
+            keyDown: keyDown
+        ) else {
+            throw HelperFailure(code: "accessibility_unavailable", message: "Unable to create text keyboard event")
+        }
+        utf16.withUnsafeBufferPointer { buffer in
+            event.keyboardSetUnicodeString(
+                stringLength: utf16.count,
+                unicodeString: buffer.baseAddress
+            )
+        }
+        event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(target.pid))
+        event.setWindowAddressingFields(windowNumber: target.windowNumber)
+        return event
+    }
 }
 
 final class BackgroundActivationSession: @unchecked Sendable {
@@ -3222,41 +3261,17 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
 func handleTypeText(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
-    let app = try resolveRunningApp(named: appName)
     return try withFrontmostPreservation(
-        dispatchMode: "accessibility_value",
-        dispatchTarget: "focused_editable_element",
-        inputRisk: "targeted_app_text"
+        dispatchMode: "background_keyboard_text",
+        dispatchTarget: "app_process",
+        inputRisk: "background_app_text"
     ) {
-        let root = AXUIElementCreateApplication(app.processIdentifier)
-        guard let element = axElementValue(attribute(root, kAXFocusedUIElementAttribute as CFString)) else {
-            throw HelperFailure(
-                code: "unsupported_command",
-                message: "keyboard.type_text requires a focused editable text element in \(appName)"
-            )
+        let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
+            let dispatcher = AddressedEventDispatcher(target: target)
+            try dispatcher.postText(inputText)
+            return target.pid
         }
-        let role = role(element)
-        let editableRoles = Set([
-            "AXComboBox",
-            "AXSearchField",
-            "AXTextArea",
-            "AXTextField",
-            "AXTextView",
-        ])
-        guard let role, editableRoles.contains(role) else {
-            throw HelperFailure(
-                code: "unsupported_command",
-                message: "keyboard.type_text requires a focused editable text element in \(appName)"
-            )
-        }
-
-        let currentValue = stringValue(attribute(element, kAXValueAttribute as CFString)) ?? ""
-        try setAttribute(element, kAXValueAttribute as CFString, (currentValue + inputText) as CFString)
-        var result: [String: Any] = ["role": role]
-        if let description = stringValue(attribute(element, kAXDescriptionAttribute as CFString)) {
-            result["description"] = description
-        }
-        return (targetPID: app.processIdentifier, result: result)
+        return (targetPID: targetPID, result: ["characterCount": inputText.count])
     }
 }
 
