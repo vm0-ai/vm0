@@ -5,17 +5,17 @@ import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/con
 import {
   hasConnectorAuthCodeGrant,
   getConnectorOAuthClient,
-  getConnectorOAuthScopes,
+  getConnectorAuthMethodGrantScopes,
+  hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type AuthCodeGrantConnectorType,
-  type OAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorOAuthCode,
   getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
+  hasConnectorAuthCodeGrantProvider,
   type OAuthTokenResult,
 } from "@vm0/connectors/auth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -197,7 +197,7 @@ async function exchangeTokenForConnector(args: {
 function getRequestedScopes(
   connectorType: AuthCodeGrantConnectorType,
 ): readonly string[] {
-  return getConnectorOAuthScopes(connectorType);
+  return getConnectorAuthMethodGrantScopes(connectorType, "oauth");
 }
 
 function resolveOAuthConnectorType(
@@ -213,23 +213,22 @@ function resolveOAuthConnectorType(
   }
 
   const connectorType = typeResult.data;
-  if (!hasConnectorOAuthProvider(connectorType)) {
+  if (!hasConnectorAuthCodeGrant(connectorType)) {
+    const message = hasConnectorDeviceAuthGrant(connectorType)
+      ? `${type} connector does not use authorization-code OAuth`
+      : `${type} connector does not use OAuth`;
     return {
       ok: false,
-      response: redirectWithError(
-        origin,
-        type,
-        `${type} connector does not use OAuth`,
-      ),
+      response: redirectWithError(origin, type, message),
     };
   }
-  if (!hasConnectorAuthCodeGrant(connectorType)) {
+  if (!hasConnectorAuthCodeGrantProvider(connectorType)) {
     return {
       ok: false,
       response: redirectWithError(
         origin,
         type,
-        `${type} connector does not use authorization-code OAuth`,
+        `${type} OAuth provider is not configured`,
       ),
     };
   }
@@ -325,7 +324,7 @@ async function markConnectorSessionError(
 
 async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
-  readonly connectorType: OAuthGrantConnectorType;
+  readonly connectorType: AuthCodeGrantConnectorType;
   readonly identity: CallbackIdentity;
   readonly token: OAuthTokenResult;
   readonly signal: AbortSignal;

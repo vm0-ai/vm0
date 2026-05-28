@@ -18,7 +18,7 @@ import {
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
 import {
-  connectorAuthMethodHasOAuthGrant,
+  connectorAuthMethodHasGrantKind,
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
   hasConnectorAuthCodeGrant,
@@ -131,11 +131,20 @@ function connectorOAuthDeviceAuthFlowIsActive(
   );
 }
 
-function connectedConnectorHasOAuthGrant(
+function connectedConnectorUsesOAuthGrant(
   item: ConnectorTypeWithStatus,
 ): boolean {
   return item.connector
-    ? connectorAuthMethodHasOAuthGrant(item.type, item.connector.authMethod)
+    ? connectorAuthMethodHasGrantKind(
+        item.type,
+        item.connector.authMethod,
+        "auth-code",
+      ) ||
+        connectorAuthMethodHasGrantKind(
+          item.type,
+          item.connector.authMethod,
+          "device-auth",
+        )
     : false;
 }
 
@@ -193,7 +202,7 @@ function ManualCredentialForm({
 
   return (
     <div className="flex flex-col gap-3">
-      {item.connected && connectedConnectorHasOAuthGrant(item) && (
+      {item.connected && connectedConnectorUsesOAuthGrant(item) && (
         <p className="text-xs text-amber-600">
           This will replace your current OAuth connection.
         </p>

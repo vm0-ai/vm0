@@ -1,7 +1,7 @@
 import {
   getConnectorOAuthClient,
-  hasConnectorOAuthGrant,
   hasConnectorAuthCodeGrant,
+  hasConnectorDeviceAuthGrant,
   type ConnectorEnvReader,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
@@ -11,7 +11,7 @@ import type {
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorOAuthAuthUrl,
-  hasConnectorOAuthProvider,
+  hasConnectorAuthCodeGrantProvider,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 
@@ -49,14 +49,14 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
 export function resolveConnectorOAuthStartType(
   type: ConnectorType,
 ): ResolveConnectorOAuthStartTypeResult {
-  if (!hasConnectorOAuthGrant(type)) {
+  if (!hasConnectorAuthCodeGrant(type)) {
+    if (hasConnectorDeviceAuthGrant(type)) {
+      return { ok: false, reason: "unsupported_oauth_flow" };
+    }
     return { ok: false, reason: "connector_does_not_use_oauth" };
   }
-  if (!hasConnectorOAuthProvider(type)) {
+  if (!hasConnectorAuthCodeGrantProvider(type)) {
     return { ok: false, reason: "oauth_provider_not_configured" };
-  }
-  if (!hasConnectorAuthCodeGrant(type)) {
-    return { ok: false, reason: "unsupported_oauth_flow" };
   }
   return { ok: true, type };
 }

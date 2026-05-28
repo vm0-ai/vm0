@@ -219,15 +219,41 @@ const DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS: DeviceAuthConnectorOAuthProviderMap
     "test-oauth-device": testOauthDeviceProvider,
   };
 
-const CONNECTOR_OAUTH_PROVIDERS = {
-  ...AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS,
-  ...DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS,
-};
-
 export function hasConnectorOAuthProvider(
   type: string,
 ): type is OAuthGrantConnectorType {
-  return Object.hasOwn(CONNECTOR_OAUTH_PROVIDERS, type);
+  return (
+    hasConnectorAuthCodeGrantProvider(type) ||
+    hasConnectorDeviceAuthGrantProvider(type)
+  );
+}
+
+export function hasConnectorAuthCodeGrantProvider(
+  type: string,
+): type is AuthCodeGrantConnectorType {
+  return Object.hasOwn(AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS, type);
+}
+
+export function hasConnectorDeviceAuthGrantProvider(
+  type: string,
+): type is DeviceAuthGrantConnectorType {
+  return Object.hasOwn(DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS, type);
+}
+
+export function hasConnectorTokenRevokeProvider(
+  type: string,
+): type is OAuthGrantConnectorType {
+  if (hasConnectorAuthCodeGrantProvider(type)) {
+    return (
+      AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type].revoke.kind === "token-revoke"
+    );
+  }
+  if (hasConnectorDeviceAuthGrantProvider(type)) {
+    return (
+      DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type].revoke.kind === "token-revoke"
+    );
+  }
+  return false;
 }
 
 export function getConnectorOAuthSecretMetadata(
@@ -239,19 +265,19 @@ export function getConnectorOAuthSecretMetadata(
 export function getConnectorOAuthSecretMetadata(
   type: string,
 ): ConnectorOAuthSecretMetadata | undefined {
-  if (!hasConnectorOAuthProvider(type)) {
-    return undefined;
-  }
-
-  if (hasConnectorAuthCodeGrant(type)) {
+  if (hasConnectorAuthCodeGrantProvider(type)) {
     return getAuthProviderSecretMetadata(
       AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type],
     );
   }
 
-  return getAuthProviderSecretMetadata(
-    DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type],
-  );
+  if (hasConnectorDeviceAuthGrantProvider(type)) {
+    return getAuthProviderSecretMetadata(
+      DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type],
+    );
+  }
+
+  return undefined;
 }
 
 export async function buildConnectorOAuthAuthUrl<

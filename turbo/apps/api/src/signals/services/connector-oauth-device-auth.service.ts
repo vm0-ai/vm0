@@ -11,13 +11,13 @@ import type {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorOAuthClient,
-  hasConnectorOAuthGrant,
+  hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
+  hasConnectorDeviceAuthGrantProvider,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
 } from "@vm0/connectors/auth-providers";
@@ -182,16 +182,16 @@ function resolveDeviceAuthType(
   | DeviceAuthGrantConnectorType
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof internalServerError> {
-  if (!hasConnectorOAuthGrant(type)) {
-    return badRequestMessage(`${type} connector does not use OAuth`);
-  }
-  if (!hasConnectorOAuthProvider(type)) {
-    return internalServerError(`${type} OAuth provider is not configured`);
-  }
   if (!hasConnectorDeviceAuthGrant(type)) {
+    if (!hasConnectorAuthCodeGrant(type)) {
+      return badRequestMessage(`${type} connector does not use OAuth`);
+    }
     return badRequestMessage(
       `${type} connector does not support OAuth device authorization`,
     );
+  }
+  if (!hasConnectorDeviceAuthGrantProvider(type)) {
+    return internalServerError(`${type} OAuth provider is not configured`);
   }
   return type;
 }

@@ -6,8 +6,9 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  connectorAuthMethodHasOAuthGrant,
+  connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
+  getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNames,
@@ -15,12 +16,11 @@ import {
   getConnectorSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
-  getScopeDiff,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
+  hasConnectorTokenRevokeProvider,
   revokeConnectorOAuthToken,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -511,7 +511,7 @@ async function loadPendingOAuthRevoke(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingOAuthRevoke | null> {
-  if (!hasConnectorOAuthProvider(args.type)) {
+  if (!hasConnectorTokenRevokeProvider(args.type)) {
     return null;
   }
 
@@ -662,7 +662,7 @@ export const deleteZeroConnectorLocalState$ = command(
         return { deleted: false, pendingOAuthRevoke: null };
       }
 
-      const pendingOAuthRevoke = connectorAuthMethodHasOAuthGrant(
+      const pendingOAuthRevoke = connectorAuthMethodSupportsTokenRevoke(
         args.type,
         existing.authMethod,
       )
@@ -959,7 +959,7 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
     return null;
   }
 
-  const pendingOAuthRevoke = connectorAuthMethodHasOAuthGrant(
+  const pendingOAuthRevoke = connectorAuthMethodSupportsTokenRevoke(
     args.type,
     existing.authMethod,
   )
@@ -1575,7 +1575,11 @@ export function zeroConnectorScopeDiff(args: {
     if (!connector) {
       return null;
     }
-    return getScopeDiff(args.type, connector.oauthScopes);
+    return getConnectorAuthMethodScopeDiff(
+      args.type,
+      connector.authMethod,
+      connector.oauthScopes,
+    );
   });
 }
 
