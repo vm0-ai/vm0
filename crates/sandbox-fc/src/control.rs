@@ -1439,6 +1439,20 @@ mod tests {
     }
 
     #[test]
+    fn resolve_control_socket_full_id_uses_canonical_socket_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_id = SandboxId::new_v4();
+        let (control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join(sandbox_id.to_string()));
+        let uppercase_id = sandbox_id.to_string().to_ascii_uppercase();
+
+        let resolved = resolve_control_socket_in(&sock_parent, &uppercase_id).unwrap();
+
+        assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
     fn resolve_control_socket_full_id_ignores_sibling_socket_check_error() {
         let dir = tempfile::tempdir().unwrap();
         let sock_parent = dir.path().join("sock");
