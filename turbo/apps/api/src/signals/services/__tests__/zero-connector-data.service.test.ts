@@ -109,7 +109,7 @@ describe("zeroConnectorList", () => {
     expect(withoutSecret.connectorProvidedEnvNames).not.toContain(
       "GITHUB_TOKEN",
     );
-    expect(withSecret.connectorProvidedEnvNames).toEqual(
+    expect(withSecret.connectorProvidedEnvNames).toStrictEqual(
       expect.arrayContaining(["GH_TOKEN", "GITHUB_TOKEN"]),
     );
   });
