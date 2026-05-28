@@ -5,11 +5,7 @@ import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
 import { getAppUrl } from "../../../src/lib/zero/url";
-import {
-  GALLERY_ITEMS,
-  buildGalleryRemixHref,
-  type GalleryItem,
-} from "./data";
+import { GALLERY_ITEMS, buildGalleryRemixHref, type GalleryItem } from "./data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
@@ -98,9 +94,7 @@ export function WebDesignClient() {
           className="flex flex-col items-stretch gap-6"
         >
           {GALLERY_ITEMS.map((item) => {
-            return (
-              <GalleryCard key={item.slug} item={item} appUrl={appUrl} />
-            );
+            return <GalleryCard key={item.slug} item={item} appUrl={appUrl} />;
           })}
         </div>
       </section>
