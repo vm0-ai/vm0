@@ -640,6 +640,82 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
+    @pytest.mark.parametrize(
+        ("rule", "url"),
+        [
+            ("get /repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
+            ("INVALID /repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
+            ("GET repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/{owner}/{repo}?state=open", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/{owner}/{repo}#section", "https://api.github.com/repos/org/repo"),
+            ("GET /files/{path+}/admin", "https://api.github.com/files/readme"),
+            ("GET /files/{path*}/admin", "https://api.github.com/files/readme"),
+            ("GET /files/{path+}.json", "https://api.github.com/files/readme.json"),
+            ("GET /repos/{id}/{id}", "https://api.github.com/repos/org/repo"),
+        ],
+    )
+    def test_malformed_rule_syntax_fails_closed_before_unknown_allow(self, rule, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": [rule]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
+    def test_duplicate_permission_name_does_not_expand_allowed_scope(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        {"name": "repo-read", "rules": ["DELETE /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+        compiled_firewalls = self._compiled(fws)
+
+        allowed = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        blocked = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "DELETE",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert isinstance(allowed, matching.FirewallAllow)
+        assert allowed.permission == "repo-read"
+        assert isinstance(blocked, matching.FirewallBlock)
+        assert blocked.permissions == ()
+        assert blocked.reason == "malformed_firewall_config"
+
     def test_malformed_firewall_config_fails_closed_only_after_base_match(self):
         fws = wrap_firewalls(
             [
@@ -818,8 +894,11 @@ class TestCompiledFirewallMatching:
         [
             "repo-read",
             [None],
+            [{"name": "", "rules": ["GET /repos/{owner}/{repo}"]}],
+            [{"name": "all", "rules": ["GET /repos/{owner}/{repo}"]}],
             [{"rules": ["GET /repos/{owner}/{repo}"]}],
             [{"name": 123, "rules": ["GET /repos/{owner}/{repo}"]}],
+            [{"name": "repo-read", "rules": []}],
             [{"name": "repo-read", "rules": [123]}],
         ],
     )

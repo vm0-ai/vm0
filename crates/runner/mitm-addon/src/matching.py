@@ -20,6 +20,18 @@ _MULTI_PARAM_BRACE_COUNT = 2
 # Firewall rules are encoded as ``"METHOD path"`` — a single-whitespace-split
 # yields exactly two tokens.  Rows that fail this shape are malformed.
 _RULE_TOKEN_COUNT = 2
+_VALID_RULE_METHODS = frozenset(
+    (
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS",
+        "ANY",
+    )
+)
 
 
 class _BaseUrlParts(NamedTuple):
@@ -480,6 +492,27 @@ def compile_path_pattern(pattern: str) -> CompiledPathPattern | None:
     return CompiledPathPattern(segments)
 
 
+def _compiled_rule_path_is_valid(pattern: CompiledPathPattern) -> bool:
+    """Mirror connector validateRule() invariants not enforced by segment parsing."""
+    param_names: set[str] = set()
+    last_index = len(pattern.segments) - 1
+    for index, segment in enumerate(pattern.segments):
+        if isinstance(segment, SegmentLiteral):
+            continue
+        if isinstance(segment, SegmentError):
+            return False
+
+        if segment.name in param_names:
+            return False
+        param_names.add(segment.name)
+
+        if segment.greedy and index != last_index:
+            return False
+        if segment.greedy and (segment.prefix or segment.suffix):
+            return False
+    return True
+
+
 def _path_specificity(
     pattern: CompiledPathPattern,
 ) -> _PathSpecificity:
@@ -723,10 +756,17 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     parts = rule_str.split(" ", 1)
     if len(parts) != _RULE_TOKEN_COUNT:
         return None
-    pattern = compile_path_pattern(parts[1])
+    method, path = parts
+    if method not in _VALID_RULE_METHODS:
+        return None
+    if not path.startswith("/") or "?" in path or "#" in path:
+        return None
+    pattern = compile_path_pattern(path)
     if pattern is None:
         return None
-    return _CompiledRule(parts[0].upper(), rule_str, pattern, _path_specificity(pattern))
+    if not _compiled_rule_path_is_valid(pattern):
+        return None
+    return _CompiledRule(method, rule_str, pattern, _path_specificity(pattern))
 
 
 def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
@@ -760,6 +800,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
 
             compiled_permissions: list[_CompiledPermission] = []
             has_malformed_rules = name_malformed
+            seen_permission_names: set[str] = set()
             permissions = api_entry.get("permissions")
             if isinstance(permissions, list):
                 for perm in permissions:
@@ -770,9 +811,18 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                     if not isinstance(raw_name, str):
                         has_malformed_rules = True
                         continue
+                    if raw_name in ("", "all"):
+                        has_malformed_rules = True
+                        continue
+                    if raw_name in seen_permission_names:
+                        has_malformed_rules = True
+                        continue
+                    seen_permission_names.add(raw_name)
                     raw_rules = perm.get("rules", [])
                     if not isinstance(raw_rules, list):
                         raw_rules = []
+                        has_malformed_rules = True
+                    if len(raw_rules) == 0:
                         has_malformed_rules = True
 
                     compiled_rules: list[_CompiledRule] = []

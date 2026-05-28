@@ -158,7 +158,7 @@ class TestCompiledFirewallRequest:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "full-access"
 
-    def test_method_case_insensitive(self, headers):
+    def test_lowercase_rule_method_fails_closed(self, headers):
         fw_configs = wrap_firewalls(
             [
                 {
@@ -174,7 +174,8 @@ class TestCompiledFirewallRequest:
             fw_configs,
             network_policies=grant_all(fw_configs),
         )
-        assert isinstance(result, matching.FirewallAllow)
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_firewall_config"
 
     def test_wrong_method_blocks(self, headers):
         fw_configs = wrap_firewalls(
