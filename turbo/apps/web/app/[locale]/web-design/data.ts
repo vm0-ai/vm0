@@ -48,7 +48,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A founder-facing SaaS metrics dashboard with activation, retention, revenue, support load, release health, and ranked opportunities.",
     prompt:
-      "Using `zero generate website` with design system `dashboard` and template `dashboard`, create a polished website for a SaaS launch metrics command center. Show activation, retention, revenue, support load, release health, ranked opportunities, and a concise executive summary. Make it feel like a quiet operational dashboard that a founder could scan every morning.",
+      "/gen website with design system `dashboard` and template `dashboard`, create a polished website for a SaaS launch metrics command center. Show activation, retention, revenue, support load, release health, ranked opportunities, and a concise executive summary. Make it feel like a quiet operational dashboard that a founder could scan every morning.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/751a6c2a-cd82-4322-86a4-dc1a1b9ab7a3/gallery-trial-data-dashboard-dashboard-hosted.png",
     artifactUrl:
@@ -71,7 +71,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A dark terminal-style market risk surface with liquidity, volatility, exposure, alerts, and watchlists for fast analyst scanning.",
     prompt:
-      "Using `zero generate website` with design system `trading-terminal` and template `dashboard`, create a polished website for a real-time market risk monitor. Show liquidity, volatility, exposure, alerts, watchlists, and a concise risk summary for an investment team. Make it feel like a dark, high-density trading terminal with clear charts and fast scanning.",
+      "/gen website with design system `trading-terminal` and template `dashboard`, create a polished website for a real-time market risk monitor. Show liquidity, volatility, exposure, alerts, watchlists, and a concise risk summary for an investment team. Make it feel like a dark, high-density trading terminal with clear charts and fast scanning.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/57d4059d-a65e-4807-b21a-a6f6ae1b4f57/gallery-trial-data-dashboard-terminal-hosted.png",
     artifactUrl:
@@ -94,7 +94,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A board-ready finance report covering spend trends, unit economics, margin pressure, vendor concentration, and optimization opportunities.",
     prompt:
-      "Using `zero generate website` with design system `dashboard` and template `finance-report`, create a polished executive website report about AI infrastructure cost efficiency. Include spend trends, unit economics, gross margin pressure, vendor concentration, optimization opportunities, risks, and a clear recommendation section. Make it feel like a rigorous board-ready report with practical charts and tables.",
+      "/gen website with design system `dashboard` and template `finance-report`, create a polished executive website report about AI infrastructure cost efficiency. Include spend trends, unit economics, gross margin pressure, vendor concentration, optimization opportunities, risks, and a clear recommendation section. Make it feel like a rigorous board-ready report with practical charts and tables.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d35e7d77-fb4f-42f7-a9c9-c41282e0c7f5/hosted-screenshot.png",
     artifactUrl:
@@ -117,7 +117,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A precise documentation page for developer-platform analytics, event taxonomy, query examples, interpretation, and data quality checks.",
     prompt:
-      "Using `zero generate website` with design system `mono` and template `docs-page`, create a polished website that documents API usage analytics for a developer platform. Include metric definitions, event taxonomy, query examples, dashboard interpretation, anomaly notes, and a concise data quality checklist. Make it feel precise, minimal, and technical without becoming cluttered.",
+      "/gen website with design system `mono` and template `docs-page`, create a polished website that documents API usage analytics for a developer platform. Include metric definitions, event taxonomy, query examples, dashboard interpretation, anomaly notes, and a concise data quality checklist. Make it feel precise, minimal, and technical without becoming cluttered.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d1f09f14-f861-4a79-9a40-794b11e04e12/hosted-screenshot-visible.png",
     artifactUrl: "https://gallery-trial-data-docs-mono-715f6d07.sites.vm0.io",
@@ -139,7 +139,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A premium editorial feature about urban microfactories, told through strong headlines, field notes, expert quotes, and image-led sections.",
     prompt:
-      "Using `zero generate website` with design system `editorial` and template `web-prototype-taste-editorial`, create a polished editorial website feature about the rise of urban microfactories. Tell the story through strong headlines, image-led sections, short field notes, expert quotes, and a closing outlook on how local manufacturing changes cities. Make it feel like a premium design magazine feature.",
+      "/gen website with design system `editorial` and template `web-prototype-taste-editorial`, create a polished editorial website feature about the rise of urban microfactories. Tell the story through strong headlines, image-led sections, short field notes, expert quotes, and a closing outlook on how local manufacturing changes cities. Make it feel like a premium design magazine feature.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d85179d8-7f58-4c1f-9f05-217f4fc3efec/hosted-desktop.png",
     artifactUrl:
@@ -162,7 +162,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A warm magazine-style story about independent coffee roasters, with founder profiles, sensory writing, and neighborhood context.",
     prompt:
-      "Using `zero generate website` with design system `warm-editorial` and template `web-prototype-taste-editorial`, create a polished magazine-style website about independent coffee roasters rebuilding neighborhood culture. Use warm storytelling, sensory details, founder profiles, a simple map-like section, and a thoughtful conclusion. Make it feel inviting, tactile, and carefully edited.",
+      "/gen website with design system `warm-editorial` and template `web-prototype-taste-editorial`, create a polished magazine-style website about independent coffee roasters rebuilding neighborhood culture. Use warm storytelling, sensory details, founder profiles, a simple map-like section, and a thoughtful conclusion. Make it feel inviting, tactile, and carefully edited.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1a78c132-62e2-4a95-81dc-ac3f7941207d/gallery-trial-article-editorial-warm-hosted.png",
     artifactUrl:
@@ -185,7 +185,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A premium product guide for travel creators, with comparison cards, setup examples, and buying considerations.",
     prompt:
-      "Using `zero generate website` with design system `apple` and template `docs-page`, create a polished website guide to choosing a modern travel camera setup. Structure it like a beautiful product guide with clear sections, comparison cards, practical examples, and buying considerations. Make it feel calm and premium, useful for creators who want to travel light.",
+      "/gen website with design system `apple` and template `docs-page`, create a polished website guide to choosing a modern travel camera setup. Structure it like a beautiful product guide with clear sections, comparison cards, practical examples, and buying considerations. Make it feel calm and premium, useful for creators who want to travel light.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/31647c3f-1e30-44cc-8a39-41fe627e0d90/hosted-desktop.png",
     artifactUrl:
@@ -208,7 +208,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A product-led launch brief for a personal finance app, covering target users, promise, trust principles, onboarding, and priorities.",
     prompt:
-      "Using `zero generate website` with design system `apple` and template `web-prototype-taste-editorial`, create a polished website for the launch brief of a personal finance app. Present the target user, product promise, key screens, trust principles, onboarding flow, differentiators, and launch priorities. Make it feel premium, calm, and product-led.",
+      "/gen website with design system `apple` and template `web-prototype-taste-editorial`, create a polished website for the launch brief of a personal finance app. Present the target user, product promise, key screens, trust principles, onboarding flow, differentiators, and launch priorities. Make it feel premium, calm, and product-led.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fa2885c1-ff65-4888-b9f7-cb9399ccaa01/hosted-screenshot.png",
     artifactUrl:
@@ -231,7 +231,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A minimal engineering handoff brief for a developer SDK, including users, jobs, onboarding, IA, API examples, and open decisions.",
     prompt:
-      "Using `zero generate website` with design system `mono` and template `docs-page`, create a polished website design brief for a developer SDK. Explain the target developers, core jobs to be done, onboarding path, information architecture, API examples, quality bar, and open decisions. Make it feel precise, minimal, and useful for an engineering handoff.",
+      "/gen website with design system `mono` and template `docs-page`, create a polished website design brief for a developer SDK. Explain the target developers, core jobs to be done, onboarding path, information architecture, API examples, quality bar, and open decisions. Make it feel precise, minimal, and useful for an engineering handoff.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b80adf01-17a1-4ddc-8c5f-a4f46da76399/hosted-desktop.png",
     artifactUrl: "https://gallery-trial-brief-docs-mono-715f6d07.sites.vm0.io",
@@ -253,7 +253,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A practical support operations dashboard brief with pain points, triage, automation opportunities, metrics, rollout, and decisions.",
     prompt:
-      "Using `zero generate website` with design system `dashboard` and template `dashboard`, create a polished website for a support operations redesign brief. Show the current pain points, workflow principles, triage model, automation opportunities, quality metrics, rollout plan, and decision log. Make it feel like a practical dashboard for support and product leaders.",
+      "/gen website with design system `dashboard` and template `dashboard`, create a polished website for a support operations redesign brief. Show the current pain points, workflow principles, triage model, automation opportunities, quality metrics, rollout plan, and decision log. Make it feel like a practical dashboard for support and product leaders.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a4f821f8-474f-4200-b1dc-30c91263a166/screenshot.png",
     artifactUrl:
@@ -276,7 +276,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A warm, premium launch page for an AI research assistant, with capabilities, prompt examples, safety principles, and an integration story.",
     prompt:
-      "Using `zero generate website` with design system `claude` and template `saas-landing`, create a launch site for an AI research assistant platform built on Claude. Cover the core capability, prompt examples, safety principles, integration paths, and a clear call to start a workspace. Make it feel warm, considered, premium, calm.",
+      "/gen website with design system `claude` and template `saas-landing`, create a launch site for an AI research assistant platform built on Claude. Cover the core capability, prompt examples, safety principles, integration paths, and a clear call to start a workspace. Make it feel warm, considered, premium, calm.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claude-ai-platform-launch.png",
     artifactUrl:
@@ -299,7 +299,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A precise API pricing comparison across reasoning, multimodal, and fast tiers, with quotas, rate limits, and a side-by-side feature matrix.",
     prompt:
-      "Using `zero generate website` with design system `openai` and template `pricing-page`, create a model API pricing page that compares reasoning, multimodal, and fast tiers. Show per-token costs, included quotas, rate limits, batch discounts, enterprise add-ons, and a side-by-side feature matrix. Make it feel precise, confident, monochrome, trustworthy.",
+      "/gen website with design system `openai` and template `pricing-page`, create a model API pricing page that compares reasoning, multimodal, and fast tiers. Show per-token costs, included quotas, rate limits, batch discounts, enterprise add-ons, and a side-by-side feature matrix. Make it feel precise, confident, monochrome, trustworthy.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/openai-api-pricing-tiers.png",
     artifactUrl:
@@ -322,7 +322,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A dense product spec for a new triage view, with problem, success metrics, scope, key states, rollout, and open questions.",
     prompt:
-      "Using `zero generate website` with design system `linear-app` and template `pm-spec`, create a product spec for shipping a new triage view in a project tracker. Cover problem, user, success metrics, scope, out-of-scope, IA, key states, rollout, and open questions. Make it feel precise, dense, keyboard-first, calm grayscale.",
+      "/gen website with design system `linear-app` and template `pm-spec`, create a product spec for shipping a new triage view in a project tracker. Cover problem, user, success metrics, scope, out-of-scope, IA, key states, rollout, and open questions. Make it feel precise, dense, keyboard-first, calm grayscale.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/linear-product-spec.png",
     artifactUrl:
@@ -345,7 +345,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A frontend deployment platform landing with framework grid, preview deploys, edge functions, analytics, and developer testimonials.",
     prompt:
-      "Using `zero generate website` with design system `vercel` and template `saas-landing`, create a landing site for a frontend deployment and edge runtime platform. Hero with framework grid, preview deploys, edge functions, analytics, pricing teaser, and developer testimonials. Make it feel sharp typography, mono accents, generous whitespace.",
+      "/gen website with design system `vercel` and template `saas-landing`, create a landing site for a frontend deployment and edge runtime platform. Hero with framework grid, preview deploys, edge functions, analytics, pricing teaser, and developer testimonials. Make it feel sharp typography, mono accents, generous whitespace.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/vercel-platform-landing.png",
     artifactUrl:
@@ -368,7 +368,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An AI-native code editor launch with inline-chat workflow, tab-tab completion, codebase indexing, and model picker.",
     prompt:
-      "Using `zero generate website` with design system `cursor` and template `saas-landing`, create a launch site for an AI-native code editor. Show inline-chat workflow, tab-tab completion, codebase indexing, model picker, keyboard shortcuts, and a download CTA. Make it feel dark editor aesthetic, vivid syntax highlights, fast and minimal.",
+      "/gen website with design system `cursor` and template `saas-landing`, create a launch site for an AI-native code editor. Show inline-chat workflow, tab-tab completion, codebase indexing, model picker, keyboard shortcuts, and a download CTA. Make it feel dark editor aesthetic, vivid syntax highlights, fast and minimal.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/cursor-ide-launch.png",
     artifactUrl:
@@ -391,7 +391,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A repository insights dashboard with PR queue, stale issues, top contributors, release cadence, and a health summary.",
     prompt:
-      "Using `zero generate website` with design system `github` and template `github-dashboard`, create a repository insights dashboard with PRs, issues, releases, and contributors. Include activity sparkline, open PR queue, stale issues, top contributors this month, release cadence, and a health summary. Make it feel GitHub octicon language, dense rows, restrained color.",
+      "/gen website with design system `github` and template `github-dashboard`, create a repository insights dashboard with PRs, issues, releases, and contributors. Include activity sparkline, open PR queue, stale issues, top contributors this month, release cadence, and a health summary. Make it feel GitHub octicon language, dense rows, restrained color.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/github-repo-dashboard.png",
     artifactUrl:
@@ -414,7 +414,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A developer docs page for auth and row-level security with code-forward examples in SQL and JavaScript.",
     prompt:
-      "Using `zero generate website` with design system `supabase` and template `docs-page`, create a docs page for the auth + row-level-security primitives. Include a left nav, body with code blocks (SQL + JS), inline warning callouts, table of contents, and a previous/next footer. Make it feel readable serif headers, green accents, code-forward.",
+      "/gen website with design system `supabase` and template `docs-page`, create a docs page for the auth + row-level-security primitives. Include a left nav, body with code blocks (SQL + JS), inline warning callouts, table of contents, and a previous/next footer. Make it feel readable serif headers, green accents, code-forward.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/supabase-developer-docs.png",
     artifactUrl:
@@ -437,7 +437,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An airy API reference page for a transcription endpoint, with request/response schemas, code samples, and a try-it panel.",
     prompt:
-      "Using `zero generate website` with design system `mintlify` and template `docs-page`, create an API reference page for a transcription endpoint. Include endpoint signature, request/response schemas, code samples in cURL/Python/JS, error table, and a try-it panel. Make it feel airy, gradient accents, friendly developer feel.",
+      "/gen website with design system `mintlify` and template `docs-page`, create an API reference page for a transcription endpoint. Include endpoint signature, request/response schemas, code samples in cURL/Python/JS, error table, and a try-it panel. Make it feel airy, gradient accents, friendly developer feel.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/mintlify-api-reference.png",
     artifactUrl:
@@ -460,7 +460,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A launch page for a Raycast extensions marketplace with a command-palette mockup, featured extensions, and a developer kit teaser.",
     prompt:
-      "Using `zero generate website` with design system `raycast` and template `saas-landing`, create a launch page for a Raycast extensions marketplace category. Hero command palette mockup, featured extensions, install flow, developer kit teaser, and a closing CTA. Make it feel punchy red accent, dark UI, hotkey-driven.",
+      "/gen website with design system `raycast` and template `saas-landing`, create a launch page for a Raycast extensions marketplace category. Hero command palette mockup, featured extensions, install flow, developer kit teaser, and a closing CTA. Make it feel punchy red accent, dark UI, hotkey-driven.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/raycast-extensions-launch.png",
     artifactUrl:
@@ -483,7 +483,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A product analytics dashboard with DAU/WAU, feature adoption funnel, retention heatmap, and a session replay teaser.",
     prompt:
-      "Using `zero generate website` with design system `posthog` and template `dashboard`, create a product analytics dashboard for activation, retention, and feature usage. Show DAU/WAU, feature adoption funnel, retention heatmap, session replay teaser, and a top-events table. Make it feel playful but data-dense, hedgehog energy without being cute.",
+      "/gen website with design system `posthog` and template `dashboard`, create a product analytics dashboard for activation, retention, and feature usage. Show DAU/WAU, feature adoption funnel, retention heatmap, session replay teaser, and a top-events table. Make it feel playful but data-dense, hedgehog energy without being cute.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/posthog-product-analytics.png",
     artifactUrl:
@@ -506,7 +506,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A team wiki entry documenting an engineering on-call rotation, with escalation policy, runbook links, and recent retros.",
     prompt:
-      "Using `zero generate website` with design system `notion` and template `blog-post`, create a team wiki entry that documents an engineering on-call rotation. Include intro callout, escalation policy, runbook links, schedule embed, and recent incident retros. Make it feel clean serif, generous spacing, page emoji headers.",
+      "/gen website with design system `notion` and template `blog-post`, create a team wiki entry that documents an engineering on-call rotation. Include intro callout, escalation policy, runbook links, schedule embed, and recent incident retros. Make it feel clean serif, generous spacing, page emoji headers.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/notion-team-wiki.png",
     artifactUrl:
@@ -529,7 +529,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A Stripe-style payments pricing page with per-transaction fees, an interactive fee calculator, FAQs, and an enterprise CTA.",
     prompt:
-      "Using `zero generate website` with design system `stripe` and template `pricing-page`, create a Stripe-style payments pricing page with per-transaction fees and add-ons. Cover standard, custom, and platform tiers, plus an interactive fee calculator section, FAQs, and enterprise contact CTA. Make it feel iconic gradient hero, crisp typography, trustworthy.",
+      "/gen website with design system `stripe` and template `pricing-page`, create a Stripe-style payments pricing page with per-transaction fees and add-ons. Cover standard, custom, and platform tiers, plus an interactive fee calculator section, FAQs, and enterprise contact CTA. Make it feel iconic gradient hero, crisp typography, trustworthy.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/stripe-payments-pricing.png",
     artifactUrl:
@@ -552,7 +552,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A launch page for a Figma-to-React plugin with install flow, before/after demo, supported components, and partner logos.",
     prompt:
-      "Using `zero generate website` with design system `figma` and template `saas-landing`, create a launch page for a new Figma plugin that turns frames into production React. Show install flow, before/after demo, supported components, team plan pricing teaser, and partner logos. Make it feel bright multi-color brand, layered shapes, clear hierarchy.",
+      "/gen website with design system `figma` and template `saas-landing`, create a launch page for a new Figma plugin that turns frames into production React. Show install flow, before/after demo, supported components, team plan pricing teaser, and partner logos. Make it feel bright multi-color brand, layered shapes, clear hierarchy.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/figma-design-tool-launch.png",
     artifactUrl:
@@ -575,7 +575,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A curated long-term-stay marketplace landing with hero search, featured cities, host stories, and trust badges.",
     prompt:
-      "Using `zero generate website` with design system `airbnb` and template `saas-landing`, create a curated landing for a long-term-stay travel marketplace. Include hero search, featured cities, host stories, trust badges, and a closing CTA to list a home. Make it feel rounded, photographic, warm coral accent.",
+      "/gen website with design system `airbnb` and template `saas-landing`, create a curated landing for a long-term-stay travel marketplace. Include hero search, featured cities, host stories, trust badges, and a closing CTA to list a home. Make it feel rounded, photographic, warm coral accent.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/airbnb-stays-marketplace.png",
     artifactUrl:
@@ -598,7 +598,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A team communications launch with channel mockups, workflow builder preview, huddles use cases, and enterprise security.",
     prompt:
-      "Using `zero generate website` with design system `slack` and template `saas-landing`, create a launch site for a new huddles + workflows release. Show channel mockups, workflow builder preview, huddles use cases, enterprise security, and team pricing. Make it feel playful aubergine palette, friendly bubbles, work-first.",
+      "/gen website with design system `slack` and template `saas-landing`, create a launch site for a new huddles + workflows release. Show channel mockups, workflow builder preview, huddles use cases, enterprise security, and team pricing. Make it feel playful aubergine palette, friendly bubbles, work-first.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/slack-team-comms-landing.png",
     artifactUrl:
@@ -621,7 +621,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A motion-rich marketing site for a no-code website builder, with template gallery, animation toolkit, and CMS.",
     prompt:
-      "Using `zero generate website` with design system `framer` and template `saas-landing`, create a marketing site for a no-code website builder aimed at design teams. Hero animation, template gallery, animation toolkit, CMS, publishing flow, and pricing. Make it feel motion-rich, bold gradient hero, designer-coded feel.",
+      "/gen website with design system `framer` and template `saas-landing`, create a marketing site for a no-code website builder aimed at design teams. Hero animation, template gallery, animation toolkit, CMS, publishing flow, and pricing. Make it feel motion-rich, bold gradient hero, designer-coded feel.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/framer-website-builder.png",
     artifactUrl:
@@ -644,7 +644,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A team brand-kit feature launch with kit setup, asset library, AI generator, team approvals, and pricing tiers.",
     prompt:
-      "Using `zero generate website` with design system `canva` and template `saas-landing`, create a launch site for a team brand-kit feature inside a creative platform. Show kit setup, asset library, AI generator, team approvals, and pricing tiers. Make it feel vivid purple gradient, playful illustration, friendly.",
+      "/gen website with design system `canva` and template `saas-landing`, create a launch site for a team brand-kit feature inside a creative platform. Show kit setup, asset library, AI generator, team approvals, and pricing tiers. Make it feel vivid purple gradient, playful illustration, friendly.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/canva-brand-kit-launch.png",
     artifactUrl:
@@ -667,7 +667,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An AI customer support agent launch with deflection rate, citations, supported channels, and a self-serve setup CTA.",
     prompt:
-      "Using `zero generate website` with design system `intercom` and template `saas-landing`, create a launch site for an AI customer support agent built on top of Intercom. Cover deflection rate, handoff to human, sources/citations, supported channels, and a self-serve setup CTA. Make it feel blue/black brand, conversational mockups, calm and capable.",
+      "/gen website with design system `intercom` and template `saas-landing`, create a launch site for an AI customer support agent built on top of Intercom. Cover deflection rate, handoff to human, sources/citations, supported channels, and a self-serve setup CTA. Make it feel blue/black brand, conversational mockups, calm and capable.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/intercom-support-launch.png",
     artifactUrl:
@@ -690,7 +690,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A cinematic launch for a wearable health device with floating product render, sensor breakdown, and a configurator CTA.",
     prompt:
-      "Using `zero generate website` with design system `apple` and template `saas-landing`, create a launch site for a new wearable health device. Hero with floating product render, capability sections, sensor breakdown, sustainability note, and a configurator CTA. Make it feel cinematic, monochrome, generous whitespace, premium.",
+      "/gen website with design system `apple` and template `saas-landing`, create a launch site for a new wearable health device. Hero with floating product render, capability sections, sensor breakdown, sustainability note, and a configurator CTA. Make it feel cinematic, monochrome, generous whitespace, premium.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/apple-product-launch.png",
     artifactUrl:
@@ -713,7 +713,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A launch for a home energy storage product with daily savings chart, install timeline, app integration, and reserve CTA.",
     prompt:
-      "Using `zero generate website` with design system `tesla` and template `saas-landing`, create a launch site for a home energy storage product. Hero with product silhouette, daily energy savings chart, install timeline, app integration, and reserve CTA. Make it feel black/white, sharp typography, futuristic minimalism.",
+      "/gen website with design system `tesla` and template `saas-landing`, create a launch site for a home energy storage product. Hero with product silhouette, daily energy savings chart, install timeline, app integration, and reserve CTA. Make it feel black/white, sharp typography, futuristic minimalism.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/tesla-energy-launch.png",
     artifactUrl:
@@ -736,7 +736,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A flagship running shoe launch with editorial photography, athlete story, tech breakdown, and color picker.",
     prompt:
-      "Using `zero generate website` with design system `nike` and template `saas-landing`, create a launch site for a flagship running shoe with adaptive cushioning. Hero with editorial photography, athlete story, tech breakdown, color picker, and pre-order CTA. Make it feel bold all-caps, high-contrast, athletic energy.",
+      "/gen website with design system `nike` and template `saas-landing`, create a launch site for a flagship running shoe with adaptive cushioning. Hero with editorial photography, athlete story, tech breakdown, color picker, and pre-order CTA. Make it feel bold all-caps, high-contrast, athletic energy.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/nike-running-launch.png",
     artifactUrl: "https://nike-running-launch-715f6d07.sites.vm0.io",
@@ -758,7 +758,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A curated genre takeover landing with editorial hero, artist spotlight, playlist embeds, and a behind-the-scenes story.",
     prompt:
-      "Using `zero generate website` with design system `spotify` and template `saas-landing`, create a landing page for a curated genre takeover. Editorial hero, artist spotlight, playlist embeds, behind-the-scenes story, and a listen CTA. Make it feel black + vivid green, glossy album art tiles, energetic.",
+      "/gen website with design system `spotify` and template `saas-landing`, create a landing page for a curated genre takeover. Editorial hero, artist spotlight, playlist embeds, behind-the-scenes story, and a listen CTA. Make it feel black + vivid green, glossy album art tiles, energetic.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/spotify-music-landing.png",
     artifactUrl:
@@ -781,7 +781,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A verified community server template launch for indie game devs, with channel mockup, role system, and voice stages.",
     prompt:
-      "Using `zero generate website` with design system `discord` and template `saas-landing`, create a landing for a verified community server template for indie game devs. Hero with channel mockup, role system, voice stages, moderation tools, and a join CTA. Make it feel blurple gradient, playful illustration, gamer-friendly.",
+      "/gen website with design system `discord` and template `saas-landing`, create a landing for a verified community server template for indie game devs. Hero with channel mockup, role system, voice stages, moderation tools, and a join CTA. Make it feel blurple gradient, playful illustration, gamer-friendly.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/discord-community-launch.png",
     artifactUrl:
@@ -804,7 +804,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A quarterly platform update with release highlights, three feature deep-dives, developer changelog, and roadmap teaser.",
     prompt:
-      "Using `zero generate website` with design system `meta` and template `saas-landing`, create a quarterly product update site for an open social graph platform. Hero with release highlights, three feature deep-dives, developer changelog, and roadmap teaser. Make it feel modernist blue, large typography, photo-led.",
+      "/gen website with design system `meta` and template `saas-landing`, create a quarterly product update site for an open social graph platform. Hero with release highlights, three feature deep-dives, developer changelog, and roadmap teaser. Make it feel modernist blue, large typography, photo-led.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/meta-platform-update.png",
     artifactUrl:
@@ -827,7 +827,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A personal crypto portfolio dashboard with total value, 24h change, top movers, allocation chart, and recent transactions.",
     prompt:
-      "Using `zero generate website` with design system `coinbase` and template `dashboard`, create a personal crypto portfolio dashboard with P&L, holdings, and recent activity. Show total value, 24h change, top movers, allocation chart, recent transactions, and watchlist. Make it feel cobalt blue, calm trust signals, clean rows.",
+      "/gen website with design system `coinbase` and template `dashboard`, create a personal crypto portfolio dashboard with P&L, holdings, and recent activity. Show total value, 24h change, top movers, allocation chart, recent transactions, and watchlist. Make it feel cobalt blue, calm trust signals, clean rows.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/coinbase-portfolio-dashboard.png",
     artifactUrl:
@@ -850,7 +850,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A dense exchange trading terminal with order book, depth chart, candlesticks, open positions, and watchlist sidebar.",
     prompt:
-      "Using `zero generate website` with design system `binance` and template `trading-analysis-dashboard-template`, create a dense trading terminal for a major exchange. Order book, depth chart, candlestick chart, open positions, recent fills, and watchlist sidebar. Make it feel dark, amber accent, ticker-dense, high-information.",
+      "/gen website with design system `binance` and template `trading-analysis-dashboard-template`, create a dense trading terminal for a major exchange. Order book, depth chart, candlestick chart, open positions, recent fills, and watchlist sidebar. Make it feel dark, amber accent, ticker-dense, high-information.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/binance-trading-terminal.png",
     artifactUrl:
@@ -873,7 +873,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A premium metal travel card launch with card render, FX savings calculator, lounge perks, and order CTA.",
     prompt:
-      "Using `zero generate website` with design system `revolut` and template `saas-landing`, create a launch site for a premium metal travel card. Hero with card render, FX savings calculator, lounge perks, security, and order CTA. Make it feel dark luxe, neon accents, fintech polish.",
+      "/gen website with design system `revolut` and template `saas-landing`, create a launch site for a premium metal travel card. Hero with card render, FX savings calculator, lounge perks, security, and order CTA. Make it feel dark luxe, neon accents, fintech polish.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/revolut-card-launch.png",
     artifactUrl:
@@ -896,7 +896,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A creator cloud storage launch with frosted hero panels, floating cards over a vivid gradient, and an integrations grid.",
     prompt:
-      "Using `zero generate website` with design system `glassmorphism` and template `saas-landing`, create a launch site for a creator cloud storage product. Frosted hero panels, floating cards over a vivid gradient, pricing trio, and integrations grid. Make it feel vibrant gradient backdrop, blurred glass surfaces, light and airy.",
+      "/gen website with design system `glassmorphism` and template `saas-landing`, create a launch site for a creator cloud storage product. Frosted hero panels, floating cards over a vivid gradient, pricing trio, and integrations grid. Make it feel vibrant gradient backdrop, blurred glass surfaces, light and airy.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/glassmorphism-saas-launch.png",
     artifactUrl:
@@ -919,7 +919,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An opinionated to-do app marketing site with hard-shadow sticker cards, screenshot strip, and a punchy pricing block.",
     prompt:
-      "Using `zero generate website` with design system `neobrutalism` and template `web-prototype-taste-brutalist`, create a marketing site for an opinionated to-do app. Loud headline, sticker-like cards with hard shadows, screenshot strip, and a punchy pricing block. Make it feel thick borders, hard offset shadows, primary colors, playful.",
+      "/gen website with design system `neobrutalism` and template `web-prototype-taste-brutalist`, create a marketing site for an opinionated to-do app. Loud headline, sticker-like cards with hard shadows, screenshot strip, and a punchy pricing block. Make it feel thick borders, hard offset shadows, primary colors, playful.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/neobrutalism-todo-launch.png",
     artifactUrl:
@@ -942,7 +942,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A tactile music control app landing with soft button gallery, preset library, and room calibration.",
     prompt:
-      "Using `zero generate website` with design system `neumorphism` and template `saas-landing`, create a landing for a tactile music control app for hi-fi setups. Hero device mockup, soft button gallery, preset library, room calibration, and download CTA. Make it feel soft inset/outset shadows, monochrome, calm and tactile.",
+      "/gen website with design system `neumorphism` and template `saas-landing`, create a landing for a tactile music control app for hi-fi setups. Hero device mockup, soft button gallery, preset library, room calibration, and download CTA. Make it feel soft inset/outset shadows, monochrome, calm and tactile.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/neumorphism-music-controls.png",
     artifactUrl: "https://neumorphism-music-controls-715f6d07.sites.vm0.io",
@@ -964,7 +964,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A raw indie design zine launch with issue grid, contributor list, manifesto strip, and a subscribe block.",
     prompt:
-      "Using `zero generate website` with design system `brutalism` and template `web-prototype-taste-brutalist`, create a launch site for a quarterly independent design zine. Raw issue grid, contributor list, subscribe block, and a manifesto strip. Make it feel raw type, monospace, no-frills, system fonts allowed.",
+      "/gen website with design system `brutalism` and template `web-prototype-taste-brutalist`, create a launch site for a quarterly independent design zine. Raw issue grid, contributor list, subscribe block, and a manifesto strip. Make it feel raw type, monospace, no-frills, system fonts allowed.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/brutalism-zine-launch.png",
     artifactUrl:
@@ -987,7 +987,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A playful learning app landing for kids with bouncy 3D characters, big play buttons, parent approval, and family plan.",
     prompt:
-      "Using `zero generate website` with design system `claymorphism` and template `saas-landing`, create a landing for a learning app for kids. Bouncy 3D characters, big play buttons, parent-approval section, pricing, and family plan. Make it feel rounded clay shapes, soft shadows, playful pastels.",
+      "/gen website with design system `claymorphism` and template `saas-landing`, create a landing for a learning app for kids. Bouncy 3D characters, big play buttons, parent-approval section, pricing, and family plan. Make it feel rounded clay shapes, soft shadows, playful pastels.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claymorphism-kids-app.png",
     artifactUrl:
@@ -1010,7 +1010,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A long-form magazine feature on contemporary type design, with hero spread, pull quotes, image-led sections, and footnotes.",
     prompt:
-      "Using `zero generate website` with design system `editorial` and template `blog-post`, create a long-form magazine feature on contemporary type design. Hero spread, body with pull quotes, image-led sections, footnotes, and related reading. Make it feel strong serif headlines, premium magazine grid, calm.",
+      "/gen website with design system `editorial` and template `blog-post`, create a long-form magazine feature on contemporary type design. Hero spread, body with pull quotes, image-led sections, footnotes, and related reading. Make it feel strong serif headlines, premium magazine grid, calm.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/editorial-design-magazine.png",
     artifactUrl:
@@ -1033,7 +1033,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A warm essay on slow cooking traditions across three cities, with field notes, pull quotes, and a recipe footer.",
     prompt:
-      "Using `zero generate website` with design system `warm-editorial` and template `blog-post`, create a warm essay on slow cooking traditions across three cities. Hero photo, intro, three city sections with field notes, pull quotes, and a recipe footer. Make it feel paper background, warm serif, intimate and inviting.",
+      "/gen website with design system `warm-editorial` and template `blog-post`, create a warm essay on slow cooking traditions across three cities. Hero photo, intro, three city sections with field notes, pull quotes, and a recipe footer. Make it feel paper background, warm serif, intimate and inviting.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/warm-editorial-essay.png",
     artifactUrl:
@@ -1056,7 +1056,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A monochrome documentation page for a Unix-style log CLI, with man-page code blocks, examples, and exit codes.",
     prompt:
-      "Using `zero generate website` with design system `mono` and template `docs-page`, create a documentation page for a Unix-style log CLI. Left nav, body with man-page-style code blocks, examples, exit codes, and a 'see also' footer. Make it feel monochrome, monospace, terminal aesthetic, calm.",
+      "/gen website with design system `mono` and template `docs-page`, create a documentation page for a Unix-style log CLI. Left nav, body with man-page-style code blocks, examples, exit codes, and a 'see also' footer. Make it feel monochrome, monospace, terminal aesthetic, calm.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/mono-developer-docs.png",
     artifactUrl:
@@ -1079,7 +1079,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A productivity bundle landing with an asymmetric bento grid of features, mini mockups, testimonials, and pricing.",
     prompt:
-      "Using `zero generate website` with design system `bento` and template `saas-landing`, create a landing page for a productivity bundle with a bento-style feature grid. Hero, asymmetric bento grid of 7-9 features with mini mockups, testimonials, and pricing. Make it feel Apple-style rounded tiles, layered depth, light theme.",
+      "/gen website with design system `bento` and template `saas-landing`, create a landing page for a productivity bundle with a bento-style feature grid. Hero, asymmetric bento grid of 7-9 features with mini mockups, testimonials, and pricing. Make it feel Apple-style rounded tiles, layered depth, light theme.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/bento-feature-grid.png",
     artifactUrl:
@@ -1102,7 +1102,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An on-device AI runtime launch with animated grid hero, capability triad, model card, benchmarks, and early-access form.",
     prompt:
-      "Using `zero generate website` with design system `futuristic` and template `saas-landing`, create a launch site for a next-gen on-device AI runtime. Hero with animated grid, capability triad, model card, benchmarks, and an early-access form. Make it feel dark neon, holographic accents, sci-fi polish.",
+      "/gen website with design system `futuristic` and template `saas-landing`, create a launch site for a next-gen on-device AI runtime. Hero with animated grid, capability triad, model card, benchmarks, and an early-access form. Make it feel dark neon, holographic accents, sci-fi polish.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/futuristic-ai-launch.png",
     artifactUrl:
@@ -1125,7 +1125,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A creator lifestyle dashboard with top stats, posts grid, trending tags, follower chart, and a draft composer card.",
     prompt:
-      "Using `zero generate website` with design system `xiaohongshu` and template `social-media-dashboard`, create a creator-facing lifestyle content dashboard with a Xiaohongshu vibe. Top stats, recent posts grid, trending tags, follower chart, and a draft composer card. Make it feel soft pinks, rounded cards, photogenic, friendly.",
+      "/gen website with design system `xiaohongshu` and template `social-media-dashboard`, create a creator-facing lifestyle content dashboard with a Xiaohongshu vibe. Top stats, recent posts grid, trending tags, follower chart, and a draft composer card. Make it feel soft pinks, rounded cards, photogenic, friendly.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/xiaohongshu-lifestyle-feed.png",
     artifactUrl:
@@ -1148,7 +1148,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A mini-program launch for small shops with QR mockup, three core flows, merchant testimonials, and a setup CTA.",
     prompt:
-      "Using `zero generate website` with design system `wechat` and template `saas-landing`, create a launch page for a mini-program that helps small shops accept orders. Hero with QR mockup, three core flows, merchant testimonials, and a setup CTA. Make it feel green brand, clean cards, super-app polish.",
+      "/gen website with design system `wechat` and template `saas-landing`, create a launch page for a mini-program that helps small shops accept orders. Hero with QR mockup, three core flows, merchant testimonials, and a setup CTA. Make it feel green brand, clean cards, super-app polish.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/wechat-mini-program-launch.png",
     artifactUrl:
@@ -1171,7 +1171,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A long-form review of a new pair of AR glasses with bold typography, scored breakdown, photo essay, and a verdict block.",
     prompt:
-      "Using `zero generate website` with design system `theverge` and template `blog-post`, create a long-form review of a new pair of AR glasses. Hero with bold typography, scored breakdown, photo essay, hands-on notes, and a verdict block. Make it feel bright magenta accents, energetic type, modern tech magazine.",
+      "/gen website with design system `theverge` and template `blog-post`, create a long-form review of a new pair of AR glasses. Hero with bold typography, scored breakdown, photo essay, hands-on notes, and a verdict block. Make it feel bright magenta accents, energetic type, modern tech magazine.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/theverge-tech-feature.png",
     artifactUrl:
@@ -1194,7 +1194,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A music-production sample pack launch with neon grid hero, audio waveforms, license tiers, and a download CTA.",
     prompt:
-      "Using `zero generate website` with design system `retro` and template `saas-landing`, create a launch page for a music-production sample pack inspired by the 80s. Hero with neon grid, pack contents, audio waveforms, license tiers, and download CTA. Make it feel magenta + cyan, sun-grid horizons, VHS feel.",
+      "/gen website with design system `retro` and template `saas-landing`, create a launch page for a music-production sample pack inspired by the 80s. Hero with neon grid, pack contents, audio waveforms, license tiers, and download CTA. Make it feel magenta + cyan, sun-grid horizons, VHS feel.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/retro-synthwave-product.png",
     artifactUrl:
@@ -1217,7 +1217,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A flagship action-adventure game launch with cinematic hero, trailer placeholder, gameplay pillars, and pre-order CTA.",
     prompt:
-      "Using `zero generate website` with design system `playstation` and template `saas-landing`, create a launch site for a flagship action-adventure game. Cinematic hero, story trailer placeholder, gameplay pillars, edition picker, and pre-order CTA. Make it feel dark blue, blade-runner gradient, console-quality polish.",
+      "/gen website with design system `playstation` and template `saas-landing`, create a launch site for a flagship action-adventure game. Cinematic hero, story trailer placeholder, gameplay pillars, edition picker, and pre-order CTA. Make it feel dark blue, blade-runner gradient, console-quality polish.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/playstation-game-launch.png",
     artifactUrl:
@@ -1240,7 +1240,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A browser remake of a classic arcade game with maze hero, play-now CTA, leaderboard, and character roster.",
     prompt:
-      "Using `zero generate website` with design system `pacman` and template `gamified-app`, create a landing page for a browser-based remake of a classic arcade game. Hero with maze illustration, play-now CTA, leaderboard, character roster, and history note. Make it feel 8-bit pixel grid, primary colors, joyful.",
+      "/gen website with design system `pacman` and template `gamified-app`, create a landing page for a browser-based remake of a classic arcade game. Hero with maze illustration, play-now CTA, leaderboard, character roster, and history note. Make it feel 8-bit pixel grid, primary colors, joyful.",
     previewImage:
       "https://web-design-pass1-previews-715f6d07.sites.vm0.io/pacman-arcade-landing.png",
     artifactUrl:
@@ -1263,7 +1263,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A low-code workflow board with view tabs, grouped records, KPIs, and an automation log.",
     prompt:
-      "Using `zero generate website` with design system `airtable` and template `dashboard`, create a low-code workflow board for product launches. Topbar, view tabs, grouped records, sidebar with KPIs, and automation log. Make it feel vibrant brand colors, dense grid, friendly.",
+      "/gen website with design system `airtable` and template `dashboard`, create a low-code workflow board for product launches. Topbar, view tabs, grouped records, sidebar with KPIs, and automation log. Make it feel vibrant brand colors, dense grid, friendly.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/244e183b-74b5-493b-9290-02007772feb4/airtable-workflow-board.png",
     artifactUrl:
@@ -1286,7 +1286,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A browser launch page with sidebar mockup, spaces flow, command bar, and AI assist teaser.",
     prompt:
-      "Using `zero generate website` with design system `arc` and template `saas-landing`, create a launch site for a browser that organizes tabs into spaces. Hero with sidebar mockup, spaces flow, command bar, AI assist teaser, and download CTA. Make it feel playful gradient, generous whitespace, designer-favorite.",
+      "/gen website with design system `arc` and template `saas-landing`, create a launch site for a browser that organizes tabs into spaces. Hero with sidebar mockup, spaces flow, command bar, AI assist teaser, and download CTA. Make it feel playful gradient, generous whitespace, designer-favorite.",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e3d20797-dd13-4c50-b1f9-b02b5b1d2ba0/arc-browser-launch.png",
     artifactUrl:
@@ -1309,7 +1309,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A BMW i7 luxury electric sedan launch with silhouette, range chart, interior tech, and configurator.",
     prompt:
-      "Using `zero generate website` with design system `bmw` and template `saas-landing`, create a launch site for the BMW i7 luxury electric sedan. Hero with car silhouette, range chart, interior tech, design language, and configurator CTA. Make it feel navy blue, precise typography, premium German polish.",
+      "/gen website with design system `bmw` and template `saas-landing`, create a launch site for the BMW i7 luxury electric sedan. Hero with car silhouette, range chart, interior tech, design language, and configurator CTA. Make it feel navy blue, precise typography, premium German polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/bmw-i7-launch.png",
     artifactUrl: "https://bmw-i7-launch-715f6d07.sites.vm0.io",
@@ -1331,7 +1331,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A Bugatti Tourbillon launch with engineering deep-dive, atelier story, and an allocation request form.",
     prompt:
-      "Using `zero generate website` with design system `bugatti` and template `saas-landing`, create a launch site for the Bugatti Tourbillon hyper sports car. Hero with silhouette, engineering deep-dive, atelier story, allocation request form, and concierge contact. Make it feel haute couture, navy and gold, quiet ultra-luxury.",
+      "/gen website with design system `bugatti` and template `saas-landing`, create a launch site for the Bugatti Tourbillon hyper sports car. Hero with silhouette, engineering deep-dive, atelier story, allocation request form, and concierge contact. Make it feel haute couture, navy and gold, quiet ultra-luxury.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/bugatti-tourbillon-launch.png",
     artifactUrl: "https://bugatti-tourbillon-launch-715f6d07.sites.vm0.io",
@@ -1353,7 +1353,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A launch site for an open-source scheduling tool with embed mockup, booking flow, and integrations.",
     prompt:
-      "Using `zero generate website` with design system `cal` and template `saas-landing`, create a launch site for an open-source scheduling tool. Hero with embed mockup, booking flow, integrations, self-host option, and pricing. Make it feel black and white with electric accent, calm, designer-aware.",
+      "/gen website with design system `cal` and template `saas-landing`, create a launch site for an open-source scheduling tool. Hero with embed mockup, booking flow, integrations, self-host option, and pricing. Make it feel black and white with electric accent, calm, designer-aware.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cal-scheduling-launch.png",
     artifactUrl: "https://cal-scheduling-launch-715f6d07.sites.vm0.io",
@@ -1375,7 +1375,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An enterprise retrieval-augmented-generation platform launch with embed model, rerank, citations, and on-prem options.",
     prompt:
-      "Using `zero generate website` with design system `cohere` and template `saas-landing`, create a launch site for an enterprise retrieval augmented generation platform. Cover embed model, rerank, citations, on-prem options, and a request-access form. Make it feel trustworthy magenta gradients, enterprise polish, careful copy.",
+      "/gen website with design system `cohere` and template `saas-landing`, create a launch site for an enterprise retrieval augmented generation platform. Cover embed model, rerank, citations, on-prem options, and a request-access form. Make it feel trustworthy magenta gradients, enterprise polish, careful copy.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cohere-enterprise-rag.png",
     artifactUrl: "https://cohere-enterprise-rag-715f6d07.sites.vm0.io",
@@ -1397,7 +1397,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A multiplayer space exploration sim landing with star-field, faction picker, and beta sign-up.",
     prompt:
-      "Using `zero generate website` with design system `cosmic` and template `saas-landing`, create a landing page for a multiplayer space exploration sim. Hero with star-field, faction picker, ship roster, season roadmap, and beta sign-up CTA. Make it feel deep space gradients, star-field, sci-fi gravitas.",
+      "/gen website with design system `cosmic` and template `saas-landing`, create a landing page for a multiplayer space exploration sim. Hero with star-field, faction picker, ship roster, season roadmap, and beta sign-up CTA. Make it feel deep space gradients, star-field, sci-fi gravitas.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cosmic-space-sim.png",
     artifactUrl: "https://cosmic-space-sim-715f6d07.sites.vm0.io",
@@ -1419,7 +1419,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An indie pixel-art puzzle game launch with dithered key art, gameplay loop, and a wishlist CTA.",
     prompt:
-      "Using `zero generate website` with design system `dithered` and template `web-prototype`, create a launch site for an indie pixel-art puzzle game. Hero with dithered key art, story snippet, gameplay loop, soundtrack snippet, and wishlist CTA. Make it feel 1-bit dithered halftone, monochrome with one accent, retro indie warmth.",
+      "/gen website with design system `dithered` and template `web-prototype`, create a launch site for an indie pixel-art puzzle game. Hero with dithered key art, story snippet, gameplay loop, soundtrack snippet, and wishlist CTA. Make it feel 1-bit dithered halftone, monochrome with one accent, retro indie warmth.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/dithered-indie-launch.png",
     artifactUrl: "https://dithered-indie-launch-715f6d07.sites.vm0.io",
@@ -1441,7 +1441,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A hand-drawn kids storybook subscription landing with character doodles, sample pages, and gift options.",
     prompt:
-      "Using `zero generate website` with design system `doodle` and template `saas-landing`, create a landing page for a hand-drawn kids storybook subscription. Hero with character doodle, sample pages, age guide, gift options, and subscribe CTA. Make it feel hand-drawn lines, crayon textures, joyful and warm.",
+      "/gen website with design system `doodle` and template `saas-landing`, create a landing page for a hand-drawn kids storybook subscription. Hero with character doodle, sample pages, age guide, gift options, and subscribe CTA. Make it feel hand-drawn lines, crayon textures, joyful and warm.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/doodle-kids-book.png",
     artifactUrl: "https://doodle-kids-book-715f6d07.sites.vm0.io",
@@ -1463,7 +1463,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A daily-streak language learning launch with mascot scene, lesson preview, and leaderboards.",
     prompt:
-      "Using `zero generate website` with design system `duolingo` and template `gamified-app`, create a landing page for a new daily-streak language learning experience. Hero with mascot scene, daily streak demo, lesson preview, leaderboards, and family plan. Make it feel green energetic, playful illustrations, encouraging.",
+      "/gen website with design system `duolingo` and template `gamified-app`, create a landing page for a new daily-streak language learning experience. Hero with mascot scene, daily streak demo, lesson preview, leaderboards, and family plan. Make it feel green energetic, playful illustrations, encouraging.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/duolingo-language-launch.png",
     artifactUrl: "https://duolingo-language-launch-715f6d07.sites.vm0.io",
@@ -1485,7 +1485,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A voice cloning launch with sample players, language list, use cases, and a safety policy.",
     prompt:
-      "Using `zero generate website` with design system `elevenlabs` and template `saas-landing`, create a launch site for a multilingual voice cloning model. Voice sample player mockups, language list, use cases, safety policy, and pricing. Make it feel purple-black, audio waveform accents, premium.",
+      "/gen website with design system `elevenlabs` and template `saas-landing`, create a launch site for a multilingual voice cloning model. Voice sample player mockups, language list, use cases, safety policy, and pricing. Make it feel purple-black, audio waveform accents, premium.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/elevenlabs-voice-launch.png",
     artifactUrl: "https://elevenlabs-voice-launch-715f6d07.sites.vm0.io",
@@ -1507,7 +1507,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A Ferrari 296 GTS hybrid spider launch with silhouette, performance numbers, and book-a-test-drive CTA.",
     prompt:
-      "Using `zero generate website` with design system `ferrari` and template `saas-landing`, create a launch site for the Ferrari 296 GTS hybrid spider. Hero with car silhouette, performance numbers, design language, color options, and book a test drive CTA. Make it feel iconic Ferrari red, cinematic photography mood, motorsport heritage.",
+      "/gen website with design system `ferrari` and template `saas-landing`, create a launch site for the Ferrari 296 GTS hybrid spider. Hero with car silhouette, performance numbers, design language, color options, and book a test drive CTA. Make it feel iconic Ferrari red, cinematic photography mood, motorsport heritage.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/ferrari-296-launch.png",
     artifactUrl: "https://ferrari-296-launch-715f6d07.sites.vm0.io",
@@ -1529,7 +1529,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A personalized fitness app launch with workout mockup, program library, and family plan.",
     prompt:
-      "Using `zero generate website` with design system `gradient` and template `saas-landing`, create a launch site for a personalized fitness app. Hero with workout mockup, program library, coach-led plans, family plan, and try-free CTA. Make it feel vivid multi-stop gradients, glossy surfaces, motivating.",
+      "/gen website with design system `gradient` and template `saas-landing`, create a launch site for a personalized fitness app. Hero with workout mockup, program library, coach-led plans, family plan, and try-free CTA. Make it feel vivid multi-stop gradients, glossy surfaces, motivating.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/gradient-fitness-launch.png",
     artifactUrl: "https://gradient-fitness-launch-715f6d07.sites.vm0.io",
@@ -1551,7 +1551,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A docs page for infrastructure-as-code with HCL blocks, resource reference, and provider notes.",
     prompt:
-      "Using `zero generate website` with design system `hashicorp` and template `docs-page`, create a docs page for infrastructure-as-code configuration. Left nav, HCL code blocks, resource reference, examples, and provider notes. Make it feel indigo brand, calm and authoritative, ops-team comfort.",
+      "/gen website with design system `hashicorp` and template `docs-page`, create a docs page for infrastructure-as-code configuration. Left nav, HCL code blocks, resource reference, examples, and provider notes. Make it feel indigo brand, calm and authoritative, ops-team comfort.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/hashicorp-config-docs.png",
     artifactUrl: "https://hashicorp-config-docs-715f6d07.sites.vm0.io",
@@ -1573,7 +1573,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A transformers pipelines docs page with code blocks, model card embeds, and warnings.",
     prompt:
-      "Using `zero generate website` with design system `huggingface` and template `docs-page`, create a docs page for the transformers library pipelines API. Left nav, body with Python code blocks, model card embeds, warnings, and previous/next footer. Make it feel warm yellow accent, friendly developer feel, hub-energy.",
+      "/gen website with design system `huggingface` and template `docs-page`, create a docs page for the transformers library pipelines API. Left nav, body with Python code blocks, model card embeds, warnings, and previous/next footer. Make it feel warm yellow accent, friendly developer feel, hub-energy.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/huggingface-transformers-docs.png",
     artifactUrl: "https://huggingface-transformers-docs-715f6d07.sites.vm0.io",
@@ -1595,7 +1595,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A long-form research feature about a quantum computing milestone with technical breakdown and quotes.",
     prompt:
-      "Using `zero generate website` with design system `ibm` and template `blog-post`, create a long-form research feature about a milestone in quantum computing. Lab story, technical breakdown, illustrations, expert quotes, and what's next section. Make it feel IBM blue, IBM Plex typography, research-paper authority.",
+      "/gen website with design system `ibm` and template `blog-post`, create a long-form research feature about a milestone in quantum computing. Lab story, technical breakdown, illustrations, expert quotes, and what's next section. Make it feel IBM blue, IBM Plex typography, research-paper authority.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/ibm-quantum-feature.png",
     artifactUrl: "https://ibm-quantum-feature-715f6d07.sites.vm0.io",
@@ -1617,7 +1617,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A spot trading terminal with order book, depth chart, candlesticks, positions, and fee schedule.",
     prompt:
-      "Using `zero generate website` with design system `kraken` and template `trading-analysis-dashboard-template`, create a spot trading terminal with charts and order management. Order book, depth chart, candlestick chart, open positions, and exchange-fee schedule. Make it feel deep purple-black, professional trader feel, dense data.",
+      "/gen website with design system `kraken` and template `trading-analysis-dashboard-template`, create a spot trading terminal with charts and order management. Order book, depth chart, candlestick chart, open positions, and exchange-fee schedule. Make it feel deep purple-black, professional trader feel, dense data.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/kraken-spot-terminal.png",
     artifactUrl: "https://kraken-spot-terminal-715f6d07.sites.vm0.io",
@@ -1639,7 +1639,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A Lamborghini Revuelto V12 plug-in hybrid launch with drive modes, weight chart, and configurator.",
     prompt:
-      "Using `zero generate website` with design system `lamborghini` and template `saas-landing`, create a launch site for the Lamborghini Revuelto plug-in hybrid V12. Hero with silhouette, drive modes, weight distribution chart, configurator, and reserve CTA. Make it feel bold yellow + black, angular hexagons, dramatic Italian energy.",
+      "/gen website with design system `lamborghini` and template `saas-landing`, create a launch site for the Lamborghini Revuelto plug-in hybrid V12. Hero with silhouette, drive modes, weight distribution chart, configurator, and reserve CTA. Make it feel bold yellow + black, angular hexagons, dramatic Italian energy.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/lamborghini-revuelto-launch.png",
     artifactUrl: "https://lamborghini-revuelto-launch-715f6d07.sites.vm0.io",
@@ -1661,7 +1661,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An async video review feature launch with record-and-share demo, threads, and transcripts.",
     prompt:
-      "Using `zero generate website` with design system `loom` and template `saas-landing`, create a launch site for an async video review feature. Hero with record-and-share demo, threads, transcript, integrations, and team pricing. Make it feel purple accent, friendly UI mockups, work-first.",
+      "/gen website with design system `loom` and template `saas-landing`, create a launch site for an async video review feature. Hero with record-and-share demo, threads, transcript, integrations, and team pricing. Make it feel purple accent, friendly UI mockups, work-first.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/loom-async-video-launch.png",
     artifactUrl: "https://loom-async-video-launch-715f6d07.sites.vm0.io",
@@ -1683,7 +1683,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A chat-to-app builder marketing site with prompt-to-app demo, deploy flow, and templates gallery.",
     prompt:
-      "Using `zero generate website` with design system `lovable` and template `saas-landing`, create a marketing site for a chat-to-app builder. Prompt-to-app demo, framework support, deploy flow, templates gallery, and pricing. Make it feel warm gradient, playful illustrations, optimistic.",
+      "/gen website with design system `lovable` and template `saas-landing`, create a marketing site for a chat-to-app builder. Prompt-to-app demo, framework support, deploy flow, templates gallery, and pricing. Make it feel warm gradient, playful illustrations, optimistic.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/lovable-vibe-coding-launch.png",
     artifactUrl: "https://lovable-vibe-coding-launch-715f6d07.sites.vm0.io",
@@ -1705,7 +1705,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A corporate spend card launch with card render, expense controls, integrations, and security badges.",
     prompt:
-      "Using `zero generate website` with design system `mastercard` and template `saas-landing`, create a launch site for a corporate spend card with controls. Hero with card render, expense controls, integrations, security badges, and request demo CTA. Make it feel trustworthy red-orange brand, business polish, dense feature grid.",
+      "/gen website with design system `mastercard` and template `saas-landing`, create a launch site for a corporate spend card with controls. Hero with card render, expense controls, integrations, security badges, and request demo CTA. Make it feel trustworthy red-orange brand, business polish, dense feature grid.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mastercard-corporate-card.png",
     artifactUrl: "https://mastercard-corporate-card-715f6d07.sites.vm0.io",
@@ -1727,7 +1727,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A Material Design 3 component spec page with anatomy, states, motion, and accessibility notes.",
     prompt:
-      "Using `zero generate website` with design system `material` and template `docs-page`, create a spec page for a Material Design 3 component. Left nav, anatomy diagram, states table, motion guidance, code snippet, and accessibility notes. Make it feel Material colors, clear hierarchy, spec-paper polish.",
+      "/gen website with design system `material` and template `docs-page`, create a spec page for a Material Design 3 component. Left nav, anatomy diagram, states table, motion guidance, code snippet, and accessibility notes. Make it feel Material colors, clear hierarchy, spec-paper polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/material-design-spec.png",
     artifactUrl: "https://material-design-spec-715f6d07.sites.vm0.io",
@@ -1749,7 +1749,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A text-to-video API launch with generation examples, prompt tips, latency tiers, and pricing.",
     prompt:
-      "Using `zero generate website` with design system `minimax` and template `saas-landing`, create a launch page for a text-to-video API tier. Generation examples, prompt tips, latency/quality tiers, pricing, and try-now panel. Make it feel vivid cinematic accents, dense feature grid, energetic.",
+      "/gen website with design system `minimax` and template `saas-landing`, create a launch page for a text-to-video API tier. Generation examples, prompt tips, latency/quality tiers, pricing, and try-now panel. Make it feel vivid cinematic accents, dense feature grid, energetic.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/minimax-video-api-launch.png",
     artifactUrl: "https://minimax-video-api-launch-715f6d07.sites.vm0.io",
@@ -1771,7 +1771,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An infinite canvas workspace upgrade landing with sticky-note canvas, templates, and AI clustering.",
     prompt:
-      "Using `zero generate website` with design system `miro` and template `saas-landing`, create a landing page for an infinite canvas workspace upgrade. Hero with sticky-note canvas mockup, templates, integrations, AI clustering teaser, and pricing. Make it feel bright multi-color, playful sticker shapes, collaborative.",
+      "/gen website with design system `miro` and template `saas-landing`, create a landing page for an infinite canvas workspace upgrade. Hero with sticky-note canvas mockup, templates, integrations, AI clustering teaser, and pricing. Make it feel bright multi-color, playful sticker shapes, collaborative.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/miro-canvas-launch.png",
     artifactUrl: "https://miro-canvas-launch-715f6d07.sites.vm0.io",
@@ -1793,7 +1793,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An open-weights MoE model release page with benchmarks, checksums, model card, and a deploy guide.",
     prompt:
-      "Using `zero generate website` with design system `mistral-ai` and template `saas-landing`, create a release page for a new open-weights mixture-of-experts model. Show benchmarks, weights checksum, model card, licensing terms, and a deploy guide. Make it feel orange accent, technical and confident, European minimalist.",
+      "/gen website with design system `mistral-ai` and template `saas-landing`, create a release page for a new open-weights mixture-of-experts model. Show benchmarks, weights checksum, model card, licensing terms, and a deploy guide. Make it feel orange accent, technical and confident, European minimalist.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/mistral-open-weights-release.png",
     artifactUrl: "https://mistral-open-weights-release-715f6d07.sites.vm0.io",
@@ -1815,7 +1815,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A query operators docs page with shell and JavaScript code blocks, parameter tables, and examples.",
     prompt:
-      "Using `zero generate website` with design system `mongodb` and template `docs-page`, create a docs page for query operators in a document database. Left nav, body with shell + JS code blocks, parameter table, examples, and see-also. Make it feel dark leafy green, code-dense, calm authoritative.",
+      "/gen website with design system `mongodb` and template `docs-page`, create a docs page for query operators in a document database. Left nav, body with shell + JS code blocks, parameter table, examples, and see-also. Make it feel dark leafy green, code-dense, calm authoritative.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mongodb-query-docs.png",
     artifactUrl: "https://mongodb-query-docs-715f6d07.sites.vm0.io",
@@ -1837,7 +1837,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A cyberpunk-themed mech-builder game launch with neon city hero, mech roster, and pre-order CTA.",
     prompt:
-      "Using `zero generate website` with design system `neon` and template `saas-landing`, create a launch site for a cyberpunk-themed mech-builder game. Hero with neon city, mech roster, season pass, multiplayer modes, and pre-order CTA. Make it feel hot pink + cyan glow, scanlines, cyberpunk grit.",
+      "/gen website with design system `neon` and template `saas-landing`, create a launch site for a cyberpunk-themed mech-builder game. Hero with neon city, mech roster, season pass, multiplayer modes, and pre-order CTA. Make it feel hot pink + cyan glow, scanlines, cyberpunk grit.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/neon-cyberpunk-launch.png",
     artifactUrl: "https://neon-cyberpunk-launch-715f6d07.sites.vm0.io",
@@ -1859,7 +1859,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A launch for a next-gen AI accelerator chip with performance chart, framework support, and reserve CTA.",
     prompt:
-      "Using `zero generate website` with design system `nvidia` and template `saas-landing`, create a launch site for a next-gen AI accelerator chip. Hero with chip render, perf chart, framework support, datacenter use case, and reserve CTA. Make it feel signature green on black, futuristic, performance-led.",
+      "/gen website with design system `nvidia` and template `saas-landing`, create a launch site for a next-gen AI accelerator chip. Hero with chip render, perf chart, framework support, datacenter use case, and reserve CTA. Make it feel signature green on black, futuristic, performance-led.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/nvidia-accelerator-launch.png",
     artifactUrl: "https://nvidia-accelerator-launch-715f6d07.sites.vm0.io",
@@ -1881,7 +1881,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A docs page for running local LLMs on a laptop with install, model pull, run, and GPU notes.",
     prompt:
-      "Using `zero generate website` with design system `ollama` and template `docs-page`, create a docs page for running local LLMs on a laptop. Install, model pull, run command, API reference, and GPU acceleration notes. Make it feel warm cream paper, clean serif, calm and approachable.",
+      "/gen website with design system `ollama` and template `docs-page`, create a docs page for running local LLMs on a laptop. Install, model pull, run command, API reference, and GPU acceleration notes. Make it feel warm cream paper, clean serif, calm and approachable.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/ollama-local-llm-docs.png",
     artifactUrl: "https://ollama-local-llm-docs-715f6d07.sites.vm0.io",
@@ -1903,7 +1903,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A docs page for an open-source AI coding agent CLI with install, commands, and providers.",
     prompt:
-      "Using `zero generate website` with design system `opencode-ai` and template `docs-page`, create a docs page for an open-source AI coding agent CLI. Install, quick-start, command reference, model providers, and contributing. Make it feel terminal-forward, monospace headings, OSS-friendly.",
+      "/gen website with design system `opencode-ai` and template `docs-page`, create a docs page for an open-source AI coding agent CLI. Install, quick-start, command reference, model providers, and contributing. Make it feel terminal-forward, monospace headings, OSS-friendly.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/opencode-agent-cli-docs.png",
     artifactUrl: "https://opencode-agent-cli-docs-715f6d07.sites.vm0.io",
@@ -1925,7 +1925,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A paper-textured zine feature about urban sketching with artist profiles and a recommended-supplies sidebar.",
     prompt:
-      "Using `zero generate website` with design system `paper` and template `blog-post`, create a paper-textured zine feature about urban sketching. Hero spread, three artist profiles with field notes, pull quotes, and a recommended-supplies sidebar. Make it feel paper background, hand-drawn flourishes, quiet personal essay.",
+      "/gen website with design system `paper` and template `blog-post`, create a paper-textured zine feature about urban sketching. Hero spread, three artist profiles with field notes, pull quotes, and a recommended-supplies sidebar. Make it feel paper background, hand-drawn flourishes, quiet personal essay.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/paper-zine-launch.png",
     artifactUrl: "https://paper-zine-launch-715f6d07.sites.vm0.io",
@@ -1947,7 +1947,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A research assistant landing with cited answers, source panel, focus modes, and a mobile app teaser.",
     prompt:
-      "Using `zero generate website` with design system `perplexity` and template `saas-landing`, create a landing page for a personal research assistant with cited answers. Demo of cited answer, sources panel, focus modes, mobile app teaser, pricing teaser. Make it feel calm teal accents, source-led trust, modern serif headlines.",
+      "/gen website with design system `perplexity` and template `saas-landing`, create a landing page for a personal research assistant with cited answers. Demo of cited answer, sources panel, focus modes, mobile app teaser, pricing teaser. Make it feel calm teal accents, source-led trust, modern serif headlines.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/perplexity-research-assistant.png",
     artifactUrl: "https://perplexity-research-assistant-715f6d07.sites.vm0.io",
@@ -1969,7 +1969,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A Renault 5 E-Tech retro electric launch with trims, range, charging map, and configurator.",
     prompt:
-      "Using `zero generate website` with design system `renault` and template `saas-landing`, create a launch site for the Renault 5 E-Tech electric retro hatchback. Hero with car silhouette, trims, range, charging map, configurator, and order CTA. Make it feel cheerful yellow + black, retro nostalgia with modern polish.",
+      "/gen website with design system `renault` and template `saas-landing`, create a launch site for the Renault 5 E-Tech electric retro hatchback. Hero with car silhouette, trims, range, charging map, configurator, and order CTA. Make it feel cheerful yellow + black, retro nostalgia with modern polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/renault-5-launch.png",
     artifactUrl: "https://renault-5-launch-715f6d07.sites.vm0.io",
@@ -1991,7 +1991,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A predictions API docs page with cURL/Python examples, schema, webhooks, and pricing notes.",
     prompt:
-      "Using `zero generate website` with design system `replicate` and template `docs-page`, create a docs page for the predictions API of a hosted model. Endpoint signature, cURL/Python examples, schema, webhooks, and pricing notes. Make it feel muted serif headers, code-forward, science-paper vibe.",
+      "/gen website with design system `replicate` and template `docs-page`, create a docs page for the predictions API of a hosted model. Endpoint signature, cURL/Python examples, schema, webhooks, and pricing notes. Make it feel muted serif headers, code-forward, science-paper vibe.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/replicate-model-api-docs.png",
     artifactUrl: "https://replicate-model-api-docs-715f6d07.sites.vm0.io",
@@ -2013,7 +2013,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A pricing page for a developer-first transactional email API with tiers, overages, and FAQ.",
     prompt:
-      "Using `zero generate website` with design system `resend` and template `pricing-page`, create a pricing page for a developer-first transactional email API. Free/Pro/Enterprise tiers, per-email overages, deliverability features, and FAQ. Make it feel all-black with subtle accents, geometric, developer-first.",
+      "/gen website with design system `resend` and template `pricing-page`, create a pricing page for a developer-first transactional email API. Free/Pro/Enterprise tiers, per-email overages, deliverability features, and FAQ. Make it feel all-black with subtle accents, geometric, developer-first.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/resend-email-api-pricing.png",
     artifactUrl: "https://resend-email-api-pricing-715f6d07.sites.vm0.io",
@@ -2035,7 +2035,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A video-model launch with frame grid hero, capability strip, before/after, and license tiers.",
     prompt:
-      "Using `zero generate website` with design system `runwayml` and template `saas-landing`, create a launch site for a new video model with motion brush. Hero with frame grid, capability strip, before/after, license tiers, and try-now CTA. Make it feel cinematic dark, glossy gradients, creative-tool polish.",
+      "/gen website with design system `runwayml` and template `saas-landing`, create a launch site for a new video model with motion brush. Hero with frame grid, capability strip, before/after, license tiers, and try-now CTA. Make it feel cinematic dark, glossy gradients, creative-tool polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/runwayml-video-launch.png",
     artifactUrl: "https://runwayml-video-launch-715f6d07.sites.vm0.io",
@@ -2057,7 +2057,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A content schema docs page with TypeScript examples, field type table, and best practices.",
     prompt:
-      "Using `zero generate website` with design system `sanity` and template `docs-page`, create a docs page for content schema and types in a headless CMS. Left nav, body with TypeScript schema examples, field types table, and best practices. Make it feel red accent on white, sharp typography, content-creator friendly.",
+      "/gen website with design system `sanity` and template `docs-page`, create a docs page for content schema and types in a headless CMS. Left nav, body with TypeScript schema examples, field types table, and best practices. Make it feel red accent on white, sharp typography, content-creator friendly.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/sanity-cms-schema-docs.png",
     artifactUrl: "https://sanity-cms-schema-docs-715f6d07.sites.vm0.io",
@@ -2079,7 +2079,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A real-time error tracking dashboard with frequency chart, issues list, and release health.",
     prompt:
-      "Using `zero generate website` with design system `sentry` and template `dashboard`, create a real-time error tracking dashboard for a SaaS app. Top stats, frequency chart, issue list with stack trace preview, release health, and team filter. Make it feel purple-black, dense error rows, ops-team feel.",
+      "/gen website with design system `sentry` and template `dashboard`, create a real-time error tracking dashboard for a SaaS app. Top stats, frequency chart, issue list with stack trace preview, release health, and team filter. Make it feel purple-black, dense error rows, ops-team feel.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/sentry-error-dashboard.png",
     artifactUrl: "https://sentry-error-dashboard-715f6d07.sites.vm0.io",
@@ -2101,7 +2101,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A copy-paste UI component library docs page with CLI install, anatomy, and API reference.",
     prompt:
-      "Using `zero generate website` with design system `shadcn` and template `docs-page`, create a docs page for a copy-paste UI component library. Install via CLI, anatomy diagram, live preview, code block, and API reference. Make it feel zinc/neutral, sharp typography, copy-friendly.",
+      "/gen website with design system `shadcn` and template `docs-page`, create a docs page for a copy-paste UI component library. Install via CLI, anatomy diagram, live preview, code block, and API reference. Make it feel zinc/neutral, sharp typography, copy-friendly.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/shadcn-ui-component-docs.png",
     artifactUrl: "https://shadcn-ui-component-docs-715f6d07.sites.vm0.io",
@@ -2123,7 +2123,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A skeuomorphic synth/DAW app landing with brushed-metal controls, preset library, and mixer mockup.",
     prompt:
-      "Using `zero generate website` with design system `skeumorphism` and template `saas-landing`, create a landing page for a skeuomorphic synth/DAW app. Hero with wood-grain device mockup, brushed-metal controls, preset library, mixer mockup, and download CTA. Make it feel brushed metal + leather + wood, photoreal textures, retro studio vibe.",
+      "/gen website with design system `skeumorphism` and template `saas-landing`, create a landing page for a skeuomorphic synth/DAW app. Hero with wood-grain device mockup, brushed-metal controls, preset library, mixer mockup, and download CTA. Make it feel brushed metal + leather + wood, photoreal textures, retro studio vibe.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/skeumorphism-music-app.png",
     artifactUrl: "https://skeumorphism-music-app-715f6d07.sites.vm0.io",
@@ -2145,7 +2145,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An ultra-fast email client launch with inbox mockup, AI triage, keyboard reference, and waitlist.",
     prompt:
-      "Using `zero generate website` with design system `superhuman` and template `saas-landing`, create a launch site for an ultra-fast email client with shortcuts. Hero with inbox mockup, AI triage, keyboard reference, calendar split, and waitlist CTA. Make it feel premium navy, generous whitespace, status-symbol calm.",
+      "/gen website with design system `superhuman` and template `saas-landing`, create a launch site for an ultra-fast email client with shortcuts. Hero with inbox mockup, AI triage, keyboard reference, calendar split, and waitlist CTA. Make it feel premium navy, generous whitespace, status-symbol calm.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/superhuman-email-launch.png",
     artifactUrl: "https://superhuman-email-launch-715f6d07.sites.vm0.io",
@@ -2167,7 +2167,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A browser tetris remix landing with daily challenge, leaderboard, character skins, and play-now CTA.",
     prompt:
-      "Using `zero generate website` with design system `tetris` and template `gamified-app`, create a landing page for a browser-based tetris remix with seasonal challenges. Hero with falling-block grid, daily challenge, leaderboard, character skins, and play-now CTA. Make it feel bold primary blocks, joyful arcade energy, retro polish.",
+      "/gen website with design system `tetris` and template `gamified-app`, create a landing page for a browser-based tetris remix with seasonal challenges. Hero with falling-block grid, daily challenge, leaderboard, character skins, and play-now CTA. Make it feel bold primary blocks, joyful arcade energy, retro polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/tetris-remix-launch.png",
     artifactUrl: "https://tetris-remix-launch-715f6d07.sites.vm0.io",
@@ -2189,7 +2189,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An open-source model serving pricing page with per-token tables, dedicated endpoints, and fine-tune pricing.",
     prompt:
-      "Using `zero generate website` with design system `together-ai` and template `pricing-page`, create a pricing page for an open-source model serving platform. Per-token table by model family, dedicated endpoints, fine-tune pricing, and enterprise tier. Make it feel clean blue brand, dense table, builder-friendly.",
+      "/gen website with design system `together-ai` and template `pricing-page`, create a pricing page for an open-source model serving platform. Per-token table by model family, dedicated endpoints, fine-tune pricing, and enterprise tier. Make it feel clean blue brand, dense table, builder-friendly.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/together-ai-inference-pricing.png",
     artifactUrl:
@@ -2212,7 +2212,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A new rider experience launch with map mockup, ride options, safety features, and business travel.",
     prompt:
-      "Using `zero generate website` with design system `uber` and template `saas-landing`, create a launch site for a new rider experience tier. Hero with map mockup, ride options, safety features, business travel, and download CTA. Make it feel signature black, sharp typography, urban energy.",
+      "/gen website with design system `uber` and template `saas-landing`, create a launch site for a new rider experience tier. Hero with map mockup, ride options, safety features, business travel, and download CTA. Make it feel signature black, sharp typography, urban energy.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/uber-rider-launch.png",
     artifactUrl: "https://uber-rider-launch-715f6d07.sites.vm0.io",
@@ -2234,7 +2234,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A long-form feature on modern Urdu poetry with poet profiles, bilingual couplets, and listening recs.",
     prompt:
-      "Using `zero generate website` with design system `urdu` and template `blog-post`, create a long-form feature on modern Urdu poetry. Hero spread, three poet profiles with Urdu+English couplets, pull quotes, and listening recommendations. Make it feel warm parchment, calligraphic flourishes, careful bilingual typography.",
+      "/gen website with design system `urdu` and template `blog-post`, create a long-form feature on modern Urdu poetry. Hero spread, three poet profiles with Urdu+English couplets, pull quotes, and listening recommendations. Make it feel warm parchment, calligraphic flourishes, careful bilingual typography.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/urdu-poetry-feature.png",
     artifactUrl: "https://urdu-poetry-feature-715f6d07.sites.vm0.io",
@@ -2256,7 +2256,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A magazine feature on the resurgence of vintage typography with pull quotes and image-led sections.",
     prompt:
-      "Using `zero generate website` with design system `vintage` and template `blog-post`, create a feature article about the resurgence of vintage typography. Hero spread, body with pull quotes, image-led sections via CSS treatments, and related reading. Make it feel warm sepia, classic serif, slow magazine pacing.",
+      "/gen website with design system `vintage` and template `blog-post`, create a feature article about the resurgence of vintage typography. Hero spread, body with pull quotes, image-led sections via CSS treatments, and related reading. Make it feel warm sepia, classic serif, slow magazine pacing.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/vintage-style-magazine.png",
     artifactUrl: "https://vintage-style-magazine-715f6d07.sites.vm0.io",
@@ -2278,7 +2278,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A no-code visual web designer launch with canvas mockup, components, CMS, and pricing.",
     prompt:
-      "Using `zero generate website` with design system `webflow` and template `saas-landing`, create a launch site for a no-code visual web designer. Hero with canvas mockup, components, CMS, hosting, pricing, and partner program teaser. Make it feel indigo brand, layered shadows, design-first.",
+      "/gen website with design system `webflow` and template `saas-landing`, create a launch site for a no-code visual web designer. Hero with canvas mockup, components, CMS, hosting, pricing, and partner program teaser. Make it feel indigo brand, layered shadows, design-first.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/webflow-designer-launch.png",
     artifactUrl: "https://webflow-designer-launch-rerun-715f6d07.sites.vm0.io",
@@ -2300,7 +2300,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A launch site for low-fee international transfers with FX transparency, currencies, and security.",
     prompt:
-      "Using `zero generate website` with design system `wise` and template `saas-landing`, create a launch site for low-fee international money transfers. Hero with transfer mockup, FX rate transparency, supported currencies, security, and CTA. Make it feel bright green accent, transparent rates, fintech polish.",
+      "/gen website with design system `wise` and template `saas-landing`, create a launch site for low-fee international money transfers. Hero with transfer mockup, FX rate transparency, supported currencies, security, and CTA. Make it feel bright green accent, transparent rates, fintech polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/wise-transfer-launch.png",
     artifactUrl: "https://wise-transfer-launch-rerun-715f6d07.sites.vm0.io",
@@ -2322,7 +2322,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A real-time multimodal model launch with latency stats, capability triad, and a waitlist form.",
     prompt:
-      "Using `zero generate website` with design system `x-ai` and template `saas-landing`, create a launch site for a real-time multimodal model. Live latency stats, capability triad, x integration, API tiers, and waitlist form. Make it feel stark black, electric edge, unapologetic.",
+      "/gen website with design system `x-ai` and template `saas-landing`, create a launch site for a real-time multimodal model. Live latency stats, capability triad, x integration, API tiers, and waitlist form. Make it feel stark black, electric edge, unapologetic.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/x-ai-realtime-model-launch.png",
     artifactUrl:
@@ -2345,7 +2345,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A workflow automation launch with workflow canvas, app catalog, AI suggestions, and templates.",
     prompt:
-      "Using `zero generate website` with design system `zapier` and template `saas-landing`, create a launch site for a multi-step workflow automation builder. Hero with workflow canvas, app catalog, AI step suggestion, templates, and pricing. Make it feel warm orange, friendly illustrations, builder-oriented.",
+      "/gen website with design system `zapier` and template `saas-landing`, create a launch site for a multi-step workflow automation builder. Hero with workflow canvas, app catalog, AI step suggestion, templates, and pricing. Make it feel warm orange, friendly illustrations, builder-oriented.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/zapier-automation-launch.png",
     artifactUrl: "https://zapier-automation-launch-rerun-715f6d07.sites.vm0.io",
@@ -2367,7 +2367,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An agent runtime launch with observability, tool calling, workflow state, and deployment controls.",
     prompt:
-      "Using `zero generate website` with design system `voltagent` and template `saas-landing`, create a launch site for a production agent runtime. Show agent traces, tool registry, workflow state, deployments, and evaluation gates. Make it feel electric amber, agent-native, technical.",
+      "/gen website with design system `voltagent` and template `saas-landing`, create a launch site for a production agent runtime. Show agent traces, tool registry, workflow state, deployments, and evaluation gates. Make it feel electric amber, agent-native, technical.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/voltagent-agent-runtime.png",
     artifactUrl: "https://voltagent-agent-runtime-rerun-715f6d07.sites.vm0.io",
@@ -2389,7 +2389,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A tool integration catalog docs page with auth scopes, actions, trigger recipes, and examples.",
     prompt:
-      "Using `zero generate website` with design system `composio` and template `docs-page`, create a docs page for an agent tool integration catalog. Left nav, connector grid, auth scopes, action examples, trigger recipes, and SDK code. Make it feel developer catalog, crisp blue accents, integration-dense.",
+      "/gen website with design system `composio` and template `docs-page`, create a docs page for an agent tool integration catalog. Left nav, connector grid, auth scopes, action examples, trigger recipes, and SDK code. Make it feel developer catalog, crisp blue accents, integration-dense.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/composio-tool-catalog.png",
     artifactUrl: "https://composio-tool-catalog-715f6d07.sites.vm0.io",
@@ -2411,7 +2411,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A modern terminal workflow launch with command blocks, team notebooks, AI fixups, and sharing.",
     prompt:
-      "Using `zero generate website` with design system `warp` and template `saas-landing`, create a landing page for a collaborative terminal workflow product. Hero with terminal command blocks, team notebooks, AI fixups, sharing, and install CTA. Make it feel dark terminal polish, neon highlights, fast.",
+      "/gen website with design system `warp` and template `saas-landing`, create a landing page for a collaborative terminal workflow product. Hero with terminal command blocks, team notebooks, AI fixups, sharing, and install CTA. Make it feel dark terminal polish, neon highlights, fast.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/warp-terminal-workflows.png",
     artifactUrl: "https://warp-terminal-workflows-rerun-715f6d07.sites.vm0.io",
@@ -2433,7 +2433,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A mobile app routing docs page with file-based routes, tabs, native previews, and deployment notes.",
     prompt:
-      "Using `zero generate website` with design system `expo` and template `docs-page`, create a docs page for a cross-platform mobile app router. Install, file routes, tabs, native preview, deep links, and deploy notes. Make it feel friendly developer docs, light, mobile-first.",
+      "/gen website with design system `expo` and template `docs-page`, create a docs page for a cross-platform mobile app router. Install, file routes, tabs, native preview, deep links, and deploy notes. Make it feel friendly developer docs, light, mobile-first.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/expo-router-launch.png",
     artifactUrl: "https://expo-router-launch-715f6d07.sites.vm0.io",
@@ -2455,7 +2455,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A high-throughput observability dashboard with query latency, ingest volume, traces, and alerts.",
     prompt:
-      "Using `zero generate website` with design system `clickhouse` and template `dashboard`, create an observability dashboard for high-volume analytics. Top KPIs, latency histogram, ingest chart, trace explorer, and alert queue. Make it feel black and yellow, dense analytics, fast scanning.",
+      "/gen website with design system `clickhouse` and template `dashboard`, create an observability dashboard for high-volume analytics. Top KPIs, latency histogram, ingest chart, trace explorer, and alert queue. Make it feel black and yellow, dense analytics, fast scanning.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/clickhouse-observability-dashboard.png",
     artifactUrl:
@@ -2478,7 +2478,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A polished API docs redesign with quickstart, SDK tabs, endpoint references, and changelog links.",
     prompt:
-      "Using `zero generate website` with design system `mintlify` and template `docs-page`, create a docs page for an API platform. Quickstart, SDK tabs, endpoint reference, guides, search, and changelog links. Make it feel mint green, calm documentation, polished.",
+      "/gen website with design system `mintlify` and template `docs-page`, create a docs page for an API platform. Quickstart, SDK tabs, endpoint reference, guides, search, and changelog links. Make it feel mint green, calm documentation, polished.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mintlify-docs-redesign.png",
     artifactUrl: "https://mintlify-docs-redesign-715f6d07.sites.vm0.io",
@@ -2500,7 +2500,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A visual trend dashboard with pins, audience signals, seasonal boards, and campaign ideas.",
     prompt:
-      "Using `zero generate website` with design system `pinterest` and template `dashboard`, create a trend research dashboard for visual campaigns. Masonry board, audience signals, seasonal boards, campaign ideas, and save actions. Make it feel red accent, image-led, editorial.",
+      "/gen website with design system `pinterest` and template `dashboard`, create a trend research dashboard for visual campaigns. Masonry board, audience signals, seasonal boards, campaign ideas, and save actions. Make it feel red accent, image-led, editorial.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/pinterest-trend-board.png",
     artifactUrl: "https://pinterest-trend-board-715f6d07.sites.vm0.io",
@@ -2522,7 +2522,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A storefront launch page with product merchandising, checkout trust, analytics, and fulfillment.",
     prompt:
-      "Using `zero generate website` with design system `shopify` and template `saas-landing`, create a landing page for a commerce storefront launch. Product hero, checkout trust, analytics, fulfillment, app ecosystem, and start trial CTA. Make it feel commerce green, practical, merchant-first.",
+      "/gen website with design system `shopify` and template `saas-landing`, create a landing page for a commerce storefront launch. Product hero, checkout trust, analytics, fulfillment, app ecosystem, and start trial CTA. Make it feel commerce green, practical, merchant-first.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/shopify-storefront-launch.png",
     artifactUrl: "https://shopify-storefront-launch-715f6d07.sites.vm0.io",
@@ -2544,7 +2544,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A classroom feedback tool launch with annotated assignments, rubric panels, voice notes, and exports.",
     prompt:
-      "Using `zero generate website` with design system `kami` and template `saas-landing`, create a landing page for a classroom feedback product. Annotated assignment mockup, rubric panel, voice notes, class insights, and export CTA. Make it feel friendly education, bright but organized, teacher-focused.",
+      "/gen website with design system `kami` and template `saas-landing`, create a landing page for a classroom feedback product. Annotated assignment mockup, rubric panel, voice notes, class insights, and export CTA. Make it feel friendly education, bright but organized, teacher-focused.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/kami-classroom-feedback.png",
     artifactUrl: "https://kami-classroom-feedback-715f6d07.sites.vm0.io",
@@ -2566,7 +2566,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A brand system docs page with tokens, assets, usage rules, components, and approval workflows.",
     prompt:
-      "Using `zero generate website` with design system `lingo` and template `docs-page`, create a docs page for a brand asset system. Token overview, asset library, usage rules, components, approvals, and examples. Make it feel brand governance, clean, precise.",
+      "/gen website with design system `lingo` and template `docs-page`, create a docs page for a brand asset system. Token overview, asset library, usage rules, components, approvals, and examples. Make it feel brand governance, clean, precise.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/lingo-brand-system.png",
     artifactUrl: "https://lingo-brand-system-715f6d07.sites.vm0.io",
@@ -2588,7 +2588,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A network operations dashboard with topology, device health, incident queue, and policy status.",
     prompt:
-      "Using `zero generate website` with design system `cisco` and template `dashboard`, create a network operations dashboard. Topology map, device health, incident queue, policy status, and bandwidth charts. Make it feel enterprise blue, dependable, ops-dense.",
+      "/gen website with design system `cisco` and template `dashboard`, create a network operations dashboard. Topology map, device health, incident queue, policy status, and bandwidth charts. Make it feel enterprise blue, dependable, ops-dense.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cisco-network-dashboard.png",
     artifactUrl: "https://cisco-network-dashboard-715f6d07.sites.vm0.io",
@@ -2610,7 +2610,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A finance admin console with settlement status, reconciliation tables, approvals, and alerts.",
     prompt:
-      "Using `zero generate website` with design system `ant` and template `dashboard`, create a finance operations admin console. Settlement KPIs, reconciliation table, approvals, alerts, and audit trail. Make it feel Ant-style, structured, enterprise.",
+      "/gen website with design system `ant` and template `dashboard`, create a finance operations admin console. Settlement KPIs, reconciliation table, approvals, alerts, and audit trail. Make it feel Ant-style, structured, enterprise.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/ant-design-finance-console.png",
     artifactUrl: "https://ant-design-finance-console-715f6d07.sites.vm0.io",
@@ -2632,7 +2632,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A 5G business connectivity launch with coverage map, plans, device bundles, and support.",
     prompt:
-      "Using `zero generate website` with design system `vodafone` and template `saas-landing`, create a landing page for a 5G business connectivity offer. Coverage map, plan cards, device bundles, reliability proof, and contact sales CTA. Make it feel bold red, telecom clarity, commercial.",
+      "/gen website with design system `vodafone` and template `saas-landing`, create a landing page for a 5G business connectivity offer. Coverage map, plan cards, device bundles, reliability proof, and contact sales CTA. Make it feel bold red, telecom clarity, commercial.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/vodafone-5g-launch.png",
     artifactUrl: "https://vodafone-5g-launch-rerun-715f6d07.sites.vm0.io",
@@ -2654,7 +2654,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A rewards program launch with drink builder, points, member offers, and mobile ordering.",
     prompt:
-      "Using `zero generate website` with design system `starbucks` and template `saas-landing`, create a landing page for a rewards program refresh. Drink builder, points explainer, member offers, mobile ordering, and join CTA. Make it feel warm green, cafe retail, approachable.",
+      "/gen website with design system `starbucks` and template `saas-landing`, create a landing page for a rewards program refresh. Drink builder, points explainer, member offers, mobile ordering, and join CTA. Make it feel warm green, cafe retail, approachable.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/starbucks-rewards-launch.png",
     artifactUrl: "https://starbucks-rewards-launch-715f6d07.sites.vm0.io",
@@ -2676,7 +2676,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A meeting hub dashboard with upcoming rooms, transcript tasks, recordings, and participant insights.",
     prompt:
-      "Using `zero generate website` with design system `webex` and template `dashboard`, create a meeting collaboration dashboard. Upcoming rooms, transcript tasks, recordings, participant insights, and admin controls. Make it feel collaboration blue-green, calm, productive.",
+      "/gen website with design system `webex` and template `dashboard`, create a meeting collaboration dashboard. Upcoming rooms, transcript tasks, recordings, participant insights, and admin controls. Make it feel collaboration blue-green, calm, productive.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/webex-meeting-hub.png",
     artifactUrl: "https://webex-meeting-hub-rerun-715f6d07.sites.vm0.io",
@@ -2698,7 +2698,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A premium performance driving experience page with schedule, telemetry, instructors, and booking.",
     prompt:
-      "Using `zero generate website` with design system `bmw-m` and template `saas-landing`, create a launch page for a premium track driving experience. Hero, telemetry cards, instructor lineup, schedule, packages, and booking CTA. Make it feel motorsport blue-red, precise, premium.",
+      "/gen website with design system `bmw-m` and template `saas-landing`, create a launch page for a premium track driving experience. Hero, telemetry cards, instructor lineup, schedule, packages, and booking CTA. Make it feel motorsport blue-red, precise, premium.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/bmw-m-track-experience.png",
     artifactUrl: "https://bmw-m-track-experience-715f6d07.sites.vm0.io",
@@ -2720,7 +2720,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An operations console for autonomous agents with run status, approvals, spend, and safeguards.",
     prompt:
-      "Using `zero generate website` with design system `agentic` and template `dashboard`, create an operations dashboard for agent fleets. Agent status, approvals, spend, safeguards, incident log, and evaluation metrics. Make it feel AI operations, dark, controlled.",
+      "/gen website with design system `agentic` and template `dashboard`, create an operations dashboard for agent fleets. Agent status, approvals, spend, safeguards, incident log, and evaluation metrics. Make it feel AI operations, dark, controlled.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/agentic-ops-command.png",
     artifactUrl: "https://agentic-ops-command-715f6d07.sites.vm0.io",
@@ -2742,7 +2742,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A general application admin console with users, roles, audits, billing, and feature flags.",
     prompt:
-      "Using `zero generate website` with design system `application` and template `dashboard`, create an application admin console. User table, role controls, audit log, billing status, and feature flags. Make it feel neutral app UI, efficient, familiar.",
+      "/gen website with design system `application` and template `dashboard`, create an application admin console. User table, role controls, audit log, billing status, and feature flags. Make it feel neutral app UI, efficient, familiar.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/application-admin-console.png",
     artifactUrl: "https://application-admin-console-715f6d07.sites.vm0.io",
@@ -2764,7 +2764,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An artist portfolio feature with exhibition notes, process images, collector details, and press.",
     prompt:
-      "Using `zero generate website` with design system `artistic` and template `blog-post`, create a portfolio feature page for a contemporary artist. Hero artwork, exhibition notes, process sections, collector details, and press quotes. Make it feel expressive, gallery-like, visual.",
+      "/gen website with design system `artistic` and template `blog-post`, create a portfolio feature page for a contemporary artist. Hero artwork, exhibition notes, process sections, collector details, and press quotes. Make it feel expressive, gallery-like, visual.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/artistic-portfolio-showcase.png",
     artifactUrl: "https://artistic-portfolio-showcase-715f6d07.sites.vm0.io",
@@ -2786,7 +2786,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A studio brand book with typography, palette, layout rules, motion notes, and asset downloads.",
     prompt:
-      "Using `zero generate website` with design system `atelier-zero` and template `docs-page`, create a brand book page for a design atelier. Typography, palette, layout rules, motion notes, components, and downloads. Make it feel editorial black-white, exacting, refined.",
+      "/gen website with design system `atelier-zero` and template `docs-page`, create a brand book page for a design atelier. Typography, palette, layout rules, motion notes, components, and downloads. Make it feel editorial black-white, exacting, refined.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/atelier-zero-brand-book.png",
     artifactUrl: "https://atelier-zero-brand-book-715f6d07.sites.vm0.io",
@@ -2808,7 +2808,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A high-impact campaign page with punchy message hierarchy, proof blocks, offers, and signup.",
     prompt:
-      "Using `zero generate website` with design system `bold` and template `saas-landing`, create a landing page for a high-impact marketing campaign. Huge hero, proof blocks, offer stack, testimonials, and signup CTA. Make it feel loud, confident, direct.",
+      "/gen website with design system `bold` and template `saas-landing`, create a landing page for a high-impact marketing campaign. Huge hero, proof blocks, offer stack, testimonials, and signup CTA. Make it feel loud, confident, direct.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/bold-campaign-launch.png",
     artifactUrl: "https://bold-campaign-launch-715f6d07.sites.vm0.io",
@@ -2830,7 +2830,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A cafe menu story page with seasonal drinks, roaster notes, food pairings, and location details.",
     prompt:
-      "Using `zero generate website` with design system `cafe` and template `blog-post`, create a menu and story page for a neighborhood cafe. Seasonal drinks, roaster notes, food pairings, location details, and order CTA. Make it feel warm cafe, tactile, inviting.",
+      "/gen website with design system `cafe` and template `blog-post`, create a menu and story page for a neighborhood cafe. Seasonal drinks, roaster notes, food pairings, location details, and order CTA. Make it feel warm cafe, tactile, inviting.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cafe-menu-story.png",
     artifactUrl: "https://cafe-menu-story-715f6d07.sites.vm0.io",
@@ -2852,7 +2852,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A product tour landing for a data enrichment workflow with tables, formulas, AI research, and CRM sync.",
     prompt:
-      "Using `zero generate website` with design system `clay` and template `saas-landing`, create a landing page for a data enrichment product tour. Table mockup, formulas, AI research, CRM sync, templates, and demo CTA. Make it feel soft clay surfaces, modern GTM, crafted.",
+      "/gen website with design system `clay` and template `saas-landing`, create a landing page for a data enrichment product tour. Table mockup, formulas, AI research, CRM sync, templates, and demo CTA. Make it feel soft clay surfaces, modern GTM, crafted.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/clay-product-tour.png",
     artifactUrl: "https://clay-product-tour-715f6d07.sites.vm0.io",
@@ -2874,7 +2874,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A conference agenda page with tracks, speakers, venue zones, sponsor moments, and live updates.",
     prompt:
-      "Using `zero generate website` with design system `colorful` and template `saas-landing`, create a colorful event agenda website. Track filters, speaker cards, venue zones, sponsor moments, and live update strip. Make it feel bright multi-color, energetic, organized.",
+      "/gen website with design system `colorful` and template `saas-landing`, create a colorful event agenda website. Track filters, speaker cards, venue zones, sponsor moments, and live update strip. Make it feel bright multi-color, energetic, organized.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/colorful-event-agenda.png",
     artifactUrl: "https://colorful-event-agenda-715f6d07.sites.vm0.io",
@@ -2896,7 +2896,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An architecture feature with project photography, plans, material notes, and critic commentary.",
     prompt:
-      "Using `zero generate website` with design system `contemporary` and template `blog-post`, create an editorial architecture feature. Hero project, plans, material notes, spatial sections, and critic commentary. Make it feel modern editorial, restrained, image-forward.",
+      "/gen website with design system `contemporary` and template `blog-post`, create an editorial architecture feature. Hero project, plans, material notes, spatial sections, and critic commentary. Make it feel modern editorial, restrained, image-forward.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/contemporary-architecture-feature.png",
     artifactUrl:
@@ -2919,7 +2919,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A corporate annual report page with CEO letter, metrics, business segments, ESG, and governance.",
     prompt:
-      "Using `zero generate website` with design system `corporate` and template `blog-post`, create a corporate annual report website. CEO letter, financial metrics, segments, ESG cards, governance, and downloads. Make it feel formal, trustworthy, board-ready.",
+      "/gen website with design system `corporate` and template `blog-post`, create a corporate annual report website. CEO letter, financial metrics, segments, ESG cards, governance, and downloads. Make it feel formal, trustworthy, board-ready.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/corporate-annual-report.png",
     artifactUrl: "https://corporate-annual-report-715f6d07.sites.vm0.io",
@@ -2941,7 +2941,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A creative studio homepage with case studies, services, process, team, and inquiry CTA.",
     prompt:
-      "Using `zero generate website` with design system `creative` and template `saas-landing`, create a homepage for a creative studio. Case-study hero, service grid, process timeline, team highlights, and inquiry CTA. Make it feel inventive, polished, portfolio-first.",
+      "/gen website with design system `creative` and template `saas-landing`, create a homepage for a creative studio. Case-study hero, service grid, process timeline, team highlights, and inquiry CTA. Make it feel inventive, polished, portfolio-first.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/creative-studio-home.png",
     artifactUrl: "https://creative-studio-home-715f6d07.sites.vm0.io",
@@ -2963,7 +2963,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A film premiere page with trailer surface, cast, showtimes, reviews, and ticket CTA.",
     prompt:
-      "Using `zero generate website` with design system `dramatic` and template `saas-landing`, create a dramatic film premiere website. Trailer hero, cast cards, showtimes, critic quotes, gallery, and tickets. Make it feel cinematic, high contrast, theatrical.",
+      "/gen website with design system `dramatic` and template `saas-landing`, create a dramatic film premiere website. Trailer hero, cast cards, showtimes, critic quotes, gallery, and tickets. Make it feel cinematic, high contrast, theatrical.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/dramatic-film-premiere.png",
     artifactUrl: "https://dramatic-film-premiere-715f6d07.sites.vm0.io",
@@ -2985,7 +2985,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A jewelry collection launch with product detail, materials, campaign photography, and appointments.",
     prompt:
-      "Using `zero generate website` with design system `elegant` and template `saas-landing`, create a luxury jewelry collection launch page. Collection hero, material notes, product grid, campaign story, and appointment CTA. Make it feel elegant, quiet luxury, precise.",
+      "/gen website with design system `elegant` and template `saas-landing`, create a luxury jewelry collection launch page. Collection hero, material notes, product grid, campaign story, and appointment CTA. Make it feel elegant, quiet luxury, precise.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/elegant-jewelry-launch.png",
     artifactUrl: "https://elegant-jewelry-launch-715f6d07.sites.vm0.io",
@@ -3007,7 +3007,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A sports training app launch with workout streaks, coach plans, live challenges, and teams.",
     prompt:
-      "Using `zero generate website` with design system `energetic` and template `saas-landing`, create a landing page for a sports training app. Workout streaks, coach plans, live challenges, team leaderboard, and start CTA. Make it feel athletic, high energy, mobile.",
+      "/gen website with design system `energetic` and template `saas-landing`, create a landing page for a sports training app. Workout streaks, coach plans, live challenges, team leaderboard, and start CTA. Make it feel athletic, high energy, mobile.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/energetic-sports-app.png",
     artifactUrl: "https://energetic-sports-app-715f6d07.sites.vm0.io",
@@ -3029,7 +3029,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An enterprise admin portal with org hierarchy, SSO, compliance tasks, device posture, and logs.",
     prompt:
-      "Using `zero generate website` with design system `enterprise` and template `dashboard`, create an enterprise administration portal. Org hierarchy, SSO controls, compliance tasks, device posture, logs, and support cases. Make it feel serious enterprise, clear, secure.",
+      "/gen website with design system `enterprise` and template `dashboard`, create an enterprise administration portal. Org hierarchy, SSO controls, compliance tasks, device posture, logs, and support cases. Make it feel serious enterprise, clear, secure.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/enterprise-admin-portal.png",
     artifactUrl: "https://enterprise-admin-portal-715f6d07.sites.vm0.io",
@@ -3051,7 +3051,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A music festival page with lineup, stages, passes, artist stories, and schedule builder.",
     prompt:
-      "Using `zero generate website` with design system `expressive` and template `saas-landing`, create a music festival website. Lineup, stages, passes, artist stories, schedule builder, and buy CTA. Make it feel expressive, rhythmic, colorful.",
+      "/gen website with design system `expressive` and template `saas-landing`, create a music festival website. Lineup, stages, passes, artist stories, schedule builder, and buy CTA. Make it feel expressive, rhythmic, colorful.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/expressive-music-festival.png",
     artifactUrl: "https://expressive-music-festival-715f6d07.sites.vm0.io",
@@ -3073,7 +3073,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A fantasy game companion with character classes, map lore, quest log, and preorder.",
     prompt:
-      "Using `zero generate website` with design system `fantasy` and template `gamified-app`, create a game companion website for a fantasy RPG. Character classes, map lore, quest log, gear cards, and preorder CTA. Make it feel fantasy UI, immersive, ornate.",
+      "/gen website with design system `fantasy` and template `gamified-app`, create a game companion website for a fantasy RPG. Character classes, map lore, quest log, gear cards, and preorder CTA. Make it feel fantasy UI, immersive, ornate.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/fantasy-game-codex.png",
     artifactUrl: "https://fantasy-game-codex-715f6d07.sites.vm0.io",
@@ -3095,7 +3095,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A flat-style SaaS dashboard with pipeline, usage, support, conversion, and revenue widgets.",
     prompt:
-      "Using `zero generate website` with design system `flat` and template `dashboard`, create a flat visual style SaaS dashboard. Pipeline, usage, support, conversion, revenue widgets, and filters. Make it feel flat color, clean, lightweight.",
+      "/gen website with design system `flat` and template `dashboard`, create a flat visual style SaaS dashboard. Pipeline, usage, support, conversion, revenue widgets, and filters. Make it feel flat color, clean, lightweight.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/flat-saas-dashboard.png",
     artifactUrl: "https://flat-saas-dashboard-715f6d07.sites.vm0.io",
@@ -3117,7 +3117,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A product onboarding page with checklist, templates, team invites, empty states, and tips.",
     prompt:
-      "Using `zero generate website` with design system `friendly` and template `saas-landing`, create a friendly product onboarding website. Checklist, template picker, team invites, empty states, and tips. Make it feel friendly, soft, clear.",
+      "/gen website with design system `friendly` and template `saas-landing`, create a friendly product onboarding website. Checklist, template picker, team invites, empty states, and tips. Make it feel friendly, soft, clear.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/friendly-onboarding-flow.png",
     artifactUrl: "https://friendly-onboarding-flow-715f6d07.sites.vm0.io",
@@ -3139,7 +3139,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A flight control HUD dashboard with telemetry, route, weather, warnings, and handoff status.",
     prompt:
-      "Using `zero generate website` with design system `hud` and template `dashboard`, create a futuristic flight control HUD. Telemetry, route, weather, warnings, handoff status, and mission controls. Make it feel glass HUD, high contrast, technical.",
+      "/gen website with design system `hud` and template `dashboard`, create a futuristic flight control HUD. Telemetry, route, weather, warnings, handoff status, and mission controls. Make it feel glass HUD, high contrast, technical.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/hud-flight-control.png",
     artifactUrl: "https://hud-flight-control-715f6d07.sites.vm0.io",
@@ -3161,7 +3161,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A gamified learning path with modules, progress, badges, quizzes, and cohort leaderboard.",
     prompt:
-      "Using `zero generate website` with design system `levels` and template `gamified-app`, create a gamified learning website. Module map, progress, badges, quiz cards, cohort leaderboard, and continue CTA. Make it feel leveled progression, playful, structured.",
+      "/gen website with design system `levels` and template `gamified-app`, create a gamified learning website. Module map, progress, badges, quiz cards, cohort leaderboard, and continue CTA. Make it feel leveled progression, playful, structured.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/levels-learning-path.png",
     artifactUrl: "https://levels-learning-path-715f6d07.sites.vm0.io",
@@ -3183,7 +3183,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A hotel launch page with suites, dining, spa, experiences, availability, and concierge CTA.",
     prompt:
-      "Using `zero generate website` with design system `luxury` and template `saas-landing`, create a luxury hotel website. Suites, dining, spa, experiences, availability, and concierge CTA. Make it feel luxury hospitality, spacious, refined.",
+      "/gen website with design system `luxury` and template `saas-landing`, create a luxury hotel website. Suites, dining, spa, experiences, availability, and concierge CTA. Make it feel luxury hospitality, spacious, refined.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/luxury-hotel-launch.png",
     artifactUrl: "https://luxury-hotel-launch-715f6d07.sites.vm0.io",
@@ -3205,7 +3205,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A mission control dashboard with orbital timeline, subsystem status, comms, and anomaly handling.",
     prompt:
-      "Using `zero generate website` with design system `mission-control` and template `dashboard`, create a space mission control dashboard. Orbital timeline, subsystem status, communications, anomaly queue, and telemetry. Make it feel mission control, dark, precise.",
+      "/gen website with design system `mission-control` and template `dashboard`, create a space mission control dashboard. Orbital timeline, subsystem status, communications, anomaly queue, and telemetry. Make it feel mission control, dark, precise.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mission-control-space-ops.png",
     artifactUrl: "https://mission-control-space-ops-715f6d07.sites.vm0.io",
@@ -3227,7 +3227,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A product story page with layered feature perspectives, proof, customer paths, and conversion CTA.",
     prompt:
-      "Using `zero generate website` with design system `perspective` and template `saas-landing`, create a perspective-driven product story page. Layered feature panels, proof blocks, customer paths, and CTA. Make it feel dimensional, narrative, polished.",
+      "/gen website with design system `perspective` and template `saas-landing`, create a perspective-driven product story page. Layered feature panels, proof blocks, customer paths, and CTA. Make it feel dimensional, narrative, polished.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/perspective-product-story.png",
     artifactUrl: "https://perspective-product-story-715f6d07.sites.vm0.io",
@@ -3249,7 +3249,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A membership pricing page with benefits, annual savings, comparison, social proof, and FAQ.",
     prompt:
-      "Using `zero generate website` with design system `premium` and template `pricing-page`, create a premium membership pricing page. Benefit tiers, annual savings, comparison matrix, social proof, and FAQ. Make it feel premium, confident, conversion-focused.",
+      "/gen website with design system `premium` and template `pricing-page`, create a premium membership pricing page. Benefit tiers, annual savings, comparison matrix, social proof, and FAQ. Make it feel premium, confident, conversion-focused.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/premium-membership-launch.png",
     artifactUrl: "https://premium-membership-launch-715f6d07.sites.vm0.io",
@@ -3271,7 +3271,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A professional services homepage with capabilities, industries, partner proof, insights, and contact.",
     prompt:
-      "Using `zero generate website` with design system `professional` and template `saas-landing`, create a professional services website. Capabilities, industries, partner proof, insights, and contact CTA. Make it feel professional, restrained, credible.",
+      "/gen website with design system `professional` and template `saas-landing`, create a professional services website. Capabilities, industries, partner proof, insights, and contact CTA. Make it feel professional, restrained, credible.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/professional-services-home.png",
     artifactUrl: "https://professional-services-home-715f6d07.sites.vm0.io",
@@ -3293,7 +3293,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A news publication feature with headline package, timeline, data points, interviews, and related stories.",
     prompt:
-      "Using `zero generate website` with design system `publication` and template `blog-post`, create a news publication feature article. Headline package, timeline, data cards, interviews, and related stories. Make it feel publication-grade, editorial, readable.",
+      "/gen website with design system `publication` and template `blog-post`, create a news publication feature article. Headline package, timeline, data cards, interviews, and related stories. Make it feel publication-grade, editorial, readable.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/publication-news-feature.png",
     artifactUrl: "https://publication-news-feature-715f6d07.sites.vm0.io",
@@ -3315,7 +3315,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "An interior design project feature with room tours, materials, floor plan, sourcing, and designer notes.",
     prompt:
-      "Using `zero generate website` with design system `refined` and template `blog-post`, create an interior design editorial page. Room tours, materials, floor plan, sourcing, and designer notes. Make it feel refined interiors, calm, textural.",
+      "/gen website with design system `refined` and template `blog-post`, create an interior design editorial page. Room tours, materials, floor plan, sourcing, and designer notes. Make it feel refined interiors, calm, textural.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/refined-interior-design.png",
     artifactUrl: "https://refined-interior-design-715f6d07.sites.vm0.io",
@@ -3337,7 +3337,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A device launch page with product render, specs, ecosystem, preorder, and comparison.",
     prompt:
-      "Using `zero generate website` with design system `sleek` and template `saas-landing`, create a sleek hardware device launch page. Product render, specs, ecosystem, comparison, preorder, and support. Make it feel sleek, minimal hardware, high polish.",
+      "/gen website with design system `sleek` and template `saas-landing`, create a sleek hardware device launch page. Product render, specs, ecosystem, comparison, preorder, and support. Make it feel sleek, minimal hardware, high polish.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/sleek-device-launch.png",
     artifactUrl: "https://sleek-device-launch-715f6d07.sites.vm0.io",
@@ -3359,7 +3359,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A mission brief page with launch window, payload, trajectory, vehicle stats, and live webcast.",
     prompt:
-      "Using `zero generate website` with design system `spacex` and template `saas-landing`, create a space launch mission brief website. Launch window, payload, trajectory, vehicle stats, webcast, and press kit. Make it feel aerospace black-white, technical, bold.",
+      "/gen website with design system `spacex` and template `saas-landing`, create a space launch mission brief website. Launch window, payload, trajectory, vehicle stats, webcast, and press kit. Make it feel aerospace black-white, technical, bold.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/spacex-mission-brief.png",
     artifactUrl: "https://spacex-mission-brief-715f6d07.sites.vm0.io",
@@ -3381,7 +3381,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A wellness retreat page with schedule, rooms, treatments, landscape, and booking.",
     prompt:
-      "Using `zero generate website` with design system `spacious` and template `saas-landing`, create a spacious wellness retreat website. Retreat schedule, rooms, treatments, landscape, pricing, and booking CTA. Make it feel spacious, serene, airy.",
+      "/gen website with design system `spacious` and template `saas-landing`, create a spacious wellness retreat website. Retreat schedule, rooms, treatments, landscape, pricing, and booking CTA. Make it feel spacious, serene, airy.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/spacious-wellness-retreat.png",
     artifactUrl: "https://spacious-wellness-retreat-715f6d07.sites.vm0.io",
@@ -3403,7 +3403,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A nonprofit campaign story with beneficiary journeys, impact numbers, donation tiers, and updates.",
     prompt:
-      "Using `zero generate website` with design system `storytelling` and template `blog-post`, create a story-led nonprofit campaign website. Beneficiary journeys, impact numbers, donation tiers, updates, and donate CTA. Make it feel story-led, empathetic, credible.",
+      "/gen website with design system `storytelling` and template `blog-post`, create a story-led nonprofit campaign website. Beneficiary journeys, impact numbers, donation tiers, updates, and donate CTA. Make it feel story-led, empathetic, credible.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/storytelling-nonprofit-campaign.png",
     artifactUrl:
@@ -3426,7 +3426,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A festival guide for an eclipse event with schedule, viewing zones, safety, lodging, and tickets.",
     prompt:
-      "Using `zero generate website` with design system `totality-festival` and template `saas-landing`, create an eclipse festival guide website. Schedule, viewing zones, safety tips, lodging, lineup, and tickets. Make it feel cosmic festival, informative, memorable.",
+      "/gen website with design system `totality-festival` and template `saas-landing`, create an eclipse festival guide website. Schedule, viewing zones, safety tips, lodging, lineup, and tickets. Make it feel cosmic festival, informative, memorable.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/totality-festival-guide.png",
     artifactUrl: "https://totality-festival-guide-rerun-715f6d07.sites.vm0.io",
@@ -3448,7 +3448,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A food market page with vendors, tasting map, weekend events, membership, and ordering.",
     prompt:
-      "Using `zero generate website` with design system `vibrant` and template `saas-landing`, create a vibrant food market website. Vendor grid, tasting map, weekend events, membership, ordering, and visit CTA. Make it feel vibrant, delicious, community.",
+      "/gen website with design system `vibrant` and template `saas-landing`, create a vibrant food market website. Vendor grid, tasting map, weekend events, membership, ordering, and visit CTA. Make it feel vibrant, delicious, community.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/vibrant-food-market.png",
     artifactUrl: "https://vibrant-food-market-715f6d07.sites.vm0.io",
@@ -3470,7 +3470,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A clean operations dashboard with task queues, SLA health, team capacity, and weekly trends.",
     prompt:
-      "Using `zero generate website` with design system `clean` and template `dashboard`, create a clean operations dashboard for service teams. Task queues, SLA health, team capacity, weekly trends, and handoff notes. Make it feel clean, restrained, practical.",
+      "/gen website with design system `clean` and template `dashboard`, create a clean operations dashboard for service teams. Task queues, SLA health, team capacity, weekly trends, and handoff notes. Make it feel clean, restrained, practical.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/clean-operations-dashboard.png",
     artifactUrl: "https://clean-operations-dashboard-715f6d07.sites.vm0.io",
@@ -3492,7 +3492,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A baseline SaaS homepage with product value, feature cards, customer proof, pricing, and signup.",
     prompt:
-      "Using `zero generate website` with design system `default` and template `saas-landing`, create a default SaaS homepage that works as a neutral baseline. Hero value proposition, feature cards, customer proof, pricing teaser, and signup CTA. Make it feel neutral, dependable, broadly usable.",
+      "/gen website with design system `default` and template `saas-landing`, create a default SaaS homepage that works as a neutral baseline. Hero value proposition, feature cards, customer proof, pricing teaser, and signup CTA. Make it feel neutral, dependable, broadly usable.",
     previewImage:
       "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/default-saas-home.png",
     artifactUrl: "https://default-saas-home-715f6d07.sites.vm0.io",
@@ -3514,7 +3514,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A minimal portfolio index with selected work, concise case notes, studio bio, and contact.",
     prompt:
-      "Using `zero generate website` with design system `minimal` and template `blog-post`, create a minimal portfolio index for a design studio. Selected work, concise case notes, studio bio, process notes, and contact CTA. Make it feel minimal, quiet, precise.",
+      "/gen website with design system `minimal` and template `blog-post`, create a minimal portfolio index for a design studio. Selected work, concise case notes, studio bio, process notes, and contact CTA. Make it feel minimal, quiet, precise.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/minimal-portfolio-index.png",
     artifactUrl: "https://minimal-portfolio-index-715f6d07.sites.vm0.io",
@@ -3536,7 +3536,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A modern product launch page with a device mockup, feature narrative, integrations, testimonials, and trial CTA.",
     prompt:
-      "Using `zero generate website` with design system `modern` and template `saas-landing`, create a modern product launch website. Device mockup, feature narrative, integrations, testimonials, and trial CTA. Make it feel modern, polished, conversion-focused.",
+      "/gen website with design system `modern` and template `saas-landing`, create a modern product launch website. Device mockup, feature narrative, integrations, testimonials, and trial CTA. Make it feel modern, polished, conversion-focused.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/modern-product-launch.png",
     artifactUrl: "https://modern-product-launch-715f6d07.sites.vm0.io",
@@ -3558,7 +3558,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A simple notes app landing page with capture, organization, sharing, sync, and export.",
     prompt:
-      "Using `zero generate website` with design system `simple` and template `saas-landing`, create a simple notes app website. Capture flow, organization, sharing, sync, export, and download CTA. Make it feel simple, direct, friendly.",
+      "/gen website with design system `simple` and template `saas-landing`, create a simple notes app website. Capture flow, organization, sharing, sync, export, and download CTA. Make it feel simple, direct, friendly.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/simple-notes-app.png",
     artifactUrl: "https://simple-notes-app-715f6d07.sites.vm0.io",
@@ -3580,7 +3580,7 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     description:
       "A WIRED-style technology feature with a bold headline package, timeline, expert quotes, and related reading.",
     prompt:
-      "Using `zero generate website` with design system `wired` and template `blog-post`, create a technology magazine feature article. Bold headline package, timeline, expert quotes, data callouts, and related reading. Make it feel WIRED-inspired, editorial, sharp.",
+      "/gen website with design system `wired` and template `blog-post`, create a technology magazine feature article. Bold headline package, timeline, expert quotes, data callouts, and related reading. Make it feel WIRED-inspired, editorial, sharp.",
     previewImage:
       "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/wired-tech-feature.png",
     artifactUrl: "https://wired-tech-feature-rerun-715f6d07.sites.vm0.io",
