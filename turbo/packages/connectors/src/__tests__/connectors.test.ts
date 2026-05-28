@@ -11,6 +11,8 @@ import {
   it,
 } from "vitest";
 import {
+  CONNECTOR_TYPES,
+  CONNECTOR_TYPE_KEYS,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
@@ -306,6 +308,38 @@ describe("connector auth method config", () => {
       variables: ["GITLAB_HOST"],
     });
     expect(getConnectorManualGrantFieldNames("github")).toBeNull();
+  });
+
+  it("keeps connector-scoped secret and variable names globally unique", () => {
+    const secretOwners = new Map<string, string[]>();
+    const variableOwners = new Map<string, string[]>();
+
+    for (const type of CONNECTOR_TYPE_KEYS) {
+      for (const authMethod of Object.keys(CONNECTOR_TYPES[type].authMethods)) {
+        for (const name of getConnectorSecretNames(type, authMethod)) {
+          secretOwners.set(name, [
+            ...(secretOwners.get(name) ?? []),
+            `${type}:${authMethod}`,
+          ]);
+        }
+        for (const name of getConnectorVariableNames(type, authMethod)) {
+          variableOwners.set(name, [
+            ...(variableOwners.get(name) ?? []),
+            `${type}:${authMethod}`,
+          ]);
+        }
+      }
+    }
+
+    const duplicateSecrets = [...secretOwners].filter(([, owners]) => {
+      return owners.length > 1;
+    });
+    const duplicateVariables = [...variableOwners].filter(([, owners]) => {
+      return owners.length > 1;
+    });
+
+    expect(duplicateSecrets).toStrictEqual([]);
+    expect(duplicateVariables).toStrictEqual([]);
   });
 });
 
