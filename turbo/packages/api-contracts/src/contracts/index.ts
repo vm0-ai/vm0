@@ -712,7 +712,6 @@ export {
   getConnectorSecretNames,
   getConnectorEnvBindings,
   getConnectorEnvNamesForSecret,
-  getConnectorProvidedEnvNames,
   getConnectorTypeForSecretName,
   isGoogleOAuthConnector,
   hasRequiredScopes,

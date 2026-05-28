@@ -32,7 +32,6 @@ import {
   getConnectorDeviceAuthGrantConfig,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
-  getConnectorProvidedEnvNames,
   getConnectorOAuthClient,
   getConnectorOAuthScopes,
   getConnectorManualGrantFieldNames,
@@ -1696,25 +1695,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toStrictEqual(
       [...runtimeAvailableTypes].sort(),
     );
-  });
-});
-
-describe("getConnectorProvidedEnvNames", () => {
-  it("returns environment names for API-token-only connector", () => {
-    const names = getConnectorProvidedEnvNames(["axiom"]);
-    expect(names.has("AXIOM_TOKEN")).toBe(true);
-  });
-
-  it("returns environment names for OAuth connector", () => {
-    const names = getConnectorProvidedEnvNames(["github"]);
-    expect(names.has("GH_TOKEN")).toBe(true);
-    expect(names.has("GITHUB_TOKEN")).toBe(true);
-  });
-
-  it("does not return variable-backed environment names", () => {
-    const names = getConnectorProvidedEnvNames(["gitlab"]);
-    expect(names.has("GITLAB_TOKEN")).toBe(true);
-    expect(names.has("GITLAB_HOST")).toBe(false);
   });
 });
 
