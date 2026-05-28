@@ -738,9 +738,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `nike` and template `saas-landing`, create a launch site for a flagship running shoe with adaptive cushioning. Hero with editorial photography, athlete story, tech breakdown, color picker, and pre-order CTA. Make it feel bold all-caps, high-contrast, athletic energy.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/nike-running-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-nike-running-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/nike-running-launch.png",
+    artifactUrl: "https://nike-running-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -945,9 +944,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `neumorphism` and template `saas-landing`, create a landing for a tactile music control app for hi-fi setups. Hero device mockup, soft button gallery, preset library, room calibration, and download CTA. Make it feel soft inset/outset shadows, monochrome, calm and tactile.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/neumorphism-music-controls.png",
-    artifactUrl:
-      "https://web-design-pass1-neumorphism-music-controls-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/neumorphism-music-controls.png",
+    artifactUrl: "https://neumorphism-music-controls-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1335,9 +1333,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `bugatti` and template `saas-landing`, create a launch site for the Bugatti Tourbillon hyper sports car. Hero with silhouette, engineering deep-dive, atelier story, allocation request form, and concierge contact. Make it feel haute couture, navy and gold, quiet ultra-luxury.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5523f357-9aa1-4a30-9e67-a65d9435ae3c/bugatti-tourbillon-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-bugatti-tourbillon-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/bugatti-tourbillon-launch.png",
+    artifactUrl: "https://bugatti-tourbillon-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1358,9 +1355,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `cal` and template `saas-landing`, create a launch site for an open-source scheduling tool. Hero with embed mockup, booking flow, integrations, self-host option, and pricing. Make it feel black and white with electric accent, calm, designer-aware.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5783e7bd-050f-4063-9e76-eed4266feb44/cal-scheduling-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-cal-scheduling-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cal-scheduling-launch.png",
+    artifactUrl: "https://cal-scheduling-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1381,9 +1377,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `cohere` and template `saas-landing`, create a launch site for an enterprise retrieval augmented generation platform. Cover embed model, rerank, citations, on-prem options, and a request-access form. Make it feel trustworthy magenta gradients, enterprise polish, careful copy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f4520473-83d0-4549-9958-b8c6c9e6e2b2/cohere-enterprise-rag.png",
-    artifactUrl:
-      "https://web-design-pass2-cohere-enterprise-rag-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cohere-enterprise-rag.png",
+    artifactUrl: "https://cohere-enterprise-rag-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1404,9 +1399,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `cosmic` and template `saas-landing`, create a landing page for a multiplayer space exploration sim. Hero with star-field, faction picker, ship roster, season roadmap, and beta sign-up CTA. Make it feel deep space gradients, star-field, sci-fi gravitas.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/80d8f73e-3745-450a-9256-89e8c23d241c/cosmic-space-sim.png",
-    artifactUrl:
-      "https://web-design-pass2-cosmic-space-sim-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/cosmic-space-sim.png",
+    artifactUrl: "https://cosmic-space-sim-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1427,9 +1421,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dithered` and template `web-prototype`, create a launch site for an indie pixel-art puzzle game. Hero with dithered key art, story snippet, gameplay loop, soundtrack snippet, and wishlist CTA. Make it feel 1-bit dithered halftone, monochrome with one accent, retro indie warmth.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c2002d1f-b114-49d5-94c3-56b8bb131fb5/dithered-indie-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-dithered-indie-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/dithered-indie-launch.png",
+    artifactUrl: "https://dithered-indie-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1450,9 +1443,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `doodle` and template `saas-landing`, create a landing page for a hand-drawn kids storybook subscription. Hero with character doodle, sample pages, age guide, gift options, and subscribe CTA. Make it feel hand-drawn lines, crayon textures, joyful and warm.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/845d1f1b-1d99-47de-ba39-5db21de4a387/doodle-kids-book.png",
-    artifactUrl:
-      "https://web-design-pass2-doodle-kids-book-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/doodle-kids-book.png",
+    artifactUrl: "https://doodle-kids-book-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1473,9 +1465,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `duolingo` and template `gamified-app`, create a landing page for a new daily-streak language learning experience. Hero with mascot scene, daily streak demo, lesson preview, leaderboards, and family plan. Make it feel green energetic, playful illustrations, encouraging.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6bdd274e-8276-4bfa-a874-ee632edb5b98/duolingo-language-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-duolingo-language-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/duolingo-language-launch.png",
+    artifactUrl: "https://duolingo-language-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1518,9 +1509,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `ferrari` and template `saas-landing`, create a launch site for the Ferrari 296 GTS hybrid spider. Hero with car silhouette, performance numbers, design language, color options, and book a test drive CTA. Make it feel iconic Ferrari red, cinematic photography mood, motorsport heritage.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cb54b837-109b-421f-b94a-77bd54235bd1/ferrari-296-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-ferrari-296-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/ferrari-296-launch.png",
+    artifactUrl: "https://ferrari-296-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1541,9 +1531,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `gradient` and template `saas-landing`, create a launch site for a personalized fitness app. Hero with workout mockup, program library, coach-led plans, family plan, and try-free CTA. Make it feel vivid multi-stop gradients, glossy surfaces, motivating.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/11a78658-38c8-46a8-98ac-abcab12f2e35/gradient-fitness-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-gradient-fitness-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/gradient-fitness-launch.png",
+    artifactUrl: "https://gradient-fitness-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1564,9 +1553,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `hashicorp` and template `docs-page`, create a docs page for infrastructure-as-code configuration. Left nav, HCL code blocks, resource reference, examples, and provider notes. Make it feel indigo brand, calm and authoritative, ops-team comfort.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fa084835-33b5-444b-9aa8-3e1ee35d7127/hashicorp-config-docs.png",
-    artifactUrl:
-      "https://web-design-pass2-hashicorp-config-docs-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/hashicorp-config-docs.png",
+    artifactUrl: "https://hashicorp-config-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1609,9 +1597,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `ibm` and template `blog-post`, create a long-form research feature about a milestone in quantum computing. Lab story, technical breakdown, illustrations, expert quotes, and what's next section. Make it feel IBM blue, IBM Plex typography, research-paper authority.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bce59822-eb01-422e-bb6f-5de032dffed6/ibm-quantum-feature.png",
-    artifactUrl:
-      "https://web-design-pass2-ibm-quantum-feature-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/ibm-quantum-feature.png",
+    artifactUrl: "https://ibm-quantum-feature-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -1632,9 +1619,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `kraken` and template `trading-analysis-dashboard-template`, create a spot trading terminal with charts and order management. Order book, depth chart, candlestick chart, open positions, and exchange-fee schedule. Make it feel deep purple-black, professional trader feel, dense data.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/028cbb13-eb4a-4e5f-a764-ddb5f8e9535e/kraken-spot-terminal.png",
-    artifactUrl:
-      "https://web-design-pass2-kraken-spot-terminal-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/kraken-spot-terminal.png",
+    artifactUrl: "https://kraken-spot-terminal-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -1655,9 +1641,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `lamborghini` and template `saas-landing`, create a launch site for the Lamborghini Revuelto plug-in hybrid V12. Hero with silhouette, drive modes, weight distribution chart, configurator, and reserve CTA. Make it feel bold yellow + black, angular hexagons, dramatic Italian energy.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d3732ffd-fb9c-4e0b-b5f0-4a1987f93320/lamborghini-revuelto-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-lamborghini-revuelto-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/lamborghini-revuelto-launch.png",
+    artifactUrl: "https://lamborghini-revuelto-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1678,9 +1663,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `loom` and template `saas-landing`, create a launch site for an async video review feature. Hero with record-and-share demo, threads, transcript, integrations, and team pricing. Make it feel purple accent, friendly UI mockups, work-first.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a7ec7f11-88d3-4926-b867-b8e7e4ec3fe6/loom-async-video-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-loom-async-video-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/loom-async-video-launch.png",
+    artifactUrl: "https://loom-async-video-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1701,9 +1685,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `lovable` and template `saas-landing`, create a marketing site for a chat-to-app builder. Prompt-to-app demo, framework support, deploy flow, templates gallery, and pricing. Make it feel warm gradient, playful illustrations, optimistic.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/888740c7-d540-48a2-9b20-11b3e20dcf53/lovable-vibe-coding-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-lovable-vibe-coding-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/lovable-vibe-coding-launch.png",
+    artifactUrl: "https://lovable-vibe-coding-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1724,9 +1707,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mastercard` and template `saas-landing`, create a launch site for a corporate spend card with controls. Hero with card render, expense controls, integrations, security badges, and request demo CTA. Make it feel trustworthy red-orange brand, business polish, dense feature grid.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a22213b9-3022-4d86-8a18-c0ec40f2714f/mastercard-corporate-card.png",
-    artifactUrl:
-      "https://web-design-pass2-mastercard-corporate-card-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mastercard-corporate-card.png",
+    artifactUrl: "https://mastercard-corporate-card-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1747,9 +1729,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `material` and template `docs-page`, create a spec page for a Material Design 3 component. Left nav, anatomy diagram, states table, motion guidance, code snippet, and accessibility notes. Make it feel Material colors, clear hierarchy, spec-paper polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0644bf70-445c-4e07-a8a5-c24604d6d003/material-design-spec.png",
-    artifactUrl:
-      "https://web-design-pass2-material-design-spec-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/material-design-spec.png",
+    artifactUrl: "https://material-design-spec-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:platform-design",
@@ -1770,9 +1751,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `minimax` and template `saas-landing`, create a launch page for a text-to-video API tier. Generation examples, prompt tips, latency/quality tiers, pricing, and try-now panel. Make it feel vivid cinematic accents, dense feature grid, energetic.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6ba5d5a8-e9db-49ce-9f04-01a53eaee37f/minimax-video-api-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-minimax-video-api-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/minimax-video-api-launch.png",
+    artifactUrl: "https://minimax-video-api-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1793,9 +1773,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `miro` and template `saas-landing`, create a landing page for an infinite canvas workspace upgrade. Hero with sticky-note canvas mockup, templates, integrations, AI clustering teaser, and pricing. Make it feel bright multi-color, playful sticker shapes, collaborative.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/de0f116f-853f-4c8b-9bc6-57880e6f2430/miro-canvas-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-miro-canvas-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/miro-canvas-launch.png",
+    artifactUrl: "https://miro-canvas-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1816,9 +1795,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mistral-ai` and template `saas-landing`, create a release page for a new open-weights mixture-of-experts model. Show benchmarks, weights checksum, model card, licensing terms, and a deploy guide. Make it feel orange accent, technical and confident, European minimalist.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/114b0339-2c20-42e9-8490-6c6f64aa6e6f/mistral-open-weights-release.png",
-    artifactUrl:
-      "https://web-design-pass2-mistral-open-weights-release-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mistral-open-weights-release.png",
+    artifactUrl: "https://mistral-open-weights-release-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1839,9 +1817,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mongodb` and template `docs-page`, create a docs page for query operators in a document database. Left nav, body with shell + JS code blocks, parameter table, examples, and see-also. Make it feel dark leafy green, code-dense, calm authoritative.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8386f22e-42be-401d-954a-e4cdeeb4f06a/mongodb-query-docs.png",
-    artifactUrl:
-      "https://web-design-pass2-mongodb-query-docs-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/mongodb-query-docs.png",
+    artifactUrl: "https://mongodb-query-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1862,9 +1839,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `neon` and template `saas-landing`, create a launch site for a cyberpunk-themed mech-builder game. Hero with neon city, mech roster, season pass, multiplayer modes, and pre-order CTA. Make it feel hot pink + cyan glow, scanlines, cyberpunk grit.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1a33d951-fe4f-4c68-90be-aca52d5f686f/neon-cyberpunk-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-neon-cyberpunk-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/neon-cyberpunk-launch.png",
+    artifactUrl: "https://neon-cyberpunk-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1885,9 +1861,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `nvidia` and template `saas-landing`, create a launch site for a next-gen AI accelerator chip. Hero with chip render, perf chart, framework support, datacenter use case, and reserve CTA. Make it feel signature green on black, futuristic, performance-led.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0db6f06c-8e83-4c3b-820b-195d0a8d809c/nvidia-accelerator-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-nvidia-accelerator-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/nvidia-accelerator-launch.png",
+    artifactUrl: "https://nvidia-accelerator-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -1952,9 +1927,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `paper` and template `blog-post`, create a paper-textured zine feature about urban sketching. Hero spread, three artist profiles with field notes, pull quotes, and a recommended-supplies sidebar. Make it feel paper background, hand-drawn flourishes, quiet personal essay.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d05c4933-3e02-44d3-b36a-cba7a84664c4/paper-zine-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-paper-zine-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/paper-zine-launch.png",
+    artifactUrl: "https://paper-zine-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -1997,9 +1971,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `renault` and template `saas-landing`, create a launch site for the Renault 5 E-Tech electric retro hatchback. Hero with car silhouette, trims, range, charging map, configurator, and order CTA. Make it feel cheerful yellow + black, retro nostalgia with modern polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0e3437c8-c66a-48bc-9cb0-b0a3bc6ea164/renault-5-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-renault-5-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/renault-5-launch.png",
+    artifactUrl: "https://renault-5-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -2042,9 +2015,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `resend` and template `pricing-page`, create a pricing page for a developer-first transactional email API. Free/Pro/Enterprise tiers, per-email overages, deliverability features, and FAQ. Make it feel all-black with subtle accents, geometric, developer-first.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/142b513b-4552-4dd4-b626-340dbfeafa6b/resend-email-api-pricing.png",
-    artifactUrl:
-      "https://web-design-pass2-resend-email-api-pricing-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/resend-email-api-pricing.png",
+    artifactUrl: "https://resend-email-api-pricing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:paywall-upgrade-cro",
@@ -2065,9 +2037,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `runwayml` and template `saas-landing`, create a launch site for a new video model with motion brush. Hero with frame grid, capability strip, before/after, license tiers, and try-now CTA. Make it feel cinematic dark, glossy gradients, creative-tool polish.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0283f10e-91de-4741-b158-6d56b3e24922/runwayml-video-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-runwayml-video-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/runwayml-video-launch.png",
+    artifactUrl: "https://runwayml-video-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -2088,9 +2059,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `sanity` and template `docs-page`, create a docs page for content schema and types in a headless CMS. Left nav, body with TypeScript schema examples, field types table, and best practices. Make it feel red accent on white, sharp typography, content-creator friendly.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a3912992-64b2-4291-8d5b-d932040c6554/sanity-cms-schema-docs.png",
-    artifactUrl:
-      "https://web-design-pass2-sanity-cms-schema-docs-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/sanity-cms-schema-docs.png",
+    artifactUrl: "https://sanity-cms-schema-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -2111,9 +2081,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `sentry` and template `dashboard`, create a real-time error tracking dashboard for a SaaS app. Top stats, frequency chart, issue list with stack trace preview, release health, and team filter. Make it feel purple-black, dense error rows, ops-team feel.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f399c066-5f8c-42cb-9c45-0412d5ee3e58/sentry-error-dashboard.png",
-    artifactUrl:
-      "https://web-design-pass2-sentry-error-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/sentry-error-dashboard.png",
+    artifactUrl: "https://sentry-error-dashboard-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -2156,9 +2125,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `skeumorphism` and template `saas-landing`, create a landing page for a skeuomorphic synth/DAW app. Hero with wood-grain device mockup, brushed-metal controls, preset library, mixer mockup, and download CTA. Make it feel brushed metal + leather + wood, photoreal textures, retro studio vibe.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/380d5854-b943-472a-b7de-8613ccb837ad/skeumorphism-music-app.png",
-    artifactUrl:
-      "https://web-design-pass2-skeumorphism-music-app-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/skeumorphism-music-app.png",
+    artifactUrl: "https://skeumorphism-music-app-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -2179,9 +2147,8 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `superhuman` and template `saas-landing`, create a launch site for an ultra-fast email client with shortcuts. Hero with inbox mockup, AI triage, keyboard reference, calendar split, and waitlist CTA. Make it feel premium navy, generous whitespace, status-symbol calm.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9ced6db1-ef93-49a6-aeac-89a53bf61eae/superhuman-email-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-superhuman-email-launch-715f6d07.sites.vm0.io",
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/superhuman-email-launch.png",
+    artifactUrl: "https://superhuman-email-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
