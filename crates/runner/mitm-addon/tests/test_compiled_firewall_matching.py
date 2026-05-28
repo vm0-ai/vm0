@@ -28,23 +28,7 @@ class TestCompiledFirewallMatching:
         assert compiled is not None
         return compiled
 
-    def _assert_same_result(self, raw, compiled):
-        assert type(compiled) is type(raw)
-        if isinstance(raw, matching.FirewallAllow):
-            assert isinstance(compiled, matching.FirewallAllow)
-            assert compiled.api_entry is raw.api_entry
-            assert compiled.name == raw.name
-            assert compiled.permission == raw.permission
-            assert compiled.params == raw.params
-            assert compiled.rule == raw.rule
-            assert compiled.rel_path == raw.rel_path
-            return
-        if isinstance(raw, matching.FirewallBlock):
-            assert compiled == raw
-            return
-        assert compiled is raw
-
-    def test_matches_raw_for_mixed_base_and_greedy_rule(self):
+    def test_compiled_matches_mixed_base_and_greedy_rule(self):
         fws = wrap_firewalls(
             [
                 {
@@ -59,16 +43,12 @@ class TestCompiledFirewallMatching:
         )
         url = "https://api-us.example.com/v1/acme/upload/a/b/c"
         policies = {"storage": {"allow": ["upload"], "deny": [], "unknownPolicy": "deny"}}
-
-        raw = matching.match_firewall_request(url, "POST", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "POST",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.params == {
             "region": "us",
@@ -76,7 +56,7 @@ class TestCompiledFirewallMatching:
             "path": "a/b/c",
         }
 
-    def test_matches_raw_for_greedy_host_base_params(self):
+    def test_compiled_matches_greedy_host_base_params(self):
         fws = wrap_firewalls(
             [
                 {
@@ -106,30 +86,26 @@ class TestCompiledFirewallMatching:
         }
 
         url = "https://a.b.example.com/items/123"
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             compiled_firewalls,
             policies,
         )
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.params == {"sub": "a.b", "id": "123"}
 
         url = "https://example.org/items/123"
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             compiled_firewalls,
             policies,
         )
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.params == {"sub": "", "id": "123"}
 
-    def test_matches_raw_for_static_base_boundary_and_query(self):
+    def test_compiled_matches_static_base_boundary_and_query(self):
         fws = wrap_firewalls(
             [
                 {
@@ -146,29 +122,25 @@ class TestCompiledFirewallMatching:
         policies = {"anthropic": {"allow": ["messages"], "deny": [], "unknownPolicy": "deny"}}
 
         url = "https://api.anthropic.com/v1/messages?beta=1"
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             compiled_firewalls,
             policies,
         )
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.rel_path == "/"
 
         url = "https://api.anthropic.com/v1/messages_fake"
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             compiled_firewalls,
             policies,
         )
-        self._assert_same_result(raw, compiled)
         assert compiled is None
 
-    def test_matches_raw_for_parameterized_host_nonstandard_port_rejection(self):
+    def test_compiled_matches_parameterized_host_nonstandard_port_rejection(self):
         fws = wrap_firewalls(
             [
                 {
@@ -183,19 +155,15 @@ class TestCompiledFirewallMatching:
         )
         url = "https://api-us.example.com:8443/items"
         policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
-
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert compiled is None
 
-    def test_matches_raw_for_unknown_policy_when_api_has_no_permissions(self):
+    def test_compiled_matches_unknown_policy_when_api_has_no_permissions(self):
         fws = wrap_firewalls(
             [
                 {
@@ -210,26 +178,22 @@ class TestCompiledFirewallMatching:
         url = "https://api.example.com/items"
 
         allow_policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
-        raw = matching.match_firewall_request(url, "GET", fws, allow_policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             compiled_firewalls,
             allow_policies,
         )
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.permission is None
 
         ask_policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "ask"}}
-        raw = matching.match_firewall_request(url, "GET", fws, ask_policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             compiled_firewalls,
             ask_policies,
         )
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.reason == "unknown_endpoint"
 
@@ -240,7 +204,7 @@ class TestCompiledFirewallMatching:
             "https://api.example.com/items/%2e%2e/admin",
         ],
     )
-    def test_matches_raw_for_unsafe_path_block(self, url):
+    def test_compiled_blocks_unsafe_path(self, url):
         fws = wrap_firewalls(
             [
                 {
@@ -255,7 +219,6 @@ class TestCompiledFirewallMatching:
         )
         policies = {"example": {"allow": ["full-access"], "deny": [], "unknownPolicy": "allow"}}
 
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
@@ -263,12 +226,11 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.reason == "unsafe_path"
         assert compiled.permissions == ()
 
-    def test_matches_raw_for_unsafe_path_consumed_by_parameterized_base(self):
+    def test_compiled_blocks_unsafe_path_consumed_by_parameterized_base(self):
         fws = wrap_firewalls(
             [
                 {
@@ -284,7 +246,6 @@ class TestCompiledFirewallMatching:
         url = "https://api.example.com/api/%2e%2e/admin"
         policies = {"example": {"allow": ["admin"], "deny": [], "unknownPolicy": "allow"}}
 
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
@@ -292,12 +253,11 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.reason == "unsafe_path"
         assert compiled.path == "/admin"
 
-    def test_matches_raw_for_ask_permission_block(self):
+    def test_compiled_matches_ask_permission_block(self):
         fws = wrap_firewalls(
             [
                 {
@@ -319,16 +279,12 @@ class TestCompiledFirewallMatching:
             }
         }
         url = "https://api.github.com/repos/org/repo"
-
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.permissions == ("repo-read",)
         assert compiled.reason == "permission_denied"
@@ -363,16 +319,12 @@ class TestCompiledFirewallMatching:
             "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
         }
         url = "https://api.example.com/items/123"
-
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.name == "specific"
         assert compiled.permission == "items-read"
@@ -409,16 +361,12 @@ class TestCompiledFirewallMatching:
             "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
         }
         url = "https://api.example.com/items/123"
-
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.name == "specific"
         assert compiled.permission == "items-read"
@@ -593,16 +541,12 @@ class TestCompiledFirewallMatching:
             }
         }
         url = "https://api.github.com/repos/org/repo"
-
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.permission == "repo-admin"
 
@@ -634,16 +578,12 @@ class TestCompiledFirewallMatching:
             }
         }
         url = "https://api.github.com/repos/org/repo"
-
-        raw = matching.match_firewall_request(url, "GET", fws, policies)
         compiled = matching.match_compiled_firewall_request(
             url,
             "GET",
             self._compiled(fws),
             policies,
         )
-
-        self._assert_same_result(raw, compiled)
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.permissions == ("repo-read", "repo-admin")
         assert compiled.reason == "permission_denied"

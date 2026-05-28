@@ -2,6 +2,8 @@
 
 import asyncio
 
+import matching
+
 
 def wrap_firewalls(apis, name="test"):
     """Wrap a list of API entries into a firewall entry list."""
@@ -23,6 +25,17 @@ def grant_all(firewalls, unknown_policy="deny"):
             "unknownPolicy": unknown_policy,
         }
     return result
+
+
+def match_request_with_raw_firewalls(url, method, firewalls, network_policies=None):
+    """Match raw firewall config through the production compiled matcher."""
+    compiled_firewalls = matching.compile_firewalls(firewalls)
+    return matching.match_compiled_firewall_request(
+        url,
+        method,
+        compiled_firewalls,
+        network_policies,
+    )
 
 
 async def cancel_pending_task(task: asyncio.Task | None) -> None:
