@@ -17,7 +17,7 @@ import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$, replaceSearchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
-import { agentById } from "../agent.ts";
+import { agentById, reloadAgentById$ } from "../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -241,6 +241,7 @@ const saveFirewallPolicies$ = command(
     set(internalAgentReload$, (prev) => {
       return prev + 1;
     });
+    set(reloadAgentById$);
   },
 );
 
@@ -264,6 +265,7 @@ const resolveAccessRequest$ = command(
     set(internalAgentReload$, (prev) => {
       return prev + 1;
     });
+    set(reloadAgentById$);
   },
 );
 

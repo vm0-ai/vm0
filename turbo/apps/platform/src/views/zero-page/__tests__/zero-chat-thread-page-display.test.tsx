@@ -148,6 +148,85 @@ describe("zero chat thread page display - permission action card", () => {
     expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
   });
 
+  it("offers Confirm when the requested permission has no explicit stored policy", async () => {
+    let updatedPolicies: unknown;
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=dns%3Aread&action=allow",
+          runId: "run-permission-action-defaulted",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(
+        zeroAgentPermissionPoliciesContract.update,
+        ({ body, respond }) => {
+          updatedPolicies = body.policies;
+          return respond(200, {
+            agentId: body.agentId,
+            ownerId: "test-user-123",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: body.policies,
+            customSkills: [],
+            modelProviderId: null,
+            selectedModel: null,
+            preferPersonalProvider: false,
+          });
+        },
+      ),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Vercel permissions")).toBeInTheDocument();
+    expect(within(card).getByText("Allow dns:read")).toBeInTheDocument();
+
+    expect(
+      within(card).queryByText("Permissions updated"),
+    ).not.toBeInTheDocument();
+    const confirm = await within(card).findByText("Confirm");
+    expect(confirm).toBeEnabled();
+    click(confirm);
+
+    await waitFor(() => {
+      expect(updatedPolicies).toStrictEqual({
+        vercel: {
+          policies: { "projects:write": "deny", "dns:read": "allow" },
+        },
+      });
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+  });
+
   it("rejects unknown permissions before updating policies", async () => {
     let updateCalled = false;
 

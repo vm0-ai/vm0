@@ -61,7 +61,6 @@ import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { hasConnectorAuthCodeGrant } from "@vm0/connectors/connector-utils";
-import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -2759,12 +2758,11 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     existingRequestLoadable.state === "hasData"
       ? existingRequestLoadable.data
       : null;
-  const resolved = agent
-    ? resolveFirewallPolicies(agent.permissionPolicies, [block.connectorRef])
-    : null;
-  const effectivePolicy =
-    resolved?.[block.connectorRef]?.policies[block.permission] ?? "allow";
-  const alreadyApplied = Boolean(agent) && effectivePolicy === block.action;
+  const storedPolicy =
+    agent?.permissionPolicies?.[block.connectorRef]?.policies?.[
+      block.permission
+    ];
+  const alreadyApplied = Boolean(agent) && storedPolicy === block.action;
   const finished =
     saveLoadable.state === "hasData" || submitLoadable.state === "hasData";
   const buttonState: PermissionActionButtonState = {
