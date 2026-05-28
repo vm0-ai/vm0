@@ -50,9 +50,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dashboard` and template `dashboard`, create a polished website for a SaaS launch metrics command center. Show activation, retention, revenue, support load, release health, ranked opportunities, and a concise executive summary. Make it feel like a quiet operational dashboard that a founder could scan every morning.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/751a6c2a-cd82-4322-86a4-dc1a1b9ab7a3/gallery-trial-data-dashboard-dashboard-hosted.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4f51b542-474b-44f9-ab37-bec4f42abf7a/launch-metrics-command-center.png",
     artifactUrl:
-      "https://gallery-trial-data-dashboard-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-launch-metrics-command-center-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -73,9 +73,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `trading-terminal` and template `dashboard`, create a polished website for a real-time market risk monitor. Show liquidity, volatility, exposure, alerts, watchlists, and a concise risk summary for an investment team. Make it feel like a dark, high-density trading terminal with clear charts and fast scanning.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/57d4059d-a65e-4807-b21a-a6f6ae1b4f57/gallery-trial-data-dashboard-terminal-hosted.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b0b9b135-53bc-4d6c-807c-f113f49fc881/market-risk-monitor.png",
     artifactUrl:
-      "https://gallery-trial-data-dashboard-terminal-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-market-risk-monitor-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -96,9 +96,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dashboard` and template `finance-report`, create a polished executive website report about AI infrastructure cost efficiency. Include spend trends, unit economics, gross margin pressure, vendor concentration, optimization opportunities, risks, and a clear recommendation section. Make it feel like a rigorous board-ready report with practical charts and tables.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d35e7d77-fb4f-42f7-a9c9-c41282e0c7f5/hosted-screenshot.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/68f0ea67-586f-4c3c-b290-980d15cc9ba3/ai-infrastructure-cost-report.png",
     artifactUrl:
-      "https://gallery-trial-data-finance-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-ai-infrastructure-cost-report-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -119,8 +119,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mono` and template `docs-page`, create a polished website that documents API usage analytics for a developer platform. Include metric definitions, event taxonomy, query examples, dashboard interpretation, anomaly notes, and a concise data quality checklist. Make it feel precise, minimal, and technical without becoming cluttered.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d1f09f14-f861-4a79-9a40-794b11e04e12/hosted-screenshot-visible.png",
-    artifactUrl: "https://gallery-trial-data-docs-mono-715f6d07.sites.vm0.io",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4737c949-7495-4489-9a82-31eff0d58cb6/api-usage-analytics-docs.png",
+    artifactUrl:
+      "https://web-design-refresh-api-usage-analytics-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -141,9 +142,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `editorial` and template `web-prototype-taste-editorial`, create a polished editorial website feature about the rise of urban microfactories. Tell the story through strong headlines, image-led sections, short field notes, expert quotes, and a closing outlook on how local manufacturing changes cities. Make it feel like a premium design magazine feature.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d85179d8-7f58-4c1f-9f05-217f4fc3efec/hosted-desktop.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0fb68ea8-50ab-4d64-8791-25d58cf71b57/urban-microfactories.png",
     artifactUrl:
-      "https://gallery-trial-article-editorial-editorial-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-urban-microfactories-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -164,9 +165,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `warm-editorial` and template `web-prototype-taste-editorial`, create a polished magazine-style website about independent coffee roasters rebuilding neighborhood culture. Use warm storytelling, sensory details, founder profiles, a simple map-like section, and a thoughtful conclusion. Make it feel inviting, tactile, and carefully edited.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1a78c132-62e2-4a95-81dc-ac3f7941207d/gallery-trial-article-editorial-warm-hosted.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/7a1ebc88-f3c7-49c7-8cd1-f1d34d4f7e40/neighborhood-roasters.png",
     artifactUrl:
-      "https://gallery-trial-article-editorial-warm-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-neighborhood-roasters-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -187,9 +188,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `apple` and template `docs-page`, create a polished website guide to choosing a modern travel camera setup. Structure it like a beautiful product guide with clear sections, comparison cards, practical examples, and buying considerations. Make it feel calm and premium, useful for creators who want to travel light.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/31647c3f-1e30-44cc-8a39-41fe627e0d90/hosted-desktop.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/389d122d-3518-421c-8033-00e16f81a5fe/travel-camera-setup-guide.png",
     artifactUrl:
-      "https://gallery-trial-article-docs-apple-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-travel-camera-setup-guide-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -210,9 +211,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `apple` and template `web-prototype-taste-editorial`, create a polished website for the launch brief of a personal finance app. Present the target user, product promise, key screens, trust principles, onboarding flow, differentiators, and launch priorities. Make it feel premium, calm, and product-led.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fa2885c1-ff65-4888-b9f7-cb9399ccaa01/hosted-screenshot.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/dbf95d61-270c-442e-b7c8-e2fa835ae99a/personal-finance-app-launch-brief.png",
     artifactUrl:
-      "https://gallery-trial-brief-editorial-apple-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-personal-finance-app-launch-brief-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -233,8 +234,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mono` and template `docs-page`, create a polished website design brief for a developer SDK. Explain the target developers, core jobs to be done, onboarding path, information architecture, API examples, quality bar, and open decisions. Make it feel precise, minimal, and useful for an engineering handoff.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b80adf01-17a1-4ddc-8c5f-a4f46da76399/hosted-desktop.png",
-    artifactUrl: "https://gallery-trial-brief-docs-mono-715f6d07.sites.vm0.io",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6dd6674f-f21d-471c-b84b-9cdaa069abcc/developer-sdk-design-brief.png",
+    artifactUrl:
+      "https://web-design-refresh-developer-sdk-design-brief-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -255,9 +257,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dashboard` and template `dashboard`, create a polished website for a support operations redesign brief. Show the current pain points, workflow principles, triage model, automation opportunities, quality metrics, rollout plan, and decision log. Make it feel like a practical dashboard for support and product leaders.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a4f821f8-474f-4200-b1dc-30c91263a166/screenshot.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/491264e8-5aca-45bf-bf05-c86cb5c46b5d/support-ops-redesign-brief.png",
     artifactUrl:
-      "https://gallery-trial-brief-dashboard-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-support-ops-redesign-brief-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -278,9 +280,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `claude` and template `saas-landing`, create a launch site for an AI research assistant platform built on Claude. Cover the core capability, prompt examples, safety principles, integration paths, and a clear call to start a workspace. Make it feel warm, considered, premium, calm.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claude-ai-platform-launch.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ebe93f44-6fe4-457f-9f29-9e78e57a506a/claude-ai-platform-launch.png",
     artifactUrl:
-      "https://web-design-pass1-claude-ai-platform-launch-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-claude-ai-platform-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -301,9 +303,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `openai` and template `pricing-page`, create a model API pricing page that compares reasoning, multimodal, and fast tiers. Show per-token costs, included quotas, rate limits, batch discounts, enterprise add-ons, and a side-by-side feature matrix. Make it feel precise, confident, monochrome, trustworthy.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/openai-api-pricing-tiers.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d9f04e1b-deee-4a5d-aa98-3561fc9957d7/openai-api-pricing-tiers.png",
     artifactUrl:
-      "https://web-design-pass1-openai-api-pricing-tiers-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-openai-api-pricing-tiers-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:paywall-upgrade-cro",
@@ -324,9 +326,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `linear-app` and template `pm-spec`, create a product spec for shipping a new triage view in a project tracker. Cover problem, user, success metrics, scope, out-of-scope, IA, key states, rollout, and open questions. Make it feel precise, dense, keyboard-first, calm grayscale.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/linear-product-spec.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a120f96b-b570-4c5b-b4bf-67fe5eefbb88/linear-product-spec.png",
     artifactUrl:
-      "https://web-design-pass1-linear-product-spec-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-linear-product-spec-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -347,9 +349,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `vercel` and template `saas-landing`, create a landing site for a frontend deployment and edge runtime platform. Hero with framework grid, preview deploys, edge functions, analytics, pricing teaser, and developer testimonials. Make it feel sharp typography, mono accents, generous whitespace.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/vercel-platform-landing.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/2d9c5832-05bd-4bdf-8750-fae4cf282fae/vercel-platform-landing.png",
     artifactUrl:
-      "https://web-design-pass1-vercel-platform-landing-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-vercel-platform-landing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:web-design-guidelines",
@@ -370,9 +372,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `cursor` and template `saas-landing`, create a launch site for an AI-native code editor. Show inline-chat workflow, tab-tab completion, codebase indexing, model picker, keyboard shortcuts, and a download CTA. Make it feel dark editor aesthetic, vivid syntax highlights, fast and minimal.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/cursor-ide-launch.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f70c6d1d-063b-4772-a214-4277365e7a75/cursor-ide-launch.png",
     artifactUrl:
-      "https://web-design-pass1-cursor-ide-launch-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-cursor-ide-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -393,9 +395,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `github` and template `github-dashboard`, create a repository insights dashboard with PRs, issues, releases, and contributors. Include activity sparkline, open PR queue, stale issues, top contributors this month, release cadence, and a health summary. Make it feel GitHub octicon language, dense rows, restrained color.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/github-repo-dashboard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8b617ea3-849a-4197-a34e-d171a01a1c15/github-repo-dashboard.png",
     artifactUrl:
-      "https://web-design-pass1-github-repo-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-github-repo-dashboard-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -416,9 +418,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `supabase` and template `docs-page`, create a docs page for the auth + row-level-security primitives. Include a left nav, body with code blocks (SQL + JS), inline warning callouts, table of contents, and a previous/next footer. Make it feel readable serif headers, green accents, code-forward.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/supabase-developer-docs.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/06024f54-c27c-4397-b6d7-64fa646f4131/supabase-developer-docs.png",
     artifactUrl:
-      "https://web-design-pass1-supabase-developer-docs-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-supabase-developer-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -439,9 +441,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mintlify` and template `docs-page`, create an API reference page for a transcription endpoint. Include endpoint signature, request/response schemas, code samples in cURL/Python/JS, error table, and a try-it panel. Make it feel airy, gradient accents, friendly developer feel.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/mintlify-api-reference.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5f8b593d-3ac5-4e27-93e1-0138649a11cf/mintlify-api-reference.png",
     artifactUrl:
-      "https://web-design-pass1-mintlify-api-reference-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-mintlify-api-reference-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -462,9 +464,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `raycast` and template `saas-landing`, create a launch page for a Raycast extensions marketplace category. Hero command palette mockup, featured extensions, install flow, developer kit teaser, and a closing CTA. Make it feel punchy red accent, dark UI, hotkey-driven.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/raycast-extensions-launch.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/695468da-c64f-4230-80f2-acdbc0e75a44/raycast-extensions-launch.png",
     artifactUrl:
-      "https://web-design-pass1-raycast-extensions-launch-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-raycast-extensions-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -485,9 +487,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `posthog` and template `dashboard`, create a product analytics dashboard for activation, retention, and feature usage. Show DAU/WAU, feature adoption funnel, retention heatmap, session replay teaser, and a top-events table. Make it feel playful but data-dense, hedgehog energy without being cute.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/posthog-product-analytics.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/7610db13-40b2-48f7-b69e-96cbda94ef8a/posthog-product-analytics.png",
     artifactUrl:
-      "https://web-design-pass1-posthog-product-analytics-715f6d07.sites.vm0.io",
+      "https://web-design-refresh-posthog-product-analytics-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
