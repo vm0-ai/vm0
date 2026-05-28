@@ -320,6 +320,13 @@ async function seedGithubConnector(args: {
     externalEmail: "octocat@example.test",
     oauthScopes: JSON.stringify(["repo"]),
   });
+  await writeDb.insert(secrets).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    name: "GITHUB_ACCESS_TOKEN",
+    encryptedValue: "encrypted-github-access-token",
+    type: "connector",
+  });
 }
 
 describe("GET /api/integrations/github", () => {
