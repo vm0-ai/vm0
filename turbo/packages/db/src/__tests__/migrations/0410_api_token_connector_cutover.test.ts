@@ -348,6 +348,32 @@ describe("migration 0408 api-token connector cutover", () => {
     ]);
   });
 
+  it("migrates complete connectors when optional fields are absent", async () => {
+    const orgId = uniqueId("org");
+    const userId = uniqueId("user");
+    await db.insert(secrets).values({
+      orgId,
+      userId,
+      name: "GITLAB_TOKEN",
+      encryptedValue: "encrypted-gitlab",
+      type: "user",
+    });
+
+    await runScopedApiTokenConnectorCutover({ orgId, userId });
+
+    expect(await readConnectorTypes({ orgId, userId })).toStrictEqual([
+      { type: "gitlab", authMethod: "api-token" },
+    ]);
+    expect(await readSecretState({ orgId, userId })).toStrictEqual([
+      {
+        name: "GITLAB_TOKEN",
+        encryptedValue: "encrypted-gitlab",
+        type: "connector",
+      },
+    ]);
+    expect(await readVariableState({ orgId, userId })).toStrictEqual([]);
+  });
+
   it("migrates mixed secret and variable requirements with optional secrets", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");
