@@ -326,7 +326,7 @@ async function latestEventBackedAssistantMessage(
         eq(chatMessages.role, "assistant"),
         isNotNull(chatMessages.sequenceNumber),
         isNotNull(chatMessages.content),
-        sql<boolean>`length(btrim(${chatMessages.content})) > 0`,
+        sql<boolean>`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
       ),
     )
     .orderBy(desc(chatMessages.sequenceNumber))

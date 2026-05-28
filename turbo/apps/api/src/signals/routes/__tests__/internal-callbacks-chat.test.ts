@@ -825,7 +825,7 @@ describe("POST /api/internal/callbacks/chat", () => {
   it("uses result fallback when existing streamed assistant output is blank", async () => {
     const fixture = await track(seedChatCallbackFixture());
     await insertAssistantEventMessages(fixture, fixture.runId, [
-      { sequenceNumber: 0, content: "" },
+      { sequenceNumber: 0, content: "\n\t" },
     ]);
     completedOutputEvents([
       {
@@ -852,7 +852,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       assistantMessages.map((message) => {
         return message.content;
       }),
-    ).toStrictEqual(["", "Recovered result"]);
+    ).toStrictEqual(["\n\t", "Recovered result"]);
     await clearAllDetached();
   });
 
