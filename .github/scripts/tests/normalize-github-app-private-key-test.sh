@@ -46,7 +46,7 @@ run_normalizer() {
 
   env -i \
     PATH="$PATH" \
-    VM0_GITHUB_APP_PRIVATE_KEY="$private_key" \
+    GITHUB_APP_PRIVATE_KEY="$private_key" \
     GITHUB_OUTPUT="$output_file" \
     "$NORMALIZER"
 }
@@ -87,9 +87,9 @@ missing_secret_output="$(
     "$NORMALIZER" 2>&1
 )" || status=$?
 if [[ "$status" -eq 0 ]]; then
-  fail "expected missing VM0_GITHUB_APP_PRIVATE_KEY case to fail"
+  fail "expected missing GITHUB_APP_PRIVATE_KEY case to fail"
 fi
-assert_contains "$missing_secret_output" "VM0_GITHUB_APP_PRIVATE_KEY is required"
+assert_contains "$missing_secret_output" "GITHUB_APP_PRIVATE_KEY is required"
 
 status=0
 invalid_secret_output="$(
