@@ -31,6 +31,7 @@ interface FixtureState {
   readonly resetVersion: number;
   readonly clicked: boolean;
   readonly actionPressed: boolean;
+  readonly switchChecked: boolean;
   readonly setValueText: string;
   readonly typeText: string;
   readonly lastKey: string | null;
@@ -91,6 +92,7 @@ function emptyFixtureState(resetVersion: number): FixtureState {
     resetVersion,
     clicked: false,
     actionPressed: false,
+    switchChecked: false,
     setValueText: "",
     typeText: "",
     lastKey: null,
@@ -249,6 +251,7 @@ function fixtureStateFromJson(value: unknown): FixtureState {
     resetVersion: numberField(value, "resetVersion"),
     clicked: booleanField(value, "clicked"),
     actionPressed: booleanField(value, "actionPressed"),
+    switchChecked: booleanField(value, "switchChecked"),
     setValueText,
     typeText,
     lastKey,
@@ -269,6 +272,10 @@ function mergeFixturePatch(
       typeof patch.actionPressed === "boolean"
         ? patch.actionPressed
         : state.actionPressed,
+    switchChecked:
+      typeof patch.switchChecked === "boolean"
+        ? patch.switchChecked
+        : state.switchChecked,
     setValueText:
       typeof patch.setValueText === "string"
         ? patch.setValueText
@@ -413,8 +420,13 @@ const post = async (patch) => {
 window.addEventListener("DOMContentLoaded", () => {
   const setValueInput = document.getElementById("set-value-input");
   const typeTextInput = document.getElementById("type-text-input");
+  const reactSwitch = document.getElementById("react-switch");
   const scrollRegion = document.getElementById("scroll-region");
   let resetVersion = -1;
+  const setReactSwitchChecked = (checked) => {
+    reactSwitch.setAttribute("aria-checked", checked ? "true" : "false");
+    reactSwitch.dataset.checked = checked ? "true" : "false";
+  };
   const syncReset = async () => {
     const response = await fetch("/state");
     const state = await response.json();
@@ -424,6 +436,7 @@ window.addEventListener("DOMContentLoaded", () => {
     resetVersion = state.resetVersion;
     setValueInput.value = "";
     typeTextInput.value = "";
+    setReactSwitchChecked(false);
     scrollRegion.scrollTop = 0;
   };
   document.getElementById("click-button").addEventListener("click", () => {
@@ -431,6 +444,11 @@ window.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("action-button").addEventListener("click", () => {
     void post({ actionPressed: true });
+  });
+  reactSwitch.addEventListener("click", () => {
+    const checked = reactSwitch.getAttribute("aria-checked") !== "true";
+    setReactSwitchChecked(checked);
+    void post({ switchChecked: checked });
   });
   document.getElementById("hotkey-target").addEventListener("click", () => {
     document.getElementById("hotkey-target").focus();
@@ -512,6 +530,32 @@ function mainFixtureHtml(): string {
         margin-top: 68px;
         width: 380px;
       }
+      #react-switch {
+        align-items: center;
+        background: #6c7280;
+        border: 2px solid #273142;
+        border-radius: 999px;
+        display: inline-flex;
+        height: 42px;
+        padding: 3px;
+        width: 78px;
+      }
+      #react-switch[data-checked="true"] {
+        background: #256f4a;
+      }
+      #react-switch .switch-thumb {
+        background: white;
+        border-radius: 999px;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+        display: block;
+        height: 34px;
+        transform: translateX(0);
+        transition: transform 80ms linear;
+        width: 34px;
+      }
+      #react-switch[data-checked="true"] .switch-thumb {
+        transform: translateX(36px);
+      }
       .controls {
         display: grid;
         gap: 18px;
@@ -529,6 +573,19 @@ function mainFixtureHtml(): string {
         <button id="action-button" aria-label="VM0-EVAL action button">
           VM0-EVAL action button
         </button>
+        <div>
+          <span id="react-switch-label">VM0-EVAL React switch</span>
+          <div
+            id="react-switch"
+            role="switch"
+            aria-checked="false"
+            aria-labelledby="react-switch-label"
+            tabindex="0"
+            data-checked="false"
+          >
+            <span class="switch-thumb"></span>
+          </div>
+        </div>
         <label>
           VM0-EVAL set value field
           <input
@@ -774,6 +831,24 @@ function findElementIndex(appStateText: string, text: string): number {
   throw new Error(`Unable to find element index for ${text}`);
 }
 
+function findElementIndexByRole(
+  appStateText: string,
+  role: string,
+  text: string,
+): number {
+  for (const line of appStateText.split("\n")) {
+    if (!line.includes(text) || !line.includes(` ${role} `)) {
+      continue;
+    }
+    const match = /^\t*(\d+)\s+/.exec(line);
+    if (!match?.[1]) {
+      continue;
+    }
+    return Number.parseInt(match[1], 10);
+  }
+  throw new Error(`Unable to find ${role} element index for ${text}`);
+}
+
 function assertFreshActionState(
   output: CommandOutput,
   before: AppStateOutput,
@@ -928,6 +1003,39 @@ const evalCases: readonly EvalCase[] = [
       ) {
         throw new Error("perform-action returned unexpected action metadata");
       }
+    },
+  },
+  {
+    name: "click-web-switch",
+    run: async (context) => {
+      await context.fixture.reset();
+      const before = await waitForFixtureAppState(
+        context,
+        "click-web-switch-before",
+        "VM0 Computer Use Eval",
+      );
+      const elementIndex = findElementIndexByRole(
+        before.appStateText,
+        "checkbox",
+        "VM0-EVAL React switch",
+      );
+      const output = await context.command("click-web-switch", [
+        "click",
+        "--app",
+        context.options.app,
+        "--element-index",
+        elementIndex.toString(),
+      ]);
+      assertFreshActionState(output, before);
+      const action = actionMetadata(output);
+      if (action.clickStrategy !== "mouse") {
+        throw new Error("web switch element click did not use mouse strategy");
+      }
+      await waitForOracle(
+        context.fixture,
+        "web switch element click toggles checked state",
+        (state) => state.switchChecked,
+      );
     },
   },
   {
