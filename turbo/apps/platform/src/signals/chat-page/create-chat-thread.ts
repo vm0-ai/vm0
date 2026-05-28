@@ -229,7 +229,8 @@ function deriveRunIndicatorState(
 
   let hasQueued = false;
   for (const message of messages) {
-    if (message.role !== "user") {
+    if (message.role === "assistant") {
+      hasQueued = false;
       continue;
     }
     if (message.isOptimisticRun) {
