@@ -622,7 +622,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       }),
     ).toBeTruthy();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunUpdated:${fixture.threadId}`,
+      `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
     await clearAllDetached();
@@ -651,7 +651,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       }),
     ).toBeTruthy();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunUpdated:${fixture.threadId}`,
+      `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
     await clearAllDetached();
@@ -682,7 +682,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(response.status).toBe(200);
     const messages = await listMessages(fixture.threadId);
     const assistantMessages = messages.filter((message) => {
-      return message.role === "assistant";
+      return message.role === "assistant" && message.content !== null;
     });
     expect(assistantMessages).toHaveLength(1);
     expect(assistantMessages[0]).toMatchObject({
@@ -749,7 +749,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     const messages = await listMessages(fixture.threadId);
     expect(
       messages.filter((message) => {
-        return message.role === "assistant";
+        return message.role === "assistant" && message.content !== null;
       }),
     ).toHaveLength(0);
     await clearAllDetached();
@@ -807,7 +807,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(response.status).toBe(200);
     const assistantMessages = (await listMessages(fixture.threadId)).filter(
       (message) => {
-        return message.role === "assistant";
+        return message.role === "assistant" && message.content !== null;
       },
     );
     expect(assistantMessages).toHaveLength(1);
@@ -874,7 +874,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     const messages = await listMessages(fixture.threadId);
     expect(
       messages.filter((message) => {
-        return message.role === "assistant";
+        return message.role === "assistant" && message.content !== null;
       }),
     ).toHaveLength(0);
     await clearAllDetached();
@@ -1055,7 +1055,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(errorMessage?.content).toBe("Run cancelled");
   });
 
-  it("publishes run-updated signals only for terminal callbacks with a mapped thread", async () => {
+  it("publishes message-created signals only for terminal callbacks with a mapped thread", async () => {
     const fixture = await track(seedChatCallbackFixture());
     completedNoOutputEvents();
 
@@ -1067,7 +1067,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
     expect(completed.status).toBe(200);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunUpdated:${fixture.threadId}`,
+      `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
 
@@ -1081,7 +1081,7 @@ describe("POST /api/internal/callbacks/chat", () => {
 
     expect(progress.status).toBe(200);
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadRunUpdated:${fixture.threadId}`,
+      `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
     await clearAllDetached();

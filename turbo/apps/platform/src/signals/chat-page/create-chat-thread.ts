@@ -1266,7 +1266,7 @@ function createLatestRunStatus(
   return computed(async (get): Promise<string | null> => {
     const messages = await get(allMessages$);
     const stateFromMessages = deriveRunIndicatorState(messages);
-    if (stateFromMessages !== null || messages.length > 0) {
+    if (stateFromMessages !== null) {
       return stateFromMessages;
     }
     const thread = await get(threadData$);
@@ -1364,8 +1364,8 @@ function createRunTracking({
 
   const allFinished$ = computed(async (get) => {
     const messages = await get(allMessages$);
-    if (messages.length > 0) {
-      return deriveRunIndicatorState(messages) === null;
+    if (deriveRunIndicatorState(messages) !== null) {
+      return false;
     }
     const thread = await get(threadData$);
     return (thread?.activeRunIds.length ?? 0) === 0;
