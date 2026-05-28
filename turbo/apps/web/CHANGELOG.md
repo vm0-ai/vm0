@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.397.3](https://github.com/vm0-ai/vm0/compare/web-v12.397.2...web-v12.397.3) (2026-05-28)
+
+
+### Refactoring
+
+* **cli:** rename open-design-registry to resource-registry; strip od:/vm0: ID prefixes ([#15311](https://github.com/vm0-ai/vm0/issues/15311)) ([ee26195](https://github.com/vm0-ai/vm0/commit/ee261958a85bdd874c70c4457f327fe2e42eed32))
+
 ## [12.397.2](https://github.com/vm0-ai/vm0/compare/web-v12.397.1...web-v12.397.2) (2026-05-28)
 
 
