@@ -111,6 +111,16 @@ fn display_includes_file_operation_labels() {
         reason: SandboxOperationReason::Timeout,
         message: "copy timed out".into(),
     };
+    let read_state_err = SandboxError::InvalidState {
+        context: SandboxInvalidStateContext::Operation(SandboxOperation::ReadFile),
+        state: "created".into(),
+        message: "sandbox not running".into(),
+    };
+    let copy_state_err = SandboxError::InvalidState {
+        context: SandboxInvalidStateContext::Operation(SandboxOperation::CopyFile),
+        state: "stopped".into(),
+        message: "sandbox not running".into(),
+    };
 
     assert!(
         read_err.to_string().contains("sandbox read file failed"),
@@ -119,5 +129,17 @@ fn display_includes_file_operation_labels() {
     assert!(
         copy_err.to_string().contains("sandbox copy file failed"),
         "got: {copy_err}"
+    );
+    assert!(
+        read_state_err
+            .to_string()
+            .contains("invalid state for read file operation"),
+        "got: {read_state_err}"
+    );
+    assert!(
+        copy_state_err
+            .to_string()
+            .contains("invalid state for copy file operation"),
+        "got: {copy_state_err}"
     );
 }
